@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('../../../db/pool');
+const { requireAuth } = require('../auth/middleware');
 
 /**
  * Order module — BUY-031, BUY-050–053. A single buyer order splits into
@@ -108,6 +109,14 @@ router.post('/', async (req, res, next) => {
   }
 });
 
+// GET /order/:id — KNOWN GAP: not yet auth-protected. Order IDs are
+// sequential (LP-XXXXXX) and therefore guessable, so anyone who guesses or
+// obtains an ID can currently view that order's details. Left open for now
+// because a guest-checkout buyer needs to view their own order confirmation
+// without being logged in — but this needs a real fix (e.g. requiring the
+// guest's email as a second factor, or a non-guessable order-lookup token)
+// before this goes anywhere near production. Flagged rather than silently
+// left as-is.
 router.get('/:id', async (req, res, next) => {
   try {
     const { rows: orderRows } = await db.query('SELECT * FROM orders WHERE id = $1', [req.params.id]);
@@ -154,9 +163,15 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
-router.get('/', async (req, res, next) => {
+// GET /order — buyers see only their own orders; admins see all.
+// This previously returned every order in the system to anyone who called
+// it (including guest emails) — fixed as part of adding real auth.
+router.get('/', requireAuth, async (req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT * FROM orders ORDER BY placed_at DESC');
+    const isAdmin = req.user.role === 'admin';
+    const { rows } = isAdmin
+      ? await db.query('SELECT * FROM orders ORDER BY placed_at DESC')
+      : await db.query('SELECT * FROM orders WHERE buyer_id = $1 ORDER BY placed_at DESC', [req.user.sub]);
     res.json(rows.map((o) => ({
       id: o.id,
       userId: o.buyer_id,

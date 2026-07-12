@@ -13,7 +13,10 @@ database (see below), but it is **not** production-ready:
 - **Real PostgreSQL persistence** — catalog, fitment, cart, order, and user
   modules are now backed by a real database (see `db/README.md` for setup).
   Verified: an order placed through the API survives a full server restart.
-- No authentication/authorization is enforced yet.
+- **Real authentication** — signup/login with bcrypt password hashing and
+  JWT sessions (see "Authentication" below). `GET /order` and `GET /user/:id`
+  are now access-controlled — previously `GET /order` returned every buyer's
+  orders to anyone who called it, unauthenticated; this is fixed.
 - Payment gateways (Stripe, APS, PayPal) are integrated but not live-tested
   — see the "Payment gateways" section below.
 - No automated tests yet (there's an npm test script, but no test files).
@@ -86,6 +89,45 @@ curl -X POST http://localhost:4000/order \
   -d '{"items":[{"productId":"p1","quantity":2},{"productId":"p4","quantity":1}],"guestEmail":"buyer@example.com"}'
 ```
 
+## Authentication
+
+Real signup/login — bcrypt password hashing (via `bcryptjs`, a pure-JS
+implementation chosen deliberately so contributors don't need a C++ build
+toolchain just to `npm install`) and JWT session tokens (7-day expiry).
+
+```
+POST /auth/signup  { email, password, name? }  -> { token, user }
+POST /auth/login   { email, password }          -> { token, user }
+GET  /auth/me      (Authorization: Bearer <token>) -> current user
+```
+
+Protected routes: send `Authorization: Bearer <token>`. Currently gated:
+- `GET /user/:id` — a user can only view their own profile (or an admin, any)
+- `GET /order` — a buyer sees only their own orders; an admin sees all
+
+**Guest checkout is unaffected** — `POST /order` with `guestEmail` still
+works with no token, per the product decision in the Charter.
+
+**Verified** (against the real database, not mocked): signup validation
+(duplicate email, short password, invalid email format all rejected
+correctly), login with wrong password vs. a nonexistent email both return
+the identical error message (so the API doesn't leak which emails are
+registered), token round-trips correctly through `/auth/me`, and — the
+important one — two different signed-up users only ever see their own
+orders in `GET /order`, never each other's.
+
+**Known gap, flagged not hidden**: `GET /order/:id` (single order lookup)
+is NOT yet auth-protected — order IDs are sequential and therefore
+guessable. Left open because a guest-checkout buyer needs to view their
+order confirmation without logging in, but this needs a real fix (e.g. a
+non-guessable lookup token, or requiring the guest's email as a second
+factor) before production. See the comment in `src/modules/order/routes.js`.
+
+**Not yet built**: password reset, email verification, and a login/signup
+UI in the mobile app, admin dashboard, or supplier portal — all three
+still call the API with no auth token at all. Wiring that up is the
+natural next step once this backend piece is confirmed to be what's wanted.
+
 ## Setup
 
 ```bash
@@ -120,6 +162,7 @@ src/
 ├── config/env.js          Centralized environment variable access
 ├── middleware/errorHandler.js
 └── modules/
+    ├── auth/               Signup/login, JWT middleware (BUY-001–003)
     ├── catalog/           Products & categories (BUY-020–025, SUP-010–015)
     ├── fitment/            Year/Make/Model/Trim reference data (BUY-010)
     ├── cart/               Multi-supplier cart (BUY-030–032)
@@ -133,16 +176,20 @@ src/
 
 ## Next steps to make this real
 
-1. Add authentication (JWT is scaffolded via `env.jwtSecret` but not yet
-   enforced on any route).
-2. Get real test-mode credentials and run one live transaction against
+1. Build login/signup screens in the mobile app, admin dashboard, and
+   supplier portal, and start sending the JWT on requests that need it —
+   the backend supports this now, but nothing calls it yet.
+2. Fix the known gap on `GET /order/:id` (see "Authentication" above).
+3. Add password reset and email verification (no email provider is wired
+   up yet — see the notification module and Charter Section 4).
+4. Get real test-mode credentials and run one live transaction against
    each payment gateway (Stripe, APS, PayPal) — none have been network-
    tested yet, see each provider file's header comment for details.
-3. Add real tests under `test/` (the `npm test` script expects them there).
-4. Add the missing tables/endpoints for commission/payout records, return/
+5. Add real tests under `test/` (the `npm test` script expects them there).
+6. Add the missing tables/endpoints for commission/payout records, return/
    dispute cases, reviews, and support tickets once those backend modules
    are built (currently only mocked in the admin-dashboard/supplier-portal
    prototypes) — see `db/README.md`'s schema section for what's covered
    so far vs. what's next.
-5. Move from the local dev Postgres instance to a managed hosted database
+7. Move from the local dev Postgres instance to a managed hosted database
    for staging/production (RDS, Cloud SQL, Supabase, Neon, Railway, etc.).

@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('../../../db/pool');
+const { requireAuth } = require('../auth/middleware');
 
 /**
  * User module — buyer, supplier, and admin accounts (SRS Section 7.1).
@@ -8,9 +9,10 @@ const db = require('../../../db/pool');
  * creation before checkout — see BUY-001–005 and the Charter's guest
  * checkout decision.
  *
- * User lookup is now backed by PostgreSQL. guest-claim remains a stub
- * (no real auth/email flow yet) but now actually creates the user row
- * rather than doing nothing — see the TODO below for what's still missing.
+ * GET /user/:id now requires authentication and only allows a user to view
+ * their own profile (or an admin to view anyone's) — see the ownership
+ * check below. guest-claim remains open (no auth required, by definition —
+ * a guest doesn't have a session yet).
  */
 const router = express.Router();
 
@@ -37,8 +39,13 @@ router.post('/guest-claim', async (req, res, next) => {
   }
 });
 
-router.get('/:id', async (req, res, next) => {
+router.get('/:id', requireAuth, async (req, res, next) => {
   try {
+    const isSelf = req.user.sub === req.params.id;
+    const isAdmin = req.user.role === 'admin';
+    if (!isSelf && !isAdmin) {
+      return res.status(403).json({ error: 'You can only view your own profile' });
+    }
     const { rows } = await db.query('SELECT id, email, name, role, created_at FROM users WHERE id = $1', [req.params.id]);
     if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
     res.json(rows[0]);
