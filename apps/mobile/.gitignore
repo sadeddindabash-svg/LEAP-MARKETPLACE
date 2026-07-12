@@ -1,0 +1,11 @@
+# Flutter/Dart-specific ignores (root .gitignore covers general node/OS/env files)
+.dart_tool/
+.packages
+build/
+*.g.dart
+*.freezed.dart
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+android/.gradle/
+android/local.properties

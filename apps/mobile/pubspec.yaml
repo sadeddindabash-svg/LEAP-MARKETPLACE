@@ -1,0 +1,27 @@
+name: leap_mobile
+description: Leap Auto Parts Marketplace — buyer-facing mobile app.
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  go_router: ^14.2.0          # declarative routing between screens
+  provider: ^6.1.2            # simple state management for the MVP
+  http: ^1.2.1                # API client to services/api
+  intl: ^0.19.0                # currency / date formatting per locale
+  flutter_secure_storage: ^9.2.2  # auth token storage (never plain SharedPreferences for tokens)
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  # assets:
+  #   - assets/images/

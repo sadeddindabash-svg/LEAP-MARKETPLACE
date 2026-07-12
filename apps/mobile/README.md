@@ -1,44 +1,64 @@
-# Mobile App (Buyer)
+# Leap Mobile App (Flutter)
 
-Buyer-facing storefront for iOS and Android. Corresponds to SRS Section 3.1
-(Buyer-Facing Application) and the clickable reference in
-`docs/prototypes/leap_mobile_prototype.jsx`.
+Buyer-facing app for iOS and Android. See `/docs/SRS.docx` Section 3.1 for the
+full requirement list this implements, and
+`/docs/prototypes/leap_mobile_prototype.jsx` for the reference UI/UX.
 
-## Scope (Phase 1 / Must Have)
+## Status
 
-- Account management & authentication (BUY-001–005)
-- Vehicle selector & Year/Make/Model/Trim fitment search (BUY-010–015; VIN is Phase 2)
-- Product catalog, browsing & search (BUY-020–025)
-- Cart & checkout, split by supplier (BUY-030–035)
-- Payments: Stripe, PayPal, Google Pay, major card networks (BUY-040–044)
-- Orders, tracking, returns/warranty via the Platform, reviews (BUY-050–055)
-- Support: buyer ↔ Platform only, no direct supplier contact (BUY-060–062)
-- Localization: English at launch, RTL-ready architecture (BUY-070–072)
+This is a **starter skeleton**, not a finished app: real navigation between
+all core screens works, but data is placeholder/hardcoded (marked with
+`// TODO` comments) until it's wired up to `services/api`.
 
-Full requirement text and priority tags: `docs/SRS.docx`, Section 3.1.
+⚠️ This code was written without access to a Flutter SDK in the environment
+that generated it, so it has **not been compiled or run**. It should be
+syntactically valid Dart/Flutter, but budget time for a first `flutter pub
+get` / `flutter run` pass to catch anything that needs fixing before relying
+on it.
 
-## Suggested stack
+## Setup
 
-Not yet finalized — see Charter Section 1, "Mobile development approach".
-Leading candidate: React Native or Flutter (cross-platform) to fit the
-16-week Phase 1 timeline and budget.
+1. Install Flutter: https://docs.flutter.dev/get-started/install
+2. From this folder:
+   ```bash
+   flutter pub get
+   flutter run
+   ```
+3. Point the app at your local backend (see `../../services/api/README.md`
+   for how to run it):
+   ```bash
+   flutter run --dart-define=API_BASE_URL=http://localhost:4000
+   ```
 
-## Getting started
+## Structure
 
-This folder is currently a placeholder. Once the framework decision is
-confirmed:
+```
+lib/
+├── main.dart               Entry point
+├── app.dart                 Router + bottom-nav shell
+├── core/
+│   ├── theme.dart            Brand colors/theme (matches the prototypes)
+│   └── config/app_config.dart  Launch markets, API base URL, feature flags
+├── models/                  Vehicle, Product, Order — mirror SRS data entities
+├── services/api_client.dart  HTTP client wrapper for services/api
+├── widgets/                  Shared components (PlateChip, StatusBadge)
+└── features/
+    ├── home/                Home + category grid
+    ├── garage/               Saved vehicles / YMMT fitment selector
+    ├── catalog/              Category browse + product detail
+    ├── cart/                 Basket (grouped by supplier)
+    ├── checkout/             Checkout, incl. guest-checkout toggle
+    ├── orders/               Order history + tracking
+    ├── account/              Profile / garage / addresses / support entry
+    └── support/              Buyer ↔ Platform chat (no supplier contact)
+```
 
-1. Scaffold the app here (e.g. `npx react-native init` or `flutter create .`
-   run *inside* this folder so it stays at `apps/mobile/`).
-2. Wire up the core screens per `docs/prototypes/leap_mobile_prototype.jsx`:
-   Home, My Garage, Category/Search, Product Detail, Cart, Checkout, Orders,
-   Order Detail, Account, Support Chat.
-3. Point API calls at `services/api` once that service is running locally
-   (see that folder's README for local dev setup).
+## Next steps to make this real
 
-## Do not
-
-- Hardcode buyer-facing strings — route through the localization layer so
-  additional languages can be added without code changes (NFR-050).
-- Add any direct buyer-to-supplier messaging path — this is an explicit
-  business requirement (see SRS Section 2.5).
+1. Add a state management layer (Provider is already a dependency) for
+   active vehicle, cart contents, and auth session.
+2. Replace placeholder data in each screen with real `ApiClient` calls once
+   `services/api` has working endpoints.
+3. Swap the placeholder launch markets in `core/config/app_config.dart` for
+   the real Phase 1 country list.
+4. Add `flutter_test` widget tests per screen before this grows further.
