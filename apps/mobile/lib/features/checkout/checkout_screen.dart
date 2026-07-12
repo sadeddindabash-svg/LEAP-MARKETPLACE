@@ -20,6 +20,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   static const _paymentMethods = [
     (id: 'card', label: 'Visa / Mastercard', icon: Icons.credit_card),
+    // Amazon Payment Services: the business's existing gateway, strong for
+    // MENA payment methods — surfaced prominently since 7 of our 40 launch
+    // markets are GCC/Jordan.
+    (id: 'amazon_payment_services', label: 'Amazon Payment Services', icon: Icons.credit_card),
     (id: 'paypal', label: 'PayPal', icon: Icons.account_balance_wallet_outlined),
     (id: 'gpay', label: 'Google Pay', icon: Icons.account_balance_wallet_outlined),
   ];

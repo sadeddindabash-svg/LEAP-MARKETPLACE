@@ -2,7 +2,7 @@
   "name": "leap-api",
   "version": "0.1.0",
   "private": true,
-  "description": "Leap Auto Parts Marketplace — core backend API (catalog, fitment, cart, order, user, payment, notification).",
+  "description": "Leap Auto Parts Marketplace \u2014 core backend API (catalog, fitment, cart, order, user, payment, notification).",
   "main": "src/index.js",
   "type": "commonjs",
   "scripts": {
@@ -14,7 +14,8 @@
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "stripe": "^22.3.1"
   },
   "devDependencies": {
     "eslint": "^9.9.0"

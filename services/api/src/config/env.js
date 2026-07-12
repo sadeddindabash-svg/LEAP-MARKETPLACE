@@ -9,6 +9,14 @@ const env = {
   databaseUrl: process.env.DATABASE_URL || '',
   stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
   paypalClientId: process.env.PAYPAL_CLIENT_ID || '',
+  // Amazon Payment Services (formerly PayFort) — see
+  // src/modules/payment/providers/amazonPaymentServices.js for the
+  // "verify before production" notes on this integration.
+  apsMerchantIdentifier: process.env.APS_MERCHANT_IDENTIFIER || '',
+  apsAccessCode: process.env.APS_ACCESS_CODE || '',
+  apsShaRequestPhrase: process.env.APS_SHA_REQUEST_PHRASE || '',
+  apsShaResponsePhrase: process.env.APS_SHA_RESPONSE_PHRASE || '',
+  apsApiBaseUrl: process.env.APS_API_BASE_URL || '', // confirm sandbox vs production URL from your APS dashboard
   jwtSecret: process.env.JWT_SECRET || 'dev-only-insecure-secret-change-me',
 };
 

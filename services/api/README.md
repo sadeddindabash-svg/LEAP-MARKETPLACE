@@ -36,6 +36,22 @@ POST /user/guest-claim
 POST /notification/send
 ```
 
+## Payment gateways
+
+- **Stripe**: real integration (`stripe.paymentIntents.create`). Handles
+  Stripe's documented zero-decimal currencies correctly (Chile/CLP,
+  Paraguay/PYG). Not yet live-tested — see `src/modules/payment/routes.js`
+  header comment.
+- **Amazon Payment Services (APS)**: real request-signing integration
+  (the business's existing gateway). See
+  `src/modules/payment/providers/amazonPaymentServices.js` for the full
+  "verify before production" checklist — the signing algorithm is
+  implemented and unit-tested, but the live endpoint URL and field names
+  are not yet confirmed against Amazon's current docs, and no live call has
+  been made (no network access to Amazon's API from the environment this
+  was built in).
+- **PayPal / Google Pay**: still placeholders, no real SDK wired up.
+
 Example — placing a guest order with items from two different suppliers
 correctly splits into two supplier sub-orders while returning one order ID:
 
