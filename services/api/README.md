@@ -42,15 +42,28 @@ POST /notification/send
   Stripe's documented zero-decimal currencies correctly (Chile/CLP,
   Paraguay/PYG). Not yet live-tested — see `src/modules/payment/routes.js`
   header comment.
+- **Google Pay**: NOT a separate gateway — routes through Stripe's
+  PaymentIntent API (same as the 'stripe' provider), since Google Pay is a
+  client-side wallet, not an independent backend. See the routing comment
+  in `routes.js` if this seems surprising.
 - **Amazon Payment Services (APS)**: real request-signing integration
   (the business's existing gateway). See
   `src/modules/payment/providers/amazonPaymentServices.js` for the full
-  "verify before production" checklist — the signing algorithm is
-  implemented and unit-tested, but the live endpoint URL and field names
-  are not yet confirmed against Amazon's current docs, and no live call has
-  been made (no network access to Amazon's API from the environment this
-  was built in).
-- **PayPal / Google Pay**: still placeholders, no real SDK wired up.
+  "verify before production" checklist.
+- **PayPal**: real integration via the official `@paypal/paypal-server-sdk`
+  (Orders v2 API), written against the SDK's actual installed type
+  definitions. Uses a 2-step create-order → capture-order flow (see
+  `POST /payment/intent` with `provider: "paypal"`, then
+  `POST /payment/paypal/capture/:orderId` after the buyer approves).
+  Amount format is a decimal string (`"34.90"`), NOT integer cents like
+  Stripe — don't reuse `currency.js`'s Stripe logic for PayPal amounts.
+  Hungary (HUF, one of our 40 launch markets) is flagged as a possible
+  no-decimal currency per PayPal's docs, unverified against a live account.
+  See `src/modules/payment/providers/paypal.js` for full details.
+
+None of the three real integrations (Stripe, APS, PayPal) have been
+live-tested — this environment has no network access to any of their APIs.
+Each provider file documents exactly what was and wasn't verified locally.
 
 Example — placing a guest order with items from two different suppliers
 correctly splits into two supplier sub-orders while returning one order ID:

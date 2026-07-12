@@ -9,6 +9,8 @@ const env = {
   databaseUrl: process.env.DATABASE_URL || '',
   stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
   paypalClientId: process.env.PAYPAL_CLIENT_ID || '',
+  paypalClientSecret: process.env.PAYPAL_CLIENT_SECRET || '',
+  paypalEnvironment: process.env.PAYPAL_ENVIRONMENT || 'sandbox', // 'sandbox' | 'production'
   // Amazon Payment Services (formerly PayFort) — see
   // src/modules/payment/providers/amazonPaymentServices.js for the
   // "verify before production" notes on this integration.
