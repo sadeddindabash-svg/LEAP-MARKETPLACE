@@ -1,0 +1,45 @@
+name: CI
+
+# Placeholder pipeline — extend the steps below once each app/service has a
+# real package.json / build tool. Kept intentionally minimal so it passes on
+# an empty scaffold and can grow with the codebase.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  repo-sanity-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify expected top-level structure exists
+        run: |
+          test -d apps/mobile
+          test -d apps/admin-dashboard
+          test -d apps/supplier-portal
+          test -d services/api
+          test -d docs
+          echo "Structure OK"
+
+  # --- Uncomment and adapt once apps/admin-dashboard has a package.json ---
+  # admin-dashboard:
+  #   runs-on: ubuntu-latest
+  #   defaults:
+  #     run:
+  #       working-directory: apps/admin-dashboard
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-node@v4
+  #       with:
+  #         node-version: 20
+  #         cache: npm
+  #         cache-dependency-path: apps/admin-dashboard/package-lock.json
+  #     - run: npm ci
+  #     - run: npm run lint
+  #     - run: npm test -- --ci
+
+  # --- Repeat similar jobs for apps/supplier-portal, apps/mobile, services/api ---
