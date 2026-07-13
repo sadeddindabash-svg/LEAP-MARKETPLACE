@@ -15,6 +15,7 @@ dependencies:
   http: ^1.2.1                # API client to services/api
   intl: ^0.19.0                # currency / date formatting per locale
   flutter_secure_storage: ^9.2.2  # auth token storage (never plain SharedPreferences for tokens)
+  uuid: ^4.4.0                     # generates a persistent per-device cart ID
 
 dev_dependencies:
   flutter_test:

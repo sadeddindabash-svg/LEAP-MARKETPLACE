@@ -1,40 +1,75 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/theme.dart';
+import '../../models/product.dart';
+import '../../services/api_client.dart';
 
-/// BUY-013: shows only (or clearly flags) parts confirmed to fit the active
-/// vehicle. This screen currently renders placeholder rows — wire it to
-/// ApiClient.fetchProductsByCategory once services/api/catalog exists.
-class CategoryScreen extends StatelessWidget {
+/// BUY-013: shows parts for a category, fetched from the real catalog API.
+/// (Fitment-based filtering via an active vehicle — showing only
+/// confirmed-fit parts — isn't threaded through here yet; see BUY-013 in
+/// the SRS for the full requirement. This fetches by category only.)
+class CategoryScreen extends StatefulWidget {
   final String categoryId;
   final String categoryName;
   const CategoryScreen({super.key, required this.categoryId, required this.categoryName});
 
   @override
+  State<CategoryScreen> createState() => _CategoryScreenState();
+}
+
+class _CategoryScreenState extends State<CategoryScreen> {
+  late Future<List<Product>> _productsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _productsFuture = ApiClient().fetchProductsByCategory(widget.categoryId);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(categoryName)),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.inventory_2_outlined, size: 40, color: Colors.grey),
-              const SizedBox(height: 12),
-              Text(
-                'Products for "$categoryId" will render here once '
-                'connected to services/api/catalog.',
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.grey),
+      appBar: AppBar(title: Text(widget.categoryName)),
+      body: FutureBuilder<List<Product>>(
+        future: _productsFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text('Could not load products.\n${snapshot.error}', textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted)),
               ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () => context.push('/product/sample'),
-                child: const Text('Preview a product screen'),
+            );
+          }
+          final products = snapshot.data ?? [];
+          if (products.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text('No products in "${widget.categoryName}" yet.', textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted)),
               ),
-            ],
-          ),
-        ),
+            );
+          }
+          return ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: products.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            itemBuilder: (context, i) {
+              final p = products[i];
+              return Card(
+                child: ListTile(
+                  leading: const Icon(Icons.album_outlined, color: LeapColors.ink),
+                  title: Text(p.name, maxLines: 2, overflow: TextOverflow.ellipsis),
+                  subtitle: Text('${p.supplierName} · \$${p.price.toStringAsFixed(2)} ${p.currencyCode}'),
+                  onTap: () => context.push('/product/${p.id}'),
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }

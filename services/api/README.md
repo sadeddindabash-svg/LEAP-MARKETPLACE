@@ -33,7 +33,10 @@ GET  /catalog/products?category=brake&vehicleId=v1
 GET  /fitment/vehicles                           — reads from Postgres
 GET  /fitment/makes
 POST /cart/:cartId/items                         — writes to Postgres
-GET  /cart/:cartId
+GET  /cart/:cartId                               — includes supplierName for
+                                                    supplier-grouped cart display
+PATCH /cart/:cartId/items/:productId             — sets an exact quantity
+                                                    (unlike POST, which adds)
 POST /order              — real DB transaction: guest checkout, correct
                             price/supplier lookup from the catalog (not
                             trusting client-supplied amounts), correct
@@ -166,7 +169,8 @@ src/
     ├── catalog/           Products & categories (BUY-020–025, SUP-010–015),
     │                       plus admin catalog moderation (ADM-002)
     ├── fitment/            Year/Make/Model/Trim reference data (BUY-010)
-    ├── cart/               Multi-supplier cart (BUY-030–032)
+    ├── cart/               Multi-supplier cart (BUY-030–032), incl. a
+    │                       PATCH endpoint for exact-quantity updates
     ├── order/              Order placement + supplier sub-order splitting
     │                       (BUY-031, BUY-050–053) + guest checkout
     ├── user/               Accounts, incl. guest-order account claiming

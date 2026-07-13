@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'core/theme.dart';
 import 'core/auth_state.dart';
+import 'core/cart_state.dart';
 import 'features/home/home_screen.dart';
 import 'features/garage/garage_screen.dart';
 import 'features/catalog/category_screen.dart';
@@ -96,8 +97,11 @@ class LeapApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => AuthState(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthState()),
+        ChangeNotifierProvider(create: (_) => CartState()),
+      ],
       child: MaterialApp.router(
         title: 'Leap',
         debugShowCheckedModeBanner: false,
