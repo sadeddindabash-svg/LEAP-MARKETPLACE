@@ -13,6 +13,8 @@ require('dotenv').config();
 
 const DEV_ADMIN_EMAIL = 'admin@leap.dev';
 const DEV_ADMIN_PASSWORD = 'admin_dev_password_123';
+const DEV_SUPPLIER_EMAIL = 'supplier@leap.dev';
+const DEV_SUPPLIER_PASSWORD = 'supplier_dev_password_123';
 
 async function main() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -98,6 +100,17 @@ async function main() {
       ('T-5501', 'admin', 'Your refund has been submitted to your original payment method and should land within 5-7 business days.')
     ON CONFLICT DO NOTHING;
   `);
+
+  // Dev-only supplier portal login, tied to supplier s1 (Guangzhou
+  // AutoParts Co.) — same pattern as the dev admin login above. CHANGE
+  // THIS PASSWORD before any shared/production use.
+  const supplierPasswordHash = await bcrypt.hash(DEV_SUPPLIER_PASSWORD, 10);
+  await pool.query(
+    `INSERT INTO users (id, email, name, role, supplier_id, password_hash) VALUES ($1, $2, 'Wei Zhang', 'supplier', 's1', $3)
+     ON CONFLICT (email) DO NOTHING`,
+    ['supplier_dev_seed', DEV_SUPPLIER_EMAIL, supplierPasswordHash]
+  );
+  console.log(`Seeded dev supplier login: ${DEV_SUPPLIER_EMAIL} / ${DEV_SUPPLIER_PASSWORD} (change before any shared/production use)`);
 
   console.log('Seed complete.');
   await pool.end();

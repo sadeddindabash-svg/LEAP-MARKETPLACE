@@ -1,4 +1,4 @@
-import React, { useState, createContext, useContext } from "react";
+import React, { useState, useEffect, createContext, useContext } from "react";
 import {
   LayoutGrid, PackageSearch, ShoppingBag, RotateCcw, MessageSquare, Wallet, Settings,
   Search, Bell, ChevronRight, ChevronLeft, TrendingUp, Plus, Upload, Download, Check, X,
@@ -9,6 +9,14 @@ import {
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
 } from "recharts";
+import { LangContext, useLang } from "./langContext";
+import { SupplierContext, useSupplier } from "./supplierContext";
+import LoginPage from "./LoginPage";
+import {
+  getStoredToken, saveToken, clearToken, getCurrentUser, SessionExpiredError,
+  fetchMySupplierProfile, fetchMyProducts, createProduct, updateProduct,
+  fetchMyOrders, updateSubOrder,
+} from "./auth";
 
 /* ============================================================
    LEAP 供应商门户 / Supplier Portal — bilingual (中文 / English)
@@ -34,8 +42,8 @@ function useBodyFont() {
 
 /* ---------------- Language context ---------------- */
 
-const LangContext = createContext({ lang: "zh", t: null, toggle: () => {} });
-const useLang = () => useContext(LangContext);
+// LangContext and useLang are defined in ./langContext.js (shared with
+// LoginPage.jsx) — see that file for why.
 
 /* ---------------- Bilingual copy dictionary ---------------- */
 
@@ -122,7 +130,7 @@ const STRINGS = {
       toggles: ["新订单提醒", "库存不足预警", "结算到账通知", "翻译审核结果通知"],
     },
     statusProduct: { active: "上架中", translating: "翻译审核中", inactive: "已下架" },
-    statusOrder: { pending: "待确认", preparing: "备货中", shipped: "已发货", dispute: "异常/纠纷" },
+    statusOrder: { pending: "待确认", preparing: "备货中", shipped: "已发货", delivered: "已送达", dispute: "异常/纠纷" },
     statusReturn: { awaiting: "待供应商回复", inProgress: "处理中", completed: "已完成" },
     statusPayout: { paid: "已结算", pending: "待结算", calculating: "统计中" },
   },
@@ -208,7 +216,7 @@ const STRINGS = {
       toggles: ["New order alerts", "Low stock warnings", "Payout notifications", "Translation review results"],
     },
     statusProduct: { active: "Active", translating: "In translation review", inactive: "Inactive" },
-    statusOrder: { pending: "Pending", preparing: "Preparing", shipped: "Shipped", dispute: "Dispute" },
+    statusOrder: { pending: "Pending", preparing: "Preparing", shipped: "Shipped", delivered: "Delivered", dispute: "Dispute" },
     statusReturn: { awaiting: "Awaiting your reply", inProgress: "In progress", completed: "Completed" },
     statusPayout: { paid: "Paid", pending: "Pending", calculating: "Calculating" },
   },
@@ -216,14 +224,15 @@ const STRINGS = {
 
 const STATUS_COLOR = {
   active: [C.gauge, C.gaugeBg], translating: [C.amber, C.amberBg], inactive: [C.muted, "#EEEFF1"],
-  pending: [C.amber, C.amberBg], preparing: [C.torque, C.torqueBg], shipped: [C.torque, C.torqueBg], dispute: [C.red, C.redBg],
+  pending: [C.amber, C.amberBg], preparing: [C.torque, C.torqueBg], shipped: [C.torque, C.torqueBg], delivered: [C.gauge, C.gaugeBg], dispute: [C.red, C.redBg],
   awaiting: [C.amber, C.amberBg], inProgress: [C.torque, C.torqueBg], completed: [C.gauge, C.gaugeBg],
   paid: [C.gauge, C.gaugeBg], calculating: [C.muted, "#EEEFF1"],
 };
 
 /* ---------------- Mock data (language-neutral keys, bilingual text) ---------------- */
 
-const COMPANY = { zh: "广州汽配有限公司", en: "Guangzhou AutoParts Co.", rating: 4.6, joined: "2025-11-02" };
+// COMPANY removed — TopBar/sidebar/Settings now use real data via
+// SupplierContext (see supplierContext.js) rather than a hardcoded mock.
 
 const PRODUCTS = [
   { id: "sku1", name: { zh: "RIDEX 前刹车盘（通风型 300mm）", en: "RIDEX Front Brake Disc, Vented 300mm" }, cat: { zh: "刹车系统", en: "Brake System" }, price: 254, stock: 320, fit: { zh: "宝马 1系 (F20)", en: "BMW 1 Series (F20)" }, status: "active", icon: Disc },
@@ -233,13 +242,14 @@ const PRODUCTS = [
   { id: "sku5", name: { zh: "散热风扇总成 12V", en: "Radiator Cooling Fan Assembly, 12V" }, cat: { zh: "冷却系统", en: "Cooling" }, price: 465, stock: 0, fit: { zh: "丰田 凯美瑞", en: "Toyota Camry" }, status: "inactive", icon: Fan },
   { id: "sku6", name: { zh: "LED 大灯灯泡套装", en: "LED Headlight Bulb Set" }, cat: { zh: "照明系统", en: "Lighting" }, price: 199, stock: 540, fit: { zh: "通用车型", en: "Universal fit" }, status: "active", icon: Lightbulb },
 ];
+// NOTE: PRODUCTS above is still used by OverviewPage's "top products"
+// widget only — ProductsPage itself now fetches real data (see below).
+// This is a documented scope boundary, not an oversight: Overview stays
+// mock for this pass, same as the admin dashboard's Payouts/Tickets
+// pages did before those got wired in later passes.
 
-const ORDERS = [
-  { id: "LP-208841", region: { zh: "美国", en: "United States" }, items: [{ name: { zh: "RIDEX 前刹车盘（通风型 300mm）", en: "RIDEX Front Brake Disc, Vented 300mm" }, qty: 1 }], amount: 254, status: "shipped", tracking: "CN-GLB-77213840", placed: "2026-07-04" },
-  { id: "LP-208205", region: { zh: "阿联酋", en: "United Arab Emirates" }, items: [{ name: { zh: "博世 陶瓷刹车片套装（前）", en: "Bosch Ceramic Brake Pad Set (Front)" }, qty: 1 }], amount: 298, status: "dispute", tracking: "—", placed: "2026-07-02" },
-  { id: "LP-209012", region: { zh: "墨西哥", en: "Mexico" }, items: [{ name: { zh: "RIDEX 后刹车盘（实心型 290mm）", en: "RIDEX Rear Brake Disc, Solid 290mm" }, qty: 2 }], amount: 336, status: "pending", tracking: "—", placed: "2026-07-11" },
-  { id: "LP-209044", region: { zh: "爱尔兰", en: "Ireland" }, items: [{ name: { zh: "点火线圈总成", en: "Ignition Coil Pack" }, qty: 1 }], amount: 218, status: "preparing", tracking: "—", placed: "2026-07-10" },
-];
+// ORDERS mock array removed — OrdersPage and OrderDetailPanel now fetch
+// real data from GET /supplier/me/orders.
 
 const RETURNS = [
   { id: "RC-3391", order: "LP-208205", reason: { zh: "买家反馈刹车片尺寸与车型不符", en: "Buyer reports the brake pad size doesn't match their vehicle" }, note: { zh: "请核实该SKU的适配车型数据是否准确，并告知是否可接受退货。", en: "Please confirm this SKU's fitment data is accurate, and let us know if you'll accept the return." }, status: "awaiting" },
@@ -318,7 +328,9 @@ function LangToggle() {
 
 function TopBar({ title, subtitle }) {
   const { t, lang } = useLang();
+  const { profile } = useSupplier();
   const font = useBodyFont();
+  const displayName = profile ? profile.name : "";
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
       <div>
@@ -332,9 +344,9 @@ function TopBar({ title, subtitle }) {
         </div>
         <Bell size={18} color={C.ink} />
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.ink, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", ...font, fontWeight: 700, fontSize: 12 }}>{lang === "zh" ? "广" : "G"}</div>
+          <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.ink, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", ...font, fontWeight: 700, fontSize: 12 }}>{displayName.charAt(0) || "?"}</div>
           <div>
-            <div style={{ ...font, fontSize: 12.5, fontWeight: 700, color: C.ink }}>{COMPANY[lang]}</div>
+            <div style={{ ...font, fontSize: 12.5, fontWeight: 700, color: C.ink }}>{displayName}</div>
             <div style={{ ...font, fontSize: 10.5, color: C.muted }}>{t.role}</div>
           </div>
         </div>
@@ -436,36 +448,78 @@ function useInputStyle() {
   return { ...font, width: "100%", border: `1px solid ${C.line}`, borderRadius: 8, padding: "9px 11px", fontSize: 13, outline: "none", boxSizing: "border-box" };
 }
 
-function AddProductForm({ onCancel }) {
-  const { t } = useLang();
+// Matches the category IDs used by the mobile app's catalog browsing
+// (see apps/mobile/lib/features/home/home_screen.dart kCategories) so a
+// product a supplier adds here shows up correctly there.
+const CATEGORY_OPTIONS = [
+  { id: "brake", zh: "刹车系统", en: "Brake System" },
+  { id: "engine", zh: "发动机", en: "Engine" },
+  { id: "electrical", zh: "电气系统", en: "Electrical" },
+  { id: "filters", zh: "滤芯", en: "Filters" },
+  { id: "suspension", zh: "悬挂系统", en: "Suspension" },
+  { id: "lighting", zh: "照明系统", en: "Lighting" },
+];
+
+function AddProductForm({ onCancel, onCreated }) {
+  const { t, lang } = useLang();
+  const { onSessionExpired } = useSupplier();
   const f = t.products.addForm;
   const font = useBodyFont();
   const inputStyle = useInputStyle();
+
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState(CATEGORY_OPTIONS[0].id);
+  const [price, setPrice] = useState("");
+  const [stock, setStock] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleSubmit = async () => {
+    if (!name.trim() || !price) {
+      setError(lang === "zh" ? "请填写商品名称和价格" : "Please fill in the product name and price");
+      return;
+    }
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      await createProduct(getStoredToken(), {
+        name: name.trim(),
+        category,
+        price: parseFloat(price),
+        currencyCode: "USD",
+        stockQuantity: parseInt(stock, 10) || 0,
+      });
+      onCreated();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setError(err.message);
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <Card title={f.title} action={<button onClick={onCancel} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={17} color={C.muted} /></button>}>
       <div style={{ padding: 20, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <Field label={f.nameLabel}><input style={inputStyle} placeholder={f.namePlaceholder} /></Field>
+        <Field label={f.nameLabel}><input style={inputStyle} placeholder={f.namePlaceholder} value={name} onChange={(e) => setName(e.target.value)} /></Field>
         <Field label={f.categoryLabel}>
-          <select style={inputStyle}>{f.categories.map(c => <option key={c}>{c}</option>)}</select>
+          <select style={inputStyle} value={category} onChange={(e) => setCategory(e.target.value)}>
+            {CATEGORY_OPTIONS.map(c => <option key={c.id} value={c.id}>{c[lang]}</option>)}
+          </select>
         </Field>
-        <Field label={f.oemLabel}><input style={inputStyle} placeholder={f.oemPlaceholder} /></Field>
-        <Field label={f.priceLabel}><input style={inputStyle} placeholder="0.00" /></Field>
-        <Field label={f.stockLabel}><input style={inputStyle} placeholder="0" /></Field>
-        <Field label={f.fitmentLabel}><input style={inputStyle} placeholder={f.fitmentPlaceholder} /></Field>
-        <div style={{ gridColumn: "1 / -1" }}>
-          <Field label={f.descLabel}><textarea style={{ ...inputStyle, height: 80, resize: "none" }} placeholder={f.descPlaceholder} /></Field>
+        <Field label={f.priceLabel}><input type="number" step="0.01" style={inputStyle} placeholder="0.00" value={price} onChange={(e) => setPrice(e.target.value)} /></Field>
+        <Field label={f.stockLabel}><input type="number" style={inputStyle} placeholder="0" value={stock} onChange={(e) => setStock(e.target.value)} /></Field>
+        <div style={{ gridColumn: "1 / -1", ...font, fontSize: 11.5, color: C.muted, background: C.canvas, borderRadius: 8, padding: 10 }}>
+          {lang === "zh"
+            ? "OEM 编号、适配车型、商品描述和图片字段暂未接入后端存储，因此未在此表单中显示 —— 显示但不保存的字段会造成误导。"
+            : "OEM number, fitment, description, and image fields aren't wired to backend storage yet, so they're left out of this form rather than shown but silently discarded."}
         </div>
-        <div style={{ gridColumn: "1 / -1" }}>
-          <div style={{ ...font, fontSize: 12, fontWeight: 700, color: C.muted, marginBottom: 6 }}>{f.imageLabel}</div>
-          <div style={{ border: `1.5px dashed ${C.line}`, borderRadius: 10, padding: "24px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, color: C.muted }}>
-            <ImagePlus size={22} />
-            <span style={{ ...font, fontSize: 12 }}>{f.imageHint}</span>
-          </div>
-        </div>
+        {error && <div style={{ gridColumn: "1 / -1", ...font, fontSize: 12, color: C.red, background: "#FBE7E5", borderRadius: 8, padding: 10 }}>{error}</div>}
       </div>
       <div style={{ padding: "0 20px 20px", display: "flex", gap: 10, justifyContent: "flex-end" }}>
         <button onClick={onCancel} style={{ ...font, padding: "10px 18px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{f.cancel}</button>
-        <button onClick={onCancel} style={{ ...font, padding: "10px 18px", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{f.submit}</button>
+        <button onClick={handleSubmit} disabled={isSubmitting} style={{ ...font, padding: "10px 18px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 13, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
+          {isSubmitting ? (lang === "zh" ? "提交中…" : "Submitting…") : f.submit}
+        </button>
       </div>
     </Card>
   );
@@ -515,12 +569,30 @@ function BulkUploadPanel({ onCancel }) {
 
 function ProductsPage() {
   const [mode, setMode] = useState("list");
+  const [products, setProducts] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
   const { t, lang } = useLang();
-  if (mode === "add") return <div style={{ padding: 24 }}><AddProductForm onCancel={() => setMode("list")} /></div>;
+  const { onSessionExpired } = useSupplier();
+
+  const load = () => {
+    setLoadState("loading");
+    fetchMyProducts(getStoredToken())
+      .then((data) => { setProducts(data); setLoadState("ready"); })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (mode === "add") return <div style={{ padding: 24 }}><AddProductForm onCancel={() => setMode("list")} onCreated={() => { setMode("list"); load(); }} /></div>;
   if (mode === "bulk") return <div style={{ padding: 24 }}><BulkUploadPanel onCancel={() => setMode("list")} /></div>;
+
   return (
     <div>
-      <TopBar title={t.products.title} subtitle={t.products.subtitle(PRODUCTS.length)} />
+      <TopBar title={t.products.title} subtitle={loadState === "ready" ? t.products.subtitle(products.length) : "…"} />
       <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "flex-end", gap: 8 }}>
         <button onClick={() => setMode("bulk")} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}>
           <Upload size={13} /> {t.products.bulkUpload}
@@ -530,48 +602,72 @@ function ProductsPage() {
         </button>
       </div>
       <div style={{ padding: 24 }}>
-        <Card>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead><tr><Th>{t.products.thProduct}</Th><Th>{t.products.thCategory}</Th><Th align="right">{t.products.thPrice}</Th><Th align="right">{t.products.thStock}</Th><Th>{t.products.thFitment}</Th><Th>{t.products.thStatus}</Th><Th></Th></tr></thead>
-            <tbody>
-              {PRODUCTS.map(p => {
-                const Icon = p.icon;
-                return (
+        {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", fontSize: 13, color: C.muted }}>{lang === "zh" ? "加载中…" : "Loading…"}</div></Card>}
+        {loadState === "error" && <Card><div style={{ padding: 32, textAlign: "center", fontSize: 13, color: C.red }}>{errorMessage}</div></Card>}
+        {loadState === "ready" && (
+          <Card>
+            {/* Fitment and product icon columns from the original mock are
+                dropped here — the real backend doesn't track per-product
+                fitment mappings for supplier-submitted listings yet, and
+                there's no icon/category-image field, so showing either
+                would be fake data with nothing real behind it. */}
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead><tr><Th>{t.products.thProduct}</Th><Th>{t.products.thCategory}</Th><Th align="right">{t.products.thPrice}</Th><Th align="right">{t.products.thStock}</Th><Th>{t.products.thStatus}</Th></tr></thead>
+              <tbody>
+                {products.length === 0 && (
+                  <tr><td colSpan={5} style={{ textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>{lang === "zh" ? "暂无商品" : "No products yet."}</td></tr>
+                )}
+                {products.map(p => (
                   <tr key={p.id}>
-                    <Td><span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ width: 30, height: 30, borderRadius: 7, background: C.canvas, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Icon size={15} color={C.ink} /></div>
-                      <span style={{ fontWeight: 700 }}>{p.name[lang]}</span>
-                    </span></Td>
-                    <Td style={{ color: C.muted }}>{p.cat[lang]}</Td>
-                    <Td align="right" style={{ fontWeight: 700 }}>¥{p.price}</Td>
-                    <Td align="right" style={{ color: p.stock === 0 ? C.red : p.stock < 20 ? C.amber : C.ink, fontWeight: p.stock < 20 ? 700 : 400 }}>{p.stock}</Td>
-                    <Td style={{ color: C.muted }}>{p.fit[lang]}</Td>
-                    <Td><Badge label={t.statusProduct[p.status]} statusKey={p.status} /></Td>
-                    <Td align="right"><MoreHorizontal size={15} color={C.muted} /></Td>
+                    <Td style={{ fontWeight: 700 }}>{p.name}</Td>
+                    <Td style={{ color: C.muted }}>{p.category}</Td>
+                    <Td align="right" style={{ fontWeight: 700 }}>${Number(p.price).toFixed(2)} {p.currencyCode}</Td>
+                    <Td align="right" style={{ color: p.stockQuantity === 0 ? C.red : p.stockQuantity < 20 ? C.amber : C.ink, fontWeight: p.stockQuantity < 20 ? 700 : 400 }}>{p.stockQuantity}</Td>
+                    <Td><Badge label={t.statusProduct[p.status] || p.status} statusKey={p.status} /></Td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </Card>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        )}
       </div>
     </div>
   );
 }
 
-function OrderDetailPanel({ order, onBack }) {
-  const [tracking, setTracking] = useState("");
+function OrderDetailPanel({ order, onBack, onUpdated }) {
+  const [tracking, setTracking] = useState(order.trackingNumber || "");
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState(null);
   const { t, lang } = useLang();
+  const { onSessionExpired } = useSupplier();
   const font = useBodyFont();
   const inputStyle = useInputStyle();
   const o = t.orders;
+
+  const handleUpdate = async (updates) => {
+    setIsSaving(true);
+    setError(null);
+    try {
+      const updated = await updateSubOrder(getStoredToken(), order.subOrderId, updates);
+      onUpdated(updated);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const statusOptions = ["pending", "preparing", "shipped", "delivered", "dispute"];
+
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
         <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
         <div style={{ ...font, fontSize: 18, fontWeight: 900, color: C.ink }}>{o.detailTitle}</div>
-        <PlateChip>{order.id}</PlateChip>
-        <Badge label={t.statusOrder[order.status]} statusKey={order.status} />
+        <PlateChip>{order.orderId}</PlateChip>
+        <Badge label={t.statusOrder[order.status] || order.status} statusKey={order.status} />
       </div>
       <div style={{ padding: 24, display: "flex", gap: 16 }}>
         <div style={{ flex: 2, display: "flex", flexDirection: "column", gap: 16 }}>
@@ -579,22 +675,23 @@ function OrderDetailPanel({ order, onBack }) {
             <div style={{ padding: 6 }}>
               {order.items.map((it, i) => (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "12px 12px", borderBottom: i < order.items.length - 1 ? `1px solid ${C.line}` : "none" }}>
-                  <span style={{ ...font, fontSize: 13, fontWeight: 600 }}>{it.name[lang]}</span>
-                  <span style={{ ...font, fontSize: 12.5, color: C.muted }}>{o.qty} × {it.qty}</span>
+                  <span style={{ ...font, fontSize: 13, fontWeight: 600 }}>{it.name}</span>
+                  <span style={{ ...font, fontSize: 12.5, color: C.muted }}>{o.qty} × {it.quantity} · ${Number(it.unitPrice).toFixed(2)}</span>
                 </div>
               ))}
             </div>
           </Card>
           <Card title={o.shippingTitle}>
             <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-              <div style={{ ...font, fontSize: 12, color: C.muted }}>{o.regionNote(order.region[lang])}</div>
-              <Field label={o.carrierLabel}>
-                <select style={inputStyle}>{o.carriers.map(c => <option key={c}>{c}</option>)}</select>
-              </Field>
               <Field label={o.trackingLabel}>
                 <input style={inputStyle} value={tracking} onChange={e => setTracking(e.target.value)} placeholder={o.trackingPlaceholder} />
               </Field>
-              <button style={{ ...font, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: 11, borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+              {error && <div style={{ ...font, fontSize: 12, color: C.red }}>{error}</div>}
+              <button
+                disabled={isSaving}
+                onClick={() => handleUpdate({ status: "shipped", trackingNumber: tracking })}
+                style={{ ...font, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: 11, borderRadius: 8, border: "none", background: isSaving ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 13, fontWeight: 700, cursor: isSaving ? "default" : "pointer" }}
+              >
                 <Truck size={14} /> {o.markShipped}
               </button>
             </div>
@@ -603,9 +700,18 @@ function OrderDetailPanel({ order, onBack }) {
         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
           <Card title={o.actionsTitle}>
             <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-              <button style={{ ...font, padding: 10, borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", textAlign: "left" }}>{o.acceptOrder}</button>
-              <button style={{ ...font, padding: 10, borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", textAlign: "left" }}>{o.contactPlatform}</button>
-              <button style={{ ...font, padding: 10, borderRadius: 8, border: `1px solid ${C.red}`, background: C.redBg, color: C.red, fontSize: 12.5, fontWeight: 700, cursor: "pointer", textAlign: "left" }}>{o.markOOS}</button>
+              {statusOptions.map(s => (
+                <button
+                  key={s}
+                  disabled={isSaving}
+                  onClick={() => handleUpdate({ status: s })}
+                  style={{
+                    ...font, padding: 10, borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: isSaving ? "default" : "pointer", textAlign: "left",
+                    border: order.status === s ? `2px solid ${C.signal}` : `1px solid ${C.line}`,
+                    background: order.status === s ? "#FDF1EB" : "#fff",
+                  }}
+                >{t.statusOrder[s] || s}</button>
+              ))}
             </div>
           </Card>
         </div>
@@ -615,10 +721,26 @@ function OrderDetailPanel({ order, onBack }) {
 }
 
 function OrdersPage({ onOpen }) {
+  const [orders, setOrders] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
   const [filterIdx, setFilterIdx] = useState(0);
   const { t, lang } = useLang();
+  const { onSessionExpired } = useSupplier();
   const keys = ["all", "pending", "preparing", "shipped", "dispute"];
-  const filtered = filterIdx === 0 ? ORDERS : ORDERS.filter(o => o.status === keys[filterIdx]);
+
+  useEffect(() => {
+    fetchMyOrders(getStoredToken())
+      .then((data) => { setOrders(data); setLoadState("ready"); })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  }, [onSessionExpired]);
+
+  const filtered = filterIdx === 0 ? orders : orders.filter(o => o.status === keys[filterIdx]);
+
   return (
     <div>
       <TopBar title={t.orders.title} subtitle={t.orders.subtitle} />
@@ -632,28 +754,36 @@ function OrdersPage({ onOpen }) {
         ))}
       </div>
       <div style={{ padding: 24 }}>
-        <Card>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead><tr><Th>{t.orders.thId}</Th><Th>{t.orders.thRegion}</Th><Th>{t.orders.thItems}</Th><Th align="right">{t.orders.thAmount}</Th><Th>{t.orders.thStatus}</Th><Th></Th></tr></thead>
-            <tbody>
-              {filtered.map(o => (
-                <tr key={o.id} onClick={() => onOpen(o)} style={{ cursor: "pointer" }}>
-                  <Td><PlateChip small>{o.id}</PlateChip></Td>
-                  <Td>{o.region[lang]}</Td>
-                  <Td style={{ maxWidth: 260 }}>{o.items.map(i => i.name[lang]).join(lang === "zh" ? "，" : ", ")}</Td>
-                  <Td align="right" style={{ fontWeight: 700 }}>¥{o.amount}</Td>
-                  <Td><Badge label={t.statusOrder[o.status]} statusKey={o.status} /></Td>
-                  <Td align="right"><ChevronRight size={15} color={C.muted} /></Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+        {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", fontSize: 13, color: C.muted }}>{lang === "zh" ? "加载中…" : "Loading…"}</div></Card>}
+        {loadState === "error" && <Card><div style={{ padding: 32, textAlign: "center", fontSize: 13, color: C.red }}>{errorMessage}</div></Card>}
+        {loadState === "ready" && (
+          <Card>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead><tr><Th>{t.orders.thId}</Th><Th>{t.orders.thItems}</Th><Th align="right">{t.orders.thAmount}</Th><Th>{t.orders.thStatus}</Th><Th></Th></tr></thead>
+              <tbody>
+                {filtered.length === 0 && (
+                  <tr><td colSpan={5} style={{ textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>{lang === "zh" ? "暂无订单" : "No orders yet."}</td></tr>
+                )}
+                {filtered.map(o => {
+                  const amount = o.items.reduce((sum, i) => sum + Number(i.unitPrice) * i.quantity, 0);
+                  return (
+                    <tr key={o.subOrderId} onClick={() => onOpen(o)} style={{ cursor: "pointer" }}>
+                      <Td><PlateChip small>{o.orderId}</PlateChip></Td>
+                      <Td style={{ maxWidth: 260 }}>{o.items.map(i => i.name).join(lang === "zh" ? "，" : ", ")}</Td>
+                      <Td align="right" style={{ fontWeight: 700 }}>${amount.toFixed(2)}</Td>
+                      <Td><Badge label={t.statusOrder[o.status] || o.status} statusKey={o.status} /></Td>
+                      <Td align="right"><ChevronRight size={15} color={C.muted} /></Td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </Card>
+        )}
       </div>
     </div>
   );
 }
-
 function ReturnsPage() {
   const [openId, setOpenId] = useState(null);
   const [reply, setReply] = useState("");
@@ -794,6 +924,7 @@ function InfoRow({ icon: Icon, label, value }) {
 
 function SettingsPage() {
   const { t, lang } = useLang();
+  const { profile } = useSupplier();
   const s = t.settings;
   const [toggles, setToggles] = useState([true, true, true, false]);
   const font = useBodyFont();
@@ -803,7 +934,7 @@ function SettingsPage() {
       <div style={{ padding: 24, display: "flex", gap: 16 }}>
         <Card title={s.companyTitle} style={{ flex: 1 }}>
           <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
-            <InfoRow icon={Building2} label={s.companyName} value={COMPANY[lang]} />
+            <InfoRow icon={Building2} label={s.companyName} value={profile ? profile.name : ""} />
             <InfoRow icon={BadgeCheck} label={s.license} value="91440101MA5XXXXXXX" />
             <InfoRow icon={Store} label={s.verification} value={<Badge label={s.verified} statusKey="active" />} />
             <InfoRow icon={Bike} label={s.mainCat} value={s.mainCatValue} />
@@ -835,10 +966,11 @@ function PortalShell() {
   const [page, setPage] = useState("overview");
   const [openOrder, setOpenOrder] = useState(null);
   const { t, lang } = useLang();
+  const { profile, onLogout } = useSupplier();
   const font = useBodyFont();
 
   let content;
-  if (openOrder) content = <OrderDetailPanel order={openOrder} onBack={() => setOpenOrder(null)} />;
+  if (openOrder) content = <OrderDetailPanel order={openOrder} onBack={() => setOpenOrder(null)} onUpdated={(updated) => setOpenOrder({ ...openOrder, ...updated })} />;
   else if (page === "overview") content = <OverviewPage />;
   else if (page === "products") content = <ProductsPage />;
   else if (page === "orders") content = <OrdersPage onOpen={setOpenOrder} />;
@@ -878,11 +1010,19 @@ function PortalShell() {
           })}
         </div>
         <div style={{ padding: 16, borderTop: "1px solid #2A2F38" }}>
-          <div style={{ ...font, fontSize: 11, color: "#9AA1AC", marginBottom: 4 }}>{COMPANY[lang]}</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <div style={{ ...font, fontSize: 11, color: "#9AA1AC", marginBottom: 4 }}>{profile ? profile.name : ""}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 10 }}>
             <BadgeCheck size={13} color={C.gauge} />
-            <span style={{ ...font, fontSize: 10.5, color: "#9AA1AC" }}>{t.verifiedSince(COMPANY.joined)}</span>
+            <span style={{ ...font, fontSize: 10.5, color: "#9AA1AC" }}>
+              {profile ? t.verifiedSince(new Date(profile.createdAt).toLocaleDateString()) : ""}
+            </span>
           </div>
+          <button onClick={onLogout} style={{
+            ...font, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 10px",
+            borderRadius: 6, border: "1px solid #3A3F48", background: "transparent", color: "#B8BEC9", fontSize: 11.5, fontWeight: 600, cursor: "pointer",
+          }}>
+            {lang === "zh" ? "退出登录" : "Log out"}
+          </button>
         </div>
       </div>
       <div style={{ flex: 1, overflowY: "auto" }}>
@@ -892,13 +1032,75 @@ function PortalShell() {
   );
 }
 
-export default function LeapSupplierPortalPrototype() {
+/**
+ * Auth gate — checks for a saved session on load (verifying the token is
+ * still valid via GET /auth/me and that the role is 'supplier', not just
+ * trusting whatever's in localStorage), fetches the real supplier profile
+ * once authenticated (so TopBar/sidebar/Settings show real data via
+ * SupplierContext), and shows LoginPage otherwise.
+ */
+export default function LeapSupplierPortalApp() {
   const [lang, setLang] = useState("zh");
   const t = STRINGS[lang];
   const toggle = () => setLang(l => (l === "zh" ? "en" : "zh"));
+
+  const [authState, setAuthState] = useState({ status: "checking", user: null, profile: null });
+
+  const loadProfile = (token, user) => {
+    fetchMySupplierProfile(token)
+      .then((profile) => setAuthState({ status: "loggedIn", user, profile }))
+      .catch(() => {
+        // Profile fetch failing after a valid login is a real error worth
+        // surfacing rather than silently logging out — but we still show
+        // the shell, just with a null profile (TopBar handles that gracefully).
+        setAuthState({ status: "loggedIn", user, profile: null });
+      });
+  };
+
+  useEffect(() => {
+    const token = getStoredToken();
+    if (!token) {
+      setAuthState({ status: "loggedOut", user: null, profile: null });
+      return;
+    }
+    getCurrentUser(token)
+      .then((user) => {
+        if (user.role !== "supplier") {
+          clearToken();
+          setAuthState({ status: "loggedOut", user: null, profile: null });
+          return;
+        }
+        loadProfile(token, user);
+      })
+      .catch(() => {
+        clearToken();
+        setAuthState({ status: "loggedOut", user: null, profile: null });
+      });
+  }, []);
+
+  const handleLoginSuccess = (token, user) => {
+    saveToken(token);
+    loadProfile(token, user);
+  };
+
+  const handleLogout = () => {
+    clearToken();
+    setAuthState({ status: "loggedOut", user: null, profile: null });
+  };
+
   return (
     <LangContext.Provider value={{ lang, t, toggle }}>
-      <PortalShell />
+      {authState.status === "checking" && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 700, fontFamily: "'Inter', sans-serif", color: "#6B7280", fontSize: 13 }}>
+          {lang === "zh" ? "正在检查登录状态…" : "Checking session…"}
+        </div>
+      )}
+      {authState.status === "loggedOut" && <LoginPage onLoginSuccess={handleLoginSuccess} />}
+      {authState.status === "loggedIn" && (
+        <SupplierContext.Provider value={{ profile: authState.profile, currentUser: authState.user, onLogout: handleLogout, onSessionExpired: handleLogout }}>
+          <PortalShell />
+        </SupplierContext.Provider>
+      )}
     </LangContext.Provider>
   );
 }

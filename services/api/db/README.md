@@ -38,8 +38,10 @@ node db/seed.js
 This adds the same sample suppliers/vehicles/products that were previously
 hardcoded in-memory, so the app behaves the same way it did in earlier demos.
 It also seeds a dev admin login (`admin@leap.dev` / `admin_dev_password_123`)
-so the admin dashboard's login screen has something real to log in with —
-**change this password before any shared or production use.**
+so the admin dashboard's login screen has something real to log in with,
+and a dev supplier login (`supplier@leap.dev` / `supplier_dev_password_123`,
+tied to supplier `s1`) for the supplier portal —
+**change these passwords before any shared or production use.**
 
 **6. Start the API as normal:**
 ```bash
@@ -53,7 +55,7 @@ See `migrations/001_init.sql` for the full schema with comments. Summary:
 | Table | Purpose |
 |---|---|
 | `suppliers` | China-based sellers, incl. `contact_email` (migration 004) |
-| `users` | Buyers (and eventually admin/support/finance accounts) |
+| `users` | Buyers, admin, and now supplier accounts (`role` + `supplier_id`, migration 006) |
 | `vehicles` | Year/Make/Model/Trim fitment reference data (Phase 1) |
 | `products` | Catalog items |
 | `product_fitment` | Which vehicles a product is confirmed to fit |

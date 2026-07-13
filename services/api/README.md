@@ -174,7 +174,9 @@ src/
     ├── order/              Order placement + supplier sub-order splitting
     │                       (BUY-031, BUY-050–053) + guest checkout
     ├── user/               Accounts, incl. guest-order account claiming
-    ├── supplier/            Admin-facing supplier list/verify (ADM-001)
+    ├── supplier/            Admin-facing supplier list/verify (ADM-001) AND
+    │                       supplier-facing "me" endpoints — own profile,
+    │                       products, order fulfillment (SUP-001–022)
     ├── support/             Support tickets (BUY-060–061, ADM-012)
     ├── payment/            Stripe, Amazon Payment Services, PayPal, and
     │                       Google Pay (routed through Stripe) — BUY-040–044

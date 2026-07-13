@@ -63,7 +63,7 @@ router.post('/login', async (req, res, next) => {
       return res.status(400).json({ error: 'email and password are required' });
     }
 
-    const { rows } = await db.query('SELECT id, email, name, role, password_hash FROM users WHERE email = $1', [email]);
+    const { rows } = await db.query('SELECT id, email, name, role, password_hash, supplier_id FROM users WHERE email = $1', [email]);
     // Deliberately identical error for "no such user" and "wrong password"
     // — do not reveal which one it was, that leaks whether an email is registered.
     const genericError = { error: 'Invalid email or password' };
@@ -80,7 +80,7 @@ router.post('/login', async (req, res, next) => {
 
     res.json({
       token: signToken(user),
-      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+      user: { id: user.id, email: user.email, name: user.name, role: user.role, supplierId: user.supplier_id },
     });
   } catch (err) {
     next(err);
@@ -91,9 +91,10 @@ router.post('/login', async (req, res, next) => {
 // token round-trips correctly end to end).
 router.get('/me', requireAuth, async (req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT id, email, name, role, created_at FROM users WHERE id = $1', [req.user.sub]);
+    const { rows } = await db.query('SELECT id, email, name, role, supplier_id, created_at FROM users WHERE id = $1', [req.user.sub]);
     if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
-    res.json(rows[0]);
+    const { supplier_id, ...rest } = rows[0];
+    res.json({ ...rest, supplierId: supplier_id });
   } catch (err) {
     next(err);
   }
