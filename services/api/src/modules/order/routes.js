@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../../../db/pool');
-const { requireAuth } = require('../auth/middleware');
+const { requireAuth, optionalAuth } = require('../auth/middleware');
 
 /**
  * Order module — BUY-031, BUY-050–053. A single buyer order splits into
@@ -85,7 +85,7 @@ router.post('/', async (req, res, next) => {
         );
         lineItems.push({ productId: item.productId, quantity: item.quantity });
       }
-      supplierSubOrders.push({ supplierId, status: 'pending', items: lineItems });
+      supplierSubOrders.push({ subOrderId, supplierId, status: 'pending', items: lineItems });
     }
 
     await client.query('COMMIT');
@@ -109,19 +109,32 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-// GET /order/:id — KNOWN GAP: not yet auth-protected. Order IDs are
-// sequential (LP-XXXXXX) and therefore guessable, so anyone who guesses or
-// obtains an ID can currently view that order's details. Left open for now
-// because a guest-checkout buyer needs to view their own order confirmation
-// without being logged in — but this needs a real fix (e.g. requiring the
-// guest's email as a second factor, or a non-guessable order-lookup token)
-// before this goes anywhere near production. Flagged rather than silently
-// left as-is.
-router.get('/:id', async (req, res, next) => {
+// GET /order/:id — GAP CLOSED (was previously fully open to anyone who
+// guessed a sequential order ID). Access is now one of:
+//   1. An admin (any order)
+//   2. The order's own buyer, if logged in (order.buyer_id matches)
+//   3. A guest, IF they supply the exact guestEmail the order was placed
+//      with as a query param (?guestEmail=...) — a second factor beyond
+//      just knowing/guessing the ID, matching the common "look up your
+//      order by ID + email" pattern. This preserves the original
+//      requirement (a guest-checkout buyer must be able to view their own
+//      confirmation without an account) while closing the "anyone who
+//      guesses LP-200901 sees a stranger's order" hole.
+// Anyone else gets 404 (not 403) — same "don't confirm existence" pattern
+// used elsewhere in this codebase (e.g. product-ownership checks).
+router.get('/:id', optionalAuth, async (req, res, next) => {
   try {
     const { rows: orderRows } = await db.query('SELECT * FROM orders WHERE id = $1', [req.params.id]);
     if (orderRows.length === 0) return res.status(404).json({ error: 'Order not found' });
     const order = orderRows[0];
+
+    const isAdmin = req.user && req.user.role === 'admin';
+    const isOwningBuyer = req.user && order.buyer_id && req.user.sub === order.buyer_id;
+    const guestEmailMatches = order.guest_email && req.query.guestEmail && req.query.guestEmail === order.guest_email;
+
+    if (!isAdmin && !isOwningBuyer && !guestEmailMatches) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
 
     const { rows: subOrders } = await db.query(
       `SELECT so.id, so.supplier_id, so.status, so.tracking_number, s.name AS supplier_name
@@ -139,6 +152,7 @@ router.get('/:id', async (req, res, next) => {
         [so.id]
       );
       supplierSubOrders.push({
+        subOrderId: so.id,
         supplierId: so.supplier_id,
         supplierName: so.supplier_name,
         status: so.status,

@@ -119,17 +119,20 @@ registered), token round-trips correctly through `/auth/me`, and — the
 important one — two different signed-up users only ever see their own
 orders in `GET /order`, never each other's.
 
-**Known gap, flagged not hidden**: `GET /order/:id` (single order lookup)
-is NOT yet auth-protected — order IDs are sequential and therefore
-guessable. Left open because a guest-checkout buyer needs to view their
-order confirmation without logging in, but this needs a real fix (e.g. a
-non-guessable lookup token, or requiring the guest's email as a second
-factor) before production. See the comment in `src/modules/order/routes.js`.
-
-**Not yet built**: password reset, email verification, and a login/signup
-UI in the mobile app, admin dashboard, or supplier portal — all three
-still call the API with no auth token at all. Wiring that up is the
-natural next step once this backend piece is confirmed to be what's wanted.
+**Gap closed (was open for a while, flagged the whole time)**:
+`GET /order/:id` used to be fully unauthenticated — order IDs are
+sequential (`LP-200900`, `LP-200901`...) and therefore guessable, so
+anyone who guessed or obtained an ID could view a stranger's order. Fixed
+without breaking the original requirement (a guest-checkout buyer must
+still be able to view their own confirmation without an account): access
+is now granted to (1) an admin, (2) the order's own logged-in buyer, or
+(3) a guest who supplies the exact `guestEmail` the order was placed with
+as a query param — a second factor beyond just knowing the ID. Anyone
+else gets 404, not 403 (same "don't confirm existence" pattern used
+elsewhere). See `src/orderSecurity.integration.test.js` in the admin
+dashboard's test suite for the full verification, including the specific
+check that this didn't break the real admin dashboard's existing calls
+to this same endpoint.
 
 ## Setup
 
@@ -189,20 +192,25 @@ src/
 
 ## Next steps to make this real
 
-1. Build login/signup screens in the mobile app, admin dashboard, and
-   supplier portal, and start sending the JWT on requests that need it —
-   the backend supports this now, but nothing calls it yet.
-2. Fix the known gap on `GET /order/:id` (see "Authentication" above).
-3. Add password reset and email verification (no email provider is wired
+1. Add password reset and email verification (no email provider is wired
    up yet — see the notification module and Charter Section 4).
-4. Get real test-mode credentials and run one live transaction against
+2. Get real test-mode credentials and run one live transaction against
    each payment gateway (Stripe, APS, PayPal) — none have been network-
-   tested yet, see each provider file's header comment for details.
-5. Add real tests under `test/` (the `npm test` script expects them there).
-6. Add the missing tables/endpoints for commission/payout records, return/
-   dispute cases, reviews, and support tickets once those backend modules
-   are built (currently only mocked in the admin-dashboard/supplier-portal
-   prototypes) — see `db/README.md`'s schema section for what's covered
-   so far vs. what's next.
-7. Move from the local dev Postgres instance to a managed hosted database
+   tested yet, see each provider file's header comment for details. This
+   is the single biggest remaining unverified piece of the whole backend.
+3. Add real tests under `test/` (the `npm test` script expects them there)
+   — most real testing so far lives in the admin-dashboard and
+   supplier-portal apps' `*.integration.test.js` files, run against this
+   API from outside, not inside this package itself.
+4. Add commission/payout records once the commission-rate business
+   decision is made (Charter Section 1) — this is the one remaining
+   "not yet covered" item in `db/README.md`'s schema section; returns/
+   disputes and support tickets are both built now.
+5. Move from the local dev Postgres instance to a managed hosted database
    for staging/production (RDS, Cloud SQL, Supabase, Neon, Railway, etc.).
+6. Get the mobile app actually compiled on a real Flutter SDK — this
+   sandbox's network allowlist blocks both the Dart SDK/engine binaries
+   (`storage.googleapis.com`) and the package registry (`pub.dev`),
+   confirmed directly via the egress proxy's own error messages, not an
+   assumption. Every mobile change so far has only been syntax-balance-
+   checked, never built.

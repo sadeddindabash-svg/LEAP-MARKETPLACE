@@ -64,6 +64,13 @@ The first page wired to real data end-to-end:
 - Clicking a row fetches full detail via `GET /order/:id`, showing real
   supplier sub-orders, tracking numbers, and line items — not the
   fake "Fulfilling" badge and invented timeline dates the mock version had.
+- **`GET /order/:id` used to be a real security hole** (fully open —
+  order IDs are sequential and guessable) — this was flagged early on
+  and fixed in a later pass without breaking this admin flow: an admin
+  token still gets full access, verified by a dedicated test
+  (`src/orderSecurity.integration.test.js`) that specifically confirms
+  this page's exact API calls still work after the fix, not just that
+  the fix exists in isolation.
 - Handles loading and error states, and **automatically logs the admin out
   if a request comes back 401** (expired/invalid session) rather than
   showing a broken or empty page.
@@ -203,7 +210,7 @@ implementation anywhere in the project until now.
 npm test
 ```
 
-Twelve test files, 60 tests total, all passing:
+Thirteen test files, 67 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/orders.integration.test.js` (4, REAL backend) — order list/detail
@@ -250,6 +257,14 @@ Twelve test files, 60 tests total, all passing:
   confirmed the same way as the admin-side test: checking the actual
   string is absent from the response, not just that the UI wouldn't
   display it.
+- `src/orderSecurity.integration.test.js` (7, REAL backend) — proves the
+  `GET /order/:id` security fix (see "Orders page" above): an anonymous
+  request to a real order returns 404 with no `guestEmail` param and with
+  the wrong one, succeeds with the correct one, a second buyer can never
+  see the first buyer's order, the owning buyer can always see their own,
+  and — the one that matters most for not breaking anything real — an
+  admin can still see any order, confirmed against the same endpoint the
+  admin dashboard's Orders page actually calls.
 
 The `*.integration.test.js` files use a real (persistent, not per-test-run)
 local dev database, so the supplier round-trip test is written to be
