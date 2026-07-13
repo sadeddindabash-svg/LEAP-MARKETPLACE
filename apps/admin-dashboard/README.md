@@ -7,9 +7,9 @@ Real React (Vite) project for the platform operations tool. See
 
 This is the reference prototype (`docs/prototypes/leap_admin_dashboard_prototype.jsx`)
 dropped in as `src/App.jsx`, confirmed to **build successfully**, and now
-has **real authentication AND a real Orders page** — the first full
-UI → API → database → UI slice of this app. Suppliers, Moderation,
-Payouts, and Tickets pages are still mock data.
+has **real authentication, a real Orders page, and a real Suppliers page**
+(view + approve/reject) — three full UI → API → database → UI slices.
+Moderation, Payouts, and Tickets pages are still mock data.
 
 ## Authentication (ADM-030)
 
@@ -77,28 +77,60 @@ The first page wired to real data end-to-end:
   real fields that exist (buyer, total, placed date, status) rather than
   keeping fake-looking columns with no real data behind them.
 
+## Suppliers page (ADM-001)
+
+Second page wired end-to-end, same recipe as Orders:
+
+- `GET /supplier` (admin-only) lists every supplier with a real, live-joined
+  listing count (`COUNT` against `products`, not a stored/stale number).
+- Approve/Reject buttons call `PATCH /supplier/:id/verify` and re-fetch the
+  list afterward — real persistence, confirmed by a test that independently
+  re-fetches after the change rather than just trusting the PATCH response.
+- **Columns changed from the mock version**: dropped "Rating" and
+  "Fulfillment SLA" — those would require aggregating real review/delivery
+  history that doesn't exist yet (no reviews table, no delivery-outcome
+  tracking). Showing fabricated numbers there would have been worse than
+  not showing them at all. Contact email is real (new `contact_email`
+  column, migration 004) but only populated for suppliers seeded/updated
+  after that migration — existing dev-database rows may show "—" until
+  updated.
+- Role enforcement is real too: a buyer account correctly gets a 403 from
+  both endpoints, not just a UI that assumes only admins would click there.
+
 ## Testing
 
 ```bash
 npm test
 ```
 
-Four test files, 18 tests total, all passing:
-- `src/App.test.jsx` (7, mocked) — login/logout/session-restore auth flows
-- `src/auth.integration.test.js` (4, REAL backend) — login/session round-trip
-- `src/orders.integration.test.js` (4, REAL backend) — fetches the real
-  order list and real order detail (including real supplier sub-orders and
-  line items) as an authenticated admin; confirms unauthenticated/garbage
-  token requests are rejected
-- `src/OrdersFlow.test.jsx` (3, mocked, full component tree) — logs in,
-  navigates to Orders, confirms real (not hardcoded) order data renders,
-  opens an order and sees real supplier/line-item data, and confirms a 401
-  on the orders request triggers automatic logout back to the login screen
+Six test files, 26 tests total, all passing:
+- `src/App.test.jsx` (7, mocked) — auth flows
+- `src/auth.integration.test.js` (4, REAL backend) — login/session
+- `src/orders.integration.test.js` (4, REAL backend) — order list/detail
+- `src/OrdersFlow.test.jsx` (3, mocked, full component tree) — orders UI flow
+- `src/suppliers.integration.test.js` (5, REAL backend) — supplier list
+  with real listing counts, a full reject→verify round-trip confirmed by
+  independently re-fetching afterward, invalid-status rejection, and
+  confirms a buyer account is rejected by the backend itself (not just
+  hidden in the UI)
+- `src/SuppliersFlow.test.jsx` (3, mocked, full component tree) — logs in,
+  navigates to Suppliers, approves a pending one and confirms the row
+  updates, and confirms a 401 during the approve action triggers automatic
+  logout
 
-The `*.integration.test.js` files auto-skip if `services/api` isn't running
-locally, so they won't break a CI run without a database available — but
-when they do run, they're the strongest evidence this actually works, since
-nothing is mocked.
+The `*.integration.test.js` files use a real (persistent, not per-test-run)
+local dev database, so the supplier round-trip test is written to be
+self-contained regardless of what a previous run left the data in — worth
+knowing if you add more integration tests against mutable data.
+
+**Pre-requisite for a truly fresh database**: `orders.integration.test.js`
+assumes at least one order already exists (it asserts the order list is
+non-empty). Running `db/seed.js` alone does NOT create any orders — place
+one first, e.g.:
+```bash
+curl -X POST http://localhost:4000/order -H "Content-Type: application/json" \
+  -d '{"items":[{"productId":"p1","quantity":1}],"guestEmail":"test@example.com"}'
+```
 
 ## Next steps to make this real
 
@@ -108,10 +140,10 @@ nothing is mocked.
    `src/components/` — it currently works as one large file (that's how
    the prototype was authored) but should be broken up before more people
    work on it.
-3. Replace remaining mock data (`SUPPLIERS`, `MODERATION_QUEUE`, `PAYOUTS`,
-   `TICKETS` arrays) with real fetches, following the same pattern as
-   Orders. Each needs a matching backend endpoint first (none exist yet).
-4. Add the missing backend endpoints: suppliers, catalog moderation queue,
-   payouts, support tickets.
+3. Replace remaining mock data (`MODERATION_QUEUE`, `PAYOUTS`, `TICKETS`
+   arrays) with real fetches, following the same pattern as Orders and
+   Suppliers. Each needs a matching backend endpoint first (none exist yet).
+4. Add the missing backend endpoints: catalog moderation queue, payouts,
+   support tickets.
 5. Consider code-splitting (the build currently warns about a >500kB bundle)
    once real routing is introduced — e.g. React Router with lazy-loaded pages.

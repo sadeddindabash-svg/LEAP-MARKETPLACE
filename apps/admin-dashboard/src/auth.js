@@ -56,3 +56,19 @@ export function fetchOrders(token) {
 export function fetchOrderById(token, orderId) {
   return authedGet(`/order/${orderId}`, token);
 }
+
+export function fetchSuppliers(token) {
+  return authedGet("/supplier", token);
+}
+
+export async function verifySupplier(token, supplierId, status) {
+  const response = await fetch(`${API_BASE_URL}/supplier/${supplierId}/verify`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ status }),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}

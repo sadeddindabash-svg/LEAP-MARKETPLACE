@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import LoginPage from "./LoginPage";
-import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, SessionExpiredError } from "./auth";
+import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, verifySupplier, SessionExpiredError } from "./auth";
 import {
   LayoutGrid, ShoppingBag, Store, PackageSearch, Wallet, LifeBuoy, Settings,
   Search, Bell, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Truck,
@@ -76,16 +76,6 @@ const ORDER_STATUS_META = {
 function getOrderStatusMeta(status) {
   return ORDER_STATUS_META[status] || { label: status || "Unknown", color: C.muted, bg: "#EEEFF1" };
 }
-
-const SUPPLIERS = [
-  { id: "s1", name: "Guangzhou AutoParts Co.", contact: "wei.zhang@gzauto.cn", status: "verified", listings: 4210, rating: 4.6, fulfillment: 96, joined: "2025-11-02", country: "China" },
-  { id: "s2", name: "Ningbo Filtration Ltd.", contact: "li.chen@ningbofilt.cn", status: "verified", listings: 2870, rating: 4.7, fulfillment: 98, joined: "2025-10-18", country: "China" },
-  { id: "s3", name: "Shenzhen Power Cells", contact: "hui.wang@szpower.cn", status: "verified", listings: 640, rating: 4.9, fulfillment: 99, joined: "2026-01-09", country: "China" },
-  { id: "s4", name: "Foshan Brake Systems", contact: "jun.liu@foshanbrake.cn", status: "verified", listings: 1530, rating: 4.5, fulfillment: 94, joined: "2025-12-14", country: "China" },
-  { id: "s5", name: "Dongguan Lighting Co.", contact: "mei.sun@dgled.cn", status: "verified", listings: 980, rating: 4.4, fulfillment: 91, joined: "2026-02-21", country: "China" },
-  { id: "s6", name: "Qingdao Transmission Works", contact: "hao.xu@qdtrans.cn", status: "pending", listings: 0, rating: null, fulfillment: null, joined: "2026-07-08", country: "China" },
-  { id: "s7", name: "Wuxi Cooling Systems", contact: "fang.zhao@wxcool.cn", status: "pending", listings: 0, rating: null, fulfillment: null, joined: "2026-07-10", country: "China" },
-];
 
 const MODERATION_QUEUE = [
   { id: "m1", name: "RIDEX Front Brake Disc, Vented 300mm", supplier: "Guangzhou AutoParts Co.", cat: "Brake System", submitted: "2h ago", flags: [] },
@@ -496,43 +486,92 @@ function OrderDetailPage({ orderId, onBack, onSessionExpired }) {
   );
 }
 
-function SuppliersPage() {
+function SuppliersPage({ onSessionExpired }) {
+  const [suppliers, setSuppliers] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [actioningId, setActioningId] = useState(null);
+
+  const load = () => {
+    setLoadState("loading");
+    fetchSuppliers(getStoredToken())
+      .then((data) => {
+        setSuppliers(data);
+        setLoadState("ready");
+      })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  };
+
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleVerify = async (supplierId, status) => {
+    setActioningId(supplierId);
+    try {
+      await verifySupplier(getStoredToken(), supplierId, status);
+      // Re-fetch rather than optimistically patch local state — keeps
+      // this in sync with whatever the server actually persisted.
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  const verifiedCount = suppliers.filter(s => s.verificationStatus === "verified").length;
+  const pendingCount = suppliers.filter(s => s.verificationStatus === "pending").length;
+
   return (
     <div>
-      <TopBar title="Suppliers" subtitle={`${SUPPLIERS.filter(s => s.status === "verified").length} verified · ${SUPPLIERS.filter(s => s.status === "pending").length} pending review`} />
+      <TopBar title="Suppliers" subtitle={loadState === "ready" ? `${verifiedCount} verified · ${pendingCount} pending review` : "Loading…"} />
       <div style={{ padding: 24 }}>
-        <Card>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr><Th>Supplier</Th><Th>Contact</Th><Th align="right">Listings</Th><Th align="right">Rating</Th><Th align="right">Fulfillment SLA</Th><Th>Status</Th><Th>Joined</Th><Th></Th></tr>
-            </thead>
-            <tbody>
-              {SUPPLIERS.map(s => (
-                <tr key={s.id}>
-                  <Td><span style={{ display: "flex", alignItems: "center", gap: 8 }}><Store size={13} color={C.muted} /><span style={{ fontWeight: 600 }}>{s.name}</span></span></Td>
-                  <Td style={{ color: C.muted }}>{s.contact}</Td>
-                  <Td align="right">{s.listings.toLocaleString()}</Td>
-                  <Td align="right"><Stars rating={s.rating} /></Td>
-                  <Td align="right">{s.fulfillment != null ? `${s.fulfillment}%` : "—"}</Td>
-                  <Td>
-                    {s.status === "verified"
-                      ? <Badge label="Verified" color={C.gauge} bg={C.gaugeBg} />
-                      : <Badge label="Pending review" color={C.amber} bg={C.amberBg} />}
-                  </Td>
-                  <Td style={{ color: C.muted }}>{s.joined}</Td>
-                  <Td align="right">
-                    {s.status === "pending" ? (
-                      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                        <button style={{ display: "flex", alignItems: "center", gap: 4, background: C.gaugeBg, color: C.gauge, border: "none", borderRadius: 6, padding: "5px 9px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", ...body }}><Check size={12} />Approve</button>
-                        <button style={{ display: "flex", alignItems: "center", gap: 4, background: C.redBg, color: C.red, border: "none", borderRadius: 6, padding: "5px 9px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", ...body }}><X size={12} />Reject</button>
-                      </div>
-                    ) : <MoreHorizontal size={15} color={C.muted} />}
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+        {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading suppliers…</div></Card>}
+        {loadState === "error" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>Couldn't load suppliers: {errorMessage}</div></Card>}
+        {loadState === "ready" && (
+          <Card>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr><Th>Supplier</Th><Th>Contact</Th><Th align="right">Listings</Th><Th>Status</Th><Th>Joined</Th><Th></Th></tr>
+              </thead>
+              <tbody>
+                {suppliers.map(s => (
+                  <tr key={s.id}>
+                    <Td><span style={{ display: "flex", alignItems: "center", gap: 8 }}><Store size={13} color={C.muted} /><span style={{ fontWeight: 600 }}>{s.name}</span></span></Td>
+                    <Td style={{ color: C.muted }}>{s.contactEmail || "—"}</Td>
+                    <Td align="right">{s.listingCount.toLocaleString()}</Td>
+                    <Td>
+                      {s.verificationStatus === "verified" && <Badge label="Verified" color={C.gauge} bg={C.gaugeBg} />}
+                      {s.verificationStatus === "pending" && <Badge label="Pending review" color={C.amber} bg={C.amberBg} />}
+                      {s.verificationStatus === "rejected" && <Badge label="Rejected" color={C.red} bg={C.redBg} />}
+                    </Td>
+                    <Td style={{ color: C.muted }}>{new Date(s.createdAt).toLocaleDateString()}</Td>
+                    <Td align="right">
+                      {s.verificationStatus === "pending" ? (
+                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                          <button
+                            disabled={actioningId === s.id}
+                            onClick={() => handleVerify(s.id, "verified")}
+                            style={{ display: "flex", alignItems: "center", gap: 4, background: C.gaugeBg, color: C.gauge, border: "none", borderRadius: 6, padding: "5px 9px", fontSize: 11.5, fontWeight: 700, cursor: actioningId === s.id ? "default" : "pointer", opacity: actioningId === s.id ? 0.5 : 1, ...body }}
+                          ><Check size={12} />Approve</button>
+                          <button
+                            disabled={actioningId === s.id}
+                            onClick={() => handleVerify(s.id, "rejected")}
+                            style={{ display: "flex", alignItems: "center", gap: 4, background: C.redBg, color: C.red, border: "none", borderRadius: 6, padding: "5px 9px", fontSize: 11.5, fontWeight: 700, cursor: actioningId === s.id ? "default" : "pointer", opacity: actioningId === s.id ? 0.5 : 1, ...body }}
+                          ><X size={12} />Reject</button>
+                        </div>
+                      ) : <MoreHorizontal size={15} color={C.muted} />}
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        )}
       </div>
     </div>
   );
@@ -696,7 +735,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   if (openOrder) content = <OrderDetailPage orderId={openOrder} onBack={() => setOpenOrder(null)} onSessionExpired={onLogout} />;
   else if (page === "overview") content = <OverviewPage />;
   else if (page === "orders") content = <OrdersPage onOpenOrder={setOpenOrder} onSessionExpired={onLogout} />;
-  else if (page === "suppliers") content = <SuppliersPage />;
+  else if (page === "suppliers") content = <SuppliersPage onSessionExpired={onLogout} />;
   else if (page === "moderation") content = <ModerationPage />;
   else if (page === "payouts") content = <PayoutsPage />;
   else if (page === "tickets") content = <TicketsPage />;

@@ -23,9 +23,10 @@ async function main() {
   const pool = new Pool({ connectionString: databaseUrl });
 
   await pool.query(`
-    INSERT INTO suppliers (id, name, country, verification_status) VALUES
-      ('s1', 'Guangzhou AutoParts Co.', 'China', 'verified'),
-      ('s2', 'Ningbo Filtration Ltd.', 'China', 'verified')
+    INSERT INTO suppliers (id, name, country, contact_email, verification_status) VALUES
+      ('s1', 'Guangzhou AutoParts Co.', 'China', 'wei.zhang@gzauto.cn', 'verified'),
+      ('s2', 'Ningbo Filtration Ltd.', 'China', 'li.chen@ningbofilt.cn', 'verified'),
+      ('s3', 'Qingdao Transmission Works', 'China', 'hao.xu@qdtrans.cn', 'pending')
     ON CONFLICT (id) DO NOTHING;
   `);
 

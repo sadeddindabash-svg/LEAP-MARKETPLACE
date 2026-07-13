@@ -12,6 +12,7 @@ const paymentRoutes = require('./modules/payment/routes');
 const notificationRoutes = require('./modules/notification/routes');
 const configRoutes = require('./modules/config/routes');
 const authRoutes = require('./modules/auth/routes');
+const supplierRoutes = require('./modules/supplier/routes');
 
 assertRequiredEnvInProduction();
 
@@ -32,6 +33,7 @@ app.use('/payment', paymentRoutes);
 app.use('/notification', notificationRoutes);
 app.use('/config', configRoutes);
 app.use('/auth', authRoutes);
+app.use('/supplier', supplierRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

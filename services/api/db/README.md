@@ -52,7 +52,7 @@ See `migrations/001_init.sql` for the full schema with comments. Summary:
 
 | Table | Purpose |
 |---|---|
-| `suppliers` | China-based sellers |
+| `suppliers` | China-based sellers, incl. `contact_email` (migration 004) |
 | `users` | Buyers (and eventually admin/support/finance accounts) |
 | `vehicles` | Year/Make/Model/Trim fitment reference data (Phase 1) |
 | `products` | Catalog items |
