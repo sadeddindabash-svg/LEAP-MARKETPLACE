@@ -39,9 +39,10 @@ async function main() {
   `);
 
   await pool.query(`
-    INSERT INTO products (id, supplier_id, name, category, price, currency_code, stock_quantity, estimated_delivery_days, rating, review_count) VALUES
-      ('p1', 's1', 'RIDEX Front Brake Disc, Vented 300mm', 'brake', 34.90, 'USD', 320, 6, 4.6, 812),
-      ('p4', 's2', 'MAHLE Oil Filter Element', 'filters', 6.90, 'USD', 540, 4, 4.7, 2210)
+    INSERT INTO products (id, supplier_id, name, category, price, currency_code, stock_quantity, estimated_delivery_days, rating, review_count, status) VALUES
+      ('p1', 's1', 'RIDEX Front Brake Disc, Vented 300mm', 'brake', 34.90, 'USD', 320, 6, 4.6, 812, 'active'),
+      ('p4', 's2', 'MAHLE Oil Filter Element', 'filters', 6.90, 'USD', 540, 4, 4.7, 2210, 'active'),
+      ('p9', 's3', '6-Speed Manual Transmission Gear Set', 'transmission', 210.00, 'USD', 40, 12, NULL, 0, 'translating')
     ON CONFLICT (id) DO NOTHING;
   `);
 

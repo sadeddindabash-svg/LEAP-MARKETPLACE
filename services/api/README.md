@@ -163,7 +163,8 @@ src/
 ├── middleware/errorHandler.js
 └── modules/
     ├── auth/               Signup/login, JWT middleware (BUY-001–003)
-    ├── catalog/           Products & categories (BUY-020–025, SUP-010–015)
+    ├── catalog/           Products & categories (BUY-020–025, SUP-010–015),
+    │                       plus admin catalog moderation (ADM-002)
     ├── fitment/            Year/Make/Model/Trim reference data (BUY-010)
     ├── cart/               Multi-supplier cart (BUY-030–032)
     ├── order/              Order placement + supplier sub-order splitting

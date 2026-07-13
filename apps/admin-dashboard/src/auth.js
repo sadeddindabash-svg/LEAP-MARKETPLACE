@@ -61,6 +61,22 @@ export function fetchSuppliers(token) {
   return authedGet("/supplier", token);
 }
 
+export function fetchModerationQueue(token) {
+  return authedGet("/catalog/moderation-queue", token);
+}
+
+export async function moderateProduct(token, productId, action) {
+  const response = await fetch(`${API_BASE_URL}/catalog/products/${productId}/moderate`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ action }),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
 export async function verifySupplier(token, supplierId, status) {
   const response = await fetch(`${API_BASE_URL}/supplier/${supplierId}/verify`, {
     method: "PATCH",

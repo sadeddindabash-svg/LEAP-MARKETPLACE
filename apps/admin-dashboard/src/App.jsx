@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import LoginPage from "./LoginPage";
-import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, verifySupplier, SessionExpiredError } from "./auth";
+import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, verifySupplier, fetchModerationQueue, moderateProduct, SessionExpiredError } from "./auth";
 import {
   LayoutGrid, ShoppingBag, Store, PackageSearch, Wallet, LifeBuoy, Settings,
   Search, Bell, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Truck,
@@ -76,13 +76,6 @@ const ORDER_STATUS_META = {
 function getOrderStatusMeta(status) {
   return ORDER_STATUS_META[status] || { label: status || "Unknown", color: C.muted, bg: "#EEEFF1" };
 }
-
-const MODERATION_QUEUE = [
-  { id: "m1", name: "RIDEX Front Brake Disc, Vented 300mm", supplier: "Guangzhou AutoParts Co.", cat: "Brake System", submitted: "2h ago", flags: [] },
-  { id: "m2", name: "6-Speed Manual Transmission Gear Set", supplier: "Qingdao Transmission Works", cat: "Transmission", submitted: "5h ago", flags: ["New supplier", "Missing fitment data"] },
-  { id: "m3", name: "Universal LED Fog Light Kit 90W", supplier: "Dongguan Lighting Co.", cat: "Lighting", submitted: "1d ago", flags: ["Translation pending review"] },
-  { id: "m4", name: "Radiator Cooling Fan Assembly, 12V", supplier: "Wuxi Cooling Systems", cat: "Cooling", submitted: "1d ago", flags: ["New supplier"] },
-];
 
 const PAYOUTS = [
   { supplier: "Guangzhou AutoParts Co.", pending: 8420.50, lastPaid: 21980.00, date: "Jul 8, 2026", status: "scheduled" },
@@ -577,12 +570,47 @@ function SuppliersPage({ onSessionExpired }) {
   );
 }
 
-function ModerationPage() {
+function ModerationPage({ onSessionExpired }) {
+  const [queue, setQueue] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [actioningId, setActioningId] = useState(null);
+
+  const load = () => {
+    setLoadState("loading");
+    fetchModerationQueue(getStoredToken())
+      .then((data) => { setQueue(data); setLoadState("ready"); })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleModerate = async (productId, action) => {
+    setActioningId(productId);
+    try {
+      await moderateProduct(getStoredToken(), productId, action);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setActioningId(null);
+    }
+  };
+
   return (
     <div>
-      <TopBar title="Catalog moderation" subtitle={`${MODERATION_QUEUE.length} listings awaiting review`} />
+      <TopBar title="Catalog moderation" subtitle={loadState === "ready" ? `${queue.length} listings awaiting review` : "Loading…"} />
       <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
-        {MODERATION_QUEUE.map(m => (
+        {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading moderation queue…</div></Card>}
+        {loadState === "error" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>Couldn't load the moderation queue: {errorMessage}</div></Card>}
+        {loadState === "ready" && queue.length === 0 && (
+          <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Nothing awaiting review right now.</div></Card>
+        )}
+        {loadState === "ready" && queue.map(m => (
           <Card key={m.id}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: 16 }}>
               <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
@@ -591,7 +619,7 @@ function ModerationPage() {
                 </div>
                 <div>
                   <div style={{ ...body, fontWeight: 700, fontSize: 13.5, color: C.ink }}>{m.name}</div>
-                  <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2 }}>{m.supplier} · {m.cat} · submitted {m.submitted}</div>
+                  <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2 }}>{m.supplierName} · {m.category} · submitted {new Date(m.submittedAt).toLocaleDateString()}</div>
                   {m.flags.length > 0 && (
                     <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
                       {m.flags.map(f => <Badge key={f} label={f} color={C.amber} bg={C.amberBg} />)}
@@ -600,9 +628,16 @@ function ModerationPage() {
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button style={{ ...body, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Preview</button>
-                <button style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: C.gaugeBg, color: C.gauge, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}><Check size={13} />Approve</button>
-                <button style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: C.redBg, color: C.red, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}><X size={13} />Reject</button>
+                <button
+                  disabled={actioningId === m.id}
+                  onClick={() => handleModerate(m.id, "approve")}
+                  style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: C.gaugeBg, color: C.gauge, fontSize: 12.5, fontWeight: 700, cursor: actioningId === m.id ? "default" : "pointer", opacity: actioningId === m.id ? 0.5 : 1 }}
+                ><Check size={13} />Approve</button>
+                <button
+                  disabled={actioningId === m.id}
+                  onClick={() => handleModerate(m.id, "reject")}
+                  style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: C.redBg, color: C.red, fontSize: 12.5, fontWeight: 700, cursor: actioningId === m.id ? "default" : "pointer", opacity: actioningId === m.id ? 0.5 : 1 }}
+                ><X size={13} />Reject</button>
               </div>
             </div>
           </Card>
@@ -736,7 +771,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   else if (page === "overview") content = <OverviewPage />;
   else if (page === "orders") content = <OrdersPage onOpenOrder={setOpenOrder} onSessionExpired={onLogout} />;
   else if (page === "suppliers") content = <SuppliersPage onSessionExpired={onLogout} />;
-  else if (page === "moderation") content = <ModerationPage />;
+  else if (page === "moderation") content = <ModerationPage onSessionExpired={onLogout} />;
   else if (page === "payouts") content = <PayoutsPage />;
   else if (page === "tickets") content = <TicketsPage />;
   else if (page === "settings") content = <SettingsPage />;

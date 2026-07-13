@@ -7,9 +7,9 @@ Real React (Vite) project for the platform operations tool. See
 
 This is the reference prototype (`docs/prototypes/leap_admin_dashboard_prototype.jsx`)
 dropped in as `src/App.jsx`, confirmed to **build successfully**, and now
-has **real authentication, a real Orders page, and a real Suppliers page**
-(view + approve/reject) — three full UI → API → database → UI slices.
-Moderation, Payouts, and Tickets pages are still mock data.
+has **real authentication and three real pages** (Orders, Suppliers,
+Moderation) — full UI → API → database → UI slices. Payouts and Tickets
+pages are still mock data.
 
 ## Authentication (ADM-030)
 
@@ -97,13 +97,35 @@ Second page wired end-to-end, same recipe as Orders:
 - Role enforcement is real too: a buyer account correctly gets a 403 from
   both endpoints, not just a UI that assumes only admins would click there.
 
+## Moderation page (ADM-002)
+
+Third page wired end-to-end. Kept in `services/api/src/modules/catalog/routes.js`
+rather than a new module, since it operates entirely on the `products`
+table that module already owns.
+
+- `GET /catalog/moderation-queue` (admin-only) lists products with
+  `status = 'translating'` (awaiting review before going live to buyers).
+- **Flags are computed live from real data, not fabricated**: "Missing
+  fitment data" (zero rows in `product_fitment` for that product) and
+  "New supplier" (the supplier account is less than 30 days old). The old
+  mock version's "Translation pending review" flag was dropped — it was
+  redundant (being in this queue at all already means that) and adding it
+  back as a fake flag would have added nothing real.
+- `PATCH /catalog/products/:id/moderate` sets the product to `active`
+  (approve) or `inactive` (reject) — confirmed to actually move the
+  product in/out of both the moderation queue and the normal buyer-facing
+  catalog, not just update a status label.
+- Dropped the "Preview" button from the mock version — it never did
+  anything even in the mock UI (no real modal/preview existed behind it),
+  so removing it is honest rather than a regression.
+
 ## Testing
 
 ```bash
 npm test
 ```
 
-Six test files, 26 tests total, all passing:
+Eight test files, 35 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/orders.integration.test.js` (4, REAL backend) — order list/detail
@@ -117,6 +139,14 @@ Six test files, 26 tests total, all passing:
   navigates to Suppliers, approves a pending one and confirms the row
   updates, and confirms a 401 during the approve action triggers automatic
   logout
+- `src/moderation.integration.test.js` (6, REAL backend, with direct DB
+  access for test setup/teardown only) — confirms real, correctly-computed
+  flags on a known product, and a full approve/reject round-trip
+  confirmed by independently re-fetching the queue afterward
+- `src/ModerationFlow.test.jsx` (3, mocked, full component tree) — renders
+  real computed flags (and confirms the old fake "Translation pending
+  review" flag is gone), approving removes the item from view, and a 401
+  during the action triggers automatic logout
 
 The `*.integration.test.js` files use a real (persistent, not per-test-run)
 local dev database, so the supplier round-trip test is written to be
@@ -132,6 +162,12 @@ curl -X POST http://localhost:4000/order -H "Content-Type: application/json" \
   -d '{"items":[{"productId":"p1","quantity":1}],"guestEmail":"test@example.com"}'
 ```
 
+`moderation.integration.test.js` connects directly to the same Postgres
+database (`postgresql://leap_dev:leap_dev_password@localhost:5432/leap_marketplace_dev`,
+hardcoded — update it if your local setup differs) to reset a known
+product's status before/after each test. This only works if `db/seed.js`
+has been run at least once (it needs product `p9` to exist).
+
 ## Next steps to make this real
 
 1. Wire the `TopBar`'s hardcoded user display to the real logged-in admin
@@ -140,10 +176,9 @@ curl -X POST http://localhost:4000/order -H "Content-Type: application/json" \
    `src/components/` — it currently works as one large file (that's how
    the prototype was authored) but should be broken up before more people
    work on it.
-3. Replace remaining mock data (`MODERATION_QUEUE`, `PAYOUTS`, `TICKETS`
-   arrays) with real fetches, following the same pattern as Orders and
-   Suppliers. Each needs a matching backend endpoint first (none exist yet).
-4. Add the missing backend endpoints: catalog moderation queue, payouts,
-   support tickets.
+3. Replace remaining mock data (`PAYOUTS`, `TICKETS` arrays) with real
+   fetches, following the same pattern as Orders, Suppliers, and
+   Moderation. Each needs a matching backend endpoint first (none exist yet).
+4. Add the missing backend endpoints: payouts, support tickets.
 5. Consider code-splitting (the build currently warns about a >500kB bundle)
    once real routing is introduced — e.g. React Router with lazy-loaded pages.
