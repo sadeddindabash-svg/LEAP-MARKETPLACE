@@ -7,12 +7,11 @@ full requirement list this implements, and
 ## Status
 
 Real navigation between all core screens works. **Authentication, cart,
-catalog browsing, checkout, support tickets, order detail, and return
-requests are now all real** — every one of those calls the actual backend
-(`services/api`), not placeholders. What's NOT real yet: actual payment
-capture (see "Cart & Checkout" below — this is the most important
-remaining gap, flagged clearly there) and the Garage/vehicle-fitment
-screens, which are still placeholder data.
+catalog browsing, checkout, support tickets, order detail, return
+requests, and My Garage (saved vehicles) are now all real** — every one
+of those calls the actual backend (`services/api`), not placeholders.
+The one remaining gap: actual payment capture (see "Cart & Checkout"
+below — flagged clearly there as the most important thing left).
 
 ⚠️ This code was written without access to a Flutter SDK in the environment
 that generated it, so it has **not been compiled or run**. It should be
@@ -146,6 +145,34 @@ screen at all, only the list.
   checked every field the screen reads (`supplierName`, `trackingNumber`,
   `items`, `subOrderId`, etc.) actually exists in the real response.
 
+## My Garage — saved vehicles (BUY-004, BUY-010–012)
+
+A genuinely new backend feature, not just a mock-to-real conversion —
+there was no per-buyer "saved vehicles" concept anywhere in the backend
+before this, only the shared Year/Make/Model/Trim reference catalog
+(`GET /fitment/vehicles`, which already existed and worked). Distinguishing
+"every vehicle Leap knows about" from "the vehicles *this buyer* saved"
+matters — see the migration's header comment
+(`services/api/db/migrations/008_saved_vehicles.sql`) for why conflating
+them would be a real bug, not a naming nitpick.
+
+- `lib/features/garage/garage_screen.dart` — real saved-vehicle list via
+  `GET /garage/me`. Login-gated, same pattern as orders/tickets — there's
+  no guest "garage" concept, saving a vehicle only makes sense tied to
+  an account.
+- `lib/features/garage/add_vehicle_screen.dart` (new) — two-step flow:
+  pick a make (`GET /fitment/makes`), then pick a specific vehicle for
+  that make (`GET /fitment/vehicles?make=...`), then save it
+  (`POST /garage/me`). Saving is idempotent — adding the same vehicle
+  twice doesn't duplicate it, verified against the real backend.
+- Removing a vehicle (`DELETE /garage/me/:vehicleId`) is real too, with a
+  confirmed round-trip back to an updated list.
+- **Verified against the real backend**: ran the exact sequence — signup
+  → fetch makes → fetch vehicles for a make → save one → confirm it
+  appears in the garage list → remove it → confirm the list is empty
+  again — checking every field each screen reads actually exists in the
+  real response.
+
 ## Setup
 
 1. Install Flutter: https://docs.flutter.dev/get-started/install
@@ -177,7 +204,7 @@ lib/
 ├── widgets/                  Shared components (PlateChip, StatusBadge)
 └── features/
     ├── home/                Home + category grid
-    ├── garage/               Saved vehicles / YMMT fitment selector (still placeholder)
+    ├── garage/               Saved vehicles / YMMT fitment selector — real
     ├── catalog/              Category browse + product detail — real data
     ├── cart/                 Basket, grouped by supplier — real data
     ├── checkout/             Real order placement (payment capture not yet wired)
@@ -195,12 +222,10 @@ lib/
    remaining gap (see "Cart & Checkout" above). Create a real Stripe
    PaymentIntent (or APS/PayPal equivalent) before calling `POST /order`,
    and only place the order once payment is confirmed.
-2. Wire the Garage/vehicle-fitment screens to real data (`GET /fitment/vehicles`
-   already exists and works — see `services/api/README.md`).
-3. Add `flutter_test` widget tests per screen before this grows further.
-4. Swap the placeholder launch markets in `core/config/app_config.dart` for
+2. Add `flutter_test` widget tests per screen before this grows further.
+3. Swap the placeholder launch markets in `core/config/app_config.dart` for
    the real Phase 1 country list.
-5. Get this actually compiled and run on a real Flutter SDK — this entire
+4. Get this actually compiled and run on a real Flutter SDK — this entire
    codebase has only been syntax-checked, never built, given this
    environment's constraints. (Tried installing Flutter directly in this
    sandbox — the SDK/engine binaries and pub.dev package registry are

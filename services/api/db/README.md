@@ -65,11 +65,12 @@ See `migrations/001_init.sql` for the full schema with comments. Summary:
 | `order_line_items` | Line items within a supplier sub-order |
 | `payment_transactions` | Every payment attempt, across all gateways |
 | `support_tickets` / `support_ticket_messages` | Buyer↔platform support (migration 005) — no buyer↔supplier path exists, by design |
+| `return_cases` / `return_case_buyer_messages` / `return_case_supplier_messages` | Return/dispute cases (migration 007) — TWO separate message tables, not one shared thread, structurally enforcing no direct buyer↔supplier contact |
+| `user_saved_vehicles` | A buyer's own saved vehicles (migration 008) — distinct from `vehicles` (the shared reference catalog); conflating the two would show every vehicle in the system as "saved" |
 
 **Not yet covered** (add a future migration once these backend modules
 exist — currently only in the admin-dashboard/supplier-portal prototypes,
-not real endpoints): commission/payout records, return/dispute cases,
-review/rating storage.
+not real endpoints): commission/payout records, review/rating storage.
 
 ## Migration runner
 

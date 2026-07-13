@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import '../core/config/app_config.dart';
 import '../models/product.dart';
 import '../models/cart_item.dart';
+import '../models/vehicle.dart';
 
 /// Thin wrapper around services/api. Kept deliberately simple for the MVP —
 /// swap in a generated client (e.g. from an OpenAPI spec) once the backend
@@ -34,6 +35,54 @@ class ApiClient {
       throw ApiException('Failed to load product (${response.statusCode})');
     }
     return Product.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  // ---------------- Fitment reference data (BUY-010) ----------------
+  // This is the shared Year/Make/Model/Trim catalog — distinct from a
+  // buyer's own saved vehicles (see "Garage" below). Used for the
+  // "Add a vehicle" flow: pick a make, then pick a specific reference
+  // vehicle, then save it to the garage.
+
+  Future<List<String>> fetchMakes() async {
+    final response = await _client.get(Uri.parse('$baseUrl/fitment/makes'));
+    if (response.statusCode != 200) throw ApiException('Failed to load makes (${response.statusCode})');
+    return (jsonDecode(response.body) as List).cast<String>();
+  }
+
+  Future<List<Vehicle>> fetchVehiclesByMake(String make) async {
+    final response = await _client.get(Uri.parse('$baseUrl/fitment/vehicles?make=${Uri.encodeQueryComponent(make)}'));
+    if (response.statusCode != 200) throw ApiException('Failed to load vehicles (${response.statusCode})');
+    final list = jsonDecode(response.body) as List;
+    return list.map((v) => Vehicle.fromJson(v as Map<String, dynamic>)).toList();
+  }
+
+  // ---------------- Garage — buyer's own saved vehicles (BUY-004/010-012) ----------------
+
+  Future<List<Vehicle>> fetchMyGarage(String token) async {
+    final response = await _client.get(Uri.parse('$baseUrl/garage/me'), headers: {'Authorization': 'Bearer $token'});
+    if (response.statusCode != 200) throw ApiException('Failed to load your garage (${response.statusCode})');
+    final list = jsonDecode(response.body) as List;
+    return list.map((v) => Vehicle.fromJson(v as Map<String, dynamic>)).toList();
+  }
+
+  Future<List<Vehicle>> addVehicleToGarage(String token, String vehicleId) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/garage/me'),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      body: jsonEncode({'vehicleId': vehicleId}),
+    );
+    if (response.statusCode >= 400) {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      throw ApiException(body['error'] as String? ?? 'Failed to save vehicle (${response.statusCode})');
+    }
+    return fetchMyGarage(token);
+  }
+
+  Future<List<Vehicle>> removeVehicleFromGarage(String token, String vehicleId) async {
+    final response = await _client.delete(Uri.parse('$baseUrl/garage/me/$vehicleId'), headers: {'Authorization': 'Bearer $token'});
+    if (response.statusCode != 200) throw ApiException('Failed to remove vehicle (${response.statusCode})');
+    final list = jsonDecode(response.body) as List;
+    return list.map((v) => Vehicle.fromJson(v as Map<String, dynamic>)).toList();
   }
 
   Future<Map<String, dynamic>> healthCheck() async {
