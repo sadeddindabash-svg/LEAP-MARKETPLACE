@@ -11,6 +11,7 @@ import 'features/catalog/product_screen.dart';
 import 'features/cart/cart_screen.dart';
 import 'features/checkout/checkout_screen.dart';
 import 'features/orders/orders_screen.dart';
+import 'features/orders/order_detail_screen.dart';
 import 'features/account/account_screen.dart';
 import 'features/support/chat_screen.dart';
 import 'features/support/new_ticket_screen.dart';
@@ -44,6 +45,7 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => ProductScreen(productId: state.pathParameters['id']!),
     ),
     GoRoute(path: '/checkout', builder: (context, state) => const CheckoutScreen()),
+    GoRoute(path: '/orders/:id', builder: (context, state) => OrderDetailScreen(orderId: state.pathParameters['id']!)),
     GoRoute(path: '/support', builder: (context, state) => const ChatScreen()),
     GoRoute(path: '/support/new', builder: (context, state) => const NewTicketScreen()),
     GoRoute(path: '/support/:id', builder: (context, state) => TicketDetailScreen(ticketId: state.pathParameters['id']!)),

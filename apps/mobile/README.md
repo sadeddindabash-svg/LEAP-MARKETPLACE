@@ -7,14 +7,11 @@ full requirement list this implements, and
 ## Status
 
 Real navigation between all core screens works. **Authentication, cart,
-catalog browsing, checkout, and support tickets are now all real** —
-every one of those calls the actual backend (`services/api`), not
-placeholders. Order history (`orders_screen.dart`) and account details
-are real too. What's NOT real yet: actual payment capture (see "Cart &
-Checkout" below — this is the most important remaining gap, flagged
-clearly there), return/dispute request initiation (the backend endpoint
-exists and is tested — see `services/api/README.md`'s Returns section —
-but no mobile screen calls it yet), and the Garage/vehicle-fitment
+catalog browsing, checkout, support tickets, order detail, and return
+requests are now all real** — every one of those calls the actual backend
+(`services/api`), not placeholders. What's NOT real yet: actual payment
+capture (see "Cart & Checkout" below — this is the most important
+remaining gap, flagged clearly there) and the Garage/vehicle-fitment
 screens, which are still placeholder data.
 
 ⚠️ This code was written without access to a Flutter SDK in the environment
@@ -124,13 +121,30 @@ button that did nothing) is now real:
   reply persisted — and checked every field each screen reads (`subject`,
   `status`, `messages`, `senderRole`, `message`) actually appears in the
   real response, matching what the widgets expect.
-- **Not yet wired**: return/dispute request initiation. The backend
-  endpoint (`POST /returns`) exists and is tested (see
-  `services/api/README.md`), but no screen in this app calls it yet —
-  there's no order-detail screen in the mobile app at all currently (see
-  `orders_screen.dart`, which is list-only), so there's nowhere natural
-  to put a "Request a return" button yet. Building that screen is the
-  natural next step to close this gap.
+
+## Order detail & return requests (BUY-052/053)
+
+Closes the gap flagged in the previous pass — there was no order-detail
+screen at all, only the list.
+
+- `lib/features/orders/order_detail_screen.dart` (new): fetches
+  `GET /order/:id` and shows the real per-supplier split — the same
+  structure the admin dashboard and supplier portal already display, now
+  visible to the buyer too.
+- Each supplier's card has a **"Request a return"** button opening a
+  bottom sheet (reason + details) that submits to the real `POST /returns`.
+  The sheet's copy explicitly tells the buyer they're messaging the
+  Platform, not the supplier — matching the same business rule enforced
+  structurally on the backend (see `services/api/README.md`'s Returns
+  section for why that's a data-model guarantee, not just UI copy).
+- `orders_screen.dart` list items are now tappable, navigating to
+  `/orders/:id`.
+- **Verified against the real backend**: ran the exact sequence —
+  signup → place an order → fetch its detail → submit a return request
+  using the real `subOrderId` from that response → confirmed the case
+  shows up correctly in the buyer's own `GET /returns/my-cases` — and
+  checked every field the screen reads (`supplierName`, `trackingNumber`,
+  `items`, `subOrderId`, etc.) actually exists in the real response.
 
 ## Setup
 
@@ -167,7 +181,8 @@ lib/
     ├── catalog/              Category browse + product detail — real data
     ├── cart/                 Basket, grouped by supplier — real data
     ├── checkout/             Real order placement (payment capture not yet wired)
-    ├── orders/               Order history + tracking (requires login)
+    ├── orders/               Order history/tracking + detail + return
+                                requests (requires login)
     ├── account/              Profile / garage / addresses / support entry
     ├── auth/                 Login and signup screens (real backend calls)
     └── support/              Real ticket list/compose/detail — Buyer ↔
@@ -180,16 +195,12 @@ lib/
    remaining gap (see "Cart & Checkout" above). Create a real Stripe
    PaymentIntent (or APS/PayPal equivalent) before calling `POST /order`,
    and only place the order once payment is confirmed.
-2. Build a real order-detail screen (currently `orders_screen.dart` is
-   list-only) with a "Request a return" action calling the already-tested
-   `POST /returns` — see the "Support tickets" section above for why this
-   doesn't exist yet.
-3. Wire the Garage/vehicle-fitment screens to real data (`GET /fitment/vehicles`
+2. Wire the Garage/vehicle-fitment screens to real data (`GET /fitment/vehicles`
    already exists and works — see `services/api/README.md`).
-4. Add `flutter_test` widget tests per screen before this grows further.
-5. Swap the placeholder launch markets in `core/config/app_config.dart` for
+3. Add `flutter_test` widget tests per screen before this grows further.
+4. Swap the placeholder launch markets in `core/config/app_config.dart` for
    the real Phase 1 country list.
-6. Get this actually compiled and run on a real Flutter SDK — this entire
+5. Get this actually compiled and run on a real Flutter SDK — this entire
    codebase has only been syntax-checked, never built, given this
    environment's constraints. (Tried installing Flutter directly in this
    sandbox — the SDK/engine binaries and pub.dev package registry are

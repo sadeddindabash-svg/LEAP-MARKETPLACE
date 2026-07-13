@@ -82,7 +82,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
             itemBuilder: (context, i) {
               final o = orders[i] as Map<String, dynamic>;
               return Card(
-                child: Padding(
+                child: InkWell(
+                  onTap: () => context.push('/orders/${o['id']}'),
+                  child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -98,6 +100,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                       Text('\$${(o['total'] as num).toStringAsFixed(2)} ${o['currencyCode']}'),
                     ],
                   ),
+                ),
                 ),
               );
             },

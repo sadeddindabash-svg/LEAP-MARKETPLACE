@@ -96,6 +96,22 @@ class ApiClient {
     return jsonDecode(response.body) as List<dynamic>;
   }
 
+  /// Fetches full detail for one order, including per-supplier sub-orders
+  /// (needed to know which subOrderId to attach a return request to).
+  /// Uses the real logged-in buyer's token — GET /order/:id is
+  /// ownership-checked server-side (see services/api/src/modules/order/routes.js;
+  /// this endpoint used to be a real security hole, fixed in a later pass).
+  Future<Map<String, dynamic>> fetchOrderDetail(String token, String orderId) async {
+    final response = await _client.get(
+      Uri.parse('$baseUrl/order/$orderId'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (response.statusCode != 200) {
+      throw ApiException('Failed to load order (${response.statusCode})');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   // ---------------- Cart (BUY-030–032) ----------------
   // All three cart endpoints below return the same full-item shape (see
   // services/api/src/modules/cart/routes.js header comment) — every
