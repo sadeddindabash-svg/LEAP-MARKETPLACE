@@ -7,12 +7,15 @@ full requirement list this implements, and
 ## Status
 
 Real navigation between all core screens works. **Authentication, cart,
-catalog browsing, and checkout are now all real** — every one of those
-calls the actual backend (`services/api`), not placeholders. Order
-history (`orders_screen.dart`) and account details are real too. What's
-NOT real yet: actual payment capture (see "Cart & Checkout" below — this
-is the most important remaining gap, flagged clearly there) and the
-Garage/vehicle-fitment screens, which are still placeholder data.
+catalog browsing, checkout, and support tickets are now all real** —
+every one of those calls the actual backend (`services/api`), not
+placeholders. Order history (`orders_screen.dart`) and account details
+are real too. What's NOT real yet: actual payment capture (see "Cart &
+Checkout" below — this is the most important remaining gap, flagged
+clearly there), return/dispute request initiation (the backend endpoint
+exists and is tested — see `services/api/README.md`'s Returns section —
+but no mobile screen calls it yet), and the Garage/vehicle-fitment
+screens, which are still placeholder data.
 
 ⚠️ This code was written without access to a Flutter SDK in the environment
 that generated it, so it has **not been compiled or run**. It should be
@@ -96,6 +99,39 @@ via the same calls `clearAfterOrder()` makes → confirmed the cart was
 empty afterward. Every step matches exactly what the Flutter code above
 calls — this wasn't a separate, looser check.
 
+## Support tickets (BUY-060/061)
+
+The support screen (previously a fully static mock — no state, a send
+button that did nothing) is now real:
+
+- `lib/features/support/chat_screen.dart` — real ticket list via
+  `GET /support/my-tickets`. **Requires login** — guest-created tickets
+  aren't listable without an account, the same limitation as guest order
+  history (`orders_screen.dart` has the identical login-gate pattern).
+- `lib/features/support/new_ticket_screen.dart` (new) — composes a
+  ticket via `POST /support/tickets`.
+- `lib/features/support/ticket_detail_screen.dart` (new) — real message
+  thread, styled as a chat bubble view, with a working reply box calling
+  `POST /support/my-tickets/:id/messages`.
+- These three screens close a gap explicitly flagged in an earlier pass
+  (see `services/api/README.md`'s Support Tickets section) — buyers
+  previously had no way to actually create or view a ticket from the app
+  at all; only admins could see tickets, and only by hitting the API
+  directly.
+- **Verified against the real backend, not just code review**: ran the
+  exact sequence of calls these three screens make — signup → create
+  ticket → fetch the list → fetch detail → send a reply → confirm the
+  reply persisted — and checked every field each screen reads (`subject`,
+  `status`, `messages`, `senderRole`, `message`) actually appears in the
+  real response, matching what the widgets expect.
+- **Not yet wired**: return/dispute request initiation. The backend
+  endpoint (`POST /returns`) exists and is tested (see
+  `services/api/README.md`), but no screen in this app calls it yet —
+  there's no order-detail screen in the mobile app at all currently (see
+  `orders_screen.dart`, which is list-only), so there's nowhere natural
+  to put a "Request a return" button yet. Building that screen is the
+  natural next step to close this gap.
+
 ## Setup
 
 1. Install Flutter: https://docs.flutter.dev/get-started/install
@@ -134,7 +170,8 @@ lib/
     ├── orders/               Order history + tracking (requires login)
     ├── account/              Profile / garage / addresses / support entry
     ├── auth/                 Login and signup screens (real backend calls)
-    └── support/              Buyer ↔ Platform chat (no supplier contact)
+    └── support/              Real ticket list/compose/detail — Buyer ↔
+                                Platform only, no supplier contact
 ```
 
 ## Next steps to make this real
@@ -143,11 +180,18 @@ lib/
    remaining gap (see "Cart & Checkout" above). Create a real Stripe
    PaymentIntent (or APS/PayPal equivalent) before calling `POST /order`,
    and only place the order once payment is confirmed.
-2. Wire the Garage/vehicle-fitment screens to real data (`GET /fitment/vehicles`
+2. Build a real order-detail screen (currently `orders_screen.dart` is
+   list-only) with a "Request a return" action calling the already-tested
+   `POST /returns` — see the "Support tickets" section above for why this
+   doesn't exist yet.
+3. Wire the Garage/vehicle-fitment screens to real data (`GET /fitment/vehicles`
    already exists and works — see `services/api/README.md`).
-3. Add `flutter_test` widget tests per screen before this grows further.
-4. Swap the placeholder launch markets in `core/config/app_config.dart` for
+4. Add `flutter_test` widget tests per screen before this grows further.
+5. Swap the placeholder launch markets in `core/config/app_config.dart` for
    the real Phase 1 country list.
-5. Get this actually compiled and run on a real Flutter SDK — this entire
+6. Get this actually compiled and run on a real Flutter SDK — this entire
    codebase has only been syntax-checked, never built, given this
-   environment's constraints.
+   environment's constraints. (Tried installing Flutter directly in this
+   sandbox — the SDK/engine binaries and pub.dev package registry are
+   both outside the network allowlist here, confirmed via the egress
+   proxy's own error messages, not just an assumption.)

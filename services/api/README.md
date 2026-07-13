@@ -177,7 +177,11 @@ src/
     ├── supplier/            Admin-facing supplier list/verify (ADM-001) AND
     │                       supplier-facing "me" endpoints — own profile,
     │                       products, order fulfillment (SUP-001–022)
-    ├── support/             Support tickets (BUY-060–061, ADM-012)
+    ├── support/             Support tickets — admin AND buyer-facing
+    │                       "my-tickets" endpoints (BUY-060–061, ADM-012)
+    ├── returns/             Return/dispute cases with SEPARATE buyer,
+    │                       supplier, AND admin views into two message
+    │                       threads (BUY-053, SUP-030)
     ├── payment/            Stripe, Amazon Payment Services, PayPal, and
     │                       Google Pay (routed through Stripe) — BUY-040–044
     └── notification/       SMS/email/push stub (BUY-051, SUP-032)

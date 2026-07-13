@@ -10,10 +10,11 @@ const { requireAuth, requireRole, optionalAuth } = require('../auth/middleware')
  * business requirement (SRS Section 2.5). Every message is either from a
  * buyer/guest or from platform staff — never routed to a supplier.
  *
- * KNOWN GAP, flagged not hidden: GET /support/tickets/:id and replying are
- * currently admin-only. A buyer viewing/continuing their OWN ticket isn't
- * wired up yet (would need an ownership check like orders/:id has) — this
- * module only covers the admin-facing half for now.
+ * Buyer-side viewing (GET /support/my-tickets...) requires a real login —
+ * guest-checkout tickets aren't viewable without an account, matching the
+ * same pattern already used for order history (GET /order is also
+ * login-only). This was flagged as a known gap in an earlier pass and is
+ * now closed for authenticated buyers.
  */
 const router = express.Router();
 
@@ -132,6 +133,54 @@ router.patch('/tickets/:id', requireAuth, requireRole('admin'), async (req, res,
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Ticket not found' });
     res.json(toTicketSummaryDto(rows[0]));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ============================================================
+// Buyer-facing: view and continue your OWN tickets (login required).
+// ============================================================
+
+router.get('/my-tickets', requireAuth, async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT * FROM support_tickets WHERE buyer_id = $1 ORDER BY updated_at DESC', [req.user.sub]);
+    res.json(rows.map(toTicketSummaryDto));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/my-tickets/:id', requireAuth, async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT * FROM support_tickets WHERE id = $1 AND buyer_id = $2', [req.params.id, req.user.sub]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Ticket not found' });
+
+    const { rows: messages } = await db.query(
+      'SELECT sender_role, message, created_at FROM support_ticket_messages WHERE ticket_id = $1 ORDER BY created_at ASC',
+      [req.params.id]
+    );
+    res.json({
+      ...toTicketSummaryDto(rows[0]),
+      messages: messages.map((m) => ({ senderRole: m.sender_role, message: m.message, createdAt: m.created_at })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /support/my-tickets/:id/messages — buyer follows up on their own ticket.
+router.post('/my-tickets/:id/messages', requireAuth, async (req, res, next) => {
+  try {
+    const { message } = req.body || {};
+    if (!message) return res.status(400).json({ error: 'message is required' });
+
+    const ownershipCheck = await db.query('SELECT id FROM support_tickets WHERE id = $1 AND buyer_id = $2', [req.params.id, req.user.sub]);
+    if (ownershipCheck.rows.length === 0) return res.status(404).json({ error: 'Ticket not found' });
+
+    await db.query(`INSERT INTO support_ticket_messages (ticket_id, sender_role, message) VALUES ($1, 'buyer', $2)`, [req.params.id, message]);
+    await db.query('UPDATE support_tickets SET updated_at = now() WHERE id = $1', [req.params.id]);
+    res.status(201).json({ senderRole: 'buyer', message });
   } catch (err) {
     next(err);
   }

@@ -169,6 +169,83 @@ class ApiClient {
     }
     return body;
   }
+
+  // ---------------- Support tickets (BUY-060/061) ----------------
+
+  Map<String, String> _authHeaders(String? token) =>
+      token != null ? {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'} : {'Content-Type': 'application/json'};
+
+  Map<String, dynamic> _decodeOrThrow(http.Response response) {
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode >= 400) {
+      throw ApiException(body['error'] as String? ?? 'Request failed (${response.statusCode})');
+    }
+    return body;
+  }
+
+  /// Creates a ticket. Works for both a logged-in buyer (send [token]) or
+  /// a guest (send [guestEmail] instead) — matches guest checkout.
+  Future<Map<String, dynamic>> createTicket({String? token, required String subject, required String message, String? guestEmail, String? orderId}) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/support/tickets'),
+      headers: _authHeaders(token),
+      body: jsonEncode({'subject': subject, 'message': message, if (guestEmail != null) 'guestEmail': guestEmail, if (orderId != null) 'orderId': orderId}),
+    );
+    return _decodeOrThrow(response);
+  }
+
+  /// Only works for a logged-in buyer — guest tickets aren't listable
+  /// without an account, same limitation as guest order history.
+  Future<List<dynamic>> fetchMyTickets(String token) async {
+    final response = await _client.get(Uri.parse('$baseUrl/support/my-tickets'), headers: _authHeaders(token));
+    if (response.statusCode != 200) throw ApiException('Failed to load tickets (${response.statusCode})');
+    return jsonDecode(response.body) as List<dynamic>;
+  }
+
+  Future<Map<String, dynamic>> fetchTicketDetail(String token, String ticketId) async {
+    final response = await _client.get(Uri.parse('$baseUrl/support/my-tickets/$ticketId'), headers: _authHeaders(token));
+    return _decodeOrThrow(response);
+  }
+
+  Future<Map<String, dynamic>> sendTicketMessage(String token, String ticketId, String message) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/support/my-tickets/$ticketId/messages'),
+      headers: _authHeaders(token),
+      body: jsonEncode({'message': message}),
+    );
+    return _decodeOrThrow(response);
+  }
+
+  // ---------------- Return/dispute cases (BUY-053) ----------------
+
+  Future<Map<String, dynamic>> createReturnCase({String? token, required int subOrderId, required String reason, required String message, String? guestEmail}) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/returns'),
+      headers: _authHeaders(token),
+      body: jsonEncode({'subOrderId': subOrderId, 'reason': reason, 'message': message, if (guestEmail != null) 'guestEmail': guestEmail}),
+    );
+    return _decodeOrThrow(response);
+  }
+
+  Future<List<dynamic>> fetchMyReturnCases(String token) async {
+    final response = await _client.get(Uri.parse('$baseUrl/returns/my-cases'), headers: _authHeaders(token));
+    if (response.statusCode != 200) throw ApiException('Failed to load return cases (${response.statusCode})');
+    return jsonDecode(response.body) as List<dynamic>;
+  }
+
+  Future<Map<String, dynamic>> fetchReturnCaseDetail(String token, String caseId) async {
+    final response = await _client.get(Uri.parse('$baseUrl/returns/my-cases/$caseId'), headers: _authHeaders(token));
+    return _decodeOrThrow(response);
+  }
+
+  Future<Map<String, dynamic>> sendReturnCaseMessage(String token, String caseId, String message) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/returns/my-cases/$caseId/messages'),
+      headers: _authHeaders(token),
+      body: jsonEncode({'message': message}),
+    );
+    return _decodeOrThrow(response);
+  }
 }
 
 class ApiException implements Exception {

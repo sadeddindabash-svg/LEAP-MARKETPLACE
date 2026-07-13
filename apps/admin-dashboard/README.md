@@ -7,8 +7,9 @@ Real React (Vite) project for the platform operations tool. See
 
 This is the reference prototype (`docs/prototypes/leap_admin_dashboard_prototype.jsx`)
 dropped in as `src/App.jsx`, confirmed to **build successfully**, and now
-has **real authentication and four real pages** (Orders, Suppliers,
-Moderation, Support Tickets) — full UI → API → database → UI slices.
+has **real authentication and five real pages** (Orders, Suppliers,
+Moderation, Support Tickets, Returns — the last one is entirely new, not
+in the original prototype at all) — full UI → API → database → UI slices.
 Payouts is still mock data (blocked on undecided commission rates — see
 Charter Section 1 — rather than a technical gap).
 
@@ -138,11 +139,14 @@ just new endpoints on an existing table): `support_tickets` and
 - **No buyer↔supplier messaging path exists here, by explicit business
   requirement** (SRS Section 2.5) — every message is buyer/guest ↔ platform
   staff only.
-- **Known gap, flagged not hidden**: viewing/replying to a ticket is
-  currently admin-only. A buyer viewing or continuing their *own* ticket
-  isn't wired up yet — would need an ownership check similar to what
-  `GET /order/:id` still lacks (see Orders section above). This module
-  only covers the admin-facing half for now.
+- **Gap closed in a later pass**: buyer-side viewing/continuing of their
+  own ticket is now real too — `GET /support/my-tickets`,
+  `GET /support/my-tickets/:id`, `POST /support/my-tickets/:id/messages`
+  (login required; guest-created tickets aren't viewable without an
+  account, same limitation as guest order history). Wired into the mobile
+  app's support screen — see `apps/mobile/README.md`. Confirmed a second
+  buyer can never see the first buyer's ticket, in the list or by direct
+  ID (404, not filtered) — see `src/buyerGaps.integration.test.js`.
 
 **A real bug I caught before it shipped**: the ticket-ID sequence
 (`ticket_id_seq`) originally started at the same number as the hardcoded
@@ -150,13 +154,56 @@ seed ticket IDs (`T-5500`), so the very first ticket created after seeding
 would fail with a duplicate-key error. Fixed by starting the sequence past
 the seeded range — see the comment in `db/migrations/005_support_tickets.sql`.
 
+## Returns & Disputes page (new — not in the original prototype at all)
+
+This page didn't exist in the reference prototype — it was added from
+scratch, backend and frontend together, because SRS BUY-053/SUP-030
+describe a real return/dispute-handling requirement that had no
+implementation anywhere in the project until now.
+
+- **Two structurally separate message threads per case** — buyer↔admin
+  and supplier↔admin — not one shared thread. This is the single most
+  important design decision in this feature: the "no direct
+  buyer↔supplier contact" business rule (the same one enforced in the
+  support-tickets and order modules) is enforced by the *data model
+  itself* here, not just by what the UI happens to display. There is no
+  query in `services/api/src/modules/returns/routes.js` that can return
+  one party's messages to the other, even by accident — see that file's
+  header comment and `db/migrations/007_return_cases.sql`.
+- `GET /returns` (admin-only, full list), `GET /returns/:id` (admin-only,
+  both threads), `POST /returns/:id/buyer-messages` and
+  `POST /returns/:id/supplier-messages` (admin replies into one thread or
+  the other — never both from a single action), `PATCH /returns/:id`
+  (status: awaiting/in_progress/approved/rejected/completed).
+- `ReturnCaseDetailPage` shows both threads side by side for the admin
+  (who is the only party allowed to see both) with a visible note
+  explaining the thread separation to whoever's looking at the screen.
+- **A real bug caught the same way as the ticket-ID one**: the
+  `return_case_id_seq` sequence and the seed script's hardcoded `RC-3400`
+  case ID had the identical collision risk — fixed proactively in the
+  same migration this time, having learned the pattern from the tickets
+  bug (see the comment in `db/migrations/007_return_cases.sql`).
+- Also exposed `subOrderId` in the order module's create/detail responses
+  (`services/api/src/modules/order/routes.js`) — needed so a return
+  request can reference which specific supplier's portion of an order
+  it's about; this field didn't exist in the API before this feature
+  needed it.
+- **Added in a later pass**: buyer-side viewing too —
+  `GET /returns/my-cases`, `GET /returns/my-cases/:id`,
+  `POST /returns/my-cases/:id/messages` (login required). Symmetric with
+  the supplier-facing isolation: a buyer's own view shows only their
+  buyer↔admin thread, never the supplier↔admin thread — confirmed by a
+  test that checks the supplier thread's message text is absent from
+  `JSON.stringify()` of what the buyer can fetch. Wired into the mobile
+  app — see `apps/mobile/README.md`.
+
 ## Testing
 
 ```bash
 npm test
 ```
 
-Ten test files, 48 tests total, all passing:
+Twelve test files, 60 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/orders.integration.test.js` (4, REAL backend) — order list/detail
@@ -186,6 +233,23 @@ Ten test files, 48 tests total, all passing:
 - `src/TicketsFlow.test.jsx` (3, mocked, full component tree) — renders
   real tickets, opens one and sends a real reply that appears in the
   thread, and a 401 during reply triggers automatic logout
+- `src/returns.integration.test.js` (7, REAL backend, self-contained) —
+  a non-admin is rejected, a created case appears in the admin list, full
+  case detail includes the real initial buyer message, and — the two that
+  matter most — confirms replying to the buyer only ever adds to the
+  buyer thread (never the supplier thread) and vice versa, checked by
+  inspecting both thread lengths after each action, not just that the
+  intended message landed somewhere.
+- `src/buyerGaps.integration.test.js` (5, REAL backend) — closes the
+  "buyer can't view their own ticket/return case" gap flagged in earlier
+  passes: a buyer creates and views their own ticket, a second buyer
+  can't see the first buyer's ticket (in the list or by direct ID — 404,
+  not filtered), a buyer's follow-up and an admin's reply both show up
+  correctly in the buyer's own view, and — the one that matters most — a
+  buyer viewing their own return case never sees the supplier thread,
+  confirmed the same way as the admin-side test: checking the actual
+  string is absent from the response, not just that the UI wouldn't
+  display it.
 
 The `*.integration.test.js` files use a real (persistent, not per-test-run)
 local dev database, so the supplier round-trip test is written to be
@@ -219,7 +283,5 @@ has been run at least once (it needs product `p9` to exist).
    on the commission-rate decision (Charter Section 1), not a technical gap.
 4. Add the missing backend endpoints for payouts once commission rates
    are decided.
-5. Wire buyer-side ticket viewing (own tickets only) — see the "Known gap"
-   note in the Support Tickets section above.
-6. Consider code-splitting (the build currently warns about a >500kB bundle)
+5. Consider code-splitting (the build currently warns about a >500kB bundle)
    once real routing is introduced — e.g. React Router with lazy-loaded pages.
