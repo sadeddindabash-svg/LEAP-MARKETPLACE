@@ -7,9 +7,9 @@ Real React (Vite) project for the platform operations tool. See
 
 This is the reference prototype (`docs/prototypes/leap_admin_dashboard_prototype.jsx`)
 dropped in as `src/App.jsx`, confirmed to **build successfully**, and now
-has **real authentication** gating access to it. Page data (Orders,
-Suppliers, Moderation, Payouts, Tickets) is still mock data — only the
-login gate itself is real, not yet the dashboard's content.
+has **real authentication AND a real Orders page** — the first full
+UI → API → database → UI slice of this app. Suppliers, Moderation,
+Payouts, and Tickets pages are still mock data.
 
 ## Authentication (ADM-030)
 
@@ -52,24 +52,53 @@ cp .env.example .env.local   # points at your local backend
 npm run dev       # http://localhost:5173
 ```
 
+## Orders page (ADM-010)
+
+The first page wired to real data end-to-end:
+
+- `GET /order` fetches every order in the system (admin-scoped server-side
+  — see the auth work) and replaces the old hardcoded `ORDERS` mock array,
+  which has been deleted, not just unused.
+- Clicking a row fetches full detail via `GET /order/:id`, showing real
+  supplier sub-orders, tracking numbers, and line items — not the
+  fake "Fulfilling" badge and invented timeline dates the mock version had.
+- Handles loading and error states, and **automatically logs the admin out
+  if a request comes back 401** (expired/invalid session) rather than
+  showing a broken or empty page.
+- Status badges (`ORDER_STATUS_META`) were expanded to cover every status
+  value the real backend actually uses (`to_pay`, `to_ship`, `returns` were
+  missing before and would have crashed on an unmapped status) — plus a
+  `getOrderStatusMeta()` fallback so an unexpected future status renders
+  gracefully instead of throwing.
+- **Columns changed from the mock version**: "Country", "Supplier(s)", and
+  "Payment" columns were removed from the list view because that data
+  isn't tracked/joined yet on the backend (payment_transactions exists in
+  the schema but isn't linked to orders in an endpoint yet) — shown as
+  real fields that exist (buyer, total, placed date, status) rather than
+  keeping fake-looking columns with no real data behind them.
+
 ## Testing
 
 ```bash
 npm test
 ```
 
-Two test files:
-- `src/App.test.jsx` — 7 tests with mocked `fetch`: successful admin login,
-  a non-admin login is correctly rejected even with valid credentials, wrong
-  password shows the API's real error message, session restores from a
-  saved token, an expired/invalid saved token is cleared rather than
-  leaving the app stuck, and logout works.
-- `src/auth.integration.test.js` — 4 tests against the **real running
-  backend**, no mocking (skips automatically if `services/api` isn't
-  running locally, so this won't break a CI run without a database
-  available). This is what actually proves the login flow works
-  end-to-end, not just that the mocked assumptions are internally
-  consistent.
+Four test files, 18 tests total, all passing:
+- `src/App.test.jsx` (7, mocked) — login/logout/session-restore auth flows
+- `src/auth.integration.test.js` (4, REAL backend) — login/session round-trip
+- `src/orders.integration.test.js` (4, REAL backend) — fetches the real
+  order list and real order detail (including real supplier sub-orders and
+  line items) as an authenticated admin; confirms unauthenticated/garbage
+  token requests are rejected
+- `src/OrdersFlow.test.jsx` (3, mocked, full component tree) — logs in,
+  navigates to Orders, confirms real (not hardcoded) order data renders,
+  opens an order and sees real supplier/line-item data, and confirms a 401
+  on the orders request triggers automatic logout back to the login screen
+
+The `*.integration.test.js` files auto-skip if `services/api` isn't running
+locally, so they won't break a CI run without a database available — but
+when they do run, they're the strongest evidence this actually works, since
+nothing is mocked.
 
 ## Next steps to make this real
 
@@ -79,12 +108,10 @@ Two test files:
    `src/components/` — it currently works as one large file (that's how
    the prototype was authored) but should be broken up before more people
    work on it.
-3. Replace mock data (`ORDERS`, `SUPPLIERS`, `MODERATION_QUEUE`, `PAYOUTS`,
-   `TICKETS` arrays near the top of the file) with real fetches to
-   `services/api`, sending the auth token on each request. The Orders page
-   can be wired first — `GET /order` already exists, returns real data, and
-   (as of the auth work) is already scoped to admins seeing everything.
-4. Add the missing backend endpoints this dashboard needs and doesn't yet
-   have: suppliers, catalog moderation queue, payouts, support tickets.
+3. Replace remaining mock data (`SUPPLIERS`, `MODERATION_QUEUE`, `PAYOUTS`,
+   `TICKETS` arrays) with real fetches, following the same pattern as
+   Orders. Each needs a matching backend endpoint first (none exist yet).
+4. Add the missing backend endpoints: suppliers, catalog moderation queue,
+   payouts, support tickets.
 5. Consider code-splitting (the build currently warns about a >500kB bundle)
    once real routing is introduced — e.g. React Router with lazy-loaded pages.

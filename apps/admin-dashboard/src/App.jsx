@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import LoginPage from "./LoginPage";
-import { getStoredToken, saveToken, clearToken, getCurrentUser } from "./auth";
+import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, SessionExpiredError } from "./auth";
 import {
   LayoutGrid, ShoppingBag, Store, PackageSearch, Wallet, LifeBuoy, Settings,
   Search, Bell, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Truck,
@@ -60,22 +60,22 @@ const CATEGORY_SPLIT = [
   { name: "Other", value: 14, color: "#9AA1AC" },
 ];
 
-const ORDERS = [
-  { id: "LP-208841", buyer: "Sara Hasan", country: "United States", suppliers: ["Guangzhou AutoParts Co.", "Ningbo Filtration Ltd."], total: 63.29, status: "shipped", placed: "Jul 4, 2026", payment: "Visa •••• 4432" },
-  { id: "LP-208690", buyer: "Marco Bellini", country: "Italy", suppliers: ["Shenzhen Power Cells"], total: 118.0, status: "delivered", placed: "Jun 27, 2026", payment: "PayPal" },
-  { id: "LP-208412", buyer: "Aisha Al-Farsi", country: "Saudi Arabia", suppliers: ["Dongguan Lighting Co."], total: 27.5, status: "to_review", placed: "Jun 15, 2026", payment: "Mada" },
-  { id: "LP-208299", buyer: "Liam O'Connor", country: "Ireland", suppliers: ["Foshan Brake Systems"], total: 93.5, status: "processing", placed: "Jul 9, 2026", payment: "Google Pay" },
-  { id: "LP-208205", buyer: "Priya Nair", country: "United Arab Emirates", suppliers: ["Guangzhou AutoParts Co."], total: 41.2, status: "dispute", placed: "Jul 2, 2026", payment: "Visa •••• 1187" },
-  { id: "LP-208177", buyer: "Diego Fernandez", country: "Mexico", suppliers: ["Ningbo Filtration Ltd.", "Shenzhen Power Cells"], total: 152.3, status: "processing", placed: "Jul 8, 2026", payment: "Stripe Checkout" },
-];
-
 const ORDER_STATUS_META = {
+  to_pay: { label: "To pay", color: C.amber, bg: C.amberBg },
+  to_ship: { label: "To ship", color: C.torque, bg: C.torqueBg },
   processing: { label: "Processing", color: C.amber, bg: C.amberBg },
   shipped: { label: "Shipped", color: C.torque, bg: C.torqueBg },
   delivered: { label: "Delivered", color: C.gauge, bg: C.gaugeBg },
   to_review: { label: "Awaiting review", color: C.amber, bg: C.amberBg },
   dispute: { label: "Dispute", color: C.red, bg: C.redBg },
+  returns: { label: "Returns", color: C.red, bg: C.redBg },
 };
+// Falls back gracefully for any status the backend returns that isn't
+// mapped above yet, rather than throwing — real API data can drift from
+// what a UI was built against.
+function getOrderStatusMeta(status) {
+  return ORDER_STATUS_META[status] || { label: status || "Unknown", color: C.muted, bg: "#EEEFF1" };
+}
 
 const SUPPLIERS = [
   { id: "s1", name: "Guangzhou AutoParts Co.", contact: "wei.zhang@gzauto.cn", status: "verified", listings: 4210, rating: 4.6, fulfillment: 96, joined: "2025-11-02", country: "China" },
@@ -299,13 +299,38 @@ function AttentionRow({ icon: Icon, color, text, sub, last }) {
   );
 }
 
-function OrdersPage({ onOpenOrder }) {
+function OrdersPage({ onOpenOrder, onSessionExpired }) {
+  const [orders, setOrders] = useState([]);
+  const [loadState, setLoadState] = useState("loading"); // loading | ready | error
+  const [errorMessage, setErrorMessage] = useState(null);
   const [filter, setFilter] = useState("all");
-  const filtered = filter === "all" ? ORDERS : ORDERS.filter(o => o.status === filter);
-  const filters = [["all", "All"], ["processing", "Processing"], ["shipped", "Shipped"], ["delivered", "Delivered"], ["dispute", "Disputes"]];
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchOrders(getStoredToken())
+      .then((data) => {
+        if (cancelled) return;
+        setOrders(data);
+        setLoadState("ready");
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        if (err instanceof SessionExpiredError) {
+          onSessionExpired();
+          return;
+        }
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+    return () => { cancelled = true; };
+  }, [onSessionExpired]);
+
+  const filtered = filter === "all" ? orders : orders.filter(o => o.status === filter);
+  const filters = [["all", "All"], ["to_ship", "To ship"], ["shipped", "Shipped"], ["delivered", "Delivered"], ["dispute", "Disputes"]];
+
   return (
     <div>
-      <TopBar title="Orders" subtitle={`${ORDERS.length} orders across all suppliers`} />
+      <TopBar title="Orders" subtitle={loadState === "ready" ? `${orders.length} orders across all suppliers` : "Loading…"} />
       <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ display: "flex", gap: 6 }}>
           {filters.map(([id, label]) => (
@@ -320,63 +345,127 @@ function OrdersPage({ onOpenOrder }) {
         </button>
       </div>
       <div style={{ padding: 24 }}>
-        <Card>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr><Th>Order</Th><Th>Buyer</Th><Th>Country</Th><Th>Supplier(s)</Th><Th align="right">Total</Th><Th>Payment</Th><Th>Status</Th><Th></Th></tr>
-            </thead>
-            <tbody>
-              {filtered.map(o => (
-                <tr key={o.id} onClick={() => onOpenOrder(o)} style={{ cursor: "pointer" }}>
-                  <Td><PlateChip small>{o.id}</PlateChip></Td>
-                  <Td>{o.buyer}</Td>
-                  <Td><span style={{ display: "flex", alignItems: "center", gap: 6 }}><Globe size={12} color={C.muted} />{o.country}</span></Td>
-                  <Td style={{ maxWidth: 200 }}>{o.suppliers.join(", ")}</Td>
-                  <Td align="right" style={{ fontWeight: 700 }}>${o.total.toFixed(2)}</Td>
-                  <Td>{o.payment}</Td>
-                  <Td><Badge label={ORDER_STATUS_META[o.status].label} color={ORDER_STATUS_META[o.status].color} bg={ORDER_STATUS_META[o.status].bg} /></Td>
-                  <Td align="right"><ChevronRight size={15} color={C.muted} /></Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+        {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading orders…</div></Card>}
+        {loadState === "error" && (
+          <Card>
+            <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>
+              Couldn't load orders: {errorMessage}
+            </div>
+          </Card>
+        )}
+        {loadState === "ready" && (
+          <Card>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr><Th>Order</Th><Th>Buyer</Th><Th align="right">Total</Th><Th>Placed</Th><Th>Status</Th><Th></Th></tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 && (
+                  <tr><td colSpan={6} style={{ ...body, textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>No orders match this filter.</td></tr>
+                )}
+                {filtered.map(o => {
+                  const meta = getOrderStatusMeta(o.status);
+                  return (
+                    <tr key={o.id} onClick={() => onOpenOrder(o.id)} style={{ cursor: "pointer" }}>
+                      <Td><PlateChip small>{o.id}</PlateChip></Td>
+                      <Td>{o.userId || o.guestEmail || "—"}{!o.userId && o.guestEmail ? " (guest)" : ""}</Td>
+                      <Td align="right" style={{ fontWeight: 700 }}>${Number(o.total).toFixed(2)} {o.currencyCode}</Td>
+                      <Td style={{ color: C.muted }}>{new Date(o.placedAt).toLocaleDateString()}</Td>
+                      <Td><Badge label={meta.label} color={meta.color} bg={meta.bg} /></Td>
+                      <Td align="right"><ChevronRight size={15} color={C.muted} /></Td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </Card>
+        )}
       </div>
     </div>
   );
 }
 
-function OrderDetailPage({ order, onBack }) {
+function OrderDetailPage({ orderId, onBack, onSessionExpired }) {
+  const [order, setOrder] = useState(null);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchOrderById(getStoredToken(), orderId)
+      .then((data) => {
+        if (cancelled) return;
+        setOrder(data);
+        setLoadState("ready");
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        if (err instanceof SessionExpiredError) {
+          onSessionExpired();
+          return;
+        }
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+    return () => { cancelled = true; };
+  }, [orderId, onSessionExpired]);
+
+  if (loadState === "loading") {
+    return (
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
+          <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
+          <div style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink }}>Order</div>
+        </div>
+        <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading order details…</div>
+      </div>
+    );
+  }
+  if (loadState === "error") {
+    return (
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
+          <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
+          <div style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink }}>Order</div>
+        </div>
+        <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>Couldn't load this order: {errorMessage}</div>
+      </div>
+    );
+  }
+
+  const meta = getOrderStatusMeta(order.status);
+  const buyerLabel = order.userId || order.guestEmail || "Unknown";
+
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
         <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
         <div style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink }}>Order</div>
         <PlateChip>{order.id}</PlateChip>
-        <Badge label={ORDER_STATUS_META[order.status].label} color={ORDER_STATUS_META[order.status].color} bg={ORDER_STATUS_META[order.status].bg} />
+        <Badge label={meta.label} color={meta.color} bg={meta.bg} />
       </div>
       <div style={{ padding: 24, display: "flex", gap: 16 }}>
         <div style={{ flex: 2, display: "flex", flexDirection: "column", gap: 16 }}>
           <Card title="Supplier sub-orders">
             <div style={{ padding: 6 }}>
-              {order.suppliers.map((s, i) => (
-                <div key={s} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 12px", borderBottom: i < order.suppliers.length - 1 ? `1px solid ${C.line}` : "none" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <Store size={15} color={C.muted} />
-                    <span style={{ ...body, fontSize: 13, fontWeight: 600, color: C.ink }}>{s}</span>
+              {order.supplierSubOrders.map((so, i) => (
+                <div key={i} style={{ padding: "12px 12px", borderBottom: i < order.supplierSubOrders.length - 1 ? `1px solid ${C.line}` : "none" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: so.items?.length ? 8 : 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <Store size={15} color={C.muted} />
+                      <span style={{ ...body, fontSize: 13, fontWeight: 600, color: C.ink }}>{so.supplierName || so.supplierId}</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {so.trackingNumber && <PlateChip small>{so.trackingNumber}</PlateChip>}
+                      <Badge label={getOrderStatusMeta(so.status).label} color={getOrderStatusMeta(so.status).color} bg={getOrderStatusMeta(so.status).bg} />
+                    </div>
                   </div>
-                  <Badge label="Fulfilling" color={C.torque} bg={C.torqueBg} />
-                </div>
-              ))}
-            </div>
-          </Card>
-          <Card title="Timeline">
-            <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
-              {[["Order placed", order.placed, true], ["Payment captured", order.placed, true], ["Supplier acknowledged", "Jul 5, 2026", true], ["Shipped from China", "Jul 6, 2026", order.status !== "processing"], ["Delivered", "—", order.status === "delivered"]].map(([label, date, done], i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: done ? C.gauge : C.line }} />
-                  <span style={{ ...body, fontSize: 12.5, fontWeight: 600, color: done ? C.ink : C.muted }}>{label}</span>
-                  <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: "auto" }}>{date}</span>
+                  {so.items?.map((item, j) => (
+                    <div key={j} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0 6px 25px", ...body, fontSize: 12.5, color: C.muted }}>
+                      <span>{item.name} × {item.quantity}</span>
+                      <span>${Number(item.unitPrice).toFixed(2)}</span>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
@@ -385,11 +474,12 @@ function OrderDetailPage({ order, onBack }) {
         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
           <Card title="Buyer">
             <div style={{ padding: 16 }}>
-              <div style={{ ...body, fontWeight: 700, fontSize: 13.5, marginBottom: 2 }}>{order.buyer}</div>
-              <div style={{ ...body, fontSize: 12, color: C.muted, marginBottom: 10 }}>{order.country}</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <CreditCard size={13} color={C.muted} />
-                <span style={{ ...body, fontSize: 12, color: C.ink }}>{order.payment}</span>
+              <div style={{ ...body, fontWeight: 700, fontSize: 13.5, marginBottom: 2 }}>{buyerLabel}</div>
+              <div style={{ ...body, fontSize: 12, color: C.muted, marginBottom: 10 }}>
+                {order.isGuestOrder ? "Guest checkout" : "Registered account"}
+              </div>
+              <div style={{ ...body, fontSize: 12, color: C.muted }}>
+                Placed {new Date(order.placedAt).toLocaleString()}
               </div>
             </div>
           </Card>
@@ -603,9 +693,9 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   const [openOrder, setOpenOrder] = useState(null);
 
   let content;
-  if (openOrder) content = <OrderDetailPage order={openOrder} onBack={() => setOpenOrder(null)} />;
+  if (openOrder) content = <OrderDetailPage orderId={openOrder} onBack={() => setOpenOrder(null)} onSessionExpired={onLogout} />;
   else if (page === "overview") content = <OverviewPage />;
-  else if (page === "orders") content = <OrdersPage onOpenOrder={setOpenOrder} />;
+  else if (page === "orders") content = <OrdersPage onOpenOrder={setOpenOrder} onSessionExpired={onLogout} />;
   else if (page === "suppliers") content = <SuppliersPage />;
   else if (page === "moderation") content = <ModerationPage />;
   else if (page === "payouts") content = <PayoutsPage />;
