@@ -62,11 +62,12 @@ See `migrations/001_init.sql` for the full schema with comments. Summary:
 | `supplier_sub_orders` | Per-supplier split of a single order (BUY-031) |
 | `order_line_items` | Line items within a supplier sub-order |
 | `payment_transactions` | Every payment attempt, across all gateways |
+| `support_tickets` / `support_ticket_messages` | Buyer↔platform support (migration 005) — no buyer↔supplier path exists, by design |
 
 **Not yet covered** (add a future migration once these backend modules
 exist — currently only in the admin-dashboard/supplier-portal prototypes,
 not real endpoints): commission/payout records, return/dispute cases,
-reviews/ratings, support tickets.
+review/rating storage.
 
 ## Migration runner
 

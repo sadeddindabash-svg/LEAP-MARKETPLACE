@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import LoginPage from "./LoginPage";
-import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, verifySupplier, fetchModerationQueue, moderateProduct, SessionExpiredError } from "./auth";
+import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, verifySupplier, fetchModerationQueue, moderateProduct, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, SessionExpiredError } from "./auth";
 import {
   LayoutGrid, ShoppingBag, Store, PackageSearch, Wallet, LifeBuoy, Settings,
   Search, Bell, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Truck,
@@ -83,13 +83,6 @@ const PAYOUTS = [
   { supplier: "Shenzhen Power Cells", pending: 3120.00, lastPaid: 9870.40, date: "Jul 8, 2026", status: "scheduled" },
   { supplier: "Foshan Brake Systems", pending: 1980.75, lastPaid: 6210.10, date: "Jul 1, 2026", status: "paid" },
   { supplier: "Dongguan Lighting Co.", pending: 940.30, lastPaid: 3105.60, date: "Jul 1, 2026", status: "held" },
-];
-
-const TICKETS = [
-  { id: "T-5521", subject: "Wrong brake disc size delivered", buyer: "Priya Nair", order: "LP-208205", status: "open", priority: "high", updated: "20 min ago" },
-  { id: "T-5518", subject: "Battery arrived with cracked casing", buyer: "Diego Fernandez", order: "LP-208177", status: "in_progress", priority: "high", updated: "2h ago" },
-  { id: "T-5502", subject: "Refund status inquiry", buyer: "Aisha Al-Farsi", order: "LP-208412", status: "in_progress", priority: "medium", updated: "5h ago" },
-  { id: "T-5490", subject: "Question about fitment for F20 118d", buyer: "Marco Bellini", order: "—", status: "resolved", priority: "low", updated: "1d ago" },
 ];
 
 /* ---------------- shared bits ---------------- */
@@ -684,34 +677,197 @@ function PayoutsPage() {
   );
 }
 
-function TicketsPage() {
+function TicketsPage({ onOpenTicket, onSessionExpired }) {
+  const [tickets, setTickets] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
   const priorityColor = { high: C.red, medium: C.amber, low: C.muted };
+
+  useEffect(() => {
+    fetchTickets(getStoredToken())
+      .then((data) => { setTickets(data); setLoadState("ready"); })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  }, [onSessionExpired]);
+
+  const openCount = tickets.filter(t => t.status !== "resolved").length;
+
   return (
     <div>
-      <TopBar title="Support tickets" subtitle={`${TICKETS.filter(t => t.status !== "resolved").length} open · buyer ↔ platform only`} />
+      <TopBar title="Support tickets" subtitle={loadState === "ready" ? `${openCount} open · buyer ↔ platform only` : "Loading…"} />
       <div style={{ padding: 24 }}>
-        <Card>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead><tr><Th>Ticket</Th><Th>Subject</Th><Th>Buyer</Th><Th>Order</Th><Th>Priority</Th><Th>Status</Th><Th>Updated</Th></tr></thead>
-            <tbody>
-              {TICKETS.map(t => (
-                <tr key={t.id}>
-                  <Td><PlateChip small>{t.id}</PlateChip></Td>
-                  <Td style={{ fontWeight: 600 }}>{t.subject}</Td>
-                  <Td>{t.buyer}</Td>
-                  <Td style={{ color: C.muted }}>{t.order}</Td>
-                  <Td><span style={{ display: "flex", alignItems: "center", gap: 6 }}><div style={{ width: 7, height: 7, borderRadius: "50%", background: priorityColor[t.priority] }} />{t.priority}</span></Td>
-                  <Td>
-                    {t.status === "open" && <Badge label="Open" color={C.red} bg={C.redBg} />}
-                    {t.status === "in_progress" && <Badge label="In progress" color={C.torque} bg={C.torqueBg} />}
-                    {t.status === "resolved" && <Badge label="Resolved" color={C.gauge} bg={C.gaugeBg} />}
-                  </Td>
-                  <Td style={{ color: C.muted }}>{t.updated}</Td>
-                </tr>
+        {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading tickets…</div></Card>}
+        {loadState === "error" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>Couldn't load tickets: {errorMessage}</div></Card>}
+        {loadState === "ready" && (
+          <Card>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead><tr><Th>Ticket</Th><Th>Subject</Th><Th>Buyer</Th><Th>Order</Th><Th>Priority</Th><Th>Status</Th><Th>Updated</Th></tr></thead>
+              <tbody>
+                {tickets.length === 0 && (
+                  <tr><td colSpan={7} style={{ ...body, textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>No support tickets.</td></tr>
+                )}
+                {tickets.map(t => (
+                  <tr key={t.id} onClick={() => onOpenTicket(t.id)} style={{ cursor: "pointer" }}>
+                    <Td><PlateChip small>{t.id}</PlateChip></Td>
+                    <Td style={{ fontWeight: 600 }}>{t.subject}</Td>
+                    <Td>{t.buyerId || t.guestEmail || "—"}</Td>
+                    <Td style={{ color: C.muted }}>{t.orderId || "—"}</Td>
+                    <Td><span style={{ display: "flex", alignItems: "center", gap: 6 }}><div style={{ width: 7, height: 7, borderRadius: "50%", background: priorityColor[t.priority] }} />{t.priority}</span></Td>
+                    <Td>
+                      {t.status === "open" && <Badge label="Open" color={C.red} bg={C.redBg} />}
+                      {t.status === "in_progress" && <Badge label="In progress" color={C.torque} bg={C.torqueBg} />}
+                      {t.status === "resolved" && <Badge label="Resolved" color={C.gauge} bg={C.gaugeBg} />}
+                    </Td>
+                    <Td style={{ color: C.muted }}>{new Date(t.updatedAt).toLocaleString()}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TicketDetailPage({ ticketId, onBack, onSessionExpired }) {
+  const [ticket, setTicket] = useState(null);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [replyText, setReplyText] = useState("");
+  const [isSending, setIsSending] = useState(false);
+
+  const load = () => {
+    fetchTicketById(getStoredToken(), ticketId)
+      .then((data) => { setTicket(data); setLoadState("ready"); })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  };
+  useEffect(load, [ticketId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleReply = async () => {
+    if (!replyText.trim()) return;
+    setIsSending(true);
+    try {
+      await replyToTicket(getStoredToken(), ticketId, replyText.trim());
+      setReplyText("");
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleStatusChange = async (status) => {
+    try {
+      await updateTicketStatus(getStoredToken(), ticketId, status);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
+  if (loadState === "loading") {
+    return (
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
+          <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
+          <div style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink }}>Ticket</div>
+        </div>
+        <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading ticket…</div>
+      </div>
+    );
+  }
+  if (loadState === "error") {
+    return (
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
+          <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
+          <div style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink }}>Ticket</div>
+        </div>
+        <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>Couldn't load this ticket: {errorMessage}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
+        <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
+        <div style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink }}>{ticket.subject}</div>
+        <PlateChip>{ticket.id}</PlateChip>
+      </div>
+      <div style={{ padding: 24, display: "flex", gap: 16 }}>
+        <div style={{ flex: 2, display: "flex", flexDirection: "column", gap: 16 }}>
+          <Card title="Conversation">
+            <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+              {ticket.messages.map((m, i) => (
+                <div key={i} style={{ alignSelf: m.senderRole === "admin" ? "flex-end" : "flex-start", maxWidth: "75%" }}>
+                  <div style={{
+                    ...body, fontSize: 13, padding: "10px 14px", borderRadius: 12,
+                    background: m.senderRole === "admin" ? C.signal : C.canvas,
+                    color: m.senderRole === "admin" ? "#fff" : C.ink,
+                  }}>{m.message}</div>
+                  <div style={{ ...body, fontSize: 10.5, color: C.muted, marginTop: 3, textAlign: m.senderRole === "admin" ? "right" : "left" }}>
+                    {m.senderRole === "admin" ? "Platform" : "Buyer"} · {new Date(m.createdAt).toLocaleString()}
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
-        </Card>
+            </div>
+            <div style={{ padding: 16, borderTop: `1px solid ${C.line}`, display: "flex", gap: 8 }}>
+              <input
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleReply()}
+                placeholder="Reply to the buyer…"
+                style={{ ...body, flex: 1, border: `1px solid ${C.line}`, borderRadius: 8, padding: "9px 12px", fontSize: 13 }}
+              />
+              <button
+                disabled={isSending}
+                onClick={handleReply}
+                style={{ ...body, padding: "9px 16px", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 13, fontWeight: 700, cursor: isSending ? "default" : "pointer", opacity: isSending ? 0.6 : 1 }}
+              >Send</button>
+            </div>
+          </Card>
+        </div>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
+          <Card title="Details">
+            <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ ...body, fontSize: 12, color: C.muted }}>Buyer</div>
+              <div style={{ ...body, fontSize: 13, fontWeight: 600 }}>{ticket.buyerId || ticket.guestEmail}</div>
+              {ticket.orderId && (
+                <>
+                  <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 6 }}>Related order</div>
+                  <PlateChip small>{ticket.orderId}</PlateChip>
+                </>
+              )}
+            </div>
+          </Card>
+          <Card title="Status">
+            <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+              {["open", "in_progress", "resolved"].map(s => (
+                <button
+                  key={s}
+                  onClick={() => handleStatusChange(s)}
+                  style={{
+                    ...body, padding: 10, borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", textAlign: "left",
+                    border: ticket.status === s ? `2px solid ${C.signal}` : `1px solid ${C.line}`,
+                    background: ticket.status === s ? "#FDF1EB" : "#fff",
+                  }}
+                >{s === "open" ? "Open" : s === "in_progress" ? "In progress" : "Resolved"}</button>
+              ))}
+            </div>
+          </Card>
+        </div>
       </div>
     </div>
   );
@@ -765,15 +921,17 @@ const NAV = [
 function AdminDashboardShell({ currentUser, onLogout }) {
   const [page, setPage] = useState("overview");
   const [openOrder, setOpenOrder] = useState(null);
+  const [openTicket, setOpenTicket] = useState(null);
 
   let content;
   if (openOrder) content = <OrderDetailPage orderId={openOrder} onBack={() => setOpenOrder(null)} onSessionExpired={onLogout} />;
+  else if (openTicket) content = <TicketDetailPage ticketId={openTicket} onBack={() => setOpenTicket(null)} onSessionExpired={onLogout} />;
   else if (page === "overview") content = <OverviewPage />;
   else if (page === "orders") content = <OrdersPage onOpenOrder={setOpenOrder} onSessionExpired={onLogout} />;
   else if (page === "suppliers") content = <SuppliersPage onSessionExpired={onLogout} />;
   else if (page === "moderation") content = <ModerationPage onSessionExpired={onLogout} />;
   else if (page === "payouts") content = <PayoutsPage />;
-  else if (page === "tickets") content = <TicketsPage />;
+  else if (page === "tickets") content = <TicketsPage onOpenTicket={setOpenTicket} onSessionExpired={onLogout} />;
   else if (page === "settings") content = <SettingsPage />;
 
   return (
@@ -788,9 +946,9 @@ function AdminDashboardShell({ currentUser, onLogout }) {
         <div style={{ flex: 1, padding: "0 12px" }}>
           {NAV.map(n => {
             const Icon = n.icon;
-            const active = page === n.id && !openOrder;
+            const active = page === n.id && !openOrder && !openTicket;
             return (
-              <button key={n.id} onClick={() => { setPage(n.id); setOpenOrder(null); }} style={{
+              <button key={n.id} onClick={() => { setPage(n.id); setOpenOrder(null); setOpenTicket(null); }} style={{
                 width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", marginBottom: 2, borderRadius: 8,
                 border: "none", cursor: "pointer", textAlign: "left",
                 background: active ? C.signal : "transparent", color: active ? "#fff" : "#B8BEC9",

@@ -66,6 +66,39 @@ async function main() {
   );
   console.log(`Seeded dev admin login: ${DEV_ADMIN_EMAIL} / ${DEV_ADMIN_PASSWORD} (change before any shared/production use)`);
 
+  // Support tickets — one open (guest, unanswered), one in_progress (has
+  // an admin reply already) so the admin dashboard has something real in
+  // both states to display and act on.
+  //
+  // NOTE: the ticket rows themselves are idempotent (ON CONFLICT (id) DO
+  // NOTHING on a real primary key), but the message inserts below are NOT
+  // — support_ticket_messages has no natural unique key to conflict on,
+  // so re-running this seed script multiple times will insert duplicate
+  // messages under the same tickets. Low-stakes for local dev seed data;
+  // fix with a proper "only seed messages if this ticket is new" check
+  // before using this seed script anywhere that matters.
+  await pool.query(`
+    INSERT INTO support_tickets (id, guest_email, subject, status, priority) VALUES
+      ('T-5500', 'ticket-guest@example.com', 'Wrong brake disc size delivered', 'open', 'high')
+    ON CONFLICT (id) DO NOTHING;
+  `);
+  await pool.query(`
+    INSERT INTO support_ticket_messages (ticket_id, sender_role, message) VALUES
+      ('T-5500', 'buyer', 'I ordered a 300mm disc but received a 290mm one. Can you help?')
+    ON CONFLICT DO NOTHING;
+  `);
+  await pool.query(`
+    INSERT INTO support_tickets (id, guest_email, subject, status, priority) VALUES
+      ('T-5501', 'another-guest@example.com', 'Refund status inquiry', 'in_progress', 'medium')
+    ON CONFLICT (id) DO NOTHING;
+  `);
+  await pool.query(`
+    INSERT INTO support_ticket_messages (ticket_id, sender_role, message) VALUES
+      ('T-5501', 'buyer', 'When will my refund be processed?'),
+      ('T-5501', 'admin', 'Your refund has been submitted to your original payment method and should land within 5-7 business days.')
+    ON CONFLICT DO NOTHING;
+  `);
+
   console.log('Seed complete.');
   await pool.end();
 }

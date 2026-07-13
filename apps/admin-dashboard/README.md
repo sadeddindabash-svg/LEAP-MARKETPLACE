@@ -7,9 +7,10 @@ Real React (Vite) project for the platform operations tool. See
 
 This is the reference prototype (`docs/prototypes/leap_admin_dashboard_prototype.jsx`)
 dropped in as `src/App.jsx`, confirmed to **build successfully**, and now
-has **real authentication and three real pages** (Orders, Suppliers,
-Moderation) — full UI → API → database → UI slices. Payouts and Tickets
-pages are still mock data.
+has **real authentication and four real pages** (Orders, Suppliers,
+Moderation, Support Tickets) — full UI → API → database → UI slices.
+Payouts is still mock data (blocked on undecided commission rates — see
+Charter Section 1 — rather than a technical gap).
 
 ## Authentication (ADM-030)
 
@@ -119,13 +120,43 @@ table that module already owns.
   anything even in the mock UI (no real modal/preview existed behind it),
   so removing it is honest rather than a regression.
 
+## Support Tickets page (ADM-012, BUY-060/061)
+
+Fourth page wired end-to-end, and the first with a real new schema (not
+just new endpoints on an existing table): `support_tickets` and
+`support_ticket_messages` (migration 005).
+
+- `POST /support/tickets` — buyer (authenticated) or **guest** (no auth
+  required, matching the guest-checkout pattern) can raise a ticket.
+- `GET /support/tickets` (admin-only) — every ticket, newest-updated first.
+- `GET /support/tickets/:id` (admin-only) — full message thread.
+- `POST /support/tickets/:id/messages` (admin-only) — reply; **automatically
+  transitions the ticket from `open` to `in_progress`** the first time an
+  admin replies, confirmed by a test that checks the status changed as a
+  side effect of replying, not just that the message was added.
+- `PATCH /support/tickets/:id` — explicit status change (open/in_progress/resolved).
+- **No buyer↔supplier messaging path exists here, by explicit business
+  requirement** (SRS Section 2.5) — every message is buyer/guest ↔ platform
+  staff only.
+- **Known gap, flagged not hidden**: viewing/replying to a ticket is
+  currently admin-only. A buyer viewing or continuing their *own* ticket
+  isn't wired up yet — would need an ownership check similar to what
+  `GET /order/:id` still lacks (see Orders section above). This module
+  only covers the admin-facing half for now.
+
+**A real bug I caught before it shipped**: the ticket-ID sequence
+(`ticket_id_seq`) originally started at the same number as the hardcoded
+seed ticket IDs (`T-5500`), so the very first ticket created after seeding
+would fail with a duplicate-key error. Fixed by starting the sequence past
+the seeded range — see the comment in `db/migrations/005_support_tickets.sql`.
+
 ## Testing
 
 ```bash
 npm test
 ```
 
-Eight test files, 35 tests total, all passing:
+Ten test files, 48 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/orders.integration.test.js` (4, REAL backend) — order list/detail
@@ -147,6 +178,14 @@ Eight test files, 35 tests total, all passing:
   real computed flags (and confirms the old fake "Translation pending
   review" flag is gone), approving removes the item from view, and a 401
   during the action triggers automatic logout
+- `src/tickets.integration.test.js` (10, REAL backend, self-contained —
+  each test creates its own ticket via the real API rather than depending
+  on seeded data) — guest ticket creation with no auth, validation
+  rejections, admin-only access enforcement, and the auto-transition from
+  `open` to `in_progress` on first admin reply
+- `src/TicketsFlow.test.jsx` (3, mocked, full component tree) — renders
+  real tickets, opens one and sends a real reply that appears in the
+  thread, and a 401 during reply triggers automatic logout
 
 The `*.integration.test.js` files use a real (persistent, not per-test-run)
 local dev database, so the supplier round-trip test is written to be
@@ -176,9 +215,11 @@ has been run at least once (it needs product `p9` to exist).
    `src/components/` — it currently works as one large file (that's how
    the prototype was authored) but should be broken up before more people
    work on it.
-3. Replace remaining mock data (`PAYOUTS`, `TICKETS` arrays) with real
-   fetches, following the same pattern as Orders, Suppliers, and
-   Moderation. Each needs a matching backend endpoint first (none exist yet).
-4. Add the missing backend endpoints: payouts, support tickets.
-5. Consider code-splitting (the build currently warns about a >500kB bundle)
+3. Replace the remaining mock `PAYOUTS` data with a real fetch — blocked
+   on the commission-rate decision (Charter Section 1), not a technical gap.
+4. Add the missing backend endpoints for payouts once commission rates
+   are decided.
+5. Wire buyer-side ticket viewing (own tickets only) — see the "Known gap"
+   note in the Support Tickets section above.
+6. Consider code-splitting (the build currently warns about a >500kB bundle)
    once real routing is introduced — e.g. React Router with lazy-loaded pages.

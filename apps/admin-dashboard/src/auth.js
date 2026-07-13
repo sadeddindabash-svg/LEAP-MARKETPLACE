@@ -77,6 +77,38 @@ export async function moderateProduct(token, productId, action) {
   return data;
 }
 
+export function fetchTickets(token) {
+  return authedGet("/support/tickets", token);
+}
+
+export function fetchTicketById(token, ticketId) {
+  return authedGet(`/support/tickets/${ticketId}`, token);
+}
+
+export async function replyToTicket(token, ticketId, message) {
+  const response = await fetch(`${API_BASE_URL}/support/tickets/${ticketId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ message }),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
+export async function updateTicketStatus(token, ticketId, status) {
+  const response = await fetch(`${API_BASE_URL}/support/tickets/${ticketId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ status }),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
 export async function verifySupplier(token, supplierId, status) {
   const response = await fetch(`${API_BASE_URL}/supplier/${supplierId}/verify`, {
     method: "PATCH",
