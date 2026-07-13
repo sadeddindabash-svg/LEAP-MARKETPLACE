@@ -8,7 +8,11 @@
  * Usage: node db/seed.js
  */
 const { Pool } = require('pg');
+const bcrypt = require('bcryptjs');
 require('dotenv').config();
+
+const DEV_ADMIN_EMAIL = 'admin@leap.dev';
+const DEV_ADMIN_PASSWORD = 'admin_dev_password_123';
 
 async function main() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -46,6 +50,19 @@ async function main() {
       ('p4', 'v1'), ('p4', 'v2'), ('p4', 'v3')
     ON CONFLICT DO NOTHING;
   `);
+
+  // Dev-only admin account so the admin dashboard's login screen has
+  // something real to log in with. CHANGE THIS PASSWORD before any
+  // non-local use — it's printed in plaintext right here in the seed
+  // script, which is fine for a throwaway local dev database and not fine
+  // for anything else.
+  const passwordHash = await bcrypt.hash(DEV_ADMIN_PASSWORD, 10);
+  await pool.query(
+    `INSERT INTO users (id, email, name, role, password_hash) VALUES ($1, $2, 'Dev Admin', 'admin', $3)
+     ON CONFLICT (email) DO NOTHING`,
+    ['admin_dev_seed', DEV_ADMIN_EMAIL, passwordHash]
+  );
+  console.log(`Seeded dev admin login: ${DEV_ADMIN_EMAIL} / ${DEV_ADMIN_PASSWORD} (change before any shared/production use)`);
 
   console.log('Seed complete.');
   await pool.end();

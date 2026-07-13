@@ -37,6 +37,9 @@ node db/seed.js
 ```
 This adds the same sample suppliers/vehicles/products that were previously
 hardcoded in-memory, so the app behaves the same way it did in earlier demos.
+It also seeds a dev admin login (`admin@leap.dev` / `admin_dev_password_123`)
+so the admin dashboard's login screen has something real to log in with —
+**change this password before any shared or production use.**
 
 **6. Start the API as normal:**
 ```bash

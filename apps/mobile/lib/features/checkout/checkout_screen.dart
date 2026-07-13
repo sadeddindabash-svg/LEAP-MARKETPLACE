@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import '../../core/config/app_config.dart';
+import '../../core/theme.dart';
+import '../../core/auth_state.dart';
 
 /// BUY-034: guided checkout flow. Guest checkout is enabled by default per
 /// the product decision in the Charter — buyers are prompted to create an
@@ -15,7 +18,7 @@ class CheckoutScreen extends StatefulWidget {
 }
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
-  bool _isGuest = AppConfig.guestCheckoutEnabled;
+  final _guestEmailController = TextEditingController();
   String _selectedPayment = 'card';
 
   static const _paymentMethods = [
@@ -29,21 +32,54 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   ];
 
   @override
+  void dispose() {
+    _guestEmailController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthState>();
+
     return Scaffold(
       appBar: AppBar(title: const Text('Checkout')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          if (AppConfig.guestCheckoutEnabled)
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Check out as guest'),
-              subtitle: const Text("You'll be offered an account after payment"),
-              value: _isGuest,
-              onChanged: (v) => setState(() => _isGuest = v),
+          if (auth.isLoggedIn)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: LeapColors.chalk, borderRadius: BorderRadius.circular(10)),
+              child: Row(
+                children: [
+                  const Icon(Icons.check_circle, size: 18, color: LeapColors.gauge),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text('Ordering as ${auth.user!['email']}', style: const TextStyle(fontSize: 12.5))),
+                ],
+              ),
+            )
+          else if (AppConfig.guestCheckoutEnabled) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: LeapColors.chalk, borderRadius: BorderRadius.circular(10)),
+              child: const Text(
+                "Checking out as a guest — we'll email your confirmation. You can create an account after payment to track this order.",
+                style: TextStyle(fontSize: 12.5, color: LeapColors.muted),
+              ),
             ),
-          const SizedBox(height: 8),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _guestEmailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(labelText: 'Email for order confirmation'),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => context.push('/login'),
+              child: const Text('Have an account? Log in instead'),
+            ),
+          ],
+          const SizedBox(height: 12),
           const Text('Payment method', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
           const SizedBox(height: 8),
           ..._paymentMethods.map((m) => RadioListTile<String>(
@@ -59,9 +95,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         padding: const EdgeInsets.all(16),
         child: ElevatedButton(
           onPressed: () {
-            // TODO: submit order via services/api/order, then:
-            // - if _isGuest, show account-creation nudge on confirmation
-            // - else attach to the signed-in user
+            // TODO: submit the real cart via POST /order:
+            // - if auth.isLoggedIn, send { userId: auth.user!['id'], items }
+            // - else send { guestEmail: _guestEmailController.text, items }
+            // Cart state isn't yet wired through a shared Provider in this
+            // scaffold (see cart_screen.dart) — connect that before this
+            // button does anything real.
             context.go('/orders');
           },
           child: const Text('Place order'),

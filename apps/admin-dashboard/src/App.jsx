@@ -1,4 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import LoginPage from "./LoginPage";
+import { getStoredToken, saveToken, clearToken, getCurrentUser } from "./auth";
 import {
   LayoutGrid, ShoppingBag, Store, PackageSearch, Wallet, LifeBuoy, Settings,
   Search, Bell, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Truck,
@@ -596,7 +598,7 @@ const NAV = [
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
-export default function LeapAdminPrototype() {
+function AdminDashboardShell({ currentUser, onLogout }) {
   const [page, setPage] = useState("overview");
   const [openOrder, setOpenOrder] = useState(null);
 
@@ -635,9 +637,15 @@ export default function LeapAdminPrototype() {
             );
           })}
         </div>
-        <div style={{ padding: 16, borderTop: "1px solid #2A2F38", display: "flex", alignItems: "center", gap: 8 }}>
-          <Users size={14} color="#9AA1AC" />
-          <span style={{ ...body, fontSize: 11, color: "#9AA1AC" }}>3 teammates online</span>
+        <div style={{ padding: 16, borderTop: "1px solid #2A2F38" }}>
+          <div style={{ ...body, fontSize: 12, color: "#fff", fontWeight: 700, marginBottom: 2 }}>{currentUser.name || currentUser.email}</div>
+          <div style={{ ...body, fontSize: 10.5, color: "#9AA1AC", marginBottom: 10 }}>{currentUser.email}</div>
+          <button onClick={onLogout} style={{
+            width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 10px",
+            borderRadius: 6, border: "1px solid #3A3F48", background: "transparent", color: "#B8BEC9", fontSize: 11.5, fontWeight: 600, cursor: "pointer",
+          }}>
+            <Users size={12} /> Log out
+          </button>
         </div>
       </div>
       <div style={{ flex: 1, overflowY: "auto" }}>
@@ -645,4 +653,52 @@ export default function LeapAdminPrototype() {
       </div>
     </div>
   );
+}
+
+/**
+ * Auth gate — checks for a saved session on load (verifying the token is
+ * still valid via GET /auth/me, not just trusting whatever's in
+ * localStorage), shows LoginPage if not authenticated or not an admin
+ * role, otherwise renders the real dashboard.
+ */
+export default function LeapAdminApp() {
+  const [authState, setAuthState] = useState({ status: "checking", user: null });
+
+  useEffect(() => {
+    const token = getStoredToken();
+    if (!token) {
+      setAuthState({ status: "loggedOut", user: null });
+      return;
+    }
+    getCurrentUser(token)
+      .then((user) => setAuthState({ status: "loggedIn", user }))
+      .catch(() => {
+        // Saved token is expired/invalid — don't leave the app stuck
+        // thinking it's logged in when every real request would 401.
+        clearToken();
+        setAuthState({ status: "loggedOut", user: null });
+      });
+  }, []);
+
+  const handleLoginSuccess = (token, user) => {
+    saveToken(token);
+    setAuthState({ status: "loggedIn", user });
+  };
+
+  const handleLogout = () => {
+    clearToken();
+    setAuthState({ status: "loggedOut", user: null });
+  };
+
+  if (authState.status === "checking") {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 700, fontFamily: "'Inter', sans-serif", color: "#6B7280", fontSize: 13 }}>
+        Checking session…
+      </div>
+    );
+  }
+  if (authState.status === "loggedOut") {
+    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+  }
+  return <AdminDashboardShell currentUser={authState.user} onLogout={handleLogout} />;
 }

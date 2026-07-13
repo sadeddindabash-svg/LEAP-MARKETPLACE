@@ -31,6 +31,61 @@ class ApiClient {
     final response = await _client.get(Uri.parse('$baseUrl/health'));
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
+
+  // ---------------- Auth (BUY-001–003) ----------------
+
+  Future<Map<String, dynamic>> signup(String email, String password, {String? name}) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/auth/signup'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email, 'password': password, if (name != null) 'name': name}),
+    );
+    return _decodeAuthResponse(response);
+  }
+
+  Future<Map<String, dynamic>> login(String email, String password) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/auth/login'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email, 'password': password}),
+    );
+    return _decodeAuthResponse(response);
+  }
+
+  Future<Map<String, dynamic>> getCurrentUser(String token) async {
+    final response = await _client.get(
+      Uri.parse('$baseUrl/auth/me'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (response.statusCode != 200) {
+      throw ApiException('Session expired or invalid (${response.statusCode})');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  Map<String, dynamic> _decodeAuthResponse(http.Response response) {
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode >= 400) {
+      // Surfaces the API's actual error message (e.g. "Invalid email or
+      // password", "An account with this email already exists") rather
+      // than a generic failure — these are meant to be shown to the user.
+      throw ApiException(body['error'] as String? ?? 'Request failed (${response.statusCode})');
+    }
+    return body;
+  }
+
+  // ---------------- Orders (requires auth — see BUY-050) ----------------
+
+  Future<List<dynamic>> fetchMyOrders(String token) async {
+    final response = await _client.get(
+      Uri.parse('$baseUrl/order'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (response.statusCode != 200) {
+      throw ApiException('Failed to load orders (${response.statusCode})');
+    }
+    return jsonDecode(response.body) as List<dynamic>;
+  }
 }
 
 class ApiException implements Exception {

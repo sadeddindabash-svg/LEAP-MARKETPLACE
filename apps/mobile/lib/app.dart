@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import 'core/theme.dart';
+import 'core/auth_state.dart';
 import 'features/home/home_screen.dart';
 import 'features/garage/garage_screen.dart';
 import 'features/catalog/category_screen.dart';
@@ -10,6 +12,8 @@ import 'features/checkout/checkout_screen.dart';
 import 'features/orders/orders_screen.dart';
 import 'features/account/account_screen.dart';
 import 'features/support/chat_screen.dart';
+import 'features/auth/login_screen.dart';
+import 'features/auth/signup_screen.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/home',
@@ -38,6 +42,8 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(path: '/checkout', builder: (context, state) => const CheckoutScreen()),
     GoRoute(path: '/support', builder: (context, state) => const ChatScreen()),
+    GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
+    GoRoute(path: '/signup', builder: (context, state) => const SignupScreen()),
   ],
 );
 
@@ -90,11 +96,14 @@ class LeapApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
-      title: 'Leap',
-      debugShowCheckedModeBanner: false,
-      theme: LeapTheme.light(),
-      routerConfig: appRouter,
+    return ChangeNotifierProvider(
+      create: (_) => AuthState(),
+      child: MaterialApp.router(
+        title: 'Leap',
+        debugShowCheckedModeBanner: false,
+        theme: LeapTheme.light(),
+        routerConfig: appRouter,
+      ),
     );
   }
 }
