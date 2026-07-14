@@ -82,7 +82,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                   : const Text('Log in'),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => context.push('/forgot-password'),
+              child: const Text('Forgot password?'),
+            ),
+            const SizedBox(height: 4),
             TextButton(
               onPressed: () => context.push('/signup'),
               child: const Text("Don't have an account? Sign up"),

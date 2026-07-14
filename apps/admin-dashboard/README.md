@@ -349,6 +349,21 @@ Fixed to read `DATABASE_URL` from the environment; if you add a test file
 that opens its own direct DB connection, make sure it does the same
 rather than hardcoding a database name.
 
+`passwordReset.integration.test.js` follows this same pattern correctly
+from the start (it needs a direct DB read to fetch a reset token, since
+there's no email inbox a test can check — see that file's comment). But
+reading `DATABASE_URL` from the environment only helps if it's actually
+**set** in the shell you run `npm test` from — it is NOT automatically
+inherited from the backend server's own `.env` file, since that's a
+separate process. If you're testing against a non-default database name,
+export it before running tests, e.g.:
+```bash
+DATABASE_URL="postgresql://leap_dev:leap_dev_password@localhost:5432/your_db_name" npm test
+```
+Forgetting this looks identical to the original hardcoding bug (tests
+fail against a differently-named database) even though the code itself
+is correct — worth knowing so you don't chase a phantom bug.
+
 ## Next steps to make this real
 
 1. Wire the `TopBar`'s hardcoded user display to the real logged-in admin

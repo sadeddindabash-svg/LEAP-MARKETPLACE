@@ -102,6 +102,8 @@ toolchain just to `npm install`) and JWT session tokens (7-day expiry).
 POST /auth/signup  { email, password, name? }  -> { token, user }
 POST /auth/login   { email, password }          -> { token, user }
 GET  /auth/me      (Authorization: Bearer <token>) -> current user
+POST /auth/forgot-password  { email }           -> generic success message
+POST /auth/reset-password   { token, newPassword } -> confirmation
 ```
 
 Protected routes: send `Authorization: Bearer <token>`. Currently gated:
@@ -133,6 +135,23 @@ elsewhere). See `src/orderSecurity.integration.test.js` in the admin
 dashboard's test suite for the full verification, including the specific
 check that this didn't break the real admin dashboard's existing calls
 to this same endpoint.
+
+**Password reset (migration 009)**: applies equally to buyer, admin, and
+supplier logins, since they're all rows in the same `users` table. The
+token generation (32 random bytes via Node's `crypto` module), 60-minute
+expiry, and one-time-use enforcement are all fully real — verified by
+`src/passwordReset.integration.test.js` in the admin dashboard's test
+suite, including that a token can't be reused after it's been consumed,
+an expired token is rejected, and — the one that matters most — a
+completed reset genuinely changes the password (old password stops
+working, new one works).
+**Honest limitation, shown in the mobile app's own UI, not hidden**: no
+email provider is connected in this codebase yet, so
+`POST /auth/forgot-password` logs the reset link to the *server's own
+console* rather than actually emailing it anywhere — see that route's
+header comment. `forgot-password` also deliberately returns the exact
+same response whether or not the email is registered, same
+email-enumeration protection as the login endpoint's error message.
 
 ## Setup
 
@@ -198,8 +217,9 @@ src/
 
 ## Next steps to make this real
 
-1. Add password reset and email verification (no email provider is wired
-   up yet — see the notification module and Charter Section 4).
+1. Wire a real email provider (see the notification module and Charter
+   Section 4) so password reset actually delivers a link instead of
+   logging it to the server console, and add email verification on signup.
 2. Get real test-mode credentials and run one live transaction against
    each payment gateway (Stripe, APS, PayPal) — none have been network-
    tested yet, see each provider file's header comment for details. This

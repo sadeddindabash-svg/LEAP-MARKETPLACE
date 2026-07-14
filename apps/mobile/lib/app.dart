@@ -19,6 +19,8 @@ import 'features/support/new_ticket_screen.dart';
 import 'features/support/ticket_detail_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/signup_screen.dart';
+import 'features/auth/forgot_password_screen.dart';
+import 'features/auth/reset_password_screen.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/home',
@@ -53,6 +55,8 @@ final GoRouter appRouter = GoRouter(
     GoRoute(path: '/support/:id', builder: (context, state) => TicketDetailScreen(ticketId: state.pathParameters['id']!)),
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
     GoRoute(path: '/signup', builder: (context, state) => const SignupScreen()),
+    GoRoute(path: '/forgot-password', builder: (context, state) => const ForgotPasswordScreen()),
+    GoRoute(path: '/reset-password', builder: (context, state) => const ResetPasswordScreen()),
   ],
 );
 

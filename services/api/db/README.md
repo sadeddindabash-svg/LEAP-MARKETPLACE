@@ -67,6 +67,7 @@ See `migrations/001_init.sql` for the full schema with comments. Summary:
 | `support_tickets` / `support_ticket_messages` | Buyer↔platform support (migration 005) — no buyer↔supplier path exists, by design |
 | `return_cases` / `return_case_buyer_messages` / `return_case_supplier_messages` | Return/dispute cases (migration 007) — TWO separate message tables, not one shared thread, structurally enforcing no direct buyer↔supplier contact |
 | `user_saved_vehicles` | A buyer's own saved vehicles (migration 008) — distinct from `vehicles` (the shared reference catalog); conflating the two would show every vehicle in the system as "saved" |
+| `password_reset_tokens` | Password reset tokens (migration 009) — one-time-use, 60-minute expiry, separate table rather than columns on `users` so a second reset request doesn't need extra bookkeeping to invalidate the first |
 
 **Not yet covered** (add a future migration once these backend modules
 exist — currently only in the admin-dashboard/supplier-portal prototypes,

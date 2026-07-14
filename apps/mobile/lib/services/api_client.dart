@@ -85,6 +85,36 @@ class ApiClient {
     return list.map((v) => Vehicle.fromJson(v as Map<String, dynamic>)).toList();
   }
 
+  // ---------------- Password reset ----------------
+  // NOTE: no real email is sent yet (no email provider is connected in
+  // this backend) — the reset link is logged to the SERVER's console as
+  // a stand-in. See services/api/src/modules/auth/routes.js for details.
+  // The token/expiry/one-time-use logic itself is fully real.
+
+  Future<void> forgotPassword(String email) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/auth/forgot-password'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email}),
+    );
+    if (response.statusCode >= 400) {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      throw ApiException(body['error'] as String? ?? 'Request failed (${response.statusCode})');
+    }
+  }
+
+  Future<void> resetPassword({required String token, required String newPassword}) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/auth/reset-password'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'token': token, 'newPassword': newPassword}),
+    );
+    if (response.statusCode >= 400) {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      throw ApiException(body['error'] as String? ?? 'Request failed (${response.statusCode})');
+    }
+  }
+
   Future<Map<String, dynamic>> healthCheck() async {
     final response = await _client.get(Uri.parse('$baseUrl/health'));
     return jsonDecode(response.body) as Map<String, dynamic>;

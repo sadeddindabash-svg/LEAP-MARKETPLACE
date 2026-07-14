@@ -38,6 +38,21 @@ exactly what this Flutter code calls.
 - Orders screen requires login to view order history (the backend scopes
   `GET /order` to the authenticated buyer) and shows a login prompt
   otherwise, rather than silently failing.
+- `lib/features/auth/forgot_password_screen.dart` and
+  `reset_password_screen.dart` (new): real password reset, reachable via
+  a "Forgot password?" link on the login screen. Calls the real
+  `POST /auth/forgot-password` and `POST /auth/reset-password`.
+  **Honest limitation, shown directly in the UI, not hidden**: no email
+  provider is connected in the backend yet, so the reset link isn't
+  actually delivered anywhere a real user would see it — it's logged to
+  the *backend server's own console* as a stand-in (see
+  `services/api/README.md`'s Authentication section). The
+  `ForgotPasswordScreen` says this explicitly, and `ResetPasswordScreen`
+  takes the code as a manually-pasted field for now rather than pretending
+  a real emailed deep-link exists. Verified end-to-end against the real
+  backend: signup → request reset → grab the token from server output →
+  submit new password → confirm the old password stops working and the
+  new one logs in successfully.
 
 ## Cart & Checkout (BUY-030–034)
 
@@ -211,7 +226,8 @@ lib/
     ├── orders/               Order history/tracking + detail + return
                                 requests (requires login)
     ├── account/              Profile / garage / addresses / support entry
-    ├── auth/                 Login and signup screens (real backend calls)
+    ├── auth/                 Login, signup, and password reset screens
+                                (all real backend calls)
     └── support/              Real ticket list/compose/detail — Buyer ↔
                                 Platform only, no supplier contact
 ```
