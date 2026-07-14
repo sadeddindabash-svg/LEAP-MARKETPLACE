@@ -13,6 +13,19 @@ function mockFetchRouter({ loginUser = SUPPLIER_USER } = {}) {
     if (u.includes('/auth/me')) return Promise.resolve({ ok: true, json: async () => loginUser });
     if (u.endsWith('/supplier/me')) return Promise.resolve({ ok: true, json: async () => SUPPLIER_PROFILE });
     if (u.endsWith('/supplier/me/products')) return Promise.resolve({ ok: true, json: async () => [] });
+    // Overview is the default landing page after login, so it's the
+    // first real page this test suite renders — it needs a valid shape
+    // here or the whole app crashes rendering it (found via the standard
+    // clean-merge verification process, same as the moderation test DB
+    // bug from a previous pass; not something a first pass would reveal
+    // by inspection since App.test.jsx wasn't touched when Overview was
+    // built, only OverviewFlow.test.jsx was).
+    if (u.endsWith('/supplier/me/overview')) {
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ totalOrders: 0, pendingOrders: 0, totalListings: 0, pendingReturns: 0, ordersByDay: [], topProducts: [], recentOrders: [] }),
+      });
+    }
     return Promise.resolve({ ok: true, json: async () => ({}) });
   });
 }

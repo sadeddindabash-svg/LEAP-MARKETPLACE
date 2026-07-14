@@ -15,7 +15,8 @@ import LoginPage from "./LoginPage";
 import {
   getStoredToken, saveToken, clearToken, getCurrentUser, SessionExpiredError,
   fetchMySupplierProfile, fetchMyProducts, createProduct, updateProduct,
-  fetchMyOrders, updateSubOrder,
+  fetchMyOrders, updateSubOrder, fetchMyReturnCases, fetchMyReturnCaseById, replyToReturnCase,
+  fetchMyOverview,
 } from "./auth";
 
 /* ============================================================
@@ -131,7 +132,7 @@ const STRINGS = {
     },
     statusProduct: { active: "上架中", translating: "翻译审核中", inactive: "已下架" },
     statusOrder: { pending: "待确认", preparing: "备货中", shipped: "已发货", delivered: "已送达", dispute: "异常/纠纷" },
-    statusReturn: { awaiting: "待供应商回复", inProgress: "处理中", completed: "已完成" },
+    statusReturn: { awaiting: "待供应商回复", inProgress: "处理中", approved: "已批准", rejected: "已驳回", completed: "已完成" },
     statusPayout: { paid: "已结算", pending: "待结算", calculating: "统计中" },
   },
   en: {
@@ -217,7 +218,7 @@ const STRINGS = {
     },
     statusProduct: { active: "Active", translating: "In translation review", inactive: "Inactive" },
     statusOrder: { pending: "Pending", preparing: "Preparing", shipped: "Shipped", delivered: "Delivered", dispute: "Dispute" },
-    statusReturn: { awaiting: "Awaiting your reply", inProgress: "In progress", completed: "Completed" },
+    statusReturn: { awaiting: "Awaiting your reply", inProgress: "In progress", approved: "Approved", rejected: "Rejected", completed: "Completed" },
     statusPayout: { paid: "Paid", pending: "Pending", calculating: "Calculating" },
   },
 };
@@ -225,7 +226,8 @@ const STRINGS = {
 const STATUS_COLOR = {
   active: [C.gauge, C.gaugeBg], translating: [C.amber, C.amberBg], inactive: [C.muted, "#EEEFF1"],
   pending: [C.amber, C.amberBg], preparing: [C.torque, C.torqueBg], shipped: [C.torque, C.torqueBg], delivered: [C.gauge, C.gaugeBg], dispute: [C.red, C.redBg],
-  awaiting: [C.amber, C.amberBg], inProgress: [C.torque, C.torqueBg], completed: [C.gauge, C.gaugeBg],
+  awaiting: [C.amber, C.amberBg], inProgress: [C.torque, C.torqueBg], in_progress: [C.torque, C.torqueBg],
+  approved: [C.gauge, C.gaugeBg], rejected: [C.red, C.redBg], completed: [C.gauge, C.gaugeBg],
   paid: [C.gauge, C.gaugeBg], calculating: [C.muted, "#EEEFF1"],
 };
 
@@ -251,11 +253,8 @@ const PRODUCTS = [
 // ORDERS mock array removed — OrdersPage and OrderDetailPanel now fetch
 // real data from GET /supplier/me/orders.
 
-const RETURNS = [
-  { id: "RC-3391", order: "LP-208205", reason: { zh: "买家反馈刹车片尺寸与车型不符", en: "Buyer reports the brake pad size doesn't match their vehicle" }, note: { zh: "请核实该SKU的适配车型数据是否准确，并告知是否可接受退货。", en: "Please confirm this SKU's fitment data is accurate, and let us know if you'll accept the return." }, status: "awaiting" },
-  { id: "RC-3378", order: "LP-208690", reason: { zh: "包装破损导致产品受潮", en: "Damaged packaging led to moisture damage" }, note: { zh: "已为买家安排补发，需要供应商确认库存是否充足。", en: "A replacement has been arranged for the buyer \u2014 please confirm you have stock available." }, status: "inProgress" },
-  { id: "RC-3340", order: "LP-207990", reason: { zh: "买家申请无理由退货", en: "Buyer requested a no-reason return" }, note: { zh: "已完成退款，无需供应商操作。", en: "Refund has been completed \u2014 no action needed from you." }, status: "completed" },
-];
+// RETURNS mock array removed — ReturnsPage now fetches real data from
+// GET /returns/supplier/me.
 
 const PAYOUTS_DATA = [
   { orders: 312, sales: 68420, commission: 8210, payout: 60210, status: "paid", date: "2026-07-05" },
@@ -357,73 +356,117 @@ function TopBar({ title, subtitle }) {
 
 /* ---------------- Pages ---------------- */
 
-function OverviewPage() {
+function OverviewPage({ onSessionExpired }) {
   const { t, lang } = useLang();
   const font = useBodyFont();
-  const trend = [8400, 9600, 8900, 11200, 12800, 14100, 13250].map((v, i) => ({ d: t.overview.days[i], v }));
+  const [data, setData] = useState(null);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  useEffect(() => {
+    fetchMyOverview(getStoredToken())
+      .then((d) => { setData(d); setLoadState("ready"); })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  }, [onSessionExpired]);
+
+  if (loadState === "loading") {
+    return (
+      <div>
+        <TopBar title={t.overview.title} subtitle={lang === "zh" ? "加载中…" : "Loading…"} />
+        <div style={{ padding: 24 }}><Card><div style={{ padding: 32, textAlign: "center", fontSize: 13, color: C.muted }}>{lang === "zh" ? "加载中…" : "Loading…"}</div></Card></div>
+      </div>
+    );
+  }
+  if (loadState === "error") {
+    return (
+      <div>
+        <TopBar title={t.overview.title} subtitle="" />
+        <div style={{ padding: 24 }}><Card><div style={{ padding: 32, textAlign: "center", fontSize: 13, color: C.red }}>{errorMessage}</div></Card></div>
+      </div>
+    );
+  }
+
+  const dayTrend = data.ordersByDay.map(d => ({ d: new Date(d.day).toLocaleDateString(undefined, { weekday: "short" }), v: d.count }));
+  const l = {
+    totalOrders: lang === "zh" ? "总订单数" : "Total orders",
+    pendingOrders: lang === "zh" ? "待处理订单" : "Pending orders",
+    totalListings: lang === "zh" ? "在架商品" : "Total listings",
+    pendingReturns: lang === "zh" ? "待处理售后" : "Pending returns",
+    trendTitle: lang === "zh" ? "近 7 日订单趋势" : "Orders per day (last 7 days)",
+    topProductsTitle: lang === "zh" ? "热销商品（按销量）" : "Top products (by units sold)",
+    recentOrdersTitle: lang === "zh" ? "最近订单" : "Recent orders",
+    unitsSold: lang === "zh" ? "件" : "units",
+    noOrders: lang === "zh" ? "近 7 日暂无订单" : "No orders in the last 7 days.",
+    noProducts: lang === "zh" ? "暂无销售数据" : "No sales data yet.",
+    noRecent: lang === "zh" ? "暂无订单" : "No orders yet.",
+  };
+
   return (
     <div>
-      <TopBar title={t.overview.title} subtitle={t.overview.subtitle} />
+      <TopBar title={t.overview.title} subtitle={lang === "zh" ? "真实数据 — 不含虚构的销售额或评分" : "Real data — no fabricated sales totals or ratings"} />
       <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
-        <div style={{ background: C.torqueBg, border: `1px solid ${C.torque}33`, borderRadius: 10, padding: "12px 16px", display: "flex", alignItems: "center", gap: 10 }}>
-          <AlertTriangle size={16} color={C.torque} />
-          <span style={{ ...font, fontSize: 12.5, color: C.ink }}>{t.overview.alert(2, 1, 1)}</span>
-        </div>
-
         <div style={{ display: "flex", gap: 16 }}>
-          <KpiCard label={t.overview.kpiSales} value="¥78,250" sub={t.overview.kpiSalesSub} icon={TrendingUp} accent={C.gauge} />
-          <KpiCard label={t.overview.kpiPending} value="6" sub={t.overview.kpiPendingSub} icon={ShoppingBag} accent={C.amber} />
-          <KpiCard label={t.overview.kpiListings} value="4,210" sub={t.overview.kpiListingsSub} icon={PackageSearch} accent={C.torque} />
-          <KpiCard label={t.overview.kpiRating} value="4.6" sub={t.overview.kpiRatingSub} icon={Star} accent={C.amber} />
+          <KpiCard label={l.totalOrders} value={String(data.totalOrders)} icon={ShoppingBag} accent={C.gauge} />
+          <KpiCard label={l.pendingOrders} value={String(data.pendingOrders)} icon={Truck} accent={C.amber} />
+          <KpiCard label={l.totalListings} value={String(data.totalListings)} icon={PackageSearch} accent={C.torque} />
+          <KpiCard label={l.pendingReturns} value={String(data.pendingReturns)} icon={AlertTriangle} accent={C.red} />
         </div>
 
-        <Card title={t.overview.trendTitle}>
+        <Card title={l.trendTitle}>
           <div style={{ padding: "16px 18px 8px", height: 220 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trend} margin={{ left: 0, right: 10, top: 6, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={C.signal} stopOpacity={0.28} />
-                    <stop offset="100%" stopColor={C.signal} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke={C.line} vertical={false} />
-                <XAxis dataKey="d" tick={{ fontSize: 11, fill: C.muted, fontFamily: lang === "zh" ? "Noto Sans SC" : "Inter" }} axisLine={{ stroke: C.line }} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: C.muted, fontFamily: "Inter" }} axisLine={false} tickLine={false} width={50} tickFormatter={v => `¥${v / 1000}k`} />
-                <Tooltip formatter={(v) => [`¥${v.toLocaleString()}`, lang === "zh" ? "销售额" : "Sales"]} contentStyle={{ fontFamily: lang === "zh" ? "Noto Sans SC" : "Inter", fontSize: 12, borderRadius: 8, border: `1px solid ${C.line}` }} />
-                <Area type="monotone" dataKey="v" stroke={C.signal} strokeWidth={2.5} fill="url(#salesFill)" />
-              </AreaChart>
-            </ResponsiveContainer>
+            {dayTrend.length === 0 ? (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", ...font, fontSize: 12.5, color: C.muted }}>{l.noOrders}</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={dayTrend} margin={{ left: 0, right: 10, top: 6, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="ordersFillSupplier" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={C.signal} stopOpacity={0.28} />
+                      <stop offset="100%" stopColor={C.signal} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke={C.line} vertical={false} />
+                  <XAxis dataKey="d" tick={{ fontSize: 11, fill: C.muted, fontFamily: lang === "zh" ? "Noto Sans SC" : "Inter" }} axisLine={{ stroke: C.line }} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: C.muted, fontFamily: "Inter" }} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
+                  <Tooltip formatter={(v) => [v, lang === "zh" ? "订单" : "Orders"]} contentStyle={{ fontFamily: lang === "zh" ? "Noto Sans SC" : "Inter", fontSize: 12, borderRadius: 8, border: `1px solid ${C.line}` }} />
+                  <Area type="monotone" dataKey="v" stroke={C.signal} strokeWidth={2.5} fill="url(#ordersFillSupplier)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </Card>
 
         <div style={{ display: "flex", gap: 16 }}>
-          <Card title={t.overview.topProductsTitle} style={{ flex: 1 }}>
+          <Card title={l.topProductsTitle} style={{ flex: 1 }}>
             <div style={{ padding: 6 }}>
-              {PRODUCTS.slice(0, 4).map((p, i) => {
-                const Icon = p.icon;
-                return (
-                  <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderBottom: i < 3 ? `1px solid ${C.line}` : "none" }}>
-                    <div style={{ width: 34, height: 34, borderRadius: 8, background: C.canvas, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <Icon size={16} color={C.ink} />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ ...font, fontSize: 12.5, fontWeight: 700, color: C.ink }}>{p.name[lang]}</div>
-                      <div style={{ ...font, fontSize: 11, color: C.muted }}>{p.cat[lang]} · {t.overview.stockLabel} {p.stock}</div>
-                    </div>
-                    <span style={{ ...disp, fontSize: 15, fontWeight: 700 }}>¥{p.price}</span>
+              {data.topProducts.length === 0 && <div style={{ padding: 20, textAlign: "center", ...font, fontSize: 12.5, color: C.muted }}>{l.noProducts}</div>}
+              {data.topProducts.map((p, i) => (
+                <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderBottom: i < data.topProducts.length - 1 ? `1px solid ${C.line}` : "none" }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 8, background: C.canvas, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <PackageSearch size={16} color={C.ink} />
                   </div>
-                );
-              })}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ ...font, fontSize: 12.5, fontWeight: 700, color: C.ink }}>{p.name}</div>
+                  </div>
+                  <span style={{ ...disp, fontSize: 15, fontWeight: 700 }}>{p.units} {l.unitsSold}</span>
+                </div>
+              ))}
             </div>
           </Card>
-          <Card title={t.overview.notificationsTitle} style={{ flex: 1 }}>
+          <Card title={l.recentOrdersTitle} style={{ flex: 1 }}>
             <div style={{ padding: 6 }}>
-              {t.overview.notifications.map((n, i) => (
-                <div key={i} style={{ padding: "10px 12px", borderBottom: i < 2 ? `1px solid ${C.line}` : "none" }}>
-                  <div style={{ ...font, fontSize: 12.5, fontWeight: 700, color: C.ink }}>{n[0]}</div>
-                  <div style={{ ...font, fontSize: 11.5, color: C.muted, marginTop: 2 }}>{n[1]}</div>
-                  <div style={{ ...font, fontSize: 10.5, color: "#9AA1AC", marginTop: 4 }}>{n[2]}</div>
+              {data.recentOrders.length === 0 && <div style={{ padding: 20, textAlign: "center", ...font, fontSize: 12.5, color: C.muted }}>{l.noRecent}</div>}
+              {data.recentOrders.map((o, i) => (
+                <div key={o.subOrderId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderBottom: i < data.recentOrders.length - 1 ? `1px solid ${C.line}` : "none" }}>
+                  <div>
+                    <div style={{ ...font, fontSize: 12.5, fontWeight: 700, color: C.ink }}>{o.orderId}</div>
+                    <div style={{ ...font, fontSize: 10.5, color: C.muted, marginTop: 2 }}>{new Date(o.placedAt).toLocaleDateString()}</div>
+                  </div>
+                  <Badge label={t.statusOrder[o.status] || o.status} statusKey={o.status} />
                 </div>
               ))}
             </div>
@@ -785,43 +828,107 @@ function OrdersPage({ onOpen }) {
   );
 }
 function ReturnsPage() {
+  const [cases, setCases] = useState([]);
+  const [detailCache, setDetailCache] = useState({});
   const [openId, setOpenId] = useState(null);
   const [reply, setReply] = useState("");
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [isSending, setIsSending] = useState(false);
   const { t, lang } = useLang();
+  const { onSessionExpired } = useSupplier();
   const font = useBodyFont();
   const inputStyle = useInputStyle();
+
+  useEffect(() => {
+    fetchMyReturnCases(getStoredToken())
+      .then((data) => { setCases(data); setLoadState("ready"); })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  }, [onSessionExpired]);
+
+  const openCase = async (id) => {
+    setOpenId(id);
+    if (!detailCache[id]) {
+      try {
+        const detail = await fetchMyReturnCaseById(getStoredToken(), id);
+        setDetailCache((prev) => ({ ...prev, [id]: detail }));
+      } catch (err) {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+      }
+    }
+  };
+
+  const submitReply = async (id) => {
+    if (!reply.trim()) return;
+    setIsSending(true);
+    try {
+      await replyToReturnCase(getStoredToken(), id, reply.trim());
+      const detail = await fetchMyReturnCaseById(getStoredToken(), id);
+      setDetailCache((prev) => ({ ...prev, [id]: detail }));
+      setReply("");
+      setOpenId(null);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const statusKeyMap = { awaiting: "awaiting", in_progress: "inProgress", approved: "approved", rejected: "rejected", completed: "completed" };
+
   return (
     <div>
       <TopBar title={t.returns.title} subtitle={t.returns.subtitle} />
       <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
-        {RETURNS.map(r => {
-          const open = openId === r.id;
+        {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", fontSize: 13, color: C.muted }}>{lang === "zh" ? "加载中…" : "Loading…"}</div></Card>}
+        {loadState === "error" && <Card><div style={{ padding: 32, textAlign: "center", fontSize: 13, color: C.red }}>{errorMessage}</div></Card>}
+        {loadState === "ready" && cases.length === 0 && (
+          <Card><div style={{ padding: 32, textAlign: "center", fontSize: 13, color: C.muted }}>{lang === "zh" ? "暂无售后案例" : "No return cases."}</div></Card>
+        )}
+        {loadState === "ready" && cases.map(c => {
+          const open = openId === c.id;
+          const detail = detailCache[c.id];
+          const statusKey = statusKeyMap[c.status] || c.status;
           return (
-            <Card key={r.id}>
+            <Card key={c.id}>
               <div style={{ padding: 16 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <PlateChip small>{r.id}</PlateChip>
-                    <span style={{ ...font, fontSize: 11.5, color: C.muted }}>{t.returns.relatedOrder(r.order)}</span>
+                    <PlateChip small>{c.id}</PlateChip>
+                    <span style={{ ...font, fontSize: 11.5, color: C.muted }}>{t.returns.relatedOrder(c.orderId)}</span>
                   </div>
-                  <Badge label={t.statusReturn[r.status]} statusKey={r.status} />
+                  <Badge label={t.statusReturn[statusKey] || c.status} statusKey={c.status} />
                 </div>
-                <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 8 }}>{r.reason[lang]}</div>
-                <div style={{ background: C.canvas, borderRadius: 8, padding: 12, marginBottom: 10 }}>
-                  <div style={{ ...font, fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 4 }}>{t.returns.noteLabel}</div>
-                  <div style={{ ...font, fontSize: 12.5, color: C.ink }}>{r.note[lang]}</div>
-                </div>
-                {r.status !== "completed" && (
+                <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 8 }}>{c.reason}</div>
+
+                {open && (
+                  <div style={{ background: C.canvas, borderRadius: 8, padding: 12, marginBottom: 10 }}>
+                    <div style={{ ...font, fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 4 }}>{t.returns.noteLabel}</div>
+                    {!detail && <div style={{ ...font, fontSize: 12, color: C.muted }}>{lang === "zh" ? "加载中…" : "Loading…"}</div>}
+                    {detail && detail.messages.length === 0 && <div style={{ ...font, fontSize: 12, color: C.muted }}>{lang === "zh" ? "暂无消息" : "No messages yet."}</div>}
+                    {detail && detail.messages.map((m, i) => (
+                      <div key={i} style={{ ...font, fontSize: 12.5, color: C.ink, marginBottom: 6 }}>{m.message}</div>
+                    ))}
+                  </div>
+                )}
+
+                {c.status !== "completed" && (
                   open ? (
                     <div>
                       <textarea value={reply} onChange={e => setReply(e.target.value)} placeholder={t.returns.replyPlaceholder} style={{ ...inputStyle, height: 70, resize: "none", marginBottom: 8 }} />
                       <div style={{ display: "flex", gap: 8 }}>
                         <button onClick={() => setOpenId(null)} style={{ ...font, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t.returns.cancel}</button>
-                        <button onClick={() => setOpenId(null)} style={{ ...font, padding: "8px 14px", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t.returns.submitReply}</button>
+                        <button disabled={isSending} onClick={() => submitReply(c.id)} style={{ ...font, padding: "8px 14px", borderRadius: 8, border: "none", background: isSending ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSending ? "default" : "pointer" }}>{t.returns.submitReply}</button>
                       </div>
                     </div>
                   ) : (
-                    <button onClick={() => setOpenId(r.id)} style={{ ...font, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t.returns.replyButton}</button>
+                    <button onClick={() => openCase(c.id)} style={{ ...font, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t.returns.replyButton}</button>
                   )
                 )}
               </div>
@@ -971,7 +1078,7 @@ function PortalShell() {
 
   let content;
   if (openOrder) content = <OrderDetailPanel order={openOrder} onBack={() => setOpenOrder(null)} onUpdated={(updated) => setOpenOrder({ ...openOrder, ...updated })} />;
-  else if (page === "overview") content = <OverviewPage />;
+  else if (page === "overview") content = <OverviewPage onSessionExpired={onLogout} />;
   else if (page === "products") content = <ProductsPage />;
   else if (page === "orders") content = <OrdersPage onOpen={setOpenOrder} />;
   else if (page === "returns") content = <ReturnsPage />;

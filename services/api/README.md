@@ -179,7 +179,8 @@ src/
     ├── user/               Accounts, incl. guest-order account claiming
     ├── supplier/            Admin-facing supplier list/verify (ADM-001) AND
     │                       supplier-facing "me" endpoints — own profile,
-    │                       products, order fulfillment (SUP-001–022)
+    │                       products, order fulfillment, own aggregate
+    │                       overview KPIs (SUP-001–022)
     ├── support/             Support tickets — admin AND buyer-facing
     │                       "my-tickets" endpoints (BUY-060–061, ADM-012)
     ├── returns/             Return/dispute cases with SEPARATE buyer,

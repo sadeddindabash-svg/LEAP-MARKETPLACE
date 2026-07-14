@@ -7,10 +7,11 @@ Real React (Vite) project for the Chinese supplier tool. See
 
 This is the reference prototype (`docs/prototypes/leap_supplier_portal_prototype.jsx`)
 dropped in as `src/App.jsx`, confirmed to **build successfully**, and now
-has **real authentication, a real Products page, and real order
-fulfillment** (view + status/tracking updates) — the supplier side of the
-three-party marketplace is no longer just a disconnected mock. Overview,
-Returns, Messages, Finance, and Settings (partially) are still mock data.
+has **real authentication, a real Products page, real order fulfillment**
+(view + status/tracking updates), **real return/dispute case handling,
+and a real Overview page** — the supplier side of the three-party
+marketplace is no longer just a disconnected mock. Messages, Finance, and
+Settings (partially) are still mock data.
 The working 中文/EN language toggle (bilingual `STRINGS` dictionary
 pattern) is preserved throughout, including on the new login screen.
 
@@ -54,6 +55,38 @@ pattern) is preserved throughout, including on the new login screen.
   (seeded by `db/seed.js`, tied to supplier `s1` / Guangzhou AutoParts Co.)
   — **change this password before any shared/production use.**
 
+## Overview page
+
+The portal's landing page (and default view after login) — wired to real
+data using the same honesty principle established for the admin
+dashboard's Overview page (see `services/api/README.md`).
+
+- `GET /supplier/me/overview` (supplier-only, scoped to `req.user.supplierId`)
+  returns: total orders, pending orders, total listings, pending returns,
+  a 7-day order-count trend, top products by units sold, and recent orders
+  — all real, all scoped to only this supplier's own data.
+- **Deliberately does NOT show a fabricated ¥ sales total or star
+  rating** — the original mock showed "¥78,250" weekly sales and a "4.6"
+  rating. The "settlement currency is RMB" business rule (see "Important
+  constraints" above) is about how a supplier eventually gets *paid out*
+  once a payout/commission system exists — it is NOT license to sum raw
+  order amounts (which are in whatever currency the buyer paid in, not
+  RMB) and present that as a real RMB sales figure. That would need both
+  a payout system and FX conversion, neither of which exist yet. There's
+  also no reviews/ratings system in this schema at all, so a star rating
+  cannot be honestly shown either. Used counts everywhere a currency
+  amount would be fabricated, same as the admin dashboard's equivalent page.
+- Replaced the mock's fake "Platform notifications" list (entirely
+  invented — no backend notification feed exists) with a real "Recent
+  orders" list.
+- **A real bug caught by the verification process, not by inspection**:
+  since this page is the default landing view right after login, the
+  *existing* `App.test.jsx` (written before this page was wired to real
+  data) didn't mock `/supplier/me/overview` at all — so its "logs out
+  correctly" test started crashing the moment Overview began fetching
+  real data on render. Fixed by updating that test file's mock router,
+  not by working around the crash.
+
 ## Products page (SUP-010–012)
 
 - `GET /supplier/me/products` — only this supplier's own products, scoped
@@ -96,6 +129,36 @@ pattern) is preserved throughout, including on the new login screen.
   selector (pending/preparing/shipped/delivered/dispute) that maps to
   exactly what the real `supplier_sub_orders.status` column supports.
 
+## Returns & disputes (SUP-030)
+
+This existing mock page is now wired to a genuinely new backend feature —
+`services/api/src/modules/returns/routes.js`, built at the same time as
+the admin dashboard's Returns page.
+
+- `GET /returns/supplier/me` and `GET /returns/supplier/me/:id` — only
+  return cases tied to THIS supplier's own sub-orders. Confirmed by an
+  integration test that creates a case for a different supplier and
+  checks it never appears here, not just that the UI wouldn't show it.
+- **The most important thing to understand about this feature**: the
+  supplier only ever sees a separate supplier↔admin message thread —
+  never the buyer's original message, name, or email. This isn't a
+  UI-level filter; the backend has two entirely separate database tables
+  (`return_case_buyer_messages` and `return_case_supplier_messages`), and
+  the supplier-facing endpoints never touch the buyer one. There is no
+  possible response from this API that leaks a buyer's message to a
+  supplier. This matches the same "no direct buyer↔supplier contact" rule
+  already enforced in the support-tickets and order modules — see this
+  README's "Important constraints" section above.
+- `POST /returns/supplier/me/:id/messages` — supplier replies to the
+  admin (not the buyer). Verified end-to-end: a reply sent here shows up
+  correctly in the admin dashboard's supplier-thread panel, confirmed via
+  a separate request as the admin — same cross-app proof pattern used for
+  order fulfillment above.
+- Dropped the mock's per-case region/order-note styling that assumed
+  richer data than what's real; the reply flow itself (open a case, view
+  the relayed conversation, submit a reply) is preserved from the
+  original prototype design.
+
 ## Setup
 
 ```bash
@@ -111,7 +174,7 @@ npm run dev       # http://localhost:5173
 npm test
 ```
 
-Two test files, 15 tests total, all passing:
+Five test files, 29 tests total, all passing:
 - `src/supplierPortal.integration.test.js` (10, REAL backend, no mocking):
   login with a real supplier JWT including `supplierId`, a buyer account
   correctly rejected from supplier endpoints, products scoped to only this
@@ -124,20 +187,40 @@ Two test files, 15 tests total, all passing:
 - `src/App.test.jsx` (5, mocked fetch): login gate shows/hides correctly,
   a non-supplier role is rejected even with valid credentials, the language
   toggle works on the login screen itself, and logout clears the session.
+- `src/returns.integration.test.js` (6, REAL backend, no mocking) — the
+  strongest test in this whole app: creates a case tied to a DIFFERENT
+  supplier and confirms it's invisible both in the list and via direct ID
+  access (404, not just filtered), and directly asserts the buyer's actual
+  message text is absent from `JSON.stringify()` of everything this
+  supplier can fetch — not just "the UI doesn't show it," but "the string
+  literally does not appear in the response." Also confirms a supplier
+  reply shows up correctly on the admin side via a separate request.
+- `src/overview.integration.test.js` (6, REAL backend) — rejects
+  unauthenticated and admin-role access (supplier-only), checks response
+  shape, and asserts `salesTotal`/`rating` are absent from the response
+  entirely — proving the "no fabricated ¥ figure, no fake rating"
+  decision is backend-enforced, not a frontend display choice. Also
+  confirms `totalListings` matches a real, independently-fetched product
+  count, one real order increases `totalOrders` by exactly one, and an
+  order for a *different* supplier's product never appears in
+  `recentOrders`.
+- `src/OverviewFlow.test.jsx` (2, mocked, full component tree) — renders
+  real counts on login (Overview is the default landing page) and
+  confirms the old fabricated figures (`¥78,250`, `4.6`) are completely
+  gone; renders real recent-order and top-product data.
 
-The full existing admin-dashboard test suite (48 tests) was also re-run
-against the updated backend to confirm the new supplier-accounts migration
-and auth changes didn't break anything there — still 48/48 passing.
+The full existing admin-dashboard test suite (84 tests) was also re-run
+against the updated backend to confirm nothing broke there — still
+84/84 passing.
 
 ## Next steps to make this real
 
-1. Wire Overview, Returns, Messages, and Finance/Payouts pages — each
-   needs backend work first: Returns needs a return/dispute case table
-   (doesn't exist yet, same gap noted in `services/api/db/README.md`),
-   Messages needs a supplier-facing thread (the admin-side Tickets module
-   could potentially be extended, or this needs its own path), and Payouts
-   is blocked on the commission-rate decision (Charter Section 1) — same
-   reason the admin dashboard's Payouts page is still mock.
+1. Wire Messages and Finance/Payouts pages — each needs backend work
+   first: Messages needs a supplier-facing thread (the admin-side Tickets
+   module could potentially be extended, or this needs its own path),
+   and Payouts is blocked on the commission-rate decision (Charter
+   Section 1) — same reason the admin dashboard's Payouts page is still
+   mock.
 2. Split `src/App.jsx` into separate files (pages/components) — same note
    as the admin dashboard; this file is large now.
 3. Add the OEM/fitment/description/image fields to real backend storage,

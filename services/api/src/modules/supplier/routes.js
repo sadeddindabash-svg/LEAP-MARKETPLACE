@@ -219,4 +219,67 @@ router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), asy
   }
 });
 
+// GET /supplier/me/overview — real aggregate KPIs for this supplier's own
+// dashboard landing page. Same honesty principle as the admin dashboard's
+// GET /overview (see that module's header comment): NO fabricated ¥
+// sales figure. The "settlement currency is RMB" business rule (see
+// apps/supplier-portal/README.md) is about how a supplier gets PAID OUT
+// once a payout system exists — it does not mean summing raw
+// order_line_items amounts (which are in whatever currency the BUYER
+// paid in, not RMB) and calling that a real RMB sales total. That would
+// require both a payout/commission system and FX conversion, neither of
+// which exist yet. Uses counts everywhere a currency amount would be
+// fabricated. Also no fake star rating — there's no reviews/ratings
+// system in this schema yet (see db/README.md's "not yet covered" list).
+router.get('/me/overview', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    const supplierId = req.user.supplierId;
+    const [totalOrders, pendingOrders, totalListings, pendingReturns, ordersByDay, topProducts, recentOrders] = await Promise.all([
+      db.query('SELECT COUNT(*) AS n FROM supplier_sub_orders WHERE supplier_id = $1', [supplierId]),
+      db.query(`SELECT COUNT(*) AS n FROM supplier_sub_orders WHERE supplier_id = $1 AND status IN ('pending', 'preparing')`, [supplierId]),
+      db.query('SELECT COUNT(*) AS n FROM products WHERE supplier_id = $1', [supplierId]),
+      db.query(
+        `SELECT COUNT(*) AS n FROM return_cases rc JOIN supplier_sub_orders so ON so.id = rc.sub_order_id
+         WHERE so.supplier_id = $1 AND rc.status IN ('awaiting', 'in_progress')`,
+        [supplierId]
+      ),
+      db.query(
+        `SELECT date_trunc('day', o.placed_at) AS day, COUNT(*) AS n
+         FROM supplier_sub_orders so JOIN orders o ON o.id = so.order_id
+         WHERE so.supplier_id = $1 AND o.placed_at > now() - interval '7 days'
+         GROUP BY day ORDER BY day ASC`,
+        [supplierId]
+      ),
+      db.query(
+        `SELECT p.id, p.name, SUM(oli.quantity) AS units
+         FROM order_line_items oli
+         JOIN supplier_sub_orders so ON so.id = oli.sub_order_id
+         JOIN products p ON p.id = oli.product_id
+         WHERE so.supplier_id = $1
+         GROUP BY p.id, p.name ORDER BY units DESC LIMIT 4`,
+        [supplierId]
+      ),
+      db.query(
+        `SELECT so.id AS sub_order_id, so.order_id, so.status, o.placed_at
+         FROM supplier_sub_orders so JOIN orders o ON o.id = so.order_id
+         WHERE so.supplier_id = $1
+         ORDER BY o.placed_at DESC LIMIT 5`,
+        [supplierId]
+      ),
+    ]);
+
+    res.json({
+      totalOrders: Number(totalOrders.rows[0].n),
+      pendingOrders: Number(pendingOrders.rows[0].n),
+      totalListings: Number(totalListings.rows[0].n),
+      pendingReturns: Number(pendingReturns.rows[0].n),
+      ordersByDay: ordersByDay.rows.map((r) => ({ day: r.day, count: Number(r.n) })),
+      topProducts: topProducts.rows.map((r) => ({ id: r.id, name: r.name, units: Number(r.units) })),
+      recentOrders: recentOrders.rows.map((r) => ({ subOrderId: r.sub_order_id, orderId: r.order_id, status: r.status, placedAt: r.placed_at })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

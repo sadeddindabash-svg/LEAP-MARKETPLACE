@@ -79,6 +79,22 @@ export function fetchMyOrders(token) {
   return authedGet("/supplier/me/orders", token);
 }
 
+export function fetchMyOverview(token) {
+  return authedGet("/supplier/me/overview", token);
+}
+
 export function updateSubOrder(token, subOrderId, updates) {
   return authedMutate("PATCH", `/supplier/me/orders/${subOrderId}`, token, updates);
+}
+
+export function fetchMyReturnCases(token) {
+  return authedGet("/returns/supplier/me", token);
+}
+
+export function fetchMyReturnCaseById(token, caseId) {
+  return authedGet(`/returns/supplier/me/${caseId}`, token);
+}
+
+export function replyToReturnCase(token, caseId, message) {
+  return authedMutate("POST", `/returns/supplier/me/${caseId}/messages`, token, { message });
 }
