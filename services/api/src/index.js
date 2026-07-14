@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const { env, assertRequiredEnvInProduction } = require('./config/env');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 
@@ -17,12 +18,17 @@ const supportRoutes = require('./modules/support/routes');
 const returnsRoutes = require('./modules/returns/routes');
 const garageRoutes = require('./modules/garage/routes');
 const overviewRoutes = require('./modules/overview/routes');
+const uploadsRoutes = require('./modules/uploads/routes');
 
 assertRequiredEnvInProduction();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+// Serves uploaded product images — see modules/uploads/routes.js header
+// comment for why this is local disk (real, working) rather than real
+// object storage (the production-ready choice, not yet wired up).
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', env: env.nodeEnv, timestamp: new Date().toISOString() });
@@ -42,6 +48,7 @@ app.use('/support', supportRoutes);
 app.use('/returns', returnsRoutes);
 app.use('/garage', garageRoutes);
 app.use('/overview', overviewRoutes);
+app.use('/uploads', uploadsRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

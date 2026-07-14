@@ -68,6 +68,9 @@ See `migrations/001_init.sql` for the full schema with comments. Summary:
 | `return_cases` / `return_case_buyer_messages` / `return_case_supplier_messages` | Return/dispute cases (migration 007) — TWO separate message tables, not one shared thread, structurally enforcing no direct buyer↔supplier contact |
 | `user_saved_vehicles` | A buyer's own saved vehicles (migration 008) — distinct from `vehicles` (the shared reference catalog); conflating the two would show every vehicle in the system as "saved" |
 | `password_reset_tokens` | Password reset tokens (migration 009) — one-time-use, 60-minute expiry, separate table rather than columns on `users` so a second reset request doesn't need extra bookkeeping to invalidate the first |
+| `vehicle_brands` / `vehicle_models` / `vehicle_generations` / `vehicle_engines` / `vehicle_transmissions` | The structured Brand->Model->Generation->Engine/Transmission cascade (migration 010) for supplier product submission — a SEPARATE, deeper hierarchy from `vehicles`, not a replacement; see that migration's header comment |
+| `product_fitment_entries` | A submitted product's specific fitment claim(s) — many-to-many against `vehicle_generations`, with an optional specific engine/transmission |
+| `product_images` | Mandatory product photos (migration 010) — the "at least 3" rule is enforced in application code, not a DB constraint |
 
 **Not yet covered** (add a future migration once these backend modules
 exist — currently only in the admin-dashboard/supplier-portal prototypes,

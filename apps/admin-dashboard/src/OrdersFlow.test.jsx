@@ -42,6 +42,16 @@ function mockFetchRouter({ orderListStatus = 200 } = {}) {
       }
       return Promise.resolve({ ok: true, json: async () => MOCK_ORDER_LIST });
     }
+    // Overview is the admin dashboard's default landing page after
+    // login -- this test logs in before navigating elsewhere, so it
+    // needs a valid shape here or the whole app crashes rendering it
+    // first (same class of bug found and fixed in ModerationFlow.test.jsx).
+    if (u.endsWith('/overview')) {
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ totalOrders: 0, activeSuppliers: 0, pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, openTickets: 0, ordersByDay: [], unitsByCategory: [], topSuppliers: [] }),
+      });
+    }
     return Promise.resolve({ ok: true, json: async () => ({}) });
   });
 }

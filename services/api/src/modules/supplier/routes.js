@@ -77,13 +77,52 @@ function toProductDto(row) {
   return {
     id: row.id,
     name: row.name,
+    nameZh: row.name_zh,
+    description: row.description,
+    descriptionZh: row.description_zh,
     category: row.category,
+    part: row.part,
+    position: row.position,
+    oemNumber: row.oem_number,
     price: Number(row.price),
     currencyCode: row.currency_code,
     stockQuantity: row.stock_quantity,
     estimatedDeliveryDays: row.estimated_delivery_days,
     status: row.status,
     createdAt: row.created_at,
+  };
+}
+
+// Attaches images and fitment entries to an already-built product DTO —
+// separate queries since they're separate tables (product_images,
+// product_fitment_entries), not columns on `products` itself.
+async function attachImagesAndFitment(dto) {
+  const [imagesRes, fitmentRes] = await Promise.all([
+    db.query('SELECT url FROM product_images WHERE product_id = $1 ORDER BY sort_order', [dto.id]),
+    db.query(
+      `SELECT pfe.year, pfe.engine_id, pfe.transmission_id, vg.id AS generation_id, vg.name AS generation_name,
+              vm.name AS model_name, vb.name AS brand_name, ve.name AS engine_name, vt.name AS transmission_name
+       FROM product_fitment_entries pfe
+       JOIN vehicle_generations vg ON vg.id = pfe.generation_id
+       JOIN vehicle_models vm ON vm.id = vg.model_id
+       JOIN vehicle_brands vb ON vb.id = vm.brand_id
+       LEFT JOIN vehicle_engines ve ON ve.id = pfe.engine_id
+       LEFT JOIN vehicle_transmissions vt ON vt.id = pfe.transmission_id
+       WHERE pfe.product_id = $1`,
+      [dto.id]
+    ),
+  ]);
+  return {
+    ...dto,
+    images: imagesRes.rows.map((r) => r.url),
+    fitment: fitmentRes.rows.map((r) => ({
+      brand: r.brand_name,
+      model: r.model_name,
+      generation: r.generation_name,
+      year: r.year,
+      engine: r.engine_name,
+      transmission: r.transmission_name,
+    })),
   };
 }
 
@@ -102,7 +141,8 @@ router.get('/me', requireAuth, requireRole('supplier'), async (req, res, next) =
 router.get('/me/products', requireAuth, requireRole('supplier'), async (req, res, next) => {
   try {
     const { rows } = await db.query('SELECT * FROM products WHERE supplier_id = $1 ORDER BY created_at DESC', [req.user.supplierId]);
-    res.json(rows.map(toProductDto));
+    const dtos = await Promise.all(rows.map((r) => attachImagesAndFitment(toProductDto(r))));
+    res.json(dtos);
   } catch (err) {
     next(err);
   }
@@ -112,22 +152,113 @@ router.get('/me/products', requireAuth, requireRole('supplier'), async (req, res
 // as 'translating' (awaiting admin review, see catalog moderation-queue),
 // NOT 'active' — a supplier cannot make their own product live to buyers
 // without going through moderation first.
+// Matches the mobile app's real category IDs (see
+// apps/mobile/lib/features/home/home_screen.dart kCategories).
+const ALLOWED_CATEGORIES = ['brake', 'engine', 'electrical', 'filters', 'suspension', 'lighting'];
+// A fixed, real list rather than free text — "Position" in the SRS
+// cascade (Brand -> ... -> Category -> Part -> Position -> OEM Number)
+// means where on the vehicle the part sits, not a free-form description.
+const ALLOWED_POSITIONS = ['Front', 'Rear', 'Left', 'Right', 'Front-Left', 'Front-Right', 'Rear-Left', 'Rear-Right', 'Universal'];
+const MIN_PRODUCT_PHOTOS = 3;
+
 router.post('/me/products', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  const {
+    nameZh, descriptionZh, category, part, position, oemNumber,
+    price, currencyCode, stockQuantity, estimatedDeliveryDays,
+    fitment, images,
+  } = req.body || {};
+
+  // ---- Validation (fail loudly and specifically, not with one generic message) ----
+  const missing = [];
+  if (!nameZh) missing.push('nameZh');
+  if (!category) missing.push('category');
+  if (!part) missing.push('part');
+  if (!position) missing.push('position');
+  if (!oemNumber) missing.push('oemNumber');
+  if (!price) missing.push('price');
+  if (!currencyCode) missing.push('currencyCode');
+  if (!fitment) missing.push('fitment');
+  if (missing.length > 0) {
+    return res.status(400).json({ error: `Missing required field(s): ${missing.join(', ')}` });
+  }
+  if (!ALLOWED_CATEGORIES.includes(category)) {
+    return res.status(400).json({ error: `category must be one of: ${ALLOWED_CATEGORIES.join(', ')}` });
+  }
+  if (!ALLOWED_POSITIONS.includes(position)) {
+    return res.status(400).json({ error: `position must be one of: ${ALLOWED_POSITIONS.join(', ')}` });
+  }
+  if (!Array.isArray(images) || images.length < MIN_PRODUCT_PHOTOS) {
+    return res.status(400).json({ error: `At least ${MIN_PRODUCT_PHOTOS} product photos are required (got ${Array.isArray(images) ? images.length : 0}). Upload via POST /uploads/product-image first.` });
+  }
+  const { generationId, year, engineId, transmissionId } = fitment;
+  if (!generationId || !year) {
+    return res.status(400).json({ error: 'fitment.generationId and fitment.year are required' });
+  }
+
+  const client = await db.getPool().connect();
   try {
-    const { name, category, price, currencyCode, stockQuantity, estimatedDeliveryDays } = req.body || {};
-    if (!name || !category || !price || !currencyCode) {
-      return res.status(400).json({ error: 'name, category, price, and currencyCode are required' });
+    await client.query('BEGIN');
+
+    // ---- Fitment validation against the real reference cascade ----
+    const genCheck = await client.query('SELECT * FROM vehicle_generations WHERE id = $1', [generationId]);
+    if (genCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Unknown fitment.generationId' });
     }
+    const generation = genCheck.rows[0];
+    const maxYear = generation.year_end || new Date().getFullYear() + 1;
+    if (year < generation.year_start || year > maxYear) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `fitment.year ${year} is outside this generation's range (${generation.year_start}–${generation.year_end || 'present'})` });
+    }
+    if (engineId) {
+      const engCheck = await client.query('SELECT id FROM vehicle_engines WHERE id = $1 AND generation_id = $2', [engineId, generationId]);
+      if (engCheck.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'fitment.engineId does not belong to the given generation' });
+      }
+    }
+    if (transmissionId) {
+      const transCheck = await client.query('SELECT id FROM vehicle_transmissions WHERE id = $1 AND generation_id = $2', [transmissionId, generationId]);
+      if (transCheck.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'fitment.transmissionId does not belong to the given generation' });
+      }
+    }
+
+    // ---- Create the product. `name` starts equal to the Chinese
+    // original (shown as-is until an admin approves a real translation
+    // — see PATCH /catalog/products/:id/moderate in the catalog module),
+    // not left NULL, since `name` is NOT NULL and real marketplaces
+    // commonly show the untranslated original in the interim rather than
+    // a blank placeholder. ----
     const id = `p_${Date.now()}`;
-    await db.query(
-      `INSERT INTO products (id, supplier_id, name, category, price, currency_code, stock_quantity, estimated_delivery_days, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'translating')`,
-      [id, req.user.supplierId, name, category, price, currencyCode, stockQuantity || 0, estimatedDeliveryDays || 7]
+    await client.query(
+      `INSERT INTO products
+         (id, supplier_id, name, name_zh, description, description_zh, category, part, position, oem_number,
+          price, currency_code, stock_quantity, estimated_delivery_days, status)
+       VALUES ($1, $2, $3, $3, NULL, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'translating')`,
+      [id, req.user.supplierId, nameZh, descriptionZh || null, category, part, position, oemNumber,
+        price, currencyCode, stockQuantity || 0, estimatedDeliveryDays || 7]
     );
+
+    await client.query(
+      `INSERT INTO product_fitment_entries (product_id, generation_id, year, engine_id, transmission_id) VALUES ($1, $2, $3, $4, $5)`,
+      [id, generationId, year, engineId || null, transmissionId || null]
+    );
+
+    for (let i = 0; i < images.length; i++) {
+      await client.query('INSERT INTO product_images (product_id, url, sort_order) VALUES ($1, $2, $3)', [id, images[i], i]);
+    }
+
+    await client.query('COMMIT');
     const { rows } = await db.query('SELECT * FROM products WHERE id = $1', [id]);
-    res.status(201).json(toProductDto(rows[0]));
+    res.status(201).json(await attachImagesAndFitment(toProductDto(rows[0])));
   } catch (err) {
+    await client.query('ROLLBACK');
     next(err);
+  } finally {
+    client.release();
   }
 });
 
@@ -150,7 +281,7 @@ router.patch('/me/products/:id', requireAuth, requireRole('supplier'), async (re
       [price ?? null, stockQuantity ?? null, req.params.id, req.user.supplierId]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
-    res.json(toProductDto(rows[0]));
+    res.json(await attachImagesAndFitment(toProductDto(rows[0])));
   } catch (err) {
     next(err);
   }

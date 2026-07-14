@@ -17,6 +17,8 @@ import {
   fetchMySupplierProfile, fetchMyProducts, createProduct, updateProduct,
   fetchMyOrders, updateSubOrder, fetchMyReturnCases, fetchMyReturnCaseById, replyToReturnCase,
   fetchMyOverview,
+  fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
+  uploadProductImage, API_BASE_URL,
 } from "./auth";
 
 /* ============================================================
@@ -503,6 +505,23 @@ const CATEGORY_OPTIONS = [
   { id: "lighting", zh: "照明系统", en: "Lighting" },
 ];
 
+// Matches the backend's ALLOWED_POSITIONS exactly (see
+// services/api/src/modules/supplier/routes.js) — a fixed, real list,
+// not free text, since "Position" means where on the vehicle the part
+// sits.
+const POSITION_OPTIONS = [
+  { id: "Front", zh: "前部", en: "Front" },
+  { id: "Rear", zh: "后部", en: "Rear" },
+  { id: "Left", zh: "左侧", en: "Left" },
+  { id: "Right", zh: "右侧", en: "Right" },
+  { id: "Front-Left", zh: "前左", en: "Front-Left" },
+  { id: "Front-Right", zh: "前右", en: "Front-Right" },
+  { id: "Rear-Left", zh: "后左", en: "Rear-Left" },
+  { id: "Rear-Right", zh: "后右", en: "Rear-Right" },
+  { id: "Universal", zh: "通用", en: "Universal" },
+];
+const MIN_PRODUCT_PHOTOS = 3;
+
 function AddProductForm({ onCancel, onCreated }) {
   const { t, lang } = useLang();
   const { onSessionExpired } = useSupplier();
@@ -510,27 +529,136 @@ function AddProductForm({ onCancel, onCreated }) {
   const font = useBodyFont();
   const inputStyle = useInputStyle();
 
-  const [name, setName] = useState("");
+  // Basic fields
+  const [nameZh, setNameZh] = useState("");
+  const [descriptionZh, setDescriptionZh] = useState("");
   const [category, setCategory] = useState(CATEGORY_OPTIONS[0].id);
+  const [part, setPart] = useState("");
+  const [position, setPosition] = useState(POSITION_OPTIONS[0].id);
+  const [oemNumber, setOemNumber] = useState("");
   const [price, setPrice] = useState("");
   const [stock, setStock] = useState("");
+
+  // Fitment cascade
+  const [brands, setBrands] = useState([]);
+  const [selectedBrandId, setSelectedBrandId] = useState("");
+  const [models, setModels] = useState([]);
+  const [selectedModelId, setSelectedModelId] = useState("");
+  const [generations, setGenerations] = useState([]);
+  const [selectedGenerationId, setSelectedGenerationId] = useState("");
+  const [selectedYear, setSelectedYear] = useState("");
+  const [engines, setEngines] = useState([]);
+  const [selectedEngineId, setSelectedEngineId] = useState("");
+  const [transmissions, setTransmissions] = useState([]);
+  const [selectedTransmissionId, setSelectedTransmissionId] = useState("");
+
+  // Photos
+  const [photos, setPhotos] = useState([]); // [{ url, width, height }]
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
+  useEffect(() => {
+    fetchBrands().then(setBrands).catch((e) => setError(e.message));
+  }, []);
+
+  const handleBrandChange = async (brandId) => {
+    setSelectedBrandId(brandId);
+    setSelectedModelId(""); setModels([]);
+    setSelectedGenerationId(""); setGenerations([]);
+    setSelectedYear(""); setSelectedEngineId(""); setEngines([]);
+    setSelectedTransmissionId(""); setTransmissions([]);
+    if (!brandId) return;
+    try {
+      setModels(await fetchModelsForBrand(brandId));
+    } catch (e) { setError(e.message); }
+  };
+
+  const handleModelChange = async (modelId) => {
+    setSelectedModelId(modelId);
+    setSelectedGenerationId(""); setGenerations([]);
+    setSelectedYear(""); setSelectedEngineId(""); setEngines([]);
+    setSelectedTransmissionId(""); setTransmissions([]);
+    if (!modelId) return;
+    try {
+      setGenerations(await fetchGenerationsForModel(modelId));
+    } catch (e) { setError(e.message); }
+  };
+
+  const handleGenerationChange = async (generationId) => {
+    setSelectedGenerationId(generationId);
+    setSelectedYear(""); setSelectedEngineId(""); setEngines([]);
+    setSelectedTransmissionId(""); setTransmissions([]);
+    if (!generationId) return;
+    try {
+      const [eng, trans] = await Promise.all([fetchEnginesForGeneration(generationId), fetchTransmissionsForGeneration(generationId)]);
+      setEngines(eng);
+      setTransmissions(trans);
+    } catch (e) { setError(e.message); }
+  };
+
+  const selectedGeneration = generations.find((g) => g.id === selectedGenerationId);
+  const yearOptions = selectedGeneration
+    ? Array.from(
+        { length: (selectedGeneration.yearEnd || new Date().getFullYear() + 1) - selectedGeneration.yearStart + 1 },
+        (_, i) => selectedGeneration.yearStart + i
+      )
+    : [];
+
+  const handlePhotoSelect = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = ""; // allow re-selecting the same file later
+    setIsUploadingPhoto(true);
+    setError(null);
+    for (const file of files) {
+      try {
+        const result = await uploadProductImage(getStoredToken(), file);
+        setPhotos((prev) => [...prev, result]);
+      } catch (err) {
+        setError(err.message);
+      }
+    }
+    setIsUploadingPhoto(false);
+  };
+
+  const removePhoto = (url) => setPhotos((prev) => prev.filter((p) => p.url !== url));
+
   const handleSubmit = async () => {
-    if (!name.trim() || !price) {
-      setError(lang === "zh" ? "请填写商品名称和价格" : "Please fill in the product name and price");
+    const missing = [];
+    if (!nameZh.trim()) missing.push(lang === "zh" ? "商品名称" : "product name");
+    if (!part.trim()) missing.push(lang === "zh" ? "部件类型" : "part");
+    if (!oemNumber.trim()) missing.push(lang === "zh" ? "OEM 编号" : "OEM number");
+    if (!price) missing.push(lang === "zh" ? "价格" : "price");
+    if (!selectedGenerationId) missing.push(lang === "zh" ? "车型世代" : "vehicle generation");
+    if (!selectedYear) missing.push(lang === "zh" ? "年份" : "year");
+    if (photos.length < MIN_PRODUCT_PHOTOS) missing.push(lang === "zh" ? `至少 ${MIN_PRODUCT_PHOTOS} 张照片` : `at least ${MIN_PRODUCT_PHOTOS} photos`);
+
+    if (missing.length > 0) {
+      setError((lang === "zh" ? "请填写：" : "Please fill in: ") + missing.join(lang === "zh" ? "、" : ", "));
       return;
     }
+
     setIsSubmitting(true);
     setError(null);
     try {
       await createProduct(getStoredToken(), {
-        name: name.trim(),
+        nameZh: nameZh.trim(),
+        descriptionZh: descriptionZh.trim() || undefined,
         category,
+        part: part.trim(),
+        position,
+        oemNumber: oemNumber.trim(),
         price: parseFloat(price),
         currencyCode: "USD",
         stockQuantity: parseInt(stock, 10) || 0,
+        fitment: {
+          generationId: selectedGenerationId,
+          year: parseInt(selectedYear, 10),
+          engineId: selectedEngineId || undefined,
+          transmissionId: selectedTransmissionId || undefined,
+        },
+        images: photos.map((p) => p.url),
       });
       onCreated();
     } catch (err) {
@@ -540,23 +668,132 @@ function AddProductForm({ onCancel, onCreated }) {
     }
   };
 
+  const selectStyle = { ...inputStyle };
+  const cascadeLabel = (zh, en) => (lang === "zh" ? zh : en);
+
   return (
     <Card title={f.title} action={<button onClick={onCancel} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={17} color={C.muted} /></button>}>
-      <div style={{ padding: 20, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <Field label={f.nameLabel}><input style={inputStyle} placeholder={f.namePlaceholder} value={name} onChange={(e) => setName(e.target.value)} /></Field>
-        <Field label={f.categoryLabel}>
-          <select style={inputStyle} value={category} onChange={(e) => setCategory(e.target.value)}>
-            {CATEGORY_OPTIONS.map(c => <option key={c.id} value={c.id}>{c[lang]}</option>)}
-          </select>
-        </Field>
-        <Field label={f.priceLabel}><input type="number" step="0.01" style={inputStyle} placeholder="0.00" value={price} onChange={(e) => setPrice(e.target.value)} /></Field>
-        <Field label={f.stockLabel}><input type="number" style={inputStyle} placeholder="0" value={stock} onChange={(e) => setStock(e.target.value)} /></Field>
-        <div style={{ gridColumn: "1 / -1", ...font, fontSize: 11.5, color: C.muted, background: C.canvas, borderRadius: 8, padding: 10 }}>
-          {lang === "zh"
-            ? "OEM 编号、适配车型、商品描述和图片字段暂未接入后端存储，因此未在此表单中显示 —— 显示但不保存的字段会造成误导。"
-            : "OEM number, fitment, description, and image fields aren't wired to backend storage yet, so they're left out of this form rather than shown but silently discarded."}
+      <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 20 }}>
+
+        {/* ---- Basic info ---- */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <Field label={cascadeLabel("商品名称（中文）", "Product name (Chinese)")}>
+            <input style={inputStyle} placeholder="例如：前刹车盘 300mm" value={nameZh} onChange={(e) => setNameZh(e.target.value)} />
+          </Field>
+          <Field label={cascadeLabel("类别", "Category")}>
+            <select style={selectStyle} value={category} onChange={(e) => setCategory(e.target.value)}>
+              {CATEGORY_OPTIONS.map(c => <option key={c.id} value={c.id}>{c[lang]}</option>)}
+            </select>
+          </Field>
+          <Field label={cascadeLabel("部件类型", "Part")}>
+            <input style={inputStyle} placeholder={cascadeLabel("例如：前刹车盘", "e.g. Front Brake Disc")} value={part} onChange={(e) => setPart(e.target.value)} />
+          </Field>
+          <Field label={cascadeLabel("安装位置", "Position")}>
+            <select style={selectStyle} value={position} onChange={(e) => setPosition(e.target.value)}>
+              {POSITION_OPTIONS.map(p => <option key={p.id} value={p.id}>{p[lang]}</option>)}
+            </select>
+          </Field>
+          <Field label={cascadeLabel("OEM 编号", "OEM Number")}>
+            <input style={inputStyle} placeholder="e.g. 34116792217" value={oemNumber} onChange={(e) => setOemNumber(e.target.value)} />
+          </Field>
+          <Field label={cascadeLabel("价格 (USD)", "Price (USD)")}>
+            <input type="number" step="0.01" style={inputStyle} placeholder="0.00" value={price} onChange={(e) => setPrice(e.target.value)} />
+          </Field>
+          <Field label={cascadeLabel("库存数量", "Stock quantity")}>
+            <input type="number" style={inputStyle} placeholder="0" value={stock} onChange={(e) => setStock(e.target.value)} />
+          </Field>
+          <div />
+          <div style={{ gridColumn: "1 / -1" }}>
+            <Field label={cascadeLabel("商品描述（中文，选填）", "Description (Chinese, optional)")}>
+              <textarea style={{ ...inputStyle, height: 70, resize: "none" }} value={descriptionZh} onChange={(e) => setDescriptionZh(e.target.value)} />
+            </Field>
+          </div>
         </div>
-        {error && <div style={{ gridColumn: "1 / -1", ...font, fontSize: 12, color: C.red, background: "#FBE7E5", borderRadius: 8, padding: 10 }}>{error}</div>}
+
+        {/* ---- Fitment cascade ---- */}
+        <div>
+          <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 10 }}>
+            {cascadeLabel("适配车型", "Vehicle Fitment")}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+            <Field label={cascadeLabel("品牌", "Brand")}>
+              <select style={selectStyle} value={selectedBrandId} onChange={(e) => handleBrandChange(e.target.value)}>
+                <option value="">{cascadeLabel("请选择", "Select…")}</option>
+                {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </Field>
+            <Field label={cascadeLabel("车型", "Model")}>
+              <select style={selectStyle} value={selectedModelId} onChange={(e) => handleModelChange(e.target.value)} disabled={!selectedBrandId}>
+                <option value="">{cascadeLabel("请选择", "Select…")}</option>
+                {models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </Field>
+            <Field label={cascadeLabel("世代", "Generation")}>
+              <select style={selectStyle} value={selectedGenerationId} onChange={(e) => handleGenerationChange(e.target.value)} disabled={!selectedModelId}>
+                <option value="">{cascadeLabel("请选择", "Select…")}</option>
+                {generations.map(g => <option key={g.id} value={g.id}>{g.name} ({g.yearStart}–{g.yearEnd || cascadeLabel("至今", "present")})</option>)}
+              </select>
+            </Field>
+            <Field label={cascadeLabel("年份", "Year")}>
+              <select style={selectStyle} value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} disabled={!selectedGenerationId}>
+                <option value="">{cascadeLabel("请选择", "Select…")}</option>
+                {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </Field>
+            <Field label={cascadeLabel("发动机（选填）", "Engine (optional)")}>
+              <select style={selectStyle} value={selectedEngineId} onChange={(e) => setSelectedEngineId(e.target.value)} disabled={!selectedGenerationId}>
+                <option value="">{cascadeLabel("任意发动机", "Any engine")}</option>
+                {engines.map(en => <option key={en.id} value={en.id}>{en.name}</option>)}
+              </select>
+            </Field>
+            <Field label={cascadeLabel("变速箱（选填）", "Transmission (optional)")}>
+              <select style={selectStyle} value={selectedTransmissionId} onChange={(e) => setSelectedTransmissionId(e.target.value)} disabled={!selectedGenerationId}>
+                <option value="">{cascadeLabel("任意变速箱", "Any transmission")}</option>
+                {transmissions.map(tr => <option key={tr.id} value={tr.id}>{tr.name}</option>)}
+              </select>
+            </Field>
+          </div>
+        </div>
+
+        {/* ---- Photos ---- */}
+        <div>
+          <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 4 }}>
+            {cascadeLabel(`商品照片（至少 ${MIN_PRODUCT_PHOTOS} 张，高清）`, `Product Photos (at least ${MIN_PRODUCT_PHOTOS}, high resolution)`)}
+          </div>
+          <div style={{ ...font, fontSize: 11, color: C.muted, marginBottom: 10 }}>
+            {cascadeLabel("最短边至少 800 像素。", "Shortest side must be at least 800px.")}
+          </div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {photos.map((p) => (
+              <div key={p.url} style={{ position: "relative", width: 84, height: 84 }}>
+                <img src={`${API_BASE_URL}${p.url}`} alt="" style={{ width: 84, height: 84, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.line}` }} />
+                <button
+                  onClick={() => removePhoto(p.url)}
+                  style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", border: "none", background: C.red, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+            <label style={{
+              width: 84, height: 84, borderRadius: 8, border: `1.5px dashed ${C.line}`, display: "flex",
+              flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, cursor: "pointer", color: C.muted,
+            }}>
+              {isUploadingPhoto ? <span style={{ fontSize: 11 }}>...</span> : <ImagePlus size={20} />}
+              <span style={{ fontSize: 10 }}>{cascadeLabel("添加", "Add")}</span>
+              <input type="file" accept="image/jpeg,image/png,image/webp" multiple style={{ display: "none" }} onChange={handlePhotoSelect} disabled={isUploadingPhoto} />
+            </label>
+          </div>
+        </div>
+
+        <div style={{ ...font, fontSize: 11, color: C.muted, background: C.canvas, borderRadius: 8, padding: 10 }}>
+          {cascadeLabel(
+            "提交后商品状态为「翻译审核中」。Leap 团队将审核并提供英文翻译后方可上架销售。",
+            "After submitting, this listing is 'awaiting translation'. The Leap team will review and provide the English translation before it goes live to buyers."
+          )}
+        </div>
+
+        {error && <div style={{ ...font, fontSize: 12, color: C.red, background: "#FBE7E5", borderRadius: 8, padding: 10 }}>{error}</div>}
       </div>
       <div style={{ padding: "0 20px 20px", display: "flex", gap: 10, justifyContent: "flex-end" }}>
         <button onClick={onCancel} style={{ ...font, padding: "10px 18px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{f.cancel}</button>

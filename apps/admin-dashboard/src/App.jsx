@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from "react";
 import LoginPage from "./LoginPage";
-import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, verifySupplier, fetchModerationQueue, moderateProduct, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, SessionExpiredError } from "./auth";
+import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, verifySupplier, fetchModerationQueue, moderateProduct, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
+  fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
+  createBrand, deleteBrand, createModel, deleteModel, createGeneration, deleteGeneration, createEngine, deleteEngine, createTransmission, deleteTransmission,
+} from "./auth";
 import {
   LayoutGrid, ShoppingBag, Store, PackageSearch, Wallet, LifeBuoy, Settings,
   Search, Bell, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Truck,
@@ -618,6 +621,9 @@ function ModerationPage({ onSessionExpired }) {
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
   const [actioningId, setActioningId] = useState(null);
+  const [reviewingId, setReviewingId] = useState(null); // which item has the translation panel open
+  const [nameEn, setNameEn] = useState("");
+  const [descriptionEn, setDescriptionEn] = useState("");
 
   const load = () => {
     setLoadState("loading");
@@ -631,10 +637,35 @@ function ModerationPage({ onSessionExpired }) {
   };
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleModerate = async (productId, action) => {
+  const openReview = (m) => {
+    setReviewingId(m.id);
+    setNameEn(m.nameZh || "");
+    setDescriptionEn(m.descriptionZh || "");
+  };
+  const cancelReview = () => { setReviewingId(null); setNameEn(""); setDescriptionEn(""); };
+
+  const confirmApproval = async (productId) => {
+    if (!nameEn.trim()) {
+      setErrorMessage("Enter the reviewed English name before approving.");
+      return;
+    }
     setActioningId(productId);
     try {
-      await moderateProduct(getStoredToken(), productId, action);
+      await moderateProduct(getStoredToken(), productId, "approve", { nameEn: nameEn.trim(), descriptionEn: descriptionEn.trim() || undefined });
+      cancelReview();
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  const handleReject = async (productId) => {
+    setActioningId(productId);
+    try {
+      await moderateProduct(getStoredToken(), productId, "reject");
       load();
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
@@ -653,38 +684,301 @@ function ModerationPage({ onSessionExpired }) {
         {loadState === "ready" && queue.length === 0 && (
           <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Nothing awaiting review right now.</div></Card>
         )}
-        {loadState === "ready" && queue.map(m => (
-          <Card key={m.id}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: 16 }}>
-              <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-                <div style={{ width: 44, height: 44, borderRadius: 9, background: C.canvas, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <PackageSearch size={19} color={C.ink} />
-                </div>
-                <div>
-                  <div style={{ ...body, fontWeight: 700, fontSize: 13.5, color: C.ink }}>{m.name}</div>
-                  <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2 }}>{m.supplierName} · {m.category} · submitted {new Date(m.submittedAt).toLocaleDateString()}</div>
-                  {m.flags.length > 0 && (
-                    <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                      {m.flags.map(f => <Badge key={f} label={f} color={C.amber} bg={C.amberBg} />)}
+        {loadState === "ready" && queue.map(m => {
+          const isReviewing = reviewingId === m.id;
+          return (
+            <Card key={m.id}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: 16 }}>
+                <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+                  {m.images && m.images.length > 0 ? (
+                    <img src={`${API_BASE_URL}${m.images[0]}`} alt="" style={{ width: 44, height: 44, borderRadius: 9, objectFit: "cover", border: `1px solid ${C.line}` }} />
+                  ) : (
+                    <div style={{ width: 44, height: 44, borderRadius: 9, background: C.canvas, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <PackageSearch size={19} color={C.ink} />
                     </div>
                   )}
+                  <div>
+                    <div style={{ ...body, fontWeight: 700, fontSize: 13.5, color: C.ink }}>{m.nameZh || m.name}</div>
+                    <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2 }}>
+                      {m.supplierName} · {m.category} · {m.part} · {m.position} · OEM {m.oemNumber} · submitted {new Date(m.submittedAt).toLocaleDateString()}
+                    </div>
+                    {m.flags.length > 0 && (
+                      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                        {m.flags.map(f => <Badge key={f} label={f} color={C.amber} bg={C.amberBg} />)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {!isReviewing && (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      disabled={actioningId === m.id}
+                      onClick={() => openReview(m)}
+                      style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: C.gaugeBg, color: C.gauge, fontSize: 12.5, fontWeight: 700, cursor: actioningId === m.id ? "default" : "pointer", opacity: actioningId === m.id ? 0.5 : 1 }}
+                    ><Check size={13} />Review &amp; Approve</button>
+                    <button
+                      disabled={actioningId === m.id}
+                      onClick={() => handleReject(m.id)}
+                      style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: C.redBg, color: C.red, fontSize: 12.5, fontWeight: 700, cursor: actioningId === m.id ? "default" : "pointer", opacity: actioningId === m.id ? 0.5 : 1 }}
+                    ><X size={13} />Reject</button>
+                  </div>
+                )}
+              </div>
+
+              {isReviewing && (
+                <div style={{ padding: "0 16px 16px" }}>
+                  <div style={{ background: C.canvas, borderRadius: 10, padding: 16 }}>
+                    {m.images && m.images.length > 0 && (
+                      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                        {m.images.map((url, i) => (
+                          <img key={i} src={`${API_BASE_URL}${url}`} alt="" style={{ width: 64, height: 64, borderRadius: 8, objectFit: "cover", border: `1px solid ${C.line}` }} />
+                        ))}
+                      </div>
+                    )}
+                    {m.descriptionZh && (
+                      <div style={{ ...body, fontSize: 12, color: C.muted, marginBottom: 12 }}>
+                        <strong>Original (Chinese):</strong> {m.descriptionZh}
+                      </div>
+                    )}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <div>
+                        <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 5 }}>English name (required to approve)</div>
+                        <input
+                          value={nameEn}
+                          onChange={(e) => setNameEn(e.target.value)}
+                          style={{ ...body, width: "100%", border: `1px solid ${C.line}`, borderRadius: 8, padding: "9px 11px", fontSize: 13, boxSizing: "border-box" }}
+                        />
+                      </div>
+                      <div>
+                        <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 5 }}>English description (optional)</div>
+                        <input
+                          value={descriptionEn}
+                          onChange={(e) => setDescriptionEn(e.target.value)}
+                          style={{ ...body, width: "100%", border: `1px solid ${C.line}`, borderRadius: 8, padding: "9px 11px", fontSize: 13, boxSizing: "border-box" }}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
+                      <button onClick={cancelReview} style={{ ...body, padding: "9px 16px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+                      <button
+                        disabled={actioningId === m.id}
+                        onClick={() => confirmApproval(m.id)}
+                        style={{ ...body, padding: "9px 16px", borderRadius: 8, border: "none", background: actioningId === m.id ? "#D1D5DB" : C.gauge, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: actioningId === m.id ? "default" : "pointer" }}
+                      >{actioningId === m.id ? "Approving…" : "Confirm Approval"}</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Real, admin-only management of the Brand->Model->Generation->Engine/
+// Transmission cascade the structured supplier product-submission form
+// depends on. Without this, that cascade could only ever contain
+// whatever was hardcoded into db/seed.js — an admin can now add (or
+// remove) a brand/model/generation/engine/transmission directly.
+//
+// Drill-down navigation (Brands -> Models -> Generations -> Engines &
+// Transmissions) with breadcrumbs, rather than one giant flat page —
+// matches how deep the real cascade actually is.
+function VehicleDataPage({ onSessionExpired }) {
+  const [brands, setBrands] = useState([]);
+  const [selectedBrand, setSelectedBrand] = useState(null);
+  const [models, setModels] = useState([]);
+  const [selectedModel, setSelectedModel] = useState(null);
+  const [generations, setGenerations] = useState([]);
+  const [selectedGeneration, setSelectedGeneration] = useState(null);
+  const [engines, setEngines] = useState([]);
+  const [transmissions, setTransmissions] = useState([]);
+
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [newName, setNewName] = useState("");
+  const [newYearStart, setNewYearStart] = useState("");
+  const [newYearEnd, setNewYearEnd] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const loadBrands = () => {
+    setLoadState("loading");
+    fetchBrands().then((b) => { setBrands(b); setLoadState("ready"); }).catch((e) => { setErrorMessage(e.message); setLoadState("error"); });
+  };
+  useEffect(loadBrands, []);
+
+  const openBrand = (brand) => {
+    setSelectedBrand(brand); setSelectedModel(null); setSelectedGeneration(null);
+    setNewName(""); setErrorMessage(null);
+    fetchModelsForBrand(brand.id).then(setModels).catch((e) => setErrorMessage(e.message));
+  };
+  const openModel = (model) => {
+    setSelectedModel(model); setSelectedGeneration(null);
+    setNewName(""); setErrorMessage(null);
+    fetchGenerationsForModel(model.id).then(setGenerations).catch((e) => setErrorMessage(e.message));
+  };
+  const openGeneration = (generation) => {
+    setSelectedGeneration(generation);
+    setNewName(""); setErrorMessage(null);
+    Promise.all([fetchEnginesForGeneration(generation.id), fetchTransmissionsForGeneration(generation.id)])
+      .then(([eng, trans]) => { setEngines(eng); setTransmissions(trans); })
+      .catch((e) => setErrorMessage(e.message));
+  };
+
+  const backToBrands = () => { setSelectedBrand(null); setSelectedModel(null); setSelectedGeneration(null); setErrorMessage(null); };
+  const backToModels = () => { setSelectedModel(null); setSelectedGeneration(null); setErrorMessage(null); };
+  const backToGenerations = () => { setSelectedGeneration(null); setErrorMessage(null); };
+
+  const handleAdd = async (kind) => {
+    if (!newName.trim()) { setErrorMessage("Name is required."); return; }
+    if (kind === "generation" && !newYearStart) { setErrorMessage("Start year is required."); return; }
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    try {
+      const token = getStoredToken();
+      if (kind === "brand") {
+        await createBrand(token, newName.trim());
+        loadBrands();
+      } else if (kind === "model") {
+        await createModel(token, selectedBrand.id, newName.trim());
+        openBrand(selectedBrand);
+      } else if (kind === "generation") {
+        await createGeneration(token, selectedModel.id, newName.trim(), parseInt(newYearStart, 10), newYearEnd ? parseInt(newYearEnd, 10) : undefined);
+        openModel(selectedModel);
+      } else if (kind === "engine") {
+        await createEngine(token, selectedGeneration.id, newName.trim());
+        openGeneration(selectedGeneration);
+      } else if (kind === "transmission") {
+        await createTransmission(token, selectedGeneration.id, newName.trim());
+        openGeneration(selectedGeneration);
+      }
+      setNewName(""); setNewYearStart(""); setNewYearEnd("");
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (kind, id) => {
+    try {
+      const token = getStoredToken();
+      if (kind === "brand") { await deleteBrand(token, id); loadBrands(); }
+      else if (kind === "model") { await deleteModel(token, id); openBrand(selectedBrand); }
+      else if (kind === "generation") { await deleteGeneration(token, id); openModel(selectedModel); }
+      else if (kind === "engine") { await deleteEngine(token, id); openGeneration(selectedGeneration); }
+      else if (kind === "transmission") { await deleteTransmission(token, id); openGeneration(selectedGeneration); }
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message); // e.g. the real 409 "products reference this" message
+    }
+  };
+
+  const breadcrumb = (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, ...body, fontSize: 12.5, color: C.muted, marginBottom: 14 }}>
+      <span onClick={backToBrands} style={{ cursor: selectedBrand ? "pointer" : "default", fontWeight: selectedBrand ? 400 : 700, color: selectedBrand ? C.muted : C.ink }}>Brands</span>
+      {selectedBrand && <>
+        <ChevronRight size={12} />
+        <span onClick={backToModels} style={{ cursor: selectedModel ? "pointer" : "default", fontWeight: selectedModel ? 400 : 700, color: selectedModel ? C.muted : C.ink }}>{selectedBrand.name}</span>
+      </>}
+      {selectedModel && <>
+        <ChevronRight size={12} />
+        <span onClick={backToGenerations} style={{ cursor: selectedGeneration ? "pointer" : "default", fontWeight: selectedGeneration ? 400 : 700, color: selectedGeneration ? C.muted : C.ink }}>{selectedModel.name}</span>
+      </>}
+      {selectedGeneration && <>
+        <ChevronRight size={12} />
+        <span style={{ fontWeight: 700, color: C.ink }}>{selectedGeneration.name}</span>
+      </>}
+    </div>
+  );
+
+  const addRow = (kind, placeholder, showYears) => (
+    <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+      <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={placeholder} style={{ ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+      {showYears && <>
+        <input value={newYearStart} onChange={(e) => setNewYearStart(e.target.value)} placeholder="Start year" type="number" style={{ ...body, width: 100, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+        <input value={newYearEnd} onChange={(e) => setNewYearEnd(e.target.value)} placeholder="End year (optional)" type="number" style={{ ...body, width: 140, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+      </>}
+      <button disabled={isSubmitting} onClick={() => handleAdd(kind)} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
+        <Check size={13} /> Add
+      </button>
+    </div>
+  );
+
+  const listRow = (label, sub, onOpen, onDelete) => (
+    <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderBottom: `1px solid ${C.line}` }}>
+      <div onClick={onOpen} style={{ cursor: onOpen ? "pointer" : "default", flex: 1 }}>
+        <span style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>{label}</span>
+        {sub && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }}>{sub}</span>}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {onOpen && <ChevronRight size={14} color={C.muted} onClick={onOpen} style={{ cursor: "pointer" }} />}
+        <button onClick={onDelete} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={14} color={C.red} /></button>
+      </div>
+    </div>
+  );
+
+  if (loadState === "loading") {
+    return <div><TopBar title="Vehicle Data" subtitle="Loading…" /><div style={{ padding: 24 }}><Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading…</div></Card></div></div>;
+  }
+  if (loadState === "error" && !selectedBrand) {
+    return <div><TopBar title="Vehicle Data" subtitle="" /><div style={{ padding: 24 }}><Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>{errorMessage}</div></Card></div></div>;
+  }
+
+  return (
+    <div>
+      <TopBar title="Vehicle Data" subtitle="Manage the Brand → Model → Generation → Engine/Transmission cascade the supplier product form uses" />
+      <div style={{ padding: 24 }}>
+        <Card>
+          <div style={{ padding: 18 }}>
+            {breadcrumb}
+            {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: "#FBE7E5", borderRadius: 8, padding: 10, marginBottom: 14 }}>{errorMessage}</div>}
+
+            {!selectedBrand && (
+              <>
+                {addRow("brand", "New brand name (e.g. Nissan)", false)}
+                {brands.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No brands yet.</div>}
+                {brands.map((b) => listRow(b.name, null, () => openBrand(b), () => handleDelete("brand", b.id)))}
+              </>
+            )}
+
+            {selectedBrand && !selectedModel && (
+              <>
+                {addRow("model", `New model under ${selectedBrand.name} (e.g. Focus)`, false)}
+                {models.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No models yet.</div>}
+                {models.map((m) => listRow(m.name, null, () => openModel(m), () => handleDelete("model", m.id)))}
+              </>
+            )}
+
+            {selectedModel && !selectedGeneration && (
+              <>
+                {addRow("generation", `New generation under ${selectedModel.name} (e.g. Mk4)`, true)}
+                {generations.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No generations yet.</div>}
+                {generations.map((g) => listRow(g.name, `${g.yearStart}–${g.yearEnd || "present"}`, () => openGeneration(g), () => handleDelete("generation", g.id)))}
+              </>
+            )}
+
+            {selectedGeneration && (
+              <div style={{ display: "flex", gap: 20 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.ink, marginBottom: 8 }}>Engines</div>
+                  {addRow("engine", "e.g. 1.0L EcoBoost", false)}
+                  {engines.length === 0 && <div style={{ ...body, fontSize: 12, color: C.muted, padding: 8 }}>None yet.</div>}
+                  {engines.map((e) => listRow(e.name, null, null, () => handleDelete("engine", e.id)))}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.ink, marginBottom: 8 }}>Transmissions</div>
+                  {addRow("transmission", "e.g. 6-Speed Manual", false)}
+                  {transmissions.length === 0 && <div style={{ ...body, fontSize: 12, color: C.muted, padding: 8 }}>None yet.</div>}
+                  {transmissions.map((t) => listRow(t.name, null, null, () => handleDelete("transmission", t.id)))}
                 </div>
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  disabled={actioningId === m.id}
-                  onClick={() => handleModerate(m.id, "approve")}
-                  style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: C.gaugeBg, color: C.gauge, fontSize: 12.5, fontWeight: 700, cursor: actioningId === m.id ? "default" : "pointer", opacity: actioningId === m.id ? 0.5 : 1 }}
-                ><Check size={13} />Approve</button>
-                <button
-                  disabled={actioningId === m.id}
-                  onClick={() => handleModerate(m.id, "reject")}
-                  style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: C.redBg, color: C.red, fontSize: 12.5, fontWeight: 700, cursor: actioningId === m.id ? "default" : "pointer", opacity: actioningId === m.id ? 0.5 : 1 }}
-                ><X size={13} />Reject</button>
-              </div>
-            </div>
-          </Card>
-        ))}
+            )}
+          </div>
+        </Card>
       </div>
     </div>
   );
@@ -1187,6 +1481,7 @@ const NAV = [
   { id: "suppliers", label: "Suppliers", icon: Store },
   { id: "moderation", label: "Moderation", icon: PackageSearch },
   { id: "returns", label: "Returns", icon: RotateCcw },
+  { id: "vehicleData", label: "Vehicle Data", icon: Truck },
   { id: "payouts", label: "Payouts", icon: Wallet },
   { id: "tickets", label: "Support", icon: LifeBuoy },
   { id: "settings", label: "Settings", icon: Settings },
@@ -1207,6 +1502,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   else if (page === "suppliers") content = <SuppliersPage onSessionExpired={onLogout} />;
   else if (page === "moderation") content = <ModerationPage onSessionExpired={onLogout} />;
   else if (page === "returns") content = <ReturnsPage onOpenCase={setOpenCase} onSessionExpired={onLogout} />;
+  else if (page === "vehicleData") content = <VehicleDataPage onSessionExpired={onLogout} />;
   else if (page === "payouts") content = <PayoutsPage />;
   else if (page === "tickets") content = <TicketsPage onOpenTicket={setOpenTicket} onSessionExpired={onLogout} />;
   else if (page === "settings") content = <SettingsPage />;

@@ -79,11 +79,11 @@ export function fetchModerationQueue(token) {
   return authedGet("/catalog/moderation-queue", token);
 }
 
-export async function moderateProduct(token, productId, action) {
+export async function moderateProduct(token, productId, action, translation = {}) {
   const response = await fetch(`${API_BASE_URL}/catalog/products/${productId}/moderate`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ action }),
+    body: JSON.stringify({ action, nameEn: translation.nameEn, descriptionEn: translation.descriptionEn }),
   });
   if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
   const data = await response.json();
@@ -158,3 +158,57 @@ export async function verifySupplier(token, supplierId, status) {
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
   return data;
 }
+
+// ---------------- Fitment cascade management (Brand -> Model -> Generation -> Engine/Transmission) ----------------
+// GETs are public (no auth needed to browse), but every write below is admin-only.
+
+export async function fetchBrands() {
+  const response = await fetch(`${API_BASE_URL}/fitment/brands`);
+  if (!response.ok) throw new Error(`Failed to load brands (${response.status})`);
+  return response.json();
+}
+export async function fetchModelsForBrand(brandId) {
+  const response = await fetch(`${API_BASE_URL}/fitment/brands/${brandId}/models`);
+  if (!response.ok) throw new Error(`Failed to load models (${response.status})`);
+  return response.json();
+}
+export async function fetchGenerationsForModel(modelId) {
+  const response = await fetch(`${API_BASE_URL}/fitment/models/${modelId}/generations`);
+  if (!response.ok) throw new Error(`Failed to load generations (${response.status})`);
+  return response.json();
+}
+export async function fetchEnginesForGeneration(generationId) {
+  const response = await fetch(`${API_BASE_URL}/fitment/generations/${generationId}/engines`);
+  if (!response.ok) throw new Error(`Failed to load engines (${response.status})`);
+  return response.json();
+}
+export async function fetchTransmissionsForGeneration(generationId) {
+  const response = await fetch(`${API_BASE_URL}/fitment/generations/${generationId}/transmissions`);
+  if (!response.ok) throw new Error(`Failed to load transmissions (${response.status})`);
+  return response.json();
+}
+
+async function fitmentMutate(method, path, token, body) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method,
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (response.status === 204) return null;
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
+export const createBrand = (token, name) => fitmentMutate("POST", "/fitment/brands", token, { name });
+export const deleteBrand = (token, id) => fitmentMutate("DELETE", `/fitment/brands/${id}`, token);
+export const createModel = (token, brandId, name) => fitmentMutate("POST", `/fitment/brands/${brandId}/models`, token, { name });
+export const deleteModel = (token, id) => fitmentMutate("DELETE", `/fitment/models/${id}`, token);
+export const createGeneration = (token, modelId, name, yearStart, yearEnd) =>
+  fitmentMutate("POST", `/fitment/models/${modelId}/generations`, token, { name, yearStart, yearEnd });
+export const deleteGeneration = (token, id) => fitmentMutate("DELETE", `/fitment/generations/${id}`, token);
+export const createEngine = (token, generationId, name) => fitmentMutate("POST", `/fitment/generations/${generationId}/engines`, token, { name });
+export const deleteEngine = (token, id) => fitmentMutate("DELETE", `/fitment/engines/${id}`, token);
+export const createTransmission = (token, generationId, name) => fitmentMutate("POST", `/fitment/generations/${generationId}/transmissions`, token, { name });
+export const deleteTransmission = (token, id) => fitmentMutate("DELETE", `/fitment/transmissions/${id}`, token);

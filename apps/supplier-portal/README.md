@@ -7,11 +7,14 @@ Real React (Vite) project for the Chinese supplier tool. See
 
 This is the reference prototype (`docs/prototypes/leap_supplier_portal_prototype.jsx`)
 dropped in as `src/App.jsx`, confirmed to **build successfully**, and now
-has **real authentication, a real Products page, real order fulfillment**
-(view + status/tracking updates), **real return/dispute case handling,
-and a real Overview page** — the supplier side of the three-party
-marketplace is no longer just a disconnected mock. Messages, Finance, and
-Settings (partially) are still mock data.
+has **real authentication, a fully structured Products submission flow**
+(cascading Brand->Model->Generation->Engine/Transmission fitment, mandatory
+photo upload with real resolution checks, Chinese-language submission with
+admin translation approval), **real order fulfillment** (view +
+status/tracking updates), **real return/dispute case handling, and a real
+Overview page** — the supplier side of the three-party marketplace is no
+longer just a disconnected mock. Messages, Finance, and Settings
+(partially) are still mock data.
 The working 中文/EN language toggle (bilingual `STRINGS` dictionary
 pattern) is preserved throughout, including on the new login screen.
 
@@ -91,23 +94,50 @@ dashboard's Overview page (see `services/api/README.md`).
 
 - `GET /supplier/me/products` — only this supplier's own products, scoped
   server-side (not just filtered in the UI) via `WHERE supplier_id = ...`.
-- New product form (`AddProductForm`) submits to `POST /supplier/me/products`.
-  New listings start in `translating` status — **a supplier cannot make
-  their own product live to buyers without going through admin moderation
-  first** (the same moderation queue built into the admin dashboard).
-  Verified end-to-end: a product created here actually shows up in the
-  admin's real moderation queue.
 - `PATCH /supplier/me/products/:id` — edit price/stock. Ownership is
   enforced by the `WHERE` clause itself, not a lookup-then-check — trying
   to edit another supplier's product returns 404 (not 403), the same
   "don't confirm it exists" behavior used elsewhere in this codebase.
-- **Fields dropped from the original mock form**: OEM number, fitment,
-  description, and image upload. None of these are wired to real backend
-  storage yet, and a form that visually accepts input it silently discards
-  would be misleading — there's a note in the form itself explaining this,
-  and category options were changed to match the mobile app's real
-  category IDs (`brake`, `engine`, `electrical`, `filters`, `suspension`,
-  `lighting`) so a product added here shows up correctly there.
+
+### Structured product submission (this pass)
+
+`AddProductForm` was rebuilt from scratch to match the real required
+submission flow — everything the earlier version's form explicitly
+noted as "dropped because backend storage isn't wired" is now real:
+
+- **Cascading fitment picker**: Brand -> Model -> Generation -> Year ->
+  Engine (optional) -> Transmission (optional), each level fetched live
+  from the real reference cascade (`GET /fitment/brands` etc. — see
+  `services/api/README.md`'s dedicated section on this feature) as the
+  supplier makes each selection. Engine/transmission options are scoped
+  to the chosen generation, not shown as one giant flat list.
+- **Category / Part / Position / OEM Number**: Category and Position are
+  real fixed lists (matching the backend's `ALLOWED_CATEGORIES` and
+  `ALLOWED_POSITIONS` exactly) — not free text pretending to be
+  structured. Part and OEM Number are free text (a curated Part-name
+  reference list per category would be a reasonable future enhancement,
+  not built here).
+- **Mandatory photos**: a real file picker uploads each selected image
+  immediately via `POST /uploads/product-image`, shows a live thumbnail
+  preview with a remove button, and the submit button's own validation
+  blocks submission with fewer than 3. The backend independently enforces
+  the same "at least 3" rule — this isn't just a frontend nicety a
+  crafted request could bypass.
+- **Chinese submission**: the form collects `nameZh`/`descriptionZh`
+  directly (this portal's whole premise is Chinese-language suppliers).
+  A note in the form tells the supplier plainly what happens next —
+  the listing is "awaiting translation" until the Leap team reviews and
+  approves it, matching the real admin-side workflow (see the admin
+  dashboard's Moderation page section for the other half of this).
+- **Verified end-to-end against the real backend**: uploaded real images
+  (including one deliberately too small, to confirm the resolution
+  check genuinely rejects it — not just documented as a rule), created a
+  full submission with a real fitment claim, confirmed it appears
+  correctly in the admin's moderation queue with the Chinese original and
+  photos intact, confirmed an admin cannot approve it without providing
+  an English translation, approved it with one, and confirmed buyers then
+  see the real English name — not the Chinese original — via a completely
+  separate request. See `src/productSubmission.integration.test.js`.
 
 ## Order fulfillment (SUP-020–022)
 
@@ -174,7 +204,7 @@ npm run dev       # http://localhost:5173
 npm test
 ```
 
-Five test files, 29 tests total, all passing:
+Six test files, 35 tests total, all passing:
 - `src/supplierPortal.integration.test.js` (10, REAL backend, no mocking):
   login with a real supplier JWT including `supplierId`, a buyer account
   correctly rejected from supplier endpoints, products scoped to only this
@@ -208,10 +238,26 @@ Five test files, 29 tests total, all passing:
   real counts on login (Overview is the default landing page) and
   confirms the old fabricated figures (`¥78,250`, `4.6`) are completely
   gone; renders real recent-order and top-product data.
+- `src/productSubmission.integration.test.js` (6, REAL backend, uploads
+  genuinely constructed test images — not mocked file objects — to
+  exercise the real multipart upload path): the fitment cascade resolves
+  correctly against real seeded reference data, a real image below the
+  minimum resolution is genuinely rejected (not just documented as a
+  rule) while one at/above it is accepted and actually served back,
+  submission with fewer than 3 photos 400s, a fitment year outside the
+  real generation's actual range 400s, and — the critical one — a full
+  real submission (real photos, real fitment) shows up correctly in the
+  admin's moderation queue, cannot be approved without a translation, and
+  once approved, is confirmed visible to buyers under the real English
+  name via a separate request. **Note**: this file forces the Node test
+  environment (`// @vitest-environment node`) rather than the project's
+  default jsdom — found the hard way that jsdom's `fetch`/`FormData`/`Blob`
+  don't correctly serialize real multipart uploads, which silently hangs
+  the request instead of failing with a clear error.
 
-The full existing admin-dashboard test suite (84 tests) was also re-run
+The full existing admin-dashboard test suite (93 tests) was also re-run
 against the updated backend to confirm nothing broke there — still
-84/84 passing.
+93/93 passing.
 
 ## Next steps to make this real
 

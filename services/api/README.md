@@ -153,6 +153,93 @@ header comment. `forgot-password` also deliberately returns the exact
 same response whether or not the email is registered, same
 email-enumeration protection as the login endpoint's error message.
 
+## Structured supplier product submission (migration 010)
+
+A real SRS requirement, built from scratch: suppliers submitting a
+product must go through Brand -> Model -> Generation -> Year -> Engine
+-> Transmission -> Category -> Part -> Position -> OEM Number, upload at
+least 3 high-resolution photos, and — because submissions can be in
+Chinese — get a real Leap-team-reviewed English translation before the
+listing goes live to buyers.
+
+**The fitment cascade** (`GET /fitment/brands`, `/fitment/brands/:id/models`,
+`/fitment/models/:id/generations`, `/fitment/generations/:id/engines`,
+`/fitment/generations/:id/transmissions`) is a genuinely separate,
+deeper reference hierarchy from the existing `vehicles` table — see
+`db/migrations/010_supplier_product_submission.sql`'s header comment for
+why the two intentionally coexist rather than one replacing the other.
+Seeded with real, meaningful depth (3 brands, 4 models, 4 generations, 9
+engines, 7 transmissions — not one entry per level) so the cascading
+picker in the supplier portal has something real to cascade through.
+
+**Product submission** (`POST /supplier/me/products`) validates every
+step of the cascade against real reference data — an unknown generation
+ID 404s, a year outside that generation's actual production range 400s,
+and an engine/transmission that belongs to a *different* generation than
+the one selected is rejected, not silently accepted. Category and
+Position are fixed, real lists (not free text) matching what the mobile
+app and admin dashboard already use.
+
+**Mandatory photos**: enforced as "at least 3" at the application layer
+(a DB CHECK constraint can't cheaply express "at least N rows exist in a
+different table"). "High-quality" is a real, checked rule — minimum 800px
+on the shortest side, verified via `image-size` reading the actual
+decoded pixel dimensions (not just trusting the file), not just accepted
+on faith. See `POST /uploads/product-image` and its module's header
+comment for the honest note about local-disk storage vs. real object
+storage.
+
+**Translation approval**: a submission's Chinese original (`nameZh`,
+`descriptionZh`) is stored and shown to admin reviewers in the
+moderation queue alongside the real photos. `PATCH
+/catalog/products/:id/moderate` now REQUIRES `nameEn` to approve — there
+is no way to make a listing live without a Leap-team-reviewed English
+name, matching the actual business requirement rather than just flipping
+a status flag. Rejecting doesn't need a translation, since the listing
+never goes live either way.
+
+**Verified end-to-end**, not just piece by piece: created a real product
+with 3 real uploaded photos and real fitment data, confirmed it appears
+correctly in the admin's moderation queue with the Chinese original and
+photos intact, confirmed approving WITHOUT a translation is rejected,
+approved WITH one, and confirmed buyers then see the real English name —
+see `apps/supplier-portal/src/productSubmission.integration.test.js`.
+
+### Managing the cascade itself (admin-only, new)
+
+The cascade above is only useful if someone can actually add to it —
+without this, it would forever be stuck with whatever was hardcoded into
+`db/seed.js` (3 brands, 4 models...). Admin-only CRUD now exists for
+every level:
+```
+POST   /fitment/brands                                  { name }
+DELETE /fitment/brands/:id
+POST   /fitment/brands/:brandId/models                  { name }
+DELETE /fitment/models/:id
+POST   /fitment/models/:modelId/generations              { name, yearStart, yearEnd? }
+DELETE /fitment/generations/:id
+POST   /fitment/generations/:generationId/engines        { name }
+DELETE /fitment/engines/:id
+POST   /fitment/generations/:generationId/transmissions   { name }
+DELETE /fitment/transmissions/:id
+```
+- A duplicate brand name returns a clear 409, not a raw Postgres unique-
+  constraint error.
+- **Deletion is deliberately NOT one-size-fits-all**: deleting a brand or
+  model cascades to ITS OWN children (its models, their generations,
+  etc. — just organizational nesting), but `product_fitment_entries` has
+  no `ON DELETE CASCADE` from `vehicle_generations` on purpose — so
+  trying to delete a generation, engine, or transmission that a REAL
+  product actually references fails with a real foreign-key error, which
+  these routes turn into a clear 409 ("remove those products first")
+  rather than either a raw DB error or silently orphaning real product
+  data. Verified with a fully self-contained test: creates its own real
+  brand/model/generation, attaches a genuine product to it via the real
+  supplier submission endpoint, then confirms deletion is refused — not
+  by depending on another test file's leftover state.
+- Wired into the admin dashboard's new "Vehicle Data" page — see that
+  app's README.
+
 ## Setup
 
 ```bash
@@ -190,7 +277,12 @@ src/
     ├── auth/               Signup/login, JWT middleware (BUY-001–003)
     ├── catalog/           Products & categories (BUY-020–025, SUP-010–015),
     │                       plus admin catalog moderation (ADM-002)
-    ├── fitment/            Year/Make/Model/Trim reference data (BUY-010)
+    ├── fitment/            Year/Make/Model/Trim reference data (BUY-010),
+    │                       PLUS the deeper Brand->Model->Generation->
+    │                       Engine/Transmission cascade for supplier
+    │                       product submission (migration 010) — two
+    │                       coexisting systems, see that migration's
+    │                       header comment for why
     ├── cart/               Multi-supplier cart (BUY-030–032), incl. a
     │                       PATCH endpoint for exact-quantity updates
     ├── order/              Order placement + supplier sub-order splitting
@@ -210,6 +302,10 @@ src/
     ├── overview/            Admin dashboard aggregate KPIs — deliberately
     │                       no blended $ GMV or top-markets-by-country
     │                       (no FX conversion / no country field exist)
+    ├── uploads/             Product photo upload — real minimum-resolution
+    │                       enforcement, local-disk storage for now (see
+    │                       that module's header comment on real object
+    │                       storage being the production-ready next step)
     ├── payment/            Stripe, Amazon Payment Services, PayPal, and
     │                       Google Pay (routed through Stripe) — BUY-040–044
     └── notification/       SMS/email/push stub (BUY-051, SUP-032)

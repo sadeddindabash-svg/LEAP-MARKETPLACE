@@ -55,11 +55,16 @@ describe.runIf(backendUp)('supplier portal against a REAL running backend', () =
   it('creates a new product, which starts in translating status (awaiting moderation)', async () => {
     const { token } = await login('supplier@leap.dev', 'supplier_dev_password_123');
     const created = await createProduct(token, {
-      name: `Integration Test Widget ${Date.now()}`,
+      nameZh: `集成测试商品 ${Date.now()}`,
       category: 'brake',
+      part: 'Front Brake Disc',
+      position: 'Front',
+      oemNumber: `OEM-${Date.now()}`,
       price: 19.99,
       currencyCode: 'USD',
       stockQuantity: 50,
+      fitment: { generationId: 'gen_bmw_1_series_f20', year: 2017 },
+      images: ['/uploads/test-a.jpg', '/uploads/test-b.jpg', '/uploads/test-c.jpg'],
     });
     expect(created.status).toBe('translating');
 

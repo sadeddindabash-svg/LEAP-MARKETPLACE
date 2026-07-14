@@ -87,13 +87,23 @@ describe.runIf(backendUp)('catalog moderation against a REAL running backend', (
     let queue = await fetchModerationQueue(token);
     expect(queue.find((p) => p.id === 'p9')).toBeDefined();
 
-    const result = await moderateProduct(token, 'p9', 'approve');
+    // Approving now requires a real reviewed translation (see the
+    // supplier product-submission feature) — confirmed separately below
+    // that omitting it is rejected; here we provide one, matching what a
+    // real admin reviewer would actually do.
+    const result = await moderateProduct(token, 'p9', 'approve', { nameEn: '6-Speed Manual Transmission Gear Set (reviewed)' });
     expect(result.status).toBe('active');
+    expect(result.name).toBe('6-Speed Manual Transmission Gear Set (reviewed)');
 
     // Re-fetch independently to confirm the removal from the queue is
     // real, not just trusting the moderate-action response.
     queue = await fetchModerationQueue(token);
     expect(queue.find((p) => p.id === 'p9')).toBeUndefined();
+  });
+
+  it('rejects approving without a translation — a Leap-reviewed English name is mandatory, not optional', async () => {
+    const { token } = await login('admin@leap.dev', 'admin_dev_password_123');
+    await expect(moderateProduct(token, 'p9', 'approve')).rejects.toThrow();
   });
 
   it('rejecting sets the product inactive (also removing it from the queue)', async () => {

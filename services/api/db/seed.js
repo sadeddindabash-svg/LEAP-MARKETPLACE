@@ -16,6 +16,10 @@ const DEV_ADMIN_PASSWORD = 'admin_dev_password_123';
 const DEV_SUPPLIER_EMAIL = 'supplier@leap.dev';
 const DEV_SUPPLIER_PASSWORD = 'supplier_dev_password_123';
 
+function slugify(text) {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
 async function main() {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
@@ -136,6 +140,69 @@ async function main() {
   } else {
     console.log('Skipped seeding a return case — no supplier_sub_orders exist yet (place an order first if you want demo data here).');
   }
+
+  // Fitment cascade reference data (migration 010) — Brand -> Model ->
+  // Generation -> Engine/Transmission, for the supplier product-submission
+  // form. Real, meaningful depth (not just one entry per level) so the
+  // cascading picker actually has something to cascade through.
+  const cascade = [
+    { brand: 'BMW', models: [
+      { model: '1 Series', generations: [
+        { gen: 'F20', yearStart: 2015, yearEnd: 2019,
+          engines: ['118i 1.5T', '118d 2.0D', '120d 2.0D'],
+          transmissions: ['6-Speed Manual', '8-Speed Automatic'] },
+      ] },
+      { model: '3 Series', generations: [
+        { gen: 'F30', yearStart: 2012, yearEnd: 2019,
+          engines: ['320i 2.0T', '320d 2.0D'],
+          transmissions: ['6-Speed Manual', '8-Speed Automatic'] },
+      ] },
+    ] },
+    { brand: 'Toyota', models: [
+      { model: 'Camry', generations: [
+        { gen: 'XV70', yearStart: 2018, yearEnd: 2023,
+          engines: ['2.5L 4-Cyl', '3.5L V6'],
+          transmissions: ['8-Speed Automatic'] },
+      ] },
+    ] },
+    { brand: 'Honda', models: [
+      { model: 'Civic', generations: [
+        { gen: 'FC', yearStart: 2016, yearEnd: 2021,
+          engines: ['1.5L Turbo', '2.0L NA'],
+          transmissions: ['CVT', '6-Speed Manual'] },
+      ] },
+    ] },
+  ];
+  let brandN = 0, modelN = 0, genN = 0, engN = 0, transN = 0;
+  for (const b of cascade) {
+    const brandId = `brand_${slugify(b.brand)}`;
+    await pool.query(`INSERT INTO vehicle_brands (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`, [brandId, b.brand]);
+    brandN++;
+    for (const m of b.models) {
+      const modelId = `model_${slugify(b.brand)}_${slugify(m.model)}`;
+      await pool.query(`INSERT INTO vehicle_models (id, brand_id, name) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING`, [modelId, brandId, m.model]);
+      modelN++;
+      for (const g of m.generations) {
+        const genId = `gen_${slugify(b.brand)}_${slugify(m.model)}_${slugify(g.gen)}`;
+        await pool.query(
+          `INSERT INTO vehicle_generations (id, model_id, name, year_start, year_end) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING`,
+          [genId, modelId, g.gen, g.yearStart, g.yearEnd]
+        );
+        genN++;
+        for (const e of g.engines) {
+          const engId = `eng_${genId}_${slugify(e)}`;
+          await pool.query(`INSERT INTO vehicle_engines (id, generation_id, name) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING`, [engId, genId, e]);
+          engN++;
+        }
+        for (const t of g.transmissions) {
+          const transId = `trans_${genId}_${slugify(t)}`;
+          await pool.query(`INSERT INTO vehicle_transmissions (id, generation_id, name) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING`, [transId, genId, t]);
+          transN++;
+        }
+      }
+    }
+  }
+  console.log(`Seeded fitment cascade: ${brandN} brands, ${modelN} models, ${genN} generations, ${engN} engines, ${transN} transmissions.`);
 
   console.log('Seed complete.');
   await pool.end();

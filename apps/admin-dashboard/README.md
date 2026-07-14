@@ -7,11 +7,12 @@ Real React (Vite) project for the platform operations tool. See
 
 This is the reference prototype (`docs/prototypes/leap_admin_dashboard_prototype.jsx`)
 dropped in as `src/App.jsx`, confirmed to **build successfully**, and now
-has **real authentication and six real pages** (Overview, Orders,
-Suppliers, Moderation, Support Tickets, Returns — Returns is entirely new,
-not in the original prototype at all) — full UI → API → database → UI
-slices. Payouts is still mock data (blocked on undecided commission rates
-— see Charter Section 1 — rather than a technical gap).
+has **real authentication and seven real pages** (Overview, Orders,
+Suppliers, Moderation, Support Tickets, Returns, Vehicle Data — the last
+two are entirely new, not in the original prototype at all) — full UI →
+API → database → UI slices. Payouts is still mock data (blocked on
+undecided commission rates — see Charter Section 1 — rather than a
+technical gap).
 
 ## Authentication (ADM-030)
 
@@ -145,15 +146,26 @@ table that module already owns.
 - `GET /catalog/moderation-queue` (admin-only) lists products with
   `status = 'translating'` (awaiting review before going live to buyers).
 - **Flags are computed live from real data, not fabricated**: "Missing
-  fitment data" (zero rows in `product_fitment` for that product) and
-  "New supplier" (the supplier account is less than 30 days old). The old
-  mock version's "Translation pending review" flag was dropped — it was
-  redundant (being in this queue at all already means that) and adding it
-  back as a fake flag would have added nothing real.
-- `PATCH /catalog/products/:id/moderate` sets the product to `active`
-  (approve) or `inactive` (reject) — confirmed to actually move the
-  product in/out of both the moderation queue and the normal buyer-facing
-  catalog, not just update a status label.
+  fitment data" and "New supplier" (the supplier account is less than 30
+  days old). The old mock version's "Translation pending review" flag was
+  dropped — it was redundant (being in this queue at all already means
+  that) and adding it back as a fake flag would have added nothing real.
+  **Fixed a real bug while building the structured product submission
+  feature**: this flag was checking the OLD `product_fitment` table,
+  which real supplier submissions never populate (they use the new
+  `product_fitment_entries` cascade table, migration 010) — every new
+  submission was showing "Missing fitment data" regardless of whether it
+  actually had fitment info. Fixed to check the right table.
+- **Translation review workflow** (new): the queue now shows the
+  supplier's real Chinese original (`nameZh`, `descriptionZh`) and real
+  uploaded photos, not just a name and category. Clicking "Review &
+  Approve" opens an inline panel (pre-filled with the Chinese text as a
+  starting point) requiring a real English name before "Confirm Approval"
+  does anything — `PATCH /catalog/products/:id/moderate` now REJECTS an
+  approve action with no `nameEn`, matching the actual business
+  requirement that a Leap-team-reviewed translation is mandatory, not
+  optional. Rejecting still doesn't need a translation, since the listing
+  never goes live either way.
 - Dropped the "Preview" button from the mock version — it never did
   anything even in the mock UI (no real modal/preview existed behind it),
   so removing it is honest rather than a regression.
@@ -234,13 +246,44 @@ implementation anywhere in the project until now.
   `JSON.stringify()` of what the buyer can fetch. Wired into the mobile
   app — see `apps/mobile/README.md`.
 
+## Vehicle Data page (new — not in the original prototype at all)
+
+A real, necessary gap closed while building the structured supplier
+product submission feature (see `services/api/README.md`): that
+feature's cascading Brand→Model→Generation→Engine/Transmission picker
+would otherwise be permanently stuck with whatever 3 brands and 4 models
+were hardcoded into `db/seed.js` — no supplier could ever submit a
+product for a vehicle not on that short list, and no admin had any way
+to add one.
+
+- Drill-down navigation (Brands → Models → Generations → Engines &
+  Transmissions side by side) with a clickable breadcrumb to go back up,
+  rather than one giant flat page — matches how deep the real cascade
+  actually is.
+- Every add/remove is real: `POST`/`DELETE` against the same
+  `/fitment/...` endpoints the supplier portal's Add Product form reads
+  from. Adding a brand here is immediately visible there — verified,
+  not assumed.
+- **Deletion protection is the important part, not the button itself**:
+  removing a generation, engine, or transmission that a REAL product
+  actually references is refused with a clear message ("remove those
+  products first"), not silently allowed (which would orphan real
+  product data) and not a raw database error leaking through. Deleting a
+  brand or model DOES cascade to its own unreferenced children — only
+  real product references block a delete, not organizational nesting.
+- Verified with a fully self-contained test: creates its own real
+  brand/model/generation, attaches a genuine product to it via the real
+  supplier submission endpoint, then confirms deleting that generation is
+  refused — not by relying on another test file's leftover state, which
+  would only work by coincidence depending on test run order.
+
 ## Testing
 
 ```bash
 npm test
 ```
 
-Sixteen test files, 84 tests total, all passing:
+Nineteen test files, 103 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/orders.integration.test.js` (4, REAL backend) — order list/detail
@@ -254,14 +297,19 @@ Sixteen test files, 84 tests total, all passing:
   navigates to Suppliers, approves a pending one and confirms the row
   updates, and confirms a 401 during the approve action triggers automatic
   logout
-- `src/moderation.integration.test.js` (6, REAL backend, with direct DB
+- `src/moderation.integration.test.js` (7, REAL backend, with direct DB
   access for test setup/teardown only) — confirms real, correctly-computed
-  flags on a known product, and a full approve/reject round-trip
-  confirmed by independently re-fetching the queue afterward
-- `src/ModerationFlow.test.jsx` (3, mocked, full component tree) — renders
-  real computed flags (and confirms the old fake "Translation pending
-  review" flag is gone), approving removes the item from view, and a 401
-  during the action triggers automatic logout
+  flags on a known product, a full approve/reject round-trip confirmed by
+  independently re-fetching the queue afterward, and confirms approving
+  without a translation is rejected (mandatory, not optional)
+- `src/ModerationFlow.test.jsx` (6, mocked, full component tree) — renders
+  the real Chinese original and photos with real computed flags (and
+  confirms the old fake "Translation pending review" flag is gone),
+  clicking "Review & Approve" opens the translation panel pre-filled with
+  the Chinese text, confirms approval is blocked client-side with no
+  English name entered, approving with one removes the item from view,
+  rejecting needs no translation and removes the item immediately, and a
+  401 during approval triggers automatic logout.
 - `src/tickets.integration.test.js` (10, REAL backend, self-contained —
   each test creates its own ticket via the real API rather than depending
   on seeded data) — guest ticket creation with no auth, validation
@@ -295,6 +343,24 @@ Sixteen test files, 84 tests total, all passing:
   and — the one that matters most for not breaking anything real — an
   admin can still see any order, confirmed against the same endpoint the
   admin dashboard's Orders page actually calls.
+- `src/fitmentAdmin.integration.test.js` (7, REAL backend) — rejects
+  unauthenticated and non-admin creation, a duplicate brand name gets a
+  clear 409 rather than a raw DB error, a full real
+  Brand→Model→Generation→Engine/Transmission chain is built and
+  immediately visible via the same GET endpoints the supplier portal
+  reads from, a bad year range 400s, a successful delete is confirmed by
+  independent re-fetch, deleting a brand cascades to its own
+  unreferenced children — and the one that matters most: builds its own
+  real generation, attaches a real product to it via the actual supplier
+  submission endpoint, then confirms deleting that generation is
+  refused with a 409, proving the "don't orphan real product data"
+  protection works against genuine data, not a fixture that merely
+  claims to be a product.
+- `src/VehicleDataFlow.test.jsx` (3, mocked, full component tree) —
+  renders real brands and drills all the way down through
+  Model→Generation→Engines/Transmissions, the breadcrumb navigates back
+  up correctly, and adding a new brand calls the real create endpoint
+  and shows it in the list immediately.
 - `src/overview.integration.test.js` (5, REAL backend) — confirms
   unauthenticated and non-admin access are both rejected, checks the
   response shape matches what the real UI reads, and — the one that
@@ -363,6 +429,24 @@ DATABASE_URL="postgresql://leap_dev:leap_dev_password@localhost:5432/your_db_nam
 Forgetting this looks identical to the original hardcoding bug (tests
 fail against a differently-named database) even though the code itself
 is correct — worth knowing so you don't chase a phantom bug.
+
+**A second, unrelated class of real bug found the same way** (running
+the standard clean-merge verification, not by inspection): building the
+structured product submission feature meant editing `ModerationFlow.test.jsx`,
+and running it alongside the full suite crashed with a completely
+unrelated-looking error inside `OverviewPage`. The cause: Overview is the
+admin dashboard's default landing page after login, so ANY mocked
+component test that logs in (even ones that immediately navigate
+elsewhere, like Moderation) renders it first — and any such test file
+written before Overview existed has no mock for `GET /overview`, so the
+page crashes trying to read fields off an empty response. Checking for
+this pattern found the SAME latent bug in three more pre-existing files
+(`OrdersFlow.test.jsx`, `SuppliersFlow.test.jsx`, `TicketsFlow.test.jsx`)
+that had simply never been unlucky enough to hit it before. All four
+fixed with the same one-line addition to their mock fetch routers. If you
+add a new mocked component test that logs in, give it a valid
+`/overview` mock too, even if the test itself is about something else
+entirely.
 
 ## Next steps to make this real
 

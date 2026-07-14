@@ -15,6 +15,8 @@ out/
 # Environment & secrets
 .env
 .env.*
+services/api/uploads/*
+!services/api/uploads/.gitkeep
 !.env.example
 *.pem
 *.key

@@ -6,7 +6,12 @@ const ADMIN_USER = { id: 'admin_dev_seed', email: 'admin@leap.dev', name: 'Dev A
 
 function makeQueue() {
   return [
-    { id: 'p9', name: '6-Speed Manual Transmission Gear Set', category: 'transmission', supplierName: 'Qingdao Transmission Works', submittedAt: '2026-07-13T00:00:00.000Z', flags: ['Missing fitment data', 'New supplier'] },
+    {
+      id: 'p9', name: '6-Speed Manual Transmission Gear Set', nameZh: '6速手动变速箱齿轮组', descriptionZh: '高品质变速箱齿轮组',
+      category: 'transmission', part: 'Gear Set', position: 'Universal', oemNumber: 'TX-9911',
+      images: ['/uploads/a.jpg', '/uploads/b.jpg', '/uploads/c.jpg'],
+      supplierName: 'Qingdao Transmission Works', submittedAt: '2026-07-13T00:00:00.000Z', flags: ['Missing fitment data', 'New supplier'],
+    },
   ];
 }
 
@@ -19,10 +24,24 @@ function mockFetchRouter({ moderateStatus = 200 } = {}) {
     if (u.match(/\/catalog\/products\/p9\/moderate$/)) {
       if (moderateStatus === 401) return Promise.resolve({ ok: false, status: 401, json: async () => ({ error: 'unauthorized' }) });
       const body = JSON.parse(options.body);
+      if (body.action === 'approve' && !body.nameEn) {
+        return Promise.resolve({ ok: false, status: 400, json: async () => ({ error: 'nameEn is required to approve' }) });
+      }
       queue = queue.filter((p) => p.id !== 'p9'); // approved/rejected products leave the queue
-      return Promise.resolve({ ok: true, json: async () => ({ id: 'p9', status: body.action === 'approve' ? 'active' : 'inactive' }) });
+      return Promise.resolve({ ok: true, json: async () => ({ id: 'p9', name: body.nameEn || 'p9', status: body.action === 'approve' ? 'active' : 'inactive' }) });
     }
     if (u.endsWith('/catalog/moderation-queue')) return Promise.resolve({ ok: true, json: async () => queue });
+    // Overview is the admin dashboard's default landing page after
+    // login — this test logs in before navigating to Moderation, so it
+    // needs a valid shape here or the whole app crashes rendering it
+    // first (same class of bug already fixed for the supplier portal's
+    // App.test.jsx when Overview was built there).
+    if (u.endsWith('/overview')) {
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ totalOrders: 0, activeSuppliers: 0, pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, openTickets: 0, ordersByDay: [], unitsByCategory: [], topSuppliers: [] }),
+      });
+    }
     return Promise.resolve({ ok: true, json: async () => ({}) });
   });
 }
@@ -40,37 +59,80 @@ async function loginAndGoToModeration() {
 beforeEach(() => { localStorage.clear(); });
 afterEach(() => { vi.restoreAllMocks(); });
 
-describe('Moderation page — real approve/reject flow (mocked fetch, real component tree)', () => {
-  it('renders the real queue with real computed flags, not fabricated ones', async () => {
+describe('Moderation page — real translation-review approve/reject flow (mocked fetch, real component tree)', () => {
+  it('renders the real queue with the Chinese original, real photos, and real computed flags', async () => {
     globalThis.fetch = mockFetchRouter();
     render(<LeapAdminApp />);
     await loginAndGoToModeration();
 
-    await waitFor(() => expect(screen.getByText(/6-Speed Manual Transmission Gear Set/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('6速手动变速箱齿轮组')).toBeInTheDocument());
     expect(screen.getByText('Missing fitment data')).toBeInTheDocument();
     expect(screen.getByText('New supplier')).toBeInTheDocument();
-    // The old mock's fake "Translation pending review" flag should be gone.
     expect(screen.queryByText('Translation pending review')).not.toBeInTheDocument();
   });
 
-  it('approving removes the item from the queue view after the real action succeeds', async () => {
+  it('clicking "Review & Approve" opens the translation panel, pre-filled with the Chinese original as a starting point', async () => {
     globalThis.fetch = mockFetchRouter();
     render(<LeapAdminApp />);
     await loginAndGoToModeration();
 
-    await waitFor(() => expect(screen.getByRole('button', { name: /approve/i })).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /approve/i }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /review & approve/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /review & approve/i }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /confirm approval/i })).toBeInTheDocument());
+  });
+
+  it('cannot confirm approval without an English name filled in', async () => {
+    globalThis.fetch = mockFetchRouter();
+    render(<LeapAdminApp />);
+    await loginAndGoToModeration();
+
+    fireEvent.click(await screen.findByRole('button', { name: /review & approve/i }));
+    await waitFor(() => screen.getByRole('button', { name: /confirm approval/i }));
+
+    const nameInput = screen.getByDisplayValue('6速手动变速箱齿轮组');
+    fireEvent.change(nameInput, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: /confirm approval/i }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /confirm approval/i })).toBeInTheDocument());
+  });
+
+  it('approving with a real English translation removes the item from the queue view', async () => {
+    globalThis.fetch = mockFetchRouter();
+    render(<LeapAdminApp />);
+    await loginAndGoToModeration();
+
+    fireEvent.click(await screen.findByRole('button', { name: /review & approve/i }));
+    await waitFor(() => screen.getByRole('button', { name: /confirm approval/i }));
+
+    const nameInput = screen.getByDisplayValue('6速手动变速箱齿轮组');
+    fireEvent.change(nameInput, { target: { value: '6-Speed Manual Transmission Gear Set (reviewed)' } });
+    fireEvent.click(screen.getByRole('button', { name: /confirm approval/i }));
 
     await waitFor(() => expect(screen.getByText(/nothing awaiting review/i)).toBeInTheDocument());
   });
 
-  it('logs out automatically if the moderate action returns 401 (expired session)', async () => {
+  it('rejecting does not require a translation and removes the item immediately', async () => {
+    globalThis.fetch = mockFetchRouter();
+    render(<LeapAdminApp />);
+    await loginAndGoToModeration();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /^reject$/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /^reject$/i }));
+
+    await waitFor(() => expect(screen.getByText(/nothing awaiting review/i)).toBeInTheDocument());
+  });
+
+  it('logs out automatically if the approval action returns 401 (expired session)', async () => {
     globalThis.fetch = mockFetchRouter({ moderateStatus: 401 });
     render(<LeapAdminApp />);
     await loginAndGoToModeration();
 
-    await waitFor(() => expect(screen.getByRole('button', { name: /approve/i })).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /approve/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /review & approve/i }));
+    await waitFor(() => screen.getByRole('button', { name: /confirm approval/i }));
+    const nameInput = screen.getByDisplayValue('6速手动变速箱齿轮组');
+    fireEvent.change(nameInput, { target: { value: 'Some English Name' } });
+    fireEvent.click(screen.getByRole('button', { name: /confirm approval/i }));
 
     await waitFor(() => expect(screen.getByRole('button', { name: /^log in$/i })).toBeInTheDocument());
   });

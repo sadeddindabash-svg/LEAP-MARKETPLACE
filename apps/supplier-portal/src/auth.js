@@ -71,6 +71,56 @@ export function createProduct(token, product) {
   return authedMutate("POST", "/supplier/me/products", token, product);
 }
 
+// ---------------- Structured fitment cascade (Brand -> Model -> Generation -> Engine/Transmission) ----------------
+
+export async function fetchBrands() {
+  const response = await fetch(`${API_BASE_URL}/fitment/brands`);
+  if (!response.ok) throw new Error(`Failed to load brands (${response.status})`);
+  return response.json();
+}
+
+export async function fetchModelsForBrand(brandId) {
+  const response = await fetch(`${API_BASE_URL}/fitment/brands/${brandId}/models`);
+  if (!response.ok) throw new Error(`Failed to load models (${response.status})`);
+  return response.json();
+}
+
+export async function fetchGenerationsForModel(modelId) {
+  const response = await fetch(`${API_BASE_URL}/fitment/models/${modelId}/generations`);
+  if (!response.ok) throw new Error(`Failed to load generations (${response.status})`);
+  return response.json();
+}
+
+export async function fetchEnginesForGeneration(generationId) {
+  const response = await fetch(`${API_BASE_URL}/fitment/generations/${generationId}/engines`);
+  if (!response.ok) throw new Error(`Failed to load engines (${response.status})`);
+  return response.json();
+}
+
+export async function fetchTransmissionsForGeneration(generationId) {
+  const response = await fetch(`${API_BASE_URL}/fitment/generations/${generationId}/transmissions`);
+  if (!response.ok) throw new Error(`Failed to load transmissions (${response.status})`);
+  return response.json();
+}
+
+// ---------------- Product image upload ----------------
+// Real upload to the backend's local-disk storage (see
+// services/api/src/modules/uploads/routes.js for the honest note about
+// why it's local disk, not real object storage, for now).
+
+export async function uploadProductImage(token, file) {
+  const formData = new FormData();
+  formData.append("image", file);
+  const response = await fetch(`${API_BASE_URL}/uploads/product-image`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Upload failed (${response.status})`);
+  return data; // { url, width, height }
+}
+
 export function updateProduct(token, productId, updates) {
   return authedMutate("PATCH", `/supplier/me/products/${productId}`, token, updates);
 }
