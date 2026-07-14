@@ -7,11 +7,11 @@ Real React (Vite) project for the platform operations tool. See
 
 This is the reference prototype (`docs/prototypes/leap_admin_dashboard_prototype.jsx`)
 dropped in as `src/App.jsx`, confirmed to **build successfully**, and now
-has **real authentication and five real pages** (Orders, Suppliers,
-Moderation, Support Tickets, Returns — the last one is entirely new, not
-in the original prototype at all) — full UI → API → database → UI slices.
-Payouts is still mock data (blocked on undecided commission rates — see
-Charter Section 1 — rather than a technical gap).
+has **real authentication and six real pages** (Overview, Orders,
+Suppliers, Moderation, Support Tickets, Returns — Returns is entirely new,
+not in the original prototype at all) — full UI → API → database → UI
+slices. Payouts is still mock data (blocked on undecided commission rates
+— see Charter Section 1 — rather than a technical gap).
 
 ## Authentication (ADM-030)
 
@@ -53,6 +53,36 @@ npm install
 cp .env.example .env.local   # points at your local backend
 npm run dev       # http://localhost:5173
 ```
+
+## Overview page
+
+The dashboard's landing page — first one wired to real data, along with
+Orders, in this round of updates.
+
+- `GET /overview` (admin-only) aggregates real counts across the whole
+  platform: total orders, active/pending suppliers, open disputes, open
+  tickets, a 7-day order-count trend, units sold by category, and top
+  suppliers by order volume.
+- **Deliberately does NOT show a blended dollar GMV figure** — the
+  original mock showed a fake "$171,450 GMV (7 days)" number. Orders span
+  26+ currencies across the 40 confirmed launch markets, and this system
+  has no FX/exchange-rate conversion anywhere. Summing raw order totals
+  across currencies would produce a real-looking number that's actually
+  meaningless (a USD total plus a SAR total is not a dollar amount). Used
+  order **counts** instead everywhere a dollar figure would need FX
+  conversion that doesn't exist yet.
+- **Deliberately does NOT show "top markets by country"** either — the
+  `orders` table has no country field (only `currency_code`, which isn't
+  a reliable proxy for country). Replaced with "top suppliers by order
+  volume," which is real and directly trackable from existing data.
+- **Dropped entirely**: the mock's "$19.8k in payouts scheduled" row —
+  there is no payouts feature in this codebase (blocked on the
+  commission-rate decision, same as the Payouts page itself). Showing a
+  fake payout figure here would be worse than omitting it.
+- Verified with a test that specifically checks the response never
+  includes a `gmv` or `topMarkets` field at all — proving the "no fake
+  aggregate numbers" decision is enforced by the backend, not just a
+  frontend choice not to display fields that exist.
 
 ## Orders page (ADM-010)
 
@@ -210,7 +240,7 @@ implementation anywhere in the project until now.
 npm test
 ```
 
-Thirteen test files, 67 tests total, all passing:
+Sixteen test files, 84 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/orders.integration.test.js` (4, REAL backend) — order list/detail
@@ -265,6 +295,27 @@ Thirteen test files, 67 tests total, all passing:
   and — the one that matters most for not breaking anything real — an
   admin can still see any order, confirmed against the same endpoint the
   admin dashboard's Orders page actually calls.
+- `src/overview.integration.test.js` (5, REAL backend) — confirms
+  unauthenticated and non-admin access are both rejected, checks the
+  response shape matches what the real UI reads, and — the one that
+  proves the "no fake GMV" design decision is real, not just a frontend
+  choice — asserts the response has NO `gmv` or `topMarkets` field at
+  all. Also confirms placing one real order increases `totalOrders` by
+  exactly one, and that `topSuppliers` is genuinely sorted by real order
+  count.
+- `src/OverviewFlow.test.jsx` (3, mocked, full component tree) — renders
+  real counts and confirms the old hardcoded mock numbers (`$171,450`,
+  `2,384`) are completely gone, renders real supplier names in place of
+  the old fake country list, and confirms a 401 triggers automatic logout.
+- `src/garage.integration.test.js` (9, REAL backend) — tests the
+  buyer-facing "My Garage" feature (mobile app UI, backend endpoints
+  live here alongside the other buyer-facing tests): a new buyer starts
+  empty, saving a real reference vehicle works, saving a nonexistent one
+  404s, saving the same vehicle twice is idempotent, removal is confirmed
+  by independent re-fetch, a second buyer never sees the first buyer's
+  saved vehicles, and — testing the no-op-not-error design deliberately —
+  one buyer deleting a vehicle from a DIFFERENT buyer's garage succeeds
+  with 200 but has zero actual effect.
 
 The `*.integration.test.js` files use a real (persistent, not per-test-run)
 local dev database, so the supplier round-trip test is written to be
@@ -280,11 +331,23 @@ curl -X POST http://localhost:4000/order -H "Content-Type: application/json" \
   -d '{"items":[{"productId":"p1","quantity":1}],"guestEmail":"test@example.com"}'
 ```
 
-`moderation.integration.test.js` connects directly to the same Postgres
-database (`postgresql://leap_dev:leap_dev_password@localhost:5432/leap_marketplace_dev`,
-hardcoded — update it if your local setup differs) to reset a known
-product's status before/after each test. This only works if `db/seed.js`
-has been run at least once (it needs product `p9` to exist).
+`moderation.integration.test.js` connects directly to Postgres (via
+`DATABASE_URL` from the environment — matching whatever the actual
+backend server under test is using, with a `leap_marketplace_dev`
+fallback for plain local dev) to reset a known product's status
+before/after each test. This only works if `db/seed.js` has been run at
+least once (it needs product `p9` to exist).
+
+**A real bug this used to have, found by the standard clean-merge
+verification process** (not by inspection): this connection string was
+originally hardcoded to `leap_marketplace_dev`, which broke silently
+whenever the backend under test was pointed at a differently-named
+database — the reset query would succeed, just against the wrong
+database, leaving the real target's data stale and causing two
+assertions to fail in a way that looked unrelated to the actual cause.
+Fixed to read `DATABASE_URL` from the environment; if you add a test file
+that opens its own direct DB connection, make sure it does the same
+rather than hardcoding a database name.
 
 ## Next steps to make this real
 

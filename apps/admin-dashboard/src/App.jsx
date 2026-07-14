@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from "react";
 import LoginPage from "./LoginPage";
-import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, verifySupplier, fetchModerationQueue, moderateProduct, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, SessionExpiredError } from "./auth";
+import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, verifySupplier, fetchModerationQueue, moderateProduct, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, SessionExpiredError } from "./auth";
 import {
   LayoutGrid, ShoppingBag, Store, PackageSearch, Wallet, LifeBuoy, Settings,
   Search, Bell, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Truck,
   CheckCircle2, XCircle, Clock, AlertTriangle, MoreHorizontal, ArrowUpRight,
   Filter as FilterIcon, Download, Check, X, MessageSquare, Star, Globe, Users,
-  CreditCard, ExternalLink, ChevronLeft
+  CreditCard, ExternalLink, ChevronLeft, RotateCcw
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -47,18 +47,11 @@ const body = { fontFamily: "'Inter', sans-serif" };
 const mono = { fontFamily: "'JetBrains Mono', monospace" };
 
 /* ---------------- Mock data ---------------- */
-
-const GMV_TREND = [
-  { d: "Mon", v: 18400 }, { d: "Tue", v: 21200 }, { d: "Wed", v: 19800 }, { d: "Thu", v: 24600 },
-  { d: "Fri", v: 27300 }, { d: "Sat", v: 31200 }, { d: "Sun", v: 28950 },
-];
-const CATEGORY_SPLIT = [
-  { name: "Brake System", value: 32, color: C.signal },
-  { name: "Filters", value: 21, color: C.torque },
-  { name: "Electrical", value: 18, color: C.gauge },
-  { name: "Engine", value: 15, color: C.amber },
-  { name: "Other", value: 14, color: "#9AA1AC" },
-];
+// GMV_TREND and CATEGORY_SPLIT mock arrays removed — OverviewPage now
+// fetches real aggregate data from GET /overview. See that endpoint's
+// header comment for why GMV (a blended dollar figure) was deliberately
+// NOT replicated with real data — it would require FX conversion across
+// 26+ currencies that doesn't exist anywhere in this system yet.
 
 const ORDER_STATUS_META = {
   to_pay: { label: "To pay", color: C.amber, bg: C.amberBg },
@@ -174,85 +167,142 @@ function TopBar({ title, subtitle }) {
 
 /* ---------------- Pages ---------------- */
 
-function OverviewPage() {
-  const maxV = Math.max(...GMV_TREND.map(x => x.v));
+// Matches the mobile app's real category IDs (see
+// apps/mobile/lib/features/home/home_screen.dart kCategories) so labels
+// are consistent across apps.
+const CATEGORY_LABELS = {
+  brake: "Brake System", engine: "Engine", electrical: "Electrical",
+  filters: "Filters", suspension: "Suspension", lighting: "Lighting",
+};
+const CATEGORY_COLORS = [C.signal, C.torque, C.gauge, C.amber, "#9AA1AC", "#6E7681"];
+
+function OverviewPage({ onSessionExpired }) {
+  const [data, setData] = useState(null);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  useEffect(() => {
+    fetchOverview(getStoredToken())
+      .then((d) => { setData(d); setLoadState("ready"); })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  }, [onSessionExpired]);
+
+  if (loadState === "loading") {
+    return (
+      <div>
+        <TopBar title="Overview" subtitle="Loading…" />
+        <div style={{ padding: 24 }}><Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading dashboard…</div></Card></div>
+      </div>
+    );
+  }
+  if (loadState === "error") {
+    return (
+      <div>
+        <TopBar title="Overview" subtitle="" />
+        <div style={{ padding: 24 }}><Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>Couldn't load the overview: {errorMessage}</div></Card></div>
+      </div>
+    );
+  }
+
+  const dayTrend = data.ordersByDay.map(d => ({ d: new Date(d.day).toLocaleDateString(undefined, { weekday: "short" }), v: d.count }));
+  const totalUnits = data.unitsByCategory.reduce((sum, c) => sum + c.units, 0);
+  const categorySplit = data.unitsByCategory.map((c, i) => ({
+    name: CATEGORY_LABELS[c.category] || c.category,
+    value: totalUnits > 0 ? Math.round((c.units / totalUnits) * 100) : 0,
+    color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
+  }));
+
   return (
     <div>
-      <TopBar title="Overview" subtitle="Global performance across all launch markets · Last updated 4 min ago" />
+      <TopBar title="Overview" subtitle="Real counts across the platform — see README for what's intentionally not shown yet (blended $ GMV, top markets by country)" />
       <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
         <div style={{ display: "flex", gap: 16 }}>
-          <KpiCard label="GMV (7 days)" value="$171,450" delta="+12.4%" positive icon={Wallet} />
-          <KpiCard label="Orders" value="2,384" delta="+8.1%" positive icon={ShoppingBag} />
-          <KpiCard label="Active suppliers" value="47" delta="+3" positive icon={Store} />
-          <KpiCard label="Open disputes" value="6" delta="+2" icon={AlertTriangle} />
+          <KpiCard label="Total orders" value={data.totalOrders.toLocaleString()} icon={ShoppingBag} />
+          <KpiCard label="Active suppliers" value={data.activeSuppliers.toLocaleString()} icon={Store} />
+          <KpiCard label="Open disputes" value={data.openDisputes.toLocaleString()} icon={AlertTriangle} />
+          <KpiCard label="Open tickets" value={data.openTickets.toLocaleString()} icon={LifeBuoy} />
         </div>
 
         <div style={{ display: "flex", gap: 16 }}>
-          <Card title="GMV trend" style={{ flex: 2 }}>
+          <Card title="Orders per day (last 7 days)" style={{ flex: 2 }}>
             <div style={{ padding: "16px 18px 8px", height: 220 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={GMV_TREND} margin={{ left: 0, right: 10, top: 6, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="gmvFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={C.signal} stopOpacity={0.28} />
-                      <stop offset="100%" stopColor={C.signal} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke={C.line} vertical={false} />
-                  <XAxis dataKey="d" tick={{ fontSize: 11, fill: C.muted, fontFamily: "Inter" }} axisLine={{ stroke: C.line }} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: C.muted, fontFamily: "Inter" }} axisLine={false} tickLine={false} width={40} tickFormatter={v => `$${v / 1000}k`} />
-                  <Tooltip formatter={(v) => [`$${v.toLocaleString()}`, "GMV"]} contentStyle={{ fontFamily: "Inter", fontSize: 12, borderRadius: 8, border: `1px solid ${C.line}` }} />
-                  <Area type="monotone" dataKey="v" stroke={C.signal} strokeWidth={2.5} fill="url(#gmvFill)" />
-                </AreaChart>
-              </ResponsiveContainer>
+              {dayTrend.length === 0 ? (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", ...body, fontSize: 12.5, color: C.muted }}>No orders in the last 7 days.</div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={dayTrend} margin={{ left: 0, right: 10, top: 6, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="ordersFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={C.signal} stopOpacity={0.28} />
+                        <stop offset="100%" stopColor={C.signal} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke={C.line} vertical={false} />
+                    <XAxis dataKey="d" tick={{ fontSize: 11, fill: C.muted, fontFamily: "Inter" }} axisLine={{ stroke: C.line }} tickLine={false} />
+                    <YAxis tick={{ fontSize: 11, fill: C.muted, fontFamily: "Inter" }} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
+                    <Tooltip formatter={(v) => [v, "Orders"]} contentStyle={{ fontFamily: "Inter", fontSize: 12, borderRadius: 8, border: `1px solid ${C.line}` }} />
+                    <Area type="monotone" dataKey="v" stroke={C.signal} strokeWidth={2.5} fill="url(#ordersFill)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </Card>
-          <Card title="Sales by category" style={{ flex: 1 }}>
-            <div style={{ padding: "16px 18px", display: "flex", alignItems: "center", gap: 14 }}>
-              <div style={{ width: 110, height: 110, flexShrink: 0 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={CATEGORY_SPLIT} dataKey="value" innerRadius={32} outerRadius={52} paddingAngle={2}>
-                      {CATEGORY_SPLIT.map((c, i) => <Cell key={i} fill={c.color} />)}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
+          <Card title="Units sold by category" style={{ flex: 1 }}>
+            {categorySplit.length === 0 ? (
+              <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 12.5, color: C.muted }}>No sales data yet.</div>
+            ) : (
+              <div style={{ padding: "16px 18px", display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{ width: 110, height: 110, flexShrink: 0 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={categorySplit} dataKey="value" innerRadius={32} outerRadius={52} paddingAngle={2}>
+                        {categorySplit.map((c, i) => <Cell key={i} fill={c.color} />)}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                  {categorySplit.map(c => (
+                    <div key={c.name} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: 2, background: c.color }} />
+                      <span style={{ ...body, fontSize: 11.5, color: C.ink }}>{c.name}</span>
+                      <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: "auto", paddingLeft: 10 }}>{c.value}%</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                {CATEGORY_SPLIT.map(c => (
-                  <div key={c.name} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: 2, background: c.color }} />
-                    <span style={{ ...body, fontSize: 11.5, color: C.ink }}>{c.name}</span>
-                    <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: "auto", paddingLeft: 10 }}>{c.value}%</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            )}
           </Card>
         </div>
 
         <div style={{ display: "flex", gap: 16 }}>
           <Card title="Needs attention" style={{ flex: 1 }}>
             <div style={{ padding: 6 }}>
-              <AttentionRow icon={AlertTriangle} color={C.red} text="6 orders flagged as disputes" sub="Oldest unresolved: 3 days" />
-              <AttentionRow icon={PackageSearch} color={C.amber} text="4 listings pending moderation" sub="2 from newly onboarded suppliers" />
-              <AttentionRow icon={Store} color={C.torque} text="2 suppliers awaiting verification" sub="Submitted within 48 hours" />
-              <AttentionRow icon={Wallet} color={C.gauge} text="$19.8k in payouts scheduled" sub="Next payout run: Jul 15" last />
+              <AttentionRow icon={AlertTriangle} color={C.red} text={`${data.openDisputes} return case(s) awaiting resolution`} sub="See the Returns page" />
+              <AttentionRow icon={PackageSearch} color={C.amber} text={`${data.pendingModeration} listing(s) pending moderation`} sub="See the Moderation page" />
+              <AttentionRow icon={Store} color={C.torque} text={`${data.pendingSuppliers} supplier(s) awaiting verification`} sub="See the Suppliers page" last />
             </div>
           </Card>
-          <Card title="Top markets (7 days)" style={{ flex: 1 }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead><tr><Th>Country</Th><Th align="right">Orders</Th><Th align="right">GMV</Th></tr></thead>
-              <tbody>
-                {[["United States", 612, "$41.2k"], ["Saudi Arabia", 388, "$26.9k"], ["United Arab Emirates", 301, "$22.1k"], ["Italy", 245, "$17.4k"], ["Mexico", 198, "$14.0k"]].map(r => (
-                  <tr key={r[0]}>
-                    <Td><span style={{ display: "flex", alignItems: "center", gap: 8 }}><Globe size={13} color={C.muted} />{r[0]}</span></Td>
-                    <Td align="right">{r[1]}</Td>
-                    <Td align="right" style={{ fontWeight: 700 }}>{r[2]}</Td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <Card title="Top suppliers by order volume" style={{ flex: 1 }}>
+            {data.topSuppliers.length === 0 ? (
+              <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 12.5, color: C.muted }}>No orders yet.</div>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead><tr><Th>Supplier</Th><Th align="right">Orders</Th></tr></thead>
+                <tbody>
+                  {data.topSuppliers.map(s => (
+                    <tr key={s.id}>
+                      <Td><span style={{ display: "flex", alignItems: "center", gap: 8 }}><Store size={13} color={C.muted} />{s.name}</span></Td>
+                      <Td align="right" style={{ fontWeight: 700 }}>{s.orderCount}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </Card>
         </div>
       </div>
@@ -873,6 +923,229 @@ function TicketDetailPage({ ticketId, onBack, onSessionExpired }) {
   );
 }
 
+const RETURN_STATUS_META = {
+  awaiting: { label: "Awaiting reply", color: C.amber, bg: C.amberBg },
+  in_progress: { label: "In progress", color: C.torque, bg: C.torqueBg },
+  approved: { label: "Approved", color: C.gauge, bg: C.gaugeBg },
+  rejected: { label: "Rejected", color: C.red, bg: C.redBg },
+  completed: { label: "Completed", color: C.gauge, bg: C.gaugeBg },
+};
+function getReturnStatusMeta(status) {
+  return RETURN_STATUS_META[status] || { label: status || "Unknown", color: C.muted, bg: "#EEEFF1" };
+}
+
+function ReturnsPage({ onOpenCase, onSessionExpired }) {
+  const [cases, setCases] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  useEffect(() => {
+    fetchReturnCases(getStoredToken())
+      .then((data) => { setCases(data); setLoadState("ready"); })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  }, [onSessionExpired]);
+
+  return (
+    <div>
+      <TopBar title="Returns & disputes" subtitle={loadState === "ready" ? `${cases.length} cases` : "Loading…"} />
+      <div style={{ padding: 24 }}>
+        {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading return cases…</div></Card>}
+        {loadState === "error" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>Couldn't load return cases: {errorMessage}</div></Card>}
+        {loadState === "ready" && (
+          <Card>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead><tr><Th>Case</Th><Th>Order</Th><Th>Buyer</Th><Th>Reason</Th><Th>Status</Th><Th>Updated</Th></tr></thead>
+              <tbody>
+                {cases.length === 0 && (
+                  <tr><td colSpan={6} style={{ ...body, textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>No return cases.</td></tr>
+                )}
+                {cases.map(c => {
+                  const meta = getReturnStatusMeta(c.status);
+                  return (
+                    <tr key={c.id} onClick={() => onOpenCase(c.id)} style={{ cursor: "pointer" }}>
+                      <Td><PlateChip small>{c.id}</PlateChip></Td>
+                      <Td><PlateChip small>{c.orderId}</PlateChip></Td>
+                      <Td>{c.buyerId || c.guestEmail || "—"}</Td>
+                      <Td style={{ maxWidth: 260 }}>{c.reason}</Td>
+                      <Td><Badge label={meta.label} color={meta.color} bg={meta.bg} /></Td>
+                      <Td style={{ color: C.muted }}>{new Date(c.updatedAt).toLocaleString()}</Td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ReturnCaseDetailPage({ caseId, onBack, onSessionExpired }) {
+  const [returnCase, setReturnCase] = useState(null);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [buyerReply, setBuyerReply] = useState("");
+  const [supplierReply, setSupplierReply] = useState("");
+  const [isSending, setIsSending] = useState(false);
+
+  const load = () => {
+    fetchReturnCaseById(getStoredToken(), caseId)
+      .then((data) => { setReturnCase(data); setLoadState("ready"); })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  };
+  useEffect(load, [caseId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const sendBuyerReply = async () => {
+    if (!buyerReply.trim()) return;
+    setIsSending(true);
+    try {
+      await replyToReturnCaseBuyer(getStoredToken(), caseId, buyerReply.trim());
+      setBuyerReply("");
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const sendSupplierReply = async () => {
+    if (!supplierReply.trim()) return;
+    setIsSending(true);
+    try {
+      await replyToReturnCaseSupplier(getStoredToken(), caseId, supplierReply.trim());
+      setSupplierReply("");
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleStatusChange = async (status) => {
+    try {
+      await updateReturnCaseStatus(getStoredToken(), caseId, status);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
+  if (loadState === "loading") {
+    return (
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
+          <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
+          <div style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink }}>Return case</div>
+        </div>
+        <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading…</div>
+      </div>
+    );
+  }
+  if (loadState === "error") {
+    return (
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
+          <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
+          <div style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink }}>Return case</div>
+        </div>
+        <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>Couldn't load this case: {errorMessage}</div>
+      </div>
+    );
+  }
+
+  const meta = getReturnStatusMeta(returnCase.status);
+  const statusOptions = ["awaiting", "in_progress", "approved", "rejected", "completed"];
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
+        <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
+        <div style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink }}>{returnCase.reason}</div>
+        <PlateChip>{returnCase.id}</PlateChip>
+        <Badge label={meta.label} color={meta.color} bg={meta.bg} />
+      </div>
+      <div style={{ padding: 24, display: "flex", gap: 16 }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
+          <Card title="Buyer thread">
+            <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10, maxHeight: 260, overflowY: "auto" }}>
+              {returnCase.buyerMessages.map((m, i) => (
+                <div key={i} style={{ ...body, fontSize: 12.5, padding: "8px 10px", borderRadius: 8, background: m.senderRole === "admin" ? C.torqueBg : C.canvas }}>
+                  <div style={{ fontWeight: 700, fontSize: 10.5, color: C.muted, marginBottom: 2 }}>{m.senderRole === "admin" ? "Platform" : "Buyer"}</div>
+                  {m.message}
+                </div>
+              ))}
+            </div>
+            <div style={{ padding: 12, borderTop: `1px solid ${C.line}`, display: "flex", gap: 8 }}>
+              <input value={buyerReply} onChange={(e) => setBuyerReply(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendBuyerReply()} placeholder="Reply to buyer…" style={{ ...body, flex: 1, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 10px", fontSize: 12.5 }} />
+              <button disabled={isSending} onClick={sendBuyerReply} style={{ ...body, padding: "8px 14px", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSending ? "default" : "pointer" }}>Send</button>
+            </div>
+          </Card>
+          <Card title="Supplier thread">
+            <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10, maxHeight: 260, overflowY: "auto" }}>
+              {returnCase.supplierMessages.map((m, i) => (
+                <div key={i} style={{ ...body, fontSize: 12.5, padding: "8px 10px", borderRadius: 8, background: m.senderRole === "admin" ? C.torqueBg : C.canvas }}>
+                  <div style={{ fontWeight: 700, fontSize: 10.5, color: C.muted, marginBottom: 2 }}>{m.senderRole === "admin" ? "Platform" : "Supplier"}</div>
+                  {m.message}
+                </div>
+              ))}
+              {returnCase.supplierMessages.length === 0 && <div style={{ ...body, fontSize: 12, color: C.muted, textAlign: "center", padding: 12 }}>No messages yet.</div>}
+            </div>
+            <div style={{ padding: 12, borderTop: `1px solid ${C.line}`, display: "flex", gap: 8 }}>
+              <input value={supplierReply} onChange={(e) => setSupplierReply(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendSupplierReply()} placeholder="Message supplier…" style={{ ...body, flex: 1, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 10px", fontSize: 12.5 }} />
+              <button disabled={isSending} onClick={sendSupplierReply} style={{ ...body, padding: "8px 14px", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSending ? "default" : "pointer" }}>Send</button>
+            </div>
+          </Card>
+          <div style={{ ...body, fontSize: 11, color: C.muted, padding: "0 4px" }}>
+            These two threads are structurally separate — the buyer never sees supplier messages, and the supplier never sees buyer messages or identity. No direct buyer↔supplier contact, per policy.
+          </div>
+        </div>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
+          <Card title="Case details">
+            <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ ...body, fontSize: 12, color: C.muted }}>Buyer</div>
+              <div style={{ ...body, fontSize: 13, fontWeight: 600 }}>{returnCase.buyerId || returnCase.guestEmail}</div>
+              <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 6 }}>Related order</div>
+              <PlateChip small>{returnCase.orderId}</PlateChip>
+            </div>
+          </Card>
+          <Card title="Status">
+            <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+              {statusOptions.map(s => {
+                const m = getReturnStatusMeta(s);
+                return (
+                  <button
+                    key={s}
+                    onClick={() => handleStatusChange(s)}
+                    style={{
+                      ...body, padding: 10, borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", textAlign: "left",
+                      border: returnCase.status === s ? `2px solid ${C.signal}` : `1px solid ${C.line}`,
+                      background: returnCase.status === s ? "#FDF1EB" : "#fff",
+                    }}
+                  >{m.label}</button>
+                );
+              })}
+            </div>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SettingsPage() {
   return (
     <div>
@@ -913,6 +1186,7 @@ const NAV = [
   { id: "orders", label: "Orders", icon: ShoppingBag },
   { id: "suppliers", label: "Suppliers", icon: Store },
   { id: "moderation", label: "Moderation", icon: PackageSearch },
+  { id: "returns", label: "Returns", icon: RotateCcw },
   { id: "payouts", label: "Payouts", icon: Wallet },
   { id: "tickets", label: "Support", icon: LifeBuoy },
   { id: "settings", label: "Settings", icon: Settings },
@@ -922,14 +1196,17 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   const [page, setPage] = useState("overview");
   const [openOrder, setOpenOrder] = useState(null);
   const [openTicket, setOpenTicket] = useState(null);
+  const [openCase, setOpenCase] = useState(null);
 
   let content;
   if (openOrder) content = <OrderDetailPage orderId={openOrder} onBack={() => setOpenOrder(null)} onSessionExpired={onLogout} />;
   else if (openTicket) content = <TicketDetailPage ticketId={openTicket} onBack={() => setOpenTicket(null)} onSessionExpired={onLogout} />;
-  else if (page === "overview") content = <OverviewPage />;
+  else if (openCase) content = <ReturnCaseDetailPage caseId={openCase} onBack={() => setOpenCase(null)} onSessionExpired={onLogout} />;
+  else if (page === "overview") content = <OverviewPage onSessionExpired={onLogout} />;
   else if (page === "orders") content = <OrdersPage onOpenOrder={setOpenOrder} onSessionExpired={onLogout} />;
   else if (page === "suppliers") content = <SuppliersPage onSessionExpired={onLogout} />;
   else if (page === "moderation") content = <ModerationPage onSessionExpired={onLogout} />;
+  else if (page === "returns") content = <ReturnsPage onOpenCase={setOpenCase} onSessionExpired={onLogout} />;
   else if (page === "payouts") content = <PayoutsPage />;
   else if (page === "tickets") content = <TicketsPage onOpenTicket={setOpenTicket} onSessionExpired={onLogout} />;
   else if (page === "settings") content = <SettingsPage />;
@@ -946,9 +1223,9 @@ function AdminDashboardShell({ currentUser, onLogout }) {
         <div style={{ flex: 1, padding: "0 12px" }}>
           {NAV.map(n => {
             const Icon = n.icon;
-            const active = page === n.id && !openOrder && !openTicket;
+            const active = page === n.id && !openOrder && !openTicket && !openCase;
             return (
-              <button key={n.id} onClick={() => { setPage(n.id); setOpenOrder(null); setOpenTicket(null); }} style={{
+              <button key={n.id} onClick={() => { setPage(n.id); setOpenOrder(null); setOpenTicket(null); setOpenCase(null); }} style={{
                 width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", marginBottom: 2, borderRadius: 8,
                 border: "none", cursor: "pointer", textAlign: "left",
                 background: active ? C.signal : "transparent", color: active ? "#fff" : "#B8BEC9",

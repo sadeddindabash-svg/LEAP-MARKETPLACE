@@ -187,6 +187,9 @@ src/
     │                       threads (BUY-053, SUP-030)
     ├── garage/              Buyer's saved vehicles (BUY-004, BUY-010–012) —
     │                       distinct from fitment/'s reference catalog
+    ├── overview/            Admin dashboard aggregate KPIs — deliberately
+    │                       no blended $ GMV or top-markets-by-country
+    │                       (no FX conversion / no country field exist)
     ├── payment/            Stripe, Amazon Payment Services, PayPal, and
     │                       Google Pay (routed through Stripe) — BUY-040–044
     └── notification/       SMS/email/push stub (BUY-051, SUP-032)

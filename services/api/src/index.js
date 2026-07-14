@@ -16,6 +16,7 @@ const supplierRoutes = require('./modules/supplier/routes');
 const supportRoutes = require('./modules/support/routes');
 const returnsRoutes = require('./modules/returns/routes');
 const garageRoutes = require('./modules/garage/routes');
+const overviewRoutes = require('./modules/overview/routes');
 
 assertRequiredEnvInProduction();
 
@@ -40,6 +41,7 @@ app.use('/supplier', supplierRoutes);
 app.use('/support', supportRoutes);
 app.use('/returns', returnsRoutes);
 app.use('/garage', garageRoutes);
+app.use('/overview', overviewRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

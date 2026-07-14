@@ -48,6 +48,20 @@ async function authedGet(path, token) {
   return data;
 }
 
+async function authedMutate(method, path, token, body) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method,
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  if (response.status === 401) {
+    throw new SessionExpiredError("Your session has expired. Please log in again.");
+  }
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
 // Admins see every order (server-side scoping — see services/api/src/modules/order/routes.js).
 export function fetchOrders(token) {
   return authedGet("/order", token);
@@ -107,6 +121,30 @@ export async function updateTicketStatus(token, ticketId, status) {
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
   return data;
+}
+
+export function fetchReturnCases(token) {
+  return authedGet("/returns", token);
+}
+
+export function fetchOverview(token) {
+  return authedGet("/overview", token);
+}
+
+export function fetchReturnCaseById(token, caseId) {
+  return authedGet(`/returns/${caseId}`, token);
+}
+
+export function replyToReturnCaseBuyer(token, caseId, message) {
+  return authedMutate("POST", `/returns/${caseId}/buyer-messages`, token, { message });
+}
+
+export function replyToReturnCaseSupplier(token, caseId, message) {
+  return authedMutate("POST", `/returns/${caseId}/supplier-messages`, token, { message });
+}
+
+export function updateReturnCaseStatus(token, caseId, status) {
+  return authedMutate("PATCH", `/returns/${caseId}`, token, { status });
 }
 
 export async function verifySupplier(token, supplierId, status) {

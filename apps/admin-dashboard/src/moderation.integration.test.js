@@ -8,7 +8,17 @@ const BACKEND_URL = 'http://localhost:4000';
 // this is the only way to get a known starting state for the round-trip
 // test below. Legitimate here since this is a Node-based integration test,
 // not browser code.
-const TEST_DB_URL = 'postgresql://leap_dev:leap_dev_password@localhost:5432/leap_marketplace_dev';
+//
+// BUG FIXED HERE: this used to be hardcoded to 'leap_marketplace_dev',
+// which silently broke in any environment testing against a differently-
+// named database (e.g. a fresh verification database) — the reset query
+// would succeed against the WRONG database, leaving the real target
+// database's product status stale and causing confusing failures in
+// unrelated-looking assertions. Now reads DATABASE_URL from the
+// environment (the same variable the actual backend server uses), with
+// the previous hardcoded value only as a fallback for plain local dev
+// where nobody set it explicitly.
+const TEST_DB_URL = process.env.DATABASE_URL || 'postgresql://leap_dev:leap_dev_password@localhost:5432/leap_marketplace_dev';
 
 async function isBackendUp() {
   try {
