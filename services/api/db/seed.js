@@ -112,6 +112,31 @@ async function main() {
   );
   console.log(`Seeded dev supplier login: ${DEV_SUPPLIER_EMAIL} / ${DEV_SUPPLIER_PASSWORD} (change before any shared/production use)`);
 
+  // Return/dispute case — only seeded if a real supplier_sub_order already
+  // exists to attach it to (sub-orders are only created via real order
+  // placement, so this is conditional rather than a hardcoded ID that
+  // might not exist in a given database).
+  const existingSubOrder = await pool.query(
+    `SELECT so.id, so.order_id FROM supplier_sub_orders so WHERE so.supplier_id = 's1' ORDER BY so.id ASC LIMIT 1`
+  );
+  if (existingSubOrder.rows.length > 0) {
+    const { id: subOrderId, order_id: orderId } = existingSubOrder.rows[0];
+    await pool.query(
+      `INSERT INTO return_cases (id, order_id, sub_order_id, guest_email, reason, status) VALUES
+        ('RC-3400', $1, $2, 'seed-return-buyer@example.com', 'Wrong brake disc size delivered', 'awaiting')
+       ON CONFLICT (id) DO NOTHING`,
+      [orderId, subOrderId]
+    );
+    await pool.query(
+      `INSERT INTO return_case_buyer_messages (case_id, sender_role, message) VALUES
+        ('RC-3400', 'buyer', 'I ordered a 300mm disc but received a 290mm one. Can you help?')
+       ON CONFLICT DO NOTHING`
+    );
+    console.log('Seeded a return case (RC-3400) against an existing order for supplier s1.');
+  } else {
+    console.log('Skipped seeding a return case — no supplier_sub_orders exist yet (place an order first if you want demo data here).');
+  }
+
   console.log('Seed complete.');
   await pool.end();
 }
