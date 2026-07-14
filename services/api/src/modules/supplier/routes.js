@@ -293,8 +293,10 @@ router.patch('/me/products/:id', requireAuth, requireRole('supplier'), async (re
 router.get('/me/orders', requireAuth, requireRole('supplier'), async (req, res, next) => {
   try {
     const { rows: subOrders } = await db.query(
-      `SELECT so.id, so.order_id, so.status, so.tracking_number, o.placed_at
-       FROM supplier_sub_orders so JOIN orders o ON o.id = so.order_id
+      `SELECT so.id, so.order_id, so.status, so.tracking_number, so.hub_id, h.name AS hub_name, o.placed_at
+       FROM supplier_sub_orders so
+       JOIN orders o ON o.id = so.order_id
+       LEFT JOIN hubs h ON h.id = so.hub_id
        WHERE so.supplier_id = $1
        ORDER BY o.placed_at DESC`,
       [req.user.supplierId]
@@ -313,6 +315,8 @@ router.get('/me/orders', requireAuth, requireRole('supplier'), async (req, res, 
         orderId: so.order_id,
         status: so.status,
         trackingNumber: so.tracking_number,
+        hubId: so.hub_id,
+        hubName: so.hub_name,
         placedAt: so.placed_at,
         items: items.map((i) => ({ productId: i.product_id, name: i.name, quantity: i.quantity, unitPrice: Number(i.unit_price) })),
       });
@@ -326,16 +330,45 @@ router.get('/me/orders', requireAuth, requireRole('supplier'), async (req, res, 
 // PATCH /supplier/me/orders/:subOrderId  { status?, trackingNumber? }
 // (SUP-021/022: accept/prepare/ship + tracking). Ownership enforced the
 // same way as the product PATCH above.
+// PATCH /supplier/me/orders/:subOrderId  { status?, trackingNumber? }
+// (SUP-021/022: accept/prepare/ship + tracking).
+//
+// IMPORTANT MEANING CHANGE (migration 011): 'shipped' here now means
+// "shipped to the assigned HUB", NOT "shipped to the buyer" — every
+// order now routes Supplier -> Hub -> Buyer, never supplier direct to
+// buyer (see services/api/README.md's Inspection Hubs section). A
+// supplier CANNOT mark a sub-order 'shipped' until an admin has
+// assigned a hub to it (PATCH /hub/assign/:subOrderId) — enforced here,
+// not just a UI nicety. The moment a sub-order transitions to 'shipped',
+// its hub_shipments row is created automatically (status
+// 'awaiting_receipt') — that's the bridge from the supplier's leg to
+// the hub's leg of the journey.
 router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  const { status, trackingNumber } = req.body || {};
+  if (status !== undefined && !['pending', 'preparing', 'shipped', 'delivered', 'dispute'].includes(status)) {
+    return res.status(400).json({ error: "status must be one of: pending, preparing, shipped, delivered, dispute" });
+  }
+  if (status === undefined && trackingNumber === undefined) {
+    return res.status(400).json({ error: 'Provide at least one of: status, trackingNumber' });
+  }
+
+  const client = await db.getPool().connect();
   try {
-    const { status, trackingNumber } = req.body || {};
-    if (status !== undefined && !['pending', 'preparing', 'shipped', 'delivered', 'dispute'].includes(status)) {
-      return res.status(400).json({ error: "status must be one of: pending, preparing, shipped, delivered, dispute" });
+    await client.query('BEGIN');
+
+    if (status === 'shipped') {
+      const ownCheck = await client.query('SELECT hub_id FROM supplier_sub_orders WHERE id = $1 AND supplier_id = $2', [req.params.subOrderId, req.user.supplierId]);
+      if (ownCheck.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Sub-order not found' });
+      }
+      if (!ownCheck.rows[0].hub_id) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'This sub-order has no inspection hub assigned yet — an admin must assign one before it can be marked shipped.' });
+      }
     }
-    if (status === undefined && trackingNumber === undefined) {
-      return res.status(400).json({ error: 'Provide at least one of: status, trackingNumber' });
-    }
-    const { rows } = await db.query(
+
+    const { rows } = await client.query(
       `UPDATE supplier_sub_orders SET
          status = COALESCE($1, status),
          tracking_number = COALESCE($2, tracking_number)
@@ -343,10 +376,25 @@ router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), asy
        RETURNING *`,
       [status ?? null, trackingNumber ?? null, req.params.subOrderId, req.user.supplierId]
     );
-    if (rows.length === 0) return res.status(404).json({ error: 'Sub-order not found' });
+    if (rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Sub-order not found' });
+    }
+
+    if (status === 'shipped') {
+      await client.query(
+        `INSERT INTO hub_shipments (sub_order_id, hub_id) VALUES ($1, $2) ON CONFLICT (sub_order_id) DO NOTHING`,
+        [rows[0].id, rows[0].hub_id]
+      );
+    }
+
+    await client.query('COMMIT');
     res.json({ subOrderId: rows[0].id, orderId: rows[0].order_id, status: rows[0].status, trackingNumber: rows[0].tracking_number });
   } catch (err) {
+    await client.query('ROLLBACK');
     next(err);
+  } finally {
+    client.release();
   }
 });
 

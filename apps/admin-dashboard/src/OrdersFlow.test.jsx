@@ -19,9 +19,11 @@ const MOCK_ORDER_DETAIL = {
   currencyCode: 'USD',
   placedAt: '2026-07-04T10:00:00.000Z',
   supplierSubOrders: [
-    { supplierId: 's1', supplierName: 'Guangzhou AutoParts Co.', status: 'pending', trackingNumber: null, items: [{ productId: 'p1', name: 'RIDEX Front Brake Disc', quantity: 2, unitPrice: 34.9 }] },
+    { subOrderId: 500, supplierId: 's1', supplierName: 'Guangzhou AutoParts Co.', status: 'pending', trackingNumber: null, hubId: null, hubName: null, hubShipment: null, items: [{ productId: 'p1', name: 'RIDEX Front Brake Disc', quantity: 2, unitPrice: 34.9 }] },
   ],
 };
+
+const MOCK_HUBS = [{ id: 'hub_guangzhou', name: 'Guangzhou Inspection Hub', region: 'China (South)', address: 'Panyu District' }];
 
 /** Routes a mocked fetch based on the URL, simulating the real API surface. */
 function mockFetchRouter({ orderListStatus = 200 } = {}) {
@@ -107,5 +109,71 @@ describe('Orders page — real data flow (mocked fetch, but exercising the real 
     // than showing a broken/empty orders page.
     await waitFor(() => expect(screen.getByRole('button', { name: /^log in$/i })).toBeInTheDocument());
     expect(localStorage.getItem('leap_admin_token')).toBeNull();
+  });
+
+  it('renders the assigned-hub view correctly when the order detail already has a hub assigned from the start', async () => {
+    const preAssignedRouter = vi.fn((url) => {
+      const u = String(url);
+      if (u.includes('/auth/login')) return Promise.resolve({ ok: true, json: async () => ({ token: 'fake.jwt.token', user: ADMIN_USER }) });
+      if (u.includes('/auth/me')) return Promise.resolve({ ok: true, json: async () => ADMIN_USER });
+      if (u.endsWith('/overview')) return Promise.resolve({ ok: true, json: async () => ({ totalOrders: 0, activeSuppliers: 0, pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, openTickets: 0, ordersByDay: [], unitsByCategory: [], topSuppliers: [] }) });
+      if (u.match(/\/order\/LP-900001$/)) {
+        return Promise.resolve({
+          ok: true, json: async () => ({
+            ...MOCK_ORDER_DETAIL,
+            supplierSubOrders: [{ ...MOCK_ORDER_DETAIL.supplierSubOrders[0], hubId: 'hub_guangzhou', hubName: 'Guangzhou Inspection Hub', hubShipment: null }],
+          }),
+        });
+      }
+      if (u.endsWith('/order')) return Promise.resolve({ ok: true, json: async () => MOCK_ORDER_LIST });
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    globalThis.fetch = preAssignedRouter;
+    render(<LeapAdminApp />);
+    await loginAndGoToOrders();
+
+    fireEvent.click(await screen.findByText('LP-900001'));
+    await waitFor(() => expect(screen.getByText('Guangzhou Inspection Hub')).toBeInTheDocument());
+  });
+
+  it('shows the real hub-assignment picker when no hub is assigned yet, and assigning one calls the real endpoint with the right data', async () => {
+    let assignCallBody = null;
+    let currentOrderDetail = { ...MOCK_ORDER_DETAIL, supplierSubOrders: [{ ...MOCK_ORDER_DETAIL.supplierSubOrders[0] }] };
+    const router = vi.fn((url, options) => {
+      const u = String(url);
+      const method = options?.method || 'GET';
+      if (u.includes('/auth/login')) return Promise.resolve({ ok: true, json: async () => ({ token: 'fake.jwt.token', user: ADMIN_USER }) });
+      if (u.includes('/auth/me')) return Promise.resolve({ ok: true, json: async () => ADMIN_USER });
+      if (u.endsWith('/overview')) return Promise.resolve({ ok: true, json: async () => ({ totalOrders: 0, activeSuppliers: 0, pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, openTickets: 0, ordersByDay: [], unitsByCategory: [], topSuppliers: [] }) });
+      if (method === 'PATCH' && u.match(/\/hub\/assign\/500$/)) {
+        assignCallBody = JSON.parse(options.body);
+        currentOrderDetail = {
+          ...currentOrderDetail,
+          supplierSubOrders: [{ ...currentOrderDetail.supplierSubOrders[0], hubId: assignCallBody.hubId, hubName: MOCK_HUBS.find((h) => h.id === assignCallBody.hubId)?.name, hubShipment: null }],
+        };
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ subOrderId: 500, hubId: assignCallBody.hubId }) });
+      }
+      if (u.endsWith('/hub/locations')) return Promise.resolve({ ok: true, json: async () => MOCK_HUBS });
+      if (u.match(/\/order\/LP-900001$/)) return Promise.resolve({ ok: true, json: async () => currentOrderDetail });
+      if (u.endsWith('/order')) return Promise.resolve({ ok: true, json: async () => MOCK_ORDER_LIST });
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    globalThis.fetch = router;
+    render(<LeapAdminApp />);
+    await loginAndGoToOrders();
+
+    fireEvent.click(await screen.findByText('LP-900001'));
+    await waitFor(() => expect(screen.getByText(/no inspection hub assigned/i)).toBeInTheDocument());
+
+    await waitFor(() => expect(screen.getByText(/Guangzhou Inspection Hub/)).toBeInTheDocument());
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'hub_guangzhou' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: /^assign$/i })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole('button', { name: /^assign$/i }));
+
+    // Verifies both the real API contract AND that the UI reflects it
+    // afterward: the correct sub-order/hub were sent, and the assigned
+    // view (with the real hub name) replaces the picker.
+    await waitFor(() => expect(assignCallBody).toEqual({ hubId: 'hub_guangzhou' }));
+    await waitFor(() => expect(screen.getByText('Guangzhou Inspection Hub')).toBeInTheDocument());
   });
 });

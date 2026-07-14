@@ -119,7 +119,23 @@ describe.runIf(backendUp)('supplier portal against a REAL running backend', () =
     const myOrders = await fetchMyOrders(token);
     const subOrder = myOrders.find((o) => o.orderId === order.id);
 
+    // NEW as of the inspection-hubs feature: every order now routes
+    // Supplier -> Hub -> Buyer, so a hub must be assigned before this
+    // sub-order can be marked shipped at all — confirmed as its own
+    // negative case, then done properly here.
     const trackingNumber = `TEST-TRACK-${Date.now()}`;
+    const shipWithoutHubRes = await fetch(`${BACKEND_URL}/supplier/me/orders/${subOrder.subOrderId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ status: 'shipped', trackingNumber }),
+    });
+    expect(shipWithoutHubRes.status).toBe(400);
+
+    const { token: adminTokenForAssign } = await login('admin@leap.dev', 'admin_dev_password_123');
+    await fetch(`${BACKEND_URL}/hub/assign/${subOrder.subOrderId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminTokenForAssign}` },
+      body: JSON.stringify({ hubId: 'hub_guangzhou' }),
+    });
+
     const updated = await updateSubOrder(token, subOrder.subOrderId, { status: 'shipped', trackingNumber });
     expect(updated.status).toBe('shipped');
     expect(updated.trackingNumber).toBe(trackingNumber);
@@ -133,6 +149,10 @@ describe.runIf(backendUp)('supplier portal against a REAL running backend', () =
     const adminOrder = await adminOrderRes.json();
     expect(adminOrder.supplierSubOrders[0].trackingNumber).toBe(trackingNumber);
     expect(adminOrder.supplierSubOrders[0].status).toBe('shipped');
+    // The hub's own leg should have been auto-created the moment this
+    // sub-order transitioned to 'shipped' (shipped TO THE HUB, not the
+    // buyer — see migration 011's header comment for the meaning change).
+    expect(adminOrder.supplierSubOrders[0].hubShipment.status).toBe('awaiting_receipt');
   });
 
   it('rejects updating a sub-order that doesn\'t belong to this supplier', async () => {

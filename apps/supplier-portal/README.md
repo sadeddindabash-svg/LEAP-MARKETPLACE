@@ -158,6 +158,15 @@ noted as "dropped because backend storage isn't wired" is now real:
   "Accept order" / "Mark out-of-stock" buttons with a direct status
   selector (pending/preparing/shipped/delivered/dispute) that maps to
   exactly what the real `supplier_sub_orders.status` column supports.
+- **New, real coupling as of the inspection-hubs feature**: a supplier
+  can no longer mark a sub-order 'shipped' until an admin has assigned
+  it to a regional inspection hub — every order now has two real
+  shipping legs, Supplier → Hub → Buyer, always, confirmed as an
+  explicit business decision (see `services/api/README.md`'s
+  "Inspection hubs" section). Attempting to ship without an assigned hub
+  is rejected with a clear message, not silently allowed. Once shipped,
+  the hub's own inspection workflow takes over — see the new
+  `apps/hub-portal/README.md`.
 
 ## Returns & disputes (SUP-030)
 
@@ -210,10 +219,12 @@ Six test files, 35 tests total, all passing:
   correctly rejected from supplier endpoints, products scoped to only this
   supplier (confirms another supplier's product never appears), a created
   product verified to appear in the admin's real moderation queue, product
-  edit ownership enforcement, and — the key one — placing a real order and
-  marking it shipped with tracking, then confirming that exact tracking
-  number and status via a **separate request as the admin**, proving the
-  cross-app data flow is real.
+  edit ownership enforcement, and — the key one — placing a real order,
+  confirming shipping is genuinely rejected until a hub is assigned (the
+  new inspection-hubs requirement — see `services/api/README.md`),
+  assigning one as admin, then marking it shipped with tracking and
+  confirming that exact tracking number and status via a **separate
+  request as the admin**, proving the cross-app data flow is real.
 - `src/App.test.jsx` (5, mocked fetch): login gate shows/hides correctly,
   a non-supplier role is rejected even with valid credentials, the language
   toggle works on the login screen itself, and logout clears the session.

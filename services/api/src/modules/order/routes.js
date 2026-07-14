@@ -137,8 +137,10 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
     }
 
     const { rows: subOrders } = await db.query(
-      `SELECT so.id, so.supplier_id, so.status, so.tracking_number, s.name AS supplier_name
-       FROM supplier_sub_orders so LEFT JOIN suppliers s ON s.id = so.supplier_id
+      `SELECT so.id, so.supplier_id, so.status, so.tracking_number, so.hub_id, h.name AS hub_name, s.name AS supplier_name
+       FROM supplier_sub_orders so
+       LEFT JOIN suppliers s ON s.id = so.supplier_id
+       LEFT JOIN hubs h ON h.id = so.hub_id
        WHERE so.order_id = $1`,
       [req.params.id]
     );
@@ -151,12 +153,42 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
          WHERE oli.sub_order_id = $1`,
         [so.id]
       );
+
+      // The hub's leg of the journey, if this sub-order has reached the
+      // "shipped to hub" point yet — see migration 011's header comment
+      // for why this is a genuinely separate leg from the supplier's own
+      // status above, not the same thing.
+      let hubShipment = null;
+      const { rows: shipmentRows } = await db.query('SELECT * FROM hub_shipments WHERE sub_order_id = $1', [so.id]);
+      if (shipmentRows.length > 0) {
+        const shipment = shipmentRows[0];
+        const { rows: events } = await db.query(
+          `SELECT hse.*, u.email AS performed_by_email
+           FROM hub_shipment_events hse LEFT JOIN users u ON u.id = hse.performed_by
+           WHERE hse.shipment_id = $1 ORDER BY hse.created_at ASC`,
+          [shipment.id]
+        );
+        const eventsWithPhotos = [];
+        for (const e of events) {
+          const { rows: photos } = await db.query('SELECT url FROM hub_shipment_photos WHERE event_id = $1 ORDER BY sort_order', [e.id]);
+          eventsWithPhotos.push({
+            step: e.step, notes: e.notes, trackingNumber: e.tracking_number,
+            performedBy: e.performed_by_email, createdAt: e.created_at,
+            photos: photos.map((p) => p.url),
+          });
+        }
+        hubShipment = { id: shipment.id, status: shipment.status, updatedAt: shipment.updated_at, events: eventsWithPhotos };
+      }
+
       supplierSubOrders.push({
         subOrderId: so.id,
         supplierId: so.supplier_id,
         supplierName: so.supplier_name,
         status: so.status,
         trackingNumber: so.tracking_number,
+        hubId: so.hub_id,
+        hubName: so.hub_name,
+        hubShipment,
         items: items.map((i) => ({ productId: i.product_id, name: i.name, quantity: i.quantity, unitPrice: Number(i.unit_price) })),
       });
     }

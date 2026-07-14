@@ -42,7 +42,11 @@ const upload = multer({
 });
 
 // POST /uploads/product-image  (multipart/form-data, field name "image")
-router.post('/product-image', requireAuth, requireRole('supplier'), (req, res, next) => {
+// Also used by hub staff for shipment-inspection evidence photos, not
+// just supplier product photos — the actual work here (validate
+// dimensions/type, save, return a URL) is identical regardless of which
+// real-world thing the photo is evidence of.
+router.post('/product-image', requireAuth, requireRole('supplier', 'hub_staff'), (req, res, next) => {
   upload.single('image')(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.message });
     if (!req.file) return res.status(400).json({ error: 'No image file provided (expected field name "image")' });

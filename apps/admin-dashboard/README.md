@@ -7,12 +7,12 @@ Real React (Vite) project for the platform operations tool. See
 
 This is the reference prototype (`docs/prototypes/leap_admin_dashboard_prototype.jsx`)
 dropped in as `src/App.jsx`, confirmed to **build successfully**, and now
-has **real authentication and seven real pages** (Overview, Orders,
-Suppliers, Moderation, Support Tickets, Returns, Vehicle Data — the last
-two are entirely new, not in the original prototype at all) — full UI →
-API → database → UI slices. Payouts is still mock data (blocked on
-undecided commission rates — see Charter Section 1 — rather than a
-technical gap).
+has **real authentication and eight real pages** (Overview, Orders,
+Suppliers, Moderation, Support Tickets, Returns, Vehicle Data, Hubs — the
+last three are entirely new, not in the original prototype at all) —
+full UI → API → database → UI slices. Payouts is still mock data
+(blocked on undecided commission rates — see Charter Section 1 — rather
+than a technical gap).
 
 ## Authentication (ADM-030)
 
@@ -277,17 +277,65 @@ to add one.
   refused — not by relying on another test file's leftover state, which
   would only work by coincidence depending on test run order.
 
+## Hubs page (new — not in the original prototype at all)
+
+Real, admin-only management of regional inspection hub locations — the
+physical facilities that now sit between every supplier and every buyer
+(see `services/api/README.md`'s "Inspection hubs" section for the full
+business rule and backend design). Simpler than Vehicle Data (no
+drill-down levels — hubs don't have sub-levels), but the same
+real-data-with-real-protection pattern: `POST`/`DELETE /hub/locations`,
+and deleting a hub that real staff accounts or shipments still
+reference is refused with a clear message, not silently allowed or a
+raw database error.
+
+## Hub assignment on the Order detail page (new)
+
+Each supplier sub-order on the Order detail page (see "Orders page"
+above) now shows a real `HubAssignmentPanel`:
+
+- **If no hub is assigned yet**: a real picker, populated from
+  `GET /hub/locations`. This isn't cosmetic — a supplier genuinely
+  cannot mark their leg 'shipped' until an admin assigns one here (see
+  the backend section for why).
+- **If a hub is assigned**: the real hub name, the real current status
+  of that leg's journey (`awaiting_receipt` through `shipped_to_buyer`,
+  or `flagged`), and an expandable "View evidence" section showing the
+  complete real audit trail — every step, its notes, its photos, who
+  performed it, when. This is the same data the hub portal itself shows
+  its own staff; an admin doesn't need to ask what happened, it's
+  already here.
+
+**A real bug found and fixed while building this** (not by inspection —
+by testing the actual interactive assign action, not just how the page
+looks with pre-assigned data already in place): without a stable `key`
+tied to the assignment state, `HubAssignmentPanel` didn't reliably
+re-render to reflect a hub that was JUST assigned via the picker — it
+could keep showing the "no hub assigned" picker even after a successful
+assignment, until something else forced a fuller re-render. Fixed by
+keying the component on `so.hubId || "unassigned"` so React cleanly
+remounts it exactly when the fundamental mode (unassigned vs. assigned)
+changes. Confirmed by testing the FULL interactive flow — select a hub,
+click Assign, and verify the assigned view actually appears — not just
+testing the two render states in isolation, which would have missed
+this entirely.
+
 ## Testing
 
 ```bash
 npm test
 ```
 
-Nineteen test files, 103 tests total, all passing:
+Twenty-one test files, 118 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/orders.integration.test.js` (4, REAL backend) — order list/detail
-- `src/OrdersFlow.test.jsx` (3, mocked, full component tree) — orders UI flow
+- `src/OrdersFlow.test.jsx` (5, mocked, full component tree) — orders UI
+  flow, plus real hub-assignment coverage: renders the assigned-hub view
+  correctly when a hub is already assigned from the start, and — the one
+  that caught the real bug described above — the full interactive flow
+  of picking a hub and clicking Assign, confirming both the real API call
+  contract and that the UI actually reflects it afterward
 - `src/suppliers.integration.test.js` (5, REAL backend) — supplier list
   with real listing counts, a full reject→verify round-trip confirmed by
   independently re-fetching afterward, invalid-status rejection, and
@@ -361,6 +409,23 @@ Nineteen test files, 103 tests total, all passing:
   Model→Generation→Engines/Transmissions, the breadcrumb navigates back
   up correctly, and adding a new brand calls the real create endpoint
   and shows it in the list immediately.
+- `src/hub.integration.test.js` (10, REAL backend) — a supplier
+  genuinely cannot ship a sub-order before an admin assigns a hub; once
+  assigned and shipped, a real `hub_shipment` auto-creates and is
+  visible ONLY to that hub (a shipment routed elsewhere is confirmed
+  invisible, both in the queue list and to a different hub's staff
+  entirely); step order is enforced (skipping ahead 400s), zero photos
+  400s, the full real `received → opened → inspected → packed →
+  shipped_to_buyer` sequence works end-to-end with a required tracking
+  number on the final step and a complete audit trail confirmed visible
+  from BOTH the hub's own view and the admin's order detail; the
+  `flagged` branch works from any in-progress state and can't be
+  triggered twice; and hub-location creation/deletion (with the same
+  real referential protection as Vehicle Data) all work correctly.
+- `src/HubsFlow.test.jsx` (3, mocked, full component tree) — renders
+  real seeded hubs, adding a new one calls the real create endpoint and
+  shows up immediately, and submission is blocked without a name and
+  region.
 - `src/overview.integration.test.js` (5, REAL backend) — confirms
   unauthenticated and non-admin access are both rejected, checks the
   response shape matches what the real UI reads, and — the one that

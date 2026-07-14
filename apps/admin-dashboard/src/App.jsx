@@ -3,13 +3,14 @@ import LoginPage from "./LoginPage";
 import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, verifySupplier, fetchModerationQueue, moderateProduct, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
   createBrand, deleteBrand, createModel, deleteModel, createGeneration, deleteGeneration, createEngine, deleteEngine, createTransmission, deleteTransmission,
+  fetchHubLocations, createHubLocation, deleteHubLocation, assignHubToSubOrder,
 } from "./auth";
 import {
   LayoutGrid, ShoppingBag, Store, PackageSearch, Wallet, LifeBuoy, Settings,
   Search, Bell, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Truck,
   CheckCircle2, XCircle, Clock, AlertTriangle, MoreHorizontal, ArrowUpRight,
   Filter as FilterIcon, Download, Check, X, MessageSquare, Star, Globe, Users,
-  CreditCard, ExternalLink, ChevronLeft, RotateCcw
+  CreditCard, ExternalLink, ChevronLeft, RotateCcw, Warehouse
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -414,21 +415,120 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
   );
 }
 
+// Real hub assignment + evidence trail, shown inline on each supplier
+// sub-order in the Order detail page. If no hub is assigned yet, shows a
+// real picker (an admin must assign one before the supplier can mark
+// their leg 'shipped' — see services/api/README.md's Inspection Hubs
+// section). If a hub_shipment already exists, shows the real status and
+// the full step-by-step evidence trail (photos, notes, who, when).
+//
+// Uses a key tied to hubId at the call site (see below) to force a
+// clean remount when a sub-order transitions from unassigned to
+// assigned — found via testing that without this, the panel could fail
+// to reliably reflect the new state after the interactive assign action,
+// a real bug not just a test artifact.
+function HubAssignmentPanel({ subOrder, onAssigned, onSessionExpired }) {
+  const [hubs, setHubs] = useState([]);
+  const [selectedHubId, setSelectedHubId] = useState("");
+  const [isAssigning, setIsAssigning] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [showEvidence, setShowEvidence] = useState(false);
+
+  useEffect(() => {
+    if (!subOrder.hubId) {
+      fetchHubLocations().then(setHubs).catch((e) => setErrorMessage(e.message));
+    }
+  }, [subOrder.hubId]);
+
+  const handleAssign = async () => {
+    if (!selectedHubId) return;
+    setIsAssigning(true);
+    setErrorMessage(null);
+    try {
+      await assignHubToSubOrder(getStoredToken(), subOrder.subOrderId, selectedHubId);
+      onAssigned();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsAssigning(false);
+    }
+  };
+
+  if (!subOrder.hubId) {
+    return (
+      <div style={{ margin: "8px 0 0 25px", padding: 10, background: C.amberBg, borderRadius: 8 }}>
+        <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.amber, marginBottom: 8 }}>
+          NO INSPECTION HUB ASSIGNED — required before the supplier can ship
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <select value={selectedHubId} onChange={(e) => setSelectedHubId(e.target.value)} style={{ ...body, flex: 1, border: `1px solid ${C.line}`, borderRadius: 7, padding: "7px 9px", fontSize: 12.5 }}>
+            <option value="">Select a hub…</option>
+            {hubs.map((h) => <option key={h.id} value={h.id}>{h.name} ({h.region})</option>)}
+          </select>
+          <button
+            disabled={isAssigning || !selectedHubId}
+            onClick={handleAssign}
+            style={{ ...body, padding: "7px 14px", borderRadius: 7, border: "none", background: isAssigning || !selectedHubId ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isAssigning || !selectedHubId ? "default" : "pointer" }}
+          >Assign</button>
+        </div>
+        {errorMessage && <div style={{ ...body, fontSize: 11.5, color: C.red, marginTop: 6 }}>{errorMessage}</div>}
+      </div>
+    );
+  }
+
+  const shipment = subOrder.hubShipment;
+  return (
+    <div style={{ margin: "8px 0 0 25px", padding: 10, background: C.canvas, borderRadius: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted }}>HUB:</span>
+        <span style={{ ...body, fontSize: 12, fontWeight: 700, color: C.ink }}>{subOrder.hubName}</span>
+        {shipment && <Badge label={shipment.status.replace(/_/g, " ")} color={shipment.status === "flagged" ? C.red : shipment.status === "shipped_to_buyer" ? C.gauge : C.torque} bg={shipment.status === "flagged" ? C.redBg : shipment.status === "shipped_to_buyer" ? C.gaugeBg : C.torqueBg} />}
+        {shipment && shipment.events.length > 0 && (
+          <button onClick={() => setShowEvidence((v) => !v)} style={{ marginLeft: "auto", ...body, fontSize: 11.5, fontWeight: 700, color: C.torque, background: "none", border: "none", cursor: "pointer" }}>
+            {showEvidence ? "Hide evidence" : `View evidence (${shipment.events.length})`}
+          </button>
+        )}
+      </div>
+      {!shipment && (
+        <div style={{ ...body, fontSize: 11.5, color: C.muted, marginTop: 6 }}>Awaiting the supplier to ship this leg — no evidence yet.</div>
+      )}
+      {showEvidence && shipment && (
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+          {shipment.events.map((e) => (
+            <div key={e.id} style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 8, padding: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", ...body, fontSize: 11.5, fontWeight: 700, color: C.ink, marginBottom: 4 }}>
+                <span>{e.step.replace(/_/g, " ")}</span>
+                <span style={{ color: C.muted, fontWeight: 400 }}>{new Date(e.createdAt).toLocaleString()}</span>
+              </div>
+              {e.notes && <div style={{ ...body, fontSize: 12, color: C.ink, marginBottom: 6 }}>{e.notes}</div>}
+              {e.trackingNumber && <div style={{ ...body, fontSize: 11.5, color: C.muted, marginBottom: 6 }}>Tracking: {e.trackingNumber}</div>}
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {e.photos.map((url, i) => (
+                  <img key={i} src={`${API_BASE_URL}${url}`} alt="" style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 6, border: `1px solid ${C.line}` }} />
+                ))}
+              </div>
+              <div style={{ ...body, fontSize: 10.5, color: C.muted, marginTop: 6 }}>by {e.performedBy}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OrderDetailPage({ orderId, onBack, onSessionExpired }) {
   const [order, setOrder] = useState(null);
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  const load = () => {
     fetchOrderById(getStoredToken(), orderId)
       .then((data) => {
-        if (cancelled) return;
         setOrder(data);
         setLoadState("ready");
       })
       .catch((err) => {
-        if (cancelled) return;
         if (err instanceof SessionExpiredError) {
           onSessionExpired();
           return;
@@ -436,8 +536,8 @@ function OrderDetailPage({ orderId, onBack, onSessionExpired }) {
         setErrorMessage(err.message);
         setLoadState("error");
       });
-    return () => { cancelled = true; };
-  }, [orderId, onSessionExpired]);
+  };
+  useEffect(load, [orderId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loadState === "loading") {
     return (
@@ -495,6 +595,7 @@ function OrderDetailPage({ orderId, onBack, onSessionExpired }) {
                       <span>${Number(item.unitPrice).toFixed(2)}</span>
                     </div>
                   ))}
+                  <HubAssignmentPanel key={so.hubId || "unassigned"} subOrder={so} onAssigned={load} onSessionExpired={onSessionExpired} />
                 </div>
               ))}
             </div>
@@ -977,6 +1078,90 @@ function VehicleDataPage({ onSessionExpired }) {
                 </div>
               </div>
             )}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// Real, admin-only management of hub locations — create/remove regional
+// inspection hubs. Simpler than Vehicle Data (no drill-down levels), but
+// the same real-data-with-real-protection pattern: deleting a hub that
+// real staff accounts or shipments reference is refused, not silently
+// allowed or a raw DB error.
+function HubsPage({ onSessionExpired }) {
+  const [hubs, setHubs] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [newName, setNewName] = useState("");
+  const [newRegion, setNewRegion] = useState("");
+  const [newAddress, setNewAddress] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const load = () => {
+    setLoadState("loading");
+    fetchHubLocations().then((h) => { setHubs(h); setLoadState("ready"); }).catch((e) => { setErrorMessage(e.message); setLoadState("error"); });
+  };
+  useEffect(load, []);
+
+  const handleAdd = async () => {
+    if (!newName.trim() || !newRegion.trim()) {
+      setErrorMessage("Name and region are required.");
+      return;
+    }
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    try {
+      await createHubLocation(getStoredToken(), newName.trim(), newRegion.trim(), newAddress.trim() || undefined);
+      setNewName(""); setNewRegion(""); setNewAddress("");
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    try {
+      await deleteHubLocation(getStoredToken(), id);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message); // e.g. the real 409 "staff/shipments reference this" message
+    }
+  };
+
+  return (
+    <div>
+      <TopBar title="Inspection Hubs" subtitle="Regional facilities between suppliers and buyers — receive, inspect, pack, ship" />
+      <div style={{ padding: 24 }}>
+        <Card>
+          <div style={{ padding: 18 }}>
+            {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 14 }}>{errorMessage}</div>}
+
+            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Hub name (e.g. Rotterdam Hub)" style={{ ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <input value={newRegion} onChange={(e) => setNewRegion(e.target.value)} placeholder="Region (e.g. Europe)" style={{ ...body, flex: 1, minWidth: 140, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <input value={newAddress} onChange={(e) => setNewAddress(e.target.value)} placeholder="Address (optional)" style={{ ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <button disabled={isSubmitting} onClick={handleAdd} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
+                <Check size={13} /> Add hub
+              </button>
+            </div>
+
+            {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>Loading…</div>}
+            {loadState === "ready" && hubs.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No hubs yet.</div>}
+            {loadState === "ready" && hubs.map((h, i) => (
+              <div key={h.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 4px", borderBottom: i < hubs.length - 1 ? `1px solid ${C.line}` : "none" }}>
+                <div>
+                  <div style={{ ...body, fontSize: 13.5, fontWeight: 700, color: C.ink }}>{h.name}</div>
+                  <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2 }}>{h.region}{h.address ? ` · ${h.address}` : ""}</div>
+                </div>
+                <button onClick={() => handleDelete(h.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={15} color={C.red} /></button>
+              </div>
+            ))}
           </div>
         </Card>
       </div>
@@ -1482,6 +1667,7 @@ const NAV = [
   { id: "moderation", label: "Moderation", icon: PackageSearch },
   { id: "returns", label: "Returns", icon: RotateCcw },
   { id: "vehicleData", label: "Vehicle Data", icon: Truck },
+  { id: "hubs", label: "Hubs", icon: Warehouse },
   { id: "payouts", label: "Payouts", icon: Wallet },
   { id: "tickets", label: "Support", icon: LifeBuoy },
   { id: "settings", label: "Settings", icon: Settings },
@@ -1503,6 +1689,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   else if (page === "moderation") content = <ModerationPage onSessionExpired={onLogout} />;
   else if (page === "returns") content = <ReturnsPage onOpenCase={setOpenCase} onSessionExpired={onLogout} />;
   else if (page === "vehicleData") content = <VehicleDataPage onSessionExpired={onLogout} />;
+  else if (page === "hubs") content = <HubsPage onSessionExpired={onLogout} />;
   else if (page === "payouts") content = <PayoutsPage />;
   else if (page === "tickets") content = <TicketsPage onOpenTicket={setOpenTicket} onSessionExpired={onLogout} />;
   else if (page === "settings") content = <SettingsPage />;

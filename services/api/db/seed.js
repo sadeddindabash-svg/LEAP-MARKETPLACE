@@ -15,6 +15,8 @@ const DEV_ADMIN_EMAIL = 'admin@leap.dev';
 const DEV_ADMIN_PASSWORD = 'admin_dev_password_123';
 const DEV_SUPPLIER_EMAIL = 'supplier@leap.dev';
 const DEV_SUPPLIER_PASSWORD = 'supplier_dev_password_123';
+const DEV_HUB_STAFF_EMAIL = 'hub@leap.dev';
+const DEV_HUB_STAFF_PASSWORD = 'hub_dev_password_123';
 
 function slugify(text) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
@@ -203,6 +205,32 @@ async function main() {
     }
   }
   console.log(`Seeded fitment cascade: ${brandN} brands, ${modelN} models, ${genN} generations, ${engN} engines, ${transN} transmissions.`);
+
+  // Regional inspection hubs (migration 011) — real, meaningful data so
+  // the admin's hub-assignment picker and the Hub Portal's login both
+  // have something real to work with.
+  const hubsSeed = [
+    { id: 'hub_guangzhou', name: 'Guangzhou Inspection Hub', region: 'China (South)', address: 'Panyu District, Guangzhou' },
+    { id: 'hub_dubai', name: 'Dubai Logistics Hub', region: 'UAE / GCC', address: 'Jebel Ali Free Zone, Dubai' },
+    { id: 'hub_miami', name: 'Miami Distribution Hub', region: 'Americas', address: 'Doral, Miami, FL' },
+  ];
+  for (const h of hubsSeed) {
+    await pool.query(
+      `INSERT INTO hubs (id, name, region, address) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING`,
+      [h.id, h.name, h.region, h.address]
+    );
+  }
+  console.log(`Seeded ${hubsSeed.length} regional inspection hubs.`);
+
+  // Dev-only hub staff login, tied to the Guangzhou hub — same pattern
+  // as the dev admin/supplier logins above.
+  const hubStaffPasswordHash = await bcrypt.hash(DEV_HUB_STAFF_PASSWORD, 10);
+  await pool.query(
+    `INSERT INTO users (id, email, name, role, hub_id, password_hash) VALUES ($1, $2, 'Mei Lin', 'hub_staff', 'hub_guangzhou', $3)
+     ON CONFLICT (email) DO NOTHING`,
+    ['hub_staff_dev_seed', DEV_HUB_STAFF_EMAIL, hubStaffPasswordHash]
+  );
+  console.log(`Seeded dev hub staff login: ${DEV_HUB_STAFF_EMAIL} / ${DEV_HUB_STAFF_PASSWORD} (change before any shared/production use)`);
 
   console.log('Seed complete.');
   await pool.end();

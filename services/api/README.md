@@ -240,6 +240,72 @@ DELETE /fitment/transmissions/:id
 - Wired into the admin dashboard's new "Vehicle Data" page — see that
   app's README.
 
+## Inspection hubs (migration 011) — the biggest structural change to fulfillment so far
+
+**Confirmed business rule, not assumed**: every order now has TWO real
+shipping legs, always — Supplier → Hub, then Hub → Buyer. A supplier
+never ships directly to a buyer. This is a genuinely new party in the
+marketplace (`hub_staff` role, same pattern as `supplier`/`supplier_id`),
+with its own dedicated portal — see `apps/hub-portal/README.md` for why
+that's a separate app rather than a page bolted onto the admin
+dashboard.
+
+**Schema**: `hubs` (regional facilities), `hub_id` added to `users`
+(with a DB-level constraint that a `hub_staff` user must have one) and
+to `supplier_sub_orders` (which hub a sub-order is routed to — an admin
+assigns this). `hub_shipments` is the hub's own leg, with a real status
+machine (`awaiting_receipt → received → opened → inspected → packed →
+shipped_to_buyer`, plus a `flagged` branch for quality issues found at
+any point) — created automatically the moment a supplier actually marks
+their leg 'shipped', not at hub-assignment time, so "awaiting receipt"
+genuinely means "on its way," not just "a hub was picked in advance."
+`hub_shipment_events` is the real audit trail (one row per step
+actually performed, by whom, with notes); `hub_shipment_photos` is
+mandatory evidence per step, same "at least 1, enforced in application
+code" pattern as product photos (migration 010).
+
+**A real coupling, not just a UI nicety**: `PATCH /supplier/me/orders/:id`
+now REJECTS marking a sub-order 'shipped' if no hub is assigned yet —
+there is no such thing as "shipped" with nowhere real to ship to. An
+admin assigns a hub via `PATCH /hub/assign/:subOrderId` first.
+
+**Step enforcement is real, not just documented**: `POST
+/hub/me/shipments/:id/events` rejects an out-of-order step (e.g.
+'inspected' before 'received'), rejects zero photos, and requires a
+tracking number specifically for the final `shipped_to_buyer` step.
+Cross-hub isolation is enforced server-side — a hub can only ever see
+and act on its own shipments, verified directly (a shipment routed to a
+different hub is genuinely invisible, not just hidden by the UI).
+
+**Full visibility, not siloed data**: `GET /order/:id` (used by both the
+admin dashboard and eventually buyer-facing tracking) includes the
+complete hub-leg journey — status, every event, every photo, who
+performed it — joined in from `hub_shipments`/`hub_shipment_events`/
+`hub_shipment_photos`. An admin doesn't need to ask hub staff what
+happened; it's already there.
+
+**Also used for evidence uploads**: `POST /uploads/product-image` (see
+migration 010's upload module) now accepts `hub_staff` as well as
+`supplier` — the actual work (validate real dimensions/type, save,
+return a URL) is identical regardless of which real-world thing the
+photo is evidence of.
+
+**Seeded with 3 real regional hubs** (Guangzhou, Dubai, Miami) and a dev
+hub-staff login (`hub@leap.dev` / `hub_dev_password_123`, scoped to
+Guangzhou) — see `db/seed.js`.
+
+**Tested end-to-end**, not just piece by piece — see
+`apps/admin-dashboard/src/hub.integration.test.js` (10 tests): a
+supplier genuinely cannot ship before a hub is assigned, the real
+`hub_shipment` auto-creates and is visible only to the correct hub,
+step order and photo requirements are enforced, the full real
+`received → ... → shipped_to_buyer` sequence works with a real tracking
+number and a complete audit trail visible from both the hub's own view
+and the admin's order detail, the `flagged` branch works and can't be
+triggered twice, cross-hub isolation holds, and hub-location
+creation/deletion (with real referential protection — you cannot delete
+a hub that real staff or shipments still reference) all work correctly.
+
 ## Setup
 
 ```bash
@@ -305,7 +371,12 @@ src/
     ├── uploads/             Product photo upload — real minimum-resolution
     │                       enforcement, local-disk storage for now (see
     │                       that module's header comment on real object
-    │                       storage being the production-ready next step)
+    │                       storage being the production-ready next step);
+    │                       also used by hub staff for evidence photos
+    ├── hub/                 Regional inspection hubs — the real Supplier
+    │                       -> Hub -> Buyer fulfillment pipeline (migration
+    │                       011), hub location CRUD, hub assignment, and
+    │                       the hub-staff-only shipment workflow endpoints
     ├── payment/            Stripe, Amazon Payment Services, PayPal, and
     │                       Google Pay (routed through Stripe) — BUY-040–044
     └── notification/       SMS/email/push stub (BUY-051, SUP-032)

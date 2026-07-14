@@ -14,7 +14,7 @@ const TOKEN_EXPIRY = '7d';
 
 function signToken(user) {
   return jwt.sign(
-    { sub: user.id, email: user.email, role: user.role, supplierId: user.supplier_id || user.supplierId || null },
+    { sub: user.id, email: user.email, role: user.role, supplierId: user.supplier_id || user.supplierId || null, hubId: user.hub_id || user.hubId || null },
     env.jwtSecret,
     { expiresIn: TOKEN_EXPIRY }
   );

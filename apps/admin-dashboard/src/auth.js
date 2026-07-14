@@ -212,3 +212,15 @@ export const createEngine = (token, generationId, name) => fitmentMutate("POST",
 export const deleteEngine = (token, id) => fitmentMutate("DELETE", `/fitment/engines/${id}`, token);
 export const createTransmission = (token, generationId, name) => fitmentMutate("POST", `/fitment/generations/${generationId}/transmissions`, token, { name });
 export const deleteTransmission = (token, id) => fitmentMutate("DELETE", `/fitment/transmissions/${id}`, token);
+
+// ---------------- Inspection hubs (new — Supplier -> Hub -> Buyer) ----------------
+
+export async function fetchHubLocations() {
+  const response = await fetch(`${API_BASE_URL}/hub/locations`);
+  if (!response.ok) throw new Error(`Failed to load hubs (${response.status})`);
+  return response.json();
+}
+
+export const createHubLocation = (token, name, region, address) => fitmentMutate("POST", "/hub/locations", token, { name, region, address });
+export const deleteHubLocation = (token, id) => fitmentMutate("DELETE", `/hub/locations/${id}`, token);
+export const assignHubToSubOrder = (token, subOrderId, hubId) => fitmentMutate("PATCH", `/hub/assign/${subOrderId}`, token, { hubId });

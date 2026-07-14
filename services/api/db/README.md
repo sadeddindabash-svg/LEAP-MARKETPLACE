@@ -71,6 +71,10 @@ See `migrations/001_init.sql` for the full schema with comments. Summary:
 | `vehicle_brands` / `vehicle_models` / `vehicle_generations` / `vehicle_engines` / `vehicle_transmissions` | The structured Brand->Model->Generation->Engine/Transmission cascade (migration 010) for supplier product submission — a SEPARATE, deeper hierarchy from `vehicles`, not a replacement; see that migration's header comment |
 | `product_fitment_entries` | A submitted product's specific fitment claim(s) — many-to-many against `vehicle_generations`, with an optional specific engine/transmission |
 | `product_images` | Mandatory product photos (migration 010) — the "at least 3" rule is enforced in application code, not a DB constraint |
+| `hubs` | Regional inspection hubs (migration 011) — the physical facilities between suppliers and buyers |
+| `hub_shipments` | The hub's own leg of a shipment's journey (Hub -> Buyer) — a real status machine (`awaiting_receipt` through `shipped_to_buyer`, plus `flagged`), created automatically the moment a supplier actually marks their leg shipped, one row per `supplier_sub_orders` row |
+| `hub_shipment_events` | The real audit trail — one row per inspection step actually performed, by whom, with notes |
+| `hub_shipment_photos` | Mandatory evidence photos per step (migration 011) — same "enforced in application code, not a DB constraint" pattern as `product_images` |
 
 **Not yet covered** (add a future migration once these backend modules
 exist — currently only in the admin-dashboard/supplier-portal prototypes,
