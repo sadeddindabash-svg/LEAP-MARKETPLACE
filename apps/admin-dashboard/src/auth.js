@@ -258,3 +258,12 @@ export async function previewPricing(token, { supplierCostCny, weightKg, lengthC
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
   return data;
 }
+
+// ---------------- Flagged shipments (new — the real answer to "where do I find a flagged issue") ----------------
+
+export async function fetchFlaggedShipments(token) {
+  const response = await fetch(`${API_BASE_URL}/hub/flagged`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) throw new Error(`Failed to load flagged shipments (${response.status})`);
+  return response.json();
+}

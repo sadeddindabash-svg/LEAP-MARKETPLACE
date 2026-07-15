@@ -191,6 +191,53 @@ describe.runIf(backendUp)('inspection hub workflow against a REAL running backen
     expect(reflagRes.status).toBe(400);
   });
 
+  it('CRITICAL: GET /hub/flagged (admin) is the real, working answer to "where do I find a flagged shipment" -- a real flag shows up here with its real note and photos', async () => {
+    const { subOrderId, orderId } = await placeOrderAndGetSubOrder('flaggedqueue');
+    const { token: adminToken } = await login('admin@leap.dev', 'admin_dev_password_123');
+    const { token: supplierToken } = await login('supplier@leap.dev', 'supplier_dev_password_123');
+    await assignHubAndShip(subOrderId, 'hub_guangzhou', adminToken, supplierToken);
+
+    const { token: hubToken } = await login('hub@leap.dev', 'hub_dev_password_123');
+    const queue = await (await fetch(`${BACKEND_URL}/hub/me/shipments`, { headers: { Authorization: `Bearer ${hubToken}` } })).json();
+    const shipmentId = queue.find((s) => s.subOrderId === subOrderId).id;
+
+    await fetch(`${BACKEND_URL}/hub/me/shipments/${shipmentId}/events`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${hubToken}` },
+      body: JSON.stringify({ step: 'flagged', notes: 'Wrong item entirely -- ordered a brake disc, received a filter', photos: ['/uploads/wrong-item.jpg'] }),
+    });
+
+    const flaggedRes = await fetch(`${BACKEND_URL}/hub/flagged`, { headers: { Authorization: `Bearer ${adminToken}` } });
+    expect(flaggedRes.status).toBe(200);
+    const flaggedList = await flaggedRes.json();
+    const entry = flaggedList.find((f) => f.orderId === orderId);
+    expect(entry).toBeDefined();
+    expect(entry.supplierName).toBe('Guangzhou AutoParts Co.');
+    expect(entry.hubName).toBe('Guangzhou Inspection Hub');
+    expect(entry.flagNote).toBe('Wrong item entirely -- ordered a brake disc, received a filter');
+    expect(entry.flagPhotos).toEqual(['/uploads/wrong-item.jpg']);
+  });
+
+  it('non-admins cannot see the flagged shipments queue', async () => {
+    const { token: hubToken } = await login('hub@leap.dev', 'hub_dev_password_123');
+    const hubRes = await fetch(`${BACKEND_URL}/hub/flagged`, { headers: { Authorization: `Bearer ${hubToken}` } });
+    expect(hubRes.status).toBe(403);
+
+    const { token: supplierToken } = await login('supplier@leap.dev', 'supplier_dev_password_123');
+    const supplierRes = await fetch(`${BACKEND_URL}/hub/flagged`, { headers: { Authorization: `Bearer ${supplierToken}` } });
+    expect(supplierRes.status).toBe(403);
+  });
+
+  it('a shipment that is NOT flagged does not appear in the flagged queue', async () => {
+    const { subOrderId, orderId } = await placeOrderAndGetSubOrder('notflagged');
+    const { token: adminToken } = await login('admin@leap.dev', 'admin_dev_password_123');
+    const { token: supplierToken } = await login('supplier@leap.dev', 'supplier_dev_password_123');
+    await assignHubAndShip(subOrderId, 'hub_guangzhou', adminToken, supplierToken);
+    // Deliberately do not flag it -- it should just sit in awaiting_receipt.
+
+    const flaggedList = await (await fetch(`${BACKEND_URL}/hub/flagged`, { headers: { Authorization: `Bearer ${adminToken}` } })).json();
+    expect(flaggedList.find((f) => f.orderId === orderId)).toBeUndefined();
+  });
+
   it('CRITICAL: cross-hub isolation -- a shipment routed to a different hub is invisible, both in the list and by direct ID', async () => {
     const { subOrderId } = await placeOrderAndGetSubOrder('crosshub');
     const { token: adminToken } = await login('admin@leap.dev', 'admin_dev_password_123');

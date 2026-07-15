@@ -7,10 +7,10 @@ Real React (Vite) project for the platform operations tool. See
 
 This is the reference prototype (`docs/prototypes/leap_admin_dashboard_prototype.jsx`)
 dropped in as `src/App.jsx`, confirmed to **build successfully**, and now
-has **real authentication and nine real pages** (Overview, Orders,
+has **real authentication and ten real pages** (Overview, Orders,
 Suppliers, Moderation, Support Tickets, Returns, Vehicle Data, Hubs,
-Pricing — all but the first three are entirely new, not in the original
-prototype at all) —
+Pricing, Flagged Shipments — all but the first three are entirely new,
+not in the original prototype at all) —
 full UI → API → database → UI slices. Payouts is still mock data
 (blocked on undecided commission rates — see Charter Section 1 — rather
 than a technical gap).
@@ -357,13 +357,35 @@ backend design.
   was computed at that exact moment. See the backend section for why
   that split is correct, not an oversight.
 
+## Flagged Shipments page (new — the real answer to "where do I find a flagged issue")
+
+Before this existed, a hub-flagged quality issue (see the Inspection
+Hubs section above) was only discoverable by already knowing which
+order to open — no queue, no notification, nothing surfacing it. This
+page is the real fix:
+
+- **A real sidebar badge**: the "Flagged Shipments" nav item shows a
+  live count fetched from `GET /hub/flagged` (admin-only), refetched on
+  every navigation so it reflects any change without needing a manual
+  refresh. No badge at all when the count is zero, rather than a
+  cluttered "0".
+- **The queue itself**: every flagged shipment across every order (not
+  scoped to one hub), showing the order ID, supplier, hub, when it was
+  flagged, the real flag note, and the real evidence photo(s) — the
+  same photos a customer's actual damaged/wrong part shows, not a
+  placeholder. A "View order" button jumps straight into that order's
+  real detail page (reusing the same `openOrder` navigation the Orders
+  page itself uses), so an admin doesn't have to search for it manually.
+- A real empty state ("Nothing flagged right now") rather than a blank
+  page when there's genuinely nothing to review.
+
 ## Testing
 
 ```bash
 npm test
 ```
 
-Twenty-four test files, 140 tests total, all passing:
+Twenty-five test files, 148 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/orders.integration.test.js` (4, REAL backend) — order list/detail
@@ -459,7 +481,7 @@ Twenty-four test files, 140 tests total, all passing:
   Model→Generation→Engines/Transmissions, the breadcrumb navigates back
   up correctly, and adding a new brand calls the real create endpoint
   and shows it in the list immediately.
-- `src/hub.integration.test.js` (10, REAL backend) — a supplier
+- `src/hub.integration.test.js` (13, REAL backend) — a supplier
   genuinely cannot ship a sub-order before an admin assigns a hub; once
   assigned and shipped, a real `hub_shipment` auto-creates and is
   visible ONLY to that hub (a shipment routed elsewhere is confirmed
@@ -470,8 +492,11 @@ Twenty-four test files, 140 tests total, all passing:
   number on the final step and a complete audit trail confirmed visible
   from BOTH the hub's own view and the admin's order detail; the
   `flagged` branch works from any in-progress state and can't be
-  triggered twice; and hub-location creation/deletion (with the same
-  real referential protection as Vehicle Data) all work correctly.
+  triggered twice; hub-location creation/deletion (with the same real
+  referential protection as Vehicle Data) all work correctly; and
+  (added later) `GET /hub/flagged` genuinely surfaces a real flag with
+  its real note and photos, non-admins are rejected, and a shipment that
+  was never flagged correctly does NOT appear in the queue.
 - `src/HubsFlow.test.jsx` (3, mocked, full component tree) — renders
   real seeded hubs, adding a new one calls the real create endpoint and
   shows up immediately, and submission is blocked without a name and
@@ -501,13 +526,29 @@ Twenty-four test files, 140 tests total, all passing:
   a deliberately drastic one) while the SAME product's live browsing
   price is confirmed to have genuinely changed — proving the "live
   until locked at order placement" design actually works, not just that
-  each half works in isolation.
+  each half works in isolation. **A real bug in this test itself was
+  found and fixed**: the "legacy product passes through unaffected" test
+  originally hardcoded p1's expected price as a literal number — this
+  broke the moment it ran against a database that had been reused across
+  many earlier sessions (this project's own dev database genuinely has
+  been), where p1's real seeded value differs from a freshly-seeded one.
+  Fixed by reading p1's REAL stored price directly from the database
+  (via a real `pg` connection, same pattern as `moderation.integration.test.js`)
+  and asserting the API returns THAT exact value unchanged — testing the
+  actual invariant that matters, not a number that happens to be true in
+  one environment's history.
 - `src/PricingFlow.test.jsx` (5, mocked, full component tree) — renders
   the real seeded fee component and current FX rate, adding a new fee
   calls the real create endpoint and shows up immediately, updating the
   FX rate calls the real update endpoint, and the preview calculator
   shows a real computed breakdown (and a clear error with no cost
   entered).
+- `src/FlaggedShipmentsFlow.test.jsx` (5, mocked, full component tree) —
+  the sidebar shows a real count badge when something is flagged and
+  shows no badge at all when nothing is (not a stray "0"), the queue
+  page renders a real flagged entry with its real note and supplier
+  name, a real empty state shows when nothing is flagged, and clicking
+  "View order" genuinely navigates into that order's real detail page.
 - `src/overview.integration.test.js` (5, REAL backend) — confirms
   unauthenticated and non-admin access are both rejected, checks the
   response shape matches what the real UI reads, and — the one that

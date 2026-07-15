@@ -83,6 +83,44 @@ router.patch('/assign/:subOrderId', requireAuth, requireRole('admin'), async (re
   }
 });
 
+// GET /hub/flagged — admin-only, real queue of every flagged shipment
+// across ALL hubs (unlike GET /hub/me/shipments, which is scoped to one
+// hub's own staff). This is the actual answer to "where do I find a
+// flagged shipment" — before this existed, an admin could only discover
+// one by already knowing which order to open, with no queue and no
+// notification at all.
+router.get('/flagged', requireAuth, requireRole('admin'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT hs.id, hs.status, hs.created_at, hs.updated_at, so.id AS sub_order_id, so.order_id,
+              s.name AS supplier_name, h.name AS hub_name
+       FROM hub_shipments hs
+       JOIN supplier_sub_orders so ON so.id = hs.sub_order_id
+       JOIN suppliers s ON s.id = so.supplier_id
+       LEFT JOIN hubs h ON h.id = hs.hub_id
+       WHERE hs.status = 'flagged'
+       ORDER BY hs.updated_at DESC`
+    );
+    const shipments = await Promise.all(rows.map(async (r) => {
+      const events = await attachEventsAndPhotos(r);
+      // The flag itself is always the LAST event on a flagged shipment
+      // (see POST /hub/me/shipments/:id/events -- the flagged branch is
+      // terminal), so this is the specific note/photos an admin needs
+      // to actually understand what's wrong, not just that something is.
+      const flagEvent = events.find((e) => e.step === 'flagged') || events[events.length - 1];
+      return {
+        id: r.id, subOrderId: r.sub_order_id, orderId: r.order_id,
+        supplierName: r.supplier_name, hubName: r.hub_name,
+        flaggedAt: r.updated_at, flagNote: flagEvent?.notes || null,
+        flagPhotos: flagEvent?.photos || [],
+      };
+    }));
+    res.json(shipments);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ============================================================
 // Hub staff: their own hub's shipments only, scoped to req.user.hubId —
 // same ownership-via-WHERE-clause pattern used for suppliers.

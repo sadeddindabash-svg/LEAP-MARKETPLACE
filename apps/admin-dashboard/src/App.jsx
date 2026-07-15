@@ -5,6 +5,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   createBrand, deleteBrand, createModel, deleteModel, createGeneration, deleteGeneration, createEngine, deleteEngine, createTransmission, deleteTransmission,
   fetchHubLocations, createHubLocation, deleteHubLocation, assignHubToSubOrder,
   fetchFeeComponents, createFeeComponent, updateFeeComponent, deleteFeeComponent, fetchFxRate, updateFxRate, previewPricing,
+  fetchFlaggedShipments,
 } from "./auth";
 import {
   LayoutGrid, ShoppingBag, Store, PackageSearch, Wallet, LifeBuoy, Settings,
@@ -1447,6 +1448,79 @@ function PricingPage({ onSessionExpired }) {
   );
 }
 
+// Real queue of every flagged hub shipment across all orders — the
+// actual answer to "where do I find a flagged issue," which before this
+// existed had no answer at all beyond already knowing which order to
+// open. See services/api/src/modules/hub/routes.js's GET /hub/flagged.
+function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired }) {
+  const [shipments, setShipments] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  useEffect(() => {
+    fetchFlaggedShipments(getStoredToken())
+      .then((data) => { setShipments(data); setLoadState("ready"); })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div>
+      <TopBar title="Flagged Shipments" subtitle="Quality issues hub staff have flagged during inspection, across every order" />
+      <div style={{ padding: 24 }}>
+        {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>}
+
+        {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>Loading…</div>}
+        {loadState === "ready" && shipments.length === 0 && (
+          <Card>
+            <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>
+              Nothing flagged right now.
+            </div>
+          </Card>
+        )}
+        {loadState === "ready" && shipments.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {shipments.map((s) => (
+              <Card key={s.id}>
+                <div style={{ padding: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ ...disp, fontSize: 16, fontWeight: 700, color: C.ink }}>{s.orderId}</span>
+                        <Badge label="Flagged" color={C.red} bg={C.redBg} />
+                      </div>
+                      <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 3 }}>
+                        {s.supplierName} · {s.hubName || "no hub"} · {new Date(s.flaggedAt).toLocaleString()}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => onOpenOrder(s.orderId)}
+                      style={{ ...body, padding: "7px 14px", borderRadius: 7, border: "none", background: C.signal, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
+                    >
+                      View order
+                    </button>
+                  </div>
+                  {s.flagNote && <div style={{ ...body, fontSize: 13, color: C.ink, marginBottom: 10 }}>{s.flagNote}</div>}
+                  {s.flagPhotos.length > 0 && (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {s.flagPhotos.map((url, i) => (
+                        <img key={i} src={`${API_BASE_URL}${url}`} alt="" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.line}` }} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function PayoutsPage() {
   const totalPending = PAYOUTS.reduce((s, p) => s + p.pending, 0);
   return (
@@ -1947,6 +2021,7 @@ const NAV = [
   { id: "vehicleData", label: "Vehicle Data", icon: Truck },
   { id: "hubs", label: "Hubs", icon: Warehouse },
   { id: "pricing", label: "Pricing", icon: Calculator },
+  { id: "flagged", label: "Flagged Shipments", icon: AlertTriangle },
   { id: "payouts", label: "Payouts", icon: Wallet },
   { id: "tickets", label: "Support", icon: LifeBuoy },
   { id: "settings", label: "Settings", icon: Settings },
@@ -1957,6 +2032,13 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   const [openOrder, setOpenOrder] = useState(null);
   const [openTicket, setOpenTicket] = useState(null);
   const [openCase, setOpenCase] = useState(null);
+  const [flaggedCount, setFlaggedCount] = useState(0);
+
+  useEffect(() => {
+    fetchFlaggedShipments(getStoredToken())
+      .then((data) => setFlaggedCount(data.length))
+      .catch(() => {}); // non-critical -- the sidebar badge just stays at 0 rather than breaking the shell
+  }, [page]); // refetch whenever navigating, so returning from the Flagged Shipments page reflects any change
 
   let content;
   if (openOrder) content = <OrderDetailPage orderId={openOrder} onBack={() => setOpenOrder(null)} onSessionExpired={onLogout} />;
@@ -1970,6 +2052,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   else if (page === "vehicleData") content = <VehicleDataPage onSessionExpired={onLogout} />;
   else if (page === "hubs") content = <HubsPage onSessionExpired={onLogout} />;
   else if (page === "pricing") content = <PricingPage onSessionExpired={onLogout} />;
+  else if (page === "flagged") content = <FlaggedShipmentsPage onOpenOrder={setOpenOrder} onSessionExpired={onLogout} />;
   else if (page === "payouts") content = <PayoutsPage />;
   else if (page === "tickets") content = <TicketsPage onOpenTicket={setOpenTicket} onSessionExpired={onLogout} />;
   else if (page === "settings") content = <SettingsPage />;
@@ -1994,7 +2077,12 @@ function AdminDashboardShell({ currentUser, onLogout }) {
                 background: active ? C.signal : "transparent", color: active ? "#fff" : "#B8BEC9",
               }}>
                 <Icon size={16} />
-                <span style={{ ...body, fontSize: 13, fontWeight: active ? 700 : 500 }}>{n.label}</span>
+                <span style={{ ...body, fontSize: 13, fontWeight: active ? 700 : 500, flex: 1 }}>{n.label}</span>
+                {n.id === "flagged" && flaggedCount > 0 && (
+                  <span style={{ ...body, fontSize: 10.5, fontWeight: 700, color: "#fff", background: active ? "rgba(255,255,255,0.25)" : C.red, borderRadius: 10, padding: "1px 7px", minWidth: 18, textAlign: "center" }}>
+                    {flaggedCount}
+                  </span>
+                )}
               </button>
             );
           })}

@@ -1,7 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
+import { Pool } from 'pg';
 import { login } from './auth';
 
 const BACKEND_URL = 'http://localhost:4000';
+// Direct DB access for this one test's setup only — see below for why.
+const TEST_DB_URL = process.env.DATABASE_URL || 'postgresql://leap_dev:leap_dev_password@localhost:5432/leap_marketplace_dev';
 
 async function isBackendUp() {
   try {
@@ -10,6 +13,12 @@ async function isBackendUp() {
   } catch {
     return false;
   }
+}
+
+const backendUp = await isBackendUp();
+let pool;
+if (backendUp) {
+  pool = new Pool({ connectionString: TEST_DB_URL });
 }
 
 async function createApprovedCnyProduct({ priceCny, weightKg, lengthCm, widthCm, heightCm }) {
@@ -38,9 +47,10 @@ async function createApprovedCnyProduct({ priceCny, weightKg, lengthCm, widthCm,
   return created.id;
 }
 
-const backendUp = await isBackendUp();
-
 describe.runIf(backendUp)('pricing engine against a REAL running backend', () => {
+  afterAll(async () => {
+    if (pool) await pool.end();
+  });
   it('CRITICAL: a supplier cannot submit a product priced in anything other than RMB', async () => {
     const { token } = await login('supplier@leap.dev', 'supplier_dev_password_123');
     const res = await fetch(`${BACKEND_URL}/supplier/me/products`, {
@@ -196,10 +206,24 @@ describe.runIf(backendUp)('pricing engine against a REAL running backend', () =>
 
   it('a legacy product priced before this feature existed (not CNY) passes through unaffected by the pricing engine', async () => {
     // p1 is real seed data, priced in USD, predating this feature.
+    // Reads the REAL stored price directly from the database rather than
+    // hardcoding an assumed number — this dev database has been reused
+    // across many earlier sessions, so p1's exact seeded value can
+    // legitimately differ by environment/history. What actually matters,
+    // and what this test verifies, is the INVARIANT: whatever p1's real
+    // stored price and currency are, the buyer-facing API returns that
+    // EXACT value completely unchanged, proving it was never run through
+    // the RMB pricing equation (which would have silently produced
+    // nonsense, e.g. treating $34.90 as if it were ¥34.90).
+    const { rows } = await pool.query("SELECT price, currency_code FROM products WHERE id = 'p1'");
+    const realPrice = Number(rows[0].price);
+    const realCurrency = rows[0].currency_code;
+    expect(realCurrency).not.toBe('CNY'); // confirms this is genuinely testing the legacy path, not accidentally a CNY product
+
     const res = await fetch(`${BACKEND_URL}/catalog/products/p1`);
     const product = await res.json();
-    expect(product.currencyCode).toBe('USD');
-    expect(product.price).toBe(34.9);
+    expect(product.currencyCode).toBe(realCurrency);
+    expect(product.price).toBe(realPrice);
   });
 
   it('the admin can view and update the real FX rate', async () => {

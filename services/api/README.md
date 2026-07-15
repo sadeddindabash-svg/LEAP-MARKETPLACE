@@ -306,6 +306,18 @@ triggered twice, cross-hub isolation holds, and hub-location
 creation/deletion (with real referential protection — you cannot delete
 a hub that real staff or shipments still reference) all work correctly.
 
+**`GET /hub/flagged` (admin-only, added later)** — the real answer to
+"where do I find a flagged shipment." Before this endpoint existed, a
+flagged shipment was only visible by already knowing which order to
+open (the evidence trail on that order's detail page) — no queue, no
+notification, nothing surfacing it. Returns every flagged shipment
+across ALL hubs (not scoped to one hub, unlike the hub-staff-facing
+endpoints), with the real flag note and photos already resolved (the
+flag is always the last real event on a flagged shipment) so an admin
+doesn't have to open a second request per row just to see what's wrong.
+See `apps/admin-dashboard/README.md`'s "Flagged Shipments page" section
+for the admin UI, including the real sidebar badge count.
+
 ## Arabic translation (migration 012)
 
 **Confirmed business decision, explicitly asked and answered, not
