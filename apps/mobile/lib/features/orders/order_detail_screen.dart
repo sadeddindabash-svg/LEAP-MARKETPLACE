@@ -86,7 +86,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               PlateChip(text: _order!['id'] as String),
-              Text((_order!['status'] as String).toUpperCase(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: LeapColors.torque)),
+              Text(trStatus(context, _order!['status'] as String).toUpperCase(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: LeapColors.torque)),
             ],
           ),
           const SizedBox(height: 6),
@@ -123,7 +123,7 @@ class _SupplierSubOrderCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(supplierName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                Text((subOrder['status'] as String).toUpperCase(), style: const TextStyle(fontSize: 10.5, color: LeapColors.muted, fontWeight: FontWeight.w700)),
+                Text(trStatus(context, subOrder['status'] as String).toUpperCase(), style: const TextStyle(fontSize: 10.5, color: LeapColors.muted, fontWeight: FontWeight.w700)),
               ],
             ),
             if (trackingNumber != null) ...[

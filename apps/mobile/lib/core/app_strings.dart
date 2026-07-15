@@ -37,6 +37,30 @@ class AppStrings {
     'cat_suspension': {'en': 'Suspension', 'ar': 'نظام التعليق'},
     'cat_lighting': {'en': 'Lighting', 'ar': 'الإضاءة'},
 
+    // ---- Bottom nav (RootShell) ----
+    'nav_home': {'en': 'Home', 'ar': 'الرئيسية'},
+    'nav_shop': {'en': 'Shop', 'ar': 'تسوق'},
+    'nav_cart': {'en': 'Cart', 'ar': 'السلة'},
+    'nav_orders': {'en': 'Orders', 'ar': 'الطلبات'},
+    'nav_account': {'en': 'Account', 'ar': 'الحساب'},
+
+    // ---- Order/shipment statuses -- shown wherever a raw status string
+    // from the backend is displayed (orders list, order detail). The
+    // backend's actual values (to_ship, shipped, delivered, etc.) are
+    // stable identifiers, not display text -- these map each one to a
+    // real bilingual label rather than showing the raw snake_case value.
+    'status_to_ship': {'en': 'To ship', 'ar': 'قيد الشحن'},
+    'status_pending': {'en': 'Pending', 'ar': 'قيد الانتظار'},
+    'status_preparing': {'en': 'Preparing', 'ar': 'قيد التحضير'},
+    'status_shipped': {'en': 'Shipped', 'ar': 'تم الشحن'},
+    'status_delivered': {'en': 'Delivered', 'ar': 'تم التسليم'},
+    'status_dispute': {'en': 'Dispute', 'ar': 'نزاع'},
+    'status_cancelled': {'en': 'Cancelled', 'ar': 'ملغى'},
+    'status_open': {'en': 'Open', 'ar': 'مفتوحة'},
+    'status_in_progress': {'en': 'In progress', 'ar': 'قيد التنفيذ'},
+    'status_resolved': {'en': 'Resolved', 'ar': 'تم الحل'},
+    'status_closed': {'en': 'Closed', 'ar': 'مغلقة'},
+
     // ---- Category ----
     'could_not_load_products': {'en': 'Could not load products.', 'ar': 'تعذر تحميل المنتجات.'},
     'no_products_in_category': {'en': 'No products in this category yet.', 'ar': 'لا توجد منتجات في هذه الفئة بعد.'},
@@ -180,4 +204,22 @@ String trRead(BuildContext context, String key) {
   final entry = AppStrings._strings[key];
   if (entry == null) return key;
   return (isAr ? entry['ar'] : entry['en']) ?? entry['en'] ?? key;
+}
+
+/// Translates a RAW backend status value (e.g. 'to_ship', 'shipped',
+/// 'in_progress') into a real bilingual label — used wherever an order,
+/// sub-order, ticket, or return case's status is displayed. Falls back
+/// to a formatted version of the raw value (underscores -> spaces,
+/// capitalized) for any status this lookup doesn't yet know about,
+/// rather than silently showing nothing.
+String trStatus(BuildContext context, String rawStatus) {
+  final key = 'status_${rawStatus.toLowerCase()}';
+  final entry = AppStrings._strings[key];
+  if (entry == null) {
+    // Unrecognized status — safe fallback, not a silent blank.
+    final words = rawStatus.split('_').map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}');
+    return words.join(' ');
+  }
+  final isAr = context.watch<LanguageState>().isArabic;
+  return (isAr ? entry['ar'] : entry['en']) ?? entry['en'] ?? rawStatus;
 }

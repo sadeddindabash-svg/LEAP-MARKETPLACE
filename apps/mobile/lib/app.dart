@@ -5,6 +5,7 @@ import 'core/theme.dart';
 import 'core/auth_state.dart';
 import 'core/cart_state.dart';
 import 'core/language_state.dart';
+import 'core/app_strings.dart';
 import 'features/home/home_screen.dart';
 import 'features/search/search_screen.dart';
 import 'features/garage/garage_screen.dart';
@@ -84,12 +85,12 @@ class RootShell extends StatelessWidget {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _indexForLocation(location),
         onTap: (i) => context.go(_tabs[i]),
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.grid_view_outlined), label: 'Shop'),
-          BottomNavigationBarItem(icon: Icon(Icons.shopping_cart_outlined), label: 'Cart'),
-          BottomNavigationBarItem(icon: Icon(Icons.inventory_2_outlined), label: 'Orders'),
-          BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'Account'),
+        items: [
+          BottomNavigationBarItem(icon: const Icon(Icons.home_outlined), label: tr(context, 'nav_home')),
+          BottomNavigationBarItem(icon: const Icon(Icons.grid_view_outlined), label: tr(context, 'nav_shop')),
+          BottomNavigationBarItem(icon: const Icon(Icons.shopping_cart_outlined), label: tr(context, 'nav_cart')),
+          BottomNavigationBarItem(icon: const Icon(Icons.inventory_2_outlined), label: tr(context, 'nav_orders')),
+          BottomNavigationBarItem(icon: const Icon(Icons.person_outline), label: tr(context, 'nav_account')),
         ],
       ),
     );

@@ -104,7 +104,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     return Card(
                       child: ListTile(
                         title: Text(t['subject'] as String, maxLines: 1, overflow: TextOverflow.ellipsis),
-                        subtitle: Text((t['status'] as String).replaceAll('_', ' '), style: const TextStyle(fontSize: 12)),
+                        subtitle: Text(trStatus(context, t['status'] as String), style: const TextStyle(fontSize: 12)),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () async {
                           await context.push('/support/${t['id']}');

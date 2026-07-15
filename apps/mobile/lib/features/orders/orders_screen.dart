@@ -94,7 +94,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           PlateChip(text: o['id'] as String, small: true),
-                          Text((o['status'] as String).toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: LeapColors.torque)),
+                          Text(trStatus(context, o['status'] as String).toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: LeapColors.torque)),
                         ],
                       ),
                       const SizedBox(height: 8),
