@@ -658,7 +658,7 @@ function AddProductForm({ onCancel, onCreated }) {
         position,
         oemNumber: oemNumber.trim(),
         price: parseFloat(price),
-        currencyCode: "USD",
+        currencyCode: "CNY",
         stockQuantity: parseInt(stock, 10) || 0,
         fitment: {
           generationId: selectedGenerationId,
@@ -708,7 +708,7 @@ function AddProductForm({ onCancel, onCreated }) {
           <Field label={cascadeLabel("OEM 编号", "OEM Number")}>
             <input style={inputStyle} placeholder="e.g. 34116792217" value={oemNumber} onChange={(e) => setOemNumber(e.target.value)} />
           </Field>
-          <Field label={cascadeLabel("价格 (USD)", "Price (USD)")}>
+          <Field label={cascadeLabel("价格 (¥ 人民币)", "Price (¥ RMB)")}>
             <input type="number" step="0.01" style={inputStyle} placeholder="0.00" value={price} onChange={(e) => setPrice(e.target.value)} />
           </Field>
           <Field label={cascadeLabel("库存数量", "Stock quantity")}>
@@ -813,6 +813,12 @@ function AddProductForm({ onCancel, onCreated }) {
           {cascadeLabel(
             "提交后商品状态为「翻译审核中」。Leap 团队将审核并提供英文翻译后方可上架销售。",
             "After submitting, this listing is 'awaiting translation'. The Leap team will review and provide the English translation before it goes live to buyers."
+          )}
+        </div>
+        <div style={{ ...font, fontSize: 11, color: C.muted, background: C.canvas, borderRadius: 8, padding: 10 }}>
+          {cascadeLabel(
+            "此价格为您的人民币成本。买家看到的最终美元售价由 Leap 根据平台费用（费用、运费、关税等）自动计算，不由您直接设置。",
+            "This is your RMB cost. The final USD price a buyer sees is calculated automatically by Leap based on platform fees (fees, shipping, duties, etc.) — you don't set it directly."
           )}
         </div>
 

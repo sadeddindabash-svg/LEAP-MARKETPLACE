@@ -125,6 +125,14 @@ noted as "dropped because backend storage isn't wired" is now real:
   be actual operable numbers rather than free text a human would have
   to parse. See `services/api/README.md`'s "Buyer-facing catalog
   redesign" section for the full backend enforcement.
+- **Price is now locked to RMB (¥), confirmed rather than left as a
+  free currency choice (new)**: the price field is labeled "Price (¥
+  RMB)" and the submission always sends `currencyCode: 'CNY'` — the
+  backend rejects anything else. A real note in the form explains why:
+  the buyer-facing USD price is calculated automatically by Leap's
+  pricing engine (fees, shipping, duties, etc.) from this RMB cost, not
+  set directly by the supplier. See `services/api/README.md`'s "Real
+  pricing engine" section for the full design.
 - **Mandatory photos**: a real file picker uploads each selected image
   immediately via `POST /uploads/product-image`, shows a live thumbnail
   preview with a remove button, and the submit button's own validation

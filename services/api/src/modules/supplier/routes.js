@@ -207,6 +207,15 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
   if (!ALLOWED_POSITIONS.includes(position)) {
     return res.status(400).json({ error: `position must be one of: ${ALLOWED_POSITIONS.join(', ')}` });
   }
+  // CONFIRMED: suppliers price in RMB. The buyer-facing USD price is
+  // computed live from this cost by the pricing engine (see
+  // services/api/src/modules/pricing/engine.js) — never entered
+  // directly. Locking this here rather than just documenting it,
+  // because a stray non-RMB submission would silently corrupt the
+  // pricing equation (treating, say, a USD amount as if it were RMB).
+  if (currencyCode !== 'CNY') {
+    return res.status(400).json({ error: "currencyCode must be 'CNY' — suppliers price in RMB; the buyer-facing USD price is computed automatically" });
+  }
   if (!Array.isArray(images) || images.length < MIN_PRODUCT_PHOTOS) {
     return res.status(400).json({ error: `At least ${MIN_PRODUCT_PHOTOS} product photos are required (got ${Array.isArray(images) ? images.length : 0}). Upload via POST /uploads/product-image first.` });
   }

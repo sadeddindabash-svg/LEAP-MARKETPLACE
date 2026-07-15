@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('../../../db/pool');
+const { calculateBuyerPriceUsd } = require('../pricing/engine');
 
 /**
  * Cart module — BUY-030–032. Cart holds items from multiple suppliers; the
@@ -23,24 +24,47 @@ async function ensureCartExists(cartId) {
 
 async function getFullCart(cartId) {
   const { rows } = await db.query(
-    `SELECT ci.product_id, ci.quantity, p.name, p.price, p.currency_code, s.name AS supplier_name
+    `SELECT ci.product_id, ci.quantity, p.name, p.price, p.currency_code, p.weight_kg, p.length_cm, p.width_cm, p.height_cm, s.name AS supplier_name
      FROM cart_items ci
      JOIN products p ON p.id = ci.product_id
      LEFT JOIN suppliers s ON s.id = p.supplier_id
      WHERE ci.cart_id = $1`,
     [cartId]
   );
-  return {
-    cartId,
-    items: rows.map((r) => ({
+  // Same real, live pricing calculation as the catalog module (see
+  // services/api/src/modules/pricing/engine.js) — the cart shows the
+  // real current buyer price, not the supplier's RMB cost, and reflects
+  // a fee/rate change immediately, same as browsing. This is
+  // deliberately NOT locked in yet; that happens at order placement
+  // (see the order module) — see migration 014's header comment for why.
+  const items = await Promise.all(rows.map(async (r) => {
+    let price, currencyCode;
+    if (r.currency_code !== 'CNY') {
+      // Legacy pre-pricing-engine product — pass through unchanged (see
+      // the same handling in the catalog module for why).
+      price = Number(r.price);
+      currencyCode = r.currency_code;
+    } else {
+      const result = await calculateBuyerPriceUsd({
+        supplierCostCny: Number(r.price),
+        weightKg: r.weight_kg === null ? null : Number(r.weight_kg),
+        lengthCm: r.length_cm === null ? null : Number(r.length_cm),
+        widthCm: r.width_cm === null ? null : Number(r.width_cm),
+        heightCm: r.height_cm === null ? null : Number(r.height_cm),
+      });
+      price = result.buyerPriceUsd;
+      currencyCode = 'USD';
+    }
+    return {
       productId: r.product_id,
       quantity: r.quantity,
       name: r.name,
-      price: Number(r.price),
-      currencyCode: r.currency_code,
+      price,
+      currencyCode,
       supplierName: r.supplier_name,
-    })),
-  };
+    };
+  }));
+  return { cartId, items };
 }
 
 router.get('/:cartId', async (req, res, next) => {

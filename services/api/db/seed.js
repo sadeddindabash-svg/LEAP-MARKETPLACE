@@ -232,6 +232,42 @@ async function main() {
   );
   console.log(`Seeded dev hub staff login: ${DEV_HUB_STAFF_EMAIL} / ${DEV_HUB_STAFF_PASSWORD} (change before any shared/production use)`);
 
+  // Real, sensible starting fee components — an admin can add, remove,
+  // or adjust every one of these via the Pricing page; these are
+  // reasonable defaults so the equation is usable immediately rather
+  // than empty/broken until someone configures it from scratch. See
+  // services/api/src/modules/pricing/engine.js for exactly how these
+  // combine into a buyer-facing USD price.
+  const feeComponentsSeed = [
+    { id: 'fee_leap', name: 'Leap Platform Fee', type: 'percentage', value: 15, sortOrder: 10 },
+    { id: 'fee_bank', name: 'Bank / Remittance Fee', type: 'percentage', value: 2, sortOrder: 20 },
+    { id: 'fee_overhead', name: 'Overhead Fee', type: 'percentage', value: 5, sortOrder: 30 },
+    { id: 'fee_local_transport', name: 'Local Transport Fee', type: 'flat', value: 15, sortOrder: 40 },
+    { id: 'fee_shipping', name: 'Shipping Fee', type: 'shipping_volumetric', value: 80, sortOrder: 50 },
+    { id: 'fee_customs', name: 'Customs Duty', type: 'percentage', value: 8, sortOrder: 60 },
+    { id: 'fee_vat', name: 'VAT / Sales Tax', type: 'percentage', value: 5, sortOrder: 70 },
+    { id: 'fee_gateway', name: 'Payment Gateway Fee', type: 'percentage', value: 3, sortOrder: 80 },
+    { id: 'fee_fx_margin', name: 'FX Margin', type: 'percentage', value: 1.5, sortOrder: 90 },
+    { id: 'fee_insurance', name: 'Insurance', type: 'percentage', value: 1, sortOrder: 100 },
+  ];
+  for (const f of feeComponentsSeed) {
+    await pool.query(
+      `INSERT INTO pricing_fee_components (id, name, type, value, sort_order) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING`,
+      [f.id, f.name, f.type, f.value, f.sortOrder]
+    );
+  }
+  console.log(`Seeded ${feeComponentsSeed.length} default pricing fee components.`);
+
+  // Real, functional starting exchange rate — see engine.js's header
+  // comment for why this manual rate (not a live API) is what the
+  // calculation actually uses today. Approximate real-world CNY->USD as
+  // of this writing; an admin should keep this updated via
+  // PATCH /pricing/fx-rate until a live provider is connected.
+  await pool.query(
+    `INSERT INTO fx_rates (currency_pair, rate, source) VALUES ('CNY_USD', 0.14, 'manual') ON CONFLICT (currency_pair) DO NOTHING`
+  );
+  console.log('Seeded starting CNY_USD exchange rate (manual, 0.14) — update via PATCH /pricing/fx-rate.');
+
   console.log('Seed complete.');
   await pool.end();
 }

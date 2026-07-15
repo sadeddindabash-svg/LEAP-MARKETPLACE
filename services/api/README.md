@@ -402,6 +402,85 @@ brand, model, year, weight, dimensions) all come through correctly, and
 a supplier genuinely cannot create a product without shipping
 dimensions/weight, or with a non-positive value for any of them.
 
+## Real pricing engine (migration 014) — supplier RMB cost -> buyer USD price
+
+**Confirmed business decisions, explicitly asked and answered rather
+than assumed**: suppliers price in RMB. Admin configures a real set of
+fee variables. The buyer-facing USD price is DERIVED and recalculated
+LIVE on every browse/view — a fee or FX-rate change is reflected
+immediately, everywhere — but a PLACED order locks in whatever price was
+computed at that exact moment and never changes afterward, the same way
+any real checkout works (a price that could still move between "buyer
+sees $50" and "buyer's card gets charged" would be a billing-integrity
+bug, not a feature).
+
+**The real fee components** (`pricing_fee_components`, admin-managed via
+`/pricing/fee-components`), seeded with 10 sensible defaults spanning
+platform economics (Leap Platform Fee, Overhead), cross-border cost
+(Bank/Remittance Fee, Customs Duty, VAT), logistics (Local Transport
+Fee, Shipping Fee), and transaction risk (Payment Gateway Fee, FX
+Margin, Insurance) — an admin can add, remove, disable, or adjust every
+one of these. Each is one of three real types:
+- **`percentage`** — applied against the running total at that point in
+  the sequence (a real "landed cost" buildup, not independent
+  percentages of the original cost stacked separately — standard
+  international-trade practice).
+- **`flat`** — a fixed RMB amount added regardless of sequence.
+- **`shipping_volumetric`** — a real, industry-standard volumetric-weight
+  calculation: chargeable weight is the GREATER of actual weight and
+  `(length × width × height) / 5000`, since a large-but-light box still
+  takes up real cargo space. Deliberately simple — an admin-set flat
+  rate per chargeable kilogram — explicitly a placeholder for a more
+  sophisticated shipping equation to be designed later, not pretending
+  to be the final answer.
+
+Every fee is RMB-denominated; a single RMB→USD conversion happens once,
+at the very end, to avoid intermediate currency-mixing bugs. See
+`services/api/src/modules/pricing/engine.js` for the full calculation
+and its extensive header comments.
+
+**The exchange rate**: confirmed to come from a real live-rate API — not
+configured in this environment (same category of external dependency as
+the payment gateways: no real API key available here).
+`fetchLiveRate()` is a clearly-marked stub for exactly where a real
+provider (e.g. exchangerate-api.com, Open Exchange Rates) would be wired
+in. What actually powers the calculation TODAY, fully real and
+functional: a manually-set admin rate (`fx_rates`, managed via
+`GET`/`PATCH /pricing/fx-rate`) — not a placeholder that does nothing,
+a real rate the system genuinely uses, just not sourced from a live API
+yet.
+
+**Suppliers are locked to RMB going forward**: `POST /supplier/me/products`
+now rejects any `currencyCode` other than `'CNY'` — a stray non-RMB
+submission would silently corrupt the pricing equation (treating, say,
+a USD amount as if it were RMB).
+
+**Legacy products pass through unaffected**: any product submitted
+before this feature existed (this project's own seed data, priced
+directly in USD) is NOT run through the RMB pricing equation — that
+would silently produce nonsense (treating $34.90 as if it were ¥34.90).
+The catalog, cart, and order modules all check `currency_code` and only
+apply the real equation to genuinely RMB-priced products.
+
+**`POST /pricing/preview`** lets an admin test the equation against a
+hypothetical cost/weight/dimensions without needing a real product —
+returns the full step-by-step breakdown, not just a final number; a
+money calculation should be auditable, not a black box.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/pricing.integration.test.js`
+(9 tests): a non-RMB submission is rejected, unauthenticated/non-admin
+access to fee/rate management is rejected, the preview endpoint's result
+is independently re-derived from the real fee components and confirmed
+to match exactly (not just "returns some number"), a negative cost and
+a shipping fee applied without real dimensions are both rejected, a fee
+component can be created/updated/deleted and an invalid type rejected,
+a real RMB-priced product's buyer-facing price changes live the instant
+a fee changes, a PLACED order's price is confirmed unaffected by a
+fee change made afterward (even a deliberately drastic one) while the
+SAME product's live browsing price is confirmed to have changed, a
+legacy non-CNY product passes through unaffected, and the FX rate can be
+viewed and updated.
+
 ## Setup
 
 ```bash
@@ -473,6 +552,10 @@ src/
     │                       -> Hub -> Buyer fulfillment pipeline (migration
     │                       011), hub location CRUD, hub assignment, and
     │                       the hub-staff-only shipment workflow endpoints
+    ├── pricing/             Real supplier-RMB-cost -> buyer-USD-price
+    │                       engine (migration 014) — fee components, FX
+    │                       rate, and the calculation itself; used live
+    │                       by catalog, cart, and order
     ├── payment/            Stripe, Amazon Payment Services, PayPal, and
     │                       Google Pay (routed through Stripe) — BUY-040–044
     └── notification/       SMS/email/push stub (BUY-051, SUP-032)

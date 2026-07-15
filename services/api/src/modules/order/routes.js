@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth, optionalAuth } = require('../auth/middleware');
+const { calculateBuyerPriceUsd } = require('../pricing/engine');
 
 /**
  * Order module — BUY-031, BUY-050–053. A single buyer order splits into
@@ -36,12 +37,12 @@ router.post('/', async (req, res, next) => {
   try {
     await client.query('BEGIN');
 
-    // Look up real price + supplier per product from the catalog, rather
-    // than trusting client-supplied prices (never trust the client for
-    // amounts that determine what gets charged).
+    // Look up real cost + supplier + shipping data per product from the
+    // catalog, rather than trusting client-supplied prices (never trust
+    // the client for amounts that determine what gets charged).
     const productIds = items.map((i) => i.productId);
     const { rows: products } = await client.query(
-      `SELECT id, price, currency_code, supplier_id FROM products WHERE id = ANY($1::text[])`,
+      `SELECT id, price, currency_code, supplier_id, weight_kg, length_cm, width_cm, height_cm FROM products WHERE id = ANY($1::text[])`,
       [productIds]
     );
     const productById = Object.fromEntries(products.map((p) => [p.id, p]));
@@ -52,8 +53,35 @@ router.post('/', async (req, res, next) => {
       }
     }
 
-    const currencyCode = products[0]?.currency_code || 'USD';
-    const total = items.reduce((sum, item) => sum + Number(productById[item.productId].price) * item.quantity, 0);
+    // THE lock-in moment: the real buyer-facing USD price is computed
+    // HERE, right now, and that exact number is what gets written to
+    // order_line_items.unit_price below — it is deliberately never
+    // recalculated after this point, even if fees or the FX rate change
+    // later. See migration 014's header comment and
+    // services/api/src/modules/pricing/engine.js for the full design —
+    // browsing/cart show a LIVE price that can change; a placed order's
+    // price does not, the same way any real checkout works.
+    const buyerUnitPrices = {};
+    for (const productId of Object.keys(productById)) {
+      const product = productById[productId];
+      if (product.currency_code !== 'CNY') {
+        // Legacy pre-pricing-engine product — pass through unchanged
+        // (see the same handling in the catalog/cart modules for why).
+        buyerUnitPrices[productId] = Number(product.price);
+      } else {
+        const result = await calculateBuyerPriceUsd({
+          supplierCostCny: Number(product.price),
+          weightKg: product.weight_kg === null ? null : Number(product.weight_kg),
+          lengthCm: product.length_cm === null ? null : Number(product.length_cm),
+          widthCm: product.width_cm === null ? null : Number(product.width_cm),
+          heightCm: product.height_cm === null ? null : Number(product.height_cm),
+        });
+        buyerUnitPrices[productId] = result.buyerPriceUsd;
+      }
+    }
+
+    const currencyCode = 'USD'; // confirmed: buyer-facing currency is always USD for now
+    const total = items.reduce((sum, item) => sum + buyerUnitPrices[item.productId] * item.quantity, 0);
 
     const orderId = await nextOrderId(client);
     await client.query(
@@ -78,10 +106,9 @@ router.post('/', async (req, res, next) => {
 
       const lineItems = [];
       for (const item of supplierItems) {
-        const product = productById[item.productId];
         await client.query(
           `INSERT INTO order_line_items (sub_order_id, product_id, quantity, unit_price) VALUES ($1, $2, $3, $4)`,
-          [subOrderId, item.productId, item.quantity, product.price]
+          [subOrderId, item.productId, item.quantity, buyerUnitPrices[item.productId]]
         );
         lineItems.push({ productId: item.productId, quantity: item.quantity });
       }

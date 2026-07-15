@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole } = require('../auth/middleware');
+const { calculateBuyerPriceUsd } = require('../pricing/engine');
 
 /**
  * Catalog module — products, categories, translations.
@@ -33,6 +34,12 @@ function resolveLanguage(row, lang) {
 // that's platform-internal information. Also deliberately does NOT
 // include name_zh/description_zh (see resolveLanguage above) — only the
 // resolved, approved translation for the requested language.
+//
+// `price` here is a PLACEHOLDER, overwritten by attachBuyerPrice below
+// — never the raw `row.price` (which is the supplier's RMB cost, not
+// what a buyer should ever see directly). Computing it requires a real
+// async call to the pricing engine, so it's split into a separate step
+// rather than done inline here.
 function toBuyerProductDto(row, lang) {
   const { name, description } = resolveLanguage(row, lang);
   return {
@@ -43,8 +50,7 @@ function toBuyerProductDto(row, lang) {
     part: row.part,
     position: row.position,
     oemNumber: row.oem_number,
-    price: Number(row.price),
-    currencyCode: row.currency_code,
+    currencyCode: 'USD', // confirmed: buyer-facing price is always USD for now
     rating: row.rating != null ? Number(row.rating) : null,
     reviewCount: row.review_count,
     stockQuantity: row.stock_quantity,
@@ -55,6 +61,35 @@ function toBuyerProductDto(row, lang) {
     heightCm: row.height_cm === null ? null : Number(row.height_cm),
     status: row.status,
   };
+}
+
+// Computes the REAL, LIVE buyer-facing USD price from the supplier's RMB
+// cost (row.price) and the product's real shipping dimensions — see
+// services/api/src/modules/pricing/engine.js for the full calculation.
+// This is why product prices reflect a fee/FX-rate change immediately
+// (confirmed as the wanted behavior), rather than a price computed once
+// and stored.
+//
+// TRANSITION HANDLING, real and deliberate: products submitted BEFORE
+// this feature existed (this project's own seed data, e.g. p1/p4/p9)
+// are priced directly in USD, not RMB — running that USD amount through
+// an RMB->USD equation would silently produce nonsense (treating $34.90
+// as if it were ¥34.90). Those legacy rows pass through with their
+// existing price/currency unchanged; only real RMB-priced products (the
+// only kind submitted going forward — see the supplier module's
+// currencyCode lock) go through the real equation.
+async function attachBuyerPrice(dto, row) {
+  if (row.currency_code !== 'CNY') {
+    return { ...dto, price: Number(row.price), currencyCode: row.currency_code };
+  }
+  const result = await calculateBuyerPriceUsd({
+    supplierCostCny: Number(row.price),
+    weightKg: row.weight_kg === null ? null : Number(row.weight_kg),
+    lengthCm: row.length_cm === null ? null : Number(row.length_cm),
+    widthCm: row.width_cm === null ? null : Number(row.width_cm),
+    heightCm: row.height_cm === null ? null : Number(row.height_cm),
+  });
+  return { ...dto, price: result.buyerPriceUsd };
 }
 
 async function attachBuyerImages(dto, productId) {
@@ -103,7 +138,12 @@ router.get('/products', async (req, res, next) => {
     if (conditions.length > 0) sql += ` WHERE ${conditions.join(' AND ')}`;
 
     const { rows } = await db.query(sql, params);
-    const dtos = await Promise.all(rows.map(async (r) => attachBuyerImages(toBuyerProductDto(r, lang), r.id)));
+    const dtos = await Promise.all(rows.map(async (r) => {
+      let dto = toBuyerProductDto(r, lang);
+      dto = await attachBuyerImages(dto, r.id);
+      dto = await attachBuyerPrice(dto, r);
+      return dto;
+    }));
     res.json(dtos);
   } catch (err) {
     next(err);
@@ -120,6 +160,7 @@ router.get('/products/:id', async (req, res, next) => {
     let dto = toBuyerProductDto(rows[0], lang);
     dto = await attachBuyerImages(dto, req.params.id);
     dto = await attachPrimaryFitment(dto, req.params.id);
+    dto = await attachBuyerPrice(dto, rows[0]);
     res.json({ ...dto, fitsVehicleIds: fitmentResult.rows.map((r) => r.vehicle_id) });
   } catch (err) {
     next(err);

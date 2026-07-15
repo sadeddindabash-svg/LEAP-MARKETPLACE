@@ -22,7 +22,7 @@ async function createApprovedProduct({ nameEn, nameAr } = {}) {
       nameZh: `买家目录测试 ${suffix}`,
       descriptionZh: '中文描述，买家不应看到这个',
       category: 'brake', part: 'Front Brake Disc', position: 'Front', oemNumber: `BUYER-CAT-${suffix}`,
-      price: 42.5, currencyCode: 'USD',
+      price: 42.5, currencyCode: 'CNY',
       fitment: { generationId: 'gen_bmw_1_series_f20', year: 2018 },
       images: ['/uploads/bc-a.jpg', '/uploads/bc-b.jpg', '/uploads/bc-c.jpg'],
       weightKg: 3.75, lengthCm: 32, widthCm: 32, heightCm: 6,
@@ -120,7 +120,7 @@ describe.runIf(backendUp)('buyer-facing catalog redesign against a REAL running 
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
         nameZh: '缺少运费信息测试', category: 'brake', part: 'x', position: 'Front', oemNumber: `MISSING-SHIP-${Date.now()}`,
-        price: 10, currencyCode: 'USD', fitment: { generationId: 'gen_bmw_1_series_f20', year: 2017 },
+        price: 10, currencyCode: 'CNY', fitment: { generationId: 'gen_bmw_1_series_f20', year: 2017 },
         images: ['/uploads/a.jpg', '/uploads/b.jpg', '/uploads/c.jpg'],
         // weightKg/lengthCm/widthCm/heightCm deliberately omitted
       }),
@@ -137,7 +137,7 @@ describe.runIf(backendUp)('buyer-facing catalog redesign against a REAL running 
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
         nameZh: '负数运费测试', category: 'brake', part: 'x', position: 'Front', oemNumber: `NEG-SHIP-${Date.now()}`,
-        price: 10, currencyCode: 'USD', fitment: { generationId: 'gen_bmw_1_series_f20', year: 2017 },
+        price: 10, currencyCode: 'CNY', fitment: { generationId: 'gen_bmw_1_series_f20', year: 2017 },
         images: ['/uploads/a.jpg', '/uploads/b.jpg', '/uploads/c.jpg'],
         weightKg: 0, lengthCm: 10, widthCm: 10, heightCm: 10,
       }),

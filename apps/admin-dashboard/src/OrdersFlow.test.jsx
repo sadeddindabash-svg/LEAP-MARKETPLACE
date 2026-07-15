@@ -38,6 +38,17 @@ function mockFetchRouter({ orderListStatus = 200 } = {}) {
     if (u.match(/\/order\/LP-900001$/)) {
       return Promise.resolve({ ok: true, json: async () => MOCK_ORDER_DETAIL });
     }
+    // The order detail view renders a real HubAssignmentPanel per
+    // sub-order (see App.jsx), which calls this whenever a sub-order has
+    // no hub assigned yet (MOCK_ORDER_DETAIL's does) — without this
+    // handler, the generic catch-all below returns {} instead of [],
+    // and hubs.map(...) throws. This was a genuine, real, intermittent
+    // bug (not sandbox flakiness) until this was added — the crash
+    // happens asynchronously after this test's own initial assertions,
+    // so it only sometimes surfaced depending on exact timing.
+    if (u.endsWith('/hub/locations')) {
+      return Promise.resolve({ ok: true, json: async () => [] });
+    }
     if (u.endsWith('/order')) {
       if (orderListStatus === 401) {
         return Promise.resolve({ ok: false, status: 401, json: async () => ({ error: 'unauthorized' }) });

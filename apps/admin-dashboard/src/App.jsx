@@ -4,13 +4,14 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
   createBrand, deleteBrand, createModel, deleteModel, createGeneration, deleteGeneration, createEngine, deleteEngine, createTransmission, deleteTransmission,
   fetchHubLocations, createHubLocation, deleteHubLocation, assignHubToSubOrder,
+  fetchFeeComponents, createFeeComponent, updateFeeComponent, deleteFeeComponent, fetchFxRate, updateFxRate, previewPricing,
 } from "./auth";
 import {
   LayoutGrid, ShoppingBag, Store, PackageSearch, Wallet, LifeBuoy, Settings,
   Search, Bell, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Truck,
   CheckCircle2, XCircle, Clock, AlertTriangle, MoreHorizontal, ArrowUpRight,
   Filter as FilterIcon, Download, Check, X, MessageSquare, Star, Globe, Users,
-  CreditCard, ExternalLink, ChevronLeft, RotateCcw, Warehouse
+  CreditCard, ExternalLink, ChevronLeft, RotateCcw, Warehouse, Calculator
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -1200,6 +1201,252 @@ function HubsPage({ onSessionExpired }) {
   );
 }
 
+// Real, admin-only management of the pricing equation — the fee
+// components and FX rate that services/api/src/modules/pricing/engine.js
+// actually uses to compute every buyer-facing USD price, LIVE, from a
+// supplier's RMB cost. Confirmed design: changing a fee here is
+// reflected immediately in every listing's displayed price (not
+// retroactively in already-placed orders — see the Preview calculator's
+// note below on why).
+function PricingPage({ onSessionExpired }) {
+  const [fees, setFees] = useState([]);
+  const [fxRate, setFxRate] = useState(null);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  const [newName, setNewName] = useState("");
+  const [newType, setNewType] = useState("percentage");
+  const [newValue, setNewValue] = useState("");
+  const [newSortOrder, setNewSortOrder] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [rateInput, setRateInput] = useState("");
+  const [isSavingRate, setIsSavingRate] = useState(false);
+
+  const [previewCost, setPreviewCost] = useState("");
+  const [previewWeight, setPreviewWeight] = useState("");
+  const [previewLength, setPreviewLength] = useState("");
+  const [previewWidth, setPreviewWidth] = useState("");
+  const [previewHeight, setPreviewHeight] = useState("");
+  const [previewResult, setPreviewResult] = useState(null);
+  const [previewError, setPreviewError] = useState(null);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+
+  const load = () => {
+    setLoadState("loading");
+    Promise.all([fetchFeeComponents(getStoredToken()), fetchFxRate(getStoredToken())])
+      .then(([f, rate]) => { setFees(f); setFxRate(rate); setRateInput(String(rate.rate)); setLoadState("ready"); })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleAddFee = async () => {
+    if (!newName.trim() || !newValue) {
+      setErrorMessage("Name and value are required.");
+      return;
+    }
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    try {
+      await createFeeComponent(getStoredToken(), newName.trim(), newType, parseFloat(newValue), newSortOrder ? parseInt(newSortOrder, 10) : 0);
+      setNewName(""); setNewValue(""); setNewSortOrder("");
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleToggleActive = async (fee) => {
+    try {
+      await updateFeeComponent(getStoredToken(), fee.id, { isActive: !fee.isActive });
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleValueChange = async (fee, newVal) => {
+    try {
+      await updateFeeComponent(getStoredToken(), fee.id, { value: parseFloat(newVal) });
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleDeleteFee = async (id) => {
+    try {
+      await deleteFeeComponent(getStoredToken(), id);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleSaveRate = async () => {
+    if (!rateInput || parseFloat(rateInput) <= 0) {
+      setErrorMessage("Rate must be a positive number.");
+      return;
+    }
+    setIsSavingRate(true);
+    setErrorMessage(null);
+    try {
+      await updateFxRate(getStoredToken(), "CNY_USD", parseFloat(rateInput));
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSavingRate(false);
+    }
+  };
+
+  const handlePreview = async () => {
+    setPreviewError(null);
+    setPreviewResult(null);
+    if (!previewCost) {
+      setPreviewError("Enter a supplier cost (RMB) to preview.");
+      return;
+    }
+    setIsPreviewing(true);
+    try {
+      const result = await previewPricing(getStoredToken(), {
+        supplierCostCny: parseFloat(previewCost),
+        weightKg: previewWeight ? parseFloat(previewWeight) : undefined,
+        lengthCm: previewLength ? parseFloat(previewLength) : undefined,
+        widthCm: previewWidth ? parseFloat(previewWidth) : undefined,
+        heightCm: previewHeight ? parseFloat(previewHeight) : undefined,
+      });
+      setPreviewResult(result);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setPreviewError(err.message);
+    } finally {
+      setIsPreviewing(false);
+    }
+  };
+
+  const typeLabel = { percentage: "%", flat: "flat RMB", shipping_volumetric: "RMB/chargeable kg" };
+
+  return (
+    <div>
+      <TopBar title="Pricing" subtitle="Real equation: supplier RMB cost → buyer USD price. Changes here apply live to every listing." />
+      <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+        {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10 }}>{errorMessage}</div>}
+
+        <Card title="Exchange rate (CNY → USD)">
+          <div style={{ padding: 18 }}>
+            {loadState === "ready" && (
+              <>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                  <Badge label={fxRate.source === "live" ? "Live" : "Manual"} color={fxRate.source === "live" ? C.gauge : C.amber} bg={fxRate.source === "live" ? C.gaugeBg : C.amberBg} />
+                  <span style={{ ...body, fontSize: 11.5, color: C.muted }}>Last updated {new Date(fxRate.updatedAt).toLocaleString()}</span>
+                </div>
+                <div style={{ ...body, fontSize: 11.5, color: C.muted, marginBottom: 10 }}>
+                  No live rate provider is connected yet (needs a real API subscription, same as the payment gateways) — this manually-set rate is what the calculation actually uses today.
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input type="number" step="0.0001" value={rateInput} onChange={(e) => setRateInput(e.target.value)} style={{ ...body, width: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+                  <button disabled={isSavingRate} onClick={handleSaveRate} style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: isSavingRate ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSavingRate ? "default" : "pointer" }}>
+                    {isSavingRate ? "Saving…" : "Update rate"}
+                  </button>
+                </div>
+              </>
+            )}
+            {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}
+          </div>
+        </Card>
+
+        <Card title="Fee components (applied in order, top to bottom)">
+          <div style={{ padding: 18 }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Fee name (e.g. Insurance)" style={{ ...body, flex: 2, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <select value={newType} onChange={(e) => setNewType(e.target.value)} style={{ ...body, flex: 1, minWidth: 130, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }}>
+                <option value="percentage">Percentage</option>
+                <option value="flat">Flat (RMB)</option>
+                <option value="shipping_volumetric">Shipping (RMB/kg)</option>
+              </select>
+              <input type="number" step="0.01" value={newValue} onChange={(e) => setNewValue(e.target.value)} placeholder="Value" style={{ ...body, flex: 1, minWidth: 90, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <input type="number" value={newSortOrder} onChange={(e) => setNewSortOrder(e.target.value)} placeholder="Order" style={{ ...body, flex: 1, minWidth: 80, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <button disabled={isSubmitting} onClick={handleAddFee} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
+                <Check size={13} /> Add fee
+              </button>
+            </div>
+
+            {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>Loading…</div>}
+            {loadState === "ready" && fees.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No fee components yet.</div>}
+            {loadState === "ready" && fees.map((f, i) => (
+              <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 4px", borderBottom: i < fees.length - 1 ? `1px solid ${C.line}` : "none", opacity: f.isActive ? 1 : 0.45 }}>
+                <div style={{ width: 30, ...body, fontSize: 11.5, color: C.muted, textAlign: "center" }}>{f.sortOrder}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ ...body, fontSize: 13.5, fontWeight: 700, color: C.ink }}>{f.name}</div>
+                  <div style={{ ...body, fontSize: 11, color: C.muted, marginTop: 2 }}>{f.type.replace(/_/g, " ")}</div>
+                </div>
+                <input
+                  type="number" step="0.01" defaultValue={f.value}
+                  onBlur={(e) => { if (parseFloat(e.target.value) !== f.value) handleValueChange(f, e.target.value); }}
+                  style={{ ...body, width: 90, border: `1px solid ${C.line}`, borderRadius: 7, padding: "6px 9px", fontSize: 12.5 }}
+                />
+                <span style={{ ...body, fontSize: 11.5, color: C.muted, width: 110 }}>{typeLabel[f.type]}</span>
+                <button onClick={() => handleToggleActive(f)} style={{ ...body, padding: "6px 12px", borderRadius: 7, border: `1px solid ${C.line}`, background: "#fff", fontSize: 11.5, fontWeight: 700, cursor: "pointer", color: f.isActive ? C.gauge : C.muted }}>
+                  {f.isActive ? "Active" : "Inactive"}
+                </button>
+                <button onClick={() => handleDeleteFee(f.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={15} color={C.red} /></button>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card title="Preview calculator">
+          <div style={{ padding: 18 }}>
+            <div style={{ ...body, fontSize: 11.5, color: C.muted, marginBottom: 14 }}>
+              Test the equation against a hypothetical product without needing a real one.
+            </div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+              <input type="number" step="0.01" value={previewCost} onChange={(e) => setPreviewCost(e.target.value)} placeholder="Supplier cost (RMB)" style={{ ...body, flex: 1, minWidth: 140, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <input type="number" step="0.01" value={previewWeight} onChange={(e) => setPreviewWeight(e.target.value)} placeholder="Weight (kg)" style={{ ...body, flex: 1, minWidth: 100, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <input type="number" step="0.1" value={previewLength} onChange={(e) => setPreviewLength(e.target.value)} placeholder="Length (cm)" style={{ ...body, flex: 1, minWidth: 100, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <input type="number" step="0.1" value={previewWidth} onChange={(e) => setPreviewWidth(e.target.value)} placeholder="Width (cm)" style={{ ...body, flex: 1, minWidth: 100, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <input type="number" step="0.1" value={previewHeight} onChange={(e) => setPreviewHeight(e.target.value)} placeholder="Height (cm)" style={{ ...body, flex: 1, minWidth: 100, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <button disabled={isPreviewing} onClick={handlePreview} style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: isPreviewing ? "#D1D5DB" : C.torque, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isPreviewing ? "default" : "pointer" }}>
+                {isPreviewing ? "Calculating…" : "Calculate"}
+              </button>
+            </div>
+            {previewError && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 12 }}>{previewError}</div>}
+            {previewResult && (
+              <div style={{ background: C.canvas, borderRadius: 10, padding: 14 }}>
+                {previewResult.breakdown.map((step, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: i < previewResult.breakdown.length - 1 ? `1px solid ${C.line}` : "none", ...body, fontSize: 12.5 }}>
+                    <span style={{ color: i === 0 ? C.ink : C.muted, fontWeight: i === 0 ? 700 : 400 }}>{step.step}</span>
+                    <span style={{ color: C.ink }}>¥{step.runningTotalCny.toFixed(2)}</span>
+                  </div>
+                ))}
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, paddingTop: 12, borderTop: `2px solid ${C.ink}` }}>
+                  <span style={{ ...disp, fontSize: 16, fontWeight: 700 }}>Buyer pays</span>
+                  <span style={{ ...disp, fontSize: 18, fontWeight: 800 }}>${previewResult.buyerPriceUsd.toFixed(2)} USD</span>
+                </div>
+                <div style={{ ...body, fontSize: 11, color: C.muted, marginTop: 6 }}>
+                  at {previewResult.fxRate} CNY→USD ({previewResult.fxSource})
+                </div>
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 function PayoutsPage() {
   const totalPending = PAYOUTS.reduce((s, p) => s + p.pending, 0);
   return (
@@ -1699,6 +1946,7 @@ const NAV = [
   { id: "returns", label: "Returns", icon: RotateCcw },
   { id: "vehicleData", label: "Vehicle Data", icon: Truck },
   { id: "hubs", label: "Hubs", icon: Warehouse },
+  { id: "pricing", label: "Pricing", icon: Calculator },
   { id: "payouts", label: "Payouts", icon: Wallet },
   { id: "tickets", label: "Support", icon: LifeBuoy },
   { id: "settings", label: "Settings", icon: Settings },
@@ -1721,6 +1969,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   else if (page === "returns") content = <ReturnsPage onOpenCase={setOpenCase} onSessionExpired={onLogout} />;
   else if (page === "vehicleData") content = <VehicleDataPage onSessionExpired={onLogout} />;
   else if (page === "hubs") content = <HubsPage onSessionExpired={onLogout} />;
+  else if (page === "pricing") content = <PricingPage onSessionExpired={onLogout} />;
   else if (page === "payouts") content = <PayoutsPage />;
   else if (page === "tickets") content = <TicketsPage onOpenTicket={setOpenTicket} onSessionExpired={onLogout} />;
   else if (page === "settings") content = <SettingsPage />;

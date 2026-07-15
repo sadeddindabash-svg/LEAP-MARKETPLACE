@@ -7,9 +7,10 @@ Real React (Vite) project for the platform operations tool. See
 
 This is the reference prototype (`docs/prototypes/leap_admin_dashboard_prototype.jsx`)
 dropped in as `src/App.jsx`, confirmed to **build successfully**, and now
-has **real authentication and eight real pages** (Overview, Orders,
-Suppliers, Moderation, Support Tickets, Returns, Vehicle Data, Hubs — the
-last three are entirely new, not in the original prototype at all) —
+has **real authentication and nine real pages** (Overview, Orders,
+Suppliers, Moderation, Support Tickets, Returns, Vehicle Data, Hubs,
+Pricing — all but the first three are entirely new, not in the original
+prototype at all) —
 full UI → API → database → UI slices. Payouts is still mock data
 (blocked on undecided commission rates — see Charter Section 1 — rather
 than a technical gap).
@@ -327,13 +328,42 @@ click Assign, and verify the assigned view actually appears — not just
 testing the two render states in isolation, which would have missed
 this entirely.
 
+## Pricing page (new — not in the original prototype at all)
+
+Real, admin-only management of the equation that computes every
+buyer-facing USD price from a supplier's RMB cost — see
+`services/api/README.md`'s "Real pricing engine" section for the full
+backend design.
+
+- **Exchange rate**: shows the current real rate with a badge
+  distinguishing `Manual` from `Live` (no live provider is connected in
+  this environment — same category of external dependency as the
+  payment gateways), and a real inline field to update it.
+- **Fee components**: every fee (Leap Platform Fee, Bank Fee, Shipping
+  Fee, Local Transport Fee, Overhead Fee, Customs Duty, VAT, Payment
+  Gateway Fee, FX Margin, Insurance — 10 real seeded defaults, all
+  editable) shown in application order, with an inline-editable value,
+  an Active/Inactive toggle (disable a fee without losing its
+  configuration), delete, and a real "Add fee" form supporting all three
+  real fee types (percentage, flat RMB, or shipping-volumetric RMB/kg).
+- **Preview calculator**: enter a hypothetical RMB cost and
+  weight/dimensions and see the REAL full step-by-step breakdown
+  (calling the real `POST /pricing/preview` endpoint) — lets an admin
+  understand or sanity-check the equation without needing to create a
+  real product first.
+- **Confirmed design, worth restating here**: changing a fee is
+  reflected immediately in every listing's LIVE browsing price — but not
+  in any order that's already been placed, which locks in whatever price
+  was computed at that exact moment. See the backend section for why
+  that split is correct, not an oversight.
+
 ## Testing
 
 ```bash
 npm test
 ```
 
-Twenty-one test files, 118 tests total, all passing:
+Twenty-four test files, 140 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/orders.integration.test.js` (4, REAL backend) — order list/detail
@@ -342,7 +372,17 @@ Twenty-one test files, 118 tests total, all passing:
   correctly when a hub is already assigned from the start, and — the one
   that caught the real bug described above — the full interactive flow
   of picking a hub and clicking Assign, confirming both the real API call
-  contract and that the UI actually reflects it afterward
+  contract and that the UI actually reflects it afterward. **A second
+  real, intermittent bug was found and fixed here** while adding the
+  Pricing feature: this file's SHARED mock router (used by most of its
+  tests) never had a `/hub/locations` handler, so whenever order detail
+  rendered a sub-order with no hub assigned yet (which the shared mock
+  order data always has), `HubAssignmentPanel` fetched hub locations,
+  got back `{}` from the generic catch-all instead of `[]`, and
+  `hubs.map(...)` threw — but only asynchronously, after this test's own
+  initial assertions had already run, so it surfaced as an intermittent
+  failure depending on exact timing rather than a consistent one. Fixed
+  by adding the missing handler; confirmed with repeated runs afterward.
 - `src/suppliers.integration.test.js` (5, REAL backend) — supplier list
   with real listing counts, a full reject→verify round-trip confirmed by
   independently re-fetching afterward, invalid-status rejection, and
@@ -436,6 +476,38 @@ Twenty-one test files, 118 tests total, all passing:
   real seeded hubs, adding a new one calls the real create endpoint and
   shows up immediately, and submission is blocked without a name and
   region.
+- `src/buyerCatalog.integration.test.js` (8, REAL backend) — the
+  buyer-facing product detail and list NEVER include the supplier name
+  (checked two ways: a specific key AND a raw-text scan for the word
+  "supplier" at all), the Chinese original never appears in a buyer
+  response (scanned for CJK characters directly, not just checking a
+  key is absent), English/Arabic both resolve correctly and a legacy
+  product without Arabic falls back to English, real photos and every
+  real structured field (part, OEM number, brand, model, year, weight,
+  dimensions) come through correctly, and mandatory shipping
+  dimensions/weight are enforced with a non-positive value rejected.
+- `src/pricing.integration.test.js` (9, REAL backend) — a non-RMB
+  submission is rejected, unauthenticated/non-admin access to fee/rate
+  management is rejected, the preview endpoint's result is
+  independently re-derived from the real fee components this test
+  doesn't control and confirmed to match exactly (proving the math is
+  genuinely correct, not just "returns some number"), a negative cost
+  and a shipping fee applied without real dimensions are both rejected,
+  a fee component's full create/update/delete lifecycle works and an
+  invalid type is rejected, and — the two most important tests in this
+  whole feature — a real RMB-priced product's buyer-facing price
+  changes LIVE the instant a fee changes, and a PLACED order's price is
+  confirmed completely unaffected by a fee change made afterward (even
+  a deliberately drastic one) while the SAME product's live browsing
+  price is confirmed to have genuinely changed — proving the "live
+  until locked at order placement" design actually works, not just that
+  each half works in isolation.
+- `src/PricingFlow.test.jsx` (5, mocked, full component tree) — renders
+  the real seeded fee component and current FX rate, adding a new fee
+  calls the real create endpoint and shows up immediately, updating the
+  FX rate calls the real update endpoint, and the preview calculator
+  shows a real computed breakdown (and a clear error with no cost
+  entered).
 - `src/overview.integration.test.js` (5, REAL backend) — confirms
   unauthenticated and non-admin access are both rejected, checks the
   response shape matches what the real UI reads, and — the one that

@@ -224,3 +224,37 @@ export async function fetchHubLocations() {
 export const createHubLocation = (token, name, region, address) => fitmentMutate("POST", "/hub/locations", token, { name, region, address });
 export const deleteHubLocation = (token, id) => fitmentMutate("DELETE", `/hub/locations/${id}`, token);
 export const assignHubToSubOrder = (token, subOrderId, hubId) => fitmentMutate("PATCH", `/hub/assign/${subOrderId}`, token, { hubId });
+
+// ---------------- Pricing engine (new — real Leap/Bank/Shipping/etc. fee equation) ----------------
+
+export async function fetchFeeComponents(token) {
+  const response = await fetch(`${API_BASE_URL}/pricing/fee-components`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) throw new Error(`Failed to load fee components (${response.status})`);
+  return response.json();
+}
+
+export const createFeeComponent = (token, name, type, value, sortOrder) => fitmentMutate("POST", "/pricing/fee-components", token, { name, type, value, sortOrder });
+export const updateFeeComponent = (token, id, updates) => fitmentMutate("PATCH", `/pricing/fee-components/${id}`, token, updates);
+export const deleteFeeComponent = (token, id) => fitmentMutate("DELETE", `/pricing/fee-components/${id}`, token);
+
+export async function fetchFxRate(token) {
+  const response = await fetch(`${API_BASE_URL}/pricing/fx-rate`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) throw new Error(`Failed to load FX rate (${response.status})`);
+  return response.json();
+}
+
+export const updateFxRate = (token, pair, rate) => fitmentMutate("PATCH", "/pricing/fx-rate", token, { pair, rate });
+
+export async function previewPricing(token, { supplierCostCny, weightKg, lengthCm, widthCm, heightCm }) {
+  const response = await fetch(`${API_BASE_URL}/pricing/preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ supplierCostCny, weightKg, lengthCm, widthCm, heightCm }),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}

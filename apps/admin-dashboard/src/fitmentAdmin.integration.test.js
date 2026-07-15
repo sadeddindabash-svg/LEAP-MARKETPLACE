@@ -175,7 +175,7 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supplierToken}` },
       body: JSON.stringify({
         nameZh: '保护测试产品', category: 'brake', part: 'Test Part', position: 'Front', oemNumber: `PROT-${suffix}`,
-        price: 10, currencyCode: 'USD', fitment: { generationId: generation.id, year: 2021 },
+        price: 10, currencyCode: 'CNY', fitment: { generationId: generation.id, year: 2021 },
         images: ['/uploads/a.jpg', '/uploads/b.jpg', '/uploads/c.jpg'],
         weightKg: 1.5, lengthCm: 20, widthCm: 15, heightCm: 5,
       }),

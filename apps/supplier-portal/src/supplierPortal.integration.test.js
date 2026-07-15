@@ -61,7 +61,7 @@ describe.runIf(backendUp)('supplier portal against a REAL running backend', () =
       position: 'Front',
       oemNumber: `OEM-${Date.now()}`,
       price: 19.99,
-      currencyCode: 'USD',
+      currencyCode: 'CNY',
       stockQuantity: 50,
       fitment: { generationId: 'gen_bmw_1_series_f20', year: 2017 },
       images: ['/uploads/test-a.jpg', '/uploads/test-b.jpg', '/uploads/test-c.jpg'],
