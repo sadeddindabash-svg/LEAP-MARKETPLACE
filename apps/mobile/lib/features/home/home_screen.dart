@@ -63,8 +63,16 @@ class HomeScreen extends StatelessWidget {
               mainAxisSpacing: 12,
               crossAxisSpacing: 12,
               children: kCategories
-                  .map((c) => GestureDetector(
-                        onTap: () => context.push('/category/${c.id}', extra: tr(context, c.stringKey)),
+                  .map((c) {
+                    // Computed HERE, during build (tr() uses context.watch,
+                    // which throws a real Flutter framework error if called
+                    // later inside onTap instead) — this was a real bug:
+                    // tapping a category silently did nothing, because the
+                    // exception inside onTap prevented context.push from
+                    // ever running.
+                    final categoryLabel = tr(context, c.stringKey);
+                    return GestureDetector(
+                        onTap: () => context.push('/category/${c.id}', extra: categoryLabel),
                         child: Column(
                           children: [
                             Container(
@@ -78,10 +86,11 @@ class HomeScreen extends StatelessWidget {
                               child: Icon(c.icon, color: LeapColors.ink),
                             ),
                             const SizedBox(height: 6),
-                            Text(tr(context, c.stringKey), style: const TextStyle(fontSize: 10), textAlign: TextAlign.center),
+                            Text(categoryLabel, style: const TextStyle(fontSize: 10), textAlign: TextAlign.center),
                           ],
                         ),
-                      ))
+                      );
+                  })
                   .toList(),
             ),
           ],
