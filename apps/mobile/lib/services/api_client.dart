@@ -16,10 +16,21 @@ class ApiClient {
       : baseUrl = baseUrl ?? AppConfig.apiBaseUrl,
         _client = client ?? http.Client();
 
-  Future<List<Product>> fetchProductsByCategory(String categoryId, {String? vehicleId}) async {
+  /// Turns a relative media path (e.g. "/uploads/abc123.jpg", as returned
+  /// by product.images) into a real, fully-qualified URL the app can
+  /// actually load — the backend returns relative paths since it doesn't
+  /// know its own public hostname at the time it serves the JSON (see
+  /// services/api/src/modules/uploads/routes.js).
+  static String resolveMediaUrl(String path) {
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    return '${AppConfig.apiBaseUrl}$path';
+  }
+
+  Future<List<Product>> fetchProductsByCategory(String categoryId, {String? vehicleId, String lang = 'en'}) async {
     final uri = Uri.parse('$baseUrl/catalog/products').replace(queryParameters: {
       'category': categoryId,
       if (vehicleId != null) 'vehicleId': vehicleId,
+      'lang': lang,
     });
     final response = await _client.get(uri);
     if (response.statusCode != 200) {
@@ -29,8 +40,8 @@ class ApiClient {
     return body.map((e) => Product.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  Future<Product> fetchProductById(String productId) async {
-    final response = await _client.get(Uri.parse('$baseUrl/catalog/products/$productId'));
+  Future<Product> fetchProductById(String productId, {String lang = 'en'}) async {
+    final response = await _client.get(Uri.parse('$baseUrl/catalog/products/$productId?lang=$lang'));
     if (response.statusCode != 200) {
       throw ApiException('Failed to load product (${response.statusCode})');
     }

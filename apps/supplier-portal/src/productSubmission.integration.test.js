@@ -143,6 +143,7 @@ describe.runIf(backendUp)('structured supplier product submission against a REAL
         nameZh: '测试', category: 'brake', part: 'x', position: 'Front', oemNumber: '123',
         price: 10, currencyCode: 'USD', fitment: { generationId: 'gen_bmw_1_series_f20', year: 2017 },
         images: ['/uploads/a.jpg', '/uploads/b.jpg'],
+        weightKg: 1, lengthCm: 10, widthCm: 10, heightCm: 10,
       }),
     });
     expect(res.status).toBe(400);
@@ -157,6 +158,7 @@ describe.runIf(backendUp)('structured supplier product submission against a REAL
         nameZh: '测试', category: 'brake', part: 'x', position: 'Front', oemNumber: '123',
         price: 10, currencyCode: 'USD', fitment: { generationId: 'gen_bmw_1_series_f20', year: 1999 },
         images: ['/uploads/a.jpg', '/uploads/b.jpg', '/uploads/c.jpg'],
+        weightKg: 1, lengthCm: 10, widthCm: 10, heightCm: 10,
       }),
     });
     expect(res.status).toBe(400);
@@ -177,6 +179,7 @@ describe.runIf(backendUp)('structured supplier product submission against a REAL
         price: 39.99, currencyCode: 'USD', stockQuantity: 20,
         fitment: { generationId: 'gen_bmw_1_series_f20', year: 2016 },
         images: [upload1.body.url, upload2.body.url, upload3.body.url],
+        weightKg: 3.5, lengthCm: 28, widthCm: 28, heightCm: 4,
       }),
     });
     expect(createRes.status).toBe(201);

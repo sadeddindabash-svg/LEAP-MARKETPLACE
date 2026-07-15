@@ -538,6 +538,10 @@ function AddProductForm({ onCancel, onCreated }) {
   const [oemNumber, setOemNumber] = useState("");
   const [price, setPrice] = useState("");
   const [stock, setStock] = useState("");
+  const [weightKg, setWeightKg] = useState("");
+  const [lengthCm, setLengthCm] = useState("");
+  const [widthCm, setWidthCm] = useState("");
+  const [heightCm, setHeightCm] = useState("");
 
   // Fitment cascade
   const [brands, setBrands] = useState([]);
@@ -633,6 +637,10 @@ function AddProductForm({ onCancel, onCreated }) {
     if (!selectedGenerationId) missing.push(lang === "zh" ? "车型世代" : "vehicle generation");
     if (!selectedYear) missing.push(lang === "zh" ? "年份" : "year");
     if (photos.length < MIN_PRODUCT_PHOTOS) missing.push(lang === "zh" ? `至少 ${MIN_PRODUCT_PHOTOS} 张照片` : `at least ${MIN_PRODUCT_PHOTOS} photos`);
+    if (!weightKg) missing.push(lang === "zh" ? "重量" : "weight");
+    if (!lengthCm) missing.push(lang === "zh" ? "长度" : "length");
+    if (!widthCm) missing.push(lang === "zh" ? "宽度" : "width");
+    if (!heightCm) missing.push(lang === "zh" ? "高度" : "height");
 
     if (missing.length > 0) {
       setError((lang === "zh" ? "请填写：" : "Please fill in: ") + missing.join(lang === "zh" ? "、" : ", "));
@@ -659,6 +667,10 @@ function AddProductForm({ onCancel, onCreated }) {
           transmissionId: selectedTransmissionId || undefined,
         },
         images: photos.map((p) => p.url),
+        weightKg: parseFloat(weightKg),
+        lengthCm: parseFloat(lengthCm),
+        widthCm: parseFloat(widthCm),
+        heightCm: parseFloat(heightCm),
       });
       onCreated();
     } catch (err) {
@@ -702,7 +714,18 @@ function AddProductForm({ onCancel, onCreated }) {
           <Field label={cascadeLabel("库存数量", "Stock quantity")}>
             <input type="number" style={inputStyle} placeholder="0" value={stock} onChange={(e) => setStock(e.target.value)} />
           </Field>
-          <div />
+          <Field label={cascadeLabel("重量 (kg)", "Weight (kg)")}>
+            <input type="number" step="0.01" min="0" style={inputStyle} placeholder="0.00" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} />
+          </Field>
+          <Field label={cascadeLabel("长度 (cm)", "Length (cm)")}>
+            <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={lengthCm} onChange={(e) => setLengthCm(e.target.value)} />
+          </Field>
+          <Field label={cascadeLabel("宽度 (cm)", "Width (cm)")}>
+            <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={widthCm} onChange={(e) => setWidthCm(e.target.value)} />
+          </Field>
+          <Field label={cascadeLabel("高度 (cm)", "Height (cm)")}>
+            <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={heightCm} onChange={(e) => setHeightCm(e.target.value)} />
+          </Field>
           <div style={{ gridColumn: "1 / -1" }}>
             <Field label={cascadeLabel("商品描述（中文，选填）", "Description (Chinese, optional)")}>
               <textarea style={{ ...inputStyle, height: 70, resize: "none" }} value={descriptionZh} onChange={(e) => setDescriptionZh(e.target.value)} />

@@ -117,6 +117,14 @@ noted as "dropped because backend storage isn't wired" is now real:
   structured. Part and OEM Number are free text (a curated Part-name
   reference list per category would be a reasonable future enhancement,
   not built here).
+- **Mandatory shipping weight and dimensions (new)**: real numeric
+  fields (weight in kg, length/width/height in cm), enforced both
+  client-side and server-side, required for every new submission —
+  confirmed as mandatory specifically because these will feed a real
+  shipping-fee calculation in the admin dashboard later, so they need to
+  be actual operable numbers rather than free text a human would have
+  to parse. See `services/api/README.md`'s "Buyer-facing catalog
+  redesign" section for the full backend enforcement.
 - **Mandatory photos**: a real file picker uploads each selected image
   immediately via `POST /uploads/product-image`, shows a live thumbnail
   preview with a remove button, and the submit button's own validation

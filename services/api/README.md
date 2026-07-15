@@ -348,6 +348,60 @@ text correctly (verified directly in the database, not just trusting
 the API's own response) — see `apps/admin-dashboard/src/moderation.integration.test.js`
 and `ModerationFlow.test.jsx`.
 
+## Buyer-facing catalog redesign (migration 013) — no supplier identity, real language resolution, real photos
+
+**Confirmed requirements, not assumed**: buyers should never see who the
+supplier is, should never see the untranslated Chinese original, should
+see the real uploaded photos, and should see a specific set of
+structured fields (Part Name, Brand, Model, Year, Part No., Description,
+Dimensions, Weight).
+
+**`GET /catalog/products` and `GET /catalog/products/:id` were rebuilt
+around a new `toBuyerProductDto`**, separate from the supplier/admin-
+facing DTOs elsewhere in this codebase:
+- **No supplier identity, at all, in any form** — not hidden in the
+  frontend, genuinely never included in the response. Verified by a
+  test that checks the raw JSON text doesn't contain the word "supplier"
+  anywhere, not just that one specific key is absent (catches an
+  accidental leak under a different key name).
+- **Real language resolution via `?lang=en|ar`** (default `en`):
+  `resolveLanguage()` maps the request to either the English or Arabic
+  name/description, always returning them under the SAME `name`/
+  `description` keys regardless of which language was actually used —
+  the caller doesn't need to know which underlying column was read, just
+  "give me the product in the language I asked for." Falls back to
+  English if Arabic is requested but genuinely missing (a legacy product
+  approved before migration 012 existed) rather than returning null.
+  **Never includes `name_zh`/`description_zh`** in a buyer-facing
+  response under any circumstance.
+- **Real uploaded photos** (`images`), the real structured fitment
+  (`brand`/`model`/`year`, resolved from the first `product_fitment_entries`
+  row — see that function's comment for why "first" rather than a full
+  list, and what to reconsider if multi-fitment products become common),
+  and the real shipping fields below.
+
+**New mandatory shipping fields (migration 013)**: `weightKg`,
+`lengthCm`, `widthCm`, `heightCm` — confirmed mandatory for new supplier
+submissions, going forward, because they will feed a REAL shipping-fee
+calculation in the admin dashboard later. This is exactly why they're
+stored as real structured numbers (kilograms, centimeters) rather than
+free text like "about 2kg, 30x20x10cm" — a shipping formula needs actual
+operable numbers, not a string a human has to parse. Enforced in
+application code (`POST /supplier/me/products`), not a DB constraint —
+same pattern as "at least 3 photos" — so existing already-live products
+aren't retroactively broken by a NOT NULL constraint they were never
+asked to satisfy.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/buyerCatalog.integration.test.js`:
+supplier name is absent from both the list and detail endpoints (checked
+two ways, as above), the Chinese original never appears in a buyer
+response, English and Arabic requests both return the correct real
+translation, a legacy product without Arabic falls back to English
+correctly, real photos and real structured fields (part, OEM number,
+brand, model, year, weight, dimensions) all come through correctly, and
+a supplier genuinely cannot create a product without shipping
+dimensions/weight, or with a non-positive value for any of them.
+
 ## Setup
 
 ```bash

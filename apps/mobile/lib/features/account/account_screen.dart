@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/auth_state.dart';
+import '../../core/language_state.dart';
 
 class AccountScreen extends StatelessWidget {
   const AccountScreen({super.key});
@@ -38,6 +39,8 @@ class AccountScreen extends StatelessWidget {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: r.route == null ? null : () => context.push(r.route!),
               )),
+          const Divider(height: 1),
+          const _LanguageSection(),
           if (auth.isLoggedIn)
             ListTile(
               leading: const Icon(Icons.logout, color: LeapColors.muted),
@@ -107,6 +110,75 @@ class _LoggedOutHeader extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Real, persistent app-wide language setting — see LanguageState's
+/// header comment for exactly what this does and doesn't affect.
+class _LanguageSection extends StatelessWidget {
+  const _LanguageSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final languageState = context.watch<LanguageState>();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Language', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: LeapColors.muted)),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _LanguageOption(
+                  label: 'English',
+                  selected: !languageState.isArabic,
+                  onTap: () => context.read<LanguageState>().setLanguage('en'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _LanguageOption(
+                  label: 'العربية',
+                  selected: languageState.isArabic,
+                  onTap: () => context.read<LanguageState>().setLanguage('ar'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LanguageOption extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  const _LanguageOption({required this.label, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          border: Border.all(color: selected ? LeapColors.signal : LeapColors.line, width: selected ? 2 : 1),
+          borderRadius: BorderRadius.circular(8),
+          color: selected ? LeapColors.signal.withOpacity(0.06) : Colors.transparent,
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(fontWeight: FontWeight.w700, color: selected ? LeapColors.signal : LeapColors.ink),
+          ),
+        ),
       ),
     );
   }

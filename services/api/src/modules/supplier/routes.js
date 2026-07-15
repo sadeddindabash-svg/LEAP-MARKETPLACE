@@ -88,6 +88,10 @@ function toProductDto(row) {
     currencyCode: row.currency_code,
     stockQuantity: row.stock_quantity,
     estimatedDeliveryDays: row.estimated_delivery_days,
+    weightKg: row.weight_kg === null ? null : Number(row.weight_kg),
+    lengthCm: row.length_cm === null ? null : Number(row.length_cm),
+    widthCm: row.width_cm === null ? null : Number(row.width_cm),
+    heightCm: row.height_cm === null ? null : Number(row.height_cm),
     status: row.status,
     createdAt: row.created_at,
   };
@@ -165,7 +169,7 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
   const {
     nameZh, descriptionZh, category, part, position, oemNumber,
     price, currencyCode, stockQuantity, estimatedDeliveryDays,
-    fitment, images,
+    fitment, images, weightKg, lengthCm, widthCm, heightCm,
   } = req.body || {};
 
   // ---- Validation (fail loudly and specifically, not with one generic message) ----
@@ -178,8 +182,24 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
   if (!price) missing.push('price');
   if (!currencyCode) missing.push('currencyCode');
   if (!fitment) missing.push('fitment');
+  // Mandatory going forward, real numbers not free text — see migration
+  // 013's header comment: these will feed a real shipping-fee
+  // calculation in the admin dashboard, which needs actual operable
+  // numbers, not "about 2kg" as a string.
+  if (weightKg === undefined || weightKg === null) missing.push('weightKg');
+  if (lengthCm === undefined || lengthCm === null) missing.push('lengthCm');
+  if (widthCm === undefined || widthCm === null) missing.push('widthCm');
+  if (heightCm === undefined || heightCm === null) missing.push('heightCm');
   if (missing.length > 0) {
     return res.status(400).json({ error: `Missing required field(s): ${missing.join(', ')}` });
+  }
+  if (weightKg !== undefined && weightKg !== null && weightKg <= 0) {
+    return res.status(400).json({ error: 'weightKg must be a positive number' });
+  }
+  for (const [field, value] of [['lengthCm', lengthCm], ['widthCm', widthCm], ['heightCm', heightCm]]) {
+    if (value !== undefined && value !== null && value <= 0) {
+      return res.status(400).json({ error: `${field} must be a positive number` });
+    }
   }
   if (!ALLOWED_CATEGORIES.includes(category)) {
     return res.status(400).json({ error: `category must be one of: ${ALLOWED_CATEGORIES.join(', ')}` });
@@ -236,10 +256,12 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
     await client.query(
       `INSERT INTO products
          (id, supplier_id, name, name_zh, description, description_zh, category, part, position, oem_number,
-          price, currency_code, stock_quantity, estimated_delivery_days, status)
-       VALUES ($1, $2, $3, $3, NULL, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'translating')`,
+          price, currency_code, stock_quantity, estimated_delivery_days, status,
+          weight_kg, length_cm, width_cm, height_cm)
+       VALUES ($1, $2, $3, $3, NULL, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'translating', $13, $14, $15, $16)`,
       [id, req.user.supplierId, nameZh, descriptionZh || null, category, part, position, oemNumber,
-        price, currencyCode, stockQuantity || 0, estimatedDeliveryDays || 7]
+        price, currencyCode, stockQuantity || 0, estimatedDeliveryDays || 7,
+        weightKg, lengthCm, widthCm, heightCm]
     );
 
     await client.query(

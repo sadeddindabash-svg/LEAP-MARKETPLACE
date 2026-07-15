@@ -65,6 +65,7 @@ describe.runIf(backendUp)('supplier portal against a REAL running backend', () =
       stockQuantity: 50,
       fitment: { generationId: 'gen_bmw_1_series_f20', year: 2017 },
       images: ['/uploads/test-a.jpg', '/uploads/test-b.jpg', '/uploads/test-c.jpg'],
+      weightKg: 2.2, lengthCm: 25, widthCm: 25, heightCm: 4,
     });
     expect(created.status).toBe('translating');
 

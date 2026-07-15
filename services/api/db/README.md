@@ -76,6 +76,7 @@ See `migrations/001_init.sql` for the full schema with comments. Summary:
 | `hub_shipment_events` | The real audit trail — one row per inspection step actually performed, by whom, with notes |
 | `hub_shipment_photos` | Mandatory evidence photos per step (migration 011) — same "enforced in application code, not a DB constraint" pattern as `product_images` |
 | `products.name_ar` / `products.description_ar` | Arabic translation (migration 012), required to approve a listing — same rule as the existing `name`/`description` columns, which continue to mean "the default/English-facing value" rather than being renamed to `name_en` (see that migration's header comment for why) |
+| `products.weight_kg` / `products.length_cm` / `products.width_cm` / `products.height_cm` | Real shipping dimensions and weight (migration 013), mandatory for new supplier submissions (enforced in application code, not a DB constraint) — will feed a real shipping-fee calculation in the admin dashboard, which is why these are stored as real numbers rather than free text |
 
 **Not yet covered** (add a future migration once these backend modules
 exist — currently only in the admin-dashboard/supplier-portal prototypes,

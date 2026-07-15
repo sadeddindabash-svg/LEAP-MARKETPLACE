@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import '../../core/theme.dart';
+import '../../core/language_state.dart';
 import '../../models/product.dart';
 import '../../services/api_client.dart';
 
@@ -18,16 +20,20 @@ class CategoryScreen extends StatefulWidget {
 }
 
 class _CategoryScreenState extends State<CategoryScreen> {
-  late Future<List<Product>> _productsFuture;
+  Future<List<Product>>? _productsFuture;
+  String? _loadedForLanguage;
 
-  @override
-  void initState() {
-    super.initState();
-    _productsFuture = ApiClient().fetchProductsByCategory(widget.categoryId);
+  void _ensureLoaded(String language) {
+    if (_loadedForLanguage != language) {
+      _loadedForLanguage = language;
+      _productsFuture = ApiClient().fetchProductsByCategory(widget.categoryId, lang: language);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final language = context.watch<LanguageState>().language;
+    _ensureLoaded(language);
     return Scaffold(
       appBar: AppBar(title: Text(widget.categoryName)),
       body: FutureBuilder<List<Product>>(
@@ -63,7 +69,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
                 child: ListTile(
                   leading: const Icon(Icons.album_outlined, color: LeapColors.ink),
                   title: Text(p.name, maxLines: 2, overflow: TextOverflow.ellipsis),
-                  subtitle: Text('${p.supplierName} · \$${p.price.toStringAsFixed(2)} ${p.currencyCode}'),
+                  subtitle: Text('${p.category} · \$${p.price.toStringAsFixed(2)} ${p.currencyCode}'),
                   onTap: () => context.push('/product/${p.id}'),
                 ),
               );

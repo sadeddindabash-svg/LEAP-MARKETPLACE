@@ -12,34 +12,86 @@ const { requireAuth, requireRole } = require('../auth/middleware');
  */
 const router = express.Router();
 
-function toProductDto(row) {
+// Resolves which language's name/description a buyer sees, masking away
+// the underlying name_ar/description_ar columns behind a single clean
+// name/description field in the OUTPUT — the mobile app doesn't need to
+// know which column was used, just "give me the product in my chosen
+// language." Falls back to the English fields if Arabic is somehow
+// missing (shouldn't happen for a live listing, since both are now
+// mandatory to approve — see migration 012 — but defensive regardless).
+// Deliberately never includes name_zh/description_zh here at all — a
+// buyer should never see the untranslated Chinese original, full stop.
+function resolveLanguage(row, lang) {
+  if (lang === 'ar' && row.name_ar) {
+    return { name: row.name_ar, description: row.description_ar || row.description };
+  }
+  return { name: row.name, description: row.description };
+}
+
+// Buyer-facing DTO. Deliberately does NOT include supplier identity
+// (name, id, anything) — buyers should never see who the supplier is;
+// that's platform-internal information. Also deliberately does NOT
+// include name_zh/description_zh (see resolveLanguage above) — only the
+// resolved, approved translation for the requested language.
+function toBuyerProductDto(row, lang) {
+  const { name, description } = resolveLanguage(row, lang);
   return {
     id: row.id,
-    name: row.name,
+    name,
+    description,
     category: row.category,
+    part: row.part,
+    position: row.position,
+    oemNumber: row.oem_number,
     price: Number(row.price),
     currencyCode: row.currency_code,
-    supplierName: row.supplier_name,
     rating: row.rating != null ? Number(row.rating) : null,
     reviewCount: row.review_count,
     stockQuantity: row.stock_quantity,
     estimatedDeliveryDays: row.estimated_delivery_days,
+    weightKg: row.weight_kg === null ? null : Number(row.weight_kg),
+    lengthCm: row.length_cm === null ? null : Number(row.length_cm),
+    widthCm: row.width_cm === null ? null : Number(row.width_cm),
+    heightCm: row.height_cm === null ? null : Number(row.height_cm),
     status: row.status,
   };
 }
 
-// GET /catalog/products?category=brake&vehicleId=v1
+async function attachBuyerImages(dto, productId) {
+  const { rows: images } = await db.query('SELECT url FROM product_images WHERE product_id = $1 ORDER BY sort_order', [productId]);
+  return { ...dto, images: images.map((i) => i.url) };
+}
+
+// Real Brand/Model/Year for the product page, resolved from the
+// structured fitment cascade (migration 010). A product can technically
+// have multiple fitment entries (fits several vehicle configurations);
+// this shows the FIRST one as the primary display, matching a simple
+// flat "Brand: / Model: / Year:" product-page layout. If multi-fitment
+// products become common enough that buyers need to see the full list,
+// that's a real follow-up, not something to overbuild here on a guess.
+async function attachPrimaryFitment(dto, productId) {
+  const { rows } = await db.query(
+    `SELECT vb.name AS brand, vm.name AS model, pfe.year
+     FROM product_fitment_entries pfe
+     JOIN vehicle_generations vg ON vg.id = pfe.generation_id
+     JOIN vehicle_models vm ON vm.id = vg.model_id
+     JOIN vehicle_brands vb ON vb.id = vm.brand_id
+     WHERE pfe.product_id = $1
+     ORDER BY pfe.id ASC LIMIT 1`,
+    [productId]
+  );
+  const primary = rows[0] || null;
+  return { ...dto, brand: primary?.brand || null, model: primary?.model || null, year: primary?.year || null };
+}
+
+// GET /catalog/products?category=brake&vehicleId=v1&lang=en|ar
 router.get('/products', async (req, res, next) => {
   try {
-    const { category, vehicleId } = req.query;
+    const { category, vehicleId, lang } = req.query;
     const conditions = [];
     const params = [];
 
-    let sql = `
-      SELECT p.*, s.name AS supplier_name
-      FROM products p
-      LEFT JOIN suppliers s ON s.id = p.supplier_id
-    `;
+    let sql = `SELECT p.* FROM products p`;
     if (vehicleId) {
       sql += ` JOIN product_fitment pf ON pf.product_id = p.id AND pf.vehicle_id = $${params.length + 1}`;
       params.push(vehicleId);
@@ -51,7 +103,8 @@ router.get('/products', async (req, res, next) => {
     if (conditions.length > 0) sql += ` WHERE ${conditions.join(' AND ')}`;
 
     const { rows } = await db.query(sql, params);
-    res.json(rows.map(toProductDto));
+    const dtos = await Promise.all(rows.map(async (r) => attachBuyerImages(toBuyerProductDto(r, lang), r.id)));
+    res.json(dtos);
   } catch (err) {
     next(err);
   }
@@ -59,14 +112,15 @@ router.get('/products', async (req, res, next) => {
 
 router.get('/products/:id', async (req, res, next) => {
   try {
-    const { rows } = await db.query(
-      `SELECT p.*, s.name AS supplier_name FROM products p LEFT JOIN suppliers s ON s.id = p.supplier_id WHERE p.id = $1`,
-      [req.params.id]
-    );
+    const { lang } = req.query;
+    const { rows } = await db.query(`SELECT p.* FROM products p WHERE p.id = $1`, [req.params.id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
 
     const fitmentResult = await db.query('SELECT vehicle_id FROM product_fitment WHERE product_id = $1', [req.params.id]);
-    res.json({ ...toProductDto(rows[0]), fitsVehicleIds: fitmentResult.rows.map((r) => r.vehicle_id) });
+    let dto = toBuyerProductDto(rows[0], lang);
+    dto = await attachBuyerImages(dto, req.params.id);
+    dto = await attachPrimaryFitment(dto, req.params.id);
+    res.json({ ...dto, fitsVehicleIds: fitmentResult.rows.map((r) => r.vehicle_id) });
   } catch (err) {
     next(err);
   }

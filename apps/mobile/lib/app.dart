@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'core/theme.dart';
 import 'core/auth_state.dart';
 import 'core/cart_state.dart';
+import 'core/language_state.dart';
 import 'features/home/home_screen.dart';
 import 'features/garage/garage_screen.dart';
 import 'features/garage/add_vehicle_screen.dart';
@@ -113,12 +114,28 @@ class LeapApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthState()),
         ChangeNotifierProvider(create: (_) => CartState()),
+        ChangeNotifierProvider(create: (_) => LanguageState()),
       ],
-      child: MaterialApp.router(
-        title: 'Leap',
-        debugShowCheckedModeBanner: false,
-        theme: LeapTheme.light(),
-        routerConfig: appRouter,
+      child: Consumer<LanguageState>(
+        builder: (context, languageState, _) {
+          return MaterialApp.router(
+            title: 'Leap',
+            debugShowCheckedModeBanner: false,
+            theme: LeapTheme.light(),
+            routerConfig: appRouter,
+            // Real RTL layout when Arabic is selected — Flutter's standard
+            // Material widgets mirror automatically under Directionality.rtl
+            // (padding, icons, row order, etc.). See LanguageState's header
+            // comment for the honest scope boundary: this makes the LAYOUT
+            // correctly RTL app-wide, but most existing screen text/labels
+            // outside the product detail page are not yet translated into
+            // Arabic — that's a real, separate follow-up, not hidden here.
+            builder: (context, child) => Directionality(
+              textDirection: languageState.isArabic ? TextDirection.rtl : TextDirection.ltr,
+              child: child ?? const SizedBox.shrink(),
+            ),
+          );
+        },
       ),
     );
   }

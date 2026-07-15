@@ -13,14 +13,17 @@ of those calls the actual backend (`services/api`), not placeholders.
 The one remaining gap: actual payment capture (see "Cart & Checkout"
 below — flagged clearly there as the most important thing left).
 
-⚠️ This code was written without access to a Flutter SDK in the environment
-that generated it, so it has **not been compiled or run**. It should be
-syntactically valid Dart/Flutter (every file's braces/parens balance-
-checked), but budget time for a first `flutter pub get` / `flutter run`
-pass to catch anything that needs fixing before relying on it. The backend
-side of every flow described below (cart, order placement, product
-fetching) WAS verified against the real running API via curl, matching
-exactly what this Flutter code calls.
+✅ **This app has genuinely been compiled and run** — `flutter pub get`
+and `flutter run -d chrome` were completed successfully on a real
+machine (this sandbox itself has no Flutter SDK available, so that
+verification happened outside it), and the real catalog/cart/checkout/
+order flow was exercised against the real running backend. Code added
+in later passes (the language setting and redesigned product page
+below) has been syntax-balance-checked the same rigorous way everything
+before it was, but hasn't yet had that same live-device confirmation —
+worth a quick `flutter run` pass to confirm before relying on it,
+though nothing about it is expected to behave differently from what's
+already been proven to work.
 
 ## Authentication
 
@@ -188,6 +191,61 @@ them would be a real bug, not a naming nitpick.
   again — checking every field each screen reads actually exists in the
   real response.
 
+## Language setting & product page redesign (new)
+
+**Confirmed business decision**: a real, persistent, app-wide language
+setting (English/Arabic) — Account screen, applies everywhere — not a
+per-screen toggle or auto-detect from the phone's system language.
+
+- `lib/core/language_state.dart`: a `ChangeNotifier`, same pattern as
+  `CartState`, persisted in secure storage so the choice survives an
+  app restart. Drives the real `?lang=en|ar` parameter sent to
+  `GET /catalog/products` and `GET /catalog/products/:id` — the backend
+  resolves which language's name/description to send back (see
+  `services/api/README.md`'s "Buyer-facing catalog redesign" section),
+  so this app never sees the Chinese original or has to do any
+  translation itself.
+- **Real RTL layout**, not just RTL-aware text: `LeapApp` wraps the
+  whole widget tree in a `Directionality` that flips to `rtl` when
+  Arabic is selected — Flutter's standard Material widgets mirror
+  automatically (padding, icons, row order) under this.
+- **Honest scope boundary, stated directly rather than silently left
+  incomplete**: this pass translates the product detail page's specific
+  field labels (Part Name/Brand/Model/Year/Part No./Description/
+  Dimensions/Weight — the exact fields that were asked for) and drives
+  real product CONTENT in the correct language everywhere products are
+  shown. It does NOT translate the rest of the app's UI chrome — nav
+  labels, buttons, screen titles elsewhere — into Arabic. Full app-wide
+  UI localization is a real, separate, larger undertaking, not something
+  to fake partial coverage of here.
+
+**Product detail page (`lib/features/catalog/product_screen.dart`),
+rebuilt**:
+- **No supplier identity anywhere on this screen** — not a UI choice
+  hiding data that's still there; the backend itself never sends it to
+  a buyer-facing request in the first place (see the backend section
+  linked above), so there's nothing to hide.
+- **Real uploaded photos**, shown in a real swipeable gallery
+  (`_PhotoGallery`) with page-dot indicators, falling back to a
+  placeholder only if a product genuinely has none.
+- **The exact structured fields requested**: Part Name, Brand, Model,
+  Year, Part No., Description, Dimensions, Weight — each showing real
+  data from the backend's resolved response, or a real "Not specified"
+  fallback (bilingual) rather than a blank space, if a legacy product
+  predates a given field.
+- `lib/features/catalog/category_screen.dart`'s browsing list also
+  dropped supplier name from its subtitle (shows category instead) and
+  is now language-aware the same way the detail page is.
+- `lib/models/product.dart` rebuilt to match: `supplierName` removed
+  entirely (any lingering reference would fail to compile, which is
+  exactly the point — a stray "Sold by ..." display elsewhere can't
+  silently keep working against a field that no longer exists).
+
+**Tested on the backend side** (this app's own compile/run status is
+noted honestly in "Status" above) — see
+`apps/admin-dashboard/src/buyerCatalog.integration.test.js` for the full
+verification of what this screen actually receives and renders.
+
 ## Setup
 
 1. Install Flutter: https://docs.flutter.dev/get-started/install
@@ -207,11 +265,15 @@ them would be a real bug, not a naming nitpick.
 ```
 lib/
 ├── main.dart               Entry point
-├── app.dart                 Router + bottom-nav shell + MultiProvider (Auth, Cart)
+├── app.dart                 Router + bottom-nav shell + MultiProvider
+│                             (Auth, Cart, Language) + app-wide RTL
+│                             Directionality when Arabic is selected
 ├── core/
 │   ├── theme.dart            Brand colors/theme (matches the prototypes)
 │   ├── auth_state.dart        Session state, real backend calls
 │   ├── cart_state.dart         Cart state, real backend calls (new)
+│   ├── language_state.dart     Persisted English/Arabic setting (new) —
+│   │                            drives real ?lang= on catalog requests
 │   └── config/app_config.dart  Launch markets, API base URL, feature flags
 ├── models/                  Vehicle, Product, Order, CartItem — mirror SRS entities
 ├── services/api_client.dart  HTTP client wrapper for services/api (auth, catalog,
@@ -220,12 +282,14 @@ lib/
 └── features/
     ├── home/                Home + category grid
     ├── garage/               Saved vehicles / YMMT fitment selector — real
-    ├── catalog/              Category browse + product detail — real data
+    ├── catalog/              Category browse + product detail — real data,
+    │                          real photos, no supplier identity (new)
     ├── cart/                 Basket, grouped by supplier — real data
     ├── checkout/             Real order placement (payment capture not yet wired)
     ├── orders/               Order history/tracking + detail + return
                                 requests (requires login)
     ├── account/              Profile / garage / addresses / support entry
+    │                          / language setting (English/Arabic, new)
     ├── auth/                 Login, signup, and password reset screens
                                 (all real backend calls)
     └── support/              Real ticket list/compose/detail — Buyer ↔
@@ -241,9 +305,19 @@ lib/
 2. Add `flutter_test` widget tests per screen before this grows further.
 3. Swap the placeholder launch markets in `core/config/app_config.dart` for
    the real Phase 1 country list.
-4. Get this actually compiled and run on a real Flutter SDK — this entire
-   codebase has only been syntax-checked, never built, given this
-   environment's constraints. (Tried installing Flutter directly in this
-   sandbox — the SDK/engine binaries and pub.dev package registry are
-   both outside the network allowlist here, confirmed via the egress
-   proxy's own error messages, not just an assumption.)
+4. ~~Get this actually compiled and run on a real Flutter SDK~~ — done;
+   confirmed working via `flutter pub get` / `flutter run -d chrome` on
+   a real machine outside this sandbox (which itself has no Flutter SDK
+   available — the SDK/engine binaries and pub.dev registry are outside
+   this environment's network allowlist, confirmed via the egress
+   proxy's own error messages). Code added after that point (the
+   language setting and product page redesign) has only been
+   syntax-checked the same way everything was before that first
+   successful run — worth one more `flutter run` pass to confirm, though
+   nothing about it is expected to behave differently.
+5. **Full app-wide UI localization into Arabic** — this pass translated
+   the product detail page's specific field labels and made real product
+   content (name/description) language-aware everywhere it's shown, but
+   deliberately did NOT translate the rest of the app's chrome (nav
+   labels, buttons, other screens' text) — a genuinely separate, larger
+   piece of work, not something to fake partial coverage of.
