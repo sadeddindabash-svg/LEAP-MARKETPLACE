@@ -64,6 +64,17 @@ class AppStrings {
     // ---- Category ----
     'could_not_load_products': {'en': 'Could not load products.', 'ar': 'تعذر تحميل المنتجات.'},
     'no_products_in_category': {'en': 'No products in this category yet.', 'ar': 'لا توجد منتجات في هذه الفئة بعد.'},
+    'all_categories': {'en': 'All categories', 'ar': 'جميع الفئات'},
+    'no_parts_in_category': {'en': 'No parts in this category yet.', 'ar': 'لا توجد قطع في هذه الفئة بعد.'},
+
+    // ---- Home feed filter + product card (new) ----
+    'filter_newest': {'en': 'Newest', 'ar': 'الأحدث'},
+    'filter_my_car': {'en': 'My car', 'ar': 'سيارتي'},
+    'in_stock': {'en': 'In stock', 'ar': 'متوفر'},
+    'out_of_stock': {'en': 'Out of stock', 'ar': 'غير متوفر'},
+    'add_a_vehicle_for_my_car_filter': {'en': 'Add a vehicle to see products for your car', 'ar': 'أضف مركبة لرؤية المنتجات المناسبة لسيارتك'},
+    'no_products_yet': {'en': 'No products yet.', 'ar': 'لا توجد منتجات بعد.'},
+    'added_to_cart': {'en': 'Added to cart', 'ar': 'أضيف إلى السلة'},
 
     // ---- Shared ----
     'log_in': {'en': 'Log in', 'ar': 'تسجيل الدخول'},

@@ -136,4 +136,35 @@ describe.runIf(backendUp)('product search against a REAL running backend', () =>
     const noMatchRes = await fetch(`${BACKEND_URL}/catalog/products?category=filter&search=${uniquePart}`);
     expect((await noMatchRes.json()).find((p) => p.id === productId)).toBeUndefined();
   });
+
+  it('CRITICAL: the real exact part filter -- for "tap a Part, see exactly its products" -- is precise, unlike the fuzzy search', async () => {
+    const uniqueSuffix = Date.now();
+    const exactPartName = `ExactPartFilterTest${uniqueSuffix}`;
+    const productId = await createApprovedProduct({ part: exactPartName, category: 'brake' });
+    await approveProduct(productId, `${exactPartName} English`);
+
+    const matchRes = await fetch(`${BACKEND_URL}/catalog/products?category=brake&part=${encodeURIComponent(exactPartName)}`);
+    expect((await matchRes.json()).find((p) => p.id === productId)).toBeDefined();
+
+    // A DIFFERENT real part in the same category must not match.
+    const noMatchRes = await fetch(`${BACKEND_URL}/catalog/products?category=brake&part=${encodeURIComponent('Front Brake Disc')}`);
+    expect((await noMatchRes.json()).find((p) => p.id === productId)).toBeUndefined();
+  });
+
+  it('CRITICAL: sort=newest returns products in real, genuine creation-time order, not incidental database order', async () => {
+    const uniqueSuffix = Date.now();
+    const olderId = await createApprovedProduct({ part: `SortTestOlder${uniqueSuffix}`, category: 'brake' });
+    await approveProduct(olderId, `SortTestOlder${uniqueSuffix} English`);
+    await new Promise((r) => setTimeout(r, 50)); // ensure a genuinely later real timestamp, not a coincidence
+    const newerId = await createApprovedProduct({ part: `SortTestNewer${uniqueSuffix}`, category: 'brake' });
+    await approveProduct(newerId, `SortTestNewer${uniqueSuffix} English`);
+
+    const res = await fetch(`${BACKEND_URL}/catalog/products?category=brake&sort=newest`);
+    const results = await res.json();
+    const olderIndex = results.findIndex((p) => p.id === olderId);
+    const newerIndex = results.findIndex((p) => p.id === newerId);
+    expect(olderIndex).toBeGreaterThan(-1);
+    expect(newerIndex).toBeGreaterThan(-1);
+    expect(newerIndex).toBeLessThan(olderIndex); // the real newer product comes first
+  });
 });

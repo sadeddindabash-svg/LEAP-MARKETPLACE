@@ -11,6 +11,7 @@ import 'features/search/search_screen.dart';
 import 'features/garage/garage_screen.dart';
 import 'features/garage/add_vehicle_screen.dart';
 import 'features/catalog/category_screen.dart';
+import 'features/catalog/category_browse_screen.dart';
 import 'features/catalog/product_screen.dart';
 import 'features/cart/cart_screen.dart';
 import 'features/checkout/checkout_screen.dart';
@@ -42,11 +43,32 @@ final GoRouter appRouter = GoRouter(
     GoRoute(path: '/search', builder: (context, state) => const SearchScreen()),
     GoRoute(path: '/garage/add', builder: (context, state) => const AddVehicleScreen()),
     GoRoute(
+      path: '/category-browse/:id',
+      builder: (context, state) => CategoryBrowseScreen(initialCategoryId: state.pathParameters['id']!),
+    ),
+    GoRoute(
       path: '/category/:id',
-      builder: (context, state) => CategoryScreen(
-        categoryId: state.pathParameters['id']!,
-        categoryName: (state.extra as String?) ?? state.pathParameters['id']!,
-      ),
+      builder: (context, state) {
+        // Real Map extra from CategoryBrowseScreen (categoryName + the
+        // exact real Part tapped); falls back to a plain String extra
+        // for any caller that just wants the flat category list with
+        // no Part filter (none currently do, but kept for robustness
+        // rather than assuming the shape).
+        final extra = state.extra;
+        String? categoryName;
+        String? part;
+        if (extra is Map) {
+          categoryName = extra['categoryName'] as String?;
+          part = extra['part'] as String?;
+        } else if (extra is String) {
+          categoryName = extra;
+        }
+        return CategoryScreen(
+          categoryId: state.pathParameters['id']!,
+          categoryName: categoryName ?? state.pathParameters['id']!,
+          part: part,
+        );
+      },
     ),
     GoRoute(
       path: '/product/:id',

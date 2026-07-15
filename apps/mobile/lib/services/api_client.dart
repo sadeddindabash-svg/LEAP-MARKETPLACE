@@ -40,9 +40,39 @@ class ApiClient {
     return body.map((e) => ProductCategory.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  Future<List<Product>> fetchProductsByCategory(String categoryId, {String? vehicleId, String lang = 'en'}) async {
+  Future<List<ProductCategory>> fetchPartsForCategory(String categoryId) async {
+    final response = await _client.get(Uri.parse('$baseUrl/catalog/categories/$categoryId/parts'));
+    if (response.statusCode != 200) {
+      throw ApiException('Failed to load parts (${response.statusCode})');
+    }
+    final body = jsonDecode(response.body) as List;
+    return body.map((e) => ProductCategory.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<List<Product>> fetchProductsByCategory(String categoryId, {String? part, String? vehicleId, String lang = 'en'}) async {
     final uri = Uri.parse('$baseUrl/catalog/products').replace(queryParameters: {
       'category': categoryId,
+      if (part != null) 'part': part,
+      if (vehicleId != null) 'vehicleId': vehicleId,
+      'lang': lang,
+    });
+    final response = await _client.get(uri);
+    if (response.statusCode != 200) {
+      throw ApiException('Failed to load products (${response.statusCode})');
+    }
+    final body = jsonDecode(response.body) as List;
+    return body.map((e) => Product.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// The home feed's real "Newest" / "My car" filter — no category
+  /// scoping, browses across everything. `sort: 'newest'` orders by
+  /// real creation time (see services/api/README.md's "Product
+  /// search" section for why this endpoint previously had no explicit
+  /// ordering at all); `vehicleId` reuses the same real fitment filter
+  /// the category browser already used.
+  Future<List<Product>> fetchProducts({String? sort, String? vehicleId, String lang = 'en'}) async {
+    final uri = Uri.parse('$baseUrl/catalog/products').replace(queryParameters: {
+      if (sort != null) 'sort': sort,
       if (vehicleId != null) 'vehicleId': vehicleId,
       'lang': lang,
     });

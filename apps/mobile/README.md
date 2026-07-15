@@ -322,25 +322,64 @@ full verification of the search logic this screen calls, including the
 real bug it caught and fixed (unapproved products leaking into search
 results before this pass).
 
-## Real categories on the home screen (new)
+## Home feed redesign (new)
 
-The home screen's "Shop by category" grid used to be a hardcoded list
-of 6 categories in `home_screen.dart` — an admin adding a 7th category
-via the new admin dashboard Categories page (see
-`services/api/README.md`'s "Category + parts reference lists" section)
-would never have shown up here. Now real:
+**Confirmed exact sequence, top to bottom**: search bar → "Shopping
+for" → "Shop by category" → a filter (Newest / My car) → the real
+product feed. Each product card shows exactly what was asked for:
+photo, name, review stars, an add-to-cart button, stock availability,
+and price.
 
-- `lib/models/category.dart` (new `ProductCategory` model) +
-  `ApiClient.fetchCategories()`: fetches the real list from
-  `GET /catalog/categories`. `displayName(isArabic)` resolves which
-  language's name to show locally (the raw list itself doesn't change
-  per language, so no `?lang=` round-trip is needed just to switch).
+**`lib/widgets/product_card.dart`** (new, reusable): the real card used
+in the home feed (and now `CategoryScreen`'s product list too, for
+consistency). Add-to-cart calls the real cart endpoint directly from
+the card (quantity 1) — a buyer doesn't have to open the full product
+page just to add one unit, same real `CartState.addItem()` the product
+detail screen itself uses.
+
+**"Shopping for" is now real**, not the hardcoded "BMW 1 (F20) · 118d
+2.0" placeholder it used to be — `_ShoppingForCard` fetches the buyer's
+real garage (`ApiClient.fetchMyGarage()`, same call `GarageScreen`
+already used) and shows their real first saved vehicle, or a real
+prompt to add one if they haven't yet. This was necessary, not
+cosmetic: the "My car" feed filter below depends on there being an
+actual real vehicle to filter by — leaving the display hardcoded while
+building a filter that depends on "my car" being real would have been
+a genuine inconsistency.
+
+**The filter — real, not decorative**:
+- **Newest**: `GET /catalog/products?sort=newest` — see
+  `services/api/README.md`'s "Product search" section for why this
+  needed a real, explicit `ORDER BY` added (there wasn't one before).
+- **My car**: reuses the EXISTING real `vehicleId` fitment filter
+  (already used by category browsing) against the buyer's real first
+  saved vehicle. A real, honest empty state ("Add a vehicle to see
+  products for your car") shows instead of an empty feed if they have
+  none saved — not a silent blank screen.
+
+## Category browse sidebar (new)
+
+**Confirmed requirement**: a sidebar listing every real major category;
+the main area shows the real Parts within whichever category is
+currently selected; tapping a Part moves to the real product list for
+exactly that Part.
+
+- **`lib/features/catalog/category_browse_screen.dart`** (new): tapping
+  a category on the home screen now opens this screen first (was a
+  direct jump straight to a flat product list before). Real sidebar —
+  every category from `GET /catalog/categories`; selecting one
+  real-fetches that category's real Parts from
+  `GET /catalog/categories/:id/parts` into the main area.
+- **`CategoryScreen` extended** with an optional `part` parameter —
+  tapping a real Part in the sidebar screen lands here with the
+  backend's real EXACT-match `part=` filter (distinct from the fuzzy
+  `search=` used elsewhere), showing precisely that Part's real
+  products, using the same new `ProductCard`.
 - **Honest, deliberate scope boundary**: the backend doesn't store an
   icon choice per category (a real, separate feature if ever wanted) —
-  `_iconForCategory()` in `home_screen.dart` maps known category ids to
-  a real icon, falling back to a generic one for any category an admin
-  adds that isn't in that mapping yet, rather than crashing or showing
-  nothing.
+  `_iconForCategory()` maps known category ids to a real icon, falling
+  back to a generic one for any category an admin adds that isn't in
+  that mapping yet, rather than crashing or showing nothing.
 
 ## Setup
 
@@ -376,12 +415,14 @@ lib/
 ├── models/                  Vehicle, Product, Category (new), Order, CartItem — mirror SRS entities
 ├── services/api_client.dart  HTTP client wrapper for services/api (auth, catalog,
 │                               cart, order — all real now)
-├── widgets/                  Shared components (PlateChip, StatusBadge)
+├── widgets/                  Shared components (PlateChip, StatusBadge, ProductCard (new))
 └── features/
-    ├── home/                Home + category grid
+    ├── home/                Home feed — real "Newest"/"My car" filter,
+    │                          real product cards (new)
     ├── garage/               Saved vehicles / YMMT fitment selector — real
-    ├── catalog/              Category browse + product detail — real data,
-    │                          real photos, no supplier identity (new)
+    ├── catalog/              Category browse SIDEBAR (new) + product
+    │                          detail — real data, real photos, no
+    │                          supplier identity
     ├── search/               Real product search (new) — was a dead
     │                          read-only field before this pass
     ├── cart/                 Basket, grouped by supplier — real data

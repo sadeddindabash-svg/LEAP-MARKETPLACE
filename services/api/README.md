@@ -518,15 +518,30 @@ immediately visible, so it was fixed here rather than shipped alongside
 a feature that would have surfaced it the moment someone typed a
 matching term.
 
+**Two more real additions, for the mobile app's category browser and
+home feed**:
+- **`part=Front+Brake+Disc`** — a real EXACT-match filter, distinct
+  from `search` (which fuzzy-matches partial words). This is for "tap a
+  real Part in the category browser, see exactly the products for that
+  Part" — wants precision, not a fuzzy multi-word match.
+- **`sort=newest`** — real, explicit ordering by `created_at DESC`.
+  This endpoint previously had NO `ORDER BY` at all; whatever order
+  Postgres happened to return was incidental, never a real guarantee.
+  Powers the mobile home feed's "Newest" filter.
+
 **Tested end-to-end** — see `apps/admin-dashboard/src/productSearch.integration.test.js`
-(6 tests): a product genuinely does not appear in search before
+(8 tests): a product genuinely does not appear in search before
 approval and DOES appear immediately after (proving the status-filter
 fix), search precision holds (searching one category never returns an
 unrelated one), a real multi-word search requires every word to match
 (a brand that doesn't fit the product correctly returns no match, not
 a false positive), OEM number matching works directly, a nonsense term
-returns real zero results rather than an error, and search combines
-correctly with the category filter.
+returns real zero results rather than an error, search combines
+correctly with the category filter, the real exact `part` filter is
+precise (a different real part in the same category doesn't match),
+and `sort=newest` returns products in genuine creation-time order
+(verified against two real products created moments apart, not assumed
+from incidental database behavior).
 
 ## Category + parts reference lists (migration 015)
 

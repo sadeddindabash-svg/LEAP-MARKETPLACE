@@ -119,10 +119,10 @@ async function attachPrimaryFitment(dto, productId) {
   return { ...dto, brand: primary?.brand || null, model: primary?.model || null, year: primary?.year || null };
 }
 
-// GET /catalog/products?category=brake&vehicleId=v1&search=bmw+brake&lang=en|ar
+// GET /catalog/products?category=brake&part=Front+Brake+Disc&vehicleId=v1&search=bmw+brake&sort=newest&lang=en|ar
 router.get('/products', async (req, res, next) => {
   try {
-    const { category, vehicleId, search, lang } = req.query;
+    const { category, part, vehicleId, search, sort, lang } = req.query;
     const conditions = [];
     const params = [];
 
@@ -143,6 +143,15 @@ router.get('/products', async (req, res, next) => {
     if (category) {
       conditions.push(`p.category = $${params.length + 1}`);
       params.push(category);
+    }
+
+    // Real EXACT part filter -- distinct from `search`, which fuzzy-
+    // matches partial words. This is for "tap a real Part in the
+    // category browser, see exactly the products for that Part" --
+    // wants precision, not a fuzzy multi-word match.
+    if (part) {
+      conditions.push(`p.part = $${params.length + 1}`);
+      params.push(part);
     }
 
     // Real multi-word search: EVERY word must match SOMEWHERE (name in
@@ -171,6 +180,14 @@ router.get('/products', async (req, res, next) => {
     }
 
     if (conditions.length > 0) sql += ` WHERE ${conditions.join(' AND ')}`;
+
+    // Real, explicit ordering -- this endpoint previously had NO
+    // ORDER BY at all (whatever order Postgres happened to return was
+    // incidental, not a real guarantee). "newest" is a real, confirmed
+    // filter option on the home feed; the default (no sort param)
+    // stays unordered-by-date for now, matching prior behavior for
+    // category/search browsing where recency isn't the point.
+    if (sort === 'newest') sql += ' ORDER BY p.created_at DESC';
 
     const { rows } = await db.query(sql, params);
     const dtos = await Promise.all(rows.map(async (r) => {
