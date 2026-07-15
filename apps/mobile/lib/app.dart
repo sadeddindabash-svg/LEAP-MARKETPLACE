@@ -6,6 +6,7 @@ import 'core/auth_state.dart';
 import 'core/cart_state.dart';
 import 'core/language_state.dart';
 import 'features/home/home_screen.dart';
+import 'features/search/search_screen.dart';
 import 'features/garage/garage_screen.dart';
 import 'features/garage/add_vehicle_screen.dart';
 import 'features/catalog/category_screen.dart';
@@ -37,6 +38,7 @@ final GoRouter appRouter = GoRouter(
       ],
     ),
     GoRoute(path: '/garage', builder: (context, state) => const GarageScreen()),
+    GoRoute(path: '/search', builder: (context, state) => const SearchScreen()),
     GoRoute(path: '/garage/add', builder: (context, state) => const AddVehicleScreen()),
     GoRoute(
       path: '/category/:id',

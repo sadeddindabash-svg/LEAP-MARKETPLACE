@@ -493,6 +493,41 @@ SAME product's live browsing price is confirmed to have changed, a
 legacy non-CNY product passes through unaffected, and the FX rate can be
 viewed and updated.
 
+## Product search (added to GET /catalog/products)
+
+**A real gap, not previously covered**: buyers could filter by category
+or by a saved vehicle, but there was no way to actually type "brake
+disc" and get results — a significant everyday-use gap for a parts
+marketplace.
+
+**`GET /catalog/products?search=bmw+brake`** — real multi-word matching:
+every word in the search string must match SOMEWHERE (name in either
+language, part, OEM number, category, or the vehicle brand/model this
+product fits, via a real `EXISTS` subquery against the fitment cascade
+rather than a `JOIN` that would produce duplicate rows for a
+multi-fitment product) — "bmw brake" finds brake products that fit a
+BMW, not a literal string match. Combines correctly with the existing
+`category` filter (both apply together, not one replacing the other).
+
+**A real, related bug found and fixed while building this**: the buyer-
+facing product LIST endpoint had NO `status = 'active'` filter at all —
+a still-`translating` or `pending` product (never reviewed, not
+buyer-facing anywhere else in this system) could leak into browsing and
+search results. This is exactly the kind of gap that search would make
+immediately visible, so it was fixed here rather than shipped alongside
+a feature that would have surfaced it the moment someone typed a
+matching term.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/productSearch.integration.test.js`
+(6 tests): a product genuinely does not appear in search before
+approval and DOES appear immediately after (proving the status-filter
+fix), search precision holds (searching one category never returns an
+unrelated one), a real multi-word search requires every word to match
+(a brand that doesn't fit the product correctly returns no match, not
+a false positive), OEM number matching works directly, a nonsense term
+returns real zero results rather than an error, and search combines
+correctly with the category filter.
+
 ## Setup
 
 ```bash

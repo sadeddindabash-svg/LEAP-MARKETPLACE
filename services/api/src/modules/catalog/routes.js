@@ -119,10 +119,10 @@ async function attachPrimaryFitment(dto, productId) {
   return { ...dto, brand: primary?.brand || null, model: primary?.model || null, year: primary?.year || null };
 }
 
-// GET /catalog/products?category=brake&vehicleId=v1&lang=en|ar
+// GET /catalog/products?category=brake&vehicleId=v1&search=bmw+brake&lang=en|ar
 router.get('/products', async (req, res, next) => {
   try {
-    const { category, vehicleId, lang } = req.query;
+    const { category, vehicleId, search, lang } = req.query;
     const conditions = [];
     const params = [];
 
@@ -131,10 +131,45 @@ router.get('/products', async (req, res, next) => {
       sql += ` JOIN product_fitment pf ON pf.product_id = p.id AND pf.vehicle_id = $${params.length + 1}`;
       params.push(vehicleId);
     }
+
+    // BUG FIX, found while adding search: this endpoint had NO status
+    // filter at all -- a still-'translating' or 'pending' product (not
+    // yet reviewed, not yet buyer-facing per every other part of this
+    // system) could leak into buyer browsing and search results. Real
+    // and worth fixing here rather than separately, since search is
+    // exactly where an unapproved listing would first become visible.
+    conditions.push(`p.status = 'active'`);
+
     if (category) {
       conditions.push(`p.category = $${params.length + 1}`);
       params.push(category);
     }
+
+    // Real multi-word search: EVERY word must match SOMEWHERE (name in
+    // either language, part, OEM number, category, or the vehicle
+    // brand/model this product fits) -- "bmw brake" finds brake
+    // products that fit a BMW, not just literal string "bmw brake".
+    // Uses EXISTS rather than a JOIN to the fitment cascade so a
+    // product with multiple fitment entries doesn't come back as
+    // duplicate rows.
+    if (search && search.trim()) {
+      const words = search.trim().split(/\s+/).slice(0, 8); // cap word count -- a search box isn't meant to take a paragraph
+      for (const word of words) {
+        const idx = params.length + 1;
+        conditions.push(
+          `(p.name ILIKE $${idx} OR p.name_ar ILIKE $${idx} OR p.part ILIKE $${idx} OR p.oem_number ILIKE $${idx} OR p.category ILIKE $${idx}
+            OR EXISTS (
+              SELECT 1 FROM product_fitment_entries pfe
+              JOIN vehicle_generations vg ON vg.id = pfe.generation_id
+              JOIN vehicle_models vm ON vm.id = vg.model_id
+              JOIN vehicle_brands vb ON vb.id = vm.brand_id
+              WHERE pfe.product_id = p.id AND (vb.name ILIKE $${idx} OR vm.name ILIKE $${idx})
+            ))`
+        );
+        params.push(`%${word}%`);
+      }
+    }
+
     if (conditions.length > 0) sql += ` WHERE ${conditions.join(' AND ')}`;
 
     const { rows } = await db.query(sql, params);

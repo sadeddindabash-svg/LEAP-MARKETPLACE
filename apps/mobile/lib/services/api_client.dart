@@ -40,6 +40,22 @@ class ApiClient {
     return body.map((e) => Product.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  /// Real product search — matches part name, OEM number, category, or
+  /// the vehicle brand/model this product fits (see
+  /// services/api/src/modules/catalog/routes.js's GET /catalog/products
+  /// for the full multi-word matching logic). Empty/whitespace-only
+  /// queries are the caller's responsibility to avoid; this method
+  /// doesn't special-case that.
+  Future<List<Product>> searchProducts(String query, {String lang = 'en'}) async {
+    final uri = Uri.parse('$baseUrl/catalog/products').replace(queryParameters: {'search': query, 'lang': lang});
+    final response = await _client.get(uri);
+    if (response.statusCode != 200) {
+      throw ApiException('Search failed (${response.statusCode})');
+    }
+    final body = jsonDecode(response.body) as List;
+    return body.map((e) => Product.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   Future<Product> fetchProductById(String productId, {String lang = 'en'}) async {
     final response = await _client.get(Uri.parse('$baseUrl/catalog/products/$productId?lang=$lang'));
     if (response.statusCode != 200) {

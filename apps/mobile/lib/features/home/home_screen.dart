@@ -35,7 +35,7 @@ class HomeScreen extends StatelessWidget {
             const SizedBox(height: 8),
             TextField(
               readOnly: true,
-              onTap: () {}, // TODO: wire to search screen
+              onTap: () => context.push('/search'),
               decoration: InputDecoration(
                 hintText: 'Search part, brand, or number',
                 prefixIcon: const Icon(Icons.search),

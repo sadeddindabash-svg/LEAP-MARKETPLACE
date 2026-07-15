@@ -246,6 +246,29 @@ noted honestly in "Status" above) — see
 `apps/admin-dashboard/src/buyerCatalog.integration.test.js` for the full
 verification of what this screen actually receives and renders.
 
+## Product search (new)
+
+The home screen's search box was a dead, read-only field with a literal
+`// TODO: wire to search screen` comment — that's now real:
+
+- `lib/features/search/search_screen.dart`: tapping the home screen's
+  search box opens a real search-as-you-type screen. Debounced (400ms
+  after the last keystroke, not a real network request per character) —
+  a real search-as-you-type still shouldn't hammer the backend on every
+  keystroke. Calls the real `GET /catalog/products?search=...` (see
+  `services/api/README.md`'s "Product search" section for the full
+  multi-word matching logic), language-aware via the same
+  `LanguageState` the product page uses, with real loading/empty/error
+  states rather than a screen that just does nothing while waiting.
+- `ApiClient.searchProducts()`: new method, added alongside the existing
+  `fetchProductsByCategory`/`fetchProductById`.
+
+**Tested on the backend side** — see
+`apps/admin-dashboard/src/productSearch.integration.test.js` for the
+full verification of the search logic this screen calls, including the
+real bug it caught and fixed (unapproved products leaking into search
+results before this pass).
+
 ## Setup
 
 1. Install Flutter: https://docs.flutter.dev/get-started/install
@@ -284,6 +307,8 @@ lib/
     ├── garage/               Saved vehicles / YMMT fitment selector — real
     ├── catalog/              Category browse + product detail — real data,
     │                          real photos, no supplier identity (new)
+    ├── search/               Real product search (new) — was a dead
+    │                          read-only field before this pass
     ├── cart/                 Basket, grouped by supplier — real data
     ├── checkout/             Real order placement (payment capture not yet wired)
     ├── orders/               Order history/tracking + detail + return
