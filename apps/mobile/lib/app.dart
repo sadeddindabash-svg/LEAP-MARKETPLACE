@@ -33,7 +33,7 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state, child) => RootShell(child: child),
       routes: [
         GoRoute(path: '/home', builder: (context, state) => const HomeScreen()),
-        GoRoute(path: '/categories', builder: (context, state) => const _CategoriesPlaceholder()),
+        GoRoute(path: '/categories', builder: (context, state) => const CategoryBrowseScreen()),
         GoRoute(path: '/cart', builder: (context, state) => const CartScreen()),
         GoRoute(path: '/orders', builder: (context, state) => const OrdersScreen()),
         GoRoute(path: '/account', builder: (context, state) => const AccountScreen()),
@@ -115,17 +115,6 @@ class RootShell extends StatelessWidget {
           BottomNavigationBarItem(icon: const Icon(Icons.person_outline), label: tr(context, 'nav_account')),
         ],
       ),
-    );
-  }
-}
-
-class _CategoriesPlaceholder extends StatelessWidget {
-  const _CategoriesPlaceholder();
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Shop by category')),
-      body: const Center(child: Text('Reuses the category grid from HomeScreen — extract into a shared widget.')),
     );
   }
 }

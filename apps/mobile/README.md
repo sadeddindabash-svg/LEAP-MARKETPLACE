@@ -380,6 +380,13 @@ exactly that Part.
   `_iconForCategory()` maps known category ids to a real icon, falling
   back to a generic one for any category an admin adds that isn't in
   that mapping yet, rather than crashing or showing nothing.
+- **The bottom nav bar's "Shop" tab reuses this exact same screen**,
+  found to be a genuinely dead placeholder while wiring this up (its
+  entire body was a literal `Text('...extract into a shared widget.')`
+  — never actually built). `CategoryBrowseScreen`'s `initialCategoryId`
+  is now optional; entering from "Shop" (no specific starting category,
+  unlike tapping a category icon on Home) defaults to the real first
+  category once the list loads.
 
 ## Setup
 

@@ -18,8 +18,8 @@ import '../../services/api_client.dart';
 /// section) — an admin adding a category or part shows up here without
 /// an app code change.
 class CategoryBrowseScreen extends StatefulWidget {
-  final String initialCategoryId;
-  const CategoryBrowseScreen({super.key, required this.initialCategoryId});
+  final String? initialCategoryId;
+  const CategoryBrowseScreen({super.key, this.initialCategoryId});
 
   @override
   State<CategoryBrowseScreen> createState() => _CategoryBrowseScreenState();
@@ -34,7 +34,7 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
   @override
   void initState() {
     super.initState();
-    _selectedCategoryId = widget.initialCategoryId;
+    _selectedCategoryId = widget.initialCategoryId; // may be null -- resolved once categories load, see below
     _loadCategories();
   }
 
@@ -44,7 +44,14 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
       if (mounted) {
         setState(() {
           _categories = categories;
-          _partsFuture = ApiClient().fetchPartsForCategory(_selectedCategoryId!);
+          // Confirmed: the "Shop" tab enters this same screen with no
+          // specific starting category (unlike tapping a category icon
+          // on Home) -- default to the real first category rather than
+          // requiring a caller to always know one in advance.
+          _selectedCategoryId ??= categories.isNotEmpty ? categories.first.id : null;
+          if (_selectedCategoryId != null) {
+            _partsFuture = ApiClient().fetchPartsForCategory(_selectedCategoryId!);
+          }
         });
       }
     } catch (e) {
