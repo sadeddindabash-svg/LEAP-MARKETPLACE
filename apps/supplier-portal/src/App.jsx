@@ -19,6 +19,7 @@ import {
   fetchMyOverview,
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
   uploadProductImage, API_BASE_URL,
+  fetchCategories, fetchPartsForCategory,
 } from "./auth";
 
 /* ============================================================
@@ -493,18 +494,6 @@ function useInputStyle() {
   return { ...font, width: "100%", border: `1px solid ${C.line}`, borderRadius: 8, padding: "9px 11px", fontSize: 13, outline: "none", boxSizing: "border-box" };
 }
 
-// Matches the category IDs used by the mobile app's catalog browsing
-// (see apps/mobile/lib/features/home/home_screen.dart kCategories) so a
-// product a supplier adds here shows up correctly there.
-const CATEGORY_OPTIONS = [
-  { id: "brake", zh: "刹车系统", en: "Brake System" },
-  { id: "engine", zh: "发动机", en: "Engine" },
-  { id: "electrical", zh: "电气系统", en: "Electrical" },
-  { id: "filters", zh: "滤芯", en: "Filters" },
-  { id: "suspension", zh: "悬挂系统", en: "Suspension" },
-  { id: "lighting", zh: "照明系统", en: "Lighting" },
-];
-
 // Matches the backend's ALLOWED_POSITIONS exactly (see
 // services/api/src/modules/supplier/routes.js) — a fixed, real list,
 // not free text, since "Position" means where on the vehicle the part
@@ -532,8 +521,11 @@ function AddProductForm({ onCancel, onCreated }) {
   // Basic fields
   const [nameZh, setNameZh] = useState("");
   const [descriptionZh, setDescriptionZh] = useState("");
-  const [category, setCategory] = useState(CATEGORY_OPTIONS[0].id);
+  const [categories, setCategories] = useState([]);
+  const [category, setCategory] = useState("");
+  const [parts, setParts] = useState([]);
   const [part, setPart] = useState("");
+  const [isLoadingParts, setIsLoadingParts] = useState(false);
   const [position, setPosition] = useState(POSITION_OPTIONS[0].id);
   const [oemNumber, setOemNumber] = useState("");
   const [price, setPrice] = useState("");
@@ -566,6 +558,31 @@ function AddProductForm({ onCancel, onCreated }) {
   useEffect(() => {
     fetchBrands().then(setBrands).catch((e) => setError(e.message));
   }, []);
+
+  // Real categories, fetched once — a supplier picks from these, not a
+  // hardcoded array, so an admin adding a category via the new
+  // Categories page shows up here without a code change.
+  useEffect(() => {
+    fetchCategories().then((c) => {
+      setCategories(c);
+      if (c.length > 0) setCategory(c[0].id);
+    }).catch((e) => setError(e.message));
+  }, []);
+
+  // Real parts, scoped to the currently selected category — cascades
+  // the same way the Brand -> Model -> Generation fitment picker does.
+  // Confirmed requirement: a supplier picks a real Part from a real
+  // list, not free text.
+  useEffect(() => {
+    if (!category) return;
+    setIsLoadingParts(true);
+    setPart("");
+    fetchPartsForCategory(category).then((p) => {
+      setParts(p);
+      if (p.length > 0) setPart(p[0].nameEn);
+      setIsLoadingParts(false);
+    }).catch((e) => { setError(e.message); setIsLoadingParts(false); });
+  }, [category]);
 
   const handleBrandChange = async (brandId) => {
     setSelectedBrandId(brandId);
@@ -694,11 +711,15 @@ function AddProductForm({ onCancel, onCreated }) {
           </Field>
           <Field label={cascadeLabel("类别", "Category")}>
             <select style={selectStyle} value={category} onChange={(e) => setCategory(e.target.value)}>
-              {CATEGORY_OPTIONS.map(c => <option key={c.id} value={c.id}>{c[lang]}</option>)}
+              {categories.map(c => <option key={c.id} value={c.id}>{c.nameEn}</option>)}
             </select>
           </Field>
           <Field label={cascadeLabel("部件类型", "Part")}>
-            <input style={inputStyle} placeholder={cascadeLabel("例如：前刹车盘", "e.g. Front Brake Disc")} value={part} onChange={(e) => setPart(e.target.value)} />
+            <select style={selectStyle} value={part} onChange={(e) => setPart(e.target.value)} disabled={isLoadingParts || parts.length === 0}>
+              {isLoadingParts && <option>{cascadeLabel("加载中…", "Loading…")}</option>}
+              {!isLoadingParts && parts.length === 0 && <option>{cascadeLabel("此类别暂无部件", "No parts yet for this category")}</option>}
+              {!isLoadingParts && parts.map(p => <option key={p.id} value={p.nameEn}>{p.nameEn}</option>)}
+            </select>
           </Field>
           <Field label={cascadeLabel("安装位置", "Position")}>
             <select style={selectStyle} value={position} onChange={(e) => setPosition(e.target.value)}>

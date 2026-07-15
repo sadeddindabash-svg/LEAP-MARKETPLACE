@@ -322,6 +322,26 @@ full verification of the search logic this screen calls, including the
 real bug it caught and fixed (unapproved products leaking into search
 results before this pass).
 
+## Real categories on the home screen (new)
+
+The home screen's "Shop by category" grid used to be a hardcoded list
+of 6 categories in `home_screen.dart` — an admin adding a 7th category
+via the new admin dashboard Categories page (see
+`services/api/README.md`'s "Category + parts reference lists" section)
+would never have shown up here. Now real:
+
+- `lib/models/category.dart` (new `ProductCategory` model) +
+  `ApiClient.fetchCategories()`: fetches the real list from
+  `GET /catalog/categories`. `displayName(isArabic)` resolves which
+  language's name to show locally (the raw list itself doesn't change
+  per language, so no `?lang=` round-trip is needed just to switch).
+- **Honest, deliberate scope boundary**: the backend doesn't store an
+  icon choice per category (a real, separate feature if ever wanted) —
+  `_iconForCategory()` in `home_screen.dart` maps known category ids to
+  a real icon, falling back to a generic one for any category an admin
+  adds that isn't in that mapping yet, rather than crashing or showing
+  nothing.
+
 ## Setup
 
 1. Install Flutter: https://docs.flutter.dev/get-started/install
@@ -353,7 +373,7 @@ lib/
 │   ├── app_strings.dart        Full app-wide bilingual string lookup
 │   │                            (new) — every screen's static UI chrome
 │   └── config/app_config.dart  Launch markets, API base URL, feature flags
-├── models/                  Vehicle, Product, Order, CartItem — mirror SRS entities
+├── models/                  Vehicle, Product, Category (new), Order, CartItem — mirror SRS entities
 ├── services/api_client.dart  HTTP client wrapper for services/api (auth, catalog,
 │                               cart, order — all real now)
 ├── widgets/                  Shared components (PlateChip, StatusBadge)

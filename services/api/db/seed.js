@@ -268,6 +268,79 @@ async function main() {
   );
   console.log('Seeded starting CNY_USD exchange rate (manual, 0.14) — update via PATCH /pricing/fx-rate.');
 
+  // Real, admin-managed category + part reference lists (migration 015).
+  // Category IDs match the existing hardcoded values used since
+  // migration 001 — every existing product's real category value keeps
+  // meaning exactly what it already meant. Parts are a genuinely useful
+  // starting set an admin can extend; suppliers pick from these rather
+  // than typing free text going forward.
+  const categoriesSeed = [
+    { id: 'brake', nameEn: 'Brake System', nameAr: 'نظام الفرامل', sortOrder: 10 },
+    { id: 'engine', nameEn: 'Engine', nameAr: 'المحرك', sortOrder: 20 },
+    { id: 'electrical', nameEn: 'Electrical', nameAr: 'كهرباء', sortOrder: 30 },
+    { id: 'filters', nameEn: 'Filters', nameAr: 'الفلاتر', sortOrder: 40 },
+    { id: 'suspension', nameEn: 'Suspension', nameAr: 'نظام التعليق', sortOrder: 50 },
+    { id: 'lighting', nameEn: 'Lighting', nameAr: 'الإضاءة', sortOrder: 60 },
+  ];
+  for (const c of categoriesSeed) {
+    await pool.query(
+      `INSERT INTO product_categories (id, name_en, name_ar, sort_order) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING`,
+      [c.id, c.nameEn, c.nameAr, c.sortOrder]
+    );
+  }
+
+  const partsSeed = [
+    // Brake System
+    { id: 'part_brake_front_disc', categoryId: 'brake', nameEn: 'Front Brake Disc', nameAr: 'قرص فرامل أمامي', sortOrder: 10 },
+    { id: 'part_brake_rear_disc', categoryId: 'brake', nameEn: 'Rear Brake Disc', nameAr: 'قرص فرامل خلفي', sortOrder: 20 },
+    { id: 'part_brake_pads_front', categoryId: 'brake', nameEn: 'Brake Pads (Front)', nameAr: 'وسادات فرامل (أمامية)', sortOrder: 30 },
+    { id: 'part_brake_pads_rear', categoryId: 'brake', nameEn: 'Brake Pads (Rear)', nameAr: 'وسادات فرامل (خلفية)', sortOrder: 40 },
+    { id: 'part_brake_caliper', categoryId: 'brake', nameEn: 'Brake Caliper', nameAr: 'كماشة الفرامل', sortOrder: 50 },
+    { id: 'part_brake_master_cylinder', categoryId: 'brake', nameEn: 'Brake Master Cylinder', nameAr: 'اسطوانة الفرامل الرئيسية', sortOrder: 60 },
+    { id: 'part_brake_line', categoryId: 'brake', nameEn: 'Brake Line / Hose', nameAr: 'خط / خرطوم الفرامل', sortOrder: 70 },
+    // Engine
+    { id: 'part_engine_timing_belt', categoryId: 'engine', nameEn: 'Timing Belt', nameAr: 'سير التوقيت', sortOrder: 10 },
+    { id: 'part_engine_timing_chain', categoryId: 'engine', nameEn: 'Timing Chain', nameAr: 'سلسلة التوقيت', sortOrder: 20 },
+    { id: 'part_engine_spark_plug', categoryId: 'engine', nameEn: 'Spark Plug', nameAr: 'شمعة الإشعال', sortOrder: 30 },
+    { id: 'part_engine_mount', categoryId: 'engine', nameEn: 'Engine Mount', nameAr: 'قاعدة المحرك', sortOrder: 40 },
+    { id: 'part_engine_water_pump', categoryId: 'engine', nameEn: 'Water Pump', nameAr: 'مضخة المياه', sortOrder: 50 },
+    { id: 'part_engine_head_gasket', categoryId: 'engine', nameEn: 'Head Gasket', nameAr: 'جوان رأس المحرك', sortOrder: 60 },
+    { id: 'part_engine_piston_ring', categoryId: 'engine', nameEn: 'Piston Ring Set', nameAr: 'طقم حلقات المكبس', sortOrder: 70 },
+    // Electrical
+    { id: 'part_elec_battery', categoryId: 'electrical', nameEn: 'Battery', nameAr: 'البطارية', sortOrder: 10 },
+    { id: 'part_elec_alternator', categoryId: 'electrical', nameEn: 'Alternator', nameAr: 'المولد', sortOrder: 20 },
+    { id: 'part_elec_starter', categoryId: 'electrical', nameEn: 'Starter Motor', nameAr: 'موتور بدء التشغيل', sortOrder: 30 },
+    { id: 'part_elec_ignition_coil', categoryId: 'electrical', nameEn: 'Ignition Coil', nameAr: 'ملف الإشعال', sortOrder: 40 },
+    { id: 'part_elec_fuse_box', categoryId: 'electrical', nameEn: 'Fuse Box', nameAr: 'علبة الفيوزات', sortOrder: 50 },
+    { id: 'part_elec_wiring_harness', categoryId: 'electrical', nameEn: 'Wiring Harness', nameAr: 'حزمة الأسلاك', sortOrder: 60 },
+    { id: 'part_elec_sensor', categoryId: 'electrical', nameEn: 'Sensor (O2 / MAF / etc.)', nameAr: 'مستشعر (أكسجين / تدفق الهواء / إلخ)', sortOrder: 70 },
+    // Filters
+    { id: 'part_filter_air', categoryId: 'filters', nameEn: 'Air Filter', nameAr: 'فلتر الهواء', sortOrder: 10 },
+    { id: 'part_filter_oil', categoryId: 'filters', nameEn: 'Oil Filter', nameAr: 'فلتر الزيت', sortOrder: 20 },
+    { id: 'part_filter_cabin', categoryId: 'filters', nameEn: 'Cabin Air Filter', nameAr: 'فلتر هواء المقصورة', sortOrder: 30 },
+    { id: 'part_filter_fuel', categoryId: 'filters', nameEn: 'Fuel Filter', nameAr: 'فلتر الوقود', sortOrder: 40 },
+    // Suspension
+    { id: 'part_susp_shock_absorber', categoryId: 'suspension', nameEn: 'Shock Absorber', nameAr: 'ممتص الصدمات', sortOrder: 10 },
+    { id: 'part_susp_strut', categoryId: 'suspension', nameEn: 'Strut', nameAr: 'مساعد ماكفرسون', sortOrder: 20 },
+    { id: 'part_susp_coil_spring', categoryId: 'suspension', nameEn: 'Coil Spring', nameAr: 'نابض حلزوني', sortOrder: 30 },
+    { id: 'part_susp_control_arm', categoryId: 'suspension', nameEn: 'Control Arm', nameAr: 'ذراع التحكم', sortOrder: 40 },
+    { id: 'part_susp_sway_bar_link', categoryId: 'suspension', nameEn: 'Sway Bar Link', nameAr: 'وصلة عارضة التوازن', sortOrder: 50 },
+    { id: 'part_susp_ball_joint', categoryId: 'suspension', nameEn: 'Ball Joint', nameAr: 'مفصلة كروية', sortOrder: 60 },
+    // Lighting
+    { id: 'part_light_headlight', categoryId: 'lighting', nameEn: 'Headlight Assembly', nameAr: 'مجموعة المصباح الأمامي', sortOrder: 10 },
+    { id: 'part_light_taillight', categoryId: 'lighting', nameEn: 'Tail Light Assembly', nameAr: 'مجموعة المصباح الخلفي', sortOrder: 20 },
+    { id: 'part_light_fog', categoryId: 'lighting', nameEn: 'Fog Light', nameAr: 'مصباح الضباب', sortOrder: 30 },
+    { id: 'part_light_turn_signal', categoryId: 'lighting', nameEn: 'Turn Signal Light', nameAr: 'مصباح الإشارة', sortOrder: 40 },
+    { id: 'part_light_led_kit', categoryId: 'lighting', nameEn: 'LED Bulb Kit', nameAr: 'طقم لمبات LED', sortOrder: 50 },
+  ];
+  for (const p of partsSeed) {
+    await pool.query(
+      `INSERT INTO category_parts (id, category_id, name_en, name_ar, sort_order) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING`,
+      [p.id, p.categoryId, p.nameEn, p.nameAr, p.sortOrder]
+    );
+  }
+  console.log(`Seeded ${categoriesSeed.length} product categories and ${partsSeed.length} real parts.`);
+
   console.log('Seed complete.');
   await pool.end();
 }

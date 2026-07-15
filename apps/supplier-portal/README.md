@@ -111,12 +111,20 @@ noted as "dropped because backend storage isn't wired" is now real:
   `services/api/README.md`'s dedicated section on this feature) as the
   supplier makes each selection. Engine/transmission options are scoped
   to the chosen generation, not shown as one giant flat list.
-- **Category / Part / Position / OEM Number**: Category and Position are
-  real fixed lists (matching the backend's `ALLOWED_CATEGORIES` and
-  `ALLOWED_POSITIONS` exactly) — not free text pretending to be
-  structured. Part and OEM Number are free text (a curated Part-name
-  reference list per category would be a reasonable future enhancement,
-  not built here).
+- **Category / Part / Position / OEM Number**: Category, Part, and
+  Position are ALL now real, admin-managed reference data (Position
+  matches the backend's `ALLOWED_POSITIONS` exactly; Category and Part
+  come from `GET /catalog/categories` and
+  `GET /catalog/categories/:id/parts` — see
+  `services/api/README.md`'s "Category + parts reference lists"
+  section). Part was previously flagged in this same README as "a
+  curated Part-name reference list per category would be a reasonable
+  future enhancement, not built here" — it's now built: selecting a
+  Category real-fetches that category's real Parts and repopulates the
+  Part dropdown, the same cascading pattern the Brand → Model →
+  Generation fitment picker already used. Only OEM Number remains free
+  text (a real, supplier-specific identifier, not something to curate a
+  list of).
 - **Mandatory shipping weight and dimensions (new)**: real numeric
   fields (weight in kg, length/width/height in cm), enforced both
   client-side and server-side, required for every new submission —
@@ -229,7 +237,13 @@ npm run dev       # http://localhost:5173
 npm test
 ```
 
-Six test files, 35 tests total, all passing:
+Seven test files, 37 tests total, all passing:
+- `src/AddProductCascade.test.jsx` (2, mocked, full component tree) —
+  the Part dropdown shows real parts for the default selected Category
+  (and doesn't show a different category's parts pre-loaded), and
+  changing the Category real-fetches and swaps in that category's real
+  parts — the same cascading pattern the Brand → Model → Generation
+  fitment picker already used, now applied to Category → Part too.
 - `src/supplierPortal.integration.test.js` (10, REAL backend, no mocking):
   login with a real supplier JWT including `supplierId`, a buyer account
   correctly rejected from supplier endpoints, products scoped to only this

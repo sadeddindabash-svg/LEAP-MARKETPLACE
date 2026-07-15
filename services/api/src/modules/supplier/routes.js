@@ -156,9 +156,12 @@ router.get('/me/products', requireAuth, requireRole('supplier'), async (req, res
 // as 'translating' (awaiting admin review, see catalog moderation-queue),
 // NOT 'active' — a supplier cannot make their own product live to buyers
 // without going through moderation first.
-// Matches the mobile app's real category IDs (see
-// apps/mobile/lib/features/home/home_screen.dart kCategories).
-const ALLOWED_CATEGORIES = ['brake', 'engine', 'electrical', 'filters', 'suspension', 'lighting'];
+//
+// Category and Part are now REAL, admin-managed reference data
+// (migration 015, product_categories / category_parts) — a supplier
+// picks a real Part from a real list scoped to the Category they
+// selected, per the confirmed requirement, rather than typing free
+// text. Validated against the database below, not a hardcoded array.
 // A fixed, real list rather than free text — "Position" in the SRS
 // cascade (Brand -> ... -> Category -> Part -> Position -> OEM Number)
 // means where on the vehicle the part sits, not a free-form description.
@@ -201,8 +204,20 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
       return res.status(400).json({ error: `${field} must be a positive number` });
     }
   }
-  if (!ALLOWED_CATEGORIES.includes(category)) {
-    return res.status(400).json({ error: `category must be one of: ${ALLOWED_CATEGORIES.join(', ')}` });
+  const categoryCheck = await db.query('SELECT id FROM product_categories WHERE id = $1', [category]);
+  if (categoryCheck.rows.length === 0) {
+    const { rows: allCategories } = await db.query('SELECT id FROM product_categories ORDER BY sort_order ASC');
+    return res.status(400).json({ error: `category must be one of: ${allCategories.map((c) => c.id).join(', ')}` });
+  }
+  // Real, scoped validation: the part must be a real one that belongs
+  // to THIS category specifically (matching by name, since
+  // products.part stays plain text — see this file's header comment
+  // and migration 015's for why) — a part from a different category
+  // isn't accepted even if its name happens to be right.
+  const partCheck = await db.query('SELECT id FROM category_parts WHERE category_id = $1 AND name_en = $2', [category, part]);
+  if (partCheck.rows.length === 0) {
+    const { rows: allParts } = await db.query('SELECT name_en FROM category_parts WHERE category_id = $1 ORDER BY sort_order ASC', [category]);
+    return res.status(400).json({ error: `part must be one of: ${allParts.map((p) => p.name_en).join(', ')}` });
   }
   if (!ALLOWED_POSITIONS.includes(position)) {
     return res.status(400).json({ error: `position must be one of: ${ALLOWED_POSITIONS.join(', ')}` });

@@ -140,7 +140,7 @@ describe.runIf(backendUp)('structured supplier product submission against a REAL
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
-        nameZh: '测试', category: 'brake', part: 'x', position: 'Front', oemNumber: '123',
+        nameZh: '测试', category: 'brake', part: 'Front Brake Disc', position: 'Front', oemNumber: '123',
         price: 10, currencyCode: 'CNY', fitment: { generationId: 'gen_bmw_1_series_f20', year: 2017 },
         images: ['/uploads/a.jpg', '/uploads/b.jpg'],
         weightKg: 1, lengthCm: 10, widthCm: 10, heightCm: 10,
@@ -155,7 +155,7 @@ describe.runIf(backendUp)('structured supplier product submission against a REAL
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
-        nameZh: '测试', category: 'brake', part: 'x', position: 'Front', oemNumber: '123',
+        nameZh: '测试', category: 'brake', part: 'Front Brake Disc', position: 'Front', oemNumber: '123',
         price: 10, currencyCode: 'CNY', fitment: { generationId: 'gen_bmw_1_series_f20', year: 1999 },
         images: ['/uploads/a.jpg', '/uploads/b.jpg', '/uploads/c.jpg'],
         weightKg: 1, lengthCm: 10, widthCm: 10, heightCm: 10,

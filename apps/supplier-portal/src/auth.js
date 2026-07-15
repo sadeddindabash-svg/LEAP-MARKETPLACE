@@ -148,3 +148,21 @@ export function fetchMyReturnCaseById(token, caseId) {
 export function replyToReturnCase(token, caseId, message) {
   return authedMutate("POST", `/returns/supplier/me/${caseId}/messages`, token, { message });
 }
+
+// ---------------- Real category + part reference lists (new) ----------------
+// A supplier now picks a real Part from a real list scoped to the
+// Category they picked, per the confirmed requirement, rather than
+// typing free text — these are public (no auth) since the mobile app
+// reads them too.
+
+export async function fetchCategories() {
+  const response = await fetch(`${API_BASE_URL}/catalog/categories`);
+  if (!response.ok) throw new Error(`Failed to load categories (${response.status})`);
+  return response.json();
+}
+
+export async function fetchPartsForCategory(categoryId) {
+  const response = await fetch(`${API_BASE_URL}/catalog/categories/${categoryId}/parts`);
+  if (!response.ok) throw new Error(`Failed to load parts (${response.status})`);
+  return response.json();
+}

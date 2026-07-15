@@ -57,7 +57,7 @@ describe.runIf(backendUp)('pricing engine against a REAL running backend', () =>
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
-        nameZh: '货币测试', category: 'brake', part: 'x', position: 'Front', oemNumber: `CUR-${Date.now()}`,
+        nameZh: '货币测试', category: 'brake', part: 'Front Brake Disc', position: 'Front', oemNumber: `CUR-${Date.now()}`,
         price: 100, currencyCode: 'USD',
         fitment: { generationId: 'gen_bmw_1_series_f20', year: 2018 },
         images: ['/uploads/a.jpg', '/uploads/b.jpg', '/uploads/c.jpg'],

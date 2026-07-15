@@ -1,23 +1,52 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
+import '../../core/language_state.dart';
+import '../../models/category.dart';
+import '../../services/api_client.dart';
 import '../../widgets/plate_chip.dart';
 
-const List<({String id, String stringKey, IconData icon})> kCategories = [
-  (id: 'brake', stringKey: 'cat_brake', icon: Icons.album_outlined),
-  (id: 'engine', stringKey: 'cat_engine', icon: Icons.settings_outlined),
-  (id: 'electrical', stringKey: 'cat_electrical', icon: Icons.electrical_services_outlined),
-  (id: 'filters', stringKey: 'cat_filters', icon: Icons.filter_alt_outlined),
-  (id: 'suspension', stringKey: 'cat_suspension', icon: Icons.build_outlined),
-  (id: 'lighting', stringKey: 'cat_lighting', icon: Icons.lightbulb_outline),
-];
+/// Real, admin-managed icon per known category id — a NEW category an
+/// admin adds via the admin dashboard's Categories page (see
+/// services/api/README.md's "Category + parts reference lists" section)
+/// won't have an icon mapping here yet, so it falls back to a generic
+/// one rather than crashing or showing nothing. The backend doesn't
+/// store icon choices — that's a real, honest scope boundary, not an
+/// oversight — so this mapping is maintained here, in the one place
+/// that actually renders icons.
+IconData _iconForCategory(String categoryId) {
+  const known = {
+    'brake': Icons.album_outlined,
+    'engine': Icons.settings_outlined,
+    'electrical': Icons.electrical_services_outlined,
+    'filters': Icons.filter_alt_outlined,
+    'suspension': Icons.build_outlined,
+    'lighting': Icons.lightbulb_outline,
+  };
+  return known[categoryId] ?? Icons.category_outlined;
+}
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  late Future<List<ProductCategory>> _categoriesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _categoriesFuture = ApiClient().fetchCategories();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final isAr = context.watch<LanguageState>().isArabic;
     return Scaffold(
       body: SafeArea(
         child: ListView(
@@ -56,42 +85,52 @@ class HomeScreen extends StatelessWidget {
             const SizedBox(height: 20),
             Text(tr(context, 'shop_by_category'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
             const SizedBox(height: 12),
-            GridView.count(
-              crossAxisCount: 4,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              children: kCategories
-                  .map((c) {
-                    // Computed HERE, during build (tr() uses context.watch,
-                    // which throws a real Flutter framework error if called
-                    // later inside onTap instead) — this was a real bug:
-                    // tapping a category silently did nothing, because the
-                    // exception inside onTap prevented context.push from
-                    // ever running.
-                    final categoryLabel = tr(context, c.stringKey);
+            FutureBuilder<List<ProductCategory>>(
+              future: _categoriesFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Text('${tr(context, 'could_not_load_products')}\n${snapshot.error}', style: const TextStyle(color: LeapColors.muted), textAlign: TextAlign.center),
+                  );
+                }
+                final categories = snapshot.data ?? [];
+                return GridView.count(
+                  crossAxisCount: 4,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  children: categories.map((c) {
+                    final label = c.displayName(isAr);
                     return GestureDetector(
-                        onTap: () => context.push('/category/${c.id}', extra: categoryLabel),
-                        child: Column(
-                          children: [
-                            Container(
-                              width: 52,
-                              height: 52,
-                              decoration: BoxDecoration(
-                                color: LeapColors.chalk,
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: LeapColors.line),
-                              ),
-                              child: Icon(c.icon, color: LeapColors.ink),
+                      onTap: () => context.push('/category/${c.id}', extra: label),
+                      child: Column(
+                        children: [
+                          Container(
+                            width: 52,
+                            height: 52,
+                            decoration: BoxDecoration(
+                              color: LeapColors.chalk,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: LeapColors.line),
                             ),
-                            const SizedBox(height: 6),
-                            Text(categoryLabel, style: const TextStyle(fontSize: 10), textAlign: TextAlign.center),
-                          ],
-                        ),
-                      );
-                  })
-                  .toList(),
+                            child: Icon(_iconForCategory(c.id), color: LeapColors.ink),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(label, style: const TextStyle(fontSize: 10), textAlign: TextAlign.center),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                );
+              },
             ),
           ],
         ),

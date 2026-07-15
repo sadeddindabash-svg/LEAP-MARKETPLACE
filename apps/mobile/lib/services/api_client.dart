@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../core/config/app_config.dart';
 import '../models/product.dart';
+import '../models/category.dart';
 import '../models/cart_item.dart';
 import '../models/vehicle.dart';
 
@@ -24,6 +25,19 @@ class ApiClient {
   static String resolveMediaUrl(String path) {
     if (path.startsWith('http://') || path.startsWith('https://')) return path;
     return '${AppConfig.apiBaseUrl}$path';
+  }
+
+  /// Real, admin-managed categories — replaces what used to be a
+  /// hardcoded list in home_screen.dart. Fetched once; which language's
+  /// name is shown is resolved locally (see ProductCategory.displayName),
+  /// not via a ?lang= param, since the raw list itself doesn't change.
+  Future<List<ProductCategory>> fetchCategories() async {
+    final response = await _client.get(Uri.parse('$baseUrl/catalog/categories'));
+    if (response.statusCode != 200) {
+      throw ApiException('Failed to load categories (${response.statusCode})');
+    }
+    final body = jsonDecode(response.body) as List;
+    return body.map((e) => ProductCategory.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   Future<List<Product>> fetchProductsByCategory(String categoryId, {String? vehicleId, String lang = 'en'}) async {

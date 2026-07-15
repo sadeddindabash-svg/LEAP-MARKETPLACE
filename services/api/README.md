@@ -528,6 +528,64 @@ a false positive), OEM number matching works directly, a nonsense term
 returns real zero results rather than an error, and search combines
 correctly with the category filter.
 
+## Category + parts reference lists (migration 015)
+
+**Confirmed requirement**: major categories and the specific parts that
+belong to each one are now real, admin-managed reference data — a
+supplier picks a real Part from a real list scoped to the Category they
+selected, rather than typing free text into a "Part" field. Same
+structural idea as the Vehicle Data fitment cascade (migration 010),
+just two levels instead of four.
+
+**Backward compatible by design**: `product_categories.id` values match
+the EXISTING hardcoded category identifiers this project has used since
+migration 001 (`brake`, `engine`, `electrical`, `filters`, `suspension`,
+`lighting`) — every existing product's real `category` value continues
+to mean exactly what it already meant, no data migration needed for
+existing rows.
+
+**`products.part` deliberately stays plain text, not a foreign key** —
+same pattern as `category`/`position` elsewhere in this schema. Going
+forward its value is validated against `category_parts` in application
+code (scoped to the selected category specifically — a real part from
+a DIFFERENT category, like "Air Filter" submitted under "brake", is
+rejected even though the name itself is valid somewhere), not left as
+arbitrary free text. This avoids a large blast-radius change to every
+place that already reads `product.part` as plain display text
+(catalog, search, admin order line items).
+
+**Real endpoints**: `GET /catalog/categories` and
+`GET /catalog/categories/:id/parts` are public (used by both the
+supplier portal's dropdowns and the mobile app's home screen, no auth
+needed to browse). Admin-only CRUD
+(`POST`/`DELETE /catalog/categories`, `POST /catalog/categories/:id/parts`,
+`DELETE /catalog/parts/:id`) with real referential protection — you
+cannot delete a category that real products reference, AND (a real bug
+found and fixed while building this — see below) you cannot delete a
+category that still has parts attached, even parts no product happens
+to use.
+
+**A real bug found and fixed via testing, not caught by inspection**:
+the first version of `DELETE /catalog/categories/:id` only checked for
+real products referencing the category directly — it did NOT check
+whether the category still had parts attached. Since `category_parts.category_id`
+has a foreign key to `product_categories` with no `CASCADE`, deleting a
+category that still had parts threw a raw, uncaught database
+constraint error (a real 500), not a clear, specific 409. Fixed by
+adding an explicit check for attached parts before attempting the
+delete.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/categoryParts.integration.test.js`
+(8 tests): real seeded categories/parts are publicly readable; a
+category outside the real list is rejected; a part that isn't real for
+the selected category is rejected (free text no longer works); a REAL
+part from a DIFFERENT category is rejected (cross-category mismatch,
+not just "is this string real anywhere"); a real category+part
+combination is accepted; admin-only create/delete works and is rejected
+for non-admins; a category with real products OR real parts still
+attached cannot be deleted (the exact bug above, confirmed fixed); and
+a real part a real product references cannot be deleted either.
+
 ## Setup
 
 ```bash

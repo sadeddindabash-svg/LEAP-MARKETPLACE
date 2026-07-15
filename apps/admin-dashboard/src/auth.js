@@ -267,3 +267,65 @@ export async function fetchFlaggedShipments(token) {
   if (!response.ok) throw new Error(`Failed to load flagged shipments (${response.status})`);
   return response.json();
 }
+
+// ---------------- Product categories & parts (new — real reference lists a supplier picks from) ----------------
+
+export async function fetchCategories() {
+  const response = await fetch(`${API_BASE_URL}/catalog/categories`);
+  if (!response.ok) throw new Error(`Failed to load categories (${response.status})`);
+  return response.json();
+}
+
+export async function createCategory(token, id, nameEn, nameAr, sortOrder) {
+  const response = await fetch(`${API_BASE_URL}/catalog/categories`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ id, nameEn, nameAr, sortOrder }),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
+export async function deleteCategory(token, id) {
+  const response = await fetch(`${API_BASE_URL}/catalog/categories/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (response.status === 204) return null;
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
+export async function fetchPartsForCategory(categoryId) {
+  const response = await fetch(`${API_BASE_URL}/catalog/categories/${categoryId}/parts`);
+  if (!response.ok) throw new Error(`Failed to load parts (${response.status})`);
+  return response.json();
+}
+
+export async function createPart(token, categoryId, nameEn, nameAr, sortOrder) {
+  const response = await fetch(`${API_BASE_URL}/catalog/categories/${categoryId}/parts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ nameEn, nameAr, sortOrder }),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
+export async function deletePart(token, id) {
+  const response = await fetch(`${API_BASE_URL}/catalog/parts/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (response.status === 204) return null;
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}

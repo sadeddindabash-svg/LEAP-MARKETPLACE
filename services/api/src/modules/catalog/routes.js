@@ -301,4 +301,122 @@ router.patch('/products/:id/moderate', requireAuth, requireRole('admin'), async 
   }
 });
 
+// ============================================================
+// Real, admin-managed category + part reference lists (migration 015).
+// Confirmed requirement: a supplier picks a real Part from a real list
+// scoped to the Category they selected, rather than typing free text.
+// Same structural idea as the Vehicle Data fitment cascade, two levels
+// instead of four. Public GET endpoints are used by both the supplier
+// portal (populating its Category/Part dropdowns) and the mobile app
+// (the home screen's category grid, no longer hardcoded).
+// ============================================================
+
+function toCategoryDto(row) {
+  return { id: row.id, nameEn: row.name_en, nameAr: row.name_ar, sortOrder: row.sort_order };
+}
+function toPartDto(row) {
+  return { id: row.id, categoryId: row.category_id, nameEn: row.name_en, nameAr: row.name_ar, sortOrder: row.sort_order };
+}
+
+router.get('/categories', async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT * FROM product_categories ORDER BY sort_order ASC');
+    res.json(rows.map(toCategoryDto));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/categories', requireAuth, requireRole('admin'), async (req, res, next) => {
+  try {
+    const { id, nameEn, nameAr, sortOrder } = req.body || {};
+    if (!id || !nameEn) return res.status(400).json({ error: 'id and nameEn are required' });
+    await db.query(
+      'INSERT INTO product_categories (id, name_en, name_ar, sort_order) VALUES ($1, $2, $3, $4)',
+      [id, nameEn, nameAr || null, sortOrder ?? 0]
+    );
+    const { rows } = await db.query('SELECT * FROM product_categories WHERE id = $1', [id]);
+    res.status(201).json(toCategoryDto(rows[0]));
+  } catch (err) {
+    if (err.code === '23505') return res.status(400).json({ error: `A category with id "${req.body?.id}" already exists` });
+    next(err);
+  }
+});
+
+// Deleting a category real-protects against orphaning real products —
+// same "you cannot delete what's actually referenced" pattern as
+// Vehicle Data and Hubs, not silently allowed and not a raw DB error.
+router.delete('/categories/:id', requireAuth, requireRole('admin'), async (req, res, next) => {
+  try {
+    const { rows: productsUsingIt } = await db.query('SELECT id FROM products WHERE category = $1 LIMIT 1', [req.params.id]);
+    if (productsUsingIt.length > 0) {
+      return res.status(409).json({ error: 'Cannot delete this category — real products still reference it' });
+    }
+    // Real bug found via testing: category_parts.category_id has a FK
+    // to product_categories with no CASCADE — deleting a category that
+    // still has parts attached (even ones no product actually uses)
+    // would otherwise throw a raw, uncaught DB constraint error (a
+    // real 500, not a real 409) instead of a clear, specific message.
+    // An admin should remove/reassign a category's parts first, which
+    // keeps the operation intentional rather than silently orphaning
+    // reference data.
+    const { rows: partsUsingIt } = await db.query('SELECT id FROM category_parts WHERE category_id = $1 LIMIT 1', [req.params.id]);
+    if (partsUsingIt.length > 0) {
+      return res.status(409).json({ error: 'Cannot delete this category — it still has parts. Delete those first.' });
+    }
+    const { rowCount } = await db.query('DELETE FROM product_categories WHERE id = $1', [req.params.id]);
+    if (rowCount === 0) return res.status(404).json({ error: 'Category not found' });
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/categories/:id/parts', async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT * FROM category_parts WHERE category_id = $1 ORDER BY sort_order ASC', [req.params.id]);
+    res.json(rows.map(toPartDto));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/categories/:id/parts', requireAuth, requireRole('admin'), async (req, res, next) => {
+  try {
+    const { nameEn, nameAr, sortOrder } = req.body || {};
+    if (!nameEn) return res.status(400).json({ error: 'nameEn is required' });
+    const categoryCheck = await db.query('SELECT id FROM product_categories WHERE id = $1', [req.params.id]);
+    if (categoryCheck.rows.length === 0) return res.status(404).json({ error: 'Category not found' });
+    const partId = `part_${Date.now()}`;
+    await db.query(
+      'INSERT INTO category_parts (id, category_id, name_en, name_ar, sort_order) VALUES ($1, $2, $3, $4, $5)',
+      [partId, req.params.id, nameEn, nameAr || null, sortOrder ?? 0]
+    );
+    const { rows } = await db.query('SELECT * FROM category_parts WHERE id = $1', [partId]);
+    res.status(201).json(toPartDto(rows[0]));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Deleting a part real-protects against orphaning real products that
+// were submitted with that exact part name — see the supplier module's
+// header comment on why `products.part` stays plain text (validated
+// against this list, not a foreign key) rather than being changed to
+// reference category_parts.id directly.
+router.delete('/parts/:id', requireAuth, requireRole('admin'), async (req, res, next) => {
+  try {
+    const { rows: partRows } = await db.query('SELECT * FROM category_parts WHERE id = $1', [req.params.id]);
+    if (partRows.length === 0) return res.status(404).json({ error: 'Part not found' });
+    const { rows: productsUsingIt } = await db.query('SELECT id FROM products WHERE part = $1 LIMIT 1', [partRows[0].name_en]);
+    if (productsUsingIt.length > 0) {
+      return res.status(409).json({ error: 'Cannot delete this part — real products still reference it' });
+    }
+    await db.query('DELETE FROM category_parts WHERE id = $1', [req.params.id]);
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

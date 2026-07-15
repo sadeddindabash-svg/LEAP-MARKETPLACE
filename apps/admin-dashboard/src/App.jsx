@@ -6,13 +6,14 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchHubLocations, createHubLocation, deleteHubLocation, assignHubToSubOrder,
   fetchFeeComponents, createFeeComponent, updateFeeComponent, deleteFeeComponent, fetchFxRate, updateFxRate, previewPricing,
   fetchFlaggedShipments,
+  fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart,
 } from "./auth";
 import {
   LayoutGrid, ShoppingBag, Store, PackageSearch, Wallet, LifeBuoy, Settings,
   Search, Bell, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Truck,
   CheckCircle2, XCircle, Clock, AlertTriangle, MoreHorizontal, ArrowUpRight,
   Filter as FilterIcon, Download, Check, X, MessageSquare, Star, Globe, Users,
-  CreditCard, ExternalLink, ChevronLeft, RotateCcw, Warehouse, Calculator
+  CreditCard, ExternalLink, ChevronLeft, RotateCcw, Warehouse, Calculator, Layers
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -1521,6 +1522,191 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired }) {
   );
 }
 
+// Real, admin-managed category + part reference lists (migration 015).
+// Confirmed requirement: a supplier picks a real Part from a real list
+// scoped to the Category they picked, rather than typing free text.
+// Two-level drill-down, same structural idea as Vehicle Data's fitment
+// cascade (just two levels instead of four) and the same real-
+// protection-on-delete pattern as Vehicle Data and Hubs.
+function CategoriesPage({ onSessionExpired }) {
+  const [categories, setCategories] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [openCategory, setOpenCategory] = useState(null); // {id, nameEn}
+
+  const [newCatId, setNewCatId] = useState("");
+  const [newCatNameEn, setNewCatNameEn] = useState("");
+  const [newCatNameAr, setNewCatNameAr] = useState("");
+  const [isSubmittingCat, setIsSubmittingCat] = useState(false);
+
+  const loadCategories = () => {
+    setLoadState("loading");
+    fetchCategories().then((c) => { setCategories(c); setLoadState("ready"); }).catch((e) => { setErrorMessage(e.message); setLoadState("error"); });
+  };
+  useEffect(loadCategories, []);
+
+  const handleAddCategory = async () => {
+    if (!newCatId.trim() || !newCatNameEn.trim()) {
+      setErrorMessage("A real id (e.g. \"tires\") and an English name are required.");
+      return;
+    }
+    setIsSubmittingCat(true);
+    setErrorMessage(null);
+    try {
+      await createCategory(getStoredToken(), newCatId.trim(), newCatNameEn.trim(), newCatNameAr.trim() || undefined, categories.length * 10 + 10);
+      setNewCatId(""); setNewCatNameEn(""); setNewCatNameAr("");
+      loadCategories();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSubmittingCat(false);
+    }
+  };
+
+  const handleDeleteCategory = async (id) => {
+    try {
+      await deleteCategory(getStoredToken(), id);
+      loadCategories();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message); // e.g. the real 409 messages for real products or attached parts
+    }
+  };
+
+  if (openCategory) {
+    return (
+      <CategoryPartsPage
+        category={openCategory}
+        onBack={() => { setOpenCategory(null); loadCategories(); }}
+        onSessionExpired={onSessionExpired}
+      />
+    );
+  }
+
+  return (
+    <div>
+      <TopBar title="Categories" subtitle="Major categories and the real parts a supplier picks from within each" />
+      <div style={{ padding: 24 }}>
+        <Card>
+          <div style={{ padding: 18 }}>
+            {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 14 }}>{errorMessage}</div>}
+
+            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+              <input value={newCatId} onChange={(e) => setNewCatId(e.target.value)} placeholder="id (e.g. tires)" style={{ ...body, flex: 1, minWidth: 120, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <input value={newCatNameEn} onChange={(e) => setNewCatNameEn(e.target.value)} placeholder="English name" style={{ ...body, flex: 1, minWidth: 140, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <input value={newCatNameAr} onChange={(e) => setNewCatNameAr(e.target.value)} placeholder="Arabic name (optional)" dir="rtl" style={{ ...body, flex: 1, minWidth: 140, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <button disabled={isSubmittingCat} onClick={handleAddCategory} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmittingCat ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSubmittingCat ? "default" : "pointer" }}>
+                <Check size={13} /> Add category
+              </button>
+            </div>
+
+            {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>Loading…</div>}
+            {loadState === "ready" && categories.map((c, i) => (
+              <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 4px", borderBottom: i < categories.length - 1 ? `1px solid ${C.line}` : "none", cursor: "pointer" }}
+                onClick={() => setOpenCategory(c)}>
+                <div>
+                  <div style={{ ...body, fontSize: 13.5, fontWeight: 700, color: C.ink }}>{c.nameEn}</div>
+                  {c.nameAr && <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2 }} dir="rtl">{c.nameAr}</div>}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ ...body, fontSize: 11.5, color: C.muted }}>{c.id}</span>
+                  <button onClick={(e) => { e.stopPropagation(); handleDeleteCategory(c.id); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={15} color={C.red} /></button>
+                  <ChevronRight size={16} color={C.muted} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function CategoryPartsPage({ category, onBack, onSessionExpired }) {
+  const [parts, setParts] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  const [newNameEn, setNewNameEn] = useState("");
+  const [newNameAr, setNewNameAr] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const load = () => {
+    setLoadState("loading");
+    fetchPartsForCategory(category.id).then((p) => { setParts(p); setLoadState("ready"); }).catch((e) => { setErrorMessage(e.message); setLoadState("error"); });
+  };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleAddPart = async () => {
+    if (!newNameEn.trim()) {
+      setErrorMessage("An English name is required.");
+      return;
+    }
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    try {
+      await createPart(getStoredToken(), category.id, newNameEn.trim(), newNameAr.trim() || undefined, parts.length * 10 + 10);
+      setNewNameEn(""); setNewNameAr("");
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeletePart = async (id) => {
+    try {
+      await deletePart(getStoredToken(), id);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message); // e.g. the real 409 "products still reference it" message
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 24px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
+        <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
+        <div>
+          <div style={{ ...body, fontSize: 11.5, color: C.muted }}>Categories</div>
+          <div style={{ ...disp, fontSize: 18, fontWeight: 700, color: C.ink }}>{category.nameEn} — Parts</div>
+        </div>
+      </div>
+      <div style={{ padding: 24 }}>
+        <Card>
+          <div style={{ padding: 18 }}>
+            {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 14 }}>{errorMessage}</div>}
+
+            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+              <input value={newNameEn} onChange={(e) => setNewNameEn(e.target.value)} placeholder="English part name" style={{ ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <input value={newNameAr} onChange={(e) => setNewNameAr(e.target.value)} placeholder="Arabic name (optional)" dir="rtl" style={{ ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <button disabled={isSubmitting} onClick={handleAddPart} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
+                <Check size={13} /> Add part
+              </button>
+            </div>
+
+            {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>Loading…</div>}
+            {loadState === "ready" && parts.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No parts yet — suppliers can't submit anything under this category until you add at least one.</div>}
+            {loadState === "ready" && parts.map((p, i) => (
+              <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 4px", borderBottom: i < parts.length - 1 ? `1px solid ${C.line}` : "none" }}>
+                <div>
+                  <div style={{ ...body, fontSize: 13.5, fontWeight: 600, color: C.ink }}>{p.nameEn}</div>
+                  {p.nameAr && <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2 }} dir="rtl">{p.nameAr}</div>}
+                </div>
+                <button onClick={() => handleDeletePart(p.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={15} color={C.red} /></button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 function PayoutsPage() {
   const totalPending = PAYOUTS.reduce((s, p) => s + p.pending, 0);
   return (
@@ -2019,6 +2205,7 @@ const NAV = [
   { id: "moderation", label: "Moderation", icon: PackageSearch },
   { id: "returns", label: "Returns", icon: RotateCcw },
   { id: "vehicleData", label: "Vehicle Data", icon: Truck },
+  { id: "categories", label: "Categories", icon: Layers },
   { id: "hubs", label: "Hubs", icon: Warehouse },
   { id: "pricing", label: "Pricing", icon: Calculator },
   { id: "flagged", label: "Flagged Shipments", icon: AlertTriangle },
@@ -2050,6 +2237,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   else if (page === "moderation") content = <ModerationPage onSessionExpired={onLogout} />;
   else if (page === "returns") content = <ReturnsPage onOpenCase={setOpenCase} onSessionExpired={onLogout} />;
   else if (page === "vehicleData") content = <VehicleDataPage onSessionExpired={onLogout} />;
+  else if (page === "categories") content = <CategoriesPage onSessionExpired={onLogout} />;
   else if (page === "hubs") content = <HubsPage onSessionExpired={onLogout} />;
   else if (page === "pricing") content = <PricingPage onSessionExpired={onLogout} />;
   else if (page === "flagged") content = <FlaggedShipmentsPage onOpenOrder={setOpenOrder} onSessionExpired={onLogout} />;

@@ -12,15 +12,35 @@ async function isBackendUp() {
   }
 }
 
+// Creates a real, unique category_part first (admin action), then a real
+// product submission using that exact real part name — `part` is now
+// validated against category_parts (migration 015), so a test can't just
+// invent an arbitrary unique string the way it used to. This mirrors the
+// same self-contained pattern used elsewhere (e.g.
+// fitmentAdmin.integration.test.js creating its own real generation) —
+// genuinely exercises the real validation path end-to-end rather than
+// working around it.
+async function createRealPart(category, nameEn) {
+  const { token: adminToken } = await login('admin@leap.dev', 'admin_dev_password_123');
+  await fetch(`${BACKEND_URL}/catalog/categories/${category}/parts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+    body: JSON.stringify({ nameEn }),
+  });
+}
+
 async function createApprovedProduct({ part, oemNumber, category = 'brake' } = {}) {
-  const { token: supplierToken } = await login('supplier@leap.dev', 'supplier_dev_password_123');
   const suffix = Date.now() + Math.random();
+  const partName = part || `SearchTestPart${suffix}`;
+  await createRealPart(category, partName);
+
+  const { token: supplierToken } = await login('supplier@leap.dev', 'supplier_dev_password_123');
   const createRes = await fetch(`${BACKEND_URL}/supplier/me/products`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supplierToken}` },
     body: JSON.stringify({
       nameZh: `搜索测试 ${suffix}`,
-      category, part: part || `SearchTestPart${suffix}`, position: 'Front', oemNumber: oemNumber || `SEARCH-${suffix}`,
+      category, part: partName, position: 'Front', oemNumber: oemNumber || `SEARCH-${suffix}`,
       price: 88, currencyCode: 'CNY',
       fitment: { generationId: 'gen_bmw_1_series_f20', year: 2019 },
       images: ['/uploads/s-a.jpg', '/uploads/s-b.jpg', '/uploads/s-c.jpg'],
@@ -61,7 +81,7 @@ describe.runIf(backendUp)('product search against a REAL running backend', () =>
   it('CRITICAL: search is precise -- searching for one category does not return an unrelated one', async () => {
     const uniqueSuffix = Date.now();
     const brakeId = await createApprovedProduct({ part: `BrakeOnly${uniqueSuffix}`, category: 'brake' });
-    const filterId = await createApprovedProduct({ part: `FilterOnly${uniqueSuffix}`, category: 'filter' });
+    const filterId = await createApprovedProduct({ part: `FilterOnly${uniqueSuffix}`, category: 'filters' });
     await approveProduct(brakeId, `BrakeOnly${uniqueSuffix} English`);
     await approveProduct(filterId, `FilterOnly${uniqueSuffix} English`);
 

@@ -7,10 +7,10 @@ Real React (Vite) project for the platform operations tool. See
 
 This is the reference prototype (`docs/prototypes/leap_admin_dashboard_prototype.jsx`)
 dropped in as `src/App.jsx`, confirmed to **build successfully**, and now
-has **real authentication and ten real pages** (Overview, Orders,
+has **real authentication and eleven real pages** (Overview, Orders,
 Suppliers, Moderation, Support Tickets, Returns, Vehicle Data, Hubs,
-Pricing, Flagged Shipments — all but the first three are entirely new,
-not in the original prototype at all) —
+Pricing, Flagged Shipments, Categories — all but the first three are
+entirely new, not in the original prototype at all) —
 full UI → API → database → UI slices. Payouts is still mock data
 (blocked on undecided commission rates — see Charter Section 1 — rather
 than a technical gap).
@@ -379,13 +379,35 @@ page is the real fix:
 - A real empty state ("Nothing flagged right now") rather than a blank
   page when there's genuinely nothing to review.
 
+## Categories page (new — a supplier now picks from a real list instead of typing free text)
+
+Real, admin-managed major categories and the specific parts that belong
+to each one — see `services/api/README.md`'s "Category + parts
+reference lists" section for the full backend design.
+
+- **Two-level drill-down**, same structural idea as Vehicle Data (just
+  two levels instead of four): the main view lists every real category;
+  clicking one drills into its real parts list.
+- **Real referential protection on delete**, at BOTH levels: a category
+  with real products or real parts still attached refuses deletion with
+  a clear message (a real bug — this used to be an uncaught database
+  error, not a clear one — was found and fixed while building this, see
+  the backend section); a part a real product references refuses
+  deletion too.
+- A real empty state on a category's parts page ("suppliers can't
+  submit anything under this category until you add at least one")
+  rather than a blank list that doesn't explain why nothing's there.
+- Bilingual Arabic name fields (`dir="rtl"`) at both levels, same
+  pattern as everywhere else Arabic input is collected in this
+  dashboard.
+
 ## Testing
 
 ```bash
 npm test
 ```
 
-Twenty-five test files, 148 tests total, all passing:
+Twenty-eight test files, 167 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/orders.integration.test.js` (4, REAL backend) — order list/detail
@@ -549,6 +571,24 @@ Twenty-five test files, 148 tests total, all passing:
   page renders a real flagged entry with its real note and supplier
   name, a real empty state shows when nothing is flagged, and clicking
   "View order" genuinely navigates into that order's real detail page.
+- `src/categoryParts.integration.test.js` (8, REAL backend) — real
+  seeded categories/parts are publicly readable with no auth required;
+  a category outside the real list is rejected; a part that isn't real
+  for the selected category is rejected (free text no longer works); a
+  REAL part from a DIFFERENT category is rejected (cross-category
+  mismatch isn't accepted just because the name happens to be valid
+  somewhere); a real category+part combination is accepted; admin-only
+  create/delete works and is rejected for non-admins; and — the test
+  that caught a real bug — a category with real products OR real parts
+  still attached cannot be deleted (this used to be a raw, uncaught
+  database error for the "parts still attached" case specifically, not
+  a clear 409, until this test caught it), and a real part a real
+  product references cannot be deleted either.
+- `src/CategoriesFlow.test.jsx` (5, mocked, full component tree) —
+  renders the real seeded category, adding a new one calls the real
+  create endpoint and shows up immediately, clicking a category drills
+  into its real parts list, adding a new part inside a category works,
+  and a real empty state shows for a category with no parts yet.
 - `src/overview.integration.test.js` (5, REAL backend) — confirms
   unauthenticated and non-admin access are both rejected, checks the
   response shape matches what the real UI reads, and — the one that
