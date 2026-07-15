@@ -306,6 +306,48 @@ triggered twice, cross-hub isolation holds, and hub-location
 creation/deletion (with real referential protection — you cannot delete
 a hub that real staff or shipments still reference) all work correctly.
 
+## Arabic translation (migration 012)
+
+**Confirmed business decision, explicitly asked and answered, not
+assumed**: Arabic translation is now REQUIRED to approve a listing —
+the exact same rule as English, not a lesser or optional one. This
+matters concretely: the confirmed 40-country Phase 1 launch list
+includes the entire GCC plus Jordan (Saudi Arabia, UAE, Oman, Kuwait,
+Bahrain, Qatar, Jordan) — seven real markets where Arabic isn't a
+nice-to-have.
+
+`PATCH /catalog/products/:id/moderate` now checks for BOTH `nameEn` and
+`nameAr` when approving, and reports whichever one(s) are missing
+together in a single error (`"nameEn and nameAr required..."` or just
+whichever one is actually missing) — an admin doesn't have to submit
+twice to discover the second thing they forgot.
+
+**A deliberate schema decision, not an oversight**: `products.name` and
+`description` were NOT renamed to `name_en`/`description_en` for
+symmetry with the new `name_ar`/`description_ar` columns. That would
+touch every existing consumer of `products.name` across the catalog,
+cart, order, supplier, and hub modules — a large blast radius for a
+purely cosmetic rename. Instead, `name`/`description` continue to mean
+exactly what they already meant (the default/English-facing display
+value), and `name_ar`/`description_ar` are purely additive. See
+migration 012's header comment for the full reasoning.
+
+**Scope of this pass, deliberately bounded**: this covers the ADMIN
+side only — capturing and requiring both real translations before a
+listing goes live. The CUSTOMER-facing side (an actual language
+switcher in the mobile app, and the catalog API accepting a `?lang=ar`
+parameter to serve the Arabic fields instead of the default ones) is
+intentionally a separate, later phase — a genuinely different piece of
+work (mobile UI, not admin dashboard), sequenced this way on purpose
+rather than built partially here.
+
+**Tested end-to-end**: approving with neither translation, only
+English, or only Arabic are all correctly rejected with a specific
+error naming what's missing; approving with both stores real Arabic
+text correctly (verified directly in the database, not just trusting
+the API's own response) — see `apps/admin-dashboard/src/moderation.integration.test.js`
+and `ModerationFlow.test.jsx`.
+
 ## Setup
 
 ```bash

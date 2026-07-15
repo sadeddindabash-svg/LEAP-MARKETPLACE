@@ -725,6 +725,8 @@ function ModerationPage({ onSessionExpired }) {
   const [reviewingId, setReviewingId] = useState(null); // which item has the translation panel open
   const [nameEn, setNameEn] = useState("");
   const [descriptionEn, setDescriptionEn] = useState("");
+  const [nameAr, setNameAr] = useState("");
+  const [descriptionAr, setDescriptionAr] = useState("");
 
   const load = () => {
     setLoadState("loading");
@@ -742,17 +744,28 @@ function ModerationPage({ onSessionExpired }) {
     setReviewingId(m.id);
     setNameEn(m.nameZh || "");
     setDescriptionEn(m.descriptionZh || "");
+    setNameAr("");
+    setDescriptionAr("");
   };
-  const cancelReview = () => { setReviewingId(null); setNameEn(""); setDescriptionEn(""); };
+  const cancelReview = () => { setReviewingId(null); setNameEn(""); setDescriptionEn(""); setNameAr(""); setDescriptionAr(""); };
 
   const confirmApproval = async (productId) => {
-    if (!nameEn.trim()) {
-      setErrorMessage("Enter the reviewed English name before approving.");
+    // Both required, not just English — the confirmed 40-country launch
+    // list includes the entire GCC plus Jordan, real markets where
+    // Arabic isn't optional.
+    const missing = [];
+    if (!nameEn.trim()) missing.push("English name");
+    if (!nameAr.trim()) missing.push("Arabic name");
+    if (missing.length > 0) {
+      setErrorMessage(`Enter the reviewed ${missing.join(" and ")} before approving.`);
       return;
     }
     setActioningId(productId);
     try {
-      await moderateProduct(getStoredToken(), productId, "approve", { nameEn: nameEn.trim(), descriptionEn: descriptionEn.trim() || undefined });
+      await moderateProduct(getStoredToken(), productId, "approve", {
+        nameEn: nameEn.trim(), descriptionEn: descriptionEn.trim() || undefined,
+        nameAr: nameAr.trim(), descriptionAr: descriptionAr.trim() || undefined,
+      });
       cancelReview();
       load();
     } catch (err) {
@@ -855,6 +868,24 @@ function ModerationPage({ onSessionExpired }) {
                         <input
                           value={descriptionEn}
                           onChange={(e) => setDescriptionEn(e.target.value)}
+                          style={{ ...body, width: "100%", border: `1px solid ${C.line}`, borderRadius: 8, padding: "9px 11px", fontSize: 13, boxSizing: "border-box" }}
+                        />
+                      </div>
+                      <div>
+                        <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 5 }}>Arabic name (required to approve)</div>
+                        <input
+                          value={nameAr}
+                          onChange={(e) => setNameAr(e.target.value)}
+                          dir="rtl"
+                          style={{ ...body, width: "100%", border: `1px solid ${C.line}`, borderRadius: 8, padding: "9px 11px", fontSize: 13, boxSizing: "border-box" }}
+                        />
+                      </div>
+                      <div>
+                        <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 5 }}>Arabic description (optional)</div>
+                        <input
+                          value={descriptionAr}
+                          onChange={(e) => setDescriptionAr(e.target.value)}
+                          dir="rtl"
                           style={{ ...body, width: "100%", border: `1px solid ${C.line}`, borderRadius: 8, padding: "9px 11px", fontSize: 13, boxSizing: "border-box" }}
                         />
                       </div>

@@ -75,6 +75,7 @@ See `migrations/001_init.sql` for the full schema with comments. Summary:
 | `hub_shipments` | The hub's own leg of a shipment's journey (Hub -> Buyer) — a real status machine (`awaiting_receipt` through `shipped_to_buyer`, plus `flagged`), created automatically the moment a supplier actually marks their leg shipped, one row per `supplier_sub_orders` row |
 | `hub_shipment_events` | The real audit trail — one row per inspection step actually performed, by whom, with notes |
 | `hub_shipment_photos` | Mandatory evidence photos per step (migration 011) — same "enforced in application code, not a DB constraint" pattern as `product_images` |
+| `products.name_ar` / `products.description_ar` | Arabic translation (migration 012), required to approve a listing — same rule as the existing `name`/`description` columns, which continue to mean "the default/English-facing value" rather than being renamed to `name_en` (see that migration's header comment for why) |
 
 **Not yet covered** (add a future migration once these backend modules
 exist — currently only in the admin-dashboard/supplier-portal prototypes,

@@ -1,0 +1,23 @@
+-- Migration 012: Arabic translation, required to approve a listing just
+-- like English.
+--
+-- CONFIRMED BUSINESS DECISION: the confirmed 40-country Phase 1 launch
+-- list includes the entire GCC plus Jordan (Saudi Arabia, UAE, Oman,
+-- Kuwait, Bahrain, Qatar, Jordan) -- real markets where Arabic isn't a
+-- nice-to-have. Approving a listing now requires BOTH a reviewed English
+-- name AND a reviewed Arabic name, enforced the same way (see
+-- catalog/routes.js's moderate endpoint) -- there is no way to make a
+-- listing live with only one of the two.
+--
+-- DELIBERATELY NOT renaming the existing `name`/`description` columns to
+-- `name_en`/`description_en` for symmetry with `name_ar`/`description_ar`
+-- below. `products.name` is already referenced across roughly a dozen
+-- real, tested query sites (catalog, cart, order, supplier, hub modules)
+-- plus every frontend that consumes them -- a rename would touch a lot
+-- of already-working, already-tested code for a purely cosmetic gain.
+-- `name`/`description` should be read as "the English display value"
+-- from here on; that's now unambiguous by construction once `name_ar`
+-- exists as the only other real candidate, without needing the column
+-- name itself to say so.
+ALTER TABLE products ADD COLUMN IF NOT EXISTS name_ar TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS description_ar TEXT;

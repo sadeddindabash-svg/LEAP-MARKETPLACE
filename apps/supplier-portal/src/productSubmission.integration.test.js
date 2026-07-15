@@ -199,14 +199,24 @@ describe.runIf(backendUp)('structured supplier product submission against a REAL
     });
     expect(rejectApproveRes.status).toBe(400);
 
-    const approveRes = await fetch(`${BACKEND_URL}/catalog/products/${created.id}/moderate`, {
+    // English alone is no longer enough either — the confirmed
+    // 40-country launch list includes the entire GCC plus Jordan.
+    const englishOnlyRes = await fetch(`${BACKEND_URL}/catalog/products/${created.id}/moderate`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
       body: JSON.stringify({ action: 'approve', nameEn: 'Front Brake Disc, Vented (E2E Test)' }),
     });
+    expect(englishOnlyRes.status).toBe(400);
+
+    const approveRes = await fetch(`${BACKEND_URL}/catalog/products/${created.id}/moderate`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ action: 'approve', nameEn: 'Front Brake Disc, Vented (E2E Test)', nameAr: 'قرص فرامل أمامي مهوى (اختبار)' }),
+    });
     expect(approveRes.status).toBe(200);
     const approved = await approveRes.json();
     expect(approved.name).toBe('Front Brake Disc, Vented (E2E Test)');
+    expect(approved.name_ar).toBe('قرص فرامل أمامي مهوى (اختبار)');
 
     // Confirm buyers now see the English name, not the Chinese original.
     const buyerViewRes = await fetch(`${BACKEND_URL}/catalog/products/${created.id}`);

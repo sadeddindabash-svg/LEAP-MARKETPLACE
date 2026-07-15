@@ -87,13 +87,15 @@ describe.runIf(backendUp)('catalog moderation against a REAL running backend', (
     let queue = await fetchModerationQueue(token);
     expect(queue.find((p) => p.id === 'p9')).toBeDefined();
 
-    // Approving now requires a real reviewed translation (see the
-    // supplier product-submission feature) — confirmed separately below
-    // that omitting it is rejected; here we provide one, matching what a
-    // real admin reviewer would actually do.
-    const result = await moderateProduct(token, 'p9', 'approve', { nameEn: '6-Speed Manual Transmission Gear Set (reviewed)' });
+    // Approving now requires BOTH a reviewed English AND Arabic
+    // translation (the confirmed 40-country launch list includes the
+    // entire GCC plus Jordan) — confirmed separately below that omitting
+    // either is rejected; here we provide both, matching what a real
+    // admin reviewer would actually do.
+    const result = await moderateProduct(token, 'p9', 'approve', { nameEn: '6-Speed Manual Transmission Gear Set (reviewed)', nameAr: 'طقم تروس ناقل الحركة اليدوي 6 سرعات (تمت المراجعة)' });
     expect(result.status).toBe('active');
     expect(result.name).toBe('6-Speed Manual Transmission Gear Set (reviewed)');
+    expect(result.name_ar).toBe('طقم تروس ناقل الحركة اليدوي 6 سرعات (تمت المراجعة)');
 
     // Re-fetch independently to confirm the removal from the queue is
     // real, not just trusting the moderate-action response.
@@ -101,9 +103,11 @@ describe.runIf(backendUp)('catalog moderation against a REAL running backend', (
     expect(queue.find((p) => p.id === 'p9')).toBeUndefined();
   });
 
-  it('rejects approving without a translation — a Leap-reviewed English name is mandatory, not optional', async () => {
+  it('rejects approving without either translation — both English and Arabic are mandatory, not optional', async () => {
     const { token } = await login('admin@leap.dev', 'admin_dev_password_123');
     await expect(moderateProduct(token, 'p9', 'approve')).rejects.toThrow();
+    await expect(moderateProduct(token, 'p9', 'approve', { nameEn: 'Only English' })).rejects.toThrow();
+    await expect(moderateProduct(token, 'p9', 'approve', { nameAr: 'فقط بالعربية' })).rejects.toThrow();
   });
 
   it('rejecting sets the product inactive (also removing it from the queue)', async () => {

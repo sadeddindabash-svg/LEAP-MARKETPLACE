@@ -258,9 +258,12 @@ Six test files, 35 tests total, all passing:
   submission with fewer than 3 photos 400s, a fitment year outside the
   real generation's actual range 400s, and — the critical one — a full
   real submission (real photos, real fitment) shows up correctly in the
-  admin's moderation queue, cannot be approved without a translation, and
-  once approved, is confirmed visible to buyers under the real English
-  name via a separate request. **Note**: this file forces the Node test
+  admin's moderation queue, cannot be approved without BOTH a real
+  English and a real Arabic translation (confirmed as an explicit
+  business requirement, not just English alone — see
+  `services/api/README.md`'s "Arabic translation" section), and
+  once approved with both, is confirmed visible to buyers under the real
+  English name via a separate request. **Note**: this file forces the Node test
   environment (`// @vitest-environment node`) rather than the project's
   default jsdom — found the hard way that jsdom's `fetch`/`FormData`/`Blob`
   don't correctly serialize real multipart uploads, which silently hangs

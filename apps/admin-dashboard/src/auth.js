@@ -83,7 +83,7 @@ export async function moderateProduct(token, productId, action, translation = {}
   const response = await fetch(`${API_BASE_URL}/catalog/products/${productId}/moderate`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ action, nameEn: translation.nameEn, descriptionEn: translation.descriptionEn }),
+    body: JSON.stringify({ action, nameEn: translation.nameEn, descriptionEn: translation.descriptionEn, nameAr: translation.nameAr, descriptionAr: translation.descriptionAr }),
   });
   if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
   const data = await response.json();

@@ -127,25 +127,42 @@ router.get('/moderation-queue', requireAuth, requireRole('admin'), async (req, r
   }
 });
 
-// PATCH /catalog/products/:id/moderate  { action: 'approve' | 'reject', nameEn?, descriptionEn? }
-// Approving REQUIRES nameEn — the whole point of this queue is that a
-// supplier's Chinese submission needs a real Leap-team-reviewed
-// translation before it goes live to buyers (per the product
-// requirement), not just a status flip. Rejecting doesn't need a
+// PATCH /catalog/products/:id/moderate  { action: 'approve' | 'reject', nameEn?, descriptionEn?, nameAr?, descriptionAr? }
+// Approving REQUIRES BOTH nameEn and nameAr — the whole point of this
+// queue is that a supplier's Chinese submission needs real
+// Leap-team-reviewed translations before it goes live to buyers (per
+// the confirmed business requirement covering the full GCC + Jordan
+// launch markets), not just a status flip. Rejecting doesn't need a
 // translation, since the listing never goes live either way.
 router.patch('/products/:id/moderate', requireAuth, requireRole('admin'), async (req, res, next) => {
   try {
-    const { action, nameEn, descriptionEn } = req.body || {};
+    const { action, nameEn, descriptionEn, nameAr, descriptionAr } = req.body || {};
     if (!['approve', 'reject'].includes(action)) {
       return res.status(400).json({ error: "action must be 'approve' or 'reject'" });
     }
-    if (action === 'approve' && !nameEn) {
-      return res.status(400).json({ error: 'nameEn is required to approve — enter the reviewed English translation first' });
+    // Both required, not just English — the confirmed 40-country launch
+    // list includes the entire GCC plus Jordan, real markets where
+    // Arabic isn't optional. Reported together so an admin doesn't have
+    // to submit twice to discover the second thing they forgot.
+    const missing = [];
+    if (action === 'approve' && !nameEn) missing.push('nameEn');
+    if (action === 'approve' && !nameAr) missing.push('nameAr');
+    if (missing.length > 0) {
+      return res.status(400).json({ error: `${missing.join(' and ')} required to approve — enter the reviewed translation(s) first` });
     }
     const newStatus = action === 'approve' ? 'active' : 'inactive';
     const { rows } = await db.query(
-      `UPDATE products SET status = $1, name = COALESCE($2, name), description = COALESCE($3, description) WHERE id = $4 RETURNING id, name, status`,
-      [newStatus, action === 'approve' ? nameEn : null, action === 'approve' ? (descriptionEn || null) : null, req.params.id]
+      `UPDATE products SET
+         status = $1,
+         name = COALESCE($2, name), description = COALESCE($3, description),
+         name_ar = COALESCE($4, name_ar), description_ar = COALESCE($5, description_ar)
+       WHERE id = $6 RETURNING id, name, name_ar, status`,
+      [
+        newStatus,
+        action === 'approve' ? nameEn : null, action === 'approve' ? (descriptionEn || null) : null,
+        action === 'approve' ? nameAr : null, action === 'approve' ? (descriptionAr || null) : null,
+        req.params.id,
+      ]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
     res.json(rows[0]);

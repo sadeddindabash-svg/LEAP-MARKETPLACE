@@ -160,12 +160,19 @@ table that module already owns.
   supplier's real Chinese original (`nameZh`, `descriptionZh`) and real
   uploaded photos, not just a name and category. Clicking "Review &
   Approve" opens an inline panel (pre-filled with the Chinese text as a
-  starting point) requiring a real English name before "Confirm Approval"
-  does anything — `PATCH /catalog/products/:id/moderate` now REJECTS an
-  approve action with no `nameEn`, matching the actual business
-  requirement that a Leap-team-reviewed translation is mandatory, not
-  optional. Rejecting still doesn't need a translation, since the listing
-  never goes live either way.
+  starting point) with FOUR real fields — English name/description and
+  Arabic name/description (the Arabic inputs use `dir="rtl"` for correct
+  right-to-left typing) — requiring BOTH a real English name AND a real
+  Arabic name before "Confirm Approval" does anything.
+  `PATCH /catalog/products/:id/moderate` now REJECTS an approve action
+  missing either one, reporting whichever is actually missing, matching
+  the confirmed business requirement (the 40-country launch list
+  includes the entire GCC plus Jordan) that neither translation is
+  optional. Rejecting still doesn't need a translation, since the
+  listing never goes live either way. See
+  `services/api/README.md`'s "Arabic translation" section for the full
+  design reasoning, including why the customer-facing language switcher
+  is a deliberately separate, later phase.
 - Dropped the "Preview" button from the mock version — it never did
   anything even in the mock UI (no real modal/preview existed behind it),
   so removing it is honest rather than a regression.
@@ -349,14 +356,17 @@ Twenty-one test files, 118 tests total, all passing:
   access for test setup/teardown only) — confirms real, correctly-computed
   flags on a known product, a full approve/reject round-trip confirmed by
   independently re-fetching the queue afterward, and confirms approving
-  without a translation is rejected (mandatory, not optional)
+  with only English, only Arabic, or neither are all correctly rejected
+  (both are mandatory, not optional)
 - `src/ModerationFlow.test.jsx` (6, mocked, full component tree) — renders
   the real Chinese original and photos with real computed flags (and
   confirms the old fake "Translation pending review" flag is gone),
-  clicking "Review & Approve" opens the translation panel pre-filled with
-  the Chinese text, confirms approval is blocked client-side with no
-  English name entered, approving with one removes the item from view,
-  rejecting needs no translation and removes the item immediately, and a
+  clicking "Review & Approve" opens the translation panel with both
+  English and Arabic fields pre-filled with the Chinese text, confirms
+  approval is blocked client-side with only the English name entered
+  (Arabic is required too, not optional), approving with both removes
+  the item from view, rejecting needs no translation and removes the item
+  immediately, and a
   401 during approval triggers automatic logout.
 - `src/tickets.integration.test.js` (10, REAL backend, self-contained —
   each test creates its own ticket via the real API rather than depending
