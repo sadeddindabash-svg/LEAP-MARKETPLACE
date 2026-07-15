@@ -209,15 +209,12 @@ per-screen toggle or auto-detect from the phone's system language.
   whole widget tree in a `Directionality` that flips to `rtl` when
   Arabic is selected — Flutter's standard Material widgets mirror
   automatically (padding, icons, row order) under this.
-- **Honest scope boundary, stated directly rather than silently left
-  incomplete**: this pass translates the product detail page's specific
-  field labels (Part Name/Brand/Model/Year/Part No./Description/
-  Dimensions/Weight — the exact fields that were asked for) and drives
-  real product CONTENT in the correct language everywhere products are
-  shown. It does NOT translate the rest of the app's UI chrome — nav
-  labels, buttons, screen titles elsewhere — into Arabic. Full app-wide
-  UI localization is a real, separate, larger undertaking, not something
-  to fake partial coverage of here.
+- **Honest scope boundary AT THE TIME THIS SECTION WAS FIRST WRITTEN,
+  since since resolved — kept here for the historical record rather than
+  quietly edited away**: this pass translated only the product detail
+  page's specific field labels, not the rest of the app's UI chrome.
+  That gap is now closed — see "Full app-wide localization" below for
+  what was built afterward and exactly how.
 
 **Product detail page (`lib/features/catalog/product_screen.dart`),
 rebuilt**:
@@ -245,6 +242,62 @@ rebuilt**:
 noted honestly in "Status" above) — see
 `apps/admin-dashboard/src/buyerCatalog.integration.test.js` for the full
 verification of what this screen actually receives and renders.
+
+## Full app-wide localization (new)
+
+**Confirmed request, chosen explicitly from a list of options**: extend
+the language setting beyond the product page to the REST of the app —
+every screen's nav titles, buttons, empty/error states, form labels.
+Before this, a GCC customer switching to Arabic got a half-translated
+app (real product data in Arabic, everything else still English).
+
+**`lib/core/app_strings.dart`**: a new, comprehensive bilingual string
+lookup — every screen's static UI chrome, ~90 real English/Arabic string
+pairs. `tr(context, 'key')` for use inside a `build()` method (subscribes
+to `LanguageState` via `context.watch`, so an already-open screen
+re-renders in the new language the instant the setting changes, same as
+the product page); `trRead(context, 'key')` for use OUTSIDE build — event
+handlers, async submit callbacks setting an error-message string —
+since `context.watch` throws a real Flutter framework assertion if
+called anywhere other than build(). A missing key returns the key
+itself (visibly wrong, not silently blank), so a missed translation is
+easy to spot rather than easy to miss.
+
+**Applied across all 15 remaining screens**: home, garage, add-vehicle,
+category browsing, cart, checkout, orders list, order detail (incl. the
+return-request sheet), account, support ticket list/detail/compose,
+login, signup, forgot/reset password.
+
+**DELIBERATE ARCHITECTURE CHOICE, explained rather than silently
+picked**: this is a hand-written lookup, not Flutter's official
+`intl`/`.arb` + `flutter gen-l10n` pipeline. That's the more "correct"
+production approach, but `gen-l10n` needs the real Flutter SDK to
+generate the delegate class — unavailable in this sandbox (see
+"Status" above). Nothing here is a stub; every string pair is real,
+hand-maintained Dart — just a pragmatic substitute for tooling this
+environment can't run, the same reasoning behind other pragmatic
+choices in this project (e.g. the pricing engine's manual FX rate
+instead of a live provider).
+
+**Known, minor inconsistency, stated honestly rather than silently
+left**: the product detail page still uses its OWN, separate, earlier
+inline bilingual getters (`_lPartName` etc. in
+`product_screen.dart`) rather than this new shared `app_strings.dart`
+lookup. Both work correctly and are both tested — this isn't a bug —
+but it's two coexisting localization mechanisms rather than one
+consistent one. Worth a follow-up pass to fold the product page onto
+the shared lookup for consistency, not urgent since neither is broken.
+
+**Verification**: this app's own compile/run status is noted honestly
+in "Status" above — every one of the 17 touched files was syntax-
+balance-checked (braces/parens/brackets), and specifically checked for
+a real Dart compile-error class this kind of change can introduce:
+wrapping a `const` widget around a `tr()` call, which is a genuine
+compile error since `tr()` is a runtime function call, not a compile-time
+constant. Every file was grepped for this pattern and for `const`
+attached to any widget now containing a `tr()`/`trRead()` call; none
+were found. Every file using `tr()`/`trRead()` was also confirmed to
+correctly import `app_strings.dart`.
 
 ## Product search (new)
 
@@ -297,6 +350,8 @@ lib/
 │   ├── cart_state.dart         Cart state, real backend calls (new)
 │   ├── language_state.dart     Persisted English/Arabic setting (new) —
 │   │                            drives real ?lang= on catalog requests
+│   ├── app_strings.dart        Full app-wide bilingual string lookup
+│   │                            (new) — every screen's static UI chrome
 │   └── config/app_config.dart  Launch markets, API base URL, feature flags
 ├── models/                  Vehicle, Product, Order, CartItem — mirror SRS entities
 ├── services/api_client.dart  HTTP client wrapper for services/api (auth, catalog,

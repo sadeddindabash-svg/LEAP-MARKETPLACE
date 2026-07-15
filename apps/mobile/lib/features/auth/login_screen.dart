@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
+import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../services/api_client.dart';
 
@@ -29,7 +30,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } on ApiException catch (e) {
       setState(() => _errorMessage = e.message);
     } catch (e) {
-      setState(() => _errorMessage = 'Something went wrong. Please try again.');
+      setState(() => _errorMessage = trRead(context, 'something_went_wrong'));
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
@@ -47,7 +48,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(icon: const Icon(Icons.close), onPressed: () => context.pop()),
-        title: const Text('Log in'),
+        title: Text(tr(context, 'log_in')),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -57,18 +58,18 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(height: 12),
             const Text('LEAP', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 28, color: LeapColors.ink)),
             const SizedBox(height: 6),
-            const Text('Log in to view your order history and saved vehicles.', style: TextStyle(color: LeapColors.muted, fontSize: 13)),
+            Text(tr(context, 'login_subtitle'), style: const TextStyle(color: LeapColors.muted, fontSize: 13)),
             const SizedBox(height: 24),
             TextField(
               controller: _emailController,
               keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(labelText: 'Email'),
+              decoration: InputDecoration(labelText: tr(context, 'email_label')),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _passwordController,
               obscureText: true,
-              decoration: const InputDecoration(labelText: 'Password'),
+              decoration: InputDecoration(labelText: tr(context, 'password_label')),
               onSubmitted: (_) => _submit(),
             ),
             if (_errorMessage != null) ...[
@@ -80,17 +81,17 @@ class _LoginScreenState extends State<LoginScreen> {
               onPressed: _isSubmitting ? null : _submit,
               child: _isSubmitting
                   ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('Log in'),
+                  : Text(tr(context, 'log_in')),
             ),
             const SizedBox(height: 8),
             TextButton(
               onPressed: () => context.push('/forgot-password'),
-              child: const Text('Forgot password?'),
+              child: Text(tr(context, 'forgot_password_q')),
             ),
             const SizedBox(height: 4),
             TextButton(
               onPressed: () => context.push('/signup'),
-              child: const Text("Don't have an account? Sign up"),
+              child: Text(tr(context, 'no_account_signup')),
             ),
           ],
         ),

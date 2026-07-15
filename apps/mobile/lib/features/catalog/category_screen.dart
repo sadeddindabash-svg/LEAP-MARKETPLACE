@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/language_state.dart';
+import '../../core/app_strings.dart';
 import '../../models/product.dart';
 import '../../services/api_client.dart';
 
@@ -46,7 +47,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text('Could not load products.\n${snapshot.error}', textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted)),
+                child: Text('${tr(context, 'could_not_load_products')}\n${snapshot.error}', textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted)),
               ),
             );
           }
@@ -55,7 +56,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text('No products in "${widget.categoryName}" yet.', textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted)),
+                child: Text(tr(context, 'no_products_in_category'), textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted)),
               ),
             );
           }

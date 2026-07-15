@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
+import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../services/api_client.dart';
 
@@ -46,7 +47,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (!auth.isLoggedIn) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Leap Support')),
+        appBar: AppBar(title: Text(tr(context, 'leap_support'))),
         body: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -54,13 +55,13 @@ class _ChatScreenState extends State<ChatScreen> {
             children: [
               const Icon(Icons.support_agent_outlined, size: 40, color: LeapColors.muted),
               const SizedBox(height: 12),
-              const Text(
-                "Log in to message the Leap team about an order.\n(You're always talking to the Platform — never the supplier directly.)",
+              Text(
+                tr(context, 'login_to_message'),
                 textAlign: TextAlign.center,
-                style: TextStyle(color: LeapColors.muted, fontSize: 13),
+                style: const TextStyle(color: LeapColors.muted, fontSize: 13),
               ),
               const SizedBox(height: 16),
-              ElevatedButton(onPressed: () => context.push('/login'), child: const Text('Log in')),
+              ElevatedButton(onPressed: () => context.push('/login'), child: Text(tr(context, 'log_in'))),
             ],
           ),
         ),
@@ -68,16 +69,16 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Leap Support')),
+      appBar: AppBar(title: Text(tr(context, 'leap_support'))),
       body: Column(
         children: [
           Container(
             width: double.infinity,
             color: const Color(0xFFE9EFFC),
             padding: const EdgeInsets.all(12),
-            child: const Text(
-              "You're messaging the Leap team, not the supplier directly.",
-              style: TextStyle(color: LeapColors.torque, fontSize: 12),
+            child: Text(
+              tr(context, 'messaging_leap_note'),
+              style: const TextStyle(color: LeapColors.torque, fontSize: 12),
             ),
           ),
           Expanded(
@@ -88,11 +89,11 @@ class _ChatScreenState extends State<ChatScreen> {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (snapshot.hasError) {
-                  return Center(child: Text('Could not load tickets: ${snapshot.error}', style: const TextStyle(color: LeapColors.muted)));
+                  return Center(child: Text('${tr(context, 'could_not_load_tickets')} ${snapshot.error}', style: const TextStyle(color: LeapColors.muted)));
                 }
                 final tickets = snapshot.data ?? [];
                 if (tickets.isEmpty) {
-                  return const Center(child: Text('No support tickets yet. Tap + to start one.', style: TextStyle(color: LeapColors.muted)));
+                  return Center(child: Text(tr(context, 'no_tickets_yet'), style: const TextStyle(color: LeapColors.muted)));
                 }
                 return ListView.separated(
                   padding: const EdgeInsets.all(16),

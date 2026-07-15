@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
+import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../services/api_client.dart';
 import '../../widgets/plate_chip.dart';
@@ -39,7 +40,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
     if (!auth.isLoggedIn) {
       return Scaffold(
-        appBar: AppBar(title: const Text('My orders')),
+        appBar: AppBar(title: Text(tr(context, 'my_orders'))),
         body: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -47,13 +48,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
             children: [
               const Icon(Icons.inventory_2_outlined, size: 40, color: LeapColors.muted),
               const SizedBox(height: 12),
-              const Text(
-                'Log in to see your order history.\n(Guest checkout orders are confirmed by email, but aren\'t listed here unless you have an account.)',
+              Text(
+                tr(context, 'login_to_see_orders'),
                 textAlign: TextAlign.center,
-                style: TextStyle(color: LeapColors.muted, fontSize: 13),
+                style: const TextStyle(color: LeapColors.muted, fontSize: 13),
               ),
               const SizedBox(height: 16),
-              ElevatedButton(onPressed: () => context.push('/login'), child: const Text('Log in')),
+              ElevatedButton(onPressed: () => context.push('/login'), child: Text(tr(context, 'log_in'))),
             ],
           ),
         ),
@@ -61,7 +62,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('My orders')),
+      appBar: AppBar(title: Text(tr(context, 'my_orders'))),
       body: FutureBuilder<List<dynamic>>(
         future: _ordersFuture,
         builder: (context, snapshot) {
@@ -69,11 +70,11 @@ class _OrdersScreenState extends State<OrdersScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            return Center(child: Text('Could not load orders: ${snapshot.error}', style: const TextStyle(color: LeapColors.muted)));
+            return Center(child: Text('${tr(context, 'could_not_load_orders')} ${snapshot.error}', style: const TextStyle(color: LeapColors.muted)));
           }
           final orders = snapshot.data ?? [];
           if (orders.isEmpty) {
-            return const Center(child: Text('No orders yet.', style: TextStyle(color: LeapColors.muted)));
+            return Center(child: Text(tr(context, 'no_orders_yet'), style: const TextStyle(color: LeapColors.muted)));
           }
           return ListView.separated(
             padding: const EdgeInsets.all(16),

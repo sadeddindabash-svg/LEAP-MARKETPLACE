@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
+import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../services/api_client.dart';
 
@@ -32,7 +33,7 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
 
   Future<void> _submit() async {
     if (_subjectController.text.trim().isEmpty || _messageController.text.trim().isEmpty) {
-      setState(() => _errorMessage = 'Please fill in both fields.');
+      setState(() => _errorMessage = trRead(context, 'please_fill_both_fields'));
       return;
     }
     setState(() {
@@ -57,18 +58,18 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('New support ticket')),
+      appBar: AppBar(title: Text(tr(context, 'new_support_ticket'))),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(controller: _subjectController, decoration: const InputDecoration(labelText: 'Subject')),
+            TextField(controller: _subjectController, decoration: InputDecoration(labelText: tr(context, 'subject_label'))),
             const SizedBox(height: 12),
             TextField(
               controller: _messageController,
               maxLines: 5,
-              decoration: const InputDecoration(labelText: 'How can we help?', alignLabelWithHint: true),
+              decoration: InputDecoration(labelText: tr(context, 'how_can_we_help'), alignLabelWithHint: true),
             ),
             if (_errorMessage != null) ...[
               const SizedBox(height: 12),
@@ -79,7 +80,7 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
               onPressed: _isSubmitting ? null : _submit,
               child: _isSubmitting
                   ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('Send'),
+                  : Text(tr(context, 'send')),
             ),
           ],
         ),

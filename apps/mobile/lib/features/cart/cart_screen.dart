@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
+import '../../core/app_strings.dart';
 import '../../core/cart_state.dart';
 import '../../models/cart_item.dart';
 
@@ -18,7 +19,7 @@ class CartScreen extends StatelessWidget {
     final cart = context.watch<CartState>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Basket')),
+      appBar: AppBar(title: Text(tr(context, 'basket'))),
       body: _buildBody(context, cart),
       bottomNavigationBar: (cart.isLoading || cart.isEmpty)
           ? null
@@ -30,14 +31,14 @@ class CartScreen extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Total', style: TextStyle(color: LeapColors.muted)),
+                      Text(tr(context, 'total'), style: const TextStyle(color: LeapColors.muted)),
                       Text('\$${cart.total.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20)),
                     ],
                   ),
                   const SizedBox(height: 10),
                   ElevatedButton(
                     onPressed: () => context.push('/checkout'),
-                    child: const Text('Checkout'),
+                    child: Text(tr(context, 'checkout')),
                   ),
                 ],
               ),
@@ -58,23 +59,23 @@ class CartScreen extends StatelessWidget {
             children: [
               Text(cart.errorMessage!, textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted)),
               const SizedBox(height: 12),
-              ElevatedButton(onPressed: cart.refresh, child: const Text('Retry')),
+              ElevatedButton(onPressed: cart.refresh, child: Text(tr(context, 'retry'))),
             ],
           ),
         ),
       );
     }
     if (cart.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.shopping_cart_outlined, size: 40, color: LeapColors.muted),
-              SizedBox(height: 12),
-              Text('Your basket is empty. Browse categories to add fitment-confirmed parts.',
-                  textAlign: TextAlign.center, style: TextStyle(color: LeapColors.muted)),
+              const Icon(Icons.shopping_cart_outlined, size: 40, color: LeapColors.muted),
+              const SizedBox(height: 12),
+              Text(tr(context, 'basket_empty'),
+                  textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted)),
             ],
           ),
         ),
@@ -107,7 +108,7 @@ class _SupplierGroup extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             color: LeapColors.chalk,
-            child: Text('Ships from $supplierName',
+            child: Text('${tr(context, 'ships_from')} $supplierName',
                 style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: LeapColors.muted, letterSpacing: 0.3)),
           ),
           for (final item in items) _CartItemRow(item: item),

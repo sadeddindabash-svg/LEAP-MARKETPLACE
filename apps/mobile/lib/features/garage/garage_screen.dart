@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
+import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../models/vehicle.dart';
 import '../../services/api_client.dart';
@@ -53,7 +54,7 @@ class _GarageScreenState extends State<GarageScreen> {
 
     if (!auth.isLoggedIn) {
       return Scaffold(
-        appBar: AppBar(title: const Text('My Garage')),
+        appBar: AppBar(title: Text(tr(context, 'my_garage'))),
         body: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -61,13 +62,13 @@ class _GarageScreenState extends State<GarageScreen> {
             children: [
               const Icon(Icons.directions_car_outlined, size: 40, color: LeapColors.muted),
               const SizedBox(height: 12),
-              const Text(
-                'Log in to save vehicles and get fitment-confirmed parts.',
+              Text(
+                tr(context, 'garage_login_prompt'),
                 textAlign: TextAlign.center,
-                style: TextStyle(color: LeapColors.muted, fontSize: 13),
+                style: const TextStyle(color: LeapColors.muted, fontSize: 13),
               ),
               const SizedBox(height: 16),
-              ElevatedButton(onPressed: () => context.push('/login'), child: const Text('Log in')),
+              ElevatedButton(onPressed: () => context.push('/login'), child: Text(tr(context, 'log_in'))),
             ],
           ),
         ),
@@ -75,7 +76,7 @@ class _GarageScreenState extends State<GarageScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('My Garage')),
+      appBar: AppBar(title: Text(tr(context, 'my_garage'))),
       body: FutureBuilder<List<Vehicle>>(
         future: _garageFuture,
         builder: (context, snapshot) {
@@ -83,7 +84,7 @@ class _GarageScreenState extends State<GarageScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            return Center(child: Text('Could not load your garage: ${snapshot.error}', style: const TextStyle(color: LeapColors.muted)));
+            return Center(child: Text('${tr(context, 'could_not_load_garage')} ${snapshot.error}', style: const TextStyle(color: LeapColors.muted)));
           }
           final vehicles = snapshot.data ?? [];
           return ListView(
@@ -106,7 +107,7 @@ class _GarageScreenState extends State<GarageScreen> {
                   if (added == true) _refresh();
                 },
                 icon: const Icon(Icons.add),
-                label: const Text('Add a vehicle'),
+                label: Text(tr(context, 'add_a_vehicle')),
               ),
             ],
           );

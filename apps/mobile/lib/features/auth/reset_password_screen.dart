@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
+import '../../core/app_strings.dart';
 import '../../services/api_client.dart';
 
 /// Completes the reset started in forgot_password_screen.dart, calling
@@ -30,7 +31,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
   Future<void> _submit() async {
     if (_tokenController.text.trim().isEmpty || _passwordController.text.isEmpty) {
-      setState(() => _errorMessage = 'Please fill in both fields.');
+      setState(() => _errorMessage = trRead(context, 'please_fill_both_fields'));
       return;
     }
     setState(() {
@@ -41,7 +42,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       await ApiClient().resetPassword(token: _tokenController.text.trim(), newPassword: _passwordController.text);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Password reset. Please log in with your new password.')),
+          SnackBar(content: Text(trRead(context, 'password_reset_success'))),
         );
         context.go('/login');
       }
@@ -57,7 +58,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(icon: const Icon(Icons.close), onPressed: () => context.pop()),
-        title: const Text('Enter reset code'),
+        title: Text(tr(context, 'enter_reset_code')),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -65,21 +66,21 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const SizedBox(height: 12),
-            const Text(
-              'Paste the reset code from your email (or, for now, from the backend server console) and choose a new password.',
-              style: TextStyle(color: LeapColors.muted, fontSize: 13),
+            Text(
+              tr(context, 'paste_reset_code'),
+              style: const TextStyle(color: LeapColors.muted, fontSize: 13),
             ),
             const SizedBox(height: 20),
             TextField(
               controller: _tokenController,
-              decoration: const InputDecoration(labelText: 'Reset code'),
+              decoration: InputDecoration(labelText: tr(context, 'reset_code_label')),
               maxLines: 2,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _passwordController,
               obscureText: true,
-              decoration: const InputDecoration(labelText: 'New password', helperText: 'At least 8 characters'),
+              decoration: InputDecoration(labelText: tr(context, 'new_password_label'), helperText: tr(context, 'at_least_8_chars')),
               onSubmitted: (_) => _submit(),
             ),
             if (_errorMessage != null) ...[
@@ -91,7 +92,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
               onPressed: _isSubmitting ? null : _submit,
               child: _isSubmitting
                   ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('Reset password'),
+                  : Text(tr(context, 'reset_password_title')),
             ),
           ],
         ),

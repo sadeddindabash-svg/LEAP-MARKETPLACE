@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
+import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../services/api_client.dart';
 
@@ -48,7 +49,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
       });
     } catch (e) {
       setState(() {
-        _errorMessage = 'Could not load this ticket.';
+        _errorMessage = trRead(context, 'could_not_load_ticket');
         _isLoading = false;
       });
     }
@@ -72,10 +73,10 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Scaffold(appBar: AppBar(title: const Text('Ticket')), body: const Center(child: CircularProgressIndicator()));
+      return Scaffold(appBar: AppBar(title: Text(tr(context, 'ticket'))), body: const Center(child: CircularProgressIndicator()));
     }
     if (_errorMessage != null || _ticket == null) {
-      return Scaffold(appBar: AppBar(title: const Text('Ticket')), body: Center(child: Text(_errorMessage ?? 'Not found', style: const TextStyle(color: LeapColors.muted))));
+      return Scaffold(appBar: AppBar(title: Text(tr(context, 'ticket'))), body: Center(child: Text(_errorMessage ?? tr(context, 'not_found'), style: const TextStyle(color: LeapColors.muted))));
     }
 
     final messages = (_ticket!['messages'] as List).cast<Map<String, dynamic>>();
@@ -116,7 +117,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                 Expanded(
                   child: TextField(
                     controller: _replyController,
-                    decoration: const InputDecoration(hintText: 'Type a message…'),
+                    decoration: InputDecoration(hintText: tr(context, 'type_a_message')),
                     onSubmitted: (_) => _sendReply(),
                   ),
                 ),

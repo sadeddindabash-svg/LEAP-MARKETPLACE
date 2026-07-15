@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
+import '../../core/app_strings.dart';
 import '../../services/api_client.dart';
 
 /// BUY-002-ish. Calls the real POST /auth/forgot-password endpoint.
@@ -53,7 +54,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(icon: const Icon(Icons.close), onPressed: () => context.pop()),
-        title: const Text('Reset password'),
+        title: Text(tr(context, 'reset_password_title')),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -62,15 +63,15 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           children: [
             const SizedBox(height: 12),
             if (!_submitted) ...[
-              const Text(
-                "Enter your account email and we'll send a reset link.",
-                style: TextStyle(color: LeapColors.muted, fontSize: 13),
+              Text(
+                tr(context, 'enter_email_for_reset'),
+                style: const TextStyle(color: LeapColors.muted, fontSize: 13),
               ),
               const SizedBox(height: 20),
               TextField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(labelText: 'Email'),
+                decoration: InputDecoration(labelText: tr(context, 'email_label')),
                 onSubmitted: (_) => _submit(),
               ),
               if (_errorMessage != null) ...[
@@ -82,29 +83,29 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 onPressed: _isSubmitting ? null : _submit,
                 child: _isSubmitting
                     ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Text('Send reset link'),
+                    : Text(tr(context, 'send_reset_link')),
               ),
             ] else ...[
               const Icon(Icons.mark_email_read_outlined, size: 40, color: LeapColors.muted),
               const SizedBox(height: 12),
-              const Text(
-                "If that email is registered, a reset link has been sent.",
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+              Text(
+                tr(context, 'if_email_registered'),
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
               ),
               const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(color: LeapColors.chalk, borderRadius: BorderRadius.circular(8)),
-                child: const Text(
-                  "Dev note: email sending isn't connected in this build yet — the reset link is printed to the backend server's console output instead. Copy the token from there.",
-                  style: TextStyle(fontSize: 11.5, color: LeapColors.muted),
+                child: Text(
+                  tr(context, 'dev_note_email'),
+                  style: const TextStyle(fontSize: 11.5, color: LeapColors.muted),
                 ),
               ),
             ],
             const SizedBox(height: 12),
             TextButton(
               onPressed: () => context.push('/reset-password'),
-              child: const Text('I have a reset code'),
+              child: Text(tr(context, 'have_reset_code')),
             ),
           ],
         ),

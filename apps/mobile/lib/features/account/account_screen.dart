@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
+import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../core/language_state.dart';
 
@@ -13,14 +14,14 @@ class AccountScreen extends StatelessWidget {
     final auth = context.watch<AuthState>();
 
     final rows = [
-      (icon: Icons.directions_car_outlined, label: 'My Garage', route: '/garage'),
-      (icon: Icons.location_on_outlined, label: 'Addresses', route: null),
-      (icon: Icons.inventory_2_outlined, label: 'Orders & returns', route: '/orders'),
-      (icon: Icons.chat_bubble_outline, label: 'Leap Support', route: '/support'),
+      (icon: Icons.directions_car_outlined, label: tr(context, 'my_garage'), route: '/garage'),
+      (icon: Icons.location_on_outlined, label: tr(context, 'addresses'), route: null),
+      (icon: Icons.inventory_2_outlined, label: tr(context, 'orders_and_returns'), route: '/orders'),
+      (icon: Icons.chat_bubble_outline, label: tr(context, 'leap_support'), route: '/support'),
     ];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Account')),
+      appBar: AppBar(title: Text(tr(context, 'account'))),
       body: ListView(
         children: [
           if (auth.isLoading)
@@ -44,7 +45,7 @@ class AccountScreen extends StatelessWidget {
           if (auth.isLoggedIn)
             ListTile(
               leading: const Icon(Icons.logout, color: LeapColors.muted),
-              title: const Text('Log out'),
+              title: Text(tr(context, 'log_out')),
               onTap: () => context.read<AuthState>().logout(),
             ),
         ],
@@ -91,21 +92,21 @@ class _LoggedOutHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("You're browsing as a guest", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+          Text(tr(context, 'guest_browsing'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
           const SizedBox(height: 4),
-          const Text(
-            'Log in to save vehicles, see order history across devices, and check out faster.',
-            style: TextStyle(color: LeapColors.muted, fontSize: 12.5),
+          Text(
+            tr(context, 'guest_prompt'),
+            style: const TextStyle(color: LeapColors.muted, fontSize: 12.5),
           ),
           const SizedBox(height: 14),
           Row(
             children: [
               Expanded(
-                child: ElevatedButton(onPressed: () => context.push('/login'), child: const Text('Log in')),
+                child: ElevatedButton(onPressed: () => context.push('/login'), child: Text(tr(context, 'log_in'))),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: OutlinedButton(onPressed: () => context.push('/signup'), child: const Text('Sign up')),
+                child: OutlinedButton(onPressed: () => context.push('/signup'), child: Text(tr(context, 'sign_up'))),
               ),
             ],
           ),
@@ -128,7 +129,7 @@ class _LanguageSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Language', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: LeapColors.muted)),
+          Text(tr(context, 'language'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: LeapColors.muted)),
           const SizedBox(height: 10),
           Row(
             children: [

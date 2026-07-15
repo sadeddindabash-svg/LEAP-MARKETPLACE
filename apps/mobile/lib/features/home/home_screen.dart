@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
+import '../../core/app_strings.dart';
 import '../../widgets/plate_chip.dart';
 
-const List<({String id, String name, IconData icon})> kCategories = [
-  (id: 'brake', name: 'Brake System', icon: Icons.album_outlined),
-  (id: 'engine', name: 'Engine', icon: Icons.settings_outlined),
-  (id: 'electrical', name: 'Electrical', icon: Icons.electrical_services_outlined),
-  (id: 'filters', name: 'Filters', icon: Icons.filter_alt_outlined),
-  (id: 'suspension', name: 'Suspension', icon: Icons.build_outlined),
-  (id: 'lighting', name: 'Lighting', icon: Icons.lightbulb_outline),
+const List<({String id, String stringKey, IconData icon})> kCategories = [
+  (id: 'brake', stringKey: 'cat_brake', icon: Icons.album_outlined),
+  (id: 'engine', stringKey: 'cat_engine', icon: Icons.settings_outlined),
+  (id: 'electrical', stringKey: 'cat_electrical', icon: Icons.electrical_services_outlined),
+  (id: 'filters', stringKey: 'cat_filters', icon: Icons.filter_alt_outlined),
+  (id: 'suspension', stringKey: 'cat_suspension', icon: Icons.build_outlined),
+  (id: 'lighting', stringKey: 'cat_lighting', icon: Icons.lightbulb_outline),
 ];
 
 class HomeScreen extends StatelessWidget {
@@ -37,7 +38,7 @@ class HomeScreen extends StatelessWidget {
               readOnly: true,
               onTap: () => context.push('/search'),
               decoration: InputDecoration(
-                hintText: 'Search part, brand, or number',
+                hintText: tr(context, 'search_hint'),
                 prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
               ),
@@ -46,14 +47,14 @@ class HomeScreen extends StatelessWidget {
             Card(
               child: ListTile(
                 leading: const Icon(Icons.directions_car_outlined),
-                title: const Text('Shopping for', style: TextStyle(fontSize: 11, color: LeapColors.muted)),
+                title: Text(tr(context, 'shopping_for'), style: const TextStyle(fontSize: 11, color: LeapColors.muted)),
                 subtitle: const PlateChip(text: 'BMW 1 (F20) · 118d 2.0', small: true),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => context.push('/garage'),
               ),
             ),
             const SizedBox(height: 20),
-            const Text('Shop by category', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+            Text(tr(context, 'shop_by_category'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
             const SizedBox(height: 12),
             GridView.count(
               crossAxisCount: 4,
@@ -63,7 +64,7 @@ class HomeScreen extends StatelessWidget {
               crossAxisSpacing: 12,
               children: kCategories
                   .map((c) => GestureDetector(
-                        onTap: () => context.push('/category/${c.id}', extra: c.name),
+                        onTap: () => context.push('/category/${c.id}', extra: tr(context, c.stringKey)),
                         child: Column(
                           children: [
                             Container(
@@ -77,7 +78,7 @@ class HomeScreen extends StatelessWidget {
                               child: Icon(c.icon, color: LeapColors.ink),
                             ),
                             const SizedBox(height: 6),
-                            Text(c.name, style: const TextStyle(fontSize: 10), textAlign: TextAlign.center),
+                            Text(tr(context, c.stringKey), style: const TextStyle(fontSize: 10), textAlign: TextAlign.center),
                           ],
                         ),
                       ))

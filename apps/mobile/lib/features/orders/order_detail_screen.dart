@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
+import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../services/api_client.dart';
 import '../../widgets/plate_chip.dart';
@@ -43,7 +44,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       });
     } catch (e) {
       setState(() {
-        _errorMessage = 'Could not load this order.';
+        _errorMessage = trRead(context, 'could_not_load_order');
         _isLoading = false;
       });
     }
@@ -59,7 +60,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         onSubmitted: () {
           Navigator.of(context).pop();
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Return request sent to the Leap team.')),
+            SnackBar(content: Text(trRead(context, 'return_request_sent'))),
           );
         },
       ),
@@ -69,10 +70,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Scaffold(appBar: AppBar(title: const Text('Order')), body: const Center(child: CircularProgressIndicator()));
+      return Scaffold(appBar: AppBar(title: Text(tr(context, 'order'))), body: const Center(child: CircularProgressIndicator()));
     }
     if (_errorMessage != null || _order == null) {
-      return Scaffold(appBar: AppBar(title: const Text('Order')), body: Center(child: Text(_errorMessage ?? 'Not found', style: const TextStyle(color: LeapColors.muted))));
+      return Scaffold(appBar: AppBar(title: Text(tr(context, 'order'))), body: Center(child: Text(_errorMessage ?? tr(context, 'not_found'), style: const TextStyle(color: LeapColors.muted))));
     }
 
     final subOrders = (_order!['supplierSubOrders'] as List).cast<Map<String, dynamic>>();
@@ -91,7 +92,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           const SizedBox(height: 6),
           Text('\$${(_order!['total'] as num).toStringAsFixed(2)} ${_order!['currencyCode']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20)),
           const SizedBox(height: 20),
-          const Text('Shipped by', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+          Text(tr(context, 'shipped_by'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
           const SizedBox(height: 8),
           for (final so in subOrders) _SupplierSubOrderCard(subOrder: so, onRequestReturn: _openReturnRequest),
         ],
@@ -127,7 +128,7 @@ class _SupplierSubOrderCard extends StatelessWidget {
             ),
             if (trackingNumber != null) ...[
               const SizedBox(height: 4),
-              Text('Tracking: $trackingNumber', style: const TextStyle(fontSize: 11.5, color: LeapColors.muted)),
+              Text('${tr(context, 'tracking_label')} $trackingNumber', style: const TextStyle(fontSize: 11.5, color: LeapColors.muted)),
             ],
             const SizedBox(height: 8),
             for (final item in items)
@@ -140,7 +141,7 @@ class _SupplierSubOrderCard extends StatelessWidget {
               alignment: Alignment.centerRight,
               child: TextButton(
                 onPressed: () => onRequestReturn(subOrder['subOrderId'] as int, supplierName),
-                child: const Text('Request a return', style: TextStyle(fontSize: 12.5)),
+                child: Text(tr(context, 'request_a_return'), style: const TextStyle(fontSize: 12.5)),
               ),
             ),
           ],
@@ -175,7 +176,7 @@ class _ReturnRequestSheetState extends State<_ReturnRequestSheet> {
 
   Future<void> _submit() async {
     if (_reasonController.text.trim().isEmpty || _messageController.text.trim().isEmpty) {
-      setState(() => _errorMessage = 'Please fill in both fields.');
+      setState(() => _errorMessage = trRead(context, 'please_fill_both_fields'));
       return;
     }
     setState(() {
@@ -211,19 +212,19 @@ class _ReturnRequestSheetState extends State<_ReturnRequestSheet> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('Request a return — ${widget.supplierLabel}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+          Text('${tr(context, 'request_a_return')} — ${widget.supplierLabel}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
           const SizedBox(height: 4),
-          const Text(
-            "This goes to the Leap team, who will coordinate with the supplier — you won't be contacting them directly.",
-            style: TextStyle(fontSize: 12, color: LeapColors.muted),
+          Text(
+            tr(context, 'return_goes_to_leap'),
+            style: const TextStyle(fontSize: 12, color: LeapColors.muted),
           ),
           const SizedBox(height: 16),
-          TextField(controller: _reasonController, decoration: const InputDecoration(labelText: 'Reason (e.g. wrong item, damaged)')),
+          TextField(controller: _reasonController, decoration: InputDecoration(labelText: tr(context, 'reason_label'))),
           const SizedBox(height: 12),
           TextField(
             controller: _messageController,
             maxLines: 4,
-            decoration: const InputDecoration(labelText: 'Details', alignLabelWithHint: true),
+            decoration: InputDecoration(labelText: tr(context, 'details_label'), alignLabelWithHint: true),
           ),
           if (_errorMessage != null) ...[
             const SizedBox(height: 12),
@@ -234,7 +235,7 @@ class _ReturnRequestSheetState extends State<_ReturnRequestSheet> {
             onPressed: _isSubmitting ? null : _submit,
             child: _isSubmitting
                 ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Text('Submit request'),
+                : Text(tr(context, 'submit_request')),
           ),
         ],
       ),

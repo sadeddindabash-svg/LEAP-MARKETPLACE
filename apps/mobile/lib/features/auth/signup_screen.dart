@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
+import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../services/api_client.dart';
 
@@ -21,7 +22,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
   Future<void> _submit() async {
     if (_passwordController.text.length < 8) {
-      setState(() => _errorMessage = 'Password must be at least 8 characters');
+      setState(() => _errorMessage = trRead(context, 'password_too_short'));
       return;
     }
     setState(() {
@@ -38,7 +39,7 @@ class _SignupScreenState extends State<SignupScreen> {
     } on ApiException catch (e) {
       setState(() => _errorMessage = e.message);
     } catch (e) {
-      setState(() => _errorMessage = 'Something went wrong. Please try again.');
+      setState(() => _errorMessage = trRead(context, 'something_went_wrong'));
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
@@ -57,7 +58,7 @@ class _SignupScreenState extends State<SignupScreen> {
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(icon: const Icon(Icons.close), onPressed: () => context.pop()),
-        title: const Text('Create account'),
+        title: Text(tr(context, 'create_account')),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -67,20 +68,20 @@ class _SignupScreenState extends State<SignupScreen> {
             const SizedBox(height: 12),
             const Text('LEAP', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 28, color: LeapColors.ink)),
             const SizedBox(height: 6),
-            const Text('Save your vehicles and track orders across devices.', style: TextStyle(color: LeapColors.muted, fontSize: 13)),
+            Text(tr(context, 'signup_subtitle'), style: const TextStyle(color: LeapColors.muted, fontSize: 13)),
             const SizedBox(height: 24),
-            TextField(controller: _nameController, decoration: const InputDecoration(labelText: 'Name (optional)')),
+            TextField(controller: _nameController, decoration: InputDecoration(labelText: tr(context, 'name_optional'))),
             const SizedBox(height: 12),
             TextField(
               controller: _emailController,
               keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(labelText: 'Email'),
+              decoration: InputDecoration(labelText: tr(context, 'email_label')),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _passwordController,
               obscureText: true,
-              decoration: const InputDecoration(labelText: 'Password', helperText: 'At least 8 characters'),
+              decoration: InputDecoration(labelText: tr(context, 'password_label'), helperText: tr(context, 'at_least_8_chars')),
               onSubmitted: (_) => _submit(),
             ),
             if (_errorMessage != null) ...[
@@ -92,12 +93,12 @@ class _SignupScreenState extends State<SignupScreen> {
               onPressed: _isSubmitting ? null : _submit,
               child: _isSubmitting
                   ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('Create account'),
+                  : Text(tr(context, 'create_account')),
             ),
             const SizedBox(height: 12),
             TextButton(
               onPressed: () => context.pop(),
-              child: const Text('Already have an account? Log in'),
+              child: Text(tr(context, 'already_have_account')),
             ),
           ],
         ),

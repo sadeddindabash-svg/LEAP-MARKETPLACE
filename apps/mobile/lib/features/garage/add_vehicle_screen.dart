@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
+import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../models/vehicle.dart';
 import '../../services/api_client.dart';
@@ -58,7 +59,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_selectedMake == null ? 'Choose a make' : _selectedMake!),
+        title: Text(_selectedMake == null ? tr(context, 'choose_a_make') : _selectedMake!),
         leading: _selectedMake == null
             ? null
             : IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => setState(() => _selectedMake = null)),
@@ -75,7 +76,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return Center(child: Text('Could not load makes: ${snapshot.error}', style: const TextStyle(color: LeapColors.muted)));
+          return Center(child: Text('${tr(context, 'could_not_load_makes')} ${snapshot.error}', style: const TextStyle(color: LeapColors.muted)));
         }
         final makes = snapshot.data ?? [];
         return ListView.separated(
@@ -108,11 +109,11 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                 return const Center(child: CircularProgressIndicator());
               }
               if (snapshot.hasError) {
-                return Center(child: Text('Could not load vehicles: ${snapshot.error}', style: const TextStyle(color: LeapColors.muted)));
+                return Center(child: Text('${tr(context, 'could_not_load_vehicles')} ${snapshot.error}', style: const TextStyle(color: LeapColors.muted)));
               }
               final vehicles = snapshot.data ?? [];
               if (vehicles.isEmpty) {
-                return const Center(child: Text('No vehicles found for this make.', style: TextStyle(color: LeapColors.muted)));
+                return Center(child: Text(tr(context, 'no_vehicles_for_make'), style: const TextStyle(color: LeapColors.muted)));
               }
               return ListView.separated(
                 padding: const EdgeInsets.all(16),

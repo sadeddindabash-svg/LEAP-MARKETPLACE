@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/config/app_config.dart';
 import '../../core/theme.dart';
+import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../core/cart_state.dart';
 import '../../services/api_client.dart';
@@ -57,7 +58,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final cart = context.read<CartState>();
 
     if (!auth.isLoggedIn && _guestEmailController.text.trim().isEmpty) {
-      setState(() => _errorMessage = 'Please enter an email for your order confirmation.');
+      setState(() => _errorMessage = trRead(context, 'please_enter_email_order'));
       return;
     }
 
@@ -75,14 +76,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       await cart.clearAfterOrder();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Order ${result['id']} placed successfully')),
+          SnackBar(content: Text('Order ${result['id']} ${trRead(context, 'order_placed_success')}')),
         );
         context.go('/orders');
       }
     } on ApiException catch (e) {
       setState(() => _errorMessage = e.message);
     } catch (e) {
-      setState(() => _errorMessage = 'Something went wrong placing your order. Please try again.');
+      setState(() => _errorMessage = trRead(context, 'order_placement_error'));
     } finally {
       if (mounted) setState(() => _isPlacingOrder = false);
     }
@@ -94,7 +95,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final cart = context.watch<CartState>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Checkout')),
+      appBar: AppBar(title: Text(tr(context, 'checkout'))),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -106,7 +107,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 children: [
                   const Icon(Icons.check_circle, size: 18, color: LeapColors.gauge),
                   const SizedBox(width: 8),
-                  Expanded(child: Text('Ordering as ${auth.user!['email']}', style: const TextStyle(fontSize: 12.5))),
+                  Expanded(child: Text('${tr(context, 'ordering_as')} ${auth.user!['email']}', style: const TextStyle(fontSize: 12.5))),
                 ],
               ),
             )
@@ -114,25 +115,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(color: LeapColors.chalk, borderRadius: BorderRadius.circular(10)),
-              child: const Text(
-                "Checking out as a guest — we'll email your confirmation. You can create an account after payment to track this order.",
-                style: TextStyle(fontSize: 12.5, color: LeapColors.muted),
+              child: Text(
+                tr(context, 'guest_checkout_note'),
+                style: const TextStyle(fontSize: 12.5, color: LeapColors.muted),
               ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _guestEmailController,
               keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(labelText: 'Email for order confirmation'),
+              decoration: InputDecoration(labelText: tr(context, 'email_for_confirmation')),
             ),
             const SizedBox(height: 8),
             TextButton(
               onPressed: () => context.push('/login'),
-              child: const Text('Have an account? Log in instead'),
+              child: Text(tr(context, 'have_account_login_instead')),
             ),
           ],
           const SizedBox(height: 12),
-          const Text('Payment method', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+          Text(tr(context, 'payment_method'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
           const SizedBox(height: 8),
           ..._paymentMethods.map((m) => RadioListTile<String>(
                 contentPadding: EdgeInsets.zero,
@@ -142,7 +143,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 title: Row(children: [Icon(m.icon, size: 18), const SizedBox(width: 10), Text(m.label)]),
               )),
           const SizedBox(height: 12),
-          const Text('Order summary', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+          Text(tr(context, 'order_summary'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.all(12),
@@ -171,7 +172,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           onPressed: (cart.isEmpty || _isPlacingOrder) ? null : _placeOrder,
           child: _isPlacingOrder
               ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : Text('Place order · \$${cart.total.toStringAsFixed(2)}'),
+              : Text('${tr(context, 'place_order')} · \$${cart.total.toStringAsFixed(2)}'),
         ),
       ),
     );
