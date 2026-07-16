@@ -986,6 +986,65 @@ buyer who ordered too recently; a guest checkout is rejected from any
 real targeted code; and a code with no targeting set remains open to
 everyone, confirming this migration didn't change existing behavior.
 
+## Real cloud photo storage — generic, works with any S3-compatible provider (new)
+
+**Confirmed choice, discussed at real length before building**: build
+this generically rather than commit to one provider yet. AWS S3,
+Cloudflare R2, and DigitalOcean Spaces all speak the exact same S3 API
+— `services/api/src/modules/storage/client.js` is ONE real
+implementation (using the real `@aws-sdk/client-s3` package) that works
+with whichever gets chosen later, purely by setting different
+environment variables. No code change needed when that decision is
+made.
+
+**Real pricing discussion that led here**: egress (serving photos out
+to viewers) is what actually matters most for a photo-heavy
+marketplace, not storage cost — R2 charges zero egress, which is why
+it's the leading recommendation, though the code doesn't assume any
+particular provider.
+
+**HONEST FALLBACK, different from the payment gateways or translation
+service**: local disk storage already worked before this pass (see
+`services/api/src/modules/uploads/routes.js`'s original header
+comment), so an unconfigured cloud setup doesn't break real uploads —
+it just means they're not yet durable/scalable the way real cloud
+storage would make them. `isCloudStorageConfigured()` checks for all 4
+required real environment variables together; if any are missing, or
+if a real cloud upload call itself throws (bad credentials, bucket
+doesn't exist, network issue), the upload honestly falls back to local
+disk rather than losing the photo entirely. The real response now
+includes a `storage: 'local' | 'cloud'` field so this is never silent
+either way.
+
+**Real environment variables** (all four required together to activate
+cloud storage — see `storage/client.js`'s own header comment for the
+full detail per provider):
+```
+S3_ENDPOINT=...           # provider-specific; omit entirely for real AWS S3
+S3_BUCKET=...
+S3_ACCESS_KEY_ID=...
+S3_SECRET_ACCESS_KEY=...
+S3_REGION=auto            # 'auto' is correct for R2; AWS/DO should set their real region
+S3_PUBLIC_URL_BASE=...    # the real base URL used to construct public-facing image URLs
+```
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/uploads.integration.test.js`
+(6 tests, REAL backend, real multipart file uploads via the `form-data`
+package rather than Node's native `fetch` FormData/Blob — the native
+implementation was found to hang against this project's real multer-
+based endpoint, a real tooling incompatibility caught and fixed, not
+an application bug): a real, valid high-resolution image uploads
+successfully and honestly reports `storage: 'local'` (no real cloud
+credentials are configured in this environment); a real image below
+the minimum resolution is rejected with the exact real dimensions in
+the error; a real non-image file is rejected; unauthenticated uploads
+are rejected; a buyer (not a supplier or hub staff) cannot upload a
+product image; and a real hub staff account can also upload real
+images, for shipment-inspection evidence. The real cloud upload path
+itself (request construction, success response, and failure handling)
+was separately verified directly against a mocked S3 client, since no
+real cloud credentials exist to test the actual live call end-to-end.
+
 ## Setup
 
 ```bash
@@ -1049,9 +1108,9 @@ src/
     │                       no blended $ GMV or top-markets-by-country
     │                       (no FX conversion / no country field exist)
     ├── uploads/             Product photo upload — real minimum-resolution
-    │                       enforcement, local-disk storage for now (see
-    │                       that module's header comment on real object
-    │                       storage being the production-ready next step);
+    │                       enforcement; real cloud storage via storage/
+    │                       (new) with an honest local-disk fallback when
+    │                       no real cloud credentials are configured;
     │                       also used by hub staff for evidence photos
     ├── hub/                 Regional inspection hubs — the real Supplier
     │                       -> Hub -> Buyer fulfillment pipeline (migration
@@ -1081,6 +1140,9 @@ src/
     │                       (migration 020)
     ├── promo-codes/         Real admin-created campaign codes + real-
     │                       time checkout validation (migration 020)
+    ├── storage/             Generic real S3-compatible cloud storage
+    │                       client (new) -- works with AWS S3, Cloudflare
+    │                       R2, or DigitalOcean Spaces via env vars alone
     ├── payment/            Stripe, Amazon Payment Services, PayPal, and
     │                       Google Pay (routed through Stripe) — BUY-040–044
 ```

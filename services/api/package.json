@@ -14,6 +14,7 @@
     "seed": "node db/seed.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1089.0",
     "@paypal/paypal-server-sdk": "^2.4.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
