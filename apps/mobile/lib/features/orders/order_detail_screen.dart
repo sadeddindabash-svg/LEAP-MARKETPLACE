@@ -86,7 +86,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               PlateChip(text: _order!['id'] as String),
-              Text(trStatus(context, _order!['status'] as String).toUpperCase(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: LeapColors.torque)),
+              Text(trStatus(context, (_order!['displayStatus'] as String?) ?? (_order!['status'] as String)).toUpperCase(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: LeapColors.torque)),
             ],
           ),
           const SizedBox(height: 6),

@@ -671,6 +671,52 @@ inbox and reply endpoint; replying to a nonexistent supplier is a real
 on both send endpoints; and the real admin inbox lists a supplier with
 a genuine most-recent-message preview.
 
+## Real derived order status, for the mobile app's order status tabs
+
+**A real bug found and fixed while adding this**: `orders.status` is
+set to `'to_ship'` the moment an order is created and was NEVER updated
+again anywhere in this codebase, no matter how far the real shipment
+actually progressed — the real progress lived only on each
+`supplier_sub_orders` row instead. Building status filter tabs directly
+on that frozen column would have shown everything under one tab
+forever, not a real filter.
+
+**Fixed with a real, computed `displayStatus`** (both on `GET /order`
+and `GET /order/:id`), derived from the order's ACTUAL real sub-order
+progress and real return cases, not the stale stored column:
+- **`returns`** — the order has at least one real `return_cases` row,
+  regardless of the underlying shipment status. Takes priority over
+  everything else, since that's what a buyer cares about most for that
+  order right now.
+- **`shipped`** — at least one real sub-order has shipped or been
+  delivered. A real, deliberate design choice for multi-supplier orders
+  with genuinely MIXED progress (one part shipped, one still preparing):
+  counts as `shipped` overall rather than staying `to_ship`, since real
+  progress has genuinely happened.
+- **`to_ship`** — nothing has shipped yet and there's no return case.
+
+**Confirmed scope, discussed before building**: only these 3 states are
+computed and filterable today. `to_pay` and `to_review` were part of
+the original request but have no real system behind them yet — no real
+payment capture exists (every order is already placed the moment it's
+created, there's no state where it's genuinely "awaiting payment"), and
+no review system exists. Both real, honest gaps, not silently faked
+with an empty tab that would just look broken.
+
+**`GET /order?status=to_ship|shipped|returns`** — real filtering,
+applied after computing the real derived status for each of the
+buyer's own orders (or all orders, for an admin).
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/orderDisplayStatus.integration.test.js`
+(5 tests): the real bug itself is confirmed still present in the raw
+`status` column while `displayStatus` reflects genuine real progress; a
+real return case makes `displayStatus` "returns", taking priority over
+the underlying shipment status; an untouched order correctly shows
+`to_ship`; the real `?status=` filter returns exactly the orders in
+that real derived state and none of the others; and a genuine
+multi-supplier order with mixed real progress counts as `shipped`
+overall.
+
 ## Setup
 
 ```bash

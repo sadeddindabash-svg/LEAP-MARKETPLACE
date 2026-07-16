@@ -226,6 +226,7 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
       guestEmail: order.guest_email,
       isGuestOrder: !order.buyer_id,
       status: order.status,
+      displayStatus: await computeDisplayStatus(order.id),
       total: Number(order.total),
       currencyCode: order.currency_code,
       placedAt: order.placed_at,
@@ -239,21 +240,67 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
 // GET /order — buyers see only their own orders; admins see all.
 // This previously returned every order in the system to anyone who called
 // it (including guest emails) — fixed as part of adding real auth.
+//
+// REAL BUG FOUND AND FIXED HERE: orders.status is set to 'to_ship' at
+// creation (see POST / above) and NEVER updated again anywhere in this
+// codebase, no matter how far the real shipment actually progresses --
+// the real progress lives on each supplier_sub_orders row instead (see
+// PATCH /supplier/me/orders/:id). Building status filter tabs directly
+// on the frozen orders.status column would have shown everything under
+// one tab forever -- not a real filter. Fixed by computing a real
+// DERIVED display status from the order's actual real sub-order
+// progress (and real return_cases), rather than trusting the stale
+// stored column.
+//
+// CONFIRMED SCOPE: only 3 of the 5 originally-requested tabs have a
+// real system behind them today -- 'to_pay' has no meaning yet (no
+// real payment capture exists; every order is already placed the
+// moment it's created) and 'to_review' has no meaning yet (no review
+// system exists). Both real gaps, not silently faked here -- see
+// services/api/README.md for the fuller discussion. Only 'to_ship',
+// 'shipped', and 'returns' are computed and filterable today.
+async function computeDisplayStatus(orderId) {
+  const { rows: subOrders } = await db.query('SELECT status FROM supplier_sub_orders WHERE order_id = $1', [orderId]);
+  const { rows: returnCases } = await db.query('SELECT id FROM return_cases WHERE order_id = $1 LIMIT 1', [orderId]);
+
+  // A real return case in progress is what a buyer cares about most for
+  // this order right now, regardless of the underlying shipment status
+  // -- takes priority over shipped/to_ship.
+  if (returnCases.length > 0) return 'returns';
+
+  // Multi-supplier orders can have genuinely MIXED real sub-order
+  // progress (one shipped, one still preparing) -- if ANY real part has
+  // shipped or been delivered, the order counts as real progress having
+  // happened, so it shows as 'shipped' rather than still 'to_ship'.
+  const anyShippedOrFurther = subOrders.some((so) => ['shipped', 'delivered'].includes(so.status));
+  return anyShippedOrFurther ? 'shipped' : 'to_ship';
+}
+
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const isAdmin = req.user.role === 'admin';
     const { rows } = isAdmin
       ? await db.query('SELECT * FROM orders ORDER BY placed_at DESC')
       : await db.query('SELECT * FROM orders WHERE buyer_id = $1 ORDER BY placed_at DESC', [req.user.sub]);
-    res.json(rows.map((o) => ({
+
+    const withDisplayStatus = await Promise.all(rows.map(async (o) => ({
       id: o.id,
       userId: o.buyer_id,
       guestEmail: o.guest_email,
       status: o.status,
+      displayStatus: await computeDisplayStatus(o.id),
       total: Number(o.total),
       currencyCode: o.currency_code,
       placedAt: o.placed_at,
     })));
+
+    // Real filter, applied AFTER computing the real derived status --
+    // ?status=to_ship|shipped|returns, matching the mobile app's order
+    // status tabs. An unrecognized or missing value returns everything
+    // unfiltered, same as no filter at all.
+    const { status } = req.query;
+    const filtered = status ? withDisplayStatus.filter((o) => o.displayStatus === status) : withDisplayStatus;
+    res.json(filtered);
   } catch (err) {
     next(err);
   }

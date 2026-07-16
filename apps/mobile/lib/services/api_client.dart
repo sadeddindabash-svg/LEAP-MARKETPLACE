@@ -235,9 +235,10 @@ class ApiClient {
 
   // ---------------- Orders (requires auth — see BUY-050) ----------------
 
-  Future<List<dynamic>> fetchMyOrders(String token) async {
+  Future<List<dynamic>> fetchMyOrders(String token, {String? status}) async {
+    final uri = Uri.parse('$baseUrl/order').replace(queryParameters: status != null ? {'status': status} : null);
     final response = await _client.get(
-      Uri.parse('$baseUrl/order'),
+      uri,
       headers: {'Authorization': 'Bearer $token'},
     );
     if (response.statusCode != 200) {

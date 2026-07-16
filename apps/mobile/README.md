@@ -388,6 +388,30 @@ exactly that Part.
   unlike tapping a category icon on Home) defaults to the real first
   category once the list loads.
 
+## Order status filter tabs (new)
+
+**Confirmed scope, discussed before building**: only 3 of the 5
+originally-requested tabs (To ship / Shipped / Returns) have a real
+system behind them today — see `services/api/README.md`'s "Real
+derived order status" section for the full backend design, including a
+real bug found and fixed there (the order's raw status field is frozen
+forever and never reflects real progress) and why "To pay" and "To
+review" tabs were deliberately left out for now (no real payment
+capture or review system exists yet — building those tabs would just
+show permanently empty results, not a real filter).
+
+- **`kOrderTabs`** in `orders_screen.dart`: a real horizontal tab row
+  (All / To ship / Shipped / Returns), reusing the same filter-chip
+  visual pattern already established on the home feed's Newest/My car
+  filter, for consistency rather than introducing a second filter UI
+  style.
+- Tapping a tab real-refetches `GET /order?status=...` — the real
+  backend filter, not a client-side filter over already-fetched data.
+- Every order card (list and detail) now displays the real, computed
+  `displayStatus` — the order detail screen was ALSO fixed to stop
+  displaying the raw, frozen `status` field, which would have shown
+  stale information there too.
+
 ## Setup
 
 1. Install Flutter: https://docs.flutter.dev/get-started/install

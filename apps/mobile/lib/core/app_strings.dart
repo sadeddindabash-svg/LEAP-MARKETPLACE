@@ -61,6 +61,9 @@ class AppStrings {
     'status_resolved': {'en': 'Resolved', 'ar': 'تم الحل'},
     'status_closed': {'en': 'Closed', 'ar': 'مغلقة'},
 
+    'status_returns': {'en': 'Returns', 'ar': 'المرتجعات'},
+    'tab_all': {'en': 'All', 'ar': 'الكل'},
+
     // ---- Category ----
     'could_not_load_products': {'en': 'Could not load products.', 'ar': 'تعذر تحميل المنتجات.'},
     'no_products_in_category': {'en': 'No products in this category yet.', 'ar': 'لا توجد منتجات في هذه الفئة بعد.'},
