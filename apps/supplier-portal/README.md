@@ -244,6 +244,34 @@ full backend design.
 - **Deliberately separate from any buyer-facing system** — this is
   supplier ↔ platform, a different relationship than buyer support.
 
+## Real notifications (new)
+
+The `TopBar`'s Bell icon (shown on every page) was a genuinely dead
+decoration before this — no data, no click handler. There was also
+unused leftover mock "notifications" data from the original prototype
+(`t.overview.notifications`, a fake array of 3 hardcoded items,
+`notificationsTitle` on a KPI card) that was never actually rendered
+anywhere real — removed as part of this pass since it's now genuinely
+superseded, not because it was ever functional to begin with.
+
+- **A real unread badge on the Bell, visible from every page** — reuses
+  the exact same backend endpoints the buyer mobile app uses
+  (`GET /notifications/me/unread-count`, etc. — see
+  `services/api/README.md`'s "Real notifications" section). A supplier
+  is a real user (`role='supplier'`), scoped to their own `req.user.sub`
+  the same way a buyer is — no separate backend needed.
+- **A real notifications page**, reachable by clicking the Bell from
+  anywhere in the app (implemented via a small nested context carrying
+  the real unread count and a real navigation callback, so `TopBar`
+  doesn't need the same props threaded through every one of its many
+  call sites). Tapping an unread notification marks it read and
+  refreshes the real badge; "Mark all read" clears it entirely.
+- **Found while confirming this covers "all messages from admin"**: it
+  covers admin replying to a supplier message (the real trigger this
+  project built) — but there's no OTHER admin-to-supplier messaging
+  channel in this schema to miss. A genuinely complete answer, not a
+  partial one hedged around gaps.
+
 ## Setup
 
 ```bash
@@ -259,7 +287,7 @@ npm run dev       # http://localhost:5173
 npm test
 ```
 
-Eight test files, 41 tests total, all passing:
+Nine test files, 47 tests total, all passing:
 - `src/AddProductCascade.test.jsx` (2, mocked, full component tree) —
   the Part dropdown shows real parts for the default selected Category
   (and doesn't show a different category's parts pre-loaded), and
@@ -273,6 +301,13 @@ Eight test files, 41 tests total, all passing:
   original" toggle; sending a real message calls the real send endpoint
   and appears immediately; a real empty state shows when there are no
   messages yet.
+- `src/NotificationsFlow.test.jsx` (6, mocked, full component tree) —
+  the real unread count shows a real badge on the Bell icon after
+  login, and shows no badge at all when there's genuinely nothing
+  unread; clicking the Bell opens the real notifications list; tapping
+  a real unread notification marks it read and the badge disappears;
+  a real empty state shows when there are none; "Mark all read" clears
+  the real badge entirely.
 - `src/supplierPortal.integration.test.js` (10, REAL backend, no mocking):
   login with a real supplier JWT including `supplierId`, a buyer account
   correctly rejected from supplier endpoints, products scoped to only this

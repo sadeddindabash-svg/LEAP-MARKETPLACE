@@ -834,7 +834,11 @@ first), `GET /notifications/me/unread-count` (powers a real badge
 without fetching and counting the entire list), `PATCH /notifications/me/:id/read`,
 `PATCH /notifications/me/read-all`. All scoped to the calling user's own
 `req.user.sub` — cross-user access to another user's notification is a
-real 404, not a leak.
+real 404, not a leak. **Consumed by both real UIs** — the buyer mobile
+app's bell icon and (added shortly after, once it was noticed the
+supplier side had no way to actually see its own real trigger #4
+notifications) the supplier portal's own real bell icon, same endpoints,
+no separate backend needed since a supplier is a real user too.
 
 **Tested end-to-end** — see `apps/admin-dashboard/src/notifications.integration.test.js`
 (8 tests): each of the 4 real trigger points is verified independently

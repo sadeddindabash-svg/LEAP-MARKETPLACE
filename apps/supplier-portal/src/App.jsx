@@ -21,6 +21,7 @@ import {
   uploadProductImage, API_BASE_URL,
   fetchCategories, fetchPartsForCategory,
   fetchMyMessages, sendMyMessage,
+  fetchMyNotifications, fetchUnreadNotificationCount, markNotificationRead, markAllNotificationsRead,
 } from "./auth";
 
 /* ============================================================
@@ -64,14 +65,9 @@ const STRINGS = {
       kpiPending: "待处理订单", kpiPendingSub: "其中 2 个待确认",
       kpiListings: "在架商品", kpiListingsSub: "共 6 个分类",
       kpiRating: "店铺评分", kpiRatingSub: "履约达标率 96%",
-      trendTitle: "近 7 日销售趋势", topProductsTitle: "热销商品", notificationsTitle: "平台通知",
+      trendTitle: "近 7 日销售趋势", topProductsTitle: "热销商品",
       stockLabel: "库存",
       days: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
-      notifications: [
-        ["新的采购要求", "Leap 平台已发布 2026 年 Q3 电子件类目采购指引", "3 小时前"],
-        ["结算提醒", "7 月上半月结算将于 7 月 18 日到账", "1 天前"],
-        ["翻译更新", "点火线圈总成 的多语言描述正在审核", "1 天前"],
-      ],
     },
     products: {
       title: "商品管理", subtitle: (n) => `共 ${n} 个商品 · 平台展示语言由系统自动翻译`,
@@ -119,6 +115,11 @@ const STRINGS = {
       showOriginal: "显示原文", showTranslation: "显示译文",
       translationUnavailable: "（自动翻译暂不可用 — 显示原文）",
     },
+    notifications: {
+      title: "通知", couldNotLoad: "无法加载通知：",
+      noNotificationsYet: "暂无通知。",
+      markAllRead: "全部标记为已读",
+    },
     finance: {
       title: "财务与结算", subtitle: "结算币种：人民币 (¥) · 结算周期：每半月一次",
       kpiPending: "待结算金额", kpiPendingSub: "预计 2026-07-18 到账",
@@ -152,14 +153,9 @@ const STRINGS = {
       kpiPending: "Pending orders", kpiPendingSub: "2 awaiting confirmation",
       kpiListings: "Active listings", kpiListingsSub: "Across 6 categories",
       kpiRating: "Store rating", kpiRatingSub: "96% fulfillment SLA",
-      trendTitle: "Sales trend (last 7 days)", topProductsTitle: "Top products", notificationsTitle: "Platform notices",
+      trendTitle: "Sales trend (last 7 days)", topProductsTitle: "Top products",
       stockLabel: "Stock",
       days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-      notifications: [
-        ["New sourcing guidance", "Leap has published Q3 2026 sourcing guidelines for the electrical category", "3 hours ago"],
-        ["Payout reminder", "Your early-July payout will land on Jul 18", "1 day ago"],
-        ["Translation update", "The listing \u201cIgnition Coil Pack\u201d is under multilingual review", "1 day ago"],
-      ],
     },
     products: {
       title: "Products", subtitle: (n) => `${n} products · buyer-facing text is translated automatically`,
@@ -206,6 +202,11 @@ const STRINGS = {
       noMessagesYet: "No messages yet. Start the conversation.",
       showOriginal: "Show original", showTranslation: "Show translation",
       translationUnavailable: "(auto-translation unavailable — showing original)",
+    },
+    notifications: {
+      title: "Notifications", couldNotLoad: "Could not load notifications: ",
+      noNotificationsYet: "No notifications yet.",
+      markAllRead: "Mark all read",
     },
     finance: {
       title: "Finance & Payouts", subtitle: "Settlement currency: RMB (\u00a5) · Payout cycle: twice monthly",
@@ -335,7 +336,7 @@ function LangToggle() {
 
 function TopBar({ title, subtitle }) {
   const { t, lang } = useLang();
-  const { profile } = useSupplier();
+  const { profile, unreadNotificationCount, onOpenNotifications } = useSupplier();
   const font = useBodyFont();
   const displayName = profile ? profile.name : "";
   return (
@@ -349,7 +350,24 @@ function TopBar({ title, subtitle }) {
           <Search size={14} color={C.muted} />
           <span style={{ ...font, fontSize: 12.5, color: C.muted }}>{t.searchPlaceholder}</span>
         </div>
-        <Bell size={18} color={C.ink} />
+        <div
+          role="button"
+          aria-label={t.notifications.title}
+          tabIndex={0}
+          style={{ position: "relative", cursor: onOpenNotifications ? "pointer" : "default" }}
+          onClick={onOpenNotifications}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onOpenNotifications?.(); }}
+        >
+          <Bell size={18} color={C.ink} />
+          {unreadNotificationCount > 0 && (
+            <div style={{
+              position: "absolute", top: -4, right: -4, minWidth: 15, height: 15, borderRadius: 8,
+              background: C.signal, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px",
+            }}>
+              <span style={{ ...font, fontSize: 9, fontWeight: 700, color: "#fff" }}>{unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}</span>
+            </div>
+          )}
+        </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.ink, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", ...font, fontWeight: 700, fontSize: 12 }}>{displayName.charAt(0) || "?"}</div>
           <div>
@@ -1232,6 +1250,91 @@ function ReturnsPage() {
   );
 }
 
+// Real notifications -- triggered by real order changes and message/
+// ticket replies (see services/api/src/modules/notifications/ for the
+// 4 real trigger points). Was previously a genuinely dead Bell icon in
+// TopBar (no data, no click handler) plus unused leftover mock
+// "notifications" translation strings from the original prototype,
+// never actually rendered anywhere real.
+function SupplierNotificationsPage({ onRefreshBadge }) {
+  const { t } = useLang();
+  const font = useBodyFont();
+  const [notifications, setNotifications] = useState(null);
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  const load = () => {
+    fetchMyNotifications(getStoredToken())
+      .then(setNotifications)
+      .catch((err) => setErrorMessage(err.message));
+  };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const markAllRead = async () => {
+    try {
+      await markAllNotificationsRead(getStoredToken());
+      load();
+      onRefreshBadge();
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const openNotification = async (n) => {
+    if (!n.isRead) {
+      try {
+        await markNotificationRead(getStoredToken(), n.id);
+        load();
+        onRefreshBadge();
+      } catch (err) {
+        setErrorMessage(err.message);
+      }
+    }
+  };
+
+  const hasUnread = (notifications || []).some((n) => !n.isRead);
+
+  return (
+    <div>
+      <TopBar title={t.notifications.title} />
+      <div style={{ padding: 24 }}>
+        {errorMessage && <div style={{ ...font, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{t.notifications.couldNotLoad}{errorMessage}</div>}
+        {hasUnread && (
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+            <button onClick={markAllRead} style={{ ...font, fontSize: 12.5, fontWeight: 700, color: C.torque, background: "none", border: "none", cursor: "pointer" }}>
+              {t.notifications.markAllRead}
+            </button>
+          </div>
+        )}
+        <Card>
+          <div style={{ padding: 6 }}>
+            {notifications === null && !errorMessage && <div style={{ ...font, fontSize: 13, color: C.muted, padding: 20 }}>...</div>}
+            {notifications !== null && notifications.length === 0 && (
+              <div style={{ ...font, fontSize: 13, color: C.muted, padding: 20, textAlign: "center" }}>{t.notifications.noNotificationsYet}</div>
+            )}
+            {notifications !== null && notifications.map((n, i) => (
+              <div
+                key={n.id}
+                onClick={() => openNotification(n)}
+                style={{
+                  display: "flex", alignItems: "flex-start", gap: 10, padding: "14px 12px",
+                  borderBottom: i < notifications.length - 1 ? `1px solid ${C.line}` : "none", cursor: "pointer",
+                }}
+              >
+                <Bell size={16} color={n.isRead ? C.muted : C.signal} style={{ marginTop: 2, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ ...font, fontSize: 13, fontWeight: n.isRead ? 500 : 700, color: C.ink }}>{n.title}</div>
+                  <div style={{ ...font, fontSize: 12, color: C.muted, marginTop: 2 }}>{n.body}</div>
+                </div>
+                <span style={{ ...font, fontSize: 10.5, color: C.muted, whiteSpace: "nowrap" }}>{new Date(n.createdAt).toLocaleDateString()}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 function MessagesPage() {
   const { t, lang } = useLang();
   const font = useBodyFont();
@@ -1420,9 +1523,16 @@ const NAV_ORDER = ["overview", "products", "orders", "returns", "messages", "fin
 function PortalShell() {
   const [page, setPage] = useState("overview");
   const [openOrder, setOpenOrder] = useState(null);
+  const [unreadCount, setUnreadCount] = useState(0);
   const { t, lang } = useLang();
-  const { profile, onLogout } = useSupplier();
+  const outerSupplierContext = useSupplier();
+  const { profile, onLogout } = outerSupplierContext;
   const font = useBodyFont();
+
+  const refreshUnreadCount = () => {
+    fetchUnreadNotificationCount(getStoredToken()).then(setUnreadCount).catch(() => {}); // non-critical -- badge just stays as-is
+  };
+  useEffect(refreshUnreadCount, []);
 
   let content;
   if (openOrder) content = <OrderDetailPanel order={openOrder} onBack={() => setOpenOrder(null)} onUpdated={(updated) => setOpenOrder({ ...openOrder, ...updated })} />;
@@ -1433,6 +1543,7 @@ function PortalShell() {
   else if (page === "messages") content = <MessagesPage />;
   else if (page === "finance") content = <FinancePage />;
   else if (page === "settings") content = <SettingsPage />;
+  else if (page === "notifications") content = <SupplierNotificationsPage onRefreshBadge={refreshUnreadCount} />;
 
   return (
     <div style={{ display: "flex", height: "100%", minHeight: 700, background: C.canvas, ...font }}>
@@ -1481,7 +1592,9 @@ function PortalShell() {
         </div>
       </div>
       <div style={{ flex: 1, overflowY: "auto" }}>
-        {content}
+        <SupplierContext.Provider value={{ ...outerSupplierContext, unreadNotificationCount: unreadCount, onOpenNotifications: () => setPage("notifications") }}>
+          {content}
+        </SupplierContext.Provider>
       </div>
     </div>
   );

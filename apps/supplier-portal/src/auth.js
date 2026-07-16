@@ -179,3 +179,36 @@ export function fetchMyMessages(token) {
 export function sendMyMessage(token, text) {
   return authedMutate("POST", "/supplier-messages/me", token, { text });
 }
+
+// ---------------- Real notifications (new) ----------------
+// Triggered by real order changes and message/ticket replies -- see
+// services/api/src/modules/notifications/ for the 4 real trigger
+// points. The SAME real endpoints the buyer mobile app uses -- a
+// supplier is a real user (role='supplier'), scoped to their own
+// req.user.sub the same way, no separate backend needed.
+
+export function fetchMyNotifications(token) {
+  return authedGet("/notifications/me", token);
+}
+
+export async function fetchUnreadNotificationCount(token) {
+  const data = await authedGet("/notifications/me/unread-count", token);
+  return data.count;
+}
+
+export function markNotificationRead(token, id) {
+  return authedMutate("PATCH", `/notifications/me/${id}/read`, token, {});
+}
+
+// authedMutate always parses the response as JSON, but this real
+// endpoint returns 204 No Content (an empty body) -- calling
+// response.json() on that would throw. A dedicated function, not
+// authedMutate, matching how a 204 is handled elsewhere in this project.
+export async function markAllNotificationsRead(token) {
+  const response = await fetch(`${API_BASE_URL}/notifications/me/read-all`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (response.status !== 204) throw new Error(`Request failed (${response.status})`);
+}
