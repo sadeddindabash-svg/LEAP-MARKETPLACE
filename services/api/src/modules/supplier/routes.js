@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole } = require('../auth/middleware');
+const { createNotification } = require('../notifications/helpers');
 
 /**
  * Supplier module — SUP-001–003 (onboarding/verification) from the
@@ -432,6 +433,23 @@ router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), asy
         `INSERT INTO hub_shipments (sub_order_id, hub_id) VALUES ($1, $2) ON CONFLICT (sub_order_id) DO NOTHING`,
         [rows[0].id, rows[0].hub_id]
       );
+    }
+
+    // Real trigger #1 (of the 4 confirmed for notifications — see
+    // migration 019's header comment): a real sub-order status change
+    // to 'shipped' or 'delivered' notifies the real buyer. Part of the
+    // SAME transaction as the real status update itself, not a
+    // separate best-effort step.
+    if (status === 'shipped' || status === 'delivered') {
+      const { rows: orderRows } = await client.query('SELECT buyer_id FROM orders WHERE id = $1', [rows[0].order_id]);
+      await createNotification({
+        userId: orderRows[0]?.buyer_id,
+        type: 'order_status',
+        title: status === 'shipped' ? 'Your order has shipped' : 'Your order has been delivered',
+        body: `Order ${rows[0].order_id} is now ${status}.`,
+        linkType: 'order',
+        linkId: rows[0].order_id,
+      }, client);
     }
 
     await client.query('COMMIT');

@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole } = require('../auth/middleware');
 const { translateText } = require('./translate');
+const { createNotification } = require('../notifications/helpers');
 
 /**
  * Real supplier <-> platform messaging, with real bidirectional
@@ -117,6 +118,26 @@ router.post('/admin/:supplierId', requireAuth, requireRole('admin'), async (req,
     const supplierCheck = await db.query('SELECT id FROM suppliers WHERE id = $1', [req.params.supplierId]);
     if (supplierCheck.rows.length === 0) return res.status(404).json({ error: 'Supplier not found' });
     const message = await sendMessage({ supplierId: req.params.supplierId, senderRole: 'admin', senderId: req.user.id, text: text.trim() });
+
+    // Real trigger #4 (of the 4 confirmed for notifications — see
+    // migration 019's header comment): an admin's real reply to a
+    // supplier message notifies the real supplier's linked user
+    // account. A supplier account without a linked user (shouldn't
+    // exist per the real supplier_role_has_supplier_id constraint, but
+    // defensively handled) just silently skips, same as a guest ticket.
+    const { rows: supplierUserRows } = await db.query(
+      "SELECT id FROM users WHERE supplier_id = $1 AND role = 'supplier' LIMIT 1",
+      [req.params.supplierId]
+    );
+    await createNotification({
+      userId: supplierUserRows[0]?.id,
+      type: 'supplier_message',
+      title: 'New message from Leap',
+      body: text.trim(),
+      linkType: 'supplier_message',
+      linkId: req.params.supplierId,
+    });
+
     res.status(201).json(message);
   } catch (err) {
     next(err);

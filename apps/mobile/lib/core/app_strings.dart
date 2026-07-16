@@ -75,6 +75,11 @@ class AppStrings {
     'filter_my_car': {'en': 'My car', 'ar': 'سيارتي'},
     'in_stock': {'en': 'In stock', 'ar': 'متوفر'},
     'no_reviews_yet': {'en': 'No reviews yet', 'ar': 'لا توجد تقييمات بعد'},
+
+    // ---- Notifications (new) ----
+    'notifications': {'en': 'Notifications', 'ar': 'الإشعارات'},
+    'no_notifications_yet': {'en': "You're all caught up.", 'ar': 'أنت على اطلاع بكل شيء.'},
+    'mark_all_read': {'en': 'Mark all read', 'ar': 'وضع علامة على الكل كمقروء'},
     'out_of_stock': {'en': 'Out of stock', 'ar': 'غير متوفر'},
     'add_a_vehicle_for_my_car_filter': {'en': 'Add a vehicle to see products for your car', 'ar': 'أضف مركبة لرؤية المنتجات المناسبة لسيارتك'},
     'no_products_yet': {'en': 'No products yet.', 'ar': 'لا توجد منتجات بعد.'},

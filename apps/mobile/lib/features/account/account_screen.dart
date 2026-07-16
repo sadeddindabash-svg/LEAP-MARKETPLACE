@@ -5,9 +5,32 @@ import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../core/language_state.dart';
+import '../../services/api_client.dart';
 
-class AccountScreen extends StatelessWidget {
+class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key});
+
+  @override
+  State<AccountScreen> createState() => _AccountScreenState();
+}
+
+class _AccountScreenState extends State<AccountScreen> {
+  int _unreadCount = 0;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadUnreadCount();
+  }
+
+  Future<void> _loadUnreadCount() async {
+    final token = context.read<AuthState>().token;
+    if (token == null) return;
+    try {
+      final count = await ApiClient().fetchUnreadNotificationCount(token);
+      if (mounted) setState(() => _unreadCount = count);
+    } catch (_) {} // non-critical -- the badge just stays at 0 rather than breaking the page
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +45,35 @@ class AccountScreen extends StatelessWidget {
     ];
 
     return Scaffold(
-      appBar: AppBar(title: Text(tr(context, 'account'))),
+      appBar: AppBar(
+        title: Text(tr(context, 'account')),
+        actions: [
+          if (auth.isLoggedIn)
+            Stack(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.notifications_none),
+                  onPressed: () => context.push('/notifications').then((_) => _loadUnreadCount()),
+                ),
+                if (_unreadCount > 0)
+                  Positioned(
+                    right: 6,
+                    top: 6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(color: LeapColors.signal, borderRadius: BorderRadius.circular(8)),
+                      constraints: const BoxConstraints(minWidth: 16),
+                      child: Text(
+                        _unreadCount > 9 ? '9+' : '$_unreadCount',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+        ],
+      ),
       body: ListView(
         children: [
           if (auth.isLoading)

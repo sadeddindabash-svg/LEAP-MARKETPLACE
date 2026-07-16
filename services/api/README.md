@@ -791,6 +791,61 @@ a nonexistent product is rejected with a real 404; removing works and
 removing again is idempotent; a buyer only ever sees their own real
 wishlist; and unauthenticated requests are rejected on every endpoint.
 
+## Real notifications (migration 019)
+
+**Confirmed scope, discussed before building**: triggered by order
+changes and message/ticket replies — a real, concrete decision made
+before writing any code (as opposed to Referral rewards, discussed at
+the same time but deliberately left for later, since it has genuine
+open business questions — what the reward actually is, what triggers
+it, whether it's capped — that shouldn't be guessed at in code).
+
+**4 real, named trigger points**, each wired directly into the existing
+endpoint where the real event actually happens — not a vague "whenever
+something changes" background job:
+1. A real sub-order status change to `shipped` or `delivered`
+   (`services/api/src/modules/supplier/routes.js`) → notifies the real
+   buyer. Part of the SAME transaction as the real status update.
+2. A real return case status change
+   (`services/api/src/modules/returns/routes.js`) → notifies the real
+   buyer. Links to the real ORDER, not the return case itself — there's
+   no separate return-case screen in the mobile app, but there is a
+   real order detail screen showing the return request inline.
+3. An admin's real reply to a buyer's support ticket
+   (`services/api/src/modules/support/routes.js`) → notifies the real
+   buyer. Skipped for a guest ticket (`buyer_id` is null) — no real
+   account to attach an in-app notification to.
+4. An admin's real reply to a supplier message
+   (`services/api/src/modules/supplier-messages/routes.js`) → notifies
+   the real supplier's linked user account (`users.supplier_id`).
+
+**A single shared `createNotification()` helper**
+(`services/api/src/modules/notifications/helpers.js`) used by all 4
+trigger sites, so the shape stays consistent rather than four separate
+ad-hoc `INSERT`s. Accepts an optional already-open transaction client so
+notification creation can be part of the SAME transaction as the real
+event that caused it (used by trigger #1) — not a separate best-effort
+step that could succeed even if the real underlying update rolls back.
+Silently no-ops when `userId` is null (a guest ticket/order) — an
+absent account isn't an error, just nothing to notify.
+
+**Real endpoints**: `GET /notifications/me` (most recent 50, newest
+first), `GET /notifications/me/unread-count` (powers a real badge
+without fetching and counting the entire list), `PATCH /notifications/me/:id/read`,
+`PATCH /notifications/me/read-all`. All scoped to the calling user's own
+`req.user.sub` — cross-user access to another user's notification is a
+real 404, not a leak.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/notifications.integration.test.js`
+(8 tests): each of the 4 real trigger points is verified independently
+(a real sub-order shipment, a real return case update, a real admin
+ticket reply, a real admin supplier-message reply all produce a real,
+correctly-typed notification for the correct real recipient); the real
+unread count reflects genuine state and decrements correctly when one is
+marked read; mark-all-read genuinely clears every real unread
+notification; cross-user access to another buyer's notification is
+rejected; and unauthenticated requests are rejected on every endpoint.
+
 ## Setup
 
 ```bash
@@ -874,9 +929,12 @@ src/
     │                       capped at 3, exactly-one-default invariant
     ├── wishlist/            Real wishlist (migration 018) -- reuses the
     │                       catalog module's real buyer product DTO helpers
+    ├── notifications/       Real notifications (migration 019) --
+    │                       triggered by 4 real, named events (order
+    │                       shipped/delivered, return status, admin
+    │                       ticket reply, admin supplier-message reply)
     ├── payment/            Stripe, Amazon Payment Services, PayPal, and
     │                       Google Pay (routed through Stripe) — BUY-040–044
-    └── notification/       SMS/email/push stub (BUY-051, SUP-032)
 ```
 
 ## Next steps to make this real

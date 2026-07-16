@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, optionalAuth } = require('../auth/middleware');
+const { createNotification } = require('../notifications/helpers');
 
 /**
  * Support module — BUY-060/061 (buyer <-> Platform support, logged and
@@ -106,7 +107,7 @@ router.post('/tickets/:id/messages', requireAuth, requireRole('admin'), async (r
     const { message } = req.body || {};
     if (!message) return res.status(400).json({ error: 'message is required' });
 
-    const ticketCheck = await db.query('SELECT id FROM support_tickets WHERE id = $1', [req.params.id]);
+    const ticketCheck = await db.query('SELECT id, buyer_id, subject FROM support_tickets WHERE id = $1', [req.params.id]);
     if (ticketCheck.rows.length === 0) return res.status(404).json({ error: 'Ticket not found' });
 
     await db.query(
@@ -114,6 +115,21 @@ router.post('/tickets/:id/messages', requireAuth, requireRole('admin'), async (r
       [req.params.id, message]
     );
     await db.query(`UPDATE support_tickets SET updated_at = now(), status = 'in_progress' WHERE id = $1 AND status = 'open'`, [req.params.id]);
+
+    // Real trigger #3 (of the 4 confirmed for notifications — see
+    // migration 019's header comment): an admin's real reply to a
+    // buyer's support ticket notifies the real buyer. Skipped for a
+    // guest ticket (buyer_id is null) -- no real account to attach a
+    // notification to.
+    await createNotification({
+      userId: ticketCheck.rows[0].buyer_id,
+      type: 'ticket_reply',
+      title: 'New reply on your support ticket',
+      body: `"${ticketCheck.rows[0].subject}": ${message}`,
+      linkType: 'ticket',
+      linkId: req.params.id,
+    });
+
     res.status(201).json({ senderRole: 'admin', message });
   } catch (err) {
     next(err);

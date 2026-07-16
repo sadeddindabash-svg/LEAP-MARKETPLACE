@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, optionalAuth } = require('../auth/middleware');
+const { createNotification } = require('../notifications/helpers');
 
 /**
  * Returns/disputes module — BUY-053, SUP-030, and the admin arbitration
@@ -299,6 +300,23 @@ router.patch('/:id', requireAuth, requireRole('admin'), async (req, res, next) =
       [status, req.params.id]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Return case not found' });
+
+    // Real trigger #2 (of the 4 confirmed for notifications — see
+    // migration 019's header comment): a real return case status
+    // change notifies the real buyer. Skipped for a guest return case
+    // (buyer_id is null) -- no real account to attach a notification to.
+    // Links to the real ORDER, not the return case itself -- the mobile
+    // app has a real order detail screen showing the return request
+    // inline, but no separate return-case-specific screen to navigate to.
+    await createNotification({
+      userId: rows[0].buyer_id,
+      type: 'return_status',
+      title: 'Your return request was updated',
+      body: `Return ${rows[0].id} is now ${status}.`,
+      linkType: 'order',
+      linkId: rows[0].order_id,
+    });
+
     res.json(toCaseSummaryDto(rows[0]));
   } catch (err) {
     next(err);

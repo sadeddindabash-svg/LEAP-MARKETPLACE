@@ -464,6 +464,25 @@ real `GridView` (`SliverGridDelegateWithFixedCrossAxisCount`,
 `crossAxisCount: 2`) instead of a single-column list — two cards per
 row, wrapping into further rows, matching the confirmed design exactly.
 
+## Real notifications (new)
+
+**Confirmed scope, discussed before building**: triggered by order
+changes and message/ticket replies — see `services/api/README.md`'s
+"Real notifications" section for the 4 real, named trigger points.
+
+- **A real bell icon with an unread badge on the Account page's app
+  bar** — the exact placement confirmed rather than assumed. Shows a
+  real count from `GET /notifications/me/unread-count`, capped at "9+"
+  display rather than an ever-growing number.
+- **`lib/features/account/notifications_screen.dart`** (new): a real
+  list, unread ones visually distinguished (filled bell icon, bold
+  title). Tapping one marks it read and navigates to the real thing
+  it's about — an order-status or return-status notification opens the
+  real order detail page; a ticket-reply notification opens the real
+  ticket thread.
+- A real "Mark all read" action, only shown when there's genuinely
+  something unread to clear.
+
 ## Setup
 
 1. Install Flutter: https://docs.flutter.dev/get-started/install

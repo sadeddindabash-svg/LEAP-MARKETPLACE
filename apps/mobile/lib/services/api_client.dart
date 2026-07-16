@@ -466,6 +466,31 @@ class ApiClient {
     final response = await _client.delete(Uri.parse('$baseUrl/wishlist/me/$productId'), headers: _authHeaders(token));
     if (response.statusCode != 204) throw ApiException('Failed to remove from wishlist (${response.statusCode})');
   }
+
+  /// Real notifications — triggered by real order changes and message/
+  /// ticket replies (see services/api/src/modules/notifications/).
+  Future<List<dynamic>> fetchNotifications(String token) async {
+    final response = await _client.get(Uri.parse('$baseUrl/notifications/me'), headers: _authHeaders(token));
+    if (response.statusCode != 200) throw ApiException('Failed to load notifications (${response.statusCode})');
+    return jsonDecode(response.body) as List<dynamic>;
+  }
+
+  Future<int> fetchUnreadNotificationCount(String token) async {
+    final response = await _client.get(Uri.parse('$baseUrl/notifications/me/unread-count'), headers: _authHeaders(token));
+    if (response.statusCode != 200) throw ApiException('Failed to load unread count (${response.statusCode})');
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return body['count'] as int;
+  }
+
+  Future<void> markNotificationRead(String token, int id) async {
+    final response = await _client.patch(Uri.parse('$baseUrl/notifications/me/$id/read'), headers: _authHeaders(token));
+    if (response.statusCode != 200) throw ApiException('Failed to mark notification read (${response.statusCode})');
+  }
+
+  Future<void> markAllNotificationsRead(String token) async {
+    final response = await _client.patch(Uri.parse('$baseUrl/notifications/me/read-all'), headers: _authHeaders(token));
+    if (response.statusCode != 204) throw ApiException('Failed to mark all notifications read (${response.statusCode})');
+  }
 }
 
 class ApiException implements Exception {
