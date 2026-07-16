@@ -329,3 +329,34 @@ export async function deletePart(token, id) {
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
   return data;
 }
+
+// ---------------- Real supplier <-> platform messaging (new) ----------------
+// Bidirectional auto-translation (Chinese <-> English) -- see
+// services/api/src/modules/supplier-messages/translate.js for the full
+// honest state of the translation integration itself.
+
+export async function fetchSupplierMessagesInbox(token) {
+  const response = await fetch(`${API_BASE_URL}/supplier-messages/admin`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) throw new Error(`Failed to load inbox (${response.status})`);
+  return response.json();
+}
+
+export async function fetchSupplierMessageThread(token, supplierId) {
+  const response = await fetch(`${API_BASE_URL}/supplier-messages/admin/${supplierId}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) throw new Error(`Failed to load messages (${response.status})`);
+  return response.json();
+}
+
+export async function sendSupplierMessage(token, supplierId, text) {
+  const response = await fetch(`${API_BASE_URL}/supplier-messages/admin/${supplierId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ text }),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}

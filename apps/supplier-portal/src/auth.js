@@ -166,3 +166,16 @@ export async function fetchPartsForCategory(categoryId) {
   if (!response.ok) throw new Error(`Failed to load parts (${response.status})`);
   return response.json();
 }
+
+// ---------------- Real supplier <-> platform messaging (new) ----------------
+// Bidirectional auto-translation (Chinese <-> English) -- see
+// services/api/src/modules/supplier-messages/translate.js for the full
+// honest state of the translation integration itself.
+
+export function fetchMyMessages(token) {
+  return authedGet("/supplier-messages/me", token);
+}
+
+export function sendMyMessage(token, text) {
+  return authedMutate("POST", "/supplier-messages/me", token, { text });
+}

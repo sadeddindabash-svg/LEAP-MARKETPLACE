@@ -11,10 +11,11 @@ has **real authentication, a fully structured Products submission flow**
 (cascading Brand->Model->Generation->Engine/Transmission fitment, mandatory
 photo upload with real resolution checks, Chinese-language submission with
 admin translation approval), **real order fulfillment** (view +
-status/tracking updates), **real return/dispute case handling, and a real
-Overview page** — the supplier side of the three-party marketplace is no
-longer just a disconnected mock. Messages, Finance, and Settings
-(partially) are still mock data.
+status/tracking updates), **real return/dispute case handling, a real
+Overview page, and real bidirectional messaging with the platform team**
+(auto-translated Chinese <-> English — see "Messages page" below) — the
+supplier side of the three-party marketplace is no longer just a
+disconnected mock. Finance and Settings (partially) are still mock data.
 The working 中文/EN language toggle (bilingual `STRINGS` dictionary
 pattern) is preserved throughout, including on the new login screen.
 
@@ -222,6 +223,27 @@ the admin dashboard's Returns page.
   the relayed conversation, submit a reply) is preserved from the
   original prototype design.
 
+## Messages page (new — real bidirectional Chinese/English messaging)
+
+Was a fully fake, purely local chat mock — never called the backend at
+all, with a hardcoded canned reply that appeared after a `setTimeout`,
+nothing persisted anywhere. Now real — see
+`services/api/README.md`'s "Real supplier messaging" section for the
+full backend design.
+
+- **Real send/receive**: a supplier writes in Chinese; admin's replies
+  (written in English) show up auto-translated to Chinese by default,
+  with a toggle to see admin's real English original — auto-translation
+  isn't perfect, a supplier should be able to check it, not just trust
+  it blindly.
+- **Honest about translation availability**: a message where
+  translation is genuinely unavailable (no live Google Translate API
+  credentials configured in this environment — see the backend section
+  for the real discussion behind that choice) says so plainly, showing
+  the real original text rather than nothing or something wrong.
+- **Deliberately separate from any buyer-facing system** — this is
+  supplier ↔ platform, a different relationship than buyer support.
+
 ## Setup
 
 ```bash
@@ -237,13 +259,20 @@ npm run dev       # http://localhost:5173
 npm test
 ```
 
-Seven test files, 37 tests total, all passing:
+Eight test files, 41 tests total, all passing:
 - `src/AddProductCascade.test.jsx` (2, mocked, full component tree) —
   the Part dropdown shows real parts for the default selected Category
   (and doesn't show a different category's parts pre-loaded), and
   changing the Category real-fetches and swaps in that category's real
   parts — the same cascading pattern the Brand → Model → Generation
   fitment picker already used, now applied to Category → Part too.
+- `src/MessagesFlow.test.jsx` (4, mocked, full component tree) — a real
+  message from admin renders translated with an honest "translation
+  unavailable" note when no real translation exists; a real translated
+  message shows the translation by default with a working "show
+  original" toggle; sending a real message calls the real send endpoint
+  and appears immediately; a real empty state shows when there are no
+  messages yet.
 - `src/supplierPortal.integration.test.js` (10, REAL backend, no mocking):
   login with a real supplier JWT including `supplierId`, a buyer account
   correctly rejected from supplier endpoints, products scoped to only this
@@ -305,12 +334,9 @@ against the updated backend to confirm nothing broke there — still
 
 ## Next steps to make this real
 
-1. Wire Messages and Finance/Payouts pages — each needs backend work
-   first: Messages needs a supplier-facing thread (the admin-side Tickets
-   module could potentially be extended, or this needs its own path),
-   and Payouts is blocked on the commission-rate decision (Charter
-   Section 1) — same reason the admin dashboard's Payouts page is still
-   mock.
+1. Wire the Finance/Payouts page — blocked on the commission-rate
+   decision (Charter Section 1) — same reason the admin dashboard's
+   Payouts page is still mock.
 2. Split `src/App.jsx` into separate files (pages/components) — same note
    as the admin dashboard; this file is large now.
 3. Add the OEM/fitment/description/image fields to real backend storage,

@@ -7,10 +7,10 @@ Real React (Vite) project for the platform operations tool. See
 
 This is the reference prototype (`docs/prototypes/leap_admin_dashboard_prototype.jsx`)
 dropped in as `src/App.jsx`, confirmed to **build successfully**, and now
-has **real authentication and eleven real pages** (Overview, Orders,
+has **real authentication and twelve real pages** (Overview, Orders,
 Suppliers, Moderation, Support Tickets, Returns, Vehicle Data, Hubs,
-Pricing, Flagged Shipments, Categories — all but the first three are
-entirely new, not in the original prototype at all) —
+Pricing, Flagged Shipments, Categories, Supplier Messages — all but the
+first three are entirely new, not in the original prototype at all) —
 full UI → API → database → UI slices. Payouts is still mock data
 (blocked on undecided commission rates — see Charter Section 1 — rather
 than a technical gap).
@@ -401,13 +401,35 @@ reference lists" section for the full backend design.
   pattern as everywhere else Arabic input is collected in this
   dashboard.
 
+## Supplier Messages page (new — real bidirectional Chinese/English messaging)
+
+Real messaging with suppliers, auto-translated both ways — see
+`services/api/README.md`'s "Real supplier messaging" section for the
+full backend design, including the real discussion behind choosing
+Google Cloud Translation over Baidu Translate and the honest state of
+that integration without live API credentials.
+
+- **A real inbox**: every supplier that has sent or received at least
+  one message, most recently active first, with a genuine
+  most-recent-message preview — not a static list.
+- **Real translation, with a toggle to the real original**: a
+  supplier's Chinese message shows the real English translation by
+  default; a button toggles to the real Chinese original, since
+  auto-translation isn't perfect and admin should be able to check it,
+  not just trust it blindly. A message where translation is genuinely
+  unavailable (no live API credentials configured in this environment)
+  says so plainly instead of showing nothing or something wrong.
+- **Deliberately separate from the buyer Support Tickets page** — that
+  system exists specifically to enforce buyers never contacting
+  suppliers directly; this is a different relationship entirely.
+
 ## Testing
 
 ```bash
 npm test
 ```
 
-Twenty-eight test files, 167 tests total, all passing:
+Thirty test files, 180 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/orders.integration.test.js` (4, REAL backend) — order list/detail
@@ -589,6 +611,22 @@ Twenty-eight test files, 167 tests total, all passing:
   create endpoint and shows up immediately, clicking a category drills
   into its real parts list, adding a new part inside a category works,
   and a real empty state shows for a category with no parts yet.
+- `src/supplierMessages.integration.test.js` (7, REAL backend) — a
+  supplier's message stores the real original Chinese text and is
+  honest about translation being unavailable rather than fabricating
+  one; an admin reply is correctly marked English-original/Chinese-
+  target; a supplier only ever sees their own thread while admin can
+  view any specific supplier's by id; non-admins are rejected from the
+  admin inbox and reply endpoint; replying to a nonexistent supplier is
+  a real 404, not a raw database error; empty/whitespace-only text is
+  rejected on both send endpoints; and the real admin inbox lists a
+  supplier with a genuine most-recent-message preview.
+- `src/SupplierMessagesFlow.test.jsx` (4, mocked, full component tree) —
+  the real inbox renders a real supplier and message preview; opening
+  a thread shows the real translated text by default with a working
+  toggle to the real Chinese original; admin sending a real reply
+  calls the real send endpoint and it appears immediately; a real
+  empty state shows when no supplier has messaged yet.
 - `src/overview.integration.test.js` (5, REAL backend) — confirms
   unauthenticated and non-admin access are both rejected, checks the
   response shape matches what the real UI reads, and — the one that

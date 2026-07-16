@@ -601,6 +601,76 @@ for non-admins; a category with real products OR real parts still
 attached cannot be deleted (the exact bug above, confirmed fixed); and
 a real part a real product references cannot be deleted either.
 
+## Real supplier messaging with bidirectional auto-translation (migration 016)
+
+**Confirmed requirement**: a real messaging channel between suppliers
+and the Leap platform team — supplier writes in Chinese, admin reads it
+auto-translated to English; admin writes in English, supplier reads it
+auto-translated to Chinese.
+
+**Deliberately a SEPARATE system from `support_tickets`** (migration
+005) — that system exists specifically to enforce "buyers never contact
+suppliers directly." Supplier messaging is a genuinely different
+relationship (supplier ↔ platform, day-to-day), not a variant of buyer
+support, so it gets its own real table (`supplier_messages`) rather than
+being bolted onto tickets.
+
+**Confirmed design: translate ONCE at send time, store BOTH the
+original and the translation** — not translate-on-every-read. Faster,
+cheaper (no repeated API calls just to redisplay the same message), and
+the translation stays consistent even if the translation service's
+quality changes later. Either side can always see the real original
+text too, not just trust a translation blindly — same principle as the
+Moderation page showing a supplier's real Chinese original alongside
+the reviewed English translation.
+
+**Translation provider: Google Cloud Translation, confirmed after a
+real discussion, not assumed**. Baidu Translate was the initial
+recommendation specifically because it's more reliable from within
+mainland China — but once it was established this backend will NOT be
+hosted in China, that specific advantage doesn't apply, and Google was
+chosen instead. A real, acknowledged trade-off that came with that
+choice: Google costs more at volume (~$20/million characters vs
+Baidu's ~$7/million) — likely a non-issue given Google's free 500K
+characters/month tier for expected day-to-day chat volume, but not
+hidden either way.
+
+**Honest state of this integration, same category as the payment
+gateways (Stripe/APS/PayPal) and the pricing engine's FX rate**: the
+real REST call in `services/api/src/modules/supplier-messages/translate.js`
+is genuinely correct (Google Cloud Translation v2's documented API),
+but there is NO real `GOOGLE_TRANSLATE_API_KEY` configured in this
+environment — no live credentials were available to test against.
+Set that one environment variable when real credentials exist and it
+starts working with no code change. Until then, `translateText` returns
+a clear, honest "unavailable" result rather than fabricating a
+translation — every message stores that honestly too
+(`translation_status = 'unavailable'`, the real original text, no fake
+translated text), and the UI shows the real original with a clear
+"translation unavailable" note instead of silently showing nothing or
+something wrong. Both the real success path and the real failure path
+of the translation call were verified directly (a mocked Google API
+response for each), since no real credentials exist to test the actual
+live call end-to-end.
+
+**Real endpoints**: `GET`/`POST /supplier-messages/me` (supplier's own
+side, scoped to their own `supplierId`, same ownership-via-WHERE-clause
+pattern used throughout this project) and `GET /supplier-messages/admin`
+(a real inbox — every supplier with at least one message, most recently
+active first) / `GET`/`POST /supplier-messages/admin/:supplierId`
+(admin-only, any specific supplier's thread).
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/supplierMessages.integration.test.js`
+(7 tests): a supplier's message stores the real original Chinese text
+and is honest about translation being unavailable (not fabricated); an
+admin reply is correctly marked English-original/Chinese-target; a
+supplier only ever sees their own thread while admin can view any
+specific supplier's by id; non-admins are rejected from the admin
+inbox and reply endpoint; replying to a nonexistent supplier is a real
+404, not a raw database error; empty/whitespace-only text is rejected
+on both send endpoints; and the real admin inbox lists a supplier with
+a genuine most-recent-message preview.
+
 ## Setup
 
 ```bash
@@ -676,6 +746,10 @@ src/
     │                       engine (migration 014) — fee components, FX
     │                       rate, and the calculation itself; used live
     │                       by catalog, cart, and order
+    ├── supplier-messages/   Real supplier <-> platform messaging with
+    │                       bidirectional Chinese/English auto-
+    │                       translation (migration 016, Google Cloud
+    │                       Translation — no live API key configured)
     ├── payment/            Stripe, Amazon Payment Services, PayPal, and
     │                       Google Pay (routed through Stripe) — BUY-040–044
     └── notification/       SMS/email/push stub (BUY-051, SUP-032)

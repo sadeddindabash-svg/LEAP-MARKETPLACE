@@ -81,6 +81,7 @@ See `migrations/001_init.sql` for the full schema with comments. Summary:
 | `fx_rates` | One row per currency pair (migration 014); only `CNY_USD` is used today. Holds the real, manually-set exchange rate the pricing engine actually uses — see that module's header comment for why there's no live-rate API configured in this environment |
 | `product_categories` | Real, admin-managed major categories (migration 015) — id values match the hardcoded identifiers used since migration 001, so existing products' `category` values need no migration |
 | `category_parts` | Real, admin-managed parts scoped to a category (migration 015) — what a supplier picks from instead of typing free text into `products.part`, which stays plain text (validated against this table in application code, not a foreign key) |
+| `supplier_messages` | Real supplier ↔ platform messaging (migration 016), deliberately separate from `support_tickets` — see `services/api/README.md`'s "Real supplier messaging" section. Stores BOTH the real original text and its real translation (translated once at send time, not on every read) — `translated_text` is genuinely `NULL` when no real translation API credentials are configured, never a fabricated value |
 
 **Not yet covered** (add a future migration once these backend modules
 exist — currently only in the admin-dashboard/supplier-portal prototypes,

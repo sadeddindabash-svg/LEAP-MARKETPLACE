@@ -20,6 +20,7 @@ import {
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
   uploadProductImage, API_BASE_URL,
   fetchCategories, fetchPartsForCategory,
+  fetchMyMessages, sendMyMessage,
 } from "./auth";
 
 /* ============================================================
@@ -112,9 +113,11 @@ const STRINGS = {
     },
     messages: {
       title: "消息中心", subtitle: "仅可与 Leap 平台沟通，系统不提供与买家的直接聊天渠道",
-      inputPlaceholder: "输入消息…",
-      initial: "您好，这里是 Leap 平台运营。关于订单 LP-208205 的售后问题，能否请您核实一下该刹车片的适配车型数据？",
-      autoReply: "收到，我们会尽快跟进并同步买家。",
+      inputPlaceholder: "输入消息（中文）…",
+      loading: "加载中…", couldNotLoad: "无法加载消息：",
+      noMessagesYet: "暂无消息。开始对话吧。",
+      showOriginal: "显示原文", showTranslation: "显示译文",
+      translationUnavailable: "（自动翻译暂不可用 — 显示原文）",
     },
     finance: {
       title: "财务与结算", subtitle: "结算币种：人民币 (¥) · 结算周期：每半月一次",
@@ -198,9 +201,11 @@ const STRINGS = {
     },
     messages: {
       title: "Messages", subtitle: "You can only message the Leap platform team \u2014 there is no direct buyer chat",
-      inputPlaceholder: "Type a message…",
-      initial: "Hi! This is Leap Platform Support. For the return case on order LP-208205, could you confirm the fitment data for this brake pad?",
-      autoReply: "Got it \u2014 we'll follow up and keep the buyer updated.",
+      inputPlaceholder: "Type a message (Chinese)…",
+      loading: "Loading…", couldNotLoad: "Could not load messages: ",
+      noMessagesYet: "No messages yet. Start the conversation.",
+      showOriginal: "Show original", showTranslation: "Show translation",
+      translationUnavailable: "(auto-translation unavailable — showing original)",
     },
     finance: {
       title: "Finance & Payouts", subtitle: "Settlement currency: RMB (\u00a5) · Payout cycle: twice monthly",
@@ -1228,32 +1233,88 @@ function ReturnsPage() {
 }
 
 function MessagesPage() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const font = useBodyFont();
-  const [messages, setMessages] = useState([{ from: "platform", text: t.messages.initial }]);
-  const [lastLang, setLastLang] = useState(t);
+  const { onSessionExpired } = useSupplier();
+  const [messages, setMessages] = useState(null);
+  const [errorMessage, setErrorMessage] = useState(null);
   const [input, setInput] = useState("");
-  if (lastLang !== t) { setMessages([{ from: "platform", text: t.messages.initial }]); setLastLang(t); }
-  const send = () => {
-    if (!input.trim()) return;
-    setMessages(m => [...m, { from: "me", text: input }]);
-    setInput("");
-    setTimeout(() => setMessages(m => [...m, { from: "platform", text: t.messages.autoReply }]), 700);
+  const [isSending, setIsSending] = useState(false);
+  // Per-message "show original instead of the translation" toggle --
+  // auto-translation isn't perfect, either side should be able to see
+  // the real original text on demand, not just trust a translation
+  // blindly (same principle as Moderation showing a supplier's real
+  // Chinese original alongside the reviewed English translation).
+  const [showOriginalFor, setShowOriginalFor] = useState({});
+
+  const load = () => {
+    fetchMyMessages(getStoredToken())
+      .then(setMessages)
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+      });
   };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const send = async () => {
+    if (!input.trim() || isSending) return;
+    setIsSending(true);
+    setErrorMessage(null);
+    try {
+      await sendMyMessage(getStoredToken(), input.trim());
+      setInput("");
+      load(); // real refetch -- shows the real stored message, including its real translation status
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <TopBar title={t.messages.title} subtitle={t.messages.subtitle} />
       <div style={{ flex: 1, padding: 24, display: "flex", flexDirection: "column", gap: 12, overflowY: "auto" }}>
-        {messages.map((m, i) => (
-          <div key={i} style={{ alignSelf: m.from === "me" ? "flex-end" : "flex-start", maxWidth: "60%" }}>
-            <div style={{ ...font, fontSize: 13, padding: "10px 14px", borderRadius: 12, lineHeight: 1.5, background: m.from === "me" ? C.signal : "#fff", color: m.from === "me" ? "#fff" : C.ink, border: m.from === "me" ? "none" : `1px solid ${C.line}` }}>{m.text}</div>
-          </div>
-        ))}
+        {errorMessage && <div style={{ ...font, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10 }}>{t.messages.couldNotLoad}{errorMessage}</div>}
+        {messages === null && !errorMessage && <div style={{ ...font, fontSize: 13, color: C.muted }}>{t.messages.loading}</div>}
+        {messages !== null && messages.length === 0 && <div style={{ ...font, fontSize: 13, color: C.muted }}>{t.messages.noMessagesYet}</div>}
+        {messages !== null && messages.map((m) => {
+          const isMe = m.senderRole === "supplier";
+          // The supplier's OWN messages show their own real original
+          // (Chinese) text by default -- no need to translate your own
+          // words back to yourself. The admin's messages show the real
+          // translation (Chinese) by default, since that's what the
+          // supplier actually needs to read.
+          const defaultText = isMe ? m.originalText : (m.translatedText || m.originalText);
+          const showingOriginal = showOriginalFor[m.id] || false;
+          const displayText = (!isMe && showingOriginal) ? m.originalText : defaultText;
+          const canToggle = !isMe && m.translationStatus === "success";
+          return (
+            <div key={m.id} style={{ alignSelf: isMe ? "flex-end" : "flex-start", maxWidth: "70%" }}>
+              <div style={{ ...font, fontSize: 13, padding: "10px 14px", borderRadius: 12, lineHeight: 1.5, background: isMe ? C.signal : "#fff", color: isMe ? "#fff" : C.ink, border: isMe ? "none" : `1px solid ${C.line}` }}>
+                {displayText}
+              </div>
+              {!isMe && m.translationStatus === "unavailable" && (
+                <div style={{ ...font, fontSize: 10.5, color: C.muted, marginTop: 3 }}>{t.messages.translationUnavailable}</div>
+              )}
+              {canToggle && (
+                <button
+                  onClick={() => setShowOriginalFor((prev) => ({ ...prev, [m.id]: !prev[m.id] }))}
+                  style={{ ...font, fontSize: 10.5, color: C.torque, background: "none", border: "none", cursor: "pointer", padding: 0, marginTop: 3 }}
+                >
+                  {showingOriginal ? t.messages.showTranslation : t.messages.showOriginal}
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
       <div style={{ display: "flex", gap: 8, padding: 16, borderTop: `1px solid ${C.line}`, background: C.card }}>
         <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && send()} placeholder={t.messages.inputPlaceholder}
           style={{ ...font, flex: 1, border: `1px solid ${C.line}`, borderRadius: 20, padding: "10px 16px", fontSize: 13, outline: "none" }} />
-        <button onClick={send} style={{ width: 40, height: 40, borderRadius: "50%", background: C.signal, border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+        <button onClick={send} disabled={isSending} style={{ width: 40, height: 40, borderRadius: "50%", background: isSending ? "#D1D5DB" : C.signal, border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: isSending ? "default" : "pointer" }}>
           <Send size={15} color="#fff" />
         </button>
       </div>

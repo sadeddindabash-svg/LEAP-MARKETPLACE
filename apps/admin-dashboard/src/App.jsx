@@ -7,13 +7,14 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchFeeComponents, createFeeComponent, updateFeeComponent, deleteFeeComponent, fetchFxRate, updateFxRate, previewPricing,
   fetchFlaggedShipments,
   fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart,
+  fetchSupplierMessagesInbox, fetchSupplierMessageThread, sendSupplierMessage,
 } from "./auth";
 import {
   LayoutGrid, ShoppingBag, Store, PackageSearch, Wallet, LifeBuoy, Settings,
   Search, Bell, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Truck,
   CheckCircle2, XCircle, Clock, AlertTriangle, MoreHorizontal, ArrowUpRight,
   Filter as FilterIcon, Download, Check, X, MessageSquare, Star, Globe, Users,
-  CreditCard, ExternalLink, ChevronLeft, RotateCcw, Warehouse, Calculator, Layers
+  CreditCard, ExternalLink, ChevronLeft, RotateCcw, Warehouse, Calculator, Layers, Send
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -1707,6 +1708,172 @@ function CategoryPartsPage({ category, onBack, onSessionExpired }) {
   );
 }
 
+// Real supplier <-> platform messaging (new). Bidirectional
+// auto-translation (Chinese <-> English) -- see
+// services/api/src/modules/supplier-messages/translate.js for the full
+// honest state of that integration. Deliberately separate from the
+// buyer Support Tickets page -- that system exists specifically to
+// enforce buyers never contacting suppliers directly; this is a
+// genuinely different relationship.
+function SupplierMessagesPage({ onSessionExpired }) {
+  const [inbox, setInbox] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [openSupplier, setOpenSupplier] = useState(null); // {supplierId, supplierName}
+
+  const load = () => {
+    setLoadState("loading");
+    fetchSupplierMessagesInbox(getStoredToken())
+      .then((data) => { setInbox(data); setLoadState("ready"); })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (openSupplier) {
+    return (
+      <SupplierMessageThreadPage
+        supplierId={openSupplier.supplierId}
+        supplierName={openSupplier.supplierName}
+        onBack={() => { setOpenSupplier(null); load(); }}
+        onSessionExpired={onSessionExpired}
+      />
+    );
+  }
+
+  return (
+    <div>
+      <TopBar title="Supplier Messages" subtitle="Real bidirectional messaging with suppliers — Chinese and English, auto-translated both ways" />
+      <div style={{ padding: 24 }}>
+        {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>}
+        {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>Loading…</div>}
+        {loadState === "ready" && inbox.length === 0 && (
+          <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>No supplier messages yet.</div></Card>
+        )}
+        {loadState === "ready" && inbox.length > 0 && (
+          <Card>
+            <div style={{ padding: 6 }}>
+              {inbox.map((entry, i) => (
+                <div
+                  key={entry.supplierId}
+                  onClick={() => setOpenSupplier({ supplierId: entry.supplierId, supplierName: entry.supplierName })}
+                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 12px", borderBottom: i < inbox.length - 1 ? `1px solid ${C.line}` : "none", cursor: "pointer" }}
+                >
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ ...body, fontSize: 13.5, fontWeight: 700, color: C.ink }}>{entry.supplierName}</div>
+                    <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{entry.lastMessagePreview}</div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ ...body, fontSize: 11, color: C.muted, whiteSpace: "nowrap" }}>{new Date(entry.lastMessageAt).toLocaleString()}</span>
+                    <ChevronRight size={16} color={C.muted} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SupplierMessageThreadPage({ supplierId, supplierName, onBack, onSessionExpired }) {
+  const [messages, setMessages] = useState(null);
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [input, setInput] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const [showOriginalFor, setShowOriginalFor] = useState({});
+
+  const load = () => {
+    fetchSupplierMessageThread(getStoredToken(), supplierId)
+      .then(setMessages)
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+      });
+  };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const send = async () => {
+    if (!input.trim() || isSending) return;
+    setIsSending(true);
+    setErrorMessage(null);
+    try {
+      await sendSupplierMessage(getStoredToken(), supplierId, input.trim());
+      setInput("");
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 24px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
+        <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
+        <div>
+          <div style={{ ...body, fontSize: 11.5, color: C.muted }}>Supplier Messages</div>
+          <div style={{ ...disp, fontSize: 18, fontWeight: 700, color: C.ink }}>{supplierName}</div>
+        </div>
+      </div>
+      <div style={{ flex: 1, padding: 24, display: "flex", flexDirection: "column", gap: 12, overflowY: "auto" }}>
+        {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10 }}>{errorMessage}</div>}
+        {messages === null && !errorMessage && <div style={{ ...body, fontSize: 13, color: C.muted }}>Loading…</div>}
+        {messages !== null && messages.length === 0 && <div style={{ ...body, fontSize: 13, color: C.muted }}>No messages yet.</div>}
+        {messages !== null && messages.map((m) => {
+          const isMe = m.senderRole === "admin";
+          // Admin's OWN messages show their own real English original
+          // by default. A supplier's messages show the real Chinese ->
+          // English TRANSLATION by default, since that's what admin
+          // actually needs to read -- with a toggle to see the real
+          // Chinese original, since auto-translation isn't perfect and
+          // admin should be able to check it, not just trust it blindly.
+          const defaultText = isMe ? m.originalText : (m.translatedText || m.originalText);
+          const showingOriginal = showOriginalFor[m.id] || false;
+          const displayText = (!isMe && showingOriginal) ? m.originalText : defaultText;
+          const canToggle = !isMe && m.translationStatus === "success";
+          return (
+            <div key={m.id} style={{ alignSelf: isMe ? "flex-end" : "flex-start", maxWidth: "65%" }}>
+              <div style={{ ...body, fontSize: 13, padding: "10px 14px", borderRadius: 12, lineHeight: 1.5, background: isMe ? C.signal : "#fff", color: isMe ? "#fff" : C.ink, border: isMe ? "none" : `1px solid ${C.line}` }}>
+                {displayText}
+              </div>
+              {!isMe && m.translationStatus === "unavailable" && (
+                <div style={{ ...body, fontSize: 10.5, color: C.muted, marginTop: 3 }}>(auto-translation unavailable — showing original Chinese)</div>
+              )}
+              {canToggle && (
+                <button
+                  onClick={() => setShowOriginalFor((prev) => ({ ...prev, [m.id]: !prev[m.id] }))}
+                  style={{ ...body, fontSize: 10.5, color: C.torque, background: "none", border: "none", cursor: "pointer", padding: 0, marginTop: 3 }}
+                >
+                  {showingOriginal ? "Show translation" : "Show original (Chinese)"}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", gap: 8, padding: 16, borderTop: `1px solid ${C.line}`, background: C.card }}>
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && send()}
+          placeholder="Type a message (English)…"
+          style={{ ...body, flex: 1, border: `1px solid ${C.line}`, borderRadius: 20, padding: "10px 16px", fontSize: 13, outline: "none" }}
+        />
+        <button onClick={send} disabled={isSending} style={{ width: 40, height: 40, borderRadius: "50%", background: isSending ? "#D1D5DB" : C.signal, border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: isSending ? "default" : "pointer" }}>
+          <Send size={15} color="#fff" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function PayoutsPage() {
   const totalPending = PAYOUTS.reduce((s, p) => s + p.pending, 0);
   return (
@@ -2206,6 +2373,7 @@ const NAV = [
   { id: "returns", label: "Returns", icon: RotateCcw },
   { id: "vehicleData", label: "Vehicle Data", icon: Truck },
   { id: "categories", label: "Categories", icon: Layers },
+  { id: "supplierMessages", label: "Supplier Messages", icon: MessageSquare },
   { id: "hubs", label: "Hubs", icon: Warehouse },
   { id: "pricing", label: "Pricing", icon: Calculator },
   { id: "flagged", label: "Flagged Shipments", icon: AlertTriangle },
@@ -2238,6 +2406,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   else if (page === "returns") content = <ReturnsPage onOpenCase={setOpenCase} onSessionExpired={onLogout} />;
   else if (page === "vehicleData") content = <VehicleDataPage onSessionExpired={onLogout} />;
   else if (page === "categories") content = <CategoriesPage onSessionExpired={onLogout} />;
+  else if (page === "supplierMessages") content = <SupplierMessagesPage onSessionExpired={onLogout} />;
   else if (page === "hubs") content = <HubsPage onSessionExpired={onLogout} />;
   else if (page === "pricing") content = <PricingPage onSessionExpired={onLogout} />;
   else if (page === "flagged") content = <FlaggedShipmentsPage onOpenOrder={setOpenOrder} onSessionExpired={onLogout} />;
