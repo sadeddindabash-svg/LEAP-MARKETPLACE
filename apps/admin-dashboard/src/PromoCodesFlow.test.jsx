@@ -72,6 +72,22 @@ describe('Admin Promo Codes page — real general promotions engine (mocked fetc
     await waitFor(() => expect(screen.getByText('FALL20')).toBeInTheDocument());
   });
 
+  it('CRITICAL: creating a real "new users only" targeted code sends the real flag and shows the real targeting summary', async () => {
+    globalThis.fetch = mockFetchRouter();
+    render(<LeapAdminApp />);
+    await login();
+
+    fireEvent.click(screen.getByRole('button', { name: /promo codes/i }));
+    await waitFor(() => screen.getByPlaceholderText(/code \(e\.g\./i));
+    fireEvent.change(screen.getByPlaceholderText(/code \(e\.g\./i), { target: { value: 'WELCOME15' } });
+    fireEvent.change(screen.getByPlaceholderText(/10 \(%\)/i), { target: { value: '15' } });
+    fireEvent.click(screen.getByText(/new users only/i));
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
+
+    await waitFor(() => expect(screen.getByText('WELCOME15')).toBeInTheDocument());
+    expect(screen.getByText(/new users only/i, { selector: 'div' })).toBeInTheDocument();
+  });
+
   it('CRITICAL: deactivating a code calls the real update endpoint and shows Inactive', async () => {
     globalThis.fetch = mockFetchRouter();
     render(<LeapAdminApp />);

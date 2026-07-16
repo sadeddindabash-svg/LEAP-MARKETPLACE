@@ -443,6 +443,14 @@ scope beyond referral rewards alone.
 - Each code shows its real source (`Admin` or `Referral`) so it's
   immediately clear which codes came from a real customer earning a
   reward vs. a real campaign you configured yourself.
+- **Real audience targeting (migration 021), confirmed via a real list
+  presented before building**: 4 combinable segments — new users only,
+  a minimum lifetime spend, a minimum real order count, and win-back
+  (inactive for a minimum number of days). All optional and
+  combinable — set none for a code open to everyone, or combine
+  several for something like "loyal customers who haven't ordered in
+  60+ days." Each code's real targeting summary shows directly in the
+  list, e.g. "$100+ lifetime spend · 3+ real orders."
 
 ## Testing
 
@@ -450,7 +458,7 @@ scope beyond referral rewards alone.
 npm test
 ```
 
-Thirty-six test files, 224 tests total, all passing:
+Thirty-six test files, 231 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/orders.integration.test.js` (4, REAL backend) — order list/detail
@@ -648,7 +656,7 @@ Thirty-six test files, 224 tests total, all passing:
   toggle to the real Chinese original; admin sending a real reply
   calls the real send endpoint and it appears immediately; a real
   empty state shows when no supplier has messaged yet.
-- `src/promotions.integration.test.js` (11, REAL backend) — a fresh
+- `src/promotions.integration.test.js` (17, REAL backend) — a fresh
   buyer gets a real, unique referral code starting at zero real
   referrals; the FULL real referral loop end-to-end (signup with a
   real code → the referred person's real first order → the referrer
@@ -660,14 +668,24 @@ Thirty-six test files, 224 tests total, all passing:
   exactly; a real per-buyer usage limit is enforced; a real total
   usage cap is enforced across DIFFERENT buyers, not just per-buyer; a
   real expired code and a real deactivated code are both rejected;
-  non-admins cannot manage promo codes; and a real code with genuine
-  redemptions cannot be deleted, only deactivated.
-- `src/PromoCodesFlow.test.jsx` (4, mocked, full component tree) —
+  non-admins cannot manage promo codes; a real code with genuine
+  redemptions cannot be deleted, only deactivated; plus 6 real audience-
+  targeting tests (migration 021) — a real "new users only" code
+  succeeds for a genuinely new buyer and is rejected the moment they
+  have any real order; a real minimum-spend and a real minimum-order-
+  count code each reject a buyer below the real threshold and succeed
+  once they genuinely cross it (verified by actually placing enough
+  real orders, not asserting the math); a real win-back code rejects a
+  buyer who ordered too recently; a guest checkout is rejected from any
+  real targeted code; and a code with no targeting set remains open to
+  everyone.
+- `src/PromoCodesFlow.test.jsx` (5, mocked, full component tree) —
   renders the real seeded promo code; creating a new percentage code
-  calls the real create endpoint and shows up immediately;
-  deactivating a code calls the real update endpoint and shows
-  "Inactive"; a real empty state shows when there are no promo codes
-  yet.
+  calls the real create endpoint and shows up immediately; creating a
+  real "new users only" targeted code sends the real flag and shows
+  the real targeting summary; deactivating a code calls the real
+  update endpoint and shows "Inactive"; a real empty state shows when
+  there are no promo codes yet.
 - `src/overview.integration.test.js` (5, REAL backend) — confirms
   unauthenticated and non-admin access are both rejected, checks the
   response shape matches what the real UI reads, and — the one that

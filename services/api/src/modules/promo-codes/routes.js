@@ -22,6 +22,11 @@ function toPromoCodeDto(row) {
     expiresAt: row.expires_at,
     isActive: row.is_active,
     createdAt: row.created_at,
+    // Real audience targeting (migration 021) -- combinable, AND logic.
+    requireNewUser: row.require_new_user,
+    minTotalSpend: row.min_total_spend == null ? null : Number(row.min_total_spend),
+    minOrderCount: row.min_order_count,
+    minInactiveDays: row.min_inactive_days,
   };
 }
 
@@ -36,7 +41,7 @@ router.get('/', requireAuth, requireRole('admin'), async (req, res, next) => {
 
 router.post('/', requireAuth, requireRole('admin'), async (req, res, next) => {
   try {
-    const { code, type, value, maxTotalUses, maxUsesPerBuyer, expiresAt } = req.body || {};
+    const { code, type, value, maxTotalUses, maxUsesPerBuyer, expiresAt, requireNewUser, minTotalSpend, minOrderCount, minInactiveDays } = req.body || {};
     if (!code || !type) return res.status(400).json({ error: 'code and type are required' });
     if (!['percentage', 'flat', 'free_shipping'].includes(type)) {
       return res.status(400).json({ error: 'type must be one of: percentage, flat, free_shipping' });
@@ -46,9 +51,12 @@ router.post('/', requireAuth, requireRole('admin'), async (req, res, next) => {
     }
 
     await db.query(
-      `INSERT INTO promo_codes (code, type, value, source, created_by_admin_id, max_total_uses, max_uses_per_buyer, expires_at)
-       VALUES ($1, $2, $3, 'admin', $4, $5, $6, $7)`,
-      [code, type, type === 'free_shipping' ? null : value, req.user.sub, maxTotalUses || null, maxUsesPerBuyer || 1, expiresAt || null]
+      `INSERT INTO promo_codes (code, type, value, source, created_by_admin_id, max_total_uses, max_uses_per_buyer, expires_at, require_new_user, min_total_spend, min_order_count, min_inactive_days)
+       VALUES ($1, $2, $3, 'admin', $4, $5, $6, $7, $8, $9, $10, $11)`,
+      [
+        code, type, type === 'free_shipping' ? null : value, req.user.sub, maxTotalUses || null, maxUsesPerBuyer || 1, expiresAt || null,
+        Boolean(requireNewUser), minTotalSpend || null, minOrderCount || null, minInactiveDays || null,
+      ]
     );
     const { rows } = await db.query('SELECT * FROM promo_codes WHERE code = $1', [code]);
     res.status(201).json(toPromoCodeDto(rows[0]));

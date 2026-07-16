@@ -181,7 +181,7 @@ describe.runIf(backendUp)('general promotions engine (referral rewards + admin p
     expect(createRes.status).toBe(403);
   });
 
-  it('CRITICAL: a real promo code with genuine redemptions cannot be deleted, only deactivated', async () => {
+  it('CRITICAL: a real code with genuine redemptions cannot be deleted, only deactivated', async () => {
     const { token: adminToken } = await login('admin@leap.dev', 'admin_dev_password_123');
     const uniqueCode = `NODELETE${Date.now()}`;
     await fetch(`${BACKEND_URL}/promo-codes`, {
@@ -195,5 +195,111 @@ describe.runIf(backendUp)('general promotions engine (referral rewards + admin p
       method: 'DELETE', headers: { Authorization: `Bearer ${adminToken}` },
     });
     expect(deleteRes.status).toBe(409);
+  });
+
+  // ---------------- Real audience targeting (migration 021) ----------------
+  // CONFIRMED SCOPE: 4 combinable segments (AND logic) -- new users,
+  // high-value/loyal customers, frequent buyers, win-back/inactive.
+
+  it('CRITICAL: a real "new users only" code succeeds for a genuinely new buyer and is rejected once they have any real order', async () => {
+    const { token: adminToken } = await login('admin@leap.dev', 'admin_dev_password_123');
+    const uniqueCode = `NEWUSER${Date.now()}`;
+    await fetch(`${BACKEND_URL}/promo-codes`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ code: uniqueCode, type: 'percentage', value: 10, requireNewUser: true, maxUsesPerBuyer: 5 }),
+    });
+
+    const { user } = await registerFreshBuyer();
+    const first = await placeOrder(user.id, uniqueCode);
+    expect(first.status).toBe(201); // genuinely new -- succeeds
+
+    const second = await placeOrder(user.id, uniqueCode);
+    expect(second.status).toBe(400); // no longer new -- real rejection
+    expect(second.body.error).toContain('new customers');
+  });
+
+  it('CRITICAL: a real minimum-spend code rejects a buyer below the real threshold and succeeds once they genuinely cross it', async () => {
+    const { token: adminToken } = await login('admin@leap.dev', 'admin_dev_password_123');
+    const uniqueCode = `SPEND${Date.now()}`;
+    await fetch(`${BACKEND_URL}/promo-codes`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ code: uniqueCode, type: 'flat', value: 5, minTotalSpend: 100, maxUsesPerBuyer: 5 }),
+    });
+
+    const { user } = await registerFreshBuyer();
+    const below = await placeOrder(user.id, uniqueCode); // rejected -- no real order created, spend still $0
+    expect(below.status).toBe(400);
+    expect(below.body.error).toContain('spent more');
+
+    await placeOrder(user.id); // real order 1 (~$40)
+    await placeOrder(user.id); // real order 2 (~$80 total)
+    await placeOrder(user.id); // real order 3 (~$120 total) -- genuinely over the real $100 threshold now
+    const above = await placeOrder(user.id, uniqueCode);
+    expect(above.status).toBe(201);
+  });
+
+  it('CRITICAL: a real minimum-order-count code rejects a buyer with too few real orders and succeeds once they reach it', async () => {
+    const { token: adminToken } = await login('admin@leap.dev', 'admin_dev_password_123');
+    const uniqueCode = `FREQ${Date.now()}`;
+    await fetch(`${BACKEND_URL}/promo-codes`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ code: uniqueCode, type: 'flat', value: 3, minOrderCount: 3, maxUsesPerBuyer: 5 }),
+    });
+
+    const { user } = await registerFreshBuyer();
+    const tooFew = await placeOrder(user.id, uniqueCode); // rejected -- no real order created, still 0 orders
+    expect(tooFew.status).toBe(400);
+    expect(tooFew.body.error).toContain('more orders');
+
+    await placeOrder(user.id); // real order 1
+    await placeOrder(user.id); // real order 2
+    await placeOrder(user.id); // real order 3 -- now genuinely meets the threshold of 3
+    const enough = await placeOrder(user.id, uniqueCode);
+    expect(enough.status).toBe(201);
+  });
+
+  it('CRITICAL: a real win-back code rejects a buyer who ordered too recently', async () => {
+    const { token: adminToken } = await login('admin@leap.dev', 'admin_dev_password_123');
+    const uniqueCode = `WINBACK${Date.now()}`;
+    await fetch(`${BACKEND_URL}/promo-codes`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ code: uniqueCode, type: 'flat', value: 4, minInactiveDays: 30, maxUsesPerBuyer: 5 }),
+    });
+
+    const { user } = await registerFreshBuyer();
+    await placeOrder(user.id); // a real order placed just now -- 0 real days inactive
+    const { status, body } = await placeOrder(user.id, uniqueCode);
+    expect(status).toBe(400);
+    expect(body.error).toContain("haven't ordered in a while");
+  });
+
+  it('CRITICAL: a guest checkout is rejected from any real targeted code -- there is no real order history to check', async () => {
+    const { token: adminToken } = await login('admin@leap.dev', 'admin_dev_password_123');
+    const uniqueCode = `GUESTREJECT${Date.now()}`;
+    await fetch(`${BACKEND_URL}/promo-codes`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ code: uniqueCode, type: 'flat', value: 3, requireNewUser: true }),
+    });
+
+    const res = await fetch(`${BACKEND_URL}/order`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: [{ productId: 'p1', quantity: 1 }], guestEmail: `guest-${Date.now()}@example.com`, promoCode: uniqueCode }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain('log in');
+  });
+
+  it('a code with no real targeting set (the default) remains open to everyone, unaffected by migration 021', async () => {
+    const { token: adminToken } = await login('admin@leap.dev', 'admin_dev_password_123');
+    const uniqueCode = `OPEN${Date.now()}`;
+    await fetch(`${BACKEND_URL}/promo-codes`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ code: uniqueCode, type: 'flat', value: 2 }),
+    });
+
+    const { user } = await registerFreshBuyer();
+    const { status } = await placeOrder(user.id, uniqueCode);
+    expect(status).toBe(201);
   });
 });

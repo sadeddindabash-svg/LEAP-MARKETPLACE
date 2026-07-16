@@ -938,6 +938,54 @@ not just per-buyer; a real expired code and a real deactivated code are
 both rejected; non-admins cannot manage promo codes; and a real code
 with genuine redemptions cannot be deleted, only deactivated.
 
+## Real audience targeting for promo codes (migration 021)
+
+**Confirmed scope, discussed via a real list presented before building**:
+a promo code can target specific buyer segments, all real and
+combinable with AND logic — every condition set on a code must
+genuinely hold for a buyer to be eligible:
+- **New users** — real `require_new_user`: the buyer has never placed
+  a real order before.
+- **High-value / loyal customers** — real `min_total_spend`: the
+  buyer's real lifetime spend across all their real orders meets a
+  threshold.
+- **Frequent buyers** — real `min_order_count`: the buyer's real total
+  order count meets a threshold.
+- **Win-back / inactive customers** — real `min_inactive_days`: real
+  days since the buyer's most recent real order meets a threshold
+  (requires having ordered at least once — a brand new user hasn't
+  "gone quiet", they never started, so this real check also requires a
+  real prior order to exist).
+
+**All four columns are nullable and default to unset** — an existing
+code with no targeting configured is completely unaffected by this
+migration, open to everyone exactly as before.
+
+**A code with ANY real targeting set requires a real logged-in buyer**
+to check eligibility against — a guest checkout has no real order
+history to evaluate, so it's a real, honest rejection ("Please log in
+to use this code"), not a silent bypass of the targeting rules.
+
+**Real buyer stats are computed fresh at validation time** — a single
+query against the real `orders` table (`COUNT(*)`, `SUM(total)`,
+`MAX(placed_at)`) for the calling buyer, checked against whichever of
+the four conditions are actually set on the code. This runs as part of
+the same real `validatePromoCode()` used everywhere else — the same
+function checkAndGrantReferralReward's own generated codes pass through
+too, though those never have targeting set.
+
+**Tested end-to-end** — 6 new tests added to
+`apps/admin-dashboard/src/promotions.integration.test.js` (17 total
+now): a real "new users only" code succeeds for a genuinely new buyer
+and is rejected the moment they have any real order; a real minimum-
+spend code rejects a buyer below the real threshold and succeeds once
+they genuinely cross it (verified by actually placing enough real
+orders to cross it, not asserting the math); a real minimum-order-count
+code does the same for order count; a real win-back code rejects a
+buyer who ordered too recently; a guest checkout is rejected from any
+real targeted code; and a code with no targeting set remains open to
+everyone, confirming this migration didn't change existing behavior.
+
 ## Setup
 
 ```bash

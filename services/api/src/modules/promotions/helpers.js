@@ -112,6 +112,44 @@ async function validatePromoCode(code, buyerId) {
     if (Number(buyerRows[0].count) >= promo.max_uses_per_buyer) return { valid: false, reason: 'You have already used this code the maximum number of times.' };
   }
 
+  // Real audience targeting (migration 021) -- combinable, AND logic:
+  // every condition set on this code must genuinely hold for this
+  // buyer. A code with any real targeting set requires a real
+  // logged-in buyer to check against -- a guest has no real order
+  // history to evaluate.
+  const hasTargeting = promo.require_new_user || promo.min_total_spend != null || promo.min_order_count != null || promo.min_inactive_days != null;
+  if (hasTargeting) {
+    if (!buyerId) return { valid: false, reason: 'Please log in to use this code.' };
+
+    const { rows: statsRows } = await db.query(
+      `SELECT COUNT(*) AS order_count, COALESCE(SUM(total), 0) AS total_spend, MAX(placed_at) AS last_order_at
+       FROM orders WHERE buyer_id = $1`,
+      [buyerId]
+    );
+    const stats = statsRows[0];
+    const orderCount = Number(stats.order_count);
+    const totalSpend = Number(stats.total_spend);
+
+    if (promo.require_new_user && orderCount > 0) {
+      return { valid: false, reason: 'This code is only for new customers.' };
+    }
+    if (promo.min_total_spend != null && totalSpend < Number(promo.min_total_spend)) {
+      return { valid: false, reason: 'This code is only for customers who have spent more with us.' };
+    }
+    if (promo.min_order_count != null && orderCount < promo.min_order_count) {
+      return { valid: false, reason: 'This code is only for customers with more orders.' };
+    }
+    if (promo.min_inactive_days != null) {
+      if (!stats.last_order_at) {
+        return { valid: false, reason: 'This code is only for returning customers.' };
+      }
+      const daysSinceLastOrder = (Date.now() - new Date(stats.last_order_at).getTime()) / (1000 * 60 * 60 * 24);
+      if (daysSinceLastOrder < promo.min_inactive_days) {
+        return { valid: false, reason: 'This code is only for customers who haven\'t ordered in a while.' };
+      }
+    }
+  }
+
   return { valid: true, promoCode: promo };
 }
 

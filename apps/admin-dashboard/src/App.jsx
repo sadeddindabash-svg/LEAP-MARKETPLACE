@@ -1891,6 +1891,11 @@ function PromoCodesPage({ onSessionExpired }) {
   const [newMaxTotalUses, setNewMaxTotalUses] = useState("");
   const [newMaxUsesPerBuyer, setNewMaxUsesPerBuyer] = useState("1");
   const [newExpiresAt, setNewExpiresAt] = useState("");
+  // Real audience targeting (migration 021) -- combinable, AND logic.
+  const [newRequireNewUser, setNewRequireNewUser] = useState(false);
+  const [newMinTotalSpend, setNewMinTotalSpend] = useState("");
+  const [newMinOrderCount, setNewMinOrderCount] = useState("");
+  const [newMinInactiveDays, setNewMinInactiveDays] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const load = () => {
@@ -1920,8 +1925,13 @@ function PromoCodesPage({ onSessionExpired }) {
         maxTotalUses: newMaxTotalUses ? Number(newMaxTotalUses) : null,
         maxUsesPerBuyer: Number(newMaxUsesPerBuyer) || 1,
         expiresAt: newExpiresAt ? new Date(newExpiresAt).toISOString() : null,
+        requireNewUser: newRequireNewUser,
+        minTotalSpend: newMinTotalSpend ? Number(newMinTotalSpend) : null,
+        minOrderCount: newMinOrderCount ? Number(newMinOrderCount) : null,
+        minInactiveDays: newMinInactiveDays ? Number(newMinInactiveDays) : null,
       });
       setNewCode(""); setNewValue(""); setNewMaxTotalUses(""); setNewMaxUsesPerBuyer("1"); setNewExpiresAt("");
+      setNewRequireNewUser(false); setNewMinTotalSpend(""); setNewMinOrderCount(""); setNewMinInactiveDays("");
       load();
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
@@ -1977,6 +1987,17 @@ function PromoCodesPage({ onSessionExpired }) {
               </button>
             </div>
 
+            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center", padding: "10px 12px", background: C.canvas, borderRadius: 8 }}>
+              <span style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted }}>Audience targeting (optional, combinable):</span>
+              <label style={{ ...body, display: "flex", alignItems: "center", gap: 5, fontSize: 12.5 }}>
+                <input type="checkbox" checked={newRequireNewUser} onChange={(e) => setNewRequireNewUser(e.target.checked)} />
+                New users only
+              </label>
+              <input value={newMinTotalSpend} onChange={(e) => setNewMinTotalSpend(e.target.value)} type="number" placeholder="Min lifetime spend ($)" style={{ ...body, width: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "7px 10px", fontSize: 12.5 }} />
+              <input value={newMinOrderCount} onChange={(e) => setNewMinOrderCount(e.target.value)} type="number" placeholder="Min real orders" style={{ ...body, width: 130, border: `1px solid ${C.line}`, borderRadius: 8, padding: "7px 10px", fontSize: 12.5 }} />
+              <input value={newMinInactiveDays} onChange={(e) => setNewMinInactiveDays(e.target.value)} type="number" placeholder="Inactive days (win-back)" style={{ ...body, width: 170, border: `1px solid ${C.line}`, borderRadius: 8, padding: "7px 10px", fontSize: 12.5 }} />
+            </div>
+
             {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>Loading…</div>}
             {loadState === "ready" && codes.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 20, textAlign: "center" }}>No promo codes yet.</div>}
             {loadState === "ready" && codes.map((c, i) => (
@@ -1994,6 +2015,16 @@ function PromoCodesPage({ onSessionExpired }) {
                     {" · "}Max {c.maxTotalUses ?? "∞"} uses total, {c.maxUsesPerBuyer} per buyer
                     {c.expiresAt && ` · Expires ${new Date(c.expiresAt).toLocaleDateString()}`}
                   </div>
+                  {(c.requireNewUser || c.minTotalSpend != null || c.minOrderCount != null || c.minInactiveDays != null) && (
+                    <div style={{ ...body, fontSize: 11, color: C.torque, marginTop: 2 }}>
+                      Targets: {[
+                        c.requireNewUser && "new users only",
+                        c.minTotalSpend != null && `$${c.minTotalSpend}+ lifetime spend`,
+                        c.minOrderCount != null && `${c.minOrderCount}+ real orders`,
+                        c.minInactiveDays != null && `inactive ${c.minInactiveDays}+ days`,
+                      ].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <button onClick={() => handleToggleActive(c.code, c.isActive)} style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.torque, background: "none", border: "none", cursor: "pointer" }}>
