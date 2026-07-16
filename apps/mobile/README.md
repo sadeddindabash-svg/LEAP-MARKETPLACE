@@ -432,6 +432,22 @@ full backend design.
   own limit message instead of silently doing nothing or letting the
   buyer attempt a submission that will just be rejected.
 
+## Real wishlist (new)
+
+**`lib/features/account/wishlist_screen.dart`** (new): a real list of
+the buyer's saved products, reusing the same `ProductCard` widget
+already used on the home feed, for consistency. A real, honest empty
+state ("Nothing saved yet...") rather than a blank screen.
+
+**A real heart icon on `ProductCard` itself** — visible on the home
+feed, category browsing, search results, and the wishlist screen alike,
+not just a dedicated add button somewhere else. Only shown for a
+logged-in buyer (matches the app's existing pattern of hiding real
+buyer-specific state for guests rather than showing something that
+would just fail on tap). Tapping it calls the real, idempotent
+add/remove endpoints directly — see `services/api/README.md`'s "Real
+wishlist" section.
+
 ## Setup
 
 1. Install Flutter: https://docs.flutter.dev/get-started/install

@@ -437,3 +437,10 @@ router.delete('/parts/:id', requireAuth, requireRole('admin'), async (req, res, 
 });
 
 module.exports = router;
+// Real product DTO helpers, exported for reuse by other modules that
+// need to render a real buyer-facing product (e.g. the wishlist module) —
+// avoids re-implementing the same language resolution / live pricing /
+// photo attachment logic in a second place, which would risk drift.
+module.exports.toBuyerProductDto = toBuyerProductDto;
+module.exports.attachBuyerPrice = attachBuyerPrice;
+module.exports.attachBuyerImages = attachBuyerImages;

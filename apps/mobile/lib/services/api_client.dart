@@ -437,6 +437,35 @@ class ApiClient {
     final response = await _client.delete(Uri.parse('$baseUrl/addresses/me/$id'), headers: _authHeaders(token));
     if (response.statusCode != 204) throw ApiException('Failed to delete address (${response.statusCode})');
   }
+
+  /// Real wishlist — a buyer saves real products for later (see
+  /// services/api/src/modules/wishlist/routes.js). Add/remove are both
+  /// real, idempotent backend operations — safe to call again on a
+  /// double-tap or slow-network retry without it being a real error.
+  Future<List<Product>> fetchWishlist(String token, {String lang = 'en'}) async {
+    final uri = Uri.parse('$baseUrl/wishlist/me').replace(queryParameters: {'lang': lang});
+    final response = await _client.get(uri, headers: _authHeaders(token));
+    if (response.statusCode != 200) throw ApiException('Failed to load wishlist (${response.statusCode})');
+    final body = jsonDecode(response.body) as List;
+    return body.map((e) => Product.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<bool> isWishlisted(String token, String productId) async {
+    final response = await _client.get(Uri.parse('$baseUrl/wishlist/me/$productId'), headers: _authHeaders(token));
+    if (response.statusCode != 200) throw ApiException('Failed to check wishlist (${response.statusCode})');
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return body['wishlisted'] as bool;
+  }
+
+  Future<void> addToWishlist(String token, String productId) async {
+    final response = await _client.post(Uri.parse('$baseUrl/wishlist/me/$productId'), headers: _authHeaders(token));
+    if (response.statusCode != 201) throw ApiException('Failed to add to wishlist (${response.statusCode})');
+  }
+
+  Future<void> removeFromWishlist(String token, String productId) async {
+    final response = await _client.delete(Uri.parse('$baseUrl/wishlist/me/$productId'), headers: _authHeaders(token));
+    if (response.statusCode != 204) throw ApiException('Failed to remove from wishlist (${response.statusCode})');
+  }
 }
 
 class ApiException implements Exception {

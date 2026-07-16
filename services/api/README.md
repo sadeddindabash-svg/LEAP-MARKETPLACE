@@ -756,6 +756,41 @@ clear message naming exactly which ones; unauthenticated requests are
 rejected; and a real partial update changes exactly the fields provided
 and leaves the rest untouched.
 
+## Real wishlist (migration 018)
+
+**Confirmed requirement**: a buyer saves real products for later. Same
+simple many-to-many junction pattern as My Garage's saved vehicles
+(migration 008).
+
+**Reuses the real catalog module's buyer-facing product DTO helpers**
+(`toBuyerProductDto`, `attachBuyerPrice`, `attachBuyerImages` — now
+exported from `services/api/src/modules/catalog/routes.js` specifically
+for this) rather than re-implementing language resolution, live
+pricing, and photo attachment a second time, which would risk drift
+between what a product looks like in the catalog vs. in the wishlist.
+
+**Add and remove are both real, idempotent operations** — adding an
+already-wishlisted product, or removing an already-absent one, is not a
+real error either way (`ON CONFLICT DO NOTHING` on insert; a `DELETE`
+that matches zero rows still succeeds). A real double-tap or a slow-
+network retry shouldn't surface as a failure for something this simple.
+
+**Real endpoints**: `GET /wishlist/me` (the full real list, with live
+photos/price, same as browsing), `GET /wishlist/me/:productId` (a real,
+specific "is this one product wishlisted" check — lets a product card's
+heart icon know its own state without fetching and searching the
+buyer's entire wishlist just to answer one yes/no question),
+`POST`/`DELETE /wishlist/me/:productId`.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/wishlist.integration.test.js`
+(8 tests): a fresh buyer starts with a real empty wishlist; adding a
+real product returns it with real photos/price attached, same as the
+catalog; the real is-wishlisted check reflects genuine state before and
+after; adding the same product twice is idempotent with no duplicate;
+a nonexistent product is rejected with a real 404; removing works and
+removing again is idempotent; a buyer only ever sees their own real
+wishlist; and unauthenticated requests are rejected on every endpoint.
+
 ## Setup
 
 ```bash
@@ -837,6 +872,8 @@ src/
     │                       Translation — no live API key configured)
     ├── addresses/           Real buyer address book (migration 017),
     │                       capped at 3, exactly-one-default invariant
+    ├── wishlist/            Real wishlist (migration 018) -- reuses the
+    │                       catalog module's real buyer product DTO helpers
     ├── payment/            Stripe, Amazon Payment Services, PayPal, and
     │                       Google Pay (routed through Stripe) — BUY-040–044
     └── notification/       SMS/email/push stub (BUY-051, SUP-032)

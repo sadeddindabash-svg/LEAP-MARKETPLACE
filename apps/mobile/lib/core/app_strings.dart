@@ -159,6 +159,12 @@ class AppStrings {
     'delete': {'en': 'Delete', 'ar': 'حذف'},
     'edit': {'en': 'Edit', 'ar': 'تعديل'},
     'cancel': {'en': 'Cancel', 'ar': 'إلغاء'},
+
+    // ---- Wishlist (new) ----
+    'wishlist': {'en': 'Wishlist', 'ar': 'المفضلة'},
+    'no_wishlist_items_yet': {'en': 'Nothing saved yet. Tap the heart on a product to save it here.', 'ar': 'لا شيء محفوظ بعد. اضغط على القلب في أي منتج لحفظه هنا.'},
+    'added_to_wishlist': {'en': 'Added to wishlist', 'ar': 'أُضيف إلى المفضلة'},
+    'removed_from_wishlist': {'en': 'Removed from wishlist', 'ar': 'أُزيل من المفضلة'},
     'orders_and_returns': {'en': 'Orders & returns', 'ar': 'الطلبات والإرجاعات'},
     'leap_support': {'en': 'Leap Support', 'ar': 'دعم Leap'},
     'log_out': {'en': 'Log out', 'ar': 'تسجيل الخروج'},

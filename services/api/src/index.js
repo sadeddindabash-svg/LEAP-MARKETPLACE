@@ -22,6 +22,7 @@ const uploadsRoutes = require('./modules/uploads/routes');
 const hubRoutes = require('./modules/hub/routes');
 const supplierMessagesRoutes = require('./modules/supplier-messages/routes');
 const addressesRoutes = require('./modules/addresses/routes');
+const wishlistRoutes = require('./modules/wishlist/routes');
 const pricingRoutes = require('./modules/pricing/routes');
 
 assertRequiredEnvInProduction();
@@ -56,6 +57,7 @@ app.use('/uploads', uploadsRoutes);
 app.use('/hub', hubRoutes);
 app.use('/supplier-messages', supplierMessagesRoutes);
 app.use('/addresses', addressesRoutes);
+app.use('/wishlist', wishlistRoutes);
 app.use('/pricing', pricingRoutes);
 
 app.use(notFoundHandler);

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../core/theme.dart';
 import '../core/app_strings.dart';
+import '../core/auth_state.dart';
 import '../core/cart_state.dart';
 import '../models/product.dart';
 import '../services/api_client.dart';
@@ -24,6 +25,41 @@ class ProductCard extends StatefulWidget {
 
 class _ProductCardState extends State<ProductCard> {
   bool _isAdding = false;
+  bool? _isWishlisted; // null while unknown/loading; only checked for logged-in buyers
+  bool _isTogglingWishlist = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkWishlistState();
+  }
+
+  void _checkWishlistState() {
+    final token = context.read<AuthState>().token;
+    if (token == null) return;
+    ApiClient().isWishlisted(token, widget.product.id).then((wishlisted) {
+      if (mounted) setState(() => _isWishlisted = wishlisted);
+    }).catchError((_) {}); // non-critical -- the heart just stays unfilled if this fails
+  }
+
+  Future<void> _toggleWishlist() async {
+    final token = context.read<AuthState>().token;
+    if (token == null) return;
+    setState(() => _isTogglingWishlist = true);
+    try {
+      if (_isWishlisted == true) {
+        await ApiClient().removeFromWishlist(token, widget.product.id);
+        if (mounted) setState(() => _isWishlisted = false);
+      } else {
+        await ApiClient().addToWishlist(token, widget.product.id);
+        if (mounted) setState(() => _isWishlisted = true);
+      }
+    } on ApiException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _isTogglingWishlist = false);
+    }
+  }
 
   Future<void> _addToCart() async {
     setState(() => _isAdding = true);
@@ -47,12 +83,14 @@ class _ProductCardState extends State<ProductCard> {
     final inStock = p.stockQuantity > 0;
     return Card(
       margin: EdgeInsets.zero,
-      child: InkWell(
-        onTap: widget.onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Row(
+      child: Stack(
+        children: [
+          InkWell(
+            onTap: widget.onTap,
+            borderRadius: BorderRadius.circular(10),
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ClipRRect(
@@ -127,7 +165,32 @@ class _ProductCardState extends State<ProductCard> {
               ),
             ],
           ),
-        ),
+            ),
+          ),
+          // Real wishlist heart — only shown for a logged-in buyer
+          // (matches the app's existing pattern of hiding real
+          // buyer-specific state for guests rather than showing
+          // something that would just fail on tap).
+          if (context.watch<AuthState>().isLoggedIn)
+            Positioned(
+              top: 4,
+              right: 4,
+              child: InkWell(
+                onTap: _isTogglingWishlist ? null : _toggleWishlist,
+                borderRadius: BorderRadius.circular(16),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: _isTogglingWishlist
+                      ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : Icon(
+                          _isWishlisted == true ? Icons.favorite : Icons.favorite_border,
+                          size: 20,
+                          color: _isWishlisted == true ? LeapColors.signal : LeapColors.muted,
+                        ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
