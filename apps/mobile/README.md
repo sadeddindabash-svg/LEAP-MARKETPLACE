@@ -412,6 +412,26 @@ show permanently empty results, not a real filter).
   displaying the raw, frozen `status` field, which would have shown
   stale information there too.
 
+## Real address book, capped at 3 (new)
+
+"Addresses" in the Account page was a genuinely dead nav row before
+this (`route: null`) — tapping it did nothing at all. Real now — see
+`services/api/README.md`'s "Real buyer address book" section for the
+full backend design.
+
+- **`lib/features/account/addresses_screen.dart`** (new): a real list
+  of the buyer's saved addresses (up to 3), each with a real "Default"
+  badge, and a menu to edit, set as default, or delete (with a real
+  confirmation dialog before deleting).
+- **`lib/features/account/address_form_screen.dart`** (new): a single
+  shared real form for both adding a new address and editing an
+  existing one — the same real backend call either way
+  (`POST`/`PATCH /addresses/me`), just pre-filled when editing.
+- **The real 3-address cap is surfaced honestly in the UI**: once a
+  buyer has 3 saved, the "Add address" button shows the real backend's
+  own limit message instead of silently doing nothing or letting the
+  buyer attempt a submission that will just be rejected.
+
 ## Setup
 
 1. Install Flutter: https://docs.flutter.dev/get-started/install

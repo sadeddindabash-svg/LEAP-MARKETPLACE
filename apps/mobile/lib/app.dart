@@ -18,6 +18,8 @@ import 'features/checkout/checkout_screen.dart';
 import 'features/orders/orders_screen.dart';
 import 'features/orders/order_detail_screen.dart';
 import 'features/account/account_screen.dart';
+import 'features/account/addresses_screen.dart';
+import 'features/account/address_form_screen.dart';
 import 'features/support/chat_screen.dart';
 import 'features/support/new_ticket_screen.dart';
 import 'features/support/ticket_detail_screen.dart';
@@ -42,6 +44,12 @@ final GoRouter appRouter = GoRouter(
     GoRoute(path: '/garage', builder: (context, state) => const GarageScreen()),
     GoRoute(path: '/search', builder: (context, state) => const SearchScreen()),
     GoRoute(path: '/garage/add', builder: (context, state) => const AddVehicleScreen()),
+    GoRoute(path: '/addresses', builder: (context, state) => const AddressesScreen()),
+    GoRoute(path: '/addresses/add', builder: (context, state) => const AddressFormScreen()),
+    GoRoute(
+      path: '/addresses/edit',
+      builder: (context, state) => AddressFormScreen(existing: state.extra as Map<String, dynamic>?),
+    ),
     GoRoute(
       path: '/category-browse/:id',
       builder: (context, state) => CategoryBrowseScreen(initialCategoryId: state.pathParameters['id']!),

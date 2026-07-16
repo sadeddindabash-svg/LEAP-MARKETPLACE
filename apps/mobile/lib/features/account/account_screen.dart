@@ -15,7 +15,7 @@ class AccountScreen extends StatelessWidget {
 
     final rows = [
       (icon: Icons.directions_car_outlined, label: tr(context, 'my_garage'), route: '/garage'),
-      (icon: Icons.location_on_outlined, label: tr(context, 'addresses'), route: null),
+      (icon: Icons.location_on_outlined, label: tr(context, 'addresses'), route: '/addresses'),
       (icon: Icons.inventory_2_outlined, label: tr(context, 'orders_and_returns'), route: '/orders'),
       (icon: Icons.chat_bubble_outline, label: tr(context, 'leap_support'), route: '/support'),
     ];

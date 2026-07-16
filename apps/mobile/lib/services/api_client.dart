@@ -413,6 +413,30 @@ class ApiClient {
     );
     return _decodeOrThrow(response);
   }
+
+  /// Real buyer address book — up to 3 real saved addresses (see
+  /// services/api/src/modules/addresses/routes.js). "Addresses" was a
+  /// genuinely dead nav row before this.
+  Future<List<dynamic>> fetchMyAddresses(String token) async {
+    final response = await _client.get(Uri.parse('$baseUrl/addresses/me'), headers: _authHeaders(token));
+    if (response.statusCode != 200) throw ApiException('Failed to load addresses (${response.statusCode})');
+    return jsonDecode(response.body) as List<dynamic>;
+  }
+
+  Future<Map<String, dynamic>> createAddress(String token, Map<String, dynamic> address) async {
+    final response = await _client.post(Uri.parse('$baseUrl/addresses/me'), headers: _authHeaders(token), body: jsonEncode(address));
+    return _decodeOrThrow(response);
+  }
+
+  Future<Map<String, dynamic>> updateAddress(String token, String id, Map<String, dynamic> updates) async {
+    final response = await _client.patch(Uri.parse('$baseUrl/addresses/me/$id'), headers: _authHeaders(token), body: jsonEncode(updates));
+    return _decodeOrThrow(response);
+  }
+
+  Future<void> deleteAddress(String token, String id) async {
+    final response = await _client.delete(Uri.parse('$baseUrl/addresses/me/$id'), headers: _authHeaders(token));
+    if (response.statusCode != 204) throw ApiException('Failed to delete address (${response.statusCode})');
+  }
 }
 
 class ApiException implements Exception {

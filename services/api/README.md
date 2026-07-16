@@ -717,6 +717,45 @@ that real derived state and none of the others; and a genuine
 multi-supplier order with mixed real progress counts as `shipped`
 overall.
 
+## Real buyer address book, capped at 3 (migration 017)
+
+**Confirmed requirement**: a customer can have up to 3 real saved
+addresses. "Addresses" was a genuinely dead nav row before this in the
+mobile app (`route: null`) — tapping it did nothing at all.
+
+**The cap is enforced in application code, not a DB constraint** — same
+pattern as the mandatory-3-photos rule on product submission elsewhere
+in this project: a real, deliberate business rule, checked where the
+real validation logic already lives, not baked into the schema in a way
+that's harder to adjust later.
+
+**Two real invariants, both enforced transactionally, not left to best
+effort**:
+- **Exactly one default at all times** (once at least one address
+  exists) — the very first address a buyer saves becomes the real
+  default automatically regardless of what was passed; setting a new
+  default un-defaults every other real address for that buyer in the
+  SAME transaction; deleting the current default promotes the real
+  next-oldest address to default rather than leaving the buyer with
+  addresses but no real default.
+- **Real ownership scoping** — a buyer only ever sees, updates, or
+  deletes their own real addresses; cross-buyer access returns a real
+  404, not a leak of another buyer's data or its mere existence.
+
+**Real endpoints**: `GET`/`POST /addresses/me`,
+`PATCH`/`DELETE /addresses/me/:id`, all `requireAuth`-scoped to the
+calling buyer's own `req.user.sub`.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/addresses.integration.test.js`
+(8 tests): the first address becomes default automatically; a real cap
+of 3 is enforced with a clear message; setting a new default
+un-defaults every other one, exactly one default at all times; deleting
+the default promotes the next real address; cross-buyer access is
+rejected at every endpoint; missing required fields are rejected with a
+clear message naming exactly which ones; unauthenticated requests are
+rejected; and a real partial update changes exactly the fields provided
+and leaves the rest untouched.
+
 ## Setup
 
 ```bash
@@ -796,6 +835,8 @@ src/
     │                       bidirectional Chinese/English auto-
     │                       translation (migration 016, Google Cloud
     │                       Translation — no live API key configured)
+    ├── addresses/           Real buyer address book (migration 017),
+    │                       capped at 3, exactly-one-default invariant
     ├── payment/            Stripe, Amazon Payment Services, PayPal, and
     │                       Google Pay (routed through Stripe) — BUY-040–044
     └── notification/       SMS/email/push stub (BUY-051, SUP-032)
