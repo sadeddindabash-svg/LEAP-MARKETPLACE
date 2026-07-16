@@ -212,13 +212,20 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: Text(tr(context, 'no_products_yet'), style: const TextStyle(color: LeapColors.muted), textAlign: TextAlign.center),
                       );
                     }
-                    return Column(
-                      children: products
-                          .map((p) => Padding(
-                                padding: const EdgeInsets.only(bottom: 10),
-                                child: ProductCard(product: p, onTap: () => context.push('/product/${p.id}')),
-                              ))
-                          .toList(),
+                    return GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        mainAxisSpacing: 10,
+                        crossAxisSpacing: 10,
+                        childAspectRatio: 0.62,
+                      ),
+                      itemCount: products.length,
+                      itemBuilder: (context, i) {
+                        final p = products[i];
+                        return ProductCard(product: p, onTap: () => context.push('/product/${p.id}'));
+                      },
                     );
                   },
                 );

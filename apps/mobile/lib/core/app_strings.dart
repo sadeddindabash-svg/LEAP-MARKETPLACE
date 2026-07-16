@@ -74,6 +74,7 @@ class AppStrings {
     'filter_newest': {'en': 'Newest', 'ar': 'الأحدث'},
     'filter_my_car': {'en': 'My car', 'ar': 'سيارتي'},
     'in_stock': {'en': 'In stock', 'ar': 'متوفر'},
+    'no_reviews_yet': {'en': 'No reviews yet', 'ar': 'لا توجد تقييمات بعد'},
     'out_of_stock': {'en': 'Out of stock', 'ar': 'غير متوفر'},
     'add_a_vehicle_for_my_car_filter': {'en': 'Add a vehicle to see products for your car', 'ar': 'أضف مركبة لرؤية المنتجات المناسبة لسيارتك'},
     'no_products_yet': {'en': 'No products yet.', 'ar': 'لا توجد منتجات بعد.'},

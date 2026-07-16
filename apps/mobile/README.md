@@ -448,6 +448,22 @@ would just fail on tap). Tapping it calls the real, idempotent
 add/remove endpoints directly — see `services/api/README.md`'s "Real
 wishlist" section.
 
+## Product card redesign — 2-column grid (new)
+
+**Confirmed via a mockup shown and approved before writing any code**:
+`ProductCard` was rebuilt from a horizontal list row into a vertical
+grid card — photo on top, name, real star rating, real stock status,
+then a bottom row with price on one side and the wishlist heart +
+add-to-cart button sitting beside each other on the other side. Fixes
+a real, reported layout bug where the heart and price were overlapping
+in the previous design.
+
+Every real screen that lists products (`home_screen.dart`'s feed,
+`category_screen.dart`, `wishlist_screen.dart`) now renders these in a
+real `GridView` (`SliverGridDelegateWithFixedCrossAxisCount`,
+`crossAxisCount: 2`) instead of a single-column list — two cards per
+row, wrapping into further rows, matching the confirmed design exactly.
+
 ## Setup
 
 1. Install Flutter: https://docs.flutter.dev/get-started/install

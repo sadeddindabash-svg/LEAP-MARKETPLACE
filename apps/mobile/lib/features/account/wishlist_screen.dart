@@ -61,10 +61,15 @@ class _WishlistScreenState extends State<WishlistScreen> {
               ),
             );
           }
-          return ListView.separated(
+          return GridView.builder(
             padding: const EdgeInsets.all(16),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+              childAspectRatio: 0.62,
+            ),
             itemCount: products.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
             itemBuilder: (context, i) {
               final p = products[i];
               return ProductCard(
