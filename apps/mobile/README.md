@@ -483,6 +483,32 @@ changes and message/ticket replies — see `services/api/README.md`'s
 - A real "Mark all read" action, only shown when there's genuinely
   something unread to clear.
 
+## Real promotions — referral rewards + promo codes at checkout (new)
+
+**Confirmed scope, discussed at real length before building**: what
+started as "referral rewards" was deliberately expanded into a general
+promotions engine — see `services/api/README.md`'s "Real promotions
+engine" section for the full backend design and every confirmed
+decision (reward types, the real anti-abuse referral trigger, the
+real 10-reward cap).
+
+- **`lib/features/account/referrals_screen.dart`** (new): a buyer's
+  real, unique referral code (created on first view), with real stats
+  — how many people they've referred, how many real rewards they've
+  earned out of the real cap, and a real copy-to-clipboard button.
+- **A real, optional referral code field on signup** — an invalid or
+  made-up code is a real, silent no-op (matching the backend's own
+  honest handling), never a signup error.
+- **A real promo code field at checkout**, with live validation against
+  the real backend before the order is placed (`POST /promo-codes/validate`)
+  — shows the real reason a code doesn't work (expired, already used,
+  doesn't exist) rather than a generic failure. The order summary shows
+  a real subtotal/discount/total breakdown once a code is applied, and
+  the "Place order" button's own total updates to match. The ACTUAL
+  charged amount always comes from the real backend's own
+  recalculation at order placement — the client-side preview is
+  honestly just that, a preview, not the authority.
+
 ## Setup
 
 1. Install Flutter: https://docs.flutter.dev/get-started/install
@@ -528,11 +554,14 @@ lib/
     ├── search/               Real product search (new) — was a dead
     │                          read-only field before this pass
     ├── cart/                 Basket, grouped by supplier — real data
-    ├── checkout/             Real order placement (payment capture not yet wired)
-    ├── orders/               Order history/tracking + detail + return
-                                requests (requires login)
-    ├── account/              Profile / garage / addresses / support entry
-    │                          / language setting (English/Arabic, new)
+    ├── checkout/             Real order placement (payment capture not yet
+    │                          wired) + real promo code entry (new)
+    ├── orders/               Order history/tracking (real status filter
+    │                          tabs, new) + detail + return requests
+                                (requires login)
+    ├── account/              Profile / garage / addresses (new) / wishlist
+    │                          (new) / notifications (new) / referrals (new)
+    │                          / support entry / language setting
     ├── auth/                 Login, signup, and password reset screens
                                 (all real backend calls)
     └── support/              Real ticket list/compose/detail — Buyer ↔

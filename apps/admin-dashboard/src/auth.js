@@ -360,3 +360,51 @@ export async function sendSupplierMessage(token, supplierId, text) {
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
   return data;
 }
+
+// ---------------- Real promo codes / promotions engine (new) ----------------
+// Admin-created event/campaign codes, alongside real referral-generated
+// codes -- same underlying system, see
+// services/api/src/modules/promo-codes/routes.js.
+
+export async function fetchPromoCodes(token) {
+  const response = await fetch(`${API_BASE_URL}/promo-codes`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) throw new Error(`Failed to load promo codes (${response.status})`);
+  return response.json();
+}
+
+export async function createPromoCode(token, payload) {
+  const response = await fetch(`${API_BASE_URL}/promo-codes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
+export async function updatePromoCode(token, code, updates) {
+  const response = await fetch(`${API_BASE_URL}/promo-codes/${code}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(updates),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
+export async function deletePromoCode(token, code) {
+  const response = await fetch(`${API_BASE_URL}/promo-codes/${code}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (response.status === 204) return null;
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}

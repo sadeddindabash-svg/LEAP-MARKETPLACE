@@ -85,6 +85,8 @@ See `migrations/001_init.sql` for the full schema with comments. Summary:
 | `buyer_addresses` | Real buyer address book (migration 017), capped at 3 per buyer in application code, not a DB constraint. Exactly one `is_default` at all times is enforced transactionally — see `services/api/README.md`'s "Real buyer address book" section |
 | `wishlist_items` | Real wishlist (migration 018) — same simple many-to-many junction pattern as `user_saved_vehicles`. A buyer's real saved products; add/remove are both idempotent |
 | `notifications` | Real notifications (migration 019), triggered by 4 real, named events (order shipped/delivered, return status change, admin ticket reply, admin supplier-message reply) — see `services/api/README.md`'s "Real notifications" section for exactly where each is wired in |
+| `referral_codes` / `referrals` | Real referral tracking (migration 020) — one real code per buyer; `referrals` records who referred whom and whether the real reward has been granted yet (triggered on the referred person's real FIRST order, not mere signup) |
+| `promo_codes` / `promo_code_redemptions` | The general promotions engine (migration 020) — real admin-created campaign codes and real referral-generated reward codes share this same table and the same real validation/redemption logic. `orders.promo_code` / `orders.discount_amount` (added in this same migration) record exactly which code was used on a real order and exactly how much real discount it produced |
 
 **Not yet covered** (add a future migration once these backend modules
 exist — currently only in the admin-dashboard/supplier-portal prototypes,

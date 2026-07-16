@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const db = require('../../../db/pool');
 const { signToken, requireAuth } = require('./middleware');
+const { recordReferral } = require('../promotions/helpers');
 
 /**
  * Auth module — BUY-001–003. Real password hashing (bcrypt, 10 salt
@@ -29,7 +30,7 @@ function isValidEmail(email) {
 // POST /auth/signup  { email, password, name? }
 router.post('/signup', async (req, res, next) => {
   try {
-    const { email, password, name } = req.body || {};
+    const { email, password, name, referralCode } = req.body || {};
     if (!isValidEmail(email)) {
       return res.status(400).json({ error: 'A valid email is required' });
     }
@@ -48,6 +49,11 @@ router.post('/signup', async (req, res, next) => {
       `INSERT INTO users (id, email, name, role, password_hash) VALUES ($1, $2, $3, 'buyer', $4)`,
       [userId, email, name || null, passwordHash]
     );
+
+    // Real referral capture (migration 020) — an invalid/made-up code
+    // or a self-referral attempt is a silent, honest no-op here, not a
+    // signup error; see promotions/helpers.js's recordReferral for why.
+    await recordReferral(referralCode, userId);
 
     const user = { id: userId, email, role: 'buyer' };
     res.status(201).json({ token: signToken(user), user: { id: userId, email, name: name || null, role: 'buyer' } });

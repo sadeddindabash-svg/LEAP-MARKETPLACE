@@ -850,6 +850,94 @@ marked read; mark-all-read genuinely clears every real unread
 notification; cross-user access to another buyer's notification is
 rejected; and unauthenticated requests are rejected on every endpoint.
 
+## Real promotions engine — referral rewards, admin campaigns, and general promo codes (migration 020)
+
+**Confirmed scope, discussed at real length before building**: this
+started as "referral rewards" and was deliberately EXPANDED into a
+general, admin-configurable coupon system once it became clear the
+actual need was broader than referrals alone — real event/campaign
+codes, free shipping promotions, whatever comes up later, not a narrow
+one-off that would need rebuilding the first time a seasonal sale is
+wanted. Referral rewards are one real SOURCE of codes within this same
+system, not a separate mechanism.
+
+**Confirmed decisions**:
+- **Reward types**: percentage off, flat amount off, free shipping.
+- **Referral trigger**: the referred person's real FIRST order, not
+  mere signup — a real, deliberate deterrent against trivial fake-
+  account abuse (confirmed directly, after discussing the tradeoff).
+- **Cap**: a referrer can earn at most 10 real rewards
+  (`MAX_REFERRAL_REWARDS_PER_REFERRER` in `promotions/helpers.js`).
+- **One code per order** — no stacking multiple codes.
+
+**Two real sources of the same `promo_codes` table**: admin-created
+(`POST /promo-codes`, for events/campaigns, with real expiry and usage
+limits) and referral-generated (automatic, via
+`checkAndGrantReferralReward` — see below). Both go through the exact
+same real validation and redemption logic; there's no special-cased
+"referral discount" path separate from "admin discount" path.
+
+**Real, server-side validation, never trusted from the client** —
+`validatePromoCode()` checks: does the code exist, is it active, has it
+expired, has it hit its real total-use cap, has THIS buyer hit their
+real per-buyer cap. `POST /order` re-validates again at the moment of
+real order placement (a code could have expired or been maxed out
+between checkout preview and actually placing the order) — the
+client-side check in `POST /promo-codes/validate` is a real preview,
+never the actual authority.
+
+**Free shipping is computed from the pricing engine's own real
+breakdown, not an estimate** — `calculateBuyerPriceUsd()` (see the
+pricing engine section above) already returns a full breakdown
+including each real fee component; the order module sums every real
+`shipping_volumetric` entry across all items in the order, converts it
+to USD at the real FX rate, and that EXACT amount is what a
+`free_shipping` code refunds. Verified end-to-end against a real
+product's real breakdown, not assumed.
+
+**Real referral flow, step by step**:
+1. `GET /referrals/me` — a buyer's real referral code, created on first
+   request if they don't have one (`getOrCreateReferralCode`).
+2. `POST /auth/signup` accepts an optional `referralCode` — an invalid/
+   made-up code, or a self-referral attempt, is a silent, honest no-op
+   (`recordReferral`), never a signup error.
+3. `POST /order` calls `checkAndGrantReferralReward()` AFTER the order's
+   own transaction commits — deliberately a best-effort follow-up, not
+   part of the order's transaction, so a problem generating the reward
+   can never roll back or block a real order that already succeeded.
+   Checks: is this genuinely the buyer's first real order, were they
+   actually referred, has the reward already been granted, has the
+   referrer hit the real cap — only then generates a real reward code
+   and sends the referrer a real notification (reusing the notification
+   system's `referral_reward` type, added to that table's real CHECK
+   constraint in this same migration).
+
+**Real, honest auditability on the order itself** — `orders.promo_code`
+and `orders.discount_amount` record exactly which code (if any) was
+used and exactly how much real discount it produced, not just a final
+total that has to explain itself.
+
+**Real endpoints**: `GET /referrals/me`; `GET/POST/PATCH/DELETE /promo-codes`
+(admin-only for mutation); `POST /promo-codes/validate` (real-time
+checkout preview, works for guests too since per-buyer limits are a
+real no-op without a real buyer id). A promo code with genuine real
+redemptions cannot be deleted (409, same "protect real referenced data"
+pattern used throughout this project) — only deactivated.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/promotions.integration.test.js`
+(11 tests): a fresh buyer gets a real unique referral code starting at
+zero; the FULL real referral loop (signup with a real code → referred
+person's real first order → referrer gets a real, genuinely-usable 10%
+reward, verified by actually placing an order with it and confirming
+the exact discount); an invalid/made-up referral code at signup is a
+silent no-op, not a signup failure; an invalid promo code at checkout
+is a real 400 and the order is never created; a real admin flat-
+discount code applies exactly; a real per-buyer usage limit is
+enforced; a real total usage cap is enforced across DIFFERENT buyers,
+not just per-buyer; a real expired code and a real deactivated code are
+both rejected; non-admins cannot manage promo codes; and a real code
+with genuine redemptions cannot be deleted, only deactivated.
+
 ## Setup
 
 ```bash
@@ -937,6 +1025,14 @@ src/
     │                       triggered by 4 real, named events (order
     │                       shipped/delivered, return status, admin
     │                       ticket reply, admin supplier-message reply)
+    ├── promotions/          The general promotions engine's shared core
+    │                       (migration 020) -- referral tracking, promo
+    │                       code validation/discount calculation, reused
+    │                       by both the referrals and promo-codes modules
+    ├── referrals/           Real per-buyer referral code + stats
+    │                       (migration 020)
+    ├── promo-codes/         Real admin-created campaign codes + real-
+    │                       time checkout validation (migration 020)
     ├── payment/            Stripe, Amazon Payment Services, PayPal, and
     │                       Google Pay (routed through Stripe) — BUY-040–044
 ```

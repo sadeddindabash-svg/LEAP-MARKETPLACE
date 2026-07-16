@@ -80,6 +80,25 @@ class AppStrings {
     'notifications': {'en': 'Notifications', 'ar': 'الإشعارات'},
     'no_notifications_yet': {'en': "You're all caught up.", 'ar': 'أنت على اطلاع بكل شيء.'},
     'mark_all_read': {'en': 'Mark all read', 'ar': 'وضع علامة على الكل كمقروء'},
+
+    // ---- Promo codes at checkout (new) ----
+    'promo_code_field': {'en': 'Promo code', 'ar': 'رمز الخصم'},
+    'apply': {'en': 'Apply', 'ar': 'تطبيق'},
+    'remove': {'en': 'Remove', 'ar': 'إزالة'},
+    'promo_applied': {'en': 'Applied!', 'ar': 'تم التطبيق!'},
+    'subtotal': {'en': 'Subtotal', 'ar': 'المجموع الفرعي'},
+    'discount': {'en': 'Discount', 'ar': 'الخصم'},
+
+    // ---- Referrals (new) ----
+    'referrals': {'en': 'Refer a friend', 'ar': 'ادعُ صديقًا'},
+    'your_referral_code': {'en': 'Your referral code', 'ar': 'رمز الإحالة الخاص بك'},
+    'referral_explainer': {'en': 'Share your code. When someone you refer places their first order, you get a real 10% off coupon.', 'ar': 'شارك رمزك. عندما يقوم شخص أحلته بإجراء طلبه الأول، تحصل على كوبون خصم حقيقي بنسبة 10%.'},
+    'people_referred': {'en': 'People referred', 'ar': 'الأشخاص المُحالون'},
+    'rewards_earned': {'en': 'Rewards earned', 'ar': 'المكافآت المكتسبة'},
+    'referral_cap_reached': {'en': "You've reached the maximum number of referral rewards.", 'ar': 'لقد وصلت إلى الحد الأقصى لمكافآت الإحالة.'},
+    'copy_code': {'en': 'Copy code', 'ar': 'نسخ الرمز'},
+    'code_copied': {'en': 'Code copied!', 'ar': 'تم نسخ الرمز!'},
+    'referral_code_optional': {'en': 'Referral code (optional)', 'ar': 'رمز الإحالة (اختياري)'},
     'out_of_stock': {'en': 'Out of stock', 'ar': 'غير متوفر'},
     'add_a_vehicle_for_my_car_filter': {'en': 'Add a vehicle to see products for your car', 'ar': 'أضف مركبة لرؤية المنتجات المناسبة لسيارتك'},
     'no_products_yet': {'en': 'No products yet.', 'ar': 'لا توجد منتجات بعد.'},

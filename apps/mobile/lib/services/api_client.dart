@@ -193,11 +193,15 @@ class ApiClient {
 
   // ---------------- Auth (BUY-001–003) ----------------
 
-  Future<Map<String, dynamic>> signup(String email, String password, {String? name}) async {
+  Future<Map<String, dynamic>> signup(String email, String password, {String? name, String? referralCode}) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/auth/signup'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': email, 'password': password, if (name != null) 'name': name}),
+      body: jsonEncode({
+        'email': email, 'password': password,
+        if (name != null) 'name': name,
+        if (referralCode != null && referralCode.isNotEmpty) 'referralCode': referralCode,
+      }),
     );
     return _decodeAuthResponse(response);
   }
@@ -320,6 +324,7 @@ class ApiClient {
     required List<CartItem> items,
     String? userId,
     String? guestEmail,
+    String? promoCode,
   }) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/order'),
@@ -328,6 +333,7 @@ class ApiClient {
         'items': items.map((i) => {'productId': i.productId, 'quantity': i.quantity}).toList(),
         if (userId != null) 'userId': userId,
         if (guestEmail != null) 'guestEmail': guestEmail,
+        if (promoCode != null && promoCode.isNotEmpty) 'promoCode': promoCode,
       }),
     );
     final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -490,6 +496,30 @@ class ApiClient {
   Future<void> markAllNotificationsRead(String token) async {
     final response = await _client.patch(Uri.parse('$baseUrl/notifications/me/read-all'), headers: _authHeaders(token));
     if (response.statusCode != 204) throw ApiException('Failed to mark all notifications read (${response.statusCode})');
+  }
+
+  /// Real referral rewards + general promo codes (see
+  /// services/api/src/modules/promotions/ and referrals/). Confirmed
+  /// scope: a general promotions engine, not just referral rewards --
+  /// referral codes are one real source of promo codes within it.
+  Future<Map<String, dynamic>> fetchMyReferralInfo(String token) async {
+    final response = await _client.get(Uri.parse('$baseUrl/referrals/me'), headers: _authHeaders(token));
+    return _decodeOrThrow(response);
+  }
+
+  /// Real-time checkout validation — never trust a client-side check
+  /// alone; the real charge in POST /order re-validates server-side too.
+  Future<Map<String, dynamic>> validatePromoCode(String? token, String code) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/promo-codes/validate'),
+      headers: _authHeaders(token),
+      body: jsonEncode({'code': code}),
+    );
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode >= 400 && response.statusCode != 400) {
+      throw ApiException(body['reason'] as String? ?? body['error'] as String? ?? 'Request failed (${response.statusCode})');
+    }
+    return body; // { valid: bool, promoCode?, reason? } -- caller checks `valid` itself, a 400 here is a real "invalid code" answer, not a crash
   }
 }
 

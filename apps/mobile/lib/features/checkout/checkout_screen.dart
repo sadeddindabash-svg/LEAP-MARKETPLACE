@@ -33,9 +33,18 @@ class CheckoutScreen extends StatefulWidget {
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
   final _guestEmailController = TextEditingController();
+  final _promoCodeController = TextEditingController();
   String _selectedPayment = 'card';
   bool _isPlacingOrder = false;
   String? _errorMessage;
+
+  // Real promo code state -- validated live against the real backend
+  // before checkout, then re-validated server-side again at real order
+  // placement (never trust a client-side check alone).
+  String? _appliedPromoCode;
+  Map<String, dynamic>? _appliedPromoDetails;
+  String? _promoMessage;
+  bool _isValidatingPromo = false;
 
   static const _paymentMethods = [
     (id: 'card', label: 'Visa / Mastercard', icon: Icons.credit_card),
@@ -50,7 +59,60 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   @override
   void dispose() {
     _guestEmailController.dispose();
+    _promoCodeController.dispose();
     super.dispose();
+  }
+
+  Future<void> _applyPromoCode() async {
+    final code = _promoCodeController.text.trim();
+    if (code.isEmpty) return;
+    setState(() { _isValidatingPromo = true; _promoMessage = null; });
+    try {
+      final token = context.read<AuthState>().token;
+      final result = await ApiClient().validatePromoCode(token, code);
+      if (result['valid'] == true) {
+        setState(() {
+          _appliedPromoCode = code;
+          _appliedPromoDetails = result['promoCode'] as Map<String, dynamic>;
+          _promoMessage = trRead(context, 'promo_applied');
+        });
+      } else {
+        setState(() {
+          _appliedPromoCode = null;
+          _appliedPromoDetails = null;
+          _promoMessage = result['reason'] as String? ?? trRead(context, 'something_went_wrong');
+        });
+      }
+    } on ApiException catch (e) {
+      setState(() { _appliedPromoCode = null; _appliedPromoDetails = null; _promoMessage = e.message; });
+    } finally {
+      if (mounted) setState(() => _isValidatingPromo = false);
+    }
+  }
+
+  void _removePromoCode() {
+    setState(() {
+      _appliedPromoCode = null;
+      _appliedPromoDetails = null;
+      _promoMessage = null;
+      _promoCodeController.clear();
+    });
+  }
+
+  /// Real, honest client-side preview of the discount, purely for
+  /// display before the real order is placed — the ACTUAL charged
+  /// amount is always whatever the real backend computes at real order
+  /// placement (see POST /order's server-side recalculation), which is
+  /// the only real source of truth. This is just so a buyer isn't
+  /// staring at a blank "???" between applying a code and placing the
+  /// order.
+  double _previewDiscount(double subtotal) {
+    final details = _appliedPromoDetails;
+    if (details == null) return 0;
+    final type = details['type'] as String?;
+    if (type == 'percentage') return subtotal * ((details['value'] as num? ?? 0) / 100);
+    if (type == 'flat') return (details['value'] as num? ?? 0).toDouble().clamp(0, subtotal);
+    return 0; // free_shipping's real amount depends on server-side shipping calculation -- not previewed client-side to avoid showing a guessed number
   }
 
   Future<void> _placeOrder() async {
@@ -72,6 +134,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         items: cart.items,
         userId: auth.isLoggedIn ? auth.user!['id'] as String : null,
         guestEmail: auth.isLoggedIn ? null : _guestEmailController.text.trim(),
+        promoCode: _appliedPromoCode,
       );
       await cart.clearAfterOrder();
       if (mounted) {
@@ -145,6 +208,36 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           const SizedBox(height: 12),
           Text(tr(context, 'order_summary'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
           const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _promoCodeController,
+                  enabled: _appliedPromoCode == null,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: InputDecoration(labelText: tr(context, 'promo_code_field')),
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (_appliedPromoCode == null)
+                ElevatedButton(
+                  onPressed: _isValidatingPromo ? null : _applyPromoCode,
+                  child: _isValidatingPromo
+                      ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : Text(tr(context, 'apply')),
+                )
+              else
+                OutlinedButton(onPressed: _removePromoCode, child: Text(tr(context, 'remove'))),
+            ],
+          ),
+          if (_promoMessage != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              _promoMessage!,
+              style: TextStyle(fontSize: 12, color: _appliedPromoCode != null ? LeapColors.gauge : Colors.red),
+            ),
+          ],
+          const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(border: Border.all(color: LeapColors.line), borderRadius: BorderRadius.circular(10)),
@@ -153,10 +246,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('${cart.itemCount} item(s)', style: const TextStyle(color: LeapColors.muted, fontSize: 12.5)),
+                    Text('${cart.itemCount} item(s) · ${tr(context, 'subtotal')}', style: const TextStyle(color: LeapColors.muted, fontSize: 12.5)),
                     Text('\$${cart.total.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w700)),
                   ],
                 ),
+                if (_appliedPromoCode != null) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('${tr(context, 'discount')} ($_appliedPromoCode)', style: const TextStyle(color: LeapColors.gauge, fontSize: 12.5)),
+                      Text('-\$${_previewDiscount(cart.total).toStringAsFixed(2)}', style: const TextStyle(color: LeapColors.gauge, fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -172,7 +275,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           onPressed: (cart.isEmpty || _isPlacingOrder) ? null : _placeOrder,
           child: _isPlacingOrder
               ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : Text('${tr(context, 'place_order')} · \$${cart.total.toStringAsFixed(2)}'),
+              : Text('${tr(context, 'place_order')} · \$${(cart.total - _previewDiscount(cart.total)).toStringAsFixed(2)}'),
         ),
       ),
     );

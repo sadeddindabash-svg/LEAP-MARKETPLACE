@@ -21,6 +21,7 @@ import 'features/account/account_screen.dart';
 import 'features/account/addresses_screen.dart';
 import 'features/account/wishlist_screen.dart';
 import 'features/account/notifications_screen.dart';
+import 'features/account/referrals_screen.dart';
 import 'features/account/address_form_screen.dart';
 import 'features/support/chat_screen.dart';
 import 'features/support/new_ticket_screen.dart';
@@ -49,6 +50,7 @@ final GoRouter appRouter = GoRouter(
     GoRoute(path: '/addresses', builder: (context, state) => const AddressesScreen()),
     GoRoute(path: '/wishlist', builder: (context, state) => const WishlistScreen()),
     GoRoute(path: '/notifications', builder: (context, state) => const NotificationsScreen()),
+    GoRoute(path: '/referrals', builder: (context, state) => const ReferralsScreen()),
     GoRoute(path: '/addresses/add', builder: (context, state) => const AddressFormScreen()),
     GoRoute(
       path: '/addresses/edit',

@@ -17,6 +17,7 @@ class _SignupScreenState extends State<SignupScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _referralCodeController = TextEditingController();
   bool _isSubmitting = false;
   String? _errorMessage;
 
@@ -34,6 +35,7 @@ class _SignupScreenState extends State<SignupScreen> {
             _emailController.text.trim(),
             _passwordController.text,
             name: _nameController.text.trim().isEmpty ? null : _nameController.text.trim(),
+            referralCode: _referralCodeController.text.trim().isEmpty ? null : _referralCodeController.text.trim(),
           );
       if (mounted) context.go('/account');
     } on ApiException catch (e) {
@@ -50,6 +52,7 @@ class _SignupScreenState extends State<SignupScreen> {
     _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _referralCodeController.dispose();
     super.dispose();
   }
 
@@ -83,6 +86,12 @@ class _SignupScreenState extends State<SignupScreen> {
               obscureText: true,
               decoration: InputDecoration(labelText: tr(context, 'password_label'), helperText: tr(context, 'at_least_8_chars')),
               onSubmitted: (_) => _submit(),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _referralCodeController,
+              textCapitalization: TextCapitalization.characters,
+              decoration: InputDecoration(labelText: tr(context, 'referral_code_optional')),
             ),
             if (_errorMessage != null) ...[
               const SizedBox(height: 12),

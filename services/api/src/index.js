@@ -24,6 +24,8 @@ const supplierMessagesRoutes = require('./modules/supplier-messages/routes');
 const addressesRoutes = require('./modules/addresses/routes');
 const wishlistRoutes = require('./modules/wishlist/routes');
 const notificationsRoutes = require('./modules/notifications/routes');
+const referralsRoutes = require('./modules/referrals/routes');
+const promoCodesRoutes = require('./modules/promo-codes/routes');
 const pricingRoutes = require('./modules/pricing/routes');
 
 assertRequiredEnvInProduction();
@@ -60,6 +62,8 @@ app.use('/supplier-messages', supplierMessagesRoutes);
 app.use('/addresses', addressesRoutes);
 app.use('/wishlist', wishlistRoutes);
 app.use('/notifications', notificationsRoutes);
+app.use('/referrals', referralsRoutes);
+app.use('/promo-codes', promoCodesRoutes);
 app.use('/pricing', pricingRoutes);
 
 app.use(notFoundHandler);

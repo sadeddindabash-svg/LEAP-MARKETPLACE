@@ -53,8 +53,8 @@ class AuthState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> signup(String email, String password, {String? name}) async {
-    final result = await _apiClient.signup(email, password, name: name);
+  Future<void> signup(String email, String password, {String? name, String? referralCode}) async {
+    final result = await _apiClient.signup(email, password, name: name, referralCode: referralCode);
     _token = result['token'] as String;
     _user = result['user'] as Map<String, dynamic>;
     await _secureStorage.write(key: _tokenKey, value: _token);

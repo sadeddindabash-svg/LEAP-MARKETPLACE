@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth, optionalAuth } = require('../auth/middleware');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
+const { validatePromoCode, calculateDiscountUsd, recordRedemption, checkAndGrantReferralReward } = require('../promotions/helpers');
 
 /**
  * Order module — BUY-031, BUY-050–053. A single buyer order splits into
@@ -25,7 +26,7 @@ async function nextOrderId(client) {
 
 // POST /order  { items: [{productId, quantity}], userId?, guestEmail? }
 router.post('/', async (req, res, next) => {
-  const { items, userId, guestEmail } = req.body || {};
+  const { items, userId, guestEmail, promoCode } = req.body || {};
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'items is required and must be non-empty' });
   }
@@ -62,8 +63,10 @@ router.post('/', async (req, res, next) => {
     // browsing/cart show a LIVE price that can change; a placed order's
     // price does not, the same way any real checkout works.
     const buyerUnitPrices = {};
+    let totalShippingPortionUsd = 0; // real, summed from the pricing engine's own breakdown -- see promotions/helpers.js's calculateDiscountUsd for why free_shipping refunds exactly this, not an estimate
     for (const productId of Object.keys(productById)) {
       const product = productById[productId];
+      const quantity = items.find((i) => i.productId === productId)?.quantity || 1;
       if (product.currency_code !== 'CNY') {
         // Legacy pre-pricing-engine product — pass through unchanged
         // (see the same handling in the catalog/cart modules for why).
@@ -77,17 +80,41 @@ router.post('/', async (req, res, next) => {
           heightCm: product.height_cm === null ? null : Number(product.height_cm),
         });
         buyerUnitPrices[productId] = result.buyerPriceUsd;
+        const shippingCny = result.breakdown
+          .filter((b) => b.type === 'shipping_volumetric')
+          .reduce((sum, b) => sum + b.amountCny, 0);
+        totalShippingPortionUsd += shippingCny * result.fxRate * quantity;
       }
     }
 
     const currencyCode = 'USD'; // confirmed: buyer-facing currency is always USD for now
-    const total = items.reduce((sum, item) => sum + buyerUnitPrices[item.productId] * item.quantity, 0);
+    const subtotal = items.reduce((sum, item) => sum + buyerUnitPrices[item.productId] * item.quantity, 0);
+
+    // Real, server-side promo code validation and discount -- never
+    // trust a client-supplied discount amount. An invalid/expired/
+    // already-used-up code is a real 400, not silently ignored (a
+    // buyer should know their code didn't apply, not just see a
+    // mysteriously full-price total).
+    let discountUsd = 0;
+    let appliedPromoCode = null;
+    if (promoCode) {
+      const validation = await validatePromoCode(promoCode, userId || null);
+      if (!validation.valid) {
+        throw Object.assign(new Error(validation.reason), { status: 400 });
+      }
+      discountUsd = calculateDiscountUsd(validation.promoCode, subtotal, totalShippingPortionUsd);
+      appliedPromoCode = promoCode;
+    }
+    const total = Math.max(0, Number((subtotal - discountUsd).toFixed(2)));
 
     const orderId = await nextOrderId(client);
     await client.query(
-      `INSERT INTO orders (id, buyer_id, guest_email, status, total, currency_code) VALUES ($1, $2, $3, 'to_ship', $4, $5)`,
-      [orderId, userId || null, guestEmail || null, total, currencyCode]
+      `INSERT INTO orders (id, buyer_id, guest_email, status, total, currency_code, promo_code, discount_amount) VALUES ($1, $2, $3, 'to_ship', $4, $5, $6, $7)`,
+      [orderId, userId || null, guestEmail || null, total, currencyCode, appliedPromoCode, discountUsd]
     );
+    if (appliedPromoCode) {
+      await recordRedemption(appliedPromoCode, userId || null, orderId, client);
+    }
 
     // Group items by supplier -> one supplier_sub_order per supplier.
     const bySupplier = {};
@@ -117,12 +144,27 @@ router.post('/', async (req, res, next) => {
 
     await client.query('COMMIT');
 
+    // Real referral reward check — deliberately AFTER the commit, as a
+    // best-effort follow-up rather than part of the order's own
+    // transaction: if granting a reward has some unexpected problem, it
+    // should never roll back or block the real order that already
+    // succeeded.
+    try {
+      await checkAndGrantReferralReward(userId || null);
+    } catch (err) {
+      // Logged, not fatal — the order itself is real and already committed.
+      console.error('checkAndGrantReferralReward failed (non-fatal):', err.message);
+    }
+
     res.status(201).json({
       id: orderId,
       userId: userId || null,
       guestEmail: guestEmail || null,
       isGuestOrder: !userId,
       status: 'to_ship',
+      subtotal,
+      discountAmount: discountUsd,
+      promoCode: appliedPromoCode,
       total,
       currencyCode,
       supplierSubOrders,
@@ -228,6 +270,8 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
       status: order.status,
       displayStatus: await computeDisplayStatus(order.id),
       total: Number(order.total),
+      discountAmount: Number(order.discount_amount || 0),
+      promoCode: order.promo_code,
       currencyCode: order.currency_code,
       placedAt: order.placed_at,
       supplierSubOrders,

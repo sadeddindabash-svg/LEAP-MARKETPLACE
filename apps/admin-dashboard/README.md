@@ -7,10 +7,11 @@ Real React (Vite) project for the platform operations tool. See
 
 This is the reference prototype (`docs/prototypes/leap_admin_dashboard_prototype.jsx`)
 dropped in as `src/App.jsx`, confirmed to **build successfully**, and now
-has **real authentication and twelve real pages** (Overview, Orders,
+has **real authentication and thirteen real pages** (Overview, Orders,
 Suppliers, Moderation, Support Tickets, Returns, Vehicle Data, Hubs,
-Pricing, Flagged Shipments, Categories, Supplier Messages — all but the
-first three are entirely new, not in the original prototype at all) —
+Pricing, Flagged Shipments, Categories, Supplier Messages, Promo Codes
+— all but the first three are entirely new, not in the original
+prototype at all) —
 full UI → API → database → UI slices. Payouts is still mock data
 (blocked on undecided commission rates — see Charter Section 1 — rather
 than a technical gap).
@@ -423,13 +424,33 @@ that integration without live API credentials.
   system exists specifically to enforce buyers never contacting
   suppliers directly; this is a different relationship entirely.
 
+## Promo Codes page (new — a general promotions engine, expanded from an original ask for just "referral rewards")
+
+Real admin-created event/campaign codes, alongside real referral-
+generated reward codes — one system, not two. See
+`services/api/README.md`'s "Real promotions engine" section for the
+full backend design, including the real discussion behind expanding
+scope beyond referral rewards alone.
+
+- **Create a real code of any of the 3 real types** (percentage off,
+  flat amount off, free shipping), with real, enforced limits — max
+  total uses, max uses per buyer, an optional real expiry date.
+- **Deactivate/reactivate** without losing a code's configuration, same
+  pattern as the Categories page's part-active toggle.
+- **A real code with genuine redemptions cannot be deleted** — 409,
+  same "protect real referenced data" pattern used throughout this
+  dashboard (Categories, Vehicle Data) — only deactivated.
+- Each code shows its real source (`Admin` or `Referral`) so it's
+  immediately clear which codes came from a real customer earning a
+  reward vs. a real campaign you configured yourself.
+
 ## Testing
 
 ```bash
 npm test
 ```
 
-Thirty test files, 180 tests total, all passing:
+Thirty-six test files, 224 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/orders.integration.test.js` (4, REAL backend) — order list/detail
@@ -627,6 +648,26 @@ Thirty test files, 180 tests total, all passing:
   toggle to the real Chinese original; admin sending a real reply
   calls the real send endpoint and it appears immediately; a real
   empty state shows when no supplier has messaged yet.
+- `src/promotions.integration.test.js` (11, REAL backend) — a fresh
+  buyer gets a real, unique referral code starting at zero real
+  referrals; the FULL real referral loop end-to-end (signup with a
+  real code → the referred person's real first order → the referrer
+  gets a real, genuinely-usable 10% reward, verified by actually
+  placing an order with it and confirming the exact real discount); an
+  invalid/made-up referral code at signup is a silent no-op, not a
+  signup failure; an invalid promo code at checkout is a real 400 and
+  the order is never created; a real admin flat-discount code applies
+  exactly; a real per-buyer usage limit is enforced; a real total
+  usage cap is enforced across DIFFERENT buyers, not just per-buyer; a
+  real expired code and a real deactivated code are both rejected;
+  non-admins cannot manage promo codes; and a real code with genuine
+  redemptions cannot be deleted, only deactivated.
+- `src/PromoCodesFlow.test.jsx` (4, mocked, full component tree) —
+  renders the real seeded promo code; creating a new percentage code
+  calls the real create endpoint and shows up immediately;
+  deactivating a code calls the real update endpoint and shows
+  "Inactive"; a real empty state shows when there are no promo codes
+  yet.
 - `src/overview.integration.test.js` (5, REAL backend) — confirms
   unauthenticated and non-admin access are both rejected, checks the
   response shape matches what the real UI reads, and — the one that

@@ -8,13 +8,14 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchFlaggedShipments,
   fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart,
   fetchSupplierMessagesInbox, fetchSupplierMessageThread, sendSupplierMessage,
+  fetchPromoCodes, createPromoCode, updatePromoCode, deletePromoCode,
 } from "./auth";
 import {
   LayoutGrid, ShoppingBag, Store, PackageSearch, Wallet, LifeBuoy, Settings,
   Search, Bell, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Truck,
   CheckCircle2, XCircle, Clock, AlertTriangle, MoreHorizontal, ArrowUpRight,
   Filter as FilterIcon, Download, Check, X, MessageSquare, Star, Globe, Users,
-  CreditCard, ExternalLink, ChevronLeft, RotateCcw, Warehouse, Calculator, Layers, Send
+  CreditCard, ExternalLink, ChevronLeft, RotateCcw, Warehouse, Calculator, Layers, Send, Tag
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -1874,6 +1875,141 @@ function SupplierMessageThreadPage({ supplierId, supplierName, onBack, onSession
   );
 }
 
+// Real, admin-managed promo codes (migration 020) — a general
+// promotions engine, deliberately expanded beyond "just referral
+// rewards" once it became clear the actual need was broader: real
+// event/campaign codes alongside real referral-generated ones, same
+// underlying system either way.
+function PromoCodesPage({ onSessionExpired }) {
+  const [codes, setCodes] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  const [newCode, setNewCode] = useState("");
+  const [newType, setNewType] = useState("percentage");
+  const [newValue, setNewValue] = useState("");
+  const [newMaxTotalUses, setNewMaxTotalUses] = useState("");
+  const [newMaxUsesPerBuyer, setNewMaxUsesPerBuyer] = useState("1");
+  const [newExpiresAt, setNewExpiresAt] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const load = () => {
+    setLoadState("loading");
+    fetchPromoCodes(getStoredToken())
+      .then((data) => { setCodes(data); setLoadState("ready"); })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleCreate = async () => {
+    if (!newCode.trim() || (newType !== "free_shipping" && !newValue)) {
+      setErrorMessage("A code, and a value for percentage/flat codes, are required.");
+      return;
+    }
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    try {
+      await createPromoCode(getStoredToken(), {
+        code: newCode.trim().toUpperCase(),
+        type: newType,
+        value: newType === "free_shipping" ? null : Number(newValue),
+        maxTotalUses: newMaxTotalUses ? Number(newMaxTotalUses) : null,
+        maxUsesPerBuyer: Number(newMaxUsesPerBuyer) || 1,
+        expiresAt: newExpiresAt ? new Date(newExpiresAt).toISOString() : null,
+      });
+      setNewCode(""); setNewValue(""); setNewMaxTotalUses(""); setNewMaxUsesPerBuyer("1"); setNewExpiresAt("");
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleToggleActive = async (code, isActive) => {
+    try {
+      await updatePromoCode(getStoredToken(), code, { isActive: !isActive });
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleDelete = async (code) => {
+    try {
+      await deletePromoCode(getStoredToken(), code);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message); // e.g. the real 409 "has redemptions" message
+    }
+  };
+
+  return (
+    <div>
+      <TopBar title="Promo Codes" subtitle="Real admin-created event/campaign codes, and real referral-generated rewards — one system" />
+      <div style={{ padding: 24 }}>
+        {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>}
+
+        <Card>
+          <div style={{ padding: 18 }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+              <input value={newCode} onChange={(e) => setNewCode(e.target.value)} placeholder="Code (e.g. SUMMER10)" style={{ ...body, flex: 1, minWidth: 140, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <select value={newType} onChange={(e) => setNewType(e.target.value)} style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }}>
+                <option value="percentage">% off</option>
+                <option value="flat">$ off</option>
+                <option value="free_shipping">Free shipping</option>
+              </select>
+              {newType !== "free_shipping" && (
+                <input value={newValue} onChange={(e) => setNewValue(e.target.value)} type="number" placeholder={newType === "percentage" ? "10 (%)" : "5.00 ($)"} style={{ ...body, width: 100, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              )}
+              <input value={newMaxTotalUses} onChange={(e) => setNewMaxTotalUses(e.target.value)} type="number" placeholder="Max total uses (blank = ∞)" style={{ ...body, width: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <input value={newMaxUsesPerBuyer} onChange={(e) => setNewMaxUsesPerBuyer(e.target.value)} type="number" placeholder="Max per buyer" style={{ ...body, width: 110, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <input value={newExpiresAt} onChange={(e) => setNewExpiresAt(e.target.value)} type="date" style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <button disabled={isSubmitting} onClick={handleCreate} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
+                <Check size={13} /> Create
+              </button>
+            </div>
+
+            {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>Loading…</div>}
+            {loadState === "ready" && codes.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 20, textAlign: "center" }}>No promo codes yet.</div>}
+            {loadState === "ready" && codes.map((c, i) => (
+              <div key={c.code} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 4px", borderBottom: i < codes.length - 1 ? `1px solid ${C.line}` : "none" }}>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ ...disp, fontSize: 15, fontWeight: 700, color: C.ink }}>{c.code}</span>
+                    <PlateChip small>{c.source === "referral" ? "Referral" : "Admin"}</PlateChip>
+                    {!c.isActive && <span style={{ ...body, fontSize: 10.5, fontWeight: 700, color: C.muted, border: `1px solid ${C.line}`, borderRadius: 6, padding: "2px 7px" }}>Inactive</span>}
+                  </div>
+                  <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 3 }}>
+                    {c.type === "percentage" && `${c.value}% off`}
+                    {c.type === "flat" && `$${c.value} off`}
+                    {c.type === "free_shipping" && "Free shipping"}
+                    {" · "}Max {c.maxTotalUses ?? "∞"} uses total, {c.maxUsesPerBuyer} per buyer
+                    {c.expiresAt && ` · Expires ${new Date(c.expiresAt).toLocaleDateString()}`}
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <button onClick={() => handleToggleActive(c.code, c.isActive)} style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.torque, background: "none", border: "none", cursor: "pointer" }}>
+                    {c.isActive ? "Deactivate" : "Activate"}
+                  </button>
+                  <button onClick={() => handleDelete(c.code)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={15} color={C.red} /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 function PayoutsPage() {
   const totalPending = PAYOUTS.reduce((s, p) => s + p.pending, 0);
   return (
@@ -2374,6 +2510,7 @@ const NAV = [
   { id: "vehicleData", label: "Vehicle Data", icon: Truck },
   { id: "categories", label: "Categories", icon: Layers },
   { id: "supplierMessages", label: "Supplier Messages", icon: MessageSquare },
+  { id: "promoCodes", label: "Promo Codes", icon: Tag },
   { id: "hubs", label: "Hubs", icon: Warehouse },
   { id: "pricing", label: "Pricing", icon: Calculator },
   { id: "flagged", label: "Flagged Shipments", icon: AlertTriangle },
@@ -2407,6 +2544,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   else if (page === "vehicleData") content = <VehicleDataPage onSessionExpired={onLogout} />;
   else if (page === "categories") content = <CategoriesPage onSessionExpired={onLogout} />;
   else if (page === "supplierMessages") content = <SupplierMessagesPage onSessionExpired={onLogout} />;
+  else if (page === "promoCodes") content = <PromoCodesPage onSessionExpired={onLogout} />;
   else if (page === "hubs") content = <HubsPage onSessionExpired={onLogout} />;
   else if (page === "pricing") content = <PricingPage onSessionExpired={onLogout} />;
   else if (page === "flagged") content = <FlaggedShipmentsPage onOpenOrder={setOpenOrder} onSessionExpired={onLogout} />;
