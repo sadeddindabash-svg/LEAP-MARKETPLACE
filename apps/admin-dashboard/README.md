@@ -178,6 +178,19 @@ table that module already owns.
 - Dropped the "Preview" button from the mock version — it never did
   anything even in the mock UI (no real modal/preview existed behind it),
   so removing it is honest rather than a regression.
+- **Real bulk actions (new)**: a checkbox per listing plus "select all,"
+  with a bulk action bar once anything's selected. **Bulk reject** is
+  simple — select many, one click, done, matching the single-item
+  reject flow's own "no translation needed" behavior. **Bulk approve**
+  deliberately does NOT skip the real translation-review gate above —
+  clicking "Review & approve selected" opens a real batch table with
+  every selected listing's own English/Arabic name fields (still
+  pre-filled with the Chinese original as a starting reference), and
+  one "Approve all" button submits the whole reviewed batch together.
+  Real, best-effort processing — a result banner reports exactly how
+  many succeeded vs. failed, and a failure in one item never costs the
+  others their real approvals. See `services/api/README.md`'s "Real
+  bulk moderation" section for the full backend design.
 
 ## Support Tickets page (ADM-012, BUY-060/061)
 
@@ -494,7 +507,7 @@ scope beyond referral rewards alone.
 npm test
 ```
 
-Forty test files, 268 tests total, all passing:
+Forty-two test files, 281 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/passwordReset.integration.test.js` (5, REAL backend) — a real
@@ -560,6 +573,34 @@ Forty test files, 268 tests total, all passing:
   the item from view, rejecting needs no translation and removes the item
   immediately, and a
   401 during approval triggers automatic logout.
+- `src/bulkModeration.integration.test.js` (7, REAL backend) — a real
+  batch of valid approvals and rejections all succeed together; **real
+  best-effort processing** confirmed both in the response AND
+  independently re-verified at the real data level (the valid item is
+  genuinely approved and out of the queue, the invalid one is genuinely
+  untouched and still pending); a nonexistent product within a batch is
+  a real per-item failure without affecting the others; an empty items
+  array and a batch over the real 100-item cap are both rejected; an
+  invalid action or missing productId is a real per-item failure, not a
+  request-level error; and non-admins are rejected.
+- `src/BulkModerationFlow.test.jsx` (6, mocked, full component tree) —
+  selecting items shows the real bulk action bar with the real count;
+  "select all" selects every real item; bulk reject calls the real bulk
+  endpoint and removes all selected items from the queue; bulk approve
+  opens a real batch review table requiring English AND Arabic per
+  item and submits the whole reviewed batch together; bulk approve is
+  blocked client-side if any selected item is still missing a required
+  translation; cancelling the batch review returns to the normal queue
+  view with selection cleared. **A real bug was found and fixed while
+  writing these**: the "Clear"/"Cancel" buttons' shared `clearSelection`
+  helper was ALSO wiping the just-set success/failure result message
+  immediately after a bulk action completed (since the success handler
+  calls `clearSelection()` right after setting that message) — the
+  banner would flash and vanish before a person could ever read it.
+  Fixed by having `clearSelection` leave the result message alone, and
+  having the Clear/Cancel buttons explicitly dismiss it themselves when
+  a person manually backs out, which is the only case that should
+  actually clear it.
 - `src/tickets.integration.test.js` (10, REAL backend, self-contained —
   each test creates its own ticket via the real API rather than depending
   on seeded data) — guest ticket creation with no auth, validation

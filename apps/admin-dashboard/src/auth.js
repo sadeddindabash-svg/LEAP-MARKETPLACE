@@ -91,6 +91,22 @@ export async function moderateProduct(token, productId, action, translation = {}
   return data;
 }
 
+// Real bulk approve/reject (new) -- see catalog/routes.js's real
+// bulk-moderate endpoint for why bulk approve still requires a real
+// reviewed translation per item, and why this is best-effort
+// (per-item results) rather than all-or-nothing.
+export async function bulkModerateProducts(token, items) {
+  const response = await fetch(`${API_BASE_URL}/catalog/products/bulk-moderate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ items }),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
 export function fetchTickets(token) {
   return authedGet("/support/tickets", token);
 }

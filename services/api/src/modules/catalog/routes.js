@@ -318,6 +318,69 @@ router.patch('/products/:id/moderate', requireAuth, requireRole('admin'), requir
   }
 });
 
+// POST /catalog/products/bulk-moderate — real bulk approve/reject.
+// CONFIRMED DESIGN: bulk reject is simple (no per-item review needed,
+// matching the single-item reject flow's existing "no reason required"
+// behavior). Bulk APPROVE deliberately does NOT skip the real
+// translation-review gate above — each item in the batch still needs
+// its own real reviewed nameEn/nameAr, just submitted together in one
+// request instead of one page navigation at a time. Best-effort, not
+// all-or-nothing: one bad item in a batch of 20 shouldn't cost the
+// other 19 their real approvals -- each item is processed independently
+// and the real per-item result is reported back.
+const MAX_BULK_ITEMS = 100;
+router.post('/products/bulk-moderate', requireAuth, requireRole('admin'), requirePageAccess('moderation'), async (req, res, next) => {
+  try {
+    const { items } = req.body || {};
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'items must be a non-empty array' });
+    }
+    if (items.length > MAX_BULK_ITEMS) {
+      return res.status(400).json({ error: `Cannot process more than ${MAX_BULK_ITEMS} items in a single bulk request` });
+    }
+
+    const results = [];
+    for (const item of items) {
+      const { productId, action, nameEn, descriptionEn, nameAr, descriptionAr } = item || {};
+      if (!productId || !['approve', 'reject'].includes(action)) {
+        results.push({ productId: productId || null, success: false, error: "productId and a valid action ('approve' or 'reject') are required" });
+        continue;
+      }
+      if (action === 'approve' && (!nameEn || !nameAr)) {
+        results.push({ productId, success: false, error: 'nameEn and nameAr required to approve' });
+        continue;
+      }
+      try {
+        const newStatus = action === 'approve' ? 'active' : 'inactive';
+        const { rows } = await db.query(
+          `UPDATE products SET
+             status = $1,
+             name = COALESCE($2, name), description = COALESCE($3, description),
+             name_ar = COALESCE($4, name_ar), description_ar = COALESCE($5, description_ar)
+           WHERE id = $6 RETURNING id`,
+          [
+            newStatus,
+            action === 'approve' ? nameEn : null, action === 'approve' ? (descriptionEn || null) : null,
+            action === 'approve' ? nameAr : null, action === 'approve' ? (descriptionAr || null) : null,
+            productId,
+          ]
+        );
+        if (rows.length === 0) {
+          results.push({ productId, success: false, error: 'Product not found' });
+        } else {
+          results.push({ productId, success: true });
+        }
+      } catch (err) {
+        results.push({ productId, success: false, error: 'Internal error processing this item' });
+      }
+    }
+
+    res.json({ results });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ============================================================
 // Real, admin-managed category + part reference lists (migration 015).
 // Confirmed requirement: a supplier picks a real Part from a real list

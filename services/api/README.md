@@ -686,6 +686,37 @@ math; the real first component cannot be moved up and the real last
 cannot be moved down; an invalid direction and a nonexistent component
 are both rejected; and non-admins cannot reorder fee components.
 
+## Real bulk moderation — approve/reject many listings at once (new)
+
+**A real design nuance surfaced and confirmed before building**: a true
+"select many, click approve, done" bulk action would have to skip the
+real translation-review gate that already exists on the single-item
+moderate endpoint (approving requires a real reviewed English AND
+Arabic name — a deliberate quality gate for the confirmed 40-country
+launch list, not an oversight). Bulk approve deliberately does NOT
+bypass that gate — see the admin dashboard's real batch-review-table
+design for how it stays genuinely fast without skipping real review.
+
+**`POST /catalog/products/bulk-moderate`** (`{ items: [{ productId,
+action, nameEn?, ... }] }`) — real, best-effort processing, not
+all-or-nothing: one bad item in a batch of 20 shouldn't cost the other
+19 their real approvals. Each item is validated and processed
+independently using the exact same real rules as the single-item
+endpoint, and the real per-item result (`{ productId, success,
+error? }`) is reported back so the caller knows exactly which ones
+went through. A real cap of 100 items per request.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/bulkModeration.integration.test.js`
+(7 tests, REAL backend): a real batch of valid approvals and rejections
+all succeed together; best-effort processing confirmed both in the
+response AND independently re-verified at the real data level (the
+valid item is genuinely approved and out of the queue, the invalid one
+is genuinely untouched and still pending); a nonexistent product within
+a batch is a real per-item failure without affecting the others; an
+empty items array and a batch over the real 100-item cap are both
+rejected; an invalid action or missing productId is a real per-item
+failure, not a request-level error; and non-admins are rejected.
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category

@@ -107,7 +107,7 @@ describe('Moderation page — real translation-review approve/reject flow (mocke
     // is left empty — should still be blocked client-side.
     fireEvent.click(screen.getByRole('button', { name: /confirm approval/i }));
 
-    await waitFor(() => expect(screen.getByText(/arabic name/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText(/arabic name/i).length).toBeGreaterThan(0));
     // Still on the review panel — approval was blocked client-side.
     expect(screen.getByRole('button', { name: /confirm approval/i })).toBeInTheDocument();
   });

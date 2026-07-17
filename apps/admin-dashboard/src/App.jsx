@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import LoginPage from "./LoginPage";
-import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, verifySupplier, fetchModerationQueue, moderateProduct, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
+import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, verifySupplier, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
   createBrand, deleteBrand, createModel, deleteModel, createGeneration, deleteGeneration, createEngine, deleteEngine, createTransmission, deleteTransmission,
   fetchHubLocations, createHubLocation, deleteHubLocation, assignHubToSubOrder,
@@ -734,6 +734,18 @@ function ModerationPage({ onSessionExpired }) {
   const [nameAr, setNameAr] = useState("");
   const [descriptionAr, setDescriptionAr] = useState("");
 
+  // Real bulk actions (new). Bulk reject is simple (no review needed,
+  // matching the single-item reject flow). Bulk approve deliberately
+  // does NOT skip the real translation-review gate -- selecting "Review
+  // & approve selected" opens a real batch table where each item still
+  // needs its own real reviewed English/Arabic name, just filled in
+  // together in one screen instead of one page navigation at a time.
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkMode, setBulkMode] = useState("none"); // 'none' | 'reviewing_approve'
+  const [bulkTranslations, setBulkTranslations] = useState({}); // { [productId]: { nameEn, descriptionEn, nameAr, descriptionAr } }
+  const [isBulkSubmitting, setIsBulkSubmitting] = useState(false);
+  const [bulkResultMessage, setBulkResultMessage] = useState(null);
+
   const load = () => {
     setLoadState("loading");
     fetchModerationQueue(getStoredToken())
@@ -795,6 +807,78 @@ function ModerationPage({ onSessionExpired }) {
     }
   };
 
+  const toggleSelected = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => (prev.size === queue.length ? new Set() : new Set(queue.map((m) => m.id))));
+  };
+  const clearSelection = () => { setSelectedIds(new Set()); setBulkMode("none"); };
+
+  const handleBulkReject = async () => {
+    setIsBulkSubmitting(true);
+    setBulkResultMessage(null);
+    try {
+      const items = Array.from(selectedIds).map((productId) => ({ productId, action: "reject" }));
+      const { results } = await bulkModerateProducts(getStoredToken(), items);
+      const failCount = results.filter((r) => !r.success).length;
+      setBulkResultMessage(failCount === 0 ? `${results.length} listing(s) rejected.` : `${results.length - failCount} rejected, ${failCount} failed.`);
+      clearSelection();
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsBulkSubmitting(false);
+    }
+  };
+
+  const openBulkApprovalReview = () => {
+    const initial = {};
+    queue.filter((m) => selectedIds.has(m.id)).forEach((m) => {
+      initial[m.id] = { nameEn: m.nameZh || "", descriptionEn: m.descriptionZh || "", nameAr: "", descriptionAr: "" };
+    });
+    setBulkTranslations(initial);
+    setBulkMode("reviewing_approve");
+  };
+  const updateBulkField = (productId, field, value) => {
+    setBulkTranslations((prev) => ({ ...prev, [productId]: { ...prev[productId], [field]: value } }));
+  };
+
+  const handleBulkApprove = async () => {
+    const missing = Array.from(selectedIds).filter((id) => !bulkTranslations[id]?.nameEn?.trim() || !bulkTranslations[id]?.nameAr?.trim());
+    if (missing.length > 0) {
+      setErrorMessage(`${missing.length} item(s) are still missing a required English or Arabic name.`);
+      return;
+    }
+    setIsBulkSubmitting(true);
+    setErrorMessage(null);
+    setBulkResultMessage(null);
+    try {
+      const items = Array.from(selectedIds).map((productId) => ({
+        productId, action: "approve",
+        nameEn: bulkTranslations[productId].nameEn.trim(),
+        descriptionEn: bulkTranslations[productId].descriptionEn?.trim() || undefined,
+        nameAr: bulkTranslations[productId].nameAr.trim(),
+        descriptionAr: bulkTranslations[productId].descriptionAr?.trim() || undefined,
+      }));
+      const { results } = await bulkModerateProducts(getStoredToken(), items);
+      const failCount = results.filter((r) => !r.success).length;
+      setBulkResultMessage(failCount === 0 ? `${results.length} listing(s) approved.` : `${results.length - failCount} approved, ${failCount} failed — check each item's translation.`);
+      clearSelection();
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsBulkSubmitting(false);
+    }
+  };
+
   return (
     <div>
       <TopBar title="Catalog moderation" subtitle={loadState === "ready" ? `${queue.length} listings awaiting review` : "Loading…"} />
@@ -804,12 +888,86 @@ function ModerationPage({ onSessionExpired }) {
         {loadState === "ready" && queue.length === 0 && (
           <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Nothing awaiting review right now.</div></Card>
         )}
-        {loadState === "ready" && queue.map(m => {
+        {errorMessage && loadState === "ready" && (
+          <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10 }}>{errorMessage}</div>
+        )}
+        {bulkResultMessage && (
+          <div style={{ ...body, fontSize: 12, color: C.gauge, background: C.gaugeBg, borderRadius: 8, padding: 10 }}>{bulkResultMessage}</div>
+        )}
+
+        {loadState === "ready" && queue.length > 0 && bulkMode === "none" && (
+          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "4px 4px" }}>
+            <label style={{ ...body, display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+              <input type="checkbox" checked={selectedIds.size === queue.length && queue.length > 0} onChange={toggleSelectAll} />
+              Select all
+            </label>
+            {selectedIds.size > 0 && (
+              <>
+                <span style={{ ...body, fontSize: 12.5, color: C.muted }}>{selectedIds.size} selected</span>
+                <button
+                  disabled={isBulkSubmitting}
+                  onClick={openBulkApprovalReview}
+                  style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "7px 13px", borderRadius: 8, border: "none", background: C.gaugeBg, color: C.gauge, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                ><Check size={13} />Review &amp; approve selected</button>
+                <button
+                  disabled={isBulkSubmitting}
+                  onClick={handleBulkReject}
+                  style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "7px 13px", borderRadius: 8, border: "none", background: C.redBg, color: C.red, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                ><X size={13} />{isBulkSubmitting ? "Rejecting…" : "Reject selected"}</button>
+                <button onClick={() => { clearSelection(); setBulkResultMessage(null); }} style={{ ...body, padding: "7px 13px", borderRadius: 8, border: `1px solid ${C.line}`, background: "none", color: C.muted, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                  Clear
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {bulkMode === "reviewing_approve" && (
+          <Card>
+            <div style={{ padding: 16 }}>
+              <div style={{ ...body, fontWeight: 700, fontSize: 13.5, marginBottom: 4 }}>Batch review — {selectedIds.size} listing(s)</div>
+              <div style={{ ...body, fontSize: 12, color: C.muted, marginBottom: 14 }}>
+                Every listing still needs its own reviewed English and Arabic name before it can be approved.
+              </div>
+              {queue.filter((m) => selectedIds.has(m.id)).map((m, i, arr) => (
+                <div key={m.id} style={{ padding: "14px 0", borderBottom: i < arr.length - 1 ? `1px solid ${C.line}` : "none" }}>
+                  <div style={{ ...body, fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>{m.nameZh || m.name} <span style={{ color: C.muted, fontWeight: 500 }}>· OEM {m.oemNumber}</span></div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <input
+                      value={bulkTranslations[m.id]?.nameEn || ""}
+                      onChange={(e) => updateBulkField(m.id, "nameEn", e.target.value)}
+                      placeholder="English name (required)"
+                      style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, boxSizing: "border-box" }}
+                    />
+                    <input
+                      value={bulkTranslations[m.id]?.nameAr || ""}
+                      onChange={(e) => updateBulkField(m.id, "nameAr", e.target.value)}
+                      placeholder="Arabic name (required)"
+                      dir="rtl"
+                      style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, boxSizing: "border-box" }}
+                    />
+                  </div>
+                </div>
+              ))}
+              <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
+                <button onClick={() => { clearSelection(); setBulkResultMessage(null); }} style={{ ...body, padding: "9px 16px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+                <button
+                  disabled={isBulkSubmitting}
+                  onClick={handleBulkApprove}
+                  style={{ ...body, padding: "9px 16px", borderRadius: 8, border: "none", background: isBulkSubmitting ? "#D1D5DB" : C.gauge, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isBulkSubmitting ? "default" : "pointer" }}
+                >{isBulkSubmitting ? "Approving…" : `Approve all (${selectedIds.size})`}</button>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {bulkMode === "none" && loadState === "ready" && queue.map(m => {
           const isReviewing = reviewingId === m.id;
           return (
             <Card key={m.id}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: 16 }}>
                 <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+                  <input type="checkbox" checked={selectedIds.has(m.id)} onChange={() => toggleSelected(m.id)} style={{ marginRight: 2 }} />
                   {m.images && m.images.length > 0 ? (
                     <img src={`${API_BASE_URL}${m.images[0]}`} alt="" style={{ width: 44, height: 44, borderRadius: 9, objectFit: "cover", border: `1px solid ${C.line}` }} />
                   ) : (
