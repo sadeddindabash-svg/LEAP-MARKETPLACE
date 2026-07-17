@@ -493,6 +493,69 @@ SAME product's live browsing price is confirmed to have changed, a
 legacy non-CNY product passes through unaffected, and the FX rate can be
 viewed and updated.
 
+## Real password reset email delivery — generic via SMTP (new)
+
+**Confirmed choice, same reasoning as the S3-compatible cloud storage
+client**: build this generically rather than commit to one provider
+yet. SMTP is a real, universal protocol that virtually every
+transactional email provider supports ALONGSIDE their own proprietary
+REST API — Resend, SendGrid, Mailgun, and AWS SES all issue real SMTP
+credentials. `services/api/src/modules/email/client.js` is ONE real
+implementation (using the well-established `nodemailer` package) that
+works with whichever gets chosen later, purely by setting different
+environment variables. No code change needed when that decision is
+made.
+
+**Confirmed design**: a real, styled HTML email (plus a real plain-text
+fallback), matching the app's actual real brand palette
+(`apps/mobile/lib/core/theme.dart`'s `LeapColors` — kept visually
+consistent with the real app rather than inventing a separate email
+look). See `services/api/src/modules/email/templates.js`.
+
+**HONEST FALLBACK, same category as the payment gateways, translation,
+and cloud storage**: no real SMTP credentials are configured in this
+environment. Rather than fake success without actually being able to
+deliver an email, `POST /auth/forgot-password` honestly falls back to
+the ORIGINAL console-logging behavior — a real, working way to test the
+token-based reset flow, just not real delivery yet. The real token
+generation, expiry, one-time-use enforcement, and password update are
+all fully real regardless of which delivery path actually runs, and
+were already real before this pass.
+
+**Real environment variables** (all required together to activate real
+delivery):
+```
+SMTP_HOST=...        # e.g. smtp.resend.com, smtp.sendgrid.net, smtp.mailgun.org
+SMTP_PORT=587         # 587 (STARTTLS) or 465 (implicit TLS) -- both handled correctly
+SMTP_USER=...
+SMTP_PASSWORD=...
+SMTP_FROM_EMAIL=...   # must be a real verified sender/domain with most providers
+SMTP_FROM_NAME=Leap Auto Parts
+```
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/email.test.js`
+(6 tests): `isEmailConfigured()` correctly reports false with no real
+env vars, false with only a genuinely partial real configuration, and
+true once all 5 real required vars are set; the real branded template
+includes the real reset URL in both the HTML and plain-text versions;
+personalizes the greeting with a real recipient name when provided and
+falls back gracefully without one; and shows the real configured expiry
+time rather than a hardcoded number. **A real, honest testing
+limitation**: `sendEmail()`'s actual transport-building and real SMTP
+send/failure behavior are NOT covered by this automated suite — this
+test file lives in a genuinely separate npm package (admin-dashboard)
+from services/api, each with its own separate `node_modules/nodemailer`,
+so mutating a mocked `nodemailer` instance in one package's test file
+does not affect the different instance `client.js` actually resolves
+internally (the same real cross-package boundary already true of the
+storage and translation modules' automated tests). That logic — the
+real transport config per port (587 vs 465's `secure` flag), the real
+message fields passed to `sendMail`, and real success/failure handling
+— was instead verified directly via a standalone script run directly
+against the real `client.js`, monkey-patching `nodemailer.createTransport`
+in the same process (the same approach that works correctly for the
+storage module's equivalent verification).
+
 ## Real, atomic fee component reordering (new)
 
 **A real, direct question this answers**: fee components apply "in
@@ -1188,9 +1251,10 @@ src/
 
 ## Next steps to make this real
 
-1. Wire a real email provider (see the notification module and Charter
-   Section 4) so password reset actually delivers a link instead of
-   logging it to the server console, and add email verification on signup.
+1. Wire a real SMTP provider (see the "Real password reset email
+   delivery" section) so password reset actually delivers a styled
+   email instead of falling back to logging the link to the server
+   console, and add email verification on signup.
 2. Get real test-mode credentials and run one live transaction against
    each payment gateway (Stripe, APS, PayPal) — none have been network-
    tested yet, see each provider file's header comment for details. This

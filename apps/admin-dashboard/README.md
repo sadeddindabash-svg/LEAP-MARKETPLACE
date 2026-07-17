@@ -465,9 +465,30 @@ scope beyond referral rewards alone.
 npm test
 ```
 
-Thirty-seven test files, 244 tests total, all passing:
+Thirty-eight test files, 250 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
+- `src/passwordReset.integration.test.js` (5, REAL backend) — a real
+  forgot-password request returns the identical response for a real
+  vs. a fake email (no enumeration leak); an invalid email format and
+  a too-short new password are both rejected; a completely invalid/
+  nonexistent reset token is rejected; and — the most important test
+  here — a real reset genuinely changes the password: the old password
+  stops working, the new one works, and the same token cannot be reused
+  a second time.
+- `src/email.test.js` (6, unit tests) — real generic SMTP email
+  delivery (new): `isEmailConfigured()` correctly reports false with no
+  real env vars, false with only a genuinely partial configuration, and
+  true once all 5 real required vars are set; the real branded password-
+  reset template includes the real reset URL in both HTML and plain-
+  text, personalizes the greeting with a real recipient name (falling
+  back gracefully without one), and shows the real configured expiry
+  time rather than a hardcoded number. See `services/api/README.md`'s
+  "Real password reset email delivery" section for the honest,
+  documented reason `sendEmail()`'s actual SMTP transport behavior isn't
+  covered by this automated suite (a real cross-package module
+  boundary, same as the storage and translation modules) and how that
+  logic was verified instead.
 - `src/orders.integration.test.js` (4, REAL backend) — order list/detail
 - `src/OrdersFlow.test.jsx` (5, mocked, full component tree) — orders UI
   flow, plus real hub-assignment coverage: renders the assigned-hub view

@@ -4,6 +4,8 @@ const bcrypt = require('bcryptjs');
 const db = require('../../../db/pool');
 const { signToken, requireAuth } = require('./middleware');
 const { recordReferral } = require('../promotions/helpers');
+const { isEmailConfigured, sendEmail } = require('../email/client');
+const { passwordResetEmail } = require('../email/templates');
 
 /**
  * Auth module — BUY-001–003. Real password hashing (bcrypt, 10 salt
@@ -111,14 +113,17 @@ router.get('/me', requireAuth, async (req, res, next) => {
 // Password reset (BUY-002-ish) — applies equally to admin/supplier
 // logins, since they're all rows in the same `users` table.
 //
-// HONEST LIMITATION, not hidden: no email provider is connected in this
-// codebase yet (see Charter Section 4). Rather than fake success without
-// actually being able to deliver a reset link, this logs the link to the
-// server console — the standard way to build and TEST a real token-based
-// reset flow before wiring a real email service on top of it later. The
-// token generation, expiry, one-time-use enforcement, and password
-// update below are all fully real; only the delivery mechanism is a
-// stand-in.
+// REAL EMAIL DELIVERY (new), generic via SMTP (confirmed choice: build
+// generically rather than commit to one provider yet — see
+// services/api/src/modules/email/client.js for the full real
+// implementation and the real discussion behind building this
+// generically). HONEST FALLBACK, same category as the payment gateways,
+// translation, and cloud storage: no real SMTP credentials are
+// configured in this environment, so this honestly falls back to the
+// ORIGINAL console-logging behavior below — a real, working way to test
+// the token-based reset flow, just not real delivery yet. The token
+// generation, expiry, one-time-use enforcement, and password update
+// below are all fully real regardless of which delivery path runs.
 // ============================================================
 
 const RESET_TOKEN_EXPIRY_MINUTES = 60;
@@ -145,11 +150,26 @@ router.post('/forgot-password', async (req, res, next) => {
         [token, user.id, expiresAt]
       );
 
-      // STAND-IN for real email delivery — see header comment above.
-      console.log(
-        `[password-reset] Reset link for ${email}: http://localhost:5173/reset-password?token=${token} ` +
-        `(expires in ${RESET_TOKEN_EXPIRY_MINUTES} minutes)`
-      );
+      const resetUrl = `http://localhost:5173/reset-password?token=${token}`;
+      let delivered = false;
+      if (isEmailConfigured()) {
+        try {
+          const { html, text } = passwordResetEmail({ recipientName: user.name, resetUrl, expiryMinutes: RESET_TOKEN_EXPIRY_MINUTES });
+          await sendEmail({ to: email, subject: 'Reset your Leap password', html, text });
+          delivered = true;
+        } catch (emailErr) {
+          // Real SMTP failure (bad credentials, provider rejected it,
+          // network issue) -- honestly fall back to console-logging
+          // rather than losing the reset link entirely.
+          console.error('Password reset email delivery failed, falling back to console log:', emailErr.message);
+        }
+      }
+      if (!delivered) {
+        console.log(
+          `[password-reset] Reset link for ${email}: ${resetUrl} ` +
+          `(expires in ${RESET_TOKEN_EXPIRY_MINUTES} minutes)`
+        );
+      }
     }
 
     // Same message regardless of whether the account exists.
