@@ -493,6 +493,45 @@ SAME product's live browsing price is confirmed to have changed, a
 legacy non-CNY product passes through unaffected, and the FX rate can be
 viewed and updated.
 
+## Real, atomic fee component reordering (new)
+
+**A real, direct question this answers**: fee components apply "in
+order, top to bottom" against a running total — the schema already had
+a real `sort_order` column and the engine already applied fees in that
+sequence, but there was no real way to actually CHANGE that order once
+components existed, short of manually editing every affected
+`sort_order` value one at a time.
+
+**`POST /pricing/fee-components/:id/move`** (`{ direction: 'up' | 'down' }`)
+— a real, atomic swap of two real `sort_order` values in a single
+transaction, not two separate client-side updates that could leave
+things inconsistent if one succeeded and the other failed. Finds the
+real adjacent component in the requested direction (by real
+`sort_order`, not array position) and swaps the two values together.
+Real, honest rejections: moving the real first component up, or the
+real last component down, is a 400 with a clear message, not a silent
+no-op or an out-of-bounds error.
+
+**This is not cosmetic** — because fee components apply sequentially
+against a running total, swapping a percentage fee's position relative
+to a flat or shipping fee genuinely changes the final calculated price
+(percentage-on-percentage swaps are mathematically commutative and
+produce the same result either order, since multiplication commutes;
+percentage-vs-flat swaps are NOT, since a flat addition changes the
+base a later percentage is computed against) — confirmed directly by
+computing a real preview before and after a real swap and observing the
+real price actually change.
+
+**Tested end-to-end** — see the same `pricing.integration.test.js` (5
+new tests, 14 total now): moving a fee component up swaps its real
+`sort_order` with the real previous component, and moving back down
+restores it exactly; reordering a real percentage fee relative to a
+real flat fee genuinely changes the real calculated price, verified by
+computing a real preview before and after rather than assuming the
+math; the real first component cannot be moved up and the real last
+cannot be moved down; an invalid direction and a nonexistent component
+are both rejected; and non-admins cannot reorder fee components.
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category

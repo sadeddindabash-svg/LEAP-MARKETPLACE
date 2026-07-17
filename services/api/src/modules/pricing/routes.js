@@ -88,6 +88,60 @@ router.delete('/fee-components/:id', requireAuth, requireRole('admin'), async (r
   }
 });
 
+// POST /pricing/fee-components/:id/move — real, atomic reordering.
+// Fee components apply "in order, top to bottom" against a running
+// total (see engine.js) -- swapping which one runs before another
+// genuinely changes the real calculated price, so this is a real
+// transactional swap of two real sort_order values, not two separate
+// client-side PATCH calls that could leave things inconsistent if one
+// succeeded and the other failed.
+router.post('/fee-components/:id/move', requireAuth, requireRole('admin'), async (req, res, next) => {
+  const client = await db.getPool().connect();
+  try {
+    const { direction } = req.body || {};
+    if (!['up', 'down'].includes(direction)) {
+      return res.status(400).json({ error: 'direction must be "up" or "down"' });
+    }
+
+    await client.query('BEGIN');
+    const { rows: currentRows } = await client.query('SELECT * FROM pricing_fee_components WHERE id = $1', [req.params.id]);
+    if (currentRows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Fee component not found' });
+    }
+    const current = currentRows[0];
+
+    // The real adjacent component in the requested direction, by real
+    // sort_order -- 'up' means the real component with the next
+    // smaller sort_order (applies earlier); 'down' means the next
+    // larger one (applies later).
+    const { rows: neighborRows } = await client.query(
+      direction === 'up'
+        ? 'SELECT * FROM pricing_fee_components WHERE sort_order < $1 ORDER BY sort_order DESC LIMIT 1'
+        : 'SELECT * FROM pricing_fee_components WHERE sort_order > $1 ORDER BY sort_order ASC LIMIT 1',
+      [current.sort_order]
+    );
+    if (neighborRows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `This is already the ${direction === 'up' ? 'first' : 'last'} fee component.` });
+    }
+    const neighbor = neighborRows[0];
+
+    // A real, atomic swap of the two real sort_order values.
+    await client.query('UPDATE pricing_fee_components SET sort_order = $1, updated_at = now() WHERE id = $2', [neighbor.sort_order, current.id]);
+    await client.query('UPDATE pricing_fee_components SET sort_order = $1, updated_at = now() WHERE id = $2', [current.sort_order, neighbor.id]);
+    await client.query('COMMIT');
+
+    const { rows } = await db.query('SELECT * FROM pricing_fee_components ORDER BY sort_order ASC');
+    res.json(rows.map(toFeeComponentDto));
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
 // GET/PATCH /pricing/fx-rate?pair=CNY_USD — the real manually-set rate
 // that actually powers the calculation today (see engine.js's header
 // comment on why there's no live provider configured in this

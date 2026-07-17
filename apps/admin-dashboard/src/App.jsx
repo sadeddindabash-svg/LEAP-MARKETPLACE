@@ -4,7 +4,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
   createBrand, deleteBrand, createModel, deleteModel, createGeneration, deleteGeneration, createEngine, deleteEngine, createTransmission, deleteTransmission,
   fetchHubLocations, createHubLocation, deleteHubLocation, assignHubToSubOrder,
-  fetchFeeComponents, createFeeComponent, updateFeeComponent, deleteFeeComponent, fetchFxRate, updateFxRate, previewPricing,
+  fetchFeeComponents, createFeeComponent, updateFeeComponent, deleteFeeComponent, moveFeeComponent, fetchFxRate, updateFxRate, previewPricing,
   fetchFlaggedShipments,
   fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart,
   fetchSupplierMessagesInbox, fetchSupplierMessageThread, sendSupplierMessage,
@@ -12,7 +12,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
 } from "./auth";
 import {
   LayoutGrid, ShoppingBag, Store, PackageSearch, Wallet, LifeBuoy, Settings,
-  Search, Bell, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Truck,
+  Search, Bell, ChevronDown, ChevronUp, ChevronRight, TrendingUp, TrendingDown, Truck,
   CheckCircle2, XCircle, Clock, AlertTriangle, MoreHorizontal, ArrowUpRight,
   Filter as FilterIcon, Download, Check, X, MessageSquare, Star, Globe, Users,
   CreditCard, ExternalLink, ChevronLeft, RotateCcw, Warehouse, Calculator, Layers, Send, Tag
@@ -1297,6 +1297,16 @@ function PricingPage({ onSessionExpired }) {
     }
   };
 
+  const handleMoveFee = async (id, direction) => {
+    try {
+      await moveFeeComponent(getStoredToken(), id, direction);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message); // e.g. the real "already the first/last" message
+    }
+  };
+
   const handleSaveRate = async () => {
     if (!rateInput || parseFloat(rateInput) <= 0) {
       setErrorMessage("Rate must be a positive number.");
@@ -1391,6 +1401,24 @@ function PricingPage({ onSessionExpired }) {
             {loadState === "ready" && fees.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No fee components yet.</div>}
             {loadState === "ready" && fees.map((f, i) => (
               <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 4px", borderBottom: i < fees.length - 1 ? `1px solid ${C.line}` : "none", opacity: f.isActive ? 1 : 0.45 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                  <button
+                    onClick={() => handleMoveFee(f.id, "up")}
+                    disabled={i === 0}
+                    style={{ background: "none", border: "none", padding: 0, cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? 0.25 : 1 }}
+                    title="Move up"
+                  >
+                    <ChevronUp size={14} color={C.ink} />
+                  </button>
+                  <button
+                    onClick={() => handleMoveFee(f.id, "down")}
+                    disabled={i === fees.length - 1}
+                    style={{ background: "none", border: "none", padding: 0, cursor: i === fees.length - 1 ? "default" : "pointer", opacity: i === fees.length - 1 ? 0.25 : 1 }}
+                    title="Move down"
+                  >
+                    <ChevronDown size={14} color={C.ink} />
+                  </button>
+                </div>
                 <div style={{ width: 30, ...body, fontSize: 11.5, color: C.muted, textAlign: "center" }}>{f.sortOrder}</div>
                 <div style={{ flex: 1 }}>
                   <div style={{ ...body, fontSize: 13.5, fontWeight: 700, color: C.ink }}>{f.name}</div>

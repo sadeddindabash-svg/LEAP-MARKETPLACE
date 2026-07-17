@@ -237,6 +237,7 @@ export async function fetchFeeComponents(token) {
 export const createFeeComponent = (token, name, type, value, sortOrder) => fitmentMutate("POST", "/pricing/fee-components", token, { name, type, value, sortOrder });
 export const updateFeeComponent = (token, id, updates) => fitmentMutate("PATCH", `/pricing/fee-components/${id}`, token, updates);
 export const deleteFeeComponent = (token, id) => fitmentMutate("DELETE", `/pricing/fee-components/${id}`, token);
+export const moveFeeComponent = (token, id, direction) => fitmentMutate("POST", `/pricing/fee-components/${id}/move`, token, { direction });
 
 export async function fetchFxRate(token) {
   const response = await fetch(`${API_BASE_URL}/pricing/fx-rate`, { headers: { Authorization: `Bearer ${token}` } });

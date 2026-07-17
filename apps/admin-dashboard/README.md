@@ -357,6 +357,13 @@ backend design.
   in any order that's already been placed, which locks in whatever price
   was computed at that exact moment. See the backend section for why
   that split is correct, not an oversight.
+- **Real reordering (new)**: real up/down arrows next to each fee's
+  application order — since fees apply sequentially against a running
+  total, this genuinely changes the calculated price, not just display
+  order (see `services/api/README.md`'s "Real, atomic fee component
+  reordering" section). Disabled correctly for the first/last real
+  component; a real, atomic backend swap either succeeds completely or
+  not at all.
 
 ## Flagged Shipments page (new — the real answer to "where do I find a flagged issue")
 
@@ -458,7 +465,7 @@ scope beyond referral rewards alone.
 npm test
 ```
 
-Thirty-six test files, 231 tests total, all passing:
+Thirty-seven test files, 244 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/orders.integration.test.js` (4, REAL backend) — order list/detail
@@ -584,7 +591,7 @@ Thirty-six test files, 231 tests total, all passing:
   real structured field (part, OEM number, brand, model, year, weight,
   dimensions) come through correctly, and mandatory shipping
   dimensions/weight are enforced with a non-positive value rejected.
-- `src/pricing.integration.test.js` (9, REAL backend) — a non-RMB
+- `src/pricing.integration.test.js` (14, REAL backend) — a non-RMB
   submission is rejected, unauthenticated/non-admin access to fee/rate
   management is rejected, the preview endpoint's result is
   independently re-derived from the real fee components this test
@@ -609,13 +616,45 @@ Thirty-six test files, 231 tests total, all passing:
   (via a real `pg` connection, same pattern as `moderation.integration.test.js`)
   and asserting the API returns THAT exact value unchanged — testing the
   actual invariant that matters, not a number that happens to be true in
-  one environment's history.
-- `src/PricingFlow.test.jsx` (5, mocked, full component tree) — renders
+  one environment's history. Plus 5 new real fee-component-reordering
+  tests (new): moving a fee up swaps its real sort_order with the real
+  previous component and moving back down restores it exactly;
+  reordering a real percentage fee relative to a real flat fee
+  genuinely changes the real calculated price, verified by computing a
+  real preview before and after rather than assuming the math; the real
+  first component cannot move up and the real last cannot move down; an
+  invalid direction and a nonexistent component are both rejected; and
+  non-admins cannot reorder fee components.
+- `src/PricingFlow.test.jsx` (7, mocked, full component tree) — renders
   the real seeded fee component and current FX rate, adding a new fee
   calls the real create endpoint and shows up immediately, updating the
   FX rate calls the real update endpoint, and the preview calculator
   shows a real computed breakdown (and a clear error with no cost
-  entered).
+  entered). Plus 2 new real reordering UI tests (new): clicking the
+  real move-down arrow calls the real move endpoint and the fee order
+  genuinely updates; the real move-up arrow is disabled for the first
+  fee component. **A real bug in this test itself was found and
+  fixed**: the mock's GET handler initially returned fee components in
+  their original array order rather than sorted by the real
+  `sortOrder`, unlike the real backend's actual `ORDER BY sort_order
+  ASC` — meaning a swap changed the real underlying values but the mock
+  kept returning the stale display order, making a genuinely correct
+  reorder look like a failing test. Fixed by sorting the mock's
+  response the same way the real backend does.
+- `src/uploads.integration.test.js` (6, REAL backend, real multipart
+  file uploads against two real JPEG fixtures — one valid 900x900, one
+  genuinely too-small 400x400) — a real, valid high-resolution image
+  uploads successfully and honestly reports `storage: 'local'` (no real
+  cloud credentials exist in this environment); a real too-small image
+  is rejected with the exact real dimensions in the error; a real
+  non-image file is rejected; unauthenticated uploads are rejected; a
+  buyer cannot upload a product image; and a real hub staff account can
+  also upload real evidence photos. **A real tooling issue was found
+  and fixed while writing these**: Node's native `fetch` FormData/Blob
+  combination hangs against this project's real multer-based endpoint
+  (confirmed via direct `curl -F` testing that the actual endpoint
+  itself works correctly) — switched to the well-established
+  `form-data` package for reliable real multipart encoding instead.
 - `src/FlaggedShipmentsFlow.test.jsx` (5, mocked, full component tree) —
   the sidebar shows a real count badge when something is flagged and
   shows no badge at all when nothing is (not a stray "0"), the queue

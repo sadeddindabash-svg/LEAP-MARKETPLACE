@@ -7,6 +7,7 @@ const ADMIN_USER = { id: 'admin_dev_seed', email: 'admin@leap.dev', name: 'Dev A
 function mockFetchRouter() {
   let fees = [
     { id: 'fee_leap', name: 'Leap Platform Fee', type: 'percentage', value: 15, sortOrder: 10, isActive: true, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'fee_bank', name: 'Bank Fee', type: 'percentage', value: 2, sortOrder: 20, isActive: true, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
   ];
   let fxRate = { currencyPair: 'CNY_USD', rate: 0.14, source: 'manual', updatedAt: '2026-01-01T00:00:00.000Z' };
 
@@ -18,13 +19,31 @@ function mockFetchRouter() {
     if (u.endsWith('/overview')) {
       return Promise.resolve({ ok: true, json: async () => ({ totalOrders: 0, activeSuppliers: 0, pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, openTickets: 0, ordersByDay: [], unitsByCategory: [], topSuppliers: [] }) });
     }
+    if (method === 'POST' && u.match(/\/pricing\/fee-components\/.+\/move$/)) {
+      const id = u.split('/').slice(-2)[0];
+      const { direction } = JSON.parse(options.body);
+      const sorted = [...fees].sort((a, b) => a.sortOrder - b.sortOrder);
+      const idx = sorted.findIndex((f) => f.id === id);
+      const neighborIdx = direction === 'up' ? idx - 1 : idx + 1;
+      if (neighborIdx < 0 || neighborIdx >= sorted.length) {
+        return Promise.resolve({ ok: false, status: 400, json: async () => ({ error: `This is already the ${direction === 'up' ? 'first' : 'last'} fee component.` }) });
+      }
+      const currentSort = sorted[idx].sortOrder;
+      const neighborSort = sorted[neighborIdx].sortOrder;
+      fees = fees.map((f) => {
+        if (f.id === sorted[idx].id) return { ...f, sortOrder: neighborSort };
+        if (f.id === sorted[neighborIdx].id) return { ...f, sortOrder: currentSort };
+        return f;
+      });
+      return Promise.resolve({ ok: true, json: async () => fees });
+    }
     if (method === 'POST' && u.endsWith('/pricing/fee-components')) {
       const b = JSON.parse(options.body);
       const newFee = { id: 'fee_new', name: b.name, type: b.type, value: b.value, sortOrder: b.sortOrder, isActive: true, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' };
       fees = [...fees, newFee];
       return Promise.resolve({ ok: true, status: 201, json: async () => newFee });
     }
-    if (u.endsWith('/pricing/fee-components')) return Promise.resolve({ ok: true, json: async () => fees });
+    if (u.endsWith('/pricing/fee-components')) return Promise.resolve({ ok: true, json: async () => [...fees].sort((a, b) => a.sortOrder - b.sortOrder) });
     if (method === 'PATCH' && u.endsWith('/pricing/fx-rate')) {
       const b = JSON.parse(options.body);
       fxRate = { ...fxRate, rate: b.rate };
@@ -120,5 +139,32 @@ describe('Pricing page — real fee/FX-rate management and preview calculator (m
     fireEvent.click(screen.getByRole('button', { name: /calculate/i }));
 
     await waitFor(() => expect(screen.getByText(/enter a supplier cost/i)).toBeInTheDocument());
+  });
+
+  it('CRITICAL: clicking the real move-down arrow calls the real move endpoint and the fee order updates', async () => {
+    globalThis.fetch = mockFetchRouter();
+    render(<LeapAdminApp />);
+    await loginAndGoToPricing();
+
+    await waitFor(() => screen.getByText('Leap Platform Fee'));
+    // Before: Leap Platform Fee (10) is above Bank Fee (20).
+    const beforeRows = screen.getAllByText(/Leap Platform Fee|Bank Fee/);
+    expect(beforeRows[0].textContent).toBe('Leap Platform Fee');
+
+    fireEvent.click(screen.getAllByTitle('Move down')[0]);
+
+    await waitFor(() => {
+      const afterRows = screen.getAllByText(/Leap Platform Fee|Bank Fee/);
+      expect(afterRows[0].textContent).toBe('Bank Fee');
+    });
+  });
+
+  it('the real move-up arrow is disabled for the first fee component', async () => {
+    globalThis.fetch = mockFetchRouter();
+    render(<LeapAdminApp />);
+    await loginAndGoToPricing();
+
+    await waitFor(() => screen.getByText('Leap Platform Fee'));
+    expect(screen.getAllByTitle('Move up')[0]).toBeDisabled();
   });
 });

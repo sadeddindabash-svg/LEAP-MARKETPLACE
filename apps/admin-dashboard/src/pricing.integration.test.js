@@ -245,4 +245,122 @@ describe.runIf(backendUp)('pricing engine against a REAL running backend', () =>
       body: JSON.stringify({ pair: 'CNY_USD', rate: original.rate }),
     });
   });
+
+  // ---------------- Real fee component reordering (new) ----------------
+  // Fee components apply "in order, top to bottom" against a running
+  // total -- moving one changes the real calculation, not just display
+  // order. Uses temporary test-only components (sort_order far outside
+  // the real seeded range) so these tests never disturb the real
+  // seeded pricing calculation other tests depend on.
+
+  async function createTestFeeComponent(token, name, type, value, sortOrder) {
+    const res = await fetch(`${BACKEND_URL}/pricing/fee-components`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name, type, value, sortOrder }),
+    });
+    return res.json();
+  }
+
+  it('CRITICAL: moving a fee component up swaps its real sort_order with the real previous component, and back down restores it', async () => {
+    const { token } = await login('admin@leap.dev', 'admin_dev_password_123');
+    const a = await createTestFeeComponent(token, 'Test Fee A', 'flat', 1, 9001);
+    const b = await createTestFeeComponent(token, 'Test Fee B', 'flat', 1, 9002);
+
+    try {
+      const upRes = await fetch(`${BACKEND_URL}/pricing/fee-components/${b.id}/move`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ direction: 'up' }),
+      });
+      expect(upRes.status).toBe(200);
+      const afterUp = await upRes.json();
+      expect(afterUp.find((c) => c.id === b.id).sortOrder).toBe(9001);
+      expect(afterUp.find((c) => c.id === a.id).sortOrder).toBe(9002);
+
+      const downRes = await fetch(`${BACKEND_URL}/pricing/fee-components/${b.id}/move`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ direction: 'down' }),
+      });
+      const afterDown = await downRes.json();
+      expect(afterDown.find((c) => c.id === b.id).sortOrder).toBe(9002);
+      expect(afterDown.find((c) => c.id === a.id).sortOrder).toBe(9001);
+    } finally {
+      await fetch(`${BACKEND_URL}/pricing/fee-components/${a.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+      await fetch(`${BACKEND_URL}/pricing/fee-components/${b.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    }
+  });
+
+  it('CRITICAL: reordering a real percentage fee relative to a real flat fee genuinely changes the calculated price, not just display order', async () => {
+    const { token } = await login('admin@leap.dev', 'admin_dev_password_123');
+    const flatFee = await createTestFeeComponent(token, 'Test Flat', 'flat', 50, 9001);
+    const pctFee = await createTestFeeComponent(token, 'Test Percentage', 'percentage', 10, 9002);
+
+    try {
+      const before = await fetch(`${BACKEND_URL}/pricing/preview`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ supplierCostCny: 400, weightKg: 5, lengthCm: 30, widthCm: 30, heightCm: 10 }),
+      }).then((r) => r.json());
+
+      await fetch(`${BACKEND_URL}/pricing/fee-components/${pctFee.id}/move`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ direction: 'up' }),
+      });
+
+      const after = await fetch(`${BACKEND_URL}/pricing/preview`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ supplierCostCny: 400, weightKg: 5, lengthCm: 30, widthCm: 30, heightCm: 10 }),
+      }).then((r) => r.json());
+
+      // A real percentage fee computed BEFORE vs AFTER a real flat fee
+      // is added produces a genuinely different real total -- this is
+      // not a cosmetic reorder.
+      expect(after.buyerPriceUsd).not.toBe(before.buyerPriceUsd);
+    } finally {
+      await fetch(`${BACKEND_URL}/pricing/fee-components/${flatFee.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+      await fetch(`${BACKEND_URL}/pricing/fee-components/${pctFee.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    }
+  });
+
+  it('the real first fee component cannot be moved up, and the real last one cannot be moved down', async () => {
+    const { token } = await login('admin@leap.dev', 'admin_dev_password_123');
+    const { rows } = { rows: await fetch(`${BACKEND_URL}/pricing/fee-components`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()) };
+    const sorted = rows.sort((a, b) => a.sortOrder - b.sortOrder);
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+
+    const upRes = await fetch(`${BACKEND_URL}/pricing/fee-components/${first.id}/move`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ direction: 'up' }),
+    });
+    expect(upRes.status).toBe(400);
+
+    const downRes = await fetch(`${BACKEND_URL}/pricing/fee-components/${last.id}/move`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ direction: 'down' }),
+    });
+    expect(downRes.status).toBe(400);
+  });
+
+  it('an invalid direction and a nonexistent component are both rejected', async () => {
+    const { token } = await login('admin@leap.dev', 'admin_dev_password_123');
+    const invalidDirRes = await fetch(`${BACKEND_URL}/pricing/fee-components/fee_bank/move`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ direction: 'sideways' }),
+    });
+    expect(invalidDirRes.status).toBe(400);
+
+    const notFoundRes = await fetch(`${BACKEND_URL}/pricing/fee-components/not_a_real_fee/move`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ direction: 'up' }),
+    });
+    expect(notFoundRes.status).toBe(404);
+  });
+
+  it('non-admins cannot reorder fee components', async () => {
+    const { token } = await login('supplier@leap.dev', 'supplier_dev_password_123');
+    const res = await fetch(`${BACKEND_URL}/pricing/fee-components/fee_bank/move`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ direction: 'up' }),
+    });
+    expect(res.status).toBe(403);
+  });
 });
