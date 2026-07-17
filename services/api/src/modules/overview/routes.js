@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../../../db/pool');
-const { requireAuth, requireRole } = require('../auth/middleware');
+const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 
 /**
  * Overview module — real aggregate KPIs for the admin dashboard's
@@ -27,7 +27,7 @@ const { requireAuth, requireRole } = require('../auth/middleware');
  */
 const router = express.Router();
 
-router.get('/', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.get('/', requireAuth, requireRole('admin'), requirePageAccess('overview'), async (req, res, next) => {
   try {
     const [
       totalOrders,

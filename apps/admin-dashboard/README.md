@@ -365,6 +365,35 @@ backend design.
   component; a real, atomic backend swap either succeeds completely or
   not at all.
 
+## Real admin team permissions — one owner, per-page access control (new)
+
+**Confirmed via 2 real scenarios validated before building**: one real
+"owner" admin manages permissions for every other real admin account;
+page-level access control for now. See `services/api/README.md`'s
+"Real admin team permissions" section for the full real backend design.
+
+- **Replaces a completely fabricated card** — the old "Roles & access"
+  card in Settings was hardcoded fake role names ("Super Admin",
+  "Catalog Moderator"...) with fake user counts ("2 users", "4
+  users"...) that had never been real. This is the actual thing.
+- **A real "Team & permissions" section in Settings**, visible ONLY to
+  the real owner — a non-owner sees a clear message instead, even if
+  they have general Settings access (Team & Permissions is
+  unconditionally owner-only, enforced by the real backend's
+  `requireOwner`, not just a hidden UI button).
+- **Create a real admin with a real, specific set of pages** they can
+  access, using a checkbox grid built directly from the same real NAV
+  array the sidebar itself uses — always in sync, never a separate
+  list that can drift out of date.
+- **The sidebar itself only shows pages the real logged-in admin
+  actually has access to** — a scoped admin's nav genuinely only shows
+  their allowed pages, and they land on the first one they can actually
+  see, not a hardcoded Overview they'd immediately be rejected from.
+- Real, honest safeguards matching this dashboard's established
+  pattern elsewhere (Categories, Vehicle Data, promo codes with real
+  redemptions): the owner account can't be deleted or edited; an admin
+  can't delete their own account.
+
 ## Flagged Shipments page (new — the real answer to "where do I find a flagged issue")
 
 Before this existed, a hub-flagged quality issue (see the Inspection
@@ -465,7 +494,7 @@ scope beyond referral rewards alone.
 npm test
 ```
 
-Thirty-eight test files, 250 tests total, all passing:
+Forty test files, 268 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/passwordReset.integration.test.js` (5, REAL backend) — a real
@@ -662,6 +691,37 @@ Thirty-eight test files, 250 tests total, all passing:
   kept returning the stale display order, making a genuinely correct
   reorder look like a failing test. Fixed by sorting the mock's
   response the same way the real backend does.
+- `src/adminPermissions.integration.test.js` (12, REAL backend) — the
+  real seeded admin is confirmed a real owner with full access;
+  **Scenario 1** — a real support-only admin can access Tickets and
+  Returns but is rejected from Pricing, Promo Codes, and Moderation;
+  **Scenario 2** — a real finance-only admin can access Pricing but is
+  rejected from Moderation and Supplier Messages; a real owner has full
+  access across every real page group in one pass; a real buyer is
+  completely unaffected by page-access logic on the real shared
+  `GET /order` endpoint; a permission change takes effect on the SAME
+  token's very next request, not after a new login; an unknown page id
+  is rejected; a non-owner admin cannot manage any other admin's
+  account; the real owner account cannot be deleted or edited; a real
+  scoped admin can be deleted and genuinely stops being able to log in
+  afterward; duplicate email is rejected; and the real admin list shows
+  accurate real permissions for every account.
+- `src/TeamPermissionsFlow.test.jsx` (6, mocked, full component tree) —
+  an owner sees every real nav page including Settings; a real scoped
+  admin only sees their real allowed pages in the nav and lands on one
+  of them, not a blank Overview they can't access; the owner sees the
+  real Team & Permissions management UI listing every real admin;
+  creating a new scoped admin with specific pages calls the real create
+  endpoint; a non-owner sees a real restricted message instead of the
+  management UI, even with Settings access; deleting a scoped admin
+  calls the real delete endpoint and removes them from the list. **A
+  real regression was found and fixed while building this**: filtering
+  the nav by real permissions broke 13 EXISTING mocked component tests
+  whose mocked login responses predated `isOwner`/`allowedPages` —
+  correct, secure "don't show anything for an unrecognized permission
+  shape" behavior, not a bug, but it meant those 13 older test files'
+  mocks needed updating to the real, current response shape rather than
+  loosening the real security logic to accommodate stale mocks.
 - `src/uploads.integration.test.js` (6, REAL backend, real multipart
   file uploads against two real JPEG fixtures — one valid 900x900, one
   genuinely too-small 400x400) — a real, valid high-resolution image

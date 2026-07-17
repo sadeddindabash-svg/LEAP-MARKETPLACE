@@ -409,3 +409,50 @@ export async function deletePromoCode(token, code) {
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
   return data;
 }
+
+// ---------------- Real admin team & permissions (new, owner-only) ----------------
+// See services/api/src/modules/admin-users/routes.js for the full real
+// backend implementation.
+
+export async function fetchAdminUsers(token) {
+  const response = await fetch(`${API_BASE_URL}/admin-users`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) throw new Error(`Failed to load admin users (${response.status})`);
+  return response.json();
+}
+
+export async function createAdminUser(token, payload) {
+  const response = await fetch(`${API_BASE_URL}/admin-users`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
+export async function updateAdminPermissions(token, id, allowedPages) {
+  const response = await fetch(`${API_BASE_URL}/admin-users/${id}/permissions`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ allowedPages }),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
+export async function deleteAdminUser(token, id) {
+  const response = await fetch(`${API_BASE_URL}/admin-users/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (response.status === 204) return null;
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}

@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../../../db/pool');
-const { requireAuth, requireRole } = require('../auth/middleware');
+const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { createNotification } = require('../notifications/helpers');
 
 /**
@@ -28,7 +28,7 @@ function toSupplierDto(row) {
 
 // GET /supplier — admin only. Listing count is derived via a live join
 // against products rather than stored, so it's never stale.
-router.get('/', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.get('/', requireAuth, requireRole('admin'), requirePageAccess('suppliers'), async (req, res, next) => {
   try {
     const { rows } = await db.query(`
       SELECT s.*, COUNT(p.id) AS listing_count
@@ -44,7 +44,7 @@ router.get('/', requireAuth, requireRole('admin'), async (req, res, next) => {
 });
 
 // PATCH /supplier/:id/verify  { status: 'verified' | 'rejected' }
-router.patch('/:id/verify', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.patch('/:id/verify', requireAuth, requireRole('admin'), requirePageAccess('suppliers'), async (req, res, next) => {
   try {
     const { status } = req.body || {};
     if (!['verified', 'rejected'].includes(status)) {

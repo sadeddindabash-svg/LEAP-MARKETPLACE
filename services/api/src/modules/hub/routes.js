@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../../../db/pool');
-const { requireAuth, requireRole } = require('../auth/middleware');
+const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 
 /**
  * Inspection hub module (migration 011) — new business requirement:
@@ -38,7 +38,7 @@ router.get('/locations', async (req, res, next) => {
   }
 });
 
-router.post('/locations', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.post('/locations', requireAuth, requireRole('admin'), requirePageAccess('hubs'), async (req, res, next) => {
   try {
     const { name, region, address } = req.body || {};
     if (!name || !region) return res.status(400).json({ error: 'name and region are required' });
@@ -50,7 +50,7 @@ router.post('/locations', requireAuth, requireRole('admin'), async (req, res, ne
   }
 });
 
-router.delete('/locations/:id', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.delete('/locations/:id', requireAuth, requireRole('admin'), requirePageAccess('hubs'), async (req, res, next) => {
   try {
     const { rowCount } = await db.query('DELETE FROM hubs WHERE id = $1', [req.params.id]);
     if (rowCount === 0) return res.status(404).json({ error: 'Hub not found' });
@@ -65,7 +65,7 @@ router.delete('/locations/:id', requireAuth, requireRole('admin'), async (req, r
 
 // PATCH /hub/assign/:subOrderId  { hubId } — admin assigns which hub a
 // sub-order routes through. Required before a supplier can mark it shipped.
-router.patch('/assign/:subOrderId', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.patch('/assign/:subOrderId', requireAuth, requireRole('admin'), requirePageAccess('hubs'), async (req, res, next) => {
   try {
     const { hubId } = req.body || {};
     if (!hubId) return res.status(400).json({ error: 'hubId is required' });
@@ -89,7 +89,7 @@ router.patch('/assign/:subOrderId', requireAuth, requireRole('admin'), async (re
 // flagged shipment" — before this existed, an admin could only discover
 // one by already knowing which order to open, with no queue and no
 // notification at all.
-router.get('/flagged', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.get('/flagged', requireAuth, requireRole('admin'), requirePageAccess('flagged'), async (req, res, next) => {
   try {
     const { rows } = await db.query(
       `SELECT hs.id, hs.status, hs.created_at, hs.updated_at, so.id AS sub_order_id, so.order_id,

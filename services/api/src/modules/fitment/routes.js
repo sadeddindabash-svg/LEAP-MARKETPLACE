@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../../../db/pool');
-const { requireAuth, requireRole } = require('../auth/middleware');
+const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 
 /**
  * Fitment module — Year/Make/Model/Trim reference data (Phase 1, BUY-010).
@@ -120,7 +120,7 @@ function isUniqueViolation(err) {
 }
 
 // POST /fitment/brands  { name }
-router.post('/brands', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.post('/brands', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
     const { name } = req.body || {};
     if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' });
@@ -134,7 +134,7 @@ router.post('/brands', requireAuth, requireRole('admin'), async (req, res, next)
 });
 
 // DELETE /fitment/brands/:id
-router.delete('/brands/:id', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.delete('/brands/:id', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
     const { rowCount } = await db.query('DELETE FROM vehicle_brands WHERE id = $1', [req.params.id]);
     if (rowCount === 0) return res.status(404).json({ error: 'Brand not found' });
@@ -148,7 +148,7 @@ router.delete('/brands/:id', requireAuth, requireRole('admin'), async (req, res,
 });
 
 // POST /fitment/brands/:brandId/models  { name }
-router.post('/brands/:brandId/models', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.post('/brands/:brandId/models', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
     const { name } = req.body || {};
     if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' });
@@ -163,7 +163,7 @@ router.post('/brands/:brandId/models', requireAuth, requireRole('admin'), async 
 });
 
 // DELETE /fitment/models/:id
-router.delete('/models/:id', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.delete('/models/:id', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
     const { rowCount } = await db.query('DELETE FROM vehicle_models WHERE id = $1', [req.params.id]);
     if (rowCount === 0) return res.status(404).json({ error: 'Model not found' });
@@ -177,7 +177,7 @@ router.delete('/models/:id', requireAuth, requireRole('admin'), async (req, res,
 });
 
 // POST /fitment/models/:modelId/generations  { name, yearStart, yearEnd? }
-router.post('/models/:modelId/generations', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.post('/models/:modelId/generations', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
     const { name, yearStart, yearEnd } = req.body || {};
     if (!name || !name.trim() || !yearStart) return res.status(400).json({ error: 'name and yearStart are required' });
@@ -196,7 +196,7 @@ router.post('/models/:modelId/generations', requireAuth, requireRole('admin'), a
 });
 
 // DELETE /fitment/generations/:id
-router.delete('/generations/:id', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.delete('/generations/:id', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
     const { rowCount } = await db.query('DELETE FROM vehicle_generations WHERE id = $1', [req.params.id]);
     if (rowCount === 0) return res.status(404).json({ error: 'Generation not found' });
@@ -210,7 +210,7 @@ router.delete('/generations/:id', requireAuth, requireRole('admin'), async (req,
 });
 
 // POST /fitment/generations/:generationId/engines  { name }
-router.post('/generations/:generationId/engines', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.post('/generations/:generationId/engines', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
     const { name } = req.body || {};
     if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' });
@@ -225,7 +225,7 @@ router.post('/generations/:generationId/engines', requireAuth, requireRole('admi
 });
 
 // DELETE /fitment/engines/:id
-router.delete('/engines/:id', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.delete('/engines/:id', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
     const { rowCount } = await db.query('DELETE FROM vehicle_engines WHERE id = $1', [req.params.id]);
     if (rowCount === 0) return res.status(404).json({ error: 'Engine not found' });
@@ -239,7 +239,7 @@ router.delete('/engines/:id', requireAuth, requireRole('admin'), async (req, res
 });
 
 // POST /fitment/generations/:generationId/transmissions  { name }
-router.post('/generations/:generationId/transmissions', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.post('/generations/:generationId/transmissions', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
     const { name } = req.body || {};
     if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' });
@@ -254,7 +254,7 @@ router.post('/generations/:generationId/transmissions', requireAuth, requireRole
 });
 
 // DELETE /fitment/transmissions/:id
-router.delete('/transmissions/:id', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.delete('/transmissions/:id', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
     const { rowCount } = await db.query('DELETE FROM vehicle_transmissions WHERE id = $1', [req.params.id]);
     if (rowCount === 0) return res.status(404).json({ error: 'Transmission not found' });

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import LeapAdminApp from './App';
 
-const ADMIN_USER = { id: 'admin_dev_seed', email: 'admin@leap.dev', name: 'Dev Admin', role: 'admin' };
+const ADMIN_USER = { id: 'admin_dev_seed', email: 'admin@leap.dev', name: 'Dev Admin', role: 'admin', isOwner: true, allowedPages: 'all' };
 
 const MOCK_CODES = [
   { code: 'SUMMER10', type: 'percentage', value: 10, source: 'admin', maxTotalUses: 100, maxUsesPerBuyer: 1, expiresAt: null, isActive: true, createdAt: '2026-07-16T00:00:00.000Z' },

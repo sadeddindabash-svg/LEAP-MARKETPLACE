@@ -72,7 +72,7 @@ router.post('/login', async (req, res, next) => {
       return res.status(400).json({ error: 'email and password are required' });
     }
 
-    const { rows } = await db.query('SELECT id, email, name, role, password_hash, supplier_id, hub_id FROM users WHERE email = $1', [email]);
+    const { rows } = await db.query('SELECT id, email, name, role, password_hash, supplier_id, hub_id, is_owner FROM users WHERE email = $1', [email]);
     // Deliberately identical error for "no such user" and "wrong password"
     // — do not reveal which one it was, that leaks whether an email is registered.
     const genericError = { error: 'Invalid email or password' };
@@ -87,9 +87,10 @@ router.post('/login', async (req, res, next) => {
     const passwordMatches = await bcrypt.compare(password, user.password_hash);
     if (!passwordMatches) return res.status(401).json(genericError);
 
+    const accessInfo = await getAdminAccessInfo(user.id, user.role, user.is_owner);
     res.json({
       token: signToken(user),
-      user: { id: user.id, email: user.email, name: user.name, role: user.role, supplierId: user.supplier_id, hubId: user.hub_id },
+      user: { id: user.id, email: user.email, name: user.name, role: user.role, supplierId: user.supplier_id, hubId: user.hub_id, ...accessInfo },
     });
   } catch (err) {
     next(err);
@@ -98,12 +99,24 @@ router.post('/login', async (req, res, next) => {
 
 // GET /auth/me — returns the currently authenticated user (proves the
 // token round-trips correctly end to end).
+// Real, per-page admin access (migration 022) -- shared by both
+// GET /auth/me and POST /auth/login so a fresh login and a page
+// refresh always see the exact same real, current permissions, never
+// one being stale relative to the other.
+async function getAdminAccessInfo(userId, role, isOwnerFlag) {
+  if (role !== 'admin') return { isOwner: null, allowedPages: null };
+  if (isOwnerFlag) return { isOwner: true, allowedPages: 'all' };
+  const { rows } = await db.query('SELECT page_id FROM admin_page_permissions WHERE user_id = $1', [userId]);
+  return { isOwner: false, allowedPages: rows.map((r) => r.page_id) };
+}
+
 router.get('/me', requireAuth, async (req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT id, email, name, role, supplier_id, hub_id, created_at FROM users WHERE id = $1', [req.user.sub]);
+    const { rows } = await db.query('SELECT id, email, name, role, supplier_id, hub_id, is_owner, created_at FROM users WHERE id = $1', [req.user.sub]);
     if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
-    const { supplier_id, hub_id, ...rest } = rows[0];
-    res.json({ ...rest, supplierId: supplier_id, hubId: hub_id });
+    const { supplier_id, hub_id, is_owner, ...rest } = rows[0];
+    const accessInfo = await getAdminAccessInfo(rows[0].id, rows[0].role, is_owner);
+    res.json({ ...rest, supplierId: supplier_id, hubId: hub_id, ...accessInfo });
   } catch (err) {
     next(err);
   }

@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../../../db/pool');
-const { requireAuth, requireRole, optionalAuth } = require('../auth/middleware');
+const { requireAuth, requireRole, optionalAuth, requirePageAccess } = require('../auth/middleware');
 const { validatePromoCode } = require('../promotions/helpers');
 
 /**
@@ -30,7 +30,7 @@ function toPromoCodeDto(row) {
   };
 }
 
-router.get('/', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.get('/', requireAuth, requireRole('admin'), requirePageAccess('promoCodes'), async (req, res, next) => {
   try {
     const { rows } = await db.query('SELECT * FROM promo_codes ORDER BY created_at DESC');
     res.json(rows.map(toPromoCodeDto));
@@ -39,7 +39,7 @@ router.get('/', requireAuth, requireRole('admin'), async (req, res, next) => {
   }
 });
 
-router.post('/', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.post('/', requireAuth, requireRole('admin'), requirePageAccess('promoCodes'), async (req, res, next) => {
   try {
     const { code, type, value, maxTotalUses, maxUsesPerBuyer, expiresAt, requireNewUser, minTotalSpend, minOrderCount, minInactiveDays } = req.body || {};
     if (!code || !type) return res.status(400).json({ error: 'code and type are required' });
@@ -66,7 +66,7 @@ router.post('/', requireAuth, requireRole('admin'), async (req, res, next) => {
   }
 });
 
-router.patch('/:code', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.patch('/:code', requireAuth, requireRole('admin'), requirePageAccess('promoCodes'), async (req, res, next) => {
   try {
     const { isActive, expiresAt, maxTotalUses } = req.body || {};
     const { rows } = await db.query(
@@ -84,7 +84,7 @@ router.patch('/:code', requireAuth, requireRole('admin'), async (req, res, next)
   }
 });
 
-router.delete('/:code', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.delete('/:code', requireAuth, requireRole('admin'), requirePageAccess('promoCodes'), async (req, res, next) => {
   try {
     const { rows: usedRows } = await db.query('SELECT id FROM promo_code_redemptions WHERE promo_code = $1 LIMIT 1', [req.params.code]);
     if (usedRows.length > 0) {

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import LeapAdminApp from './App';
 
-const ADMIN_USER = { id: 'admin_dev_seed', email: 'admin@leap.dev', name: 'Dev Admin', role: 'admin' };
+const ADMIN_USER = { id: 'admin_dev_seed', email: 'admin@leap.dev', name: 'Dev Admin', role: 'admin', isOwner: true, allowedPages: 'all' };
 
 const MOCK_ORDER_LIST = [
   { id: 'LP-900001', userId: 'u_1', guestEmail: null, status: 'to_ship', total: 76.7, currencyCode: 'USD', placedAt: '2026-07-04T10:00:00.000Z' },

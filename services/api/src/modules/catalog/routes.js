@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../../../db/pool');
-const { requireAuth, requireRole } = require('../auth/middleware');
+const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
 
 /**
@@ -234,7 +234,7 @@ router.get('/products/:id', async (req, res, next) => {
 // description_zh) and photos, so an admin reviewer can see exactly what
 // was submitted and enter a real English translation as part of approval
 // — see PATCH .../moderate below.
-router.get('/moderation-queue', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.get('/moderation-queue', requireAuth, requireRole('admin'), requirePageAccess('moderation'), async (req, res, next) => {
   try {
     const { rows } = await db.query(`
       SELECT
@@ -281,7 +281,7 @@ router.get('/moderation-queue', requireAuth, requireRole('admin'), async (req, r
 // the confirmed business requirement covering the full GCC + Jordan
 // launch markets), not just a status flip. Rejecting doesn't need a
 // translation, since the listing never goes live either way.
-router.patch('/products/:id/moderate', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.patch('/products/:id/moderate', requireAuth, requireRole('admin'), requirePageAccess('moderation'), async (req, res, next) => {
   try {
     const { action, nameEn, descriptionEn, nameAr, descriptionAr } = req.body || {};
     if (!['approve', 'reject'].includes(action)) {
@@ -344,7 +344,7 @@ router.get('/categories', async (req, res, next) => {
   }
 });
 
-router.post('/categories', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.post('/categories', requireAuth, requireRole('admin'), requirePageAccess('categories'), async (req, res, next) => {
   try {
     const { id, nameEn, nameAr, sortOrder } = req.body || {};
     if (!id || !nameEn) return res.status(400).json({ error: 'id and nameEn are required' });
@@ -363,7 +363,7 @@ router.post('/categories', requireAuth, requireRole('admin'), async (req, res, n
 // Deleting a category real-protects against orphaning real products —
 // same "you cannot delete what's actually referenced" pattern as
 // Vehicle Data and Hubs, not silently allowed and not a raw DB error.
-router.delete('/categories/:id', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.delete('/categories/:id', requireAuth, requireRole('admin'), requirePageAccess('categories'), async (req, res, next) => {
   try {
     const { rows: productsUsingIt } = await db.query('SELECT id FROM products WHERE category = $1 LIMIT 1', [req.params.id]);
     if (productsUsingIt.length > 0) {
@@ -398,7 +398,7 @@ router.get('/categories/:id/parts', async (req, res, next) => {
   }
 });
 
-router.post('/categories/:id/parts', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.post('/categories/:id/parts', requireAuth, requireRole('admin'), requirePageAccess('categories'), async (req, res, next) => {
   try {
     const { nameEn, nameAr, sortOrder } = req.body || {};
     if (!nameEn) return res.status(400).json({ error: 'nameEn is required' });
@@ -421,7 +421,7 @@ router.post('/categories/:id/parts', requireAuth, requireRole('admin'), async (r
 // header comment on why `products.part` stays plain text (validated
 // against this list, not a foreign key) rather than being changed to
 // reference category_parts.id directly.
-router.delete('/parts/:id', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.delete('/parts/:id', requireAuth, requireRole('admin'), requirePageAccess('categories'), async (req, res, next) => {
   try {
     const { rows: partRows } = await db.query('SELECT * FROM category_parts WHERE id = $1', [req.params.id]);
     if (partRows.length === 0) return res.status(404).json({ error: 'Part not found' });

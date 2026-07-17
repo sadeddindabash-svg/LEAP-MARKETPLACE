@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../../../db/pool');
-const { requireAuth, requireRole, optionalAuth } = require('../auth/middleware');
+const { requireAuth, requireRole, optionalAuth, requirePageAccess } = require('../auth/middleware');
 const { createNotification } = require('../notifications/helpers');
 
 /**
@@ -73,7 +73,7 @@ router.post('/tickets', optionalAuth, async (req, res, next) => {
 });
 
 // GET /support/tickets — admin-only, every ticket in the system.
-router.get('/tickets', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.get('/tickets', requireAuth, requireRole('admin'), requirePageAccess('tickets'), async (req, res, next) => {
   try {
     const { rows } = await db.query('SELECT * FROM support_tickets ORDER BY updated_at DESC');
     res.json(rows.map(toTicketSummaryDto));
@@ -83,7 +83,7 @@ router.get('/tickets', requireAuth, requireRole('admin'), async (req, res, next)
 });
 
 // GET /support/tickets/:id — admin-only (see "known gap" above).
-router.get('/tickets/:id', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.get('/tickets/:id', requireAuth, requireRole('admin'), requirePageAccess('tickets'), async (req, res, next) => {
   try {
     const { rows } = await db.query('SELECT * FROM support_tickets WHERE id = $1', [req.params.id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Ticket not found' });
@@ -102,7 +102,7 @@ router.get('/tickets/:id', requireAuth, requireRole('admin'), async (req, res, n
 });
 
 // POST /support/tickets/:id/messages — admin reply. { message }
-router.post('/tickets/:id/messages', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.post('/tickets/:id/messages', requireAuth, requireRole('admin'), requirePageAccess('tickets'), async (req, res, next) => {
   try {
     const { message } = req.body || {};
     if (!message) return res.status(400).json({ error: 'message is required' });
@@ -137,7 +137,7 @@ router.post('/tickets/:id/messages', requireAuth, requireRole('admin'), async (r
 });
 
 // PATCH /support/tickets/:id  { status: 'open' | 'in_progress' | 'resolved' }
-router.patch('/tickets/:id', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.patch('/tickets/:id', requireAuth, requireRole('admin'), requirePageAccess('tickets'), async (req, res, next) => {
   try {
     const { status } = req.body || {};
     if (!['open', 'in_progress', 'resolved'].includes(status)) {

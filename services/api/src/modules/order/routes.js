@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../../../db/pool');
-const { requireAuth, optionalAuth } = require('../auth/middleware');
+const { requireAuth, optionalAuth, requirePageAccessIfAdmin } = require('../auth/middleware');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
 const { validatePromoCode, calculateDiscountUsd, recordRedemption, checkAndGrantReferralReward } = require('../promotions/helpers');
 
@@ -191,7 +191,7 @@ router.post('/', async (req, res, next) => {
 //      guesses LP-200901 sees a stranger's order" hole.
 // Anyone else gets 404 (not 403) — same "don't confirm existence" pattern
 // used elsewhere in this codebase (e.g. product-ownership checks).
-router.get('/:id', optionalAuth, async (req, res, next) => {
+router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req, res, next) => {
   try {
     const { rows: orderRows } = await db.query('SELECT * FROM orders WHERE id = $1', [req.params.id]);
     if (orderRows.length === 0) return res.status(404).json({ error: 'Order not found' });
@@ -320,7 +320,7 @@ async function computeDisplayStatus(orderId) {
   return anyShippedOrFurther ? 'shipped' : 'to_ship';
 }
 
-router.get('/', requireAuth, async (req, res, next) => {
+router.get('/', requireAuth, requirePageAccessIfAdmin('orders'), async (req, res, next) => {
   try {
     const isAdmin = req.user.role === 'admin';
     const { rows } = isAdmin

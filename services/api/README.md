@@ -556,6 +556,97 @@ against the real `client.js`, monkey-patching `nodemailer.createTransport`
 in the same process (the same approach that works correctly for the
 storage module's equivalent verification).
 
+## Real admin team permissions — one owner, per-page access control (new)
+
+**Confirmed scope, 2 real scenarios validated before building anything**:
+one real "owner" admin manages permissions for every other real admin
+account; page-level access control (can a given admin see a given
+admin dashboard page, yes/no) — finer view-vs-edit control within a
+page is a real, deliberate future step, not built here.
+
+**What was actually there before this**: `users.role`'s CHECK
+constraint had `'support'` and `'finance'` sitting in it since the very
+first migration — genuinely dead, never once referenced by
+`requireRole('support')` or `requireRole('finance')` anywhere in the
+real codebase. Every one of the 47 real admin-only endpoints across 11
+route files just checked "is this person AN admin," full stop — no real
+distinction between different kinds of admin staff. This migration
+builds the real thing instead of reviving those 2 dead, rigid labels.
+
+**Migration 022**: a real `users.is_owner` boolean (the real seeded dev
+admin becomes the real owner); a real `admin_page_permissions` table
+(`user_id`, `page_id`) for every non-owner admin's real per-page access.
+
+**Deliberately a real, LIVE database check every request, not a JWT
+claim** (`auth/middleware.js`'s `requirePageAccess()` / `requireOwner()`)
+— an owner revoking a permission should take effect immediately, not
+whenever that admin's existing 7-day session happens to expire. Verified
+directly: an owner updates a scoped admin's permissions, and the SAME
+existing token (no new login) immediately reflects the change on its
+very next request.
+
+**A real owner bypasses the permissions table entirely** and always has
+full real access to every page — confirmed across all 7 real admin-only
+route groups in one test.
+
+**Real, honest handling of the one endpoint genuinely SHARED between
+buyers and admins** — `GET /order` (a buyer sees their own orders; an
+admin sees every real order) needed a different real middleware,
+`requirePageAccessIfAdmin(pageId)`, that only checks page access when
+the caller is genuinely an admin — a real buyer or guest passes
+straight through, completely unaffected. Verified directly: a real
+buyer's own `GET /order` call is unaffected either way.
+
+**Real, owner-only admin account management** (`admin-users` module):
+create a new admin with a real set of allowed pages; a real, full
+replace of an admin's permissions (simpler and less error-prone than
+incremental add/remove calls that could drift from the real intended
+state if one of several calls failed partway through); delete an admin.
+Real safeguards: the owner account can never be deleted or have its
+permissions edited; an admin can never delete their own account; an
+unknown page id is rejected on both create and update.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/adminPermissions.integration.test.js`
+(12 tests, REAL backend): the real seeded admin is confirmed a real
+owner with full access; **Scenario 1** — a real support-only admin can
+access Tickets and Returns but is rejected from Pricing, Promo Codes,
+and Moderation; **Scenario 2** — a real finance-only admin can access
+Pricing but is rejected from Moderation and Supplier Messages; a real
+owner has full access across every real page group in one pass; a real
+buyer is completely unaffected by page-access logic on the real shared
+endpoint; a permission change takes effect on the SAME token's very
+next request, not after a new login; an unknown page id is rejected; a
+non-owner admin cannot manage any other admin's account; the real
+owner account cannot be deleted or edited; a real scoped admin can be
+deleted and genuinely stops being able to log in afterward; duplicate
+email is rejected; and the real admin list shows accurate real
+permissions for every account.
+
+**A real regression was found and fixed while building this**: filtering
+the dashboard's own nav by the current admin's real permissions broke
+13 existing mocked component tests, since their mocked login responses
+predated `isOwner`/`allowedPages` and defaulted to "no explicit
+permission, don't show anything" — correct, secure behavior for a real
+unrecognized/incomplete permission response, but it meant those older
+test mocks needed updating to match the real, current response shape
+rather than the frontend's real security logic being loosened to
+accommodate stale mocks.
+
+**A real bug was also found and fixed during clean-merge verification
+against a genuinely FRESH database** (not the sandbox's long-lived dev
+database, where `admin@leap.dev` already existed from earlier
+sessions): migration 022's `UPDATE users SET is_owner = true WHERE
+email = 'admin@leap.dev'` runs during the migration phase, but
+`db/seed.js` creates that user during the separate, LATER seed phase —
+on a fresh database the UPDATE matches zero real rows since the user
+doesn't exist yet, silently leaving the seeded admin as a non-owner.
+Fixed by having `db/seed.js` set `is_owner = true` directly in the real
+INSERT that creates the admin user, correct regardless of run order;
+the migration's UPDATE is left in place since it's still correct for an
+EXISTING database upgrading through this migration, where the admin
+user already exists at migration time. Re-verified with a fully fresh
+drop/recreate/migrate/seed database.
+
 ## Real, atomic fee component reordering (new)
 
 **A real, direct question this answers**: fee components apply "in
@@ -1245,6 +1336,11 @@ src/
     ├── storage/             Generic real S3-compatible cloud storage
     │                       client (new) -- works with AWS S3, Cloudflare
     │                       R2, or DigitalOcean Spaces via env vars alone
+    ├── email/               Generic real SMTP email client + branded
+    │                       templates (new) -- works with Resend,
+    │                       SendGrid, Mailgun, or AWS SES via env vars alone
+    ├── admin-users/         Real, owner-only admin account + per-page
+    │                       permission management (new, migration 022)
     ├── payment/            Stripe, Amazon Payment Services, PayPal, and
     │                       Google Pay (routed through Stripe) — BUY-040–044
 ```

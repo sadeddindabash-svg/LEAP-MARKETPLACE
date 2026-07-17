@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../../../db/pool');
-const { requireAuth, requireRole } = require('../auth/middleware');
+const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { calculateBuyerPriceUsd } = require('./engine');
 
 /**
@@ -28,7 +28,7 @@ function toFeeComponentDto(row) {
 
 // GET /pricing/fee-components — includes inactive ones too, so an admin
 // can see (and re-enable) a fee they turned off, not just the live set.
-router.get('/fee-components', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.get('/fee-components', requireAuth, requireRole('admin'), requirePageAccess('pricing'), async (req, res, next) => {
   try {
     const { rows } = await db.query('SELECT * FROM pricing_fee_components ORDER BY sort_order ASC');
     res.json(rows.map(toFeeComponentDto));
@@ -37,7 +37,7 @@ router.get('/fee-components', requireAuth, requireRole('admin'), async (req, res
   }
 });
 
-router.post('/fee-components', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.post('/fee-components', requireAuth, requireRole('admin'), requirePageAccess('pricing'), async (req, res, next) => {
   try {
     const { name, type, value, sortOrder } = req.body || {};
     if (!name || !type || value === undefined || value === null) {
@@ -58,7 +58,7 @@ router.post('/fee-components', requireAuth, requireRole('admin'), async (req, re
   }
 });
 
-router.patch('/fee-components/:id', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.patch('/fee-components/:id', requireAuth, requireRole('admin'), requirePageAccess('pricing'), async (req, res, next) => {
   try {
     const { name, type, value, sortOrder, isActive } = req.body || {};
     if (type !== undefined && !ALLOWED_TYPES.includes(type)) {
@@ -78,7 +78,7 @@ router.patch('/fee-components/:id', requireAuth, requireRole('admin'), async (re
   }
 });
 
-router.delete('/fee-components/:id', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.delete('/fee-components/:id', requireAuth, requireRole('admin'), requirePageAccess('pricing'), async (req, res, next) => {
   try {
     const { rowCount } = await db.query('DELETE FROM pricing_fee_components WHERE id = $1', [req.params.id]);
     if (rowCount === 0) return res.status(404).json({ error: 'Fee component not found' });
@@ -95,7 +95,7 @@ router.delete('/fee-components/:id', requireAuth, requireRole('admin'), async (r
 // transactional swap of two real sort_order values, not two separate
 // client-side PATCH calls that could leave things inconsistent if one
 // succeeded and the other failed.
-router.post('/fee-components/:id/move', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.post('/fee-components/:id/move', requireAuth, requireRole('admin'), requirePageAccess('pricing'), async (req, res, next) => {
   const client = await db.getPool().connect();
   try {
     const { direction } = req.body || {};
@@ -147,7 +147,7 @@ router.post('/fee-components/:id/move', requireAuth, requireRole('admin'), async
 // comment on why there's no live provider configured in this
 // environment). Shows `source` so an admin can see at a glance whether
 // a given rate is the manual fallback or (once wired up) a real live one.
-router.get('/fx-rate', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.get('/fx-rate', requireAuth, requireRole('admin'), requirePageAccess('pricing'), async (req, res, next) => {
   try {
     const pair = req.query.pair || 'CNY_USD';
     const { rows } = await db.query('SELECT * FROM fx_rates WHERE currency_pair = $1', [pair]);
@@ -159,7 +159,7 @@ router.get('/fx-rate', requireAuth, requireRole('admin'), async (req, res, next)
   }
 });
 
-router.patch('/fx-rate', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.patch('/fx-rate', requireAuth, requireRole('admin'), requirePageAccess('pricing'), async (req, res, next) => {
   try {
     const { pair, rate } = req.body || {};
     if (!pair || rate === undefined || rate === null || rate <= 0) {
@@ -182,7 +182,7 @@ router.patch('/fx-rate', requireAuth, requireRole('admin'), async (req, res, nex
 // Lets an admin test the equation against a hypothetical product without
 // needing a real one — the full breakdown, same shape the real catalog
 // calculation produces internally.
-router.post('/preview', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.post('/preview', requireAuth, requireRole('admin'), requirePageAccess('pricing'), async (req, res, next) => {
   try {
     const { supplierCostCny, weightKg, lengthCm, widthCm, heightCm } = req.body || {};
     const result = await calculateBuyerPriceUsd({ supplierCostCny, weightKg, lengthCm, widthCm, heightCm });

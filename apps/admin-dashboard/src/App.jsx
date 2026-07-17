@@ -9,10 +9,11 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart,
   fetchSupplierMessagesInbox, fetchSupplierMessageThread, sendSupplierMessage,
   fetchPromoCodes, createPromoCode, updatePromoCode, deletePromoCode,
+  fetchAdminUsers, createAdminUser, updateAdminPermissions, deleteAdminUser,
 } from "./auth";
 import {
   LayoutGrid, ShoppingBag, Store, PackageSearch, Wallet, LifeBuoy, Settings,
-  Search, Bell, ChevronDown, ChevronUp, ChevronRight, TrendingUp, TrendingDown, Truck,
+  Search, Bell, ChevronDown, ChevronUp, ChevronRight, TrendingUp, TrendingDown, Truck, Plus,
   CheckCircle2, XCircle, Clock, AlertTriangle, MoreHorizontal, ArrowUpRight,
   Filter as FilterIcon, Download, Check, X, MessageSquare, Star, Globe, Users,
   CreditCard, ExternalLink, ChevronLeft, RotateCcw, Warehouse, Calculator, Layers, Send, Tag
@@ -2525,24 +2526,194 @@ function ReturnCaseDetailPage({ caseId, onBack, onSessionExpired }) {
   );
 }
 
-function SettingsPage() {
+// Real admin team & permissions management (migration 022), owner-only.
+// CONFIRMED SCOPE, 2 real scenarios validated before building: one real
+// "owner" admin manages permissions for every other admin account;
+// page-level access control (can a given admin see a given page,
+// yes/no), not finer view-vs-edit control within a page.
+function TeamPermissionsSection({ currentUser, onSessionExpired }) {
+  const [admins, setAdmins] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [editingPages, setEditingPages] = useState({}); // { [userId]: Set<pageId> }
+
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newPages, setNewPages] = useState(new Set());
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const load = () => {
+    setLoadState("loading");
+    fetchAdminUsers(getStoredToken())
+      .then((data) => {
+        setAdmins(data);
+        const initialEditing = {};
+        data.forEach((a) => { initialEditing[a.id] = new Set(a.isOwner ? [] : a.allowedPages); });
+        setEditingPages(initialEditing);
+        setLoadState("ready");
+      })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!currentUser.isOwner) {
+    return (
+      <Card title="Team & permissions" style={{ flex: 1 }}>
+        <div style={{ padding: 20, ...body, fontSize: 12.5, color: C.muted }}>
+          Only the owner account can manage other admins' permissions.
+        </div>
+      </Card>
+    );
+  }
+
+  const togglePageForUser = (userId, pageId) => {
+    setEditingPages((prev) => {
+      const next = new Set(prev[userId]);
+      if (next.has(pageId)) next.delete(pageId); else next.add(pageId);
+      return { ...prev, [userId]: next };
+    });
+  };
+
+  const handleSavePermissions = async (userId) => {
+    try {
+      await updateAdminPermissions(getStoredToken(), userId, Array.from(editingPages[userId] || []));
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleDelete = async (userId) => {
+    try {
+      await deleteAdminUser(getStoredToken(), userId);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleCreate = async () => {
+    if (!newEmail.trim() || newPassword.length < 8) {
+      setErrorMessage("A valid email and a password of at least 8 characters are required.");
+      return;
+    }
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    try {
+      await createAdminUser(getStoredToken(), {
+        email: newEmail.trim(), password: newPassword, name: newName.trim() || null,
+        allowedPages: Array.from(newPages),
+      });
+      setNewEmail(""); setNewPassword(""); setNewName(""); setNewPages(new Set()); setShowCreateForm(false);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Card title="Team & permissions" style={{ flex: 1 }}>
+      <div style={{ padding: 12 }}>
+        {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 12 }}>{errorMessage}</div>}
+
+        {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>Loading…</div>}
+        {loadState === "ready" && admins.map((a, i) => (
+          <div key={a.id} style={{ padding: "12px 6px", borderBottom: `1px solid ${C.line}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: a.isOwner ? 0 : 8 }}>
+              <div>
+                <div style={{ ...body, fontWeight: 700, fontSize: 13 }}>{a.name || a.email}</div>
+                <div style={{ ...body, fontSize: 11.5, color: C.muted }}>{a.email}</div>
+              </div>
+              {a.isOwner ? (
+                <PlateChip small>Owner — full access</PlateChip>
+              ) : (
+                <button onClick={() => handleDelete(a.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }} title="Remove admin">
+                  <X size={15} color={C.red} />
+                </button>
+              )}
+            </div>
+            {!a.isOwner && (
+              <>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", marginTop: 6 }}>
+                  {NAV.map((n) => (
+                    <label key={n.id} style={{ ...body, display: "flex", alignItems: "center", gap: 4, fontSize: 12 }}>
+                      <input
+                        type="checkbox"
+                        checked={(editingPages[a.id] || new Set()).has(n.id)}
+                        onChange={() => togglePageForUser(a.id, n.id)}
+                      />
+                      {n.label}
+                    </label>
+                  ))}
+                </div>
+                <button onClick={() => handleSavePermissions(a.id)} style={{ ...body, marginTop: 8, padding: "6px 12px", borderRadius: 7, border: "none", background: C.signal, color: "#fff", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
+                  Save permissions
+                </button>
+              </>
+            )}
+          </div>
+        ))}
+
+        {!showCreateForm ? (
+          <button onClick={() => setShowCreateForm(true)} style={{ ...body, marginTop: 12, display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: `1.5px dashed ${C.line}`, background: "none", color: C.ink, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+            <Plus size={14} /> Add admin
+          </button>
+        ) : (
+          <div style={{ marginTop: 12, padding: 14, background: C.canvas, borderRadius: 8 }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+              <input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="Email" style={{ ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "7px 10px", fontSize: 12.5 }} />
+              <input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} type="password" placeholder="Password (min 8 chars)" style={{ ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "7px 10px", fontSize: 12.5 }} />
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name (optional)" style={{ ...body, flex: 1, minWidth: 140, border: `1px solid ${C.line}`, borderRadius: 8, padding: "7px 10px", fontSize: 12.5 }} />
+            </div>
+            <div style={{ ...body, fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 6 }}>Pages this admin can access:</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", marginBottom: 10 }}>
+              {NAV.map((n) => (
+                <label key={n.id} style={{ ...body, display: "flex", alignItems: "center", gap: 4, fontSize: 12 }}>
+                  <input
+                    type="checkbox"
+                    checked={newPages.has(n.id)}
+                    onChange={() => setNewPages((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(n.id)) next.delete(n.id); else next.add(n.id);
+                      return next;
+                    })}
+                  />
+                  {n.label}
+                </label>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button disabled={isSubmitting} onClick={handleCreate} style={{ ...body, padding: "7px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
+                Create admin
+              </button>
+              <button onClick={() => setShowCreateForm(false)} style={{ ...body, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "none", color: C.muted, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function SettingsPage({ currentUser, onSessionExpired }) {
   return (
     <div>
-      <TopBar title="Settings" subtitle="Roles, commission rules, and platform configuration" />
+      <TopBar title="Settings" subtitle="Team permissions, commission rules, and platform configuration" />
       <div style={{ padding: 24, display: "flex", gap: 16 }}>
-        <Card title="Roles & access" style={{ flex: 1 }}>
-          <div style={{ padding: 6 }}>
-            {[["Super Admin", "Full access", "2 users"], ["Catalog Moderator", "Listings & translations only", "4 users"], ["Support Agent", "Tickets & orders (read-only)", "9 users"], ["Finance Admin", "Payouts & commission", "3 users"]].map((r, i) => (
-              <div key={r[0]} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 12px", borderBottom: i < 3 ? `1px solid ${C.line}` : "none" }}>
-                <div>
-                  <div style={{ ...body, fontWeight: 600, fontSize: 13 }}>{r[0]}</div>
-                  <div style={{ ...body, fontSize: 11.5, color: C.muted }}>{r[1]}</div>
-                </div>
-                <span style={{ ...body, fontSize: 11.5, color: C.muted }}>{r[2]}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
+        <TeamPermissionsSection currentUser={currentUser} onSessionExpired={onSessionExpired} />
         <Card title="Commission rules" style={{ flex: 1 }}>
           <div style={{ padding: 6 }}>
             {[["Brake System", "12%"], ["Filters", "10%"], ["Electrical", "13%"], ["Engine", "14%"], ["Default", "11%"]].map((r, i) => (
@@ -2579,7 +2750,12 @@ const NAV = [
 ];
 
 function AdminDashboardShell({ currentUser, onLogout }) {
-  const [page, setPage] = useState("overview");
+  const [page, setPage] = useState(() => {
+    const hasAccess = (id) => currentUser.isOwner || currentUser.allowedPages === 'all' || (currentUser.allowedPages || []).includes(id);
+    if (hasAccess('overview')) return 'overview';
+    const firstAllowed = NAV.find((n) => hasAccess(n.id));
+    return firstAllowed ? firstAllowed.id : 'overview';
+  });
   const [openOrder, setOpenOrder] = useState(null);
   const [openTicket, setOpenTicket] = useState(null);
   const [openCase, setOpenCase] = useState(null);
@@ -2609,7 +2785,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   else if (page === "flagged") content = <FlaggedShipmentsPage onOpenOrder={setOpenOrder} onSessionExpired={onLogout} />;
   else if (page === "payouts") content = <PayoutsPage />;
   else if (page === "tickets") content = <TicketsPage onOpenTicket={setOpenTicket} onSessionExpired={onLogout} />;
-  else if (page === "settings") content = <SettingsPage />;
+  else if (page === "settings") content = <SettingsPage currentUser={currentUser} onSessionExpired={onLogout} />;
 
   return (
     <div style={{ display: "flex", height: "100%", minHeight: 700, background: C.canvas, ...body }}>
@@ -2621,7 +2797,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
           <span style={{ ...mono, fontSize: 9, color: "#9AA1AC", border: "1px solid #3A3F48", borderRadius: 4, padding: "2px 5px" }}>OPS</span>
         </div>
         <div style={{ flex: 1, padding: "0 12px" }}>
-          {NAV.map(n => {
+          {NAV.filter((n) => currentUser.isOwner || currentUser.allowedPages === 'all' || (currentUser.allowedPages || []).includes(n.id)).map(n => {
             const Icon = n.icon;
             const active = page === n.id && !openOrder && !openTicket && !openCase;
             return (

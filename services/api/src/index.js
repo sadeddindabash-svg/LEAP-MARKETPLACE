@@ -26,6 +26,7 @@ const wishlistRoutes = require('./modules/wishlist/routes');
 const notificationsRoutes = require('./modules/notifications/routes');
 const referralsRoutes = require('./modules/referrals/routes');
 const promoCodesRoutes = require('./modules/promo-codes/routes');
+const adminUsersRoutes = require('./modules/admin-users/routes');
 const pricingRoutes = require('./modules/pricing/routes');
 
 assertRequiredEnvInProduction();
@@ -64,6 +65,7 @@ app.use('/wishlist', wishlistRoutes);
 app.use('/notifications', notificationsRoutes);
 app.use('/referrals', referralsRoutes);
 app.use('/promo-codes', promoCodesRoutes);
+app.use('/admin-users', adminUsersRoutes);
 app.use('/pricing', pricingRoutes);
 
 app.use(notFoundHandler);

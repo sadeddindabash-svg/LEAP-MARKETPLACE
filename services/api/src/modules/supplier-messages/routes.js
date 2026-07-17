@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../../../db/pool');
-const { requireAuth, requireRole } = require('../auth/middleware');
+const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { translateText } = require('./translate');
 const { createNotification } = require('../notifications/helpers');
 
@@ -74,7 +74,7 @@ router.post('/me', requireAuth, requireRole('supplier'), async (req, res, next) 
 // GET /supplier-messages/admin — a real inbox: every supplier that has
 // at least one real message, with their most recent one, ordered by
 // recency — same "most recently active first" idea as any real inbox.
-router.get('/admin', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.get('/admin', requireAuth, requireRole('admin'), requirePageAccess('supplierMessages'), async (req, res, next) => {
   try {
     const { rows } = await db.query(
       `SELECT DISTINCT ON (sm.supplier_id)
@@ -99,7 +99,7 @@ router.get('/admin', requireAuth, requireRole('admin'), async (req, res, next) =
   }
 });
 
-router.get('/admin/:supplierId', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.get('/admin/:supplierId', requireAuth, requireRole('admin'), requirePageAccess('supplierMessages'), async (req, res, next) => {
   try {
     const { rows } = await db.query(
       'SELECT * FROM supplier_messages WHERE supplier_id = $1 ORDER BY created_at ASC',
@@ -111,7 +111,7 @@ router.get('/admin/:supplierId', requireAuth, requireRole('admin'), async (req, 
   }
 });
 
-router.post('/admin/:supplierId', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.post('/admin/:supplierId', requireAuth, requireRole('admin'), requirePageAccess('supplierMessages'), async (req, res, next) => {
   try {
     const { text } = req.body || {};
     if (!text || !text.trim()) return res.status(400).json({ error: 'text is required' });
