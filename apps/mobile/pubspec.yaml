@@ -21,8 +21,22 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  # Real Android/iOS launcher icon generation from one source image (new)
+  # -- see the mobile README's "Real device builds (Android, iOS,
+  # Huawei)" section for the full real setup.
+  flutter_launcher_icons: ^0.14.1
 
 flutter:
   uses-material-design: true
   # assets:
   #   - assets/images/
+
+# Real config for flutter_launcher_icons (new) -- run
+# `flutter pub run flutter_launcher_icons` after `flutter create .` has
+# generated the real android/ (and ios/) platform folders, and after
+# placing the real source icon at assets/icon/icon.png (1024x1024).
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icon/icon.png"
+  min_sdk_android: 21

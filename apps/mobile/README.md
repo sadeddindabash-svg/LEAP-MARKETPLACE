@@ -523,6 +523,74 @@ real 10-reward cap).
    flutter run --dart-define=API_BASE_URL=http://localhost:4000
    ```
 
+## Real device builds (Android, iOS, Huawei) — new
+
+**Confirmed real constraints, discussed directly before starting**: this
+project has so far only ever been run via `flutter run -d chrome` — the
+real, platform-specific `android/` and `ios/` folders that a genuine
+installable build needs have never been generated (this is a real,
+Dart-only project structure right now, not an oversight). Building a
+real iOS app requires Apple's own Xcode, which only runs on an actual
+Mac — there is no way around this from Windows or from an AI sandbox;
+a cloud Mac rental service (e.g. Codemagic, MacStadium) is the real
+option if a physical Mac isn't available. Android has no such
+restriction — a real, installable `.apk` can be built directly from a
+Windows machine with Android Studio installed.
+
+**Confirmed device coverage**: this app uses no Google-specific
+services (no Google Sign-In, Google Maps, or Firebase push
+notifications — confirmed by checking the real dependency list and
+codebase directly, not assumed) — so the real Android APK should
+install and run correctly on Huawei devices via sideloading too, even
+newer ones without Google Mobile Services, for real testing purposes.
+Full, official distribution through Huawei's own AppGallery store would
+need a real, separate integration with Huawei Mobile Services — not
+included here.
+
+**What's been prepared already**:
+- A real 1024×1024 app icon at `assets/icon/icon.png`, in the real
+  brand's signal-orange, matching the palette already established
+  across the admin dashboard, supplier portal, and this app itself.
+- `flutter_launcher_icons` configured in `pubspec.yaml` to generate
+  every real required icon resolution for Android (and iOS) from that
+  one source image automatically, rather than needing each size
+  produced and placed by hand.
+
+**Real steps to run, in order, on a Windows machine with Flutter and
+Android Studio (including the Android SDK) installed**:
+
+```bash
+cd path\to\LEAP-MARKETPLACE\apps\mobile
+
+# 1. Generate the real android/ (and ios/) platform folders -- this
+#    project has never had them. Pick a real package name/org now;
+#    changing it later means renaming folders and config by hand.
+flutter create --org com.leapautoparts --project-name leap_mobile .
+
+# 2. Pull in the new launcher-icon dependency.
+flutter pub get
+
+# 3. Generate every real required icon size from assets/icon/icon.png
+#    for both platforms in one step.
+flutter pub run flutter_launcher_icons
+
+# 4. Build a real, installable Android APK.
+flutter build apk --dart-define=API_BASE_URL=http://YOUR_BACKEND_HOST:4000
+```
+
+The real APK lands at `build/app/outputs/flutter-apk/app-release.apk` —
+copy it to a real Android or Huawei phone (e.g. via USB, email, or a
+cloud drive) and open it there to install (the phone will need
+"install from unknown sources" allowed once, a standard real Android
+setting for anything installed outside the Play Store).
+
+**A real, honest note on `API_BASE_URL`**: `http://localhost:4000` only
+works when the app and backend run on the exact same machine (like
+Chrome testing has been doing) — a real phone on the network needs your
+computer's real local IP address (e.g. `http://192.168.1.50:4000`,
+found via `ipconfig` on the machine running the backend) instead, and
+both devices need to be on the same real network.
+
 ## Structure
 
 ```
