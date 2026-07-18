@@ -274,18 +274,25 @@ async function main() {
   // meaning exactly what it already meant. Parts are a genuinely useful
   // starting set an admin can extend; suppliers pick from these rather
   // than typing free text going forward.
+  // Real, admin-editable commission rate per category (migration 024).
+  // These real starting values are seeded HERE, not via an UPDATE in
+  // the migration itself -- on a genuinely fresh database, migrations
+  // run before this seed script creates these very rows, so an UPDATE
+  // in the migration would silently match zero rows (the same real
+  // timing bug already found once before, for the seeded admin's
+  // is_owner flag -- fixed the same way here, before it could ship).
   const categoriesSeed = [
-    { id: 'brake', nameEn: 'Brake System', nameAr: 'نظام الفرامل', sortOrder: 10 },
-    { id: 'engine', nameEn: 'Engine', nameAr: 'المحرك', sortOrder: 20 },
-    { id: 'electrical', nameEn: 'Electrical', nameAr: 'كهرباء', sortOrder: 30 },
-    { id: 'filters', nameEn: 'Filters', nameAr: 'الفلاتر', sortOrder: 40 },
-    { id: 'suspension', nameEn: 'Suspension', nameAr: 'نظام التعليق', sortOrder: 50 },
-    { id: 'lighting', nameEn: 'Lighting', nameAr: 'الإضاءة', sortOrder: 60 },
+    { id: 'brake', nameEn: 'Brake System', nameAr: 'نظام الفرامل', sortOrder: 10, commissionPercent: 12 },
+    { id: 'engine', nameEn: 'Engine', nameAr: 'المحرك', sortOrder: 20, commissionPercent: 14 },
+    { id: 'electrical', nameEn: 'Electrical', nameAr: 'كهرباء', sortOrder: 30, commissionPercent: 13 },
+    { id: 'filters', nameEn: 'Filters', nameAr: 'الفلاتر', sortOrder: 40, commissionPercent: 10 },
+    { id: 'suspension', nameEn: 'Suspension', nameAr: 'نظام التعليق', sortOrder: 50, commissionPercent: 11 },
+    { id: 'lighting', nameEn: 'Lighting', nameAr: 'الإضاءة', sortOrder: 60, commissionPercent: 11 },
   ];
   for (const c of categoriesSeed) {
     await pool.query(
-      `INSERT INTO product_categories (id, name_en, name_ar, sort_order) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING`,
-      [c.id, c.nameEn, c.nameAr, c.sortOrder]
+      `INSERT INTO product_categories (id, name_en, name_ar, sort_order, commission_percent) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING`,
+      [c.id, c.nameEn, c.nameAr, c.sortOrder, c.commissionPercent]
     );
   }
 

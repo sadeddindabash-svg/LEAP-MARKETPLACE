@@ -612,7 +612,8 @@ router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), asy
     const { rows } = await client.query(
       `UPDATE supplier_sub_orders SET
          status = COALESCE($1, status),
-         tracking_number = COALESCE($2, tracking_number)
+         tracking_number = COALESCE($2, tracking_number),
+         delivered_at = CASE WHEN $1 = 'delivered' THEN now() ELSE delivered_at END
        WHERE id = $3 AND supplier_id = $4
        RETURNING *`,
       [status ?? null, trackingNumber ?? null, req.params.subOrderId, req.user.supplierId]

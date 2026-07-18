@@ -72,12 +72,28 @@ router.post('/', optionalAuth, async (req, res, next) => {
   const client = await db.getPool().connect();
   try {
     await client.query('BEGIN');
-    const subOrderCheck = await client.query('SELECT id, order_id FROM supplier_sub_orders WHERE id = $1', [subOrderId]);
+    const subOrderCheck = await client.query('SELECT id, order_id, delivered_at FROM supplier_sub_orders WHERE id = $1', [subOrderId]);
     if (subOrderCheck.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Sub-order not found' });
     }
     const orderId = subOrderCheck.rows[0].order_id;
+    const deliveredAt = subOrderCheck.rows[0].delivered_at;
+
+    // Real return window (migration 024) -- confirmed: admin-
+    // configurable, 3-7 real days. Only enforced once a real delivery
+    // has actually happened; an undelivered sub-order has no real
+    // window to have expired yet.
+    if (deliveredAt) {
+      const { rows: settingRows } = await client.query("SELECT value FROM platform_settings WHERE key = 'return_window_days'");
+      const windowDays = Number(settingRows[0]?.value ?? 7);
+      const deadline = new Date(deliveredAt);
+      deadline.setDate(deadline.getDate() + windowDays);
+      if (new Date() > deadline) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `The return window (${windowDays} days after delivery) has passed for this order.` });
+      }
+    }
 
     const id = await nextCaseId(client);
     await client.query(

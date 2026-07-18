@@ -792,6 +792,94 @@ this feature) deliberately uses `exceljs` rather than the more common
 vulnerabilities in the exact file-parsing code path this feature needs
 for untrusted, supplier-uploaded files.
 
+## Real return window + real payouts (migration 024)
+
+**Confirmed scope, discussed and refined over several real rounds
+before building**: no automatic payout schedule — real payout timing
+varies per supplier based on individual agreements, not one
+platform-wide schedule. Instead, a real, admin-driven "record a payout"
+action, built on a real, accurate "amount currently owed" calculation
+per supplier. Commission varies by real category, matching what had
+been a real, hardcoded, fake display-only placeholder in Settings —
+now made genuinely real and admin-editable.
+
+**A real return window, confirmed constrained to 3–7 admin-configurable
+days**, closes a real, previously-unenforced gap (a buyer could
+previously file a return with no deadline at all) and, at the same
+time, determines when an order genuinely becomes eligible for payout:
+only once delivered, the real window has passed, AND no return case
+was ever filed for it. This was a deliberate alternative to a
+clawback/repayment system for a return that happens after a supplier's
+already been paid — money is simply never released before the real
+return risk has passed, rather than needing to claw it back afterward.
+
+**A real, generic `platform_settings` key-value table** (migration
+024) — the return window is the first real use, but this is
+deliberately reusable for future simple admin-configurable values
+rather than a one-off dedicated column and migration each time.
+
+**A real `delivered_at` timestamp** didn't exist on `supplier_sub_orders`
+before this — needed to know how many real days have passed since
+delivery for both the return-window deadline and payout eligibility.
+Set once, in the one real place a sub-order transitions to
+`'delivered'` (the supplier's own status-update endpoint).
+
+**`GET /payouts/owed`** — real, per-supplier calculation of exactly how
+much is currently owed, from real delivered sub-orders past the real
+window with no return case, using each real line item's price and its
+real category's commission rate. **`POST /payouts`** records a real
+payout covering EVERY currently-eligible sub-order for that supplier at
+this exact moment — the real, live amount, never a client-supplied
+number for something involving real money — and permanently links each
+covered sub-order via a real UNIQUE constraint, so the same sub-order
+can never be double-counted into a second payout. **`GET /payouts`**
+lists real payout history.
+
+**`PATCH /catalog/categories/:id/commission`** makes the Settings
+page's Commission rules card genuinely editable and genuinely used —
+before this, those percentages were hardcoded, fake, and never actually
+applied to anything.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/payouts.integration.test.js`
+(7 tests, REAL backend): the real return window is admin-configurable
+within 3–7 days, rejecting anything outside that range; a real return
+CAN be filed within the window and CANNOT be filed once it's passed; an
+order only becomes payout-eligible once delivered, the window has
+passed, AND no return was ever filed — verified with real, exact
+commission math, not just an approximate check; recording a real payout
+covers exactly the real eligible amount, clears it from what's owed,
+and cannot be double-paid; non-admins are rejected from every real
+endpoint; recording a payout for a supplier with nothing real owed is
+rejected; and the real commission percent is admin-editable per
+category within a real 0–100 range.
+
+**A real bug was found and fixed while writing that test file**: the
+return-case-filing check for one scenario initially backdated a
+sub-order's delivery BEFORE filing its return — which meant the return
+itself got rejected by the very window check being tested, silently
+leaving that sub-order eligible for payout when it should have been
+excluded, and inflating a later assertion's expected total. Fixed by
+filing the real return first (genuinely within the window, so it
+actually succeeds), then backdating delivery afterward to simulate
+time having passed since.
+
+**A real bug was also found and fixed during clean-merge verification
+against a genuinely FRESH database** (not the sandbox's long-lived dev
+database, where these category rows already existed from earlier
+sessions): migration 024's `UPDATE product_categories SET
+commission_percent = ...` statements run during the migration phase,
+but `db/seed.js` creates these very category rows during the separate,
+LATER seed phase — on a fresh database the UPDATE matches zero real
+rows, silently leaving every category at the default commission
+(11%) instead of its real intended value. The exact same class of bug
+already found once before (the seeded admin's `is_owner` flag). Fixed
+by having `db/seed.js` set the real `commission_percent` directly in
+the INSERT that creates each category row, correct regardless of run
+order; the migration's UPDATE statements are left in place since
+they're still correct for an EXISTING database upgrading through this
+migration, where these categories already exist at migration time.
+Re-verified with a fully fresh drop/recreate/migrate/seed database.
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category

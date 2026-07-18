@@ -10,6 +10,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchSupplierMessagesInbox, fetchSupplierMessageThread, sendSupplierMessage,
   fetchPromoCodes, createPromoCode, updatePromoCode, deletePromoCode,
   fetchAdminUsers, createAdminUser, updateAdminPermissions, deleteAdminUser,
+  fetchPayoutsOwed, fetchPayoutHistory, recordPayout, fetchReturnWindow, updateReturnWindow, updateCategoryCommission,
 } from "./auth";
 import {
   LayoutGrid, ShoppingBag, Store, PackageSearch, Wallet, LifeBuoy, Settings,
@@ -79,14 +80,6 @@ const ORDER_STATUS_META = {
 function getOrderStatusMeta(status) {
   return ORDER_STATUS_META[status] || { label: status || "Unknown", color: C.muted, bg: "#EEEFF1" };
 }
-
-const PAYOUTS = [
-  { supplier: "Guangzhou AutoParts Co.", pending: 8420.50, lastPaid: 21980.00, date: "Jul 8, 2026", status: "scheduled" },
-  { supplier: "Ningbo Filtration Ltd.", pending: 5310.20, lastPaid: 14650.75, date: "Jul 8, 2026", status: "scheduled" },
-  { supplier: "Shenzhen Power Cells", pending: 3120.00, lastPaid: 9870.40, date: "Jul 8, 2026", status: "scheduled" },
-  { supplier: "Foshan Brake Systems", pending: 1980.75, lastPaid: 6210.10, date: "Jul 1, 2026", status: "paid" },
-  { supplier: "Dongguan Lighting Co.", pending: 940.30, lastPaid: 3105.60, date: "Jul 1, 2026", status: "held" },
-];
 
 /* ---------------- shared bits ---------------- */
 
@@ -2228,38 +2221,112 @@ function PromoCodesPage({ onSessionExpired }) {
   );
 }
 
-function PayoutsPage() {
-  const totalPending = PAYOUTS.reduce((s, p) => s + p.pending, 0);
+// Real payouts (migration 024) -- CONFIRMED SCOPE: no automatic payout
+// schedule (real timing varies per supplier based on individual
+// agreements) -- instead, a real "amount currently owed" per supplier
+// (delivered, past the real return window, no return case ever filed),
+// and a real, manual "Record payout" action an owner/admin triggers
+// whenever it's actually time to pay a given supplier.
+function PayoutsPage({ onSessionExpired }) {
+  const [owed, setOwed] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [payingSupplierId, setPayingSupplierId] = useState(null);
+
+  const load = () => {
+    setLoadState("loading");
+    Promise.all([fetchPayoutsOwed(getStoredToken()), fetchPayoutHistory(getStoredToken())])
+      .then(([owedData, historyData]) => { setOwed(owedData); setHistory(historyData); setLoadState("ready"); })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleRecordPayout = async (supplierId) => {
+    setPayingSupplierId(supplierId);
+    setErrorMessage(null);
+    try {
+      await recordPayout(getStoredToken(), supplierId);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setPayingSupplierId(null);
+    }
+  };
+
+  const totalOwed = owed.reduce((s, o) => s + o.amountOwed, 0);
+
   return (
     <div>
-      <TopBar title="Commission & payouts" subtitle="Next scheduled payout run: Jul 15, 2026" />
+      <TopBar title="Commission & payouts" subtitle="Recorded manually per supplier, based on each supplier's own payment agreement — no fixed platform-wide schedule" />
       <div style={{ padding: 24 }}>
         <div style={{ display: "flex", gap: 16, marginBottom: 16 }}>
-          <KpiCard label="Pending payouts" value={`$${totalPending.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} delta="+6.2%" positive icon={Wallet} />
-          <KpiCard label="Commission revenue (MTD)" value="$28,140" delta="+9.7%" positive icon={TrendingUp} />
-          <KpiCard label="Held for review" value="$940.30" delta="1 supplier" icon={AlertTriangle} />
+          <KpiCard label="Currently owed" value={`$${totalOwed.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} icon={Wallet} />
+          <KpiCard label="Suppliers with a balance" value={owed.length} icon={TrendingUp} />
         </div>
-        <Card title="Supplier payout schedule">
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead><tr><Th>Supplier</Th><Th align="right">Pending</Th><Th align="right">Last paid</Th><Th>Payout date</Th><Th>Status</Th><Th></Th></tr></thead>
-            <tbody>
-              {PAYOUTS.map(p => (
-                <tr key={p.supplier}>
-                  <Td style={{ fontWeight: 600 }}>{p.supplier}</Td>
-                  <Td align="right">${p.pending.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Td>
-                  <Td align="right" style={{ color: C.muted }}>${p.lastPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Td>
-                  <Td>{p.date}</Td>
-                  <Td>
-                    {p.status === "scheduled" && <Badge label="Scheduled" color={C.torque} bg={C.torqueBg} />}
-                    {p.status === "paid" && <Badge label="Paid" color={C.gauge} bg={C.gaugeBg} />}
-                    {p.status === "held" && <Badge label="Held" color={C.red} bg={C.redBg} />}
-                  </Td>
-                  <Td align="right"><ExternalLink size={14} color={C.muted} /></Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+
+        {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading…</div></Card>}
+        {loadState === "error" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>Couldn't load payouts: {errorMessage}</div></Card>}
+        {errorMessage && loadState === "ready" && (
+          <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>
+        )}
+
+        {loadState === "ready" && (
+          <>
+            <Card title="Amount owed" style={{ marginBottom: 16 }}>
+              {owed.length === 0 ? (
+                <div style={{ padding: 24, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Nothing is currently owed to any supplier.</div>
+              ) : (
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr><Th>Supplier</Th><Th align="right">Owed</Th><Th align="right">Eligible orders</Th><Th></Th></tr></thead>
+                  <tbody>
+                    {owed.map((o) => (
+                      <tr key={o.supplierId}>
+                        <Td style={{ fontWeight: 600 }}>{o.supplierName}</Td>
+                        <Td align="right">${o.amountOwed.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Td>
+                        <Td align="right" style={{ color: C.muted }}>{o.eligibleSubOrderCount}</Td>
+                        <Td align="right">
+                          <button
+                            disabled={payingSupplierId === o.supplierId}
+                            onClick={() => handleRecordPayout(o.supplierId)}
+                            style={{ ...body, padding: "7px 14px", borderRadius: 8, border: "none", background: payingSupplierId === o.supplierId ? "#D1D5DB" : C.gauge, color: "#fff", fontSize: 12, fontWeight: 700, cursor: payingSupplierId === o.supplierId ? "default" : "pointer" }}
+                          >{payingSupplierId === o.supplierId ? "Recording…" : "Record payout"}</button>
+                        </Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </Card>
+
+            <Card title="Payout history">
+              {history.length === 0 ? (
+                <div style={{ padding: 24, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>No payouts recorded yet.</div>
+              ) : (
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr><Th>Supplier</Th><Th align="right">Amount</Th><Th align="right">Orders covered</Th><Th>Date</Th><Th>Notes</Th></tr></thead>
+                  <tbody>
+                    {history.map((p) => (
+                      <tr key={p.id}>
+                        <Td style={{ fontWeight: 600 }}>{p.supplierName}</Td>
+                        <Td align="right">${p.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Td>
+                        <Td align="right" style={{ color: C.muted }}>{p.subOrderCount}</Td>
+                        <Td style={{ color: C.muted }}>{new Date(p.createdAt).toLocaleDateString()}</Td>
+                        <Td style={{ color: C.muted }}>{p.notes || "—"}</Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </Card>
+          </>
+        )}
       </div>
     </div>
   );
@@ -2866,22 +2933,145 @@ function TeamPermissionsSection({ currentUser, onSessionExpired }) {
   );
 }
 
+// Real, admin-editable per-category commission rates (migration 024) --
+// replaces what was previously a hardcoded, fake display-only card.
+// These real rates are what the Payouts page actually calculates from.
+function CommissionRulesSection({ onSessionExpired }) {
+  const [categories, setCategories] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [editingId, setEditingId] = useState(null);
+  const [editValue, setEditValue] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  const load = () => {
+    setLoadState("loading");
+    fetchCategories()
+      .then((data) => { setCategories(data); setLoadState("ready"); })
+      .catch((err) => { setErrorMessage(err.message); setLoadState("error"); });
+  };
+  useEffect(load, []);
+
+  const startEditing = (cat) => { setEditingId(cat.id); setEditValue(String(cat.commissionPercent)); };
+
+  const handleSave = async (categoryId) => {
+    const value = Number(editValue);
+    if (!Number.isFinite(value) || value < 0 || value > 100) {
+      setErrorMessage("Commission must be a real number between 0 and 100.");
+      return;
+    }
+    setIsSaving(true);
+    setErrorMessage(null);
+    try {
+      await updateCategoryCommission(getStoredToken(), categoryId, value);
+      setEditingId(null);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Card title="Commission rules" style={{ flex: 1 }}>
+      <div style={{ padding: 6 }}>
+        {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, margin: "0 6px 8px" }}>{errorMessage}</div>}
+        {loadState === "loading" && <div style={{ padding: 20, ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}
+        {loadState === "ready" && categories.map((c, i) => (
+          <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 12px", borderBottom: i < categories.length - 1 ? `1px solid ${C.line}` : "none" }}>
+            <span style={{ ...body, fontSize: 13, fontWeight: 600 }}>{c.nameEn}</span>
+            {editingId === c.id ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="number" value={editValue} onChange={(e) => setEditValue(e.target.value)}
+                  style={{ ...body, width: 60, border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 6px", fontSize: 12.5 }}
+                  autoFocus
+                />
+                <button disabled={isSaving} onClick={() => handleSave(c.id)} style={{ ...body, padding: "5px 10px", borderRadius: 6, border: "none", background: C.gauge, color: "#fff", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>Save</button>
+                <button onClick={() => setEditingId(null)} style={{ ...body, padding: "5px 10px", borderRadius: 6, border: `1px solid ${C.line}`, background: "none", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+              </div>
+            ) : (
+              <button onClick={() => startEditing(c)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+                <PlateChip small>{c.commissionPercent}%</PlateChip>
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+// Real, admin-configurable return window (migration 024), constrained
+// to the confirmed 3-7 real day range -- this determines both the real
+// deadline for a buyer to file a return, and when an order genuinely
+// becomes eligible for payout on the Payouts page.
+function ReturnWindowSection({ onSessionExpired }) {
+  const [days, setDays] = useState(null);
+  const [loadState, setLoadState] = useState("loading");
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [savedMessage, setSavedMessage] = useState(null);
+
+  useEffect(() => {
+    fetchReturnWindow(getStoredToken())
+      .then((data) => { setDays(data.returnWindowDays); setLoadState("ready"); })
+      .catch((err) => { setErrorMessage(err.message); setLoadState("error"); });
+  }, []);
+
+  const handleChange = async (value) => {
+    setDays(value);
+    setIsSaving(true);
+    setErrorMessage(null);
+    setSavedMessage(null);
+    try {
+      await updateReturnWindow(getStoredToken(), value);
+      setSavedMessage("Saved.");
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Card title="Return window" style={{ flex: 1 }}>
+      <div style={{ padding: 20 }}>
+        <div style={{ ...body, fontSize: 12.5, color: C.muted, marginBottom: 14 }}>
+          How many days after delivery a buyer can file a return. This also determines when an order becomes eligible for payout on the Payouts page.
+        </div>
+        {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 12 }}>{errorMessage}</div>}
+        {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}
+        {loadState === "ready" && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <select
+              value={days}
+              onChange={(e) => handleChange(Number(e.target.value))}
+              disabled={isSaving}
+              style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }}
+            >
+              {[3, 4, 5, 6, 7].map((d) => <option key={d} value={d}>{d} days</option>)}
+            </select>
+            {isSaving && <span style={{ ...body, fontSize: 12, color: C.muted }}>Saving…</span>}
+            {!isSaving && savedMessage && <span style={{ ...body, fontSize: 12, color: C.gauge }}>{savedMessage}</span>}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function SettingsPage({ currentUser, onSessionExpired }) {
   return (
     <div>
       <TopBar title="Settings" subtitle="Team permissions, commission rules, and platform configuration" />
-      <div style={{ padding: 24, display: "flex", gap: 16 }}>
+      <div style={{ padding: 24, display: "flex", gap: 16, flexWrap: "wrap" }}>
         <TeamPermissionsSection currentUser={currentUser} onSessionExpired={onSessionExpired} />
-        <Card title="Commission rules" style={{ flex: 1 }}>
-          <div style={{ padding: 6 }}>
-            {[["Brake System", "12%"], ["Filters", "10%"], ["Electrical", "13%"], ["Engine", "14%"], ["Default", "11%"]].map((r, i) => (
-              <div key={r[0]} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 12px", borderBottom: i < 4 ? `1px solid ${C.line}` : "none" }}>
-                <span style={{ ...body, fontSize: 13, fontWeight: 600 }}>{r[0]}</span>
-                <PlateChip small>{r[1]}</PlateChip>
-              </div>
-            ))}
-          </div>
-        </Card>
+        <CommissionRulesSection onSessionExpired={onSessionExpired} />
+        <ReturnWindowSection onSessionExpired={onSessionExpired} />
       </div>
     </div>
   );
@@ -2941,7 +3131,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   else if (page === "hubs") content = <HubsPage onSessionExpired={onLogout} />;
   else if (page === "pricing") content = <PricingPage onSessionExpired={onLogout} />;
   else if (page === "flagged") content = <FlaggedShipmentsPage onOpenOrder={setOpenOrder} onSessionExpired={onLogout} />;
-  else if (page === "payouts") content = <PayoutsPage />;
+  else if (page === "payouts") content = <PayoutsPage onSessionExpired={onLogout} />;
   else if (page === "tickets") content = <TicketsPage onOpenTicket={setOpenTicket} onSessionExpired={onLogout} />;
   else if (page === "settings") content = <SettingsPage currentUser={currentUser} onSessionExpired={onLogout} />;
 

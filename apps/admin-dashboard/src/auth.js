@@ -472,3 +472,65 @@ export async function deleteAdminUser(token, id) {
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
   return data;
 }
+
+// ---------------- Real payouts + return window (new) ----------------
+// See services/api/src/modules/payouts/routes.js and
+// services/api/src/modules/platform-settings/routes.js for the full
+// real backend design.
+
+export async function fetchPayoutsOwed(token) {
+  const response = await fetch(`${API_BASE_URL}/payouts/owed`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) throw new Error(`Failed to load payouts owed (${response.status})`);
+  return response.json();
+}
+
+export async function fetchPayoutHistory(token) {
+  const response = await fetch(`${API_BASE_URL}/payouts`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) throw new Error(`Failed to load payout history (${response.status})`);
+  return response.json();
+}
+
+export async function recordPayout(token, supplierId, notes) {
+  const response = await fetch(`${API_BASE_URL}/payouts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ supplierId, notes }),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
+export async function fetchReturnWindow(token) {
+  const response = await fetch(`${API_BASE_URL}/platform-settings/return-window`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) throw new Error(`Failed to load return window (${response.status})`);
+  return response.json();
+}
+
+export async function updateReturnWindow(token, returnWindowDays) {
+  const response = await fetch(`${API_BASE_URL}/platform-settings/return-window`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ returnWindowDays }),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
+export async function updateCategoryCommission(token, categoryId, commissionPercent) {
+  const response = await fetch(`${API_BASE_URL}/catalog/categories/${categoryId}/commission`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ commissionPercent }),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}

@@ -7,14 +7,13 @@ Real React (Vite) project for the platform operations tool. See
 
 This is the reference prototype (`docs/prototypes/leap_admin_dashboard_prototype.jsx`)
 dropped in as `src/App.jsx`, confirmed to **build successfully**, and now
-has **real authentication and thirteen real pages** (Overview, Orders,
+has **real authentication and fourteen real pages** (Overview, Orders,
 Suppliers, Moderation, Support Tickets, Returns, Vehicle Data, Hubs,
-Pricing, Flagged Shipments, Categories, Supplier Messages, Promo Codes
-— all but the first three are entirely new, not in the original
+Pricing, Flagged Shipments, Categories, Supplier Messages, Promo Codes,
+Payouts — all but the first three are entirely new, not in the original
 prototype at all) —
-full UI → API → database → UI slices. Payouts is still mock data
-(blocked on undecided commission rates — see Charter Section 1 — rather
-than a technical gap).
+full UI → API → database → UI slices, including Payouts, once blocked
+on undecided commission rates and now real (see its own section below).
 
 ## Authentication (ADM-030)
 
@@ -79,9 +78,12 @@ Orders, in this round of updates.
   a reliable proxy for country). Replaced with "top suppliers by order
   volume," which is real and directly trackable from existing data.
 - **Dropped entirely**: the mock's "$19.8k in payouts scheduled" row —
-  there is no payouts feature in this codebase (blocked on the
-  commission-rate decision, same as the Payouts page itself). Showing a
-  fake payout figure here would be worse than omitting it.
+  Overview deliberately still doesn't show a payout figure here, even
+  though Payouts is now a real, separate page (see its own section
+  below) — a single dollar figure on this summary page would need to
+  pick one arbitrary moment to summarize a number that's genuinely
+  live and per-supplier; the real Payouts page itself is the honest
+  place to see that.
 - Verified with a test that specifically checks the response never
   includes a `gmv` or `topMarkets` field at all — proving the "no fake
   aggregate numbers" decision is enforced by the backend, not just a
@@ -501,13 +503,49 @@ scope beyond referral rewards alone.
   60+ days." Each code's real targeting summary shows directly in the
   list, e.g. "$100+ lifetime spend · 3+ real orders."
 
+## Payouts page (new — genuinely built, no longer blocked)
+
+**Previously blocked on a real business decision, now confirmed and
+built**: no automatic payout schedule — real timing varies per
+supplier based on individual agreements, not one platform-wide
+schedule. Instead, a real "Amount owed" table (one row per supplier
+with a real balance, calculated from their real delivered orders past
+the real return window with no return filed) and a manual **Record
+payout** button that captures the exact real, live amount at that
+moment — never a stale or estimated number.
+
+- **Replaces the entirely fake KPIs and table** that were here before —
+  "$28,140" commission revenue, "$940.30 held for review," a fake
+  "Next scheduled payout run: Jul 15, 2026" subtitle, and a hardcoded
+  five-supplier table that never reflected anything real.
+- **Payout history** shows every real payout ever recorded, including
+  which real supplier, how much, how many real orders it covered, and
+  any notes — a genuine audit trail, not a snapshot that resets.
+- See `services/api/README.md`'s "Real return window + real payouts"
+  section for the full real backend design, including why a return
+  window (not a clawback system) was the confirmed way to avoid paying
+  a supplier for an order that gets returned afterward.
+
+## Settings page — real Commission rules + real Return window (new)
+
+The Settings page's "Commission rules" card was previously **entirely
+fake, hardcoded display-only percentages** — now each category's real
+commission rate is inline-editable (click the percentage, type a new
+real number, save), and is what the Payouts page's real calculation
+actually uses.
+
+A new **Return window** section lets the owner/admin pick a real number
+of days (3–7, the confirmed real range) — this is both the real
+deadline for a buyer to file a return at all, and the real threshold
+for when an order becomes eligible for payout.
+
 ## Testing
 
 ```bash
 npm test
 ```
 
-Forty-two test files, 281 tests total, all passing:
+Forty-four test files, 292 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/passwordReset.integration.test.js` (5, REAL backend) — a real
@@ -762,7 +800,40 @@ Forty-two test files, 281 tests total, all passing:
   correct, secure "don't show anything for an unrecognized permission
   shape" behavior, not a bug, but it meant those 13 older test files'
   mocks needed updating to the real, current response shape rather than
-  loosening the real security logic to accommodate stale mocks.
+  loosening the real security logic to accommodate stale mocks. **A
+  second real regression surfaced later**, when the real Payouts +
+  Settings work added new components to the Settings page that fetch
+  real categories and the real return window on mount — this file's own
+  mock router didn't handle either new endpoint, throwing
+  `categories.map is not a function` and failing 3 of these tests. Fixed
+  by adding both real endpoints to this file's mock, the same kind of
+  fix already needed once before for a very similar reason.
+- `src/payouts.integration.test.js` (7, REAL backend) — the real return
+  window is admin-configurable within 3–7 days, rejecting anything
+  outside that range; a real return CAN be filed within the window and
+  CANNOT be filed once it's passed; an order only becomes
+  payout-eligible once delivered, the window has passed, AND no return
+  was ever filed — verified with real, exact commission math, not just
+  an approximate check; recording a real payout covers exactly the
+  real eligible amount, clears it from what's owed, and cannot be
+  double-paid; non-admins are rejected from every real endpoint;
+  recording a payout for a supplier with nothing real owed is rejected;
+  and the real commission percent is admin-editable per category within
+  a real 0–100 range. **A real bug was found and fixed while writing
+  this**: one scenario initially backdated a sub-order's delivery
+  BEFORE filing its return, which meant the return itself got rejected
+  by the very window check being tested — silently leaving that
+  sub-order eligible for payout when it should have been excluded, and
+  inflating a later assertion's expected total. Fixed by filing the
+  real return first (genuinely within the window), then backdating
+  delivery afterward to simulate time having passed since.
+- `src/PayoutsFlow.test.jsx` (4, mocked, full component tree) — shows
+  the real amount owed per supplier, not fabricated numbers or a fake
+  schedule; recording a payout calls the real endpoint, clears the
+  supplier from amount owed, and adds it to real history; shows real
+  existing payout history, including a prior payout never triggered in
+  this session; shows a real empty state when nothing is owed to any
+  supplier.
 - `src/uploads.integration.test.js` (6, REAL backend, real multipart
   file uploads against two real JPEG fixtures — one valid 900x900, one
   genuinely too-small 400x400) — a real, valid high-resolution image

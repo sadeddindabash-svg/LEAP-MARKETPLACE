@@ -392,7 +392,7 @@ router.post('/products/bulk-moderate', requireAuth, requireRole('admin'), requir
 // ============================================================
 
 function toCategoryDto(row) {
-  return { id: row.id, nameEn: row.name_en, nameAr: row.name_ar, sortOrder: row.sort_order };
+  return { id: row.id, nameEn: row.name_en, nameAr: row.name_ar, sortOrder: row.sort_order, commissionPercent: Number(row.commission_percent) };
 }
 function toPartDto(row) {
   return { id: row.id, categoryId: row.category_id, nameEn: row.name_en, nameAr: row.name_ar, sortOrder: row.sort_order };
@@ -402,6 +402,28 @@ router.get('/categories', async (req, res, next) => {
   try {
     const { rows } = await db.query('SELECT * FROM product_categories ORDER BY sort_order ASC');
     res.json(rows.map(toCategoryDto));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Real, admin-editable commission rate per category (migration 024) —
+// makes the Settings page's "Commission rules" card genuinely
+// functional and genuinely used in the real payouts calculation,
+// replacing what was previously a hardcoded, fake display-only number.
+router.patch('/categories/:id/commission', requireAuth, requireRole('admin'), requirePageAccess('payouts'), async (req, res, next) => {
+  try {
+    const { commissionPercent } = req.body || {};
+    const value = Number(commissionPercent);
+    if (!Number.isFinite(value) || value < 0 || value > 100) {
+      return res.status(400).json({ error: 'commissionPercent must be a real number between 0 and 100' });
+    }
+    const { rows } = await db.query(
+      'UPDATE product_categories SET commission_percent = $1 WHERE id = $2 RETURNING *',
+      [value, req.params.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Category not found' });
+    res.json(toCategoryDto(rows[0]));
   } catch (err) {
     next(err);
   }

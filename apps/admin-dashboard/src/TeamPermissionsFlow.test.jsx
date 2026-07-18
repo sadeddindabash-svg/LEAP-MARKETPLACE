@@ -22,6 +22,8 @@ function mockFetchRouter({ loginAs = OWNER_USER, admins = MOCK_ADMINS } = {}) {
     }
     if (u.endsWith('/support/tickets')) return Promise.resolve({ ok: true, json: async () => [] });
     if (u.endsWith('/returns')) return Promise.resolve({ ok: true, json: async () => [] });
+    if (u.endsWith('/catalog/categories')) return Promise.resolve({ ok: true, json: async () => [{ id: 'brake', nameEn: 'Brake System', commissionPercent: 12 }] });
+    if (u.endsWith('/platform-settings/return-window')) return Promise.resolve({ ok: true, json: async () => ({ returnWindowDays: 7 }) });
     if (method === 'POST' && u.endsWith('/admin-users')) {
       const b = JSON.parse(options.body);
       const newAdmin = { id: `u_${Date.now()}`, email: b.email, name: b.name, isOwner: false, allowedPages: b.allowedPages || [], createdAt: new Date().toISOString() };
