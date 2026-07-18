@@ -323,7 +323,11 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
 // review every product goes through.
 // ============================================================
 
-const MAX_BULK_IMPORT_ITEMS = 200;
+// Raised from an initial 200 after a real supplier's real single-vehicle
+// catalog turned out to genuinely exceed that -- 1000 comfortably covers
+// large real catalogs while still guarding against a wildly oversized
+// accidental upload.
+const MAX_BULK_IMPORT_ITEMS = 1000;
 
 // POST /me/products/bulk-import — real, best-effort per item (same
 // pattern as the admin dashboard's bulk moderation): one item missing

@@ -181,15 +181,15 @@ describe.runIf(backendUp)('real supplier bulk product import (spreadsheet-style,
     expect(second.status).toBe(404);
   });
 
-  it('an empty items array and a batch over the real 200-item limit are both rejected', async () => {
+  it('an empty items array and a batch over the real 1000-item limit are both rejected', async () => {
     const { token } = await login('supplier@leap.dev', 'supplier_dev_password_123');
     const { status: emptyStatus } = await bulkImport(token, { fitment: REAL_FITMENT, nameLanguage: 'zh', items: [] });
     expect(emptyStatus).toBe(400);
 
-    const tooMany = Array.from({ length: 201 }, (_, i) => ({ oemNumber: `X${i}`, itemName: 'Y', price: 1 }));
+    const tooMany = Array.from({ length: 1001 }, (_, i) => ({ oemNumber: `X${i}`, itemName: 'Y', price: 1 }));
     const { status: tooManyStatus } = await bulkImport(token, { fitment: REAL_FITMENT, nameLanguage: 'zh', items: tooMany });
     expect(tooManyStatus).toBe(400);
-  });
+  }, 15000);
 
   it('an invalid nameLanguage is rejected', async () => {
     const { token } = await login('supplier@leap.dev', 'supplier_dev_password_123');

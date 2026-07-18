@@ -752,7 +752,9 @@ processed independently, best-effort (same pattern as the admin
 dashboard's bulk moderation) — a row missing its real required OE
 Number/Item Name/Price fails just that row; an unmatched/invalid
 optional Category/Part/Position/dimension is silently treated as "not
-provided," not a rejection. A real cap of 200 items per batch.
+provided," not a rejection. A real cap of 1000 items per batch (raised
+from an initial 200 after a real supplier's real single-vehicle catalog
+turned out to genuinely exceed that).
 
 **`GET /me/products/drafts`** — a supplier's own real drafts, each
 reporting exactly which real fields are still missing (`category`,
