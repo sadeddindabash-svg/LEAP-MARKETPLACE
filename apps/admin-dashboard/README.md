@@ -7,11 +7,11 @@ Real React (Vite) project for the platform operations tool. See
 
 This is the reference prototype (`docs/prototypes/leap_admin_dashboard_prototype.jsx`)
 dropped in as `src/App.jsx`, confirmed to **build successfully**, and now
-has **real authentication and fourteen real pages** (Overview, Orders,
+has **real authentication and fifteen real pages** (Overview, Orders,
 Suppliers, Moderation, Support Tickets, Returns, Vehicle Data, Hubs,
 Pricing, Flagged Shipments, Categories, Supplier Messages, Promo Codes,
-Payouts — all but the first three are entirely new, not in the original
-prototype at all) —
+Payouts, Reviews — all but the first three are entirely new, not in the
+original prototype at all) —
 full UI → API → database → UI slices, including Payouts, once blocked
 on undecided commission rates and now real (see its own section below).
 
@@ -539,13 +539,28 @@ of days (3–7, the confirmed real range) — this is both the real
 deadline for a buyer to file a return at all, and the real threshold
 for when an order becomes eligible for payout.
 
+## Reviews page (new)
+
+Every real submitted review needs real admin moderation before it's
+visible anywhere or counts toward a product's average rating — the
+same real quality gate every product listing already goes through.
+Approve or reject each pending review directly, with its real star
+rating and comment shown alongside which real product and buyer it's
+for.
+
+A real **"Require verified purchase to review"** toggle sits at the
+top — confirmed design: whether a review needs a genuine delivered
+order behind it is an admin decision, not fixed either way. Turning
+this on immediately means only buyers who actually received a given
+product can submit a review for it.
+
 ## Testing
 
 ```bash
 npm test
 ```
 
-Forty-four test files, 292 tests total, all passing:
+Forty-six test files, 302 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/passwordReset.integration.test.js` (5, REAL backend) — a real
@@ -834,6 +849,29 @@ Forty-four test files, 292 tests total, all passing:
   existing payout history, including a prior payout never triggered in
   this session; shows a real empty state when nothing is owed to any
   supplier.
+- `src/reviews.integration.test.js` (6, REAL backend) — a submitted
+  review is invisible publicly until a real admin approves it; a
+  second submission for the same product is a real edit (same row,
+  sent back to pending), never a new one; when verified purchase is
+  required, only a buyer who actually received the product can review
+  it; a buyer can delete only their own real review; an invalid rating
+  is rejected and non-admins are blocked from moderation endpoints; and
+  the average rating reflects only real approved reviews. **A real bug
+  was found and fixed in this test file itself, without needing a code
+  change**: the average-rating test initially asserted an exact review
+  count, which broke the second time this file ran in the same
+  session — product p9 genuinely accumulates real approved reviews
+  across repeated runs, since this file has no direct DB connection to
+  reset that state between runs (unlike `payouts.integration.test.js`).
+  Fixed by asserting the real DELTA (count before vs. after this test's
+  own two submissions), confirmed by running the file three times in a
+  row without any cleanup in between.
+- `src/ReviewsFlow.test.jsx` (4, mocked, full component tree) — shows
+  the real pending review with its real rating and comment; approving
+  a review calls the real endpoint and removes it from the pending
+  queue; the verified-purchase toggle calls the real endpoint and
+  reflects the real saved state; rejecting a review also removes it
+  from the pending queue.
 - `src/uploads.integration.test.js` (6, REAL backend, real multipart
   file uploads against two real JPEG fixtures — one valid 900x900, one
   genuinely too-small 400x400) — a real, valid high-resolution image

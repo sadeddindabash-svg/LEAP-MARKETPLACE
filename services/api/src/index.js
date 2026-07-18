@@ -29,6 +29,7 @@ const promoCodesRoutes = require('./modules/promo-codes/routes');
 const adminUsersRoutes = require('./modules/admin-users/routes');
 const platformSettingsRoutes = require('./modules/platform-settings/routes');
 const payoutsRoutes = require('./modules/payouts/routes');
+const reviewsRoutes = require('./modules/reviews/routes');
 const pricingRoutes = require('./modules/pricing/routes');
 
 assertRequiredEnvInProduction();
@@ -70,6 +71,7 @@ app.use('/promo-codes', promoCodesRoutes);
 app.use('/admin-users', adminUsersRoutes);
 app.use('/platform-settings', platformSettingsRoutes);
 app.use('/payouts', payoutsRoutes);
+app.use('/reviews', reviewsRoutes);
 app.use('/pricing', pricingRoutes);
 
 app.use(notFoundHandler);

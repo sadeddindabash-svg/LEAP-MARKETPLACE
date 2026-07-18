@@ -219,6 +219,30 @@ router.get('/products/:id', async (req, res, next) => {
   }
 });
 
+// GET /products/:id/reviews — real, public: only real APPROVED reviews
+// (migration 025) are ever shown to a buyer, plus a real average rating
+// computed directly from those same approved reviews — never from
+// pending or rejected ones.
+router.get('/products/:id/reviews', async (req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT r.*, u.name AS buyer_name FROM product_reviews r
+       JOIN users u ON u.id = r.buyer_id
+       WHERE r.product_id = $1 AND r.status = 'approved'
+       ORDER BY r.updated_at DESC`,
+      [req.params.id]
+    );
+    const averageRating = rows.length > 0 ? rows.reduce((s, r) => s + r.rating, 0) / rows.length : null;
+    res.json({
+      averageRating,
+      reviewCount: rows.length,
+      reviews: rows.map((r) => ({ id: r.id, buyerName: r.buyer_name, rating: r.rating, comment: r.comment, createdAt: r.created_at })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ---------------- Catalog moderation (ADM-002, admin-only) ----------------
 // Kept in this file rather than a separate module since it operates
 // entirely on the products table this module already owns.

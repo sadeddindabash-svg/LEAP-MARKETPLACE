@@ -11,6 +11,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchPromoCodes, createPromoCode, updatePromoCode, deletePromoCode,
   fetchAdminUsers, createAdminUser, updateAdminPermissions, deleteAdminUser,
   fetchPayoutsOwed, fetchPayoutHistory, recordPayout, fetchReturnWindow, updateReturnWindow, updateCategoryCommission,
+  fetchPendingReviews, moderateReview, fetchRequireVerifiedPurchase, updateRequireVerifiedPurchase,
 } from "./auth";
 import {
   LayoutGrid, ShoppingBag, Store, PackageSearch, Wallet, LifeBuoy, Settings,
@@ -2227,6 +2228,125 @@ function PromoCodesPage({ onSessionExpired }) {
 // (delivered, past the real return window, no return case ever filed),
 // and a real, manual "Record payout" action an owner/admin triggers
 // whenever it's actually time to pay a given supplier.
+// Real product reviews moderation (migration 025) -- the same real
+// quality gate every product listing already goes through. CONFIRMED
+// SCOPE: whether a review requires a real verified purchase is
+// admin-decided, not hardcoded either way.
+function StarRatingDisplay({ rating }) {
+  return (
+    <div style={{ display: "flex", gap: 2 }}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <Star key={n} size={14} fill={n <= rating ? C.amber : "none"} color={n <= rating ? C.amber : C.line} />
+      ))}
+    </div>
+  );
+}
+
+function ReviewsPage({ onSessionExpired }) {
+  const [reviews, setReviews] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [actioningId, setActioningId] = useState(null);
+  const [requireVerified, setRequireVerified] = useState(false);
+  const [isSavingSetting, setIsSavingSetting] = useState(false);
+
+  const load = () => {
+    setLoadState("loading");
+    Promise.all([fetchPendingReviews(getStoredToken()), fetchRequireVerifiedPurchase(getStoredToken())])
+      .then(([reviewData, settingData]) => {
+        setReviews(reviewData);
+        setRequireVerified(settingData.requireVerifiedPurchase);
+        setLoadState("ready");
+      })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleModerate = async (reviewId, action) => {
+    setActioningId(reviewId);
+    setErrorMessage(null);
+    try {
+      await moderateReview(getStoredToken(), reviewId, action);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  const handleToggleRequireVerified = async () => {
+    setIsSavingSetting(true);
+    setErrorMessage(null);
+    try {
+      const result = await updateRequireVerifiedPurchase(getStoredToken(), !requireVerified);
+      setRequireVerified(result.requireVerifiedPurchase);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSavingSetting(false);
+    }
+  };
+
+  return (
+    <div>
+      <TopBar title="Reviews" subtitle={loadState === "ready" ? `${reviews.length} pending review${reviews.length === 1 ? "" : "s"}` : "Loading…"} />
+      <div style={{ padding: 24 }}>
+        <Card style={{ marginBottom: 16 }}>
+          <div style={{ padding: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>Require verified purchase to review</div>
+              <div style={{ ...body, fontSize: 11.5, color: C.muted, marginTop: 2 }}>When on, only buyers who actually received the product can submit a review.</div>
+            </div>
+            <button
+              onClick={handleToggleRequireVerified}
+              disabled={isSavingSetting}
+              style={{ ...body, padding: "7px 14px", borderRadius: 8, border: "none", background: requireVerified ? C.gauge : C.line, color: requireVerified ? "#fff" : C.muted, fontSize: 12, fontWeight: 700, cursor: isSavingSetting ? "default" : "pointer" }}
+            >{requireVerified ? "On" : "Off"}</button>
+          </div>
+        </Card>
+
+        {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>}
+        {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading…</div></Card>}
+        {loadState === "error" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>Couldn't load reviews: {errorMessage}</div></Card>}
+        {loadState === "ready" && reviews.length === 0 && (
+          <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Nothing awaiting review right now.</div></Card>
+        )}
+        {loadState === "ready" && reviews.map((r) => (
+          <Card key={r.id} style={{ marginBottom: 12 }}>
+            <div style={{ padding: 16, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 4 }}>{r.productName}</div>
+                <div style={{ marginBottom: 6 }}><StarRatingDisplay rating={r.rating} /></div>
+                {r.comment && <div style={{ ...body, fontSize: 12.5, color: C.ink, marginBottom: 4 }}>{r.comment}</div>}
+                <div style={{ ...body, fontSize: 11, color: C.muted }}>{r.buyerName || "Buyer"} · {new Date(r.createdAt).toLocaleDateString()}</div>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  disabled={actioningId === r.id}
+                  onClick={() => handleModerate(r.id, "approve")}
+                  style={{ ...body, padding: "7px 14px", borderRadius: 8, border: "none", background: C.gauge, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                >Approve</button>
+                <button
+                  disabled={actioningId === r.id}
+                  onClick={() => handleModerate(r.id, "reject")}
+                  style={{ ...body, padding: "7px 14px", borderRadius: 8, border: "none", background: C.redBg, color: C.red, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                >Reject</button>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function PayoutsPage({ onSessionExpired }) {
   const [owed, setOwed] = useState([]);
   const [history, setHistory] = useState([]);
@@ -3093,6 +3213,7 @@ const NAV = [
   { id: "pricing", label: "Pricing", icon: Calculator },
   { id: "flagged", label: "Flagged Shipments", icon: AlertTriangle },
   { id: "payouts", label: "Payouts", icon: Wallet },
+  { id: "reviews", label: "Reviews", icon: Star },
   { id: "tickets", label: "Support", icon: LifeBuoy },
   { id: "settings", label: "Settings", icon: Settings },
 ];
@@ -3132,6 +3253,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   else if (page === "pricing") content = <PricingPage onSessionExpired={onLogout} />;
   else if (page === "flagged") content = <FlaggedShipmentsPage onOpenOrder={setOpenOrder} onSessionExpired={onLogout} />;
   else if (page === "payouts") content = <PayoutsPage onSessionExpired={onLogout} />;
+  else if (page === "reviews") content = <ReviewsPage onSessionExpired={onLogout} />;
   else if (page === "tickets") content = <TicketsPage onOpenTicket={setOpenTicket} onSessionExpired={onLogout} />;
   else if (page === "settings") content = <SettingsPage currentUser={currentUser} onSessionExpired={onLogout} />;
 

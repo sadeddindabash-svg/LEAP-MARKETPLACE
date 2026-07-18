@@ -880,6 +880,52 @@ they're still correct for an EXISTING database upgrading through this
 migration, where these categories already exist at migration time.
 Re-verified with a fully fresh drop/recreate/migrate/seed database.
 
+## Real product reviews and ratings (migration 025)
+
+**Confirmed scope, discussed before building**: whether a review
+requires a real verified purchase is admin-decided — a real, toggleable
+setting reusing migration 024's generic `platform_settings` table,
+never hardcoded either way. Every real review requires real admin
+moderation before it's visible or counts toward a product's average
+rating — the same real quality gate every product listing already
+goes through, not a lighter standard for reviews. One real review per
+product per buyer, enforced by a real `UNIQUE (product_id, buyer_id)`
+constraint — a second submission for the same product is a real edit
+of the existing review (sent back to `'pending'` for re-review, since
+the content genuinely changed), never a second row.
+
+**`POST /reviews`** — real submit-or-edit via `ON CONFLICT ... DO
+UPDATE`. When the verified-purchase setting is on, checks for a real
+delivered sub-order containing that specific product for that specific
+buyer before allowing the submission. **`GET
+/catalog/products/:id/reviews`** (public) returns only real `'approved'`
+reviews and a real average computed strictly from those — a pending or
+rejected review never counts, even briefly. **`GET /reviews/pending`**
+/ **`PATCH /reviews/:id/moderate`** (admin-only) are the real moderation
+queue and action. **`GET/PATCH /platform-settings/require-verified-purchase-for-reviews`**
+is the real admin toggle.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/reviews.integration.test.js`
+(6 tests, REAL backend): a submitted review is invisible publicly until
+a real admin approves it; a second submission for the same product is
+a real edit (same row, sent back to pending), never a new one; when
+verified purchase is required, only a buyer who actually received the
+product can review it; a buyer can delete only their own real review;
+an invalid rating is rejected and non-admins are blocked from
+moderation endpoints; and the average rating reflects only real
+approved reviews.
+
+**A real bug was found and fixed in this test file itself, without
+needing a code change**: the average-rating test initially asserted an
+exact review count, which broke the second time this test file ran in
+the same session — product p9 genuinely accumulates real approved
+reviews across repeated runs, since this test file (unlike
+`payouts.integration.test.js`) has no direct DB connection to reset
+that state between runs. Fixed by asserting the real DELTA (count
+before vs. after this test's own two submissions) rather than an
+absolute number, and confirmed by running the same test file three
+times in a row without any cleanup in between.
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category

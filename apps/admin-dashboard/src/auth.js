@@ -534,3 +534,45 @@ export async function updateCategoryCommission(token, categoryId, commissionPerc
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
   return data;
 }
+
+// ---------------- Real product reviews (new) ----------------
+// See services/api/src/modules/reviews/routes.js for the full real
+// backend design.
+
+export async function fetchPendingReviews(token) {
+  const response = await fetch(`${API_BASE_URL}/reviews/pending`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) throw new Error(`Failed to load pending reviews (${response.status})`);
+  return response.json();
+}
+
+export async function moderateReview(token, reviewId, action) {
+  const response = await fetch(`${API_BASE_URL}/reviews/${reviewId}/moderate`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ action }),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
+export async function fetchRequireVerifiedPurchase(token) {
+  const response = await fetch(`${API_BASE_URL}/platform-settings/require-verified-purchase-for-reviews`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) throw new Error(`Failed to load setting (${response.status})`);
+  return response.json();
+}
+
+export async function updateRequireVerifiedPurchase(token, requireVerifiedPurchase) {
+  const response = await fetch(`${API_BASE_URL}/platform-settings/require-verified-purchase-for-reviews`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ requireVerifiedPurchase }),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}

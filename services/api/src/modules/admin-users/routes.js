@@ -21,7 +21,7 @@ const { requireAuth, requireRole, requireOwner } = require('../auth/middleware')
 const VALID_PAGE_IDS = [
   'overview', 'orders', 'suppliers', 'moderation', 'returns', 'vehicleData',
   'categories', 'supplierMessages', 'promoCodes', 'hubs', 'pricing', 'flagged',
-  'payouts', 'tickets', 'settings',
+  'payouts', 'tickets', 'settings', 'reviews',
 ];
 
 const router = express.Router();

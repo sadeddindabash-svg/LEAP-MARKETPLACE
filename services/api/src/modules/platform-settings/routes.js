@@ -44,4 +44,32 @@ router.patch('/return-window', requireAuth, requireRole('admin'), async (req, re
   }
 });
 
+// CONFIRMED SCOPE (migration 025): whether a review requires a real
+// verified purchase is admin-decided, not hardcoded either way.
+router.get('/require-verified-purchase-for-reviews', requireAuth, requireRole('admin'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query("SELECT value FROM platform_settings WHERE key = 'require_verified_purchase_for_reviews'");
+    res.json({ requireVerifiedPurchase: rows[0]?.value === 'true' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/require-verified-purchase-for-reviews', requireAuth, requireRole('admin'), async (req, res, next) => {
+  try {
+    const { requireVerifiedPurchase } = req.body || {};
+    if (typeof requireVerifiedPurchase !== 'boolean') {
+      return res.status(400).json({ error: 'requireVerifiedPurchase must be true or false' });
+    }
+    await db.query(
+      `INSERT INTO platform_settings (key, value, updated_at) VALUES ('require_verified_purchase_for_reviews', $1, now())
+       ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = now()`,
+      [String(requireVerifiedPurchase)]
+    );
+    res.json({ requireVerifiedPurchase });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
