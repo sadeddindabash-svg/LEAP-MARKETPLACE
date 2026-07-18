@@ -255,9 +255,10 @@ draft that's already been completed cannot be completed again; real
 batch-size and per-item limits; an English-named item stores no
 Chinese original, unlike a Chinese-named one; and non-suppliers are
 rejected from all 3 real endpoints. Plus `src/BulkUploadFlow.test.jsx`
-(4 tests, mocked UI) covering the real drafts list, the real
-conditional field rendering in the completion form, and the real
-vehicle picker cascade.
+(5 tests, mocked UI) covering the real drafts list, the real
+conditional field rendering in the completion form, the real vehicle
+picker cascade, and a real production bug found after actual use (see
+below).
 
 ## Order fulfillment (SUP-020–022)
 
@@ -382,7 +383,7 @@ npm run dev       # http://localhost:5173
 npm test
 ```
 
-Eleven test files, 61 tests total, all passing:
+Eleven test files, 62 tests total, all passing:
 - `src/bulkImport.integration.test.js` (10, REAL backend) — a real
   batch with valid items, one missing a required field, and one with
   unmatched optional fields — confirmed best-effort, not all-or-
@@ -396,7 +397,7 @@ Eleven test files, 61 tests total, all passing:
   and per-item limits; an English-named item stores no Chinese
   original, unlike a Chinese-named one; and non-suppliers are rejected
   from all 3 real endpoints.
-- `src/BulkUploadFlow.test.jsx` (4, mocked, full component tree) — My
+- `src/BulkUploadFlow.test.jsx` (5, mocked, full component tree) — My
   Drafts shows real drafts with their real missing fields; a fully-
   matched draft only shows the photo upload step, not category/part/
   position/dimension fields; a minimal draft shows every real missing
@@ -408,6 +409,26 @@ Eleven test files, 61 tests total, all passing:
   didn't climb enough levels to reach the actual row containing the
   button — both fixed by scoping to `getAllByRole('button', ...)` and
   indexing buttons by their known real array position instead.
+  **A REAL PRODUCTION BUG was found and fixed after actual use**:
+  reported directly — completing a draft after manually picking a
+  Category and Part from the dropdowns failed with "part must be a
+  real part belonging to the given category," even though the person
+  had genuinely picked a real part from the real list shown. Root
+  cause: `CompleteDraftForm`'s real part-fetching effect only set a new
+  default part `if (!part && ...)` — correct on first load (both start
+  empty), but wrong the moment a person switches Category after a part
+  was already auto-selected: the OLD part from the PREVIOUS category
+  survived unchanged and got submitted alongside the NEW category,
+  since nothing ever cleared it. The original single-item
+  `AddProductForm` had always correctly done `setPart("")` before
+  fetching new parts; this newer component was missing that one line.
+  Fixed to match, and a real regression test added that switches
+  Category mid-session, confirms the Part list and selection both
+  update to the new category's real options, and confirms the real
+  submitted request pairs a genuinely matching category+part — verified
+  this test actually fails with the bug reintroduced (by temporarily
+  reverting the fix) before confirming it passes with the real fix in
+  place, not just asserting it once and trusting that alone.
 - `src/AddProductCascade.test.jsx` (2, mocked, full component tree) —
   the Part dropdown shows real parts for the default selected Category
   (and doesn't show a different category's parts pre-loaded), and

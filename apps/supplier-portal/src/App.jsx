@@ -1246,7 +1246,8 @@ function CompleteDraftForm({ draft, onCancel, onCompleted }) {
 
   useEffect(() => {
     if (!needsCategory || !category) return;
-    fetchPartsForCategory(category).then((p) => { setParts(p); if (!part && p.length > 0) setPart(p[0].nameEn); }).catch((e) => setError(e.message));
+    setPart(""); // real fix: a stale part from a PREVIOUS category selection must not survive a category change
+    fetchPartsForCategory(category).then((p) => { setParts(p); if (p.length > 0) setPart(p[0].nameEn); }).catch((e) => setError(e.message));
   }, [category]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePhotoSelect = async (e) => {
