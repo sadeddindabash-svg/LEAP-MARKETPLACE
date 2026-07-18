@@ -926,6 +926,76 @@ before vs. after this test's own two submissions) rather than an
 absolute number, and confirmed by running the same test file three
 times in a row without any cleanup in between.
 
+## Real carrier tracking integration (migration 026) — 17TRACK webhook
+
+**Confirmed scope, discussed and refined over several real rounds
+before building**: a real, honest gap was found first — "delivered"
+was entirely self-reported by the supplier, with no independent
+confirmation at all, even though it gates real payout eligibility and
+review verification. Real carrier tracking (via a 17TRACK webhook) is
+now the preferred, trusted path — but the supplier's own manual
+confirmation stays as a real, deliberate fallback, since cross-border
+tracking data is often incomplete or delayed, and a carrier-only
+requirement would leave a genuinely delivered order stuck with no way
+to release payment. **Confirmed**: a manual override must be visibly
+distinguishable from a real carrier-confirmed delivery, so a pattern of
+one supplier relying on manual confirmation far more than others is
+actually visible, not silently indistinguishable.
+
+**`supplier_sub_orders` gains**: `carrier_code`, `delivery_confirmed_by`
+(`'carrier'` or `'supplier_manual'`), and `delivery_note` (required
+when confirming manually).
+
+**`POST /webhooks/17track`** — a real, best-effort per-tracking-number
+receiver (17TRACK can batch several updates in one real call). Real
+HMAC-SHA256 signature verification against the real raw request body
+(not a re-serialized JSON string, which is not guaranteed to
+byte-for-byte match what the real sender originally signed — see the
+real `req.rawBody` capture added to `index.js`'s global body parser).
+Fails closed if the real shared secret (`TRACK17_WEBHOOK_SECRET`)
+isn't configured. Only a real `'Delivered'` status actually updates
+anything; any other real status is correctly skipped, not treated as
+an error. Idempotent — re-firing for an already-delivered tracking
+number is a real no-op, not a double-process.
+
+**The supplier's own manual confirmation** (`PATCH
+/supplier/me/orders/:subOrderId`) now requires a real short note when
+setting status to `'delivered'` — a deliberate action, not a casual
+one. If a sub-order was already confirmed by real carrier tracking,
+a later manual call is rejected outright — carrier provenance can
+never be silently downgraded to a manual claim.
+
+**HONEST LIMITATION**: this was built from documented knowledge of
+17TRACK's push/webhook API structure, not verified against a real,
+live 17TRACK account (no such account exists to test against here).
+Webhook field names and the signing scheme can change between API
+versions — verify the actual real payload shape and signature header
+using 17TRACK's own webhook test tool in your dashboard before relying
+on this in production, and adjust `webhooks/routes.js` if what you see
+differs from what's assumed here.
+
+**Tested end-to-end** — see `apps/supplier-portal/src/carrierWebhook.integration.test.js`
+(7 tests, REAL backend): a request with no signature or a genuinely
+wrong one is rejected; a correctly signed delivered event updates the
+real sub-order with carrier provenance; a non-delivered status update
+is correctly skipped, not an error; a real best-effort batch — an
+unmatched tracking number never blocks other real entries; once
+carrier-confirmed, a supplier can no longer manually override that
+confirmation; manual confirmation requires a real note; a missing data
+array is rejected.
+
+**A real, significant data-hygiene issue was found and fixed while
+testing this**: `GET /supplier/me/orders` had grown to ~5.6 real
+seconds and a 1.75MB response, causing real test timeouts unrelated to
+this feature's own code — traced to ~8,800 accumulated real test
+orders left behind across many earlier sessions' testing, all
+identifiable by a consistent real `@example.com` buyer/guest email
+pattern never used by anything except automated tests. Cleaned up
+(orders, sub-orders, line items, return cases, reviews, and the
+now-orphaned test buyer accounts, handled in real dependency order),
+confirmed the same endpoint dropped to ~19ms afterward, and re-ran the
+full three-app suite to confirm genuine stability.
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category

@@ -49,7 +49,7 @@ async function createDeliveredSubOrder(adminToken, quantity = 1) {
   });
   await fetch(`${BACKEND_URL}/supplier/me/orders/${subOrderId}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supplierToken}` },
-    body: JSON.stringify({ status: 'delivered' }),
+    body: JSON.stringify({ status: 'delivered', deliveryNote: 'Test helper: manual delivery confirmation for integration testing' }),
   });
 
   return { subOrderId, buyerId: buyer.id, buyerEmail: email, orderId: order.id };

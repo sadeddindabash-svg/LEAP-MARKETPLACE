@@ -1488,6 +1488,8 @@ function OrderDetailPanel({ order, onBack, onUpdated }) {
   const [tracking, setTracking] = useState(order.trackingNumber || "");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [showDeliveryNoteInput, setShowDeliveryNoteInput] = useState(false);
+  const [deliveryNote, setDeliveryNote] = useState("");
   const { t, lang } = useLang();
   const { onSessionExpired } = useSupplier();
   const font = useBodyFont();
@@ -1500,12 +1502,26 @@ function OrderDetailPanel({ order, onBack, onUpdated }) {
     try {
       const updated = await updateSubOrder(getStoredToken(), order.subOrderId, updates);
       onUpdated(updated);
+      setShowDeliveryNoteInput(false);
+      setDeliveryNote("");
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
       setError(err.message);
     } finally {
       setIsSaving(false);
     }
+  };
+
+  // Real carrier tracking (migration 026) is the preferred, trusted
+  // path to "delivered" -- confirming it yourself here is a real,
+  // deliberate fallback, so it requires a real short note explaining
+  // why (e.g. real tracking never updated), rather than a single click.
+  const handleStatusClick = (s) => {
+    if (s === "delivered" && order.status !== "delivered") {
+      setShowDeliveryNoteInput(true);
+      return;
+    }
+    handleUpdate({ status: s });
   };
 
   const statusOptions = ["pending", "preparing", "shipped", "delivered", "dispute"];
@@ -1553,7 +1569,7 @@ function OrderDetailPanel({ order, onBack, onUpdated }) {
                 <button
                   key={s}
                   disabled={isSaving}
-                  onClick={() => handleUpdate({ status: s })}
+                  onClick={() => handleStatusClick(s)}
                   style={{
                     ...font, padding: 10, borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: isSaving ? "default" : "pointer", textAlign: "left",
                     border: order.status === s ? `2px solid ${C.signal}` : `1px solid ${C.line}`,
@@ -1561,6 +1577,30 @@ function OrderDetailPanel({ order, onBack, onUpdated }) {
                   }}
                 >{t.statusOrder[s] || s}</button>
               ))}
+              {showDeliveryNoteInput && (
+                <div style={{ marginTop: 4, padding: 10, background: C.canvas, borderRadius: 8 }}>
+                  <div style={{ ...font, fontSize: 11.5, color: C.muted, marginBottom: 8 }}>
+                    {lang === "zh" ? "真实的物流追踪是首选的确认方式。手动确认送达需要简短说明原因。" : "Real carrier tracking is the preferred way to confirm delivery. Manually confirming yourself needs a short note explaining why."}
+                  </div>
+                  <textarea
+                    value={deliveryNote}
+                    onChange={(e) => setDeliveryNote(e.target.value)}
+                    placeholder={lang === "zh" ? "例如：物流未更新，买家已通过聊天确认收货" : "e.g. tracking never updated, buyer confirmed receipt via chat"}
+                    style={{ ...inputStyle, minHeight: 60, marginBottom: 8, resize: "vertical" }}
+                  />
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      disabled={isSaving || !deliveryNote.trim()}
+                      onClick={() => handleUpdate({ status: "delivered", deliveryNote: deliveryNote.trim() })}
+                      style={{ ...font, padding: "7px 14px", borderRadius: 8, border: "none", background: (isSaving || !deliveryNote.trim()) ? "#D1D5DB" : C.gauge, color: "#fff", fontSize: 12, fontWeight: 700, cursor: (isSaving || !deliveryNote.trim()) ? "default" : "pointer" }}
+                    >{lang === "zh" ? "确认送达" : "Confirm delivered"}</button>
+                    <button
+                      onClick={() => { setShowDeliveryNoteInput(false); setDeliveryNote(""); }}
+                      style={{ ...font, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "none", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                    >{lang === "zh" ? "取消" : "Cancel"}</button>
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
         </div>

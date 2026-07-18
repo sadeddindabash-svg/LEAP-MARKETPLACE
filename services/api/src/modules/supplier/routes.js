@@ -585,12 +585,20 @@ router.get('/me/orders', requireAuth, requireRole('supplier'), async (req, res, 
 // 'awaiting_receipt') — that's the bridge from the supplier's leg to
 // the hub's leg of the journey.
 router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), async (req, res, next) => {
-  const { status, trackingNumber } = req.body || {};
+  const { status, trackingNumber, deliveryNote } = req.body || {};
   if (status !== undefined && !['pending', 'preparing', 'shipped', 'delivered', 'dispute'].includes(status)) {
     return res.status(400).json({ error: "status must be one of: pending, preparing, shipped, delivered, dispute" });
   }
   if (status === undefined && trackingNumber === undefined) {
     return res.status(400).json({ error: 'Provide at least one of: status, trackingNumber' });
+  }
+  // CONFIRMED design (migration 026): a manual delivery confirmation is
+  // a deliberate action, not a casual one -- real carrier tracking is
+  // the preferred, trusted path, so manually confirming here (the real
+  // fallback) requires a real short note explaining why, visible to an
+  // admin reviewing delivery-confirmation patterns.
+  if (status === 'delivered' && (!deliveryNote || !deliveryNote.trim())) {
+    return res.status(400).json({ error: 'A short note is required when manually confirming delivery yourself (e.g. why real carrier tracking didn\'t confirm it).' });
   }
 
   const client = await db.getPool().connect();
@@ -609,14 +617,30 @@ router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), asy
       }
     }
 
+    if (status === 'delivered') {
+      // A real carrier confirmation already happened -- never let a
+      // later manual call downgrade that real provenance to
+      // 'supplier_manual'. Nothing to do here; treat as already done.
+      const alreadyDelivered = await client.query(
+        `SELECT delivery_confirmed_by FROM supplier_sub_orders WHERE id = $1 AND supplier_id = $2 AND status = 'delivered'`,
+        [req.params.subOrderId, req.user.supplierId]
+      );
+      if (alreadyDelivered.rows.length > 0 && alreadyDelivered.rows[0].delivery_confirmed_by === 'carrier') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'This order was already confirmed delivered by real carrier tracking.' });
+      }
+    }
+
     const { rows } = await client.query(
       `UPDATE supplier_sub_orders SET
          status = COALESCE($1, status),
          tracking_number = COALESCE($2, tracking_number),
-         delivered_at = CASE WHEN $1 = 'delivered' THEN now() ELSE delivered_at END
+         delivered_at = CASE WHEN $1 = 'delivered' THEN now() ELSE delivered_at END,
+         delivery_confirmed_by = CASE WHEN $1 = 'delivered' THEN 'supplier_manual' ELSE delivery_confirmed_by END,
+         delivery_note = CASE WHEN $1 = 'delivered' THEN $5 ELSE delivery_note END
        WHERE id = $3 AND supplier_id = $4
        RETURNING *`,
-      [status ?? null, trackingNumber ?? null, req.params.subOrderId, req.user.supplierId]
+      [status ?? null, trackingNumber ?? null, req.params.subOrderId, req.user.supplierId, deliveryNote ?? null]
     );
     if (rows.length === 0) {
       await client.query('ROLLBACK');

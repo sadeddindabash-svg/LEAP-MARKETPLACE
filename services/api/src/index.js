@@ -30,13 +30,22 @@ const adminUsersRoutes = require('./modules/admin-users/routes');
 const platformSettingsRoutes = require('./modules/platform-settings/routes');
 const payoutsRoutes = require('./modules/payouts/routes');
 const reviewsRoutes = require('./modules/reviews/routes');
+const webhooksRoutes = require('./modules/webhooks/routes');
 const pricingRoutes = require('./modules/pricing/routes');
 
 assertRequiredEnvInProduction();
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+// The `verify` callback captures the exact real raw bytes of every
+// request body into req.rawBody, alongside express.json()'s normal
+// parsed req.body -- needed for real webhook signature verification
+// (see modules/webhooks/routes.js), since re-serializing the ALREADY
+// parsed JSON back to a string is not guaranteed to byte-for-byte
+// match what the real sender originally signed (key ordering,
+// whitespace, etc. can differ) -- a common, real bug in webhook
+// implementations that this avoids from the start.
+app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf; } }));
 // Serves uploaded product images — see modules/uploads/routes.js header
 // comment for why this is local disk (real, working) rather than real
 // object storage (the production-ready choice, not yet wired up).
@@ -72,6 +81,7 @@ app.use('/admin-users', adminUsersRoutes);
 app.use('/platform-settings', platformSettingsRoutes);
 app.use('/payouts', payoutsRoutes);
 app.use('/reviews', reviewsRoutes);
+app.use('/webhooks', webhooksRoutes);
 app.use('/pricing', pricingRoutes);
 
 app.use(notFoundHandler);
