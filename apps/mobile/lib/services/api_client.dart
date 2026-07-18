@@ -5,6 +5,7 @@ import '../models/product.dart';
 import '../models/category.dart';
 import '../models/cart_item.dart';
 import '../models/vehicle.dart';
+import '../models/review.dart';
 
 /// Thin wrapper around services/api. Kept deliberately simple for the MVP —
 /// swap in a generated client (e.g. from an OpenAPI spec) once the backend
@@ -471,6 +472,50 @@ class ApiClient {
   Future<void> removeFromWishlist(String token, String productId) async {
     final response = await _client.delete(Uri.parse('$baseUrl/wishlist/me/$productId'), headers: _authHeaders(token));
     if (response.statusCode != 204) throw ApiException('Failed to remove from wishlist (${response.statusCode})');
+  }
+
+  /// Real product reviews (new) — see
+  /// services/api/src/modules/reviews/routes.js. Public: only ever
+  /// returns real 'approved' reviews and a real average computed
+  /// strictly from those — a pending or rejected review never shows or
+  /// counts here, even briefly.
+  Future<ReviewsSummary> fetchProductReviews(String productId) async {
+    final response = await _client.get(Uri.parse('$baseUrl/catalog/products/$productId/reviews'));
+    if (response.statusCode != 200) throw ApiException('Failed to load reviews (${response.statusCode})');
+    return ReviewsSummary.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  /// Real submit-or-edit — a buyer's second submission for the same
+  /// real product is a real edit of their existing review (sent back
+  /// to 'pending' for re-review), never a second row. Throws
+  /// ApiException with the real backend message on failure — including
+  /// the real "only buyers who have received this product" message when
+  /// verified purchase is required and this buyer hasn't received it.
+  Future<MyReview> submitReview(String token, {required String productId, required int rating, String? comment}) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/reviews'),
+      headers: _authHeaders(token),
+      body: jsonEncode({'productId': productId, 'rating': rating, if (comment != null && comment.isNotEmpty) 'comment': comment}),
+    );
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode != 201) throw ApiException(body['error'] as String? ?? 'Failed to submit review (${response.statusCode})');
+    return MyReview.fromJson(body);
+  }
+
+  /// This buyer's own real reviews, any real status — used to show a
+  /// real "your review is pending" state on the product page, and to
+  /// pre-fill the write-a-review form if they already reviewed this
+  /// product.
+  Future<List<MyReview>> fetchMyReviews(String token) async {
+    final response = await _client.get(Uri.parse('$baseUrl/reviews/me'), headers: _authHeaders(token));
+    if (response.statusCode != 200) throw ApiException('Failed to load your reviews (${response.statusCode})');
+    final body = jsonDecode(response.body) as List;
+    return body.map((e) => MyReview.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<void> deleteReview(String token, int reviewId) async {
+    final response = await _client.delete(Uri.parse('$baseUrl/reviews/$reviewId'), headers: _authHeaders(token));
+    if (response.statusCode != 204) throw ApiException('Failed to delete review (${response.statusCode})');
   }
 
   /// Real notifications — triggered by real order changes and message/

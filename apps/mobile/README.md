@@ -509,6 +509,37 @@ real 10-reward cap).
   recalculation at order placement — the client-side preview is
   honestly just that, a preview, not the authority.
 
+## Real product reviews and ratings (new)
+
+A new reviews section on the product detail page — see
+`services/api/README.md`'s "Real product reviews and ratings" section
+for the full real backend design (migration 025). Shows the real
+average rating and every real `'approved'` review (author, stars,
+comment) — a pending or rejected review is never shown here, matching
+the public endpoint's own real filtering.
+
+A logged-in buyer can write a real review directly from this screen —
+a tappable 1–5 star picker plus an optional comment. Submitting shows
+the real backend's own response: if the admin-toggled verified-purchase
+setting is on and this buyer hasn't actually received the product, the
+real rejection message shows here directly, not a generic error.
+Re-submitting for a product the buyer already reviewed is a real edit
+(the form pre-fills with their existing rating/comment) — genuinely
+the same review, sent back for re-review, never a second submission.
+
+While their review is pending or was rejected, the buyer sees that real
+status on this same screen rather than silence — since a review that's
+gone into a moderation queue with no visible trace would look like it
+just vanished.
+
+**Honest limitation**: this sandbox has no Flutter SDK, so this code
+could not be run or tested here beyond careful manual review — bracket
+balance checked, and every real API contract (`AuthState.token`/
+`isLoggedIn`, `ApiException.message`, `Product.id`'s real type) was
+cross-checked directly against the actual source files it depends on,
+not assumed. Real device/emulator testing is needed to confirm this
+behaves correctly end-to-end.
+
 ## Setup
 
 1. Install Flutter: https://docs.flutter.dev/get-started/install

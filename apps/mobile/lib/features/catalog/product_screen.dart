@@ -5,6 +5,7 @@ import '../../core/cart_state.dart';
 import '../../core/language_state.dart';
 import '../../models/product.dart';
 import '../../services/api_client.dart';
+import '../../widgets/reviews_section.dart';
 
 /// BUY-022: product detail with fitment confirmation, stock, and delivery
 /// estimate. BUY-030: adds to a cart that is later split by supplier at
@@ -183,6 +184,7 @@ class _ProductDetailBody extends StatelessWidget {
                 ],
               ),
             ),
+            ReviewsSection(productId: product.id, isAr: _isAr),
           ],
         ),
         Positioned(
