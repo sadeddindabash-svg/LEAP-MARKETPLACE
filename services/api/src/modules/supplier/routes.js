@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { createNotification } = require('../notifications/helpers');
+const { validateFitment, tryMatchCategoryAndPart, tryMatchPosition, tryMatchDimensions, validateCompleteFields } = require('./productValidation');
 
 /**
  * Supplier module — SUP-001–003 (onboarding/verification) from the
@@ -301,6 +302,195 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
     await client.query('COMMIT');
     const { rows } = await db.query('SELECT * FROM products WHERE id = $1', [id]);
     res.status(201).json(await attachImagesAndFitment(toProductDto(rows[0])));
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+// ============================================================
+// Real bulk product import (migration 023). CONFIRMED SCOPE, refined
+// over several rounds before building: most suppliers keep a real
+// spreadsheet for ONE vehicle, with simple columns (OE Number, Item
+// Name, Price) — not the full structured single-item submission above.
+// The vehicle is picked ONCE for the whole batch; Category/Part/
+// Position/dimensions are OPTIONAL per row, used directly when they
+// validate and simply left for later otherwise; photos are NEVER in
+// the sheet — every item still needs its real 3 required photos added
+// afterward before it can be submitted for the same real moderation
+// review every product goes through.
+// ============================================================
+
+const MAX_BULK_IMPORT_ITEMS = 200;
+
+// POST /me/products/bulk-import — real, best-effort per item (same
+// pattern as the admin dashboard's bulk moderation): one item missing
+// its real required OE Number/Item Name/Price shouldn't cost the rest
+// of a supplier's real batch.
+router.post('/me/products/bulk-import', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  const client = await db.getPool().connect();
+  try {
+    const { fitment, nameLanguage, items } = req.body || {};
+    if (!fitment) {
+      return res.status(400).json({ error: 'fitment is required' });
+    }
+    if (!['zh', 'en'].includes(nameLanguage)) {
+      return res.status(400).json({ error: "nameLanguage must be 'zh' or 'en'" });
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'items must be a non-empty array' });
+    }
+    if (items.length > MAX_BULK_IMPORT_ITEMS) {
+      return res.status(400).json({ error: `Cannot import more than ${MAX_BULK_IMPORT_ITEMS} items in a single batch` });
+    }
+
+    // The real vehicle is shared by the whole batch — validated ONCE,
+    // not per item.
+    const fitmentResult = await validateFitment(fitment, client);
+    if (!fitmentResult.valid) {
+      return res.status(400).json({ error: fitmentResult.error });
+    }
+    const { generationId, year, engineId, transmissionId } = fitment;
+
+    const results = [];
+    await client.query('BEGIN');
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i] || {};
+      const { oemNumber, itemName, price } = item;
+      if (!oemNumber || !itemName || price === undefined || price === null || price <= 0) {
+        results.push({ index: i, success: false, error: 'oemNumber, itemName, and a positive price are all required' });
+        continue;
+      }
+
+      const { category, part } = await tryMatchCategoryAndPart(item.category, item.part, client);
+      const position = tryMatchPosition(item.position);
+      const dims = tryMatchDimensions(item);
+
+      const id = `p_${Date.now()}_${i}`;
+      await client.query(
+        `INSERT INTO products
+           (id, supplier_id, name, name_zh, category, part, position, oem_number,
+            price, currency_code, status, weight_kg, length_cm, width_cm, height_cm)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'CNY', 'draft', $10, $11, $12, $13)`,
+        [
+          id, req.user.supplierId, itemName, nameLanguage === 'zh' ? itemName : null,
+          category, part, position, oemNumber, price,
+          dims.weightKg, dims.lengthCm, dims.widthCm, dims.heightCm,
+        ]
+      );
+      await client.query(
+        `INSERT INTO product_fitment_entries (product_id, generation_id, year, engine_id, transmission_id) VALUES ($1, $2, $3, $4, $5)`,
+        [id, generationId, year, engineId || null, transmissionId || null]
+      );
+      results.push({ index: i, success: true, productId: id });
+    }
+    await client.query('COMMIT');
+
+    res.status(201).json({ results });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+// GET /me/products/drafts — this supplier's own real bulk-imported
+// drafts still needing completion before they can be submitted for
+// real moderation. Reports exactly what's still missing per item so
+// the portal can show a real, specific "needs: photos, category" state
+// rather than a generic "incomplete."
+router.get('/me/products/drafts', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT p.*, COALESCE(img.count, 0) AS photo_count
+       FROM products p
+       LEFT JOIN (SELECT product_id, COUNT(*) AS count FROM product_images GROUP BY product_id) img ON img.product_id = p.id
+       WHERE p.supplier_id = $1 AND p.status = 'draft'
+       ORDER BY p.created_at DESC`,
+      [req.user.supplierId]
+    );
+    const dtos = await Promise.all(rows.map(async (row) => {
+      const dto = await attachImagesAndFitment(toProductDto(row));
+      const missing = [];
+      if (!row.category) missing.push('category');
+      if (!row.part) missing.push('part');
+      if (!row.position) missing.push('position');
+      if (row.weight_kg === null) missing.push('dimensions');
+      if (Number(row.photo_count) < MIN_PRODUCT_PHOTOS) missing.push('photos');
+      return { ...dto, missing };
+    }));
+    res.json(dtos);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /me/products/:id/complete — the real finishing step: fills in
+// whichever of category/part/position/dimensions weren't already set
+// (or overrides them), requires the real 3 photos, and — only once
+// every real requirement is met — moves the draft into 'translating',
+// entering the exact same real moderation queue every product goes
+// through. Real ownership enforced via the WHERE clause, and only a
+// genuine draft can be completed (an already-submitted product can't
+// be re-completed through this endpoint).
+router.patch('/me/products/:id/complete', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  const client = await db.getPool().connect();
+  try {
+    const draftCheck = await client.query(
+      `SELECT * FROM products WHERE id = $1 AND supplier_id = $2 AND status = 'draft'`,
+      [req.params.id, req.user.supplierId]
+    );
+    if (draftCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Draft product not found' });
+    }
+    const draft = draftCheck.rows[0];
+
+    const category = req.body.category || draft.category;
+    const part = req.body.part || draft.part;
+    const position = req.body.position || draft.position;
+    const weightKg = req.body.weightKg ?? (draft.weight_kg === null ? null : Number(draft.weight_kg));
+    const lengthCm = req.body.lengthCm ?? (draft.length_cm === null ? null : Number(draft.length_cm));
+    const widthCm = req.body.widthCm ?? (draft.width_cm === null ? null : Number(draft.width_cm));
+    const heightCm = req.body.heightCm ?? (draft.height_cm === null ? null : Number(draft.height_cm));
+    const images = req.body.images;
+
+    if (category && category !== draft.category) {
+      const { category: matchedCategory } = await tryMatchCategoryAndPart(category, null, client);
+      if (!matchedCategory) {
+        return res.status(400).json({ error: 'Unknown category' });
+      }
+    }
+    if (part && category) {
+      const { part: matchedPart } = await tryMatchCategoryAndPart(category, part, client);
+      if (!matchedPart) {
+        return res.status(400).json({ error: 'part must be a real part belonging to the given category' });
+      }
+    }
+
+    const validation = validateCompleteFields({ category, part, position, weightKg, lengthCm, widthCm, heightCm, images });
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.error });
+    }
+
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE products SET
+         category = $1, part = $2, position = $3, weight_kg = $4, length_cm = $5, width_cm = $6, height_cm = $7,
+         status = 'translating'
+       WHERE id = $8`,
+      [category, part, position, weightKg, lengthCm, widthCm, heightCm, req.params.id]
+    );
+    await client.query('DELETE FROM product_images WHERE product_id = $1', [req.params.id]);
+    for (let i = 0; i < images.length; i++) {
+      await client.query('INSERT INTO product_images (product_id, url, sort_order) VALUES ($1, $2, $3)', [req.params.id, images[i], i]);
+    }
+    await client.query('COMMIT');
+
+    const { rows } = await db.query('SELECT * FROM products WHERE id = $1', [req.params.id]);
+    res.json(await attachImagesAndFitment(toProductDto(rows[0])));
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);

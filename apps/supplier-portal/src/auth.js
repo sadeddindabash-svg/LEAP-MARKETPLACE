@@ -212,3 +212,40 @@ export async function markAllNotificationsRead(token) {
   if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
   if (response.status !== 204) throw new Error(`Request failed (${response.status})`);
 }
+
+// ---------------- Real bulk product import (new) ----------------
+// See services/api/src/modules/supplier/routes.js for the full real
+// backend design.
+
+export async function bulkImportProducts(token, payload) {
+  const response = await fetch(`${API_BASE_URL}/supplier/me/products/bulk-import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
+export async function fetchMyDrafts(token) {
+  const response = await fetch(`${API_BASE_URL}/supplier/me/products/drafts`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) throw new Error(`Failed to load drafts (${response.status})`);
+  return response.json();
+}
+
+export async function completeDraftProduct(token, productId, payload) {
+  const response = await fetch(`${API_BASE_URL}/supplier/me/products/${productId}/complete`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}

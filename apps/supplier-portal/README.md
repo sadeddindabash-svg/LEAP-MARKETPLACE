@@ -164,6 +164,101 @@ noted as "dropped because backend storage isn't wired" is now real:
   see the real English name — not the Chinese original — via a completely
   separate request. See `src/productSubmission.integration.test.js`.
 
+## Real bulk product import (new — replaces a completely fabricated panel)
+
+**Confirmed scope, refined over several real rounds before building**:
+most suppliers keep a real spreadsheet for ONE specific vehicle
+(brand/model/generation/year) with simple columns — OE Number, Item
+Name, Price — not the full structured single-item submission above.
+Confirmed design: the vehicle is picked ONCE for the whole batch;
+Category/Part/Position/dimensions are OPTIONAL columns a supplier can
+fill in if they already know them; photos are NEVER in the sheet
+(explicitly ruled out — a spreadsheet cell can't reliably hold an
+extractable image, and a single-photo-per-row column was considered
+and rejected) — every imported item still needs its real 3 required
+photos added afterward, before it can be submitted for the exact same
+real moderation review every product already goes through.
+
+**What was actually there before this**: the "Bulk Upload" button and
+panel already existed in the UI, but were completely fabricated —
+"Download template" did nothing (no `onClick` at all), the drop zone
+didn't accept files (no real `<input>`), and the "recent uploads" table
+showed hardcoded fake rows (`86 rows, 81 success, 5 failed`, `42/42/0`)
+that had never been real. This is the actual, working feature.
+
+- **A real, live-generated `.xlsx` template** — built client-side with
+  `exceljs` and downloaded on click, with the real confirmed columns
+  (OE Number\*, Item Name\*, Price\*, plus optional Category/Part/
+  Position/Weight/Length/Width/Height) and one real filled-in example
+  row.
+- **The real vehicle picker** — the exact same cascading Brand → Model
+  → Generation → Year → Engine/Transmission component pattern as the
+  single-product form above, picked once for the whole batch.
+- **Real, case-insensitive column matching** when parsing an uploaded
+  file — a supplier's own column order or exact header casing doesn't
+  matter as long as the real header names are recognizable (e.g. any
+  header containing "oe" or "oem" is read as the OE Number column).
+- **A real preview** of every recognized row before committing to the
+  import, with missing required fields (OE Number/Item Name/Price)
+  flagged in red right in the preview table.
+- **`POST /me/products/bulk-import`** (real, best-effort per row, same
+  pattern as the admin dashboard's bulk moderation) creates a real
+  `draft` product per row — a genuinely new product status, distinct
+  from `active`/`translating`/`inactive`, for something not yet ready
+  for real moderation. Optional fields that don't validate against real
+  reference data are silently left unset (not a rejection) — only a
+  missing OE Number, Item Name, or Price fails that one row.
+- **"My Drafts"** (`GET /me/products/drafts`) — every draft still
+  needing completion, showing exactly what's missing per item (e.g.
+  "Needs: category, part, position, dimensions, photos" vs. just
+  "Needs: photos" for a row where the optional columns were filled in
+  and matched).
+- **The real "finish this listing" step** (`PATCH /me/products/:id/complete`)
+  shows ONLY whichever real fields this specific draft is still
+  missing — a fully-matched row only needs its real photos added; a
+  bare-minimum row shows the real Category/Part/Position/dimension
+  fields too, reusing the same real cascading part-by-category picker
+  and photo upload widget as the single-product form. Only once every
+  real requirement is met does the draft move into `translating`,
+  entering the exact same real moderation queue.
+
+**A real, deliberate security decision made while building this**: the
+obvious `xlsx` (SheetJS) npm package for reading `.xlsx` files has 2
+real, unpatched high-severity vulnerabilities (prototype pollution and
+a regex denial-of-service) in the exact file-parsing code path this
+feature uses on untrusted, supplier-uploaded files — with no fix
+available on npm (SheetJS moved patched builds to their own site, not
+npm). Used `exceljs` instead, a well-maintained alternative with no
+equivalent issue in its own code (one moderate-severity transitive
+dependency issue was reviewed and judged real but substantially
+lower-risk — a specific unusual code path `exceljs` doesn't itself
+trigger — rather than accepting a downgrade that would have been a
+worse real trade-off).
+
+**A real schema gap was found and fixed while building this**:
+`products.category` had a `NOT NULL` constraint from before this
+feature existed — every real product before now always required a
+category upfront. A real draft needs to support an unmatched/not-yet-
+provided category, so this constraint had to be dropped as part of the
+same migration.
+
+**Tested end-to-end** — see `src/bulkImport.integration.test.js` (10
+tests, REAL backend): a real batch with valid items, one missing a
+required field, and one with unmatched optional fields — confirmed
+best-effort, not all-or-nothing, both in the response AND independently
+re-verified at the real database level; the real vehicle fitment is
+validated once for the whole batch, not per item; the full real
+completion flow for both a fully-matched draft (only needs photos) and
+a minimal one (needs everything); an unknown category or a part not
+belonging to the given category is rejected at completion time; a
+draft that's already been completed cannot be completed again; real
+batch-size and per-item limits; an English-named item stores no
+Chinese original, unlike a Chinese-named one; and non-suppliers are
+rejected from all 3 real endpoints. Plus `src/BulkUploadFlow.test.jsx`
+(4 tests, mocked UI) covering the real drafts list, the real
+conditional field rendering in the completion form, and the real
+vehicle picker cascade.
+
 ## Order fulfillment (SUP-020–022)
 
 - `GET /supplier/me/orders` — this supplier's sub-orders only, with real
@@ -287,7 +382,32 @@ npm run dev       # http://localhost:5173
 npm test
 ```
 
-Nine test files, 47 tests total, all passing:
+Eleven test files, 61 tests total, all passing:
+- `src/bulkImport.integration.test.js` (10, REAL backend) — a real
+  batch with valid items, one missing a required field, and one with
+  unmatched optional fields — confirmed best-effort, not all-or-
+  nothing, both in the response AND independently re-verified at the
+  real database level; the real vehicle fitment is validated once for
+  the whole batch, not per item; the full real completion flow for
+  both a fully-matched draft (only needs photos) and a minimal one
+  (needs everything); an unknown category or a part not belonging to
+  the given category is rejected at completion time; a draft that's
+  already been completed cannot be completed again; real batch-size
+  and per-item limits; an English-named item stores no Chinese
+  original, unlike a Chinese-named one; and non-suppliers are rejected
+  from all 3 real endpoints.
+- `src/BulkUploadFlow.test.jsx` (4, mocked, full component tree) — My
+  Drafts shows real drafts with their real missing fields; a fully-
+  matched draft only shows the photo upload step, not category/part/
+  position/dimension fields; a minimal draft shows every real missing
+  field; the vehicle picker cascade works the same real way as the
+  single-product form's own. **Two real test bugs were found and fixed
+  while writing these**: `getAllByText` matched a Card title
+  ("待完善的商品") that happened to contain the same "完善" substring
+  as the real "Complete" button text, and DOM traversal (`.closest().parentElement`)
+  didn't climb enough levels to reach the actual row containing the
+  button — both fixed by scoping to `getAllByRole('button', ...)` and
+  indexing buttons by their known real array position instead.
 - `src/AddProductCascade.test.jsx` (2, mocked, full component tree) —
   the Part dropdown shows real parts for the default selected Category
   (and doesn't show a different category's parts pre-loaded), and
@@ -376,5 +496,3 @@ against the updated backend to confirm nothing broke there — still
    as the admin dashboard; this file is large now.
 3. Add the OEM/fitment/description/image fields to real backend storage,
    then restore them to the Add Product form.
-4. Consider a bulk-upload CSV endpoint for `BulkUploadPanel`, which is
-   still entirely mock (upload UI exists, nothing is processed).

@@ -12,6 +12,7 @@ import {
 import { LangContext, useLang } from "./langContext";
 import { SupplierContext, useSupplier } from "./supplierContext";
 import LoginPage from "./LoginPage";
+import ExcelJS from "exceljs";
 import {
   getStoredToken, saveToken, clearToken, getCurrentUser, SessionExpiredError,
   fetchMySupplierProfile, fetchMyProducts, createProduct, updateProduct,
@@ -22,6 +23,7 @@ import {
   fetchCategories, fetchPartsForCategory,
   fetchMyMessages, sendMyMessage,
   fetchMyNotifications, fetchUnreadNotificationCount, markNotificationRead, markAllNotificationsRead,
+  bulkImportProducts, fetchMyDrafts, completeDraftProduct,
 } from "./auth";
 
 /* ============================================================
@@ -85,10 +87,7 @@ const STRINGS = {
       },
       bulk: {
         title: "批量上传商品", templateTitle: "批量导入模板（.xlsx）", templateSub: "包含商品信息与车型适配字段，请勿更改表头",
-        download: "下载模板", dropHint: "点击选择文件，或将 .xlsx / .csv 文件拖拽至此", recent: "最近上传记录",
-        thFile: "文件名", thRows: "行数", thSuccess: "成功", thFail: "失败", thStatus: "状态",
-        viewErrors: "查看错误", partial: "部分失败", allSuccess: "全部成功",
-        file1: "2026Q3_新品导入.xlsx", file2: "刹车系统补充.xlsx",
+        download: "下载模板", dropHint: "点击选择 .xlsx 文件",
       },
     },
     orders: {
@@ -173,10 +172,7 @@ const STRINGS = {
       },
       bulk: {
         title: "Bulk upload products", templateTitle: "Bulk import template (.xlsx)", templateSub: "Includes product and fitment fields \u2014 do not change the header row",
-        download: "Download template", dropHint: "Click to choose a file, or drag an .xlsx / .csv file here", recent: "Recent uploads",
-        thFile: "File name", thRows: "Rows", thSuccess: "Success", thFail: "Failed", thStatus: "Status",
-        viewErrors: "View errors", partial: "Partial failure", allSuccess: "All succeeded",
-        file1: "2026Q3_new_listings.xlsx", file2: "brake_system_supplement.xlsx",
+        download: "Download template", dropHint: "Click to choose an .xlsx file",
       },
     },
     orders: {
@@ -878,43 +874,538 @@ function AddProductForm({ onCancel, onCreated }) {
   );
 }
 
-function BulkUploadPanel({ onCancel }) {
-  const { t } = useLang();
+const BULK_TEMPLATE_HEADERS = [
+  'OE Number', 'Item Name', 'Price RMB', 'Category', 'Part', 'Position',
+  'Weight kg', 'Length cm', 'Width cm', 'Height cm',
+];
+
+// Real, live-generated .xlsx template (new) -- CONFIRMED SCOPE: only
+// OE Number/Item Name/Price are required; Category/Part/Position/
+// dimensions are optional for a supplier willing to fill in more
+// upfront; there is deliberately NO photo column and NO per-row
+// vehicle columns (the vehicle is picked once for the whole batch) --
+// see services/api/README.md's "Real supplier bulk product import"
+// section for the full confirmed design.
+async function downloadBulkTemplate() {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Products');
+  sheet.addRow(BULK_TEMPLATE_HEADERS);
+  sheet.getRow(1).font = { bold: true };
+  sheet.addRow(['BMW-BD-2018-F20', 'Front Brake Disc', 200, 'Brake System', 'Front Brake Disc', 'Front', 5, 30, 30, 10]);
+  sheet.columns.forEach((col) => { col.width = 16; });
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'leap_bulk_upload_template.xlsx';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Real, case-insensitive header matching -- a supplier's own column
+// order or exact casing shouldn't matter as long as the real header
+// names are recognizable.
+function normalizeHeader(h) {
+  return String(h || '').trim().toLowerCase();
+}
+
+async function parseBulkUploadFile(file) {
+  const workbook = new ExcelJS.Workbook();
+  const buffer = await file.arrayBuffer();
+  await workbook.xlsx.load(buffer);
+  const sheet = workbook.worksheets[0];
+  if (!sheet) return [];
+
+  const headerRow = sheet.getRow(1);
+  const columnIndex = {};
+  headerRow.eachCell((cell, colNumber) => {
+    const h = normalizeHeader(cell.value);
+    if (h.includes('oe') || h.includes('oem')) columnIndex.oemNumber = colNumber;
+    else if (h.includes('item name') || h.includes('name')) columnIndex.itemName = colNumber;
+    else if (h.includes('price')) columnIndex.price = colNumber;
+    else if (h.includes('category')) columnIndex.category = colNumber;
+    else if (h.includes('part')) columnIndex.part = colNumber;
+    else if (h.includes('position')) columnIndex.position = colNumber;
+    else if (h.includes('weight')) columnIndex.weightKg = colNumber;
+    else if (h.includes('length')) columnIndex.lengthCm = colNumber;
+    else if (h.includes('width')) columnIndex.widthCm = colNumber;
+    else if (h.includes('height')) columnIndex.heightCm = colNumber;
+  });
+
+  const items = [];
+  sheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return; // header
+    const get = (key) => (columnIndex[key] ? row.getCell(columnIndex[key]).value : undefined);
+    const oemNumber = get('oemNumber');
+    const itemName = get('itemName');
+    if (!oemNumber && !itemName) return; // a genuinely blank row, not a real item
+    items.push({
+      oemNumber: oemNumber != null ? String(oemNumber).trim() : '',
+      itemName: itemName != null ? String(itemName).trim() : '',
+      price: get('price') != null ? Number(get('price')) : null,
+      category: get('category') != null ? String(get('category')).trim() : undefined,
+      part: get('part') != null ? String(get('part')).trim() : undefined,
+      position: get('position') != null ? String(get('position')).trim() : undefined,
+      weightKg: get('weightKg') != null ? Number(get('weightKg')) : undefined,
+      lengthCm: get('lengthCm') != null ? Number(get('lengthCm')) : undefined,
+      widthCm: get('widthCm') != null ? Number(get('widthCm')) : undefined,
+      heightCm: get('heightCm') != null ? Number(get('heightCm')) : undefined,
+    });
+  });
+  return items;
+}
+
+function BulkUploadPanel({ onCancel, onImported }) {
+  const { t, lang } = useLang();
   const b = t.products.bulk;
   const font = useBodyFont();
+  const selectStyle = useInputStyle();
+
+  const [step, setStep] = useState('setup'); // 'setup' | 'preview' | 'results'
+  const [nameLanguage, setNameLanguage] = useState('zh');
+  const [error, setError] = useState(null);
+  const [isParsing, setIsParsing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [parsedItems, setParsedItems] = useState([]);
+  const [results, setResults] = useState(null);
+
+  // Real vehicle picker cascade -- same real pattern as AddProductForm's
+  // own fitment cascade, duplicated deliberately rather than shared, to
+  // avoid any regression risk on that already-working, tested component.
+  const [brands, setBrands] = useState([]);
+  const [selectedBrandId, setSelectedBrandId] = useState('');
+  const [models, setModels] = useState([]);
+  const [selectedModelId, setSelectedModelId] = useState('');
+  const [generations, setGenerations] = useState([]);
+  const [selectedGenerationId, setSelectedGenerationId] = useState('');
+  const [selectedYear, setSelectedYear] = useState('');
+  const [engines, setEngines] = useState([]);
+  const [selectedEngineId, setSelectedEngineId] = useState('');
+  const [transmissions, setTransmissions] = useState([]);
+  const [selectedTransmissionId, setSelectedTransmissionId] = useState('');
+
+  useEffect(() => { fetchBrands().then(setBrands).catch((e) => setError(e.message)); }, []);
+
+  const handleBrandChange = async (brandId) => {
+    setSelectedBrandId(brandId);
+    setSelectedModelId(''); setModels([]);
+    setSelectedGenerationId(''); setGenerations([]);
+    setSelectedYear(''); setSelectedEngineId(''); setEngines([]);
+    setSelectedTransmissionId(''); setTransmissions([]);
+    if (!brandId) return;
+    try { setModels(await fetchModelsForBrand(brandId)); } catch (e) { setError(e.message); }
+  };
+  const handleModelChange = async (modelId) => {
+    setSelectedModelId(modelId);
+    setSelectedGenerationId(''); setGenerations([]);
+    setSelectedYear(''); setSelectedEngineId(''); setEngines([]);
+    setSelectedTransmissionId(''); setTransmissions([]);
+    if (!modelId) return;
+    try { setGenerations(await fetchGenerationsForModel(modelId)); } catch (e) { setError(e.message); }
+  };
+  const handleGenerationChange = async (generationId) => {
+    setSelectedGenerationId(generationId);
+    setSelectedYear(''); setSelectedEngineId(''); setEngines([]);
+    setSelectedTransmissionId(''); setTransmissions([]);
+    if (!generationId) return;
+    try {
+      const [eng, trans] = await Promise.all([fetchEnginesForGeneration(generationId), fetchTransmissionsForGeneration(generationId)]);
+      setEngines(eng); setTransmissions(trans);
+    } catch (e) { setError(e.message); }
+  };
+  const selectedGeneration = generations.find((g) => g.id === selectedGenerationId);
+  const yearOptions = selectedGeneration
+    ? Array.from({ length: (selectedGeneration.yearEnd || new Date().getFullYear() + 1) - selectedGeneration.yearStart + 1 }, (_, i) => selectedGeneration.yearStart + i)
+    : [];
+
+  const handleFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setError(null);
+    setIsParsing(true);
+    try {
+      const items = await parseBulkUploadFile(file);
+      if (items.length === 0) {
+        setError(lang === 'zh' ? '未能在此文件中识别出任何商品行。' : "Couldn't recognize any product rows in this file.");
+      } else {
+        setParsedItems(items);
+        setStep('preview');
+      }
+    } catch (err) {
+      setError(lang === 'zh' ? '无法读取此文件，请确认它是有效的 .xlsx 文件。' : "Couldn't read this file — make sure it's a valid .xlsx file.");
+    } finally {
+      setIsParsing(false);
+    }
+  };
+
+  const handleSubmitImport = async () => {
+    if (!selectedGenerationId || !selectedYear) {
+      setError(lang === 'zh' ? '请先选择适配车型' : 'Choose the vehicle this batch is for first.');
+      return;
+    }
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      const data = await bulkImportProducts(getStoredToken(), {
+        fitment: { generationId: selectedGenerationId, year: Number(selectedYear), engineId: selectedEngineId || undefined, transmissionId: selectedTransmissionId || undefined },
+        nameLanguage,
+        items: parsedItems,
+      });
+      setResults(data.results);
+      setStep('results');
+      onImported?.();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const cascadeLabel = (zh, en) => (lang === 'zh' ? zh : en);
+
+  if (step === 'results') {
+    const successCount = results.filter((r) => r.success).length;
+    const failCount = results.length - successCount;
+    return (
+      <Card title={b.title} action={<button onClick={onCancel} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={17} color={C.muted} /></button>}>
+        <div style={{ padding: 20 }}>
+          <div style={{ ...font, fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 4 }}>
+            {cascadeLabel(`导入完成：${successCount} 成功`, `Import complete: ${successCount} succeeded`)}{failCount > 0 && cascadeLabel(`，${failCount} 失败`, `, ${failCount} failed`)}
+          </div>
+          <div style={{ ...font, fontSize: 12.5, color: C.muted, marginBottom: 16 }}>
+            {cascadeLabel('成功导入的商品仍需添加照片才能提交审核，请前往"待完善"查看。', 'Successfully imported products still need photos before they can be submitted for review — see My Drafts.')}
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr><Th>{cascadeLabel('行', 'Row')}</Th><Th>{cascadeLabel('状态', 'Status')}</Th></tr></thead>
+            <tbody>
+              {results.map((r) => (
+                <tr key={r.index}>
+                  <Td>{r.index + 1}</Td>
+                  <Td>{r.success ? <Badge label={cascadeLabel('成功', 'Success')} statusKey="active" /> : <span style={{ ...font, color: C.red, fontSize: 12 }}>{r.error}</span>}</Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <button onClick={onCancel} style={{ ...font, marginTop: 16, padding: '9px 16px', borderRadius: 8, border: 'none', background: C.signal, color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+            {cascadeLabel('完成', 'Done')}
+          </button>
+        </div>
+      </Card>
+    );
+  }
+
   return (
-    <Card title={b.title} action={<button onClick={onCancel} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={17} color={C.muted} /></button>}>
+    <Card title={b.title} action={<button onClick={onCancel} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={17} color={C.muted} /></button>}>
       <div style={{ padding: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 14, background: C.canvas, borderRadius: 10, marginBottom: 16 }}>
+        {error && <div style={{ ...font, fontSize: 12, color: C.red, background: '#FBE7E5', borderRadius: 8, padding: 10, marginBottom: 14 }}>{error}</div>}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 14, background: C.canvas, borderRadius: 10, marginBottom: 16 }}>
           <FileSpreadsheet size={22} color={C.torque} />
           <div style={{ flex: 1 }}>
             <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink }}>{b.templateTitle}</div>
             <div style={{ ...font, fontSize: 11.5, color: C.muted }}>{b.templateSub}</div>
           </div>
-          <button style={{ ...font, display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+          <button onClick={downloadBulkTemplate} style={{ ...font, display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: `1px solid ${C.line}`, background: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
             <Download size={13} /> {b.download}
           </button>
         </div>
-        <div style={{ border: `1.5px dashed ${C.line}`, borderRadius: 10, padding: 28, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, color: C.muted, marginBottom: 16 }}>
-          <Upload size={22} />
-          <span style={{ ...font, fontSize: 12.5 }}>{b.dropHint}</span>
+
+        {step === 'setup' && (
+          <>
+            <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 10 }}>
+              {cascadeLabel('这批商品适配的车型', 'Vehicle this batch is for')}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
+              <Field label={cascadeLabel('品牌', 'Brand')}>
+                <select style={selectStyle} value={selectedBrandId} onChange={(e) => handleBrandChange(e.target.value)}>
+                  <option value="">{cascadeLabel('请选择', 'Select…')}</option>
+                  {brands.map((br) => <option key={br.id} value={br.id}>{br.name}</option>)}
+                </select>
+              </Field>
+              <Field label={cascadeLabel('车型', 'Model')}>
+                <select style={selectStyle} value={selectedModelId} onChange={(e) => handleModelChange(e.target.value)} disabled={!selectedBrandId}>
+                  <option value="">{cascadeLabel('请选择', 'Select…')}</option>
+                  {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+              </Field>
+              <Field label={cascadeLabel('世代', 'Generation')}>
+                <select style={selectStyle} value={selectedGenerationId} onChange={(e) => handleGenerationChange(e.target.value)} disabled={!selectedModelId}>
+                  <option value="">{cascadeLabel('请选择', 'Select…')}</option>
+                  {generations.map((g) => <option key={g.id} value={g.id}>{g.name} ({g.yearStart}–{g.yearEnd || cascadeLabel('至今', 'present')})</option>)}
+                </select>
+              </Field>
+              <Field label={cascadeLabel('年份', 'Year')}>
+                <select style={selectStyle} value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} disabled={!selectedGenerationId}>
+                  <option value="">{cascadeLabel('请选择', 'Select…')}</option>
+                  {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </Field>
+              <Field label={cascadeLabel('发动机（选填）', 'Engine (optional)')}>
+                <select style={selectStyle} value={selectedEngineId} onChange={(e) => setSelectedEngineId(e.target.value)} disabled={!selectedGenerationId}>
+                  <option value="">{cascadeLabel('任意发动机', 'Any engine')}</option>
+                  {engines.map((en) => <option key={en.id} value={en.id}>{en.name}</option>)}
+                </select>
+              </Field>
+              <Field label={cascadeLabel('变速箱（选填）', 'Transmission (optional)')}>
+                <select style={selectStyle} value={selectedTransmissionId} onChange={(e) => setSelectedTransmissionId(e.target.value)} disabled={!selectedGenerationId}>
+                  <option value="">{cascadeLabel('任意变速箱', 'Any transmission')}</option>
+                  {transmissions.map((tr) => <option key={tr.id} value={tr.id}>{tr.name}</option>)}
+                </select>
+              </Field>
+            </div>
+
+            <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 8 }}>
+              {cascadeLabel('商品名称语言', 'Item name language')}
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+              <label style={{ ...font, display: 'flex', alignItems: 'center', gap: 5, fontSize: 13 }}>
+                <input type="radio" checked={nameLanguage === 'zh'} onChange={() => setNameLanguage('zh')} /> {cascadeLabel('中文', 'Chinese')}
+              </label>
+              <label style={{ ...font, display: 'flex', alignItems: 'center', gap: 5, fontSize: 13 }}>
+                <input type="radio" checked={nameLanguage === 'en'} onChange={() => setNameLanguage('en')} /> {cascadeLabel('英文', 'English')}
+              </label>
+            </div>
+
+            <label style={{ display: 'block', border: `1.5px dashed ${C.line}`, borderRadius: 10, padding: 28, textAlign: 'center', color: C.muted, cursor: selectedGenerationId && selectedYear ? 'pointer' : 'default', opacity: selectedGenerationId && selectedYear ? 1 : 0.5 }}>
+              <Upload size={22} style={{ marginBottom: 8 }} />
+              <div style={{ ...font, fontSize: 12.5 }}>{isParsing ? cascadeLabel('正在读取文件…', 'Reading file…') : b.dropHint}</div>
+              <input type="file" accept=".xlsx" style={{ display: 'none' }} onChange={handleFileSelect} disabled={!selectedGenerationId || !selectedYear || isParsing} />
+            </label>
+          </>
+        )}
+
+        {step === 'preview' && (
+          <>
+            <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 10 }}>
+              {cascadeLabel(`已识别 ${parsedItems.length} 行`, `${parsedItems.length} rows recognized`)}
+            </div>
+            <div style={{ maxHeight: 280, overflowY: 'auto', marginBottom: 16 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr><Th>OE Number</Th><Th>Item Name</Th><Th align="right">Price</Th><Th>Category</Th></tr></thead>
+                <tbody>
+                  {parsedItems.map((item, i) => (
+                    <tr key={i}>
+                      <Td>{item.oemNumber || <span style={{ color: C.red }}>{cascadeLabel('缺失', 'missing')}</span>}</Td>
+                      <Td>{item.itemName || <span style={{ color: C.red }}>{cascadeLabel('缺失', 'missing')}</span>}</Td>
+                      <Td align="right">{item.price ?? <span style={{ color: C.red }}>{cascadeLabel('缺失', 'missing')}</span>}</Td>
+                      <Td style={{ color: C.muted }}>{item.category || '—'}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setStep('setup')} style={{ ...font, padding: '9px 16px', borderRadius: 8, border: `1px solid ${C.line}`, background: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+                {cascadeLabel('返回', 'Back')}
+              </button>
+              <button disabled={isSubmitting} onClick={handleSubmitImport} style={{ ...font, padding: '9px 16px', borderRadius: 8, border: 'none', background: isSubmitting ? '#D1D5DB' : C.signal, color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? 'default' : 'pointer' }}>
+                {isSubmitting ? cascadeLabel('导入中…', 'Importing…') : cascadeLabel(`导入 ${parsedItems.length} 项`, `Import ${parsedItems.length} items`)}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+// Real "finish this listing" step (new) -- shows only whichever real
+// fields this specific draft is still missing (per its real `missing`
+// array from GET /me/products/drafts), plus its real required photos
+// (always needed, since photos are never in the bulk-import sheet).
+function CompleteDraftForm({ draft, onCancel, onCompleted }) {
+  const { t, lang } = useLang();
+  const font = useBodyFont();
+  const selectStyle = useInputStyle();
+  const cascadeLabel = (zh, en) => (lang === 'zh' ? zh : en);
+
+  const needsCategory = draft.missing.includes('category') || draft.missing.includes('part');
+  const needsPosition = draft.missing.includes('position');
+  const needsDimensions = draft.missing.includes('dimensions');
+
+  const [categories, setCategories] = useState([]);
+  const [category, setCategory] = useState(draft.category || '');
+  const [parts, setParts] = useState([]);
+  const [part, setPart] = useState(draft.part || '');
+  const [position, setPosition] = useState(draft.position || POSITION_OPTIONS[0].id);
+  const [weightKg, setWeightKg] = useState(draft.weightKg || '');
+  const [lengthCm, setLengthCm] = useState(draft.lengthCm || '');
+  const [widthCm, setWidthCm] = useState(draft.widthCm || '');
+  const [heightCm, setHeightCm] = useState(draft.heightCm || '');
+  const [photos, setPhotos] = useState(draft.images ? draft.images.map((url) => ({ url })) : []);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!needsCategory) return;
+    fetchCategories().then((c) => { setCategories(c); if (!category && c.length > 0) setCategory(c[0].id); }).catch((e) => setError(e.message));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!needsCategory || !category) return;
+    fetchPartsForCategory(category).then((p) => { setParts(p); if (!part && p.length > 0) setPart(p[0].nameEn); }).catch((e) => setError(e.message));
+  }, [category]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handlePhotoSelect = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    setIsUploadingPhoto(true);
+    setError(null);
+    for (const file of files) {
+      try {
+        const result = await uploadProductImage(getStoredToken(), file);
+        setPhotos((prev) => [...prev, result]);
+      } catch (err) {
+        setError(err.message);
+      }
+    }
+    setIsUploadingPhoto(false);
+  };
+  const removePhoto = (url) => setPhotos((prev) => prev.filter((p) => p.url !== url));
+
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      await completeDraftProduct(getStoredToken(), draft.id, {
+        category: needsCategory ? category : undefined,
+        part: needsCategory ? part : undefined,
+        position: needsPosition ? position : undefined,
+        weightKg: needsDimensions ? Number(weightKg) : undefined,
+        lengthCm: needsDimensions ? Number(lengthCm) : undefined,
+        widthCm: needsDimensions ? Number(widthCm) : undefined,
+        heightCm: needsDimensions ? Number(heightCm) : undefined,
+        images: photos.map((p) => p.url),
+      });
+      onCompleted();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) throw err;
+      setError(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Card title={draft.name} action={<button onClick={onCancel} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={17} color={C.muted} /></button>}>
+      <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {error && <div style={{ ...font, fontSize: 12, color: C.red, background: '#FBE7E5', borderRadius: 8, padding: 10 }}>{error}</div>}
+        <div style={{ ...font, fontSize: 12, color: C.muted }}>
+          {draft.oemNumber} · ${Number(draft.price).toFixed(2)}
         </div>
-        <div style={{ ...font, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 8 }}>{b.recent}</div>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead><tr><Th>{b.thFile}</Th><Th align="right">{b.thRows}</Th><Th align="right">{b.thSuccess}</Th><Th align="right">{b.thFail}</Th><Th>{b.thStatus}</Th><Th></Th></tr></thead>
-          <tbody>
-            <tr>
-              <Td>{b.file1}</Td><Td align="right">86</Td><Td align="right">81</Td><Td align="right" style={{ color: C.red, fontWeight: 700 }}>5</Td>
-              <Td><Badge label={b.partial} statusKey="translating" /></Td>
-              <Td align="right"><a style={{ ...font, color: C.torque, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{b.viewErrors}</a></Td>
-            </tr>
-            <tr>
-              <Td>{b.file2}</Td><Td align="right">42</Td><Td align="right">42</Td><Td align="right">0</Td>
-              <Td><Badge label={b.allSuccess} statusKey="active" /></Td>
-              <Td align="right">—</Td>
-            </tr>
-          </tbody>
-        </table>
+
+        {needsCategory && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <Field label={cascadeLabel('分类', 'Category')}>
+              <select style={selectStyle} value={category} onChange={(e) => setCategory(e.target.value)}>
+                {categories.map((c) => <option key={c.id} value={c.id}>{c.nameEn}</option>)}
+              </select>
+            </Field>
+            <Field label={cascadeLabel('部件', 'Part')}>
+              <select style={selectStyle} value={part} onChange={(e) => setPart(e.target.value)} disabled={parts.length === 0}>
+                {parts.map((p) => <option key={p.nameEn} value={p.nameEn}>{p.nameEn}</option>)}
+              </select>
+            </Field>
+          </div>
+        )}
+
+        {needsPosition && (
+          <Field label={cascadeLabel('位置', 'Position')}>
+            <select style={selectStyle} value={position} onChange={(e) => setPosition(e.target.value)}>
+              {POSITION_OPTIONS.map((p) => <option key={p.id} value={p.id}>{p[lang]}</option>)}
+            </select>
+          </Field>
+        )}
+
+        {needsDimensions && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
+            <Field label={cascadeLabel('重量 kg', 'Weight kg')}><input style={selectStyle} type="number" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} /></Field>
+            <Field label={cascadeLabel('长 cm', 'Length cm')}><input style={selectStyle} type="number" value={lengthCm} onChange={(e) => setLengthCm(e.target.value)} /></Field>
+            <Field label={cascadeLabel('宽 cm', 'Width cm')}><input style={selectStyle} type="number" value={widthCm} onChange={(e) => setWidthCm(e.target.value)} /></Field>
+            <Field label={cascadeLabel('高 cm', 'Height cm')}><input style={selectStyle} type="number" value={heightCm} onChange={(e) => setHeightCm(e.target.value)} /></Field>
+          </div>
+        )}
+
+        <div>
+          <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 8 }}>
+            {cascadeLabel(`商品照片（至少 ${MIN_PRODUCT_PHOTOS} 张）`, `Product photos (at least ${MIN_PRODUCT_PHOTOS})`)}
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {photos.map((p) => (
+              <div key={p.url} style={{ position: 'relative', width: 84, height: 84 }}>
+                <img src={`${API_BASE_URL}${p.url}`} alt="" style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 8, border: `1px solid ${C.line}` }} />
+                <button onClick={() => removePhoto(p.url)} style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%', border: 'none', background: C.red, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+            <label style={{ width: 84, height: 84, borderRadius: 8, border: `1.5px dashed ${C.line}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, cursor: 'pointer', color: C.muted }}>
+              {isUploadingPhoto ? <span style={{ fontSize: 11 }}>...</span> : <ImagePlus size={20} />}
+              <span style={{ fontSize: 10 }}>{cascadeLabel('添加', 'Add')}</span>
+              <input type="file" accept="image/jpeg,image/png,image/webp" multiple style={{ display: 'none' }} onChange={handlePhotoSelect} disabled={isUploadingPhoto} />
+            </label>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onCancel} style={{ ...font, padding: '9px 16px', borderRadius: 8, border: `1px solid ${C.line}`, background: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+            {cascadeLabel('取消', 'Cancel')}
+          </button>
+          <button disabled={isSubmitting} onClick={handleSubmit} style={{ ...font, padding: '9px 16px', borderRadius: 8, border: 'none', background: isSubmitting ? '#D1D5DB' : C.gauge, color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? 'default' : 'pointer' }}>
+            {isSubmitting ? cascadeLabel('提交中…', 'Submitting…') : cascadeLabel('提交审核', 'Submit for review')}
+          </button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// Real list of a supplier's own bulk-imported drafts still needing
+// completion (new) -- see GET /me/products/drafts.
+function DraftsPanel({ onCancel }) {
+  const { lang } = useLang();
+  const font = useBodyFont();
+  const cascadeLabel = (zh, en) => (lang === 'zh' ? zh : en);
+  const [drafts, setDrafts] = useState([]);
+  const [loadState, setLoadState] = useState('loading');
+  const [editingId, setEditingId] = useState(null);
+
+  const load = () => {
+    setLoadState('loading');
+    fetchMyDrafts(getStoredToken())
+      .then((data) => { setDrafts(data); setLoadState('ready'); })
+      .catch(() => setLoadState('error'));
+  };
+  useEffect(load, []);
+
+  if (editingId) {
+    const draft = drafts.find((d) => d.id === editingId);
+    return <CompleteDraftForm draft={draft} onCancel={() => setEditingId(null)} onCompleted={() => { setEditingId(null); load(); }} />;
+  }
+
+  return (
+    <Card title={cascadeLabel('待完善的商品', 'Drafts needing completion')} action={<button onClick={onCancel} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={17} color={C.muted} /></button>}>
+      <div style={{ padding: 6 }}>
+        {loadState === 'loading' && <div style={{ padding: 24, textAlign: 'center', ...font, fontSize: 13, color: C.muted }}>{cascadeLabel('加载中…', 'Loading…')}</div>}
+        {loadState === 'ready' && drafts.length === 0 && (
+          <div style={{ padding: 24, textAlign: 'center', ...font, fontSize: 13, color: C.muted }}>{cascadeLabel('没有待完善的商品。', 'No drafts need completion right now.')}</div>
+        )}
+        {loadState === 'ready' && drafts.map((d, i) => (
+          <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', borderBottom: i < drafts.length - 1 ? `1px solid ${C.line}` : 'none' }}>
+            <div>
+              <div style={{ ...font, fontWeight: 700, fontSize: 13 }}>{d.name}</div>
+              <div style={{ ...font, fontSize: 11.5, color: C.muted, marginTop: 2 }}>
+                {d.oemNumber} · {cascadeLabel('缺少：', 'Needs: ')}{d.missing.join(', ')}
+              </div>
+            </div>
+            <button onClick={() => setEditingId(d.id)} style={{ ...font, padding: '7px 14px', borderRadius: 8, border: 'none', background: C.signal, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+              {cascadeLabel('完善', 'Complete')}
+            </button>
+          </div>
+        ))}
       </div>
     </Card>
   );
@@ -941,7 +1432,8 @@ function ProductsPage() {
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (mode === "add") return <div style={{ padding: 24 }}><AddProductForm onCancel={() => setMode("list")} onCreated={() => { setMode("list"); load(); }} /></div>;
-  if (mode === "bulk") return <div style={{ padding: 24 }}><BulkUploadPanel onCancel={() => setMode("list")} /></div>;
+  if (mode === "bulk") return <div style={{ padding: 24 }}><BulkUploadPanel onCancel={() => setMode("list")} onImported={load} /></div>;
+  if (mode === "drafts") return <div style={{ padding: 24 }}><DraftsPanel onCancel={() => { setMode("list"); load(); }} /></div>;
 
   return (
     <div>
@@ -949,6 +1441,9 @@ function ProductsPage() {
       <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "flex-end", gap: 8 }}>
         <button onClick={() => setMode("bulk")} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}>
           <Upload size={13} /> {t.products.bulkUpload}
+        </button>
+        <button onClick={() => setMode("drafts")} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}>
+          <FileSpreadsheet size={13} /> {lang === "zh" ? "待完善的商品" : "My Drafts"}
         </button>
         <button onClick={() => setMode("add")} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}>
           <Plus size={13} /> {t.products.addProduct}

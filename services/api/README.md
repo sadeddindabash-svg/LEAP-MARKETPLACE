@@ -717,6 +717,79 @@ empty items array and a batch over the real 100-item cap are both
 rejected; an invalid action or missing productId is a real per-item
 failure, not a request-level error; and non-admins are rejected.
 
+## Real supplier bulk product import (migration 023) — one vehicle, many products, per-item real completion
+
+**Confirmed scope, refined over several real rounds before building**:
+most suppliers keep a real spreadsheet for ONE specific vehicle
+(brand/model/generation/year) with simple columns — OE Number, Item
+Name, Price — not the full structured single-item submission the
+existing `POST /me/products` requires. Confirmed design: the vehicle is
+picked ONCE for the whole batch; Category/Part/Position/dimensions are
+OPTIONAL, used directly when they validate against real reference data
+and simply left for later otherwise; photos are NEVER in the sheet
+(explicitly ruled out — a cell can't reliably hold an extractable
+image) — every imported item still needs its real 3 required photos
+added afterward before it can be submitted for the exact same real
+moderation review every product already goes through.
+
+**A genuinely new product status, `draft`**, distinct from
+`active`/`translating`/`inactive` — a bulk-imported item is not yet
+ready for real moderation. `products.category`'s real `NOT NULL`
+constraint (true for every product before this feature, since one was
+always required upfront) had to be dropped to allow a real draft with
+an unmatched/not-yet-provided category.
+
+**`services/api/src/modules/supplier/productValidation.js`** —
+deliberately a SEPARATE module from the existing single-item
+endpoint's own inline validation, even though the real checks are
+equivalent. The existing endpoint has extensive real test coverage
+already; duplicating this logic avoids any regression risk on that
+well-tested code, at the honest cost of some real duplication.
+
+**`POST /me/products/bulk-import`** — the real vehicle fitment is
+validated ONCE for the whole batch (not per item); each item is then
+processed independently, best-effort (same pattern as the admin
+dashboard's bulk moderation) — a row missing its real required OE
+Number/Item Name/Price fails just that row; an unmatched/invalid
+optional Category/Part/Position/dimension is silently treated as "not
+provided," not a rejection. A real cap of 200 items per batch.
+
+**`GET /me/products/drafts`** — a supplier's own real drafts, each
+reporting exactly which real fields are still missing (`category`,
+`part`, `position`, `dimensions`, `photos`) so the portal can show a
+real, specific state per item rather than a generic "incomplete."
+
+**`PATCH /me/products/:id/complete`** — the real finishing step. Fills
+in whichever of category/part/position/dimensions weren't already set
+(or overrides them, re-validated against real reference data — an
+unknown category, or a real part that doesn't belong to the given
+category, is rejected here same as the single-item endpoint), requires
+the real 3 photos, and — only once every real requirement is met —
+moves the draft into `translating`, entering the exact same real
+moderation queue every product goes through. Real ownership enforced
+via the `WHERE` clause; only a genuine `draft` can be completed (an
+already-submitted product can't be re-completed through this endpoint).
+
+**Tested end-to-end** — see `apps/supplier-portal/src/bulkImport.integration.test.js`
+(10 tests): a real batch with valid items, one missing a required
+field, and one with unmatched optional fields — confirmed best-effort,
+not all-or-nothing, both in the response AND independently re-verified
+at the real database level; the real vehicle fitment validated once,
+not per item; the full real completion flow for both a fully-matched
+draft (only needs photos) and a minimal one (needs everything); an
+unknown category or mismatched part rejected at completion time; a
+completed draft can't be re-completed; real batch-size and per-item
+limits; an English-named item stores no Chinese original, unlike a
+Chinese-named one; and non-suppliers rejected from all 3 real
+endpoints.
+
+**A real, documented security decision**: the browser-side spreadsheet
+parsing (see the supplier portal's own README for the frontend half of
+this feature) deliberately uses `exceljs` rather than the more common
+`xlsx` (SheetJS) package, which has 2 real, unpatched high-severity
+vulnerabilities in the exact file-parsing code path this feature needs
+for untrusted, supplier-uploaded files.
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category
@@ -1320,7 +1393,9 @@ src/
     ├── supplier/            Admin-facing supplier list/verify (ADM-001) AND
     │                       supplier-facing "me" endpoints — own profile,
     │                       products, order fulfillment, own aggregate
-    │                       overview KPIs (SUP-001–022)
+    │                       overview KPIs (SUP-001–022); real bulk product
+    │                       import + real drafts + real per-item completion
+    │                       (new, migration 023) -- see productValidation.js
     ├── support/             Support tickets — admin AND buyer-facing
     │                       "my-tickets" endpoints (BUY-060–061, ADM-012)
     ├── returns/             Return/dispute cases with SEPARATE buyer,
