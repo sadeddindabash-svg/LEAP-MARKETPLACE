@@ -34,13 +34,14 @@ const ELIGIBLE_SUB_ORDERS_CTE = `
     SELECT so.id AS sub_order_id, so.supplier_id,
            oli.unit_price * oli.quantity * (1 - pc.commission_percent / 100.0) AS net_amount
     FROM supplier_sub_orders so
+    JOIN hub_shipments hs ON hs.sub_order_id = so.id
     JOIN order_line_items oli ON oli.sub_order_id = so.id
     JOIN products p ON p.id = oli.product_id
     JOIN product_categories pc ON pc.id = p.category
     CROSS JOIN window_setting w
-    WHERE so.status = 'delivered'
-      AND so.delivered_at IS NOT NULL
-      AND so.delivered_at + (w.days || ' days')::interval < now()
+    WHERE hs.status = 'delivered'
+      AND hs.delivered_at IS NOT NULL
+      AND hs.delivered_at + (w.days || ' days')::interval < now()
       AND so.id NOT IN (SELECT sub_order_id FROM payout_sub_orders)
       AND NOT EXISTS (SELECT 1 FROM return_cases rc WHERE rc.sub_order_id = so.id)
   )

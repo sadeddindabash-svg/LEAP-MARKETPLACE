@@ -5,12 +5,22 @@ const { sendTransactionalEmail } = require('../email/client');
 const { deliveryNotificationEmail } = require('../email/templates');
 
 /**
- * Real 17TRACK webhook integration (migration 026). CONFIRMED SCOPE:
- * carrier confirmation is the preferred, trusted path to 'delivered' --
- * the supplier's own manual confirmation stays as a real fallback (see
- * supplier/routes.js), since cross-border tracking is often incomplete
- * or delayed and a carrier-only requirement would leave a genuinely
- * delivered order stuck with no way to release payment.
+ * Real 17TRACK webhook integration (migrations 026, corrected by 027).
+ * CONFIRMED SCOPE: carrier confirmation is the preferred, trusted path
+ * to 'delivered' -- the hub's own manual confirmation stays as a real
+ * fallback (see hub/routes.js), since cross-border tracking is often
+ * incomplete or delayed and a carrier-only requirement would leave a
+ * genuinely delivered order stuck with no way to release payment.
+ *
+ * REAL BUG FOUND AND FIXED (migration 027), found by the person
+ * directly: this originally matched against the SUPPLIER's own
+ * tracking number -- but a supplier in this real business only ships
+ * locally within China, hub to hub. That tracking number only ever
+ * covers the domestic Supplier -> Hub leg. The real final leg that
+ * actually reaches the buyer is the HUB's own shipment, using the
+ * hub's OWN tracking number (collected in
+ * hub_shipment_events.tracking_number for the 'shipped_to_buyer' step)
+ * -- matched and updated here now, not the supplier's own record.
  *
  * HONEST LIMITATION: this was built from documented knowledge of
  * 17TRACK's push/webhook API structure, not verified against a real,
@@ -74,24 +84,36 @@ router.post('/17track', async (req, res, next) => {
 
       const deliveredAt = eventTimeIso ? new Date(eventTimeIso) : new Date();
       try {
+        // Matches the real HUB's own tracking number (the actual final
+        // leg to the buyer), not the supplier's domestic one -- see the
+        // real bug this migration 027 fixed, in this file's own header
+        // comment above.
         const { rows } = await db.query(
-          `UPDATE supplier_sub_orders SET
+          `WITH latest_shipped_event AS (
+             SELECT DISTINCT ON (shipment_id) shipment_id
+             FROM hub_shipment_events
+             WHERE step = 'shipped_to_buyer' AND tracking_number = $3
+             ORDER BY shipment_id, created_at DESC
+           )
+           UPDATE hub_shipments SET
              status = 'delivered', delivered_at = $1, delivery_confirmed_by = 'carrier',
              carrier_code = COALESCE(carrier_code, $2)
-           WHERE tracking_number = $3 AND status != 'delivered'
-           RETURNING id, order_id`,
+           WHERE id IN (SELECT shipment_id FROM latest_shipped_event) AND status != 'delivered'
+           RETURNING id, sub_order_id`,
           [deliveredAt, carrierCode ? String(carrierCode) : null, trackingNumber]
         );
         if (rows.length === 0) {
-          results.push({ trackingNumber, success: false, error: 'No matching real sub-order found for this tracking number, or it was already delivered' });
+          results.push({ trackingNumber, success: false, error: 'No matching real hub shipment found for this tracking number, or it was already delivered' });
         } else {
-          results.push({ trackingNumber, success: true, subOrderId: rows[0].id });
+          const { rows: subOrderRows } = await db.query('SELECT order_id FROM supplier_sub_orders WHERE id = $1', [rows[0].sub_order_id]);
+          const orderId = subOrderRows[0]?.order_id;
+          results.push({ trackingNumber, success: true, hubShipmentId: rows[0].id, orderId });
           // Real delivery notification email (new) -- best-effort, same
-          // as the supplier's own manual delivery path -- a real carrier
+          // as the hub's own manual delivery path -- a real carrier
           // confirmation deserves the exact same real notification a
           // manual confirmation would trigger.
           try {
-            const { rows: orderRows } = await db.query('SELECT buyer_id, guest_email FROM orders WHERE id = $1', [rows[0].order_id]);
+            const { rows: orderRows } = await db.query('SELECT buyer_id, guest_email FROM orders WHERE id = $1', [orderId]);
             let recipientEmail = orderRows[0]?.guest_email || null;
             let recipientName = null;
             if (orderRows[0]?.buyer_id) {
@@ -99,15 +121,15 @@ router.post('/17track', async (req, res, next) => {
               if (userRows.length > 0) { recipientEmail = userRows[0].email; recipientName = userRows[0].name; }
             }
             if (recipientEmail) {
-              const { html, text } = deliveryNotificationEmail({ recipientName, orderId: rows[0].order_id });
-              await sendTransactionalEmail({ to: recipientEmail, subject: `Your order has been delivered — ${rows[0].order_id}`, html, text, fallbackLogLabel: 'order-delivered-carrier' });
+              const { html, text } = deliveryNotificationEmail({ recipientName, orderId });
+              await sendTransactionalEmail({ to: recipientEmail, subject: `Your order has been delivered — ${orderId}`, html, text, fallbackLogLabel: 'order-delivered-carrier' });
             }
           } catch (emailErr) {
             console.error('Carrier-confirmed delivery email failed (non-fatal):', emailErr.message);
           }
         }
       } catch (err) {
-        results.push({ trackingNumber, success: false, error: 'Internal error updating this sub-order' });
+        results.push({ trackingNumber, success: false, error: 'Internal error updating this hub shipment' });
       }
     }
 

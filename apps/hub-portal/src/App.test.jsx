@@ -114,3 +114,77 @@ describe('Hub Portal — real login and step workflow (mocked fetch, real compon
     expect(localStorage.getItem('leap_hub_token')).toBeNull();
   });
 });
+
+describe('Hub Portal — real Confirm Delivered UI (new, migration 027)', () => {
+  const SHIPPED_TO_BUYER_DETAIL = {
+    ...SHIPMENT_DETAIL, status: 'shipped_to_buyer',
+    events: [{ id: 1, step: 'shipped_to_buyer', notes: null, trackingNumber: 'INTL-TEST-001', photos: [], performedBy: 'Mei Lin', createdAt: '2026-07-14T00:00:00.000Z' }],
+  };
+
+  function mockFetchRouterShippedToBuyer({ confirmStatus = 200 } = {}) {
+    let currentDetail = { ...SHIPPED_TO_BUYER_DETAIL };
+    return vi.fn((url, options) => {
+      const u = String(url);
+      const method = options?.method || 'GET';
+      if (u.includes('/auth/login')) return Promise.resolve({ ok: true, json: async () => ({ token: 'fake.jwt.token', user: HUB_USER }) });
+      if (u.includes('/auth/me')) return Promise.resolve({ ok: true, json: async () => HUB_USER });
+      if (u.endsWith('/hub/me/shipments')) return Promise.resolve({ ok: true, json: async () => [{ ...SHIPMENT_SUMMARY, status: 'shipped_to_buyer' }] });
+      if (u.endsWith('/hub/me/shipments/42') && method === 'GET') return Promise.resolve({ ok: true, json: async () => currentDetail });
+      if (method === 'PATCH' && u.endsWith('/hub/me/shipments/42/confirm-delivery')) {
+        const body = JSON.parse(options.body);
+        if (!body.deliveryNote || !body.deliveryNote.trim()) {
+          return Promise.resolve({ ok: false, status: 400, json: async () => ({ error: 'A short note is required when manually confirming delivery yourself.' }) });
+        }
+        if (confirmStatus !== 200) return Promise.resolve({ ok: false, status: confirmStatus, json: async () => ({ error: 'This order was already confirmed delivered by real carrier tracking.' }) });
+        currentDetail = { ...currentDetail, status: 'delivered' };
+        return Promise.resolve({ ok: true, json: async () => ({ id: 42, status: 'delivered', deliveredAt: new Date().toISOString(), deliveryConfirmedBy: 'hub_manual' }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+  }
+
+  it('CRITICAL: shows the real Confirm Delivered action once a shipment reaches shipped_to_buyer, not before', async () => {
+    globalThis.fetch = mockFetchRouterShippedToBuyer();
+    render(<LeapHubPortalApp />);
+    await login();
+
+    await waitFor(() => expect(screen.getByText('LP-200999')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('LP-200999'));
+    await waitFor(() => expect(screen.getAllByText(/confirm delivered/i).length).toBeGreaterThan(0));
+  });
+
+  it('CRITICAL: confirming delivery without a real note is rejected; with one, it succeeds and the shipment moves to delivered', async () => {
+    globalThis.fetch = mockFetchRouterShippedToBuyer();
+    render(<LeapHubPortalApp />);
+    await login();
+    await waitFor(() => expect(screen.getByText('LP-200999')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('LP-200999'));
+    await waitFor(() => expect(screen.getAllByText(/confirm delivered/i).length).toBeGreaterThan(0));
+
+    const confirmButtons = screen.getAllByText(/confirm delivered/i);
+    const confirmButton = confirmButtons.find((el) => el.tagName === 'BUTTON');
+    expect(confirmButton.disabled).toBe(true); // real: disabled with no note typed yet
+
+    const textarea = screen.getByPlaceholderText(/tracking never updated/i);
+    fireEvent.change(textarea, { target: { value: 'Buyer confirmed receipt via chat' } });
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => expect(screen.getByText(/completed its journey/i)).toBeInTheDocument());
+  });
+
+  it('shows the real backend rejection message if already carrier-confirmed', async () => {
+    globalThis.fetch = mockFetchRouterShippedToBuyer({ confirmStatus: 400 });
+    render(<LeapHubPortalApp />);
+    await login();
+    await waitFor(() => expect(screen.getByText('LP-200999')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('LP-200999'));
+    await waitFor(() => expect(screen.getAllByText(/confirm delivered/i).length).toBeGreaterThan(0));
+
+    const textarea = screen.getByPlaceholderText(/tracking never updated/i);
+    fireEvent.change(textarea, { target: { value: 'trying anyway' } });
+    const confirmButtons = screen.getAllByText(/confirm delivered/i);
+    fireEvent.click(confirmButtons.find((el) => el.tagName === 'BUTTON'));
+
+    await waitFor(() => expect(screen.getByText(/already confirmed delivered by real carrier tracking/i)).toBeInTheDocument());
+  });
+});

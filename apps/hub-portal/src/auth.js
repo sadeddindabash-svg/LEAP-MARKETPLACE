@@ -71,6 +71,14 @@ export function recordShipmentEvent(token, shipmentId, { step, notes, photos, tr
   return authedMutate("POST", `/hub/me/shipments/${shipmentId}/events`, token, { step, notes, photos, trackingNumber });
 }
 
+// Real manual delivery confirmation (migration 027, new) -- the real,
+// deliberate fallback when real carrier tracking hasn't confirmed
+// delivery. See services/api/src/modules/hub/routes.js's own header
+// comment for the full real design.
+export function confirmDelivery(token, shipmentId, deliveryNote) {
+  return authedMutate("PATCH", `/hub/me/shipments/${shipmentId}/confirm-delivery`, token, { deliveryNote });
+}
+
 // ---------------- Evidence photo upload ----------------
 // Real upload to the backend's local-disk storage — same endpoint and
 // honest limitation as the supplier portal's product photos (see

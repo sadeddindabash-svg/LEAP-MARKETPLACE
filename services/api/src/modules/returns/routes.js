@@ -72,7 +72,13 @@ router.post('/', optionalAuth, async (req, res, next) => {
   const client = await db.getPool().connect();
   try {
     await client.query('BEGIN');
-    const subOrderCheck = await client.query('SELECT id, order_id, delivered_at FROM supplier_sub_orders WHERE id = $1', [subOrderId]);
+    const subOrderCheck = await client.query(
+      `SELECT so.id, so.order_id, hs.delivered_at
+       FROM supplier_sub_orders so
+       LEFT JOIN hub_shipments hs ON hs.sub_order_id = so.id
+       WHERE so.id = $1`,
+      [subOrderId]
+    );
     if (subOrderCheck.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Sub-order not found' });

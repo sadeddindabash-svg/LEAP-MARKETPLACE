@@ -41,9 +41,26 @@ async function deliverProductToBuyer(adminToken, buyerId, productId) {
     method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supplierToken}` },
     body: JSON.stringify({ status: 'shipped' }),
   });
-  await fetch(`${BACKEND_URL}/supplier/me/orders/${subOrderId}`, {
-    method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supplierToken}` },
-    body: JSON.stringify({ status: 'delivered', deliveryNote: 'Test helper: manual delivery confirmation for integration testing' }),
+
+  // CONFIRMED (migration 027): delivery confirmation is a real HUB
+  // action now -- the supplier's own leg only reaches the hub, never
+  // the buyer directly. Walk the full real hub workflow.
+  const { token: hubToken } = await login('hub@leap.dev', 'hub_dev_password_123');
+  const shipmentRows = await fetch(`${BACKEND_URL}/hub/me/shipments`, { headers: { Authorization: `Bearer ${hubToken}` } }).then((r) => r.json());
+  const shipment = shipmentRows.find((s) => s.orderId === order.id);
+  for (const step of ['received', 'opened', 'inspected', 'packed']) {
+    await fetch(`${BACKEND_URL}/hub/me/shipments/${shipment.id}/events`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${hubToken}` },
+      body: JSON.stringify({ step, photos: ['/uploads/test.jpg'] }),
+    });
+  }
+  await fetch(`${BACKEND_URL}/hub/me/shipments/${shipment.id}/events`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${hubToken}` },
+    body: JSON.stringify({ step: 'shipped_to_buyer', photos: ['/uploads/test.jpg'], trackingNumber: `TEST-FINAL-LEG-${Date.now()}-${Math.random()}` }),
+  });
+  await fetch(`${BACKEND_URL}/hub/me/shipments/${shipment.id}/confirm-delivery`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${hubToken}` },
+    body: JSON.stringify({ deliveryNote: 'Test helper: manual delivery confirmation for integration testing' }),
   });
 }
 

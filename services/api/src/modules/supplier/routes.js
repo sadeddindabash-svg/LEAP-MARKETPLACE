@@ -3,7 +3,7 @@ const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { createNotification } = require('../notifications/helpers');
 const { sendTransactionalEmail } = require('../email/client');
-const { shippingNotificationEmail, deliveryNotificationEmail } = require('../email/templates');
+const { shippingNotificationEmail } = require('../email/templates');
 const { validateFitment, tryMatchCategoryAndPart, tryMatchPosition, tryMatchDimensions, validateCompleteFields } = require('./productValidation');
 
 /**
@@ -587,20 +587,18 @@ router.get('/me/orders', requireAuth, requireRole('supplier'), async (req, res, 
 // 'awaiting_receipt') — that's the bridge from the supplier's leg to
 // the hub's leg of the journey.
 router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), async (req, res, next) => {
-  const { status, trackingNumber, deliveryNote } = req.body || {};
-  if (status !== undefined && !['pending', 'preparing', 'shipped', 'delivered', 'dispute'].includes(status)) {
-    return res.status(400).json({ error: "status must be one of: pending, preparing, shipped, delivered, dispute" });
+  const { status, trackingNumber } = req.body || {};
+  // CONFIRMED (migration 027): a supplier's own real leg ends at
+  // 'shipped' -- to the assigned hub, never to the buyer directly (see
+  // migration 011's original two-leg design). 'delivered' was removed
+  // from here entirely -- a supplier has no real visibility into
+  // whether a buyer actually received anything; only the hub's own
+  // final leg does (see hub/routes.js).
+  if (status !== undefined && !['pending', 'preparing', 'shipped', 'dispute'].includes(status)) {
+    return res.status(400).json({ error: "status must be one of: pending, preparing, shipped, dispute" });
   }
   if (status === undefined && trackingNumber === undefined) {
     return res.status(400).json({ error: 'Provide at least one of: status, trackingNumber' });
-  }
-  // CONFIRMED design (migration 026): a manual delivery confirmation is
-  // a deliberate action, not a casual one -- real carrier tracking is
-  // the preferred, trusted path, so manually confirming here (the real
-  // fallback) requires a real short note explaining why, visible to an
-  // admin reviewing delivery-confirmation patterns.
-  if (status === 'delivered' && (!deliveryNote || !deliveryNote.trim())) {
-    return res.status(400).json({ error: 'A short note is required when manually confirming delivery yourself (e.g. why real carrier tracking didn\'t confirm it).' });
   }
 
   const client = await db.getPool().connect();
@@ -619,30 +617,13 @@ router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), asy
       }
     }
 
-    if (status === 'delivered') {
-      // A real carrier confirmation already happened -- never let a
-      // later manual call downgrade that real provenance to
-      // 'supplier_manual'. Nothing to do here; treat as already done.
-      const alreadyDelivered = await client.query(
-        `SELECT delivery_confirmed_by FROM supplier_sub_orders WHERE id = $1 AND supplier_id = $2 AND status = 'delivered'`,
-        [req.params.subOrderId, req.user.supplierId]
-      );
-      if (alreadyDelivered.rows.length > 0 && alreadyDelivered.rows[0].delivery_confirmed_by === 'carrier') {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ error: 'This order was already confirmed delivered by real carrier tracking.' });
-      }
-    }
-
     const { rows } = await client.query(
       `UPDATE supplier_sub_orders SET
          status = COALESCE($1, status),
-         tracking_number = COALESCE($2, tracking_number),
-         delivered_at = CASE WHEN $1 = 'delivered' THEN now() ELSE delivered_at END,
-         delivery_confirmed_by = CASE WHEN $1 = 'delivered' THEN 'supplier_manual' ELSE delivery_confirmed_by END,
-         delivery_note = CASE WHEN $1 = 'delivered' THEN $5 ELSE delivery_note END
+         tracking_number = COALESCE($2, tracking_number)
        WHERE id = $3 AND supplier_id = $4
        RETURNING *`,
-      [status ?? null, trackingNumber ?? null, req.params.subOrderId, req.user.supplierId, deliveryNote ?? null]
+      [status ?? null, trackingNumber ?? null, req.params.subOrderId, req.user.supplierId]
     );
     if (rows.length === 0) {
       await client.query('ROLLBACK');
@@ -658,16 +639,16 @@ router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), asy
 
     // Real trigger #1 (of the 4 confirmed for notifications — see
     // migration 019's header comment): a real sub-order status change
-    // to 'shipped' or 'delivered' notifies the real buyer. Part of the
-    // SAME transaction as the real status update itself, not a
-    // separate best-effort step.
-    if (status === 'shipped' || status === 'delivered') {
+    // to 'shipped' notifies the real buyer that their order is now on
+    // its way to the assigned hub. Part of the SAME transaction as the
+    // real status update itself, not a separate best-effort step.
+    if (status === 'shipped') {
       const { rows: orderRows } = await client.query('SELECT buyer_id FROM orders WHERE id = $1', [rows[0].order_id]);
       await createNotification({
         userId: orderRows[0]?.buyer_id,
         type: 'order_status',
-        title: status === 'shipped' ? 'Your order has shipped' : 'Your order has been delivered',
-        body: `Order ${rows[0].order_id} is now ${status}.`,
+        title: 'Your order has shipped',
+        body: `Order ${rows[0].order_id} is now shipped.`,
         linkType: 'order',
         linkId: rows[0].order_id,
       }, client);
@@ -675,14 +656,14 @@ router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), asy
 
     await client.query('COMMIT');
 
-    // Real shipping/delivery notification emails (new) -- deliberately
-    // AFTER the commit, as a real, best-effort follow-up: a real SMTP
-    // network call has no business holding the transaction open, and
-    // an email hiccup should never roll back a real status update that
-    // already succeeded. Handles both a real logged-in buyer and a real
-    // guest order (guest_email), unlike the in-app notification above
-    // which only ever applies to a real logged-in buyer.
-    if (status === 'shipped' || status === 'delivered') {
+    // Real shipping notification email (new) -- deliberately AFTER the
+    // commit, as a real, best-effort follow-up: a real SMTP network
+    // call has no business holding the transaction open, and an email
+    // hiccup should never roll back a real status update that already
+    // succeeded. Handles both a real logged-in buyer and a real guest
+    // order (guest_email), unlike the in-app notification above which
+    // only ever applies to a real logged-in buyer.
+    if (status === 'shipped') {
       try {
         const { rows: orderRows } = await db.query('SELECT buyer_id, guest_email FROM orders WHERE id = $1', [rows[0].order_id]);
         let recipientEmail = orderRows[0]?.guest_email || null;
@@ -692,17 +673,11 @@ router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), asy
           if (userRows.length > 0) { recipientEmail = userRows[0].email; recipientName = userRows[0].name; }
         }
         if (recipientEmail) {
-          const { html, text } = status === 'shipped'
-            ? shippingNotificationEmail({ recipientName, orderId: rows[0].order_id, trackingNumber: rows[0].tracking_number })
-            : deliveryNotificationEmail({ recipientName, orderId: rows[0].order_id });
-          await sendTransactionalEmail({
-            to: recipientEmail,
-            subject: status === 'shipped' ? `Your order has shipped — ${rows[0].order_id}` : `Your order has been delivered — ${rows[0].order_id}`,
-            html, text, fallbackLogLabel: `order-${status}`,
-          });
+          const { html, text } = shippingNotificationEmail({ recipientName, orderId: rows[0].order_id, trackingNumber: rows[0].tracking_number });
+          await sendTransactionalEmail({ to: recipientEmail, subject: `Your order has shipped — ${rows[0].order_id}`, html, text, fallbackLogLabel: 'order-shipped' });
         }
       } catch (err) {
-        console.error(`Order ${status} email failed (non-fatal):`, err.message);
+        console.error('Order shipped email failed (non-fatal):', err.message);
       }
     }
 

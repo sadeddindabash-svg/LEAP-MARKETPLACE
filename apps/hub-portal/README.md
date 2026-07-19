@@ -75,6 +75,29 @@ served statically — real and working, not a stub, but production would
 want real object storage (S3, etc.) instead. See
 `services/api/src/modules/uploads/routes.js`'s header comment.
 
+## Real delivery confirmation (new, migration 027)
+
+**A real bug was found and fixed here, directly by the person**: this
+business's suppliers ship locally within China, city to city — their
+own tracking number only ever covers the domestic Supplier → Hub leg.
+Delivery confirmation had originally been built (migrations 024, 026)
+entirely against the supplier's own record — the wrong tracking number
+and the wrong owner, since a supplier has no real visibility into
+whether a buyer actually received anything. Only the hub's own final
+leg (the tracking number entered right here, in the real "Shipped to
+buyer" step above) has that real visibility.
+
+Once a shipment reaches "Shipped to buyer," a new **Confirm Delivered**
+action appears. Real carrier tracking (a 17TRACK webhook — see
+`services/api/README.md`'s "Real carrier tracking integration" section)
+is the preferred, trusted path and will mark this automatically the
+moment the real carrier confirms it. Confirming it yourself here is a
+real, deliberate fallback for when that hasn't happened — it requires a
+real short note explaining why (e.g. tracking never updated, buyer
+confirmed receipt via chat), and is rejected outright if real carrier
+tracking already confirmed delivery first — that real provenance can
+never be silently downgraded to a manual claim.
+
 ## History / audit trail
 
 Every shipment detail view shows the complete real record — every
@@ -99,13 +122,26 @@ regional hubs and a dev hub-staff login:
 
 ## Testing
 
-Two test files, 9 tests, all passing:
+Two test files, 12 tests, all passing:
 
-- `src/App.test.jsx` (6, mocked, full component tree) — real login and
+- `src/App.test.jsx` (9, mocked, full component tree) — real login and
   role rejection for non-hub-staff accounts, opening a shipment shows
   real items and the correct next-step prompt, confirming a step with
   zero photos is blocked, the flag-an-issue panel opens and cancels
-  correctly, logout clears the session.
+  correctly, logout clears the session. **Plus 3 new tests (migration
+  027)**: the real Confirm Delivered action appears once a shipment
+  reaches `shipped_to_buyer`, not before; confirming without a real
+  note is rejected, and with one, it succeeds and the shipment moves to
+  `delivered`; the real backend's own rejection message shows correctly
+  if the shipment was already carrier-confirmed. **A real test mistake
+  was found and fixed while writing these**: the first version clicked
+  into a shipment immediately after login without first waiting for it
+  to actually render in the queue — a real race condition — fixed by
+  waiting for the real queue item to appear before clicking it, and a
+  second version asserted on `getByText(/confirm delivered/i)`
+  (singular), which broke since that same real phrase appears twice —
+  once as a heading, once as the button itself — fixed with
+  `getAllByText`.
 - `src/hubPortal.integration.test.js` (3, REAL backend, forces
   `@vitest-environment node` for genuine multipart photo uploads — same
   reason as `supplier-portal/src/productSubmission.integration.test.js`,
@@ -118,7 +154,12 @@ Two test files, 9 tests, all passing:
   every real step with real uploaded photos, and the same journey is
   confirmed visible from the admin dashboard's order detail view
   afterward — proving this isn't a self-consistent mock, it's genuinely
-  shared data.
+  shared data. Real end-to-end coverage of the Confirm Delivered
+  endpoint itself, including the real "already carrier-confirmed"
+  rejection and the hub's own tracking number being what the real
+  17TRACK webhook matches against (not the supplier's), lives in
+  `apps/supplier-portal/src/carrierWebhook.integration.test.js` — a
+  shared backend endpoint, reachable and tested from either app.
 
 ## Next steps to make this real
 

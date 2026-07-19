@@ -24,7 +24,7 @@ async function createSignedUpBuyer() {
   return res.json();
 }
 
-async function shipAndDeliverSubOrder(adminToken, subOrderId, trackingNumber) {
+async function shipAndDeliverSubOrder(adminToken, subOrderId, trackingNumber, orderId) {
   await fetch(`${BACKEND_URL}/hub/assign/${subOrderId}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
     body: JSON.stringify({ hubId: 'hub_guangzhou' }),
@@ -34,7 +34,23 @@ async function shipAndDeliverSubOrder(adminToken, subOrderId, trackingNumber) {
     method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supplierToken}` },
     body: JSON.stringify({ status: 'shipped', trackingNumber }),
   });
-  return supplierToken;
+
+  // CONFIRMED (migration 027): delivery confirmation is a real HUB
+  // action -- the supplier's own leg only reaches the hub.
+  const { token: hubToken } = await login('hub@leap.dev', 'hub_dev_password_123');
+  const shipmentRows = await fetch(`${BACKEND_URL}/hub/me/shipments`, { headers: { Authorization: `Bearer ${hubToken}` } }).then((r) => r.json());
+  const shipment = shipmentRows.find((s) => s.orderId === orderId);
+  for (const step of ['received', 'opened', 'inspected', 'packed']) {
+    await fetch(`${BACKEND_URL}/hub/me/shipments/${shipment.id}/events`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${hubToken}` },
+      body: JSON.stringify({ step, photos: ['/uploads/test.jpg'] }),
+    });
+  }
+  await fetch(`${BACKEND_URL}/hub/me/shipments/${shipment.id}/events`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${hubToken}` },
+    body: JSON.stringify({ step: 'shipped_to_buyer', photos: ['/uploads/test.jpg'], trackingNumber: `TEST-FINAL-LEG-${Date.now()}-${Math.random()}` }),
+  });
+  return { supplierToken, hubToken, shipmentId: shipment.id };
 }
 
 describe.runIf(backendUp)('real transactional email trigger points against a REAL running backend', () => {
@@ -86,7 +102,7 @@ describe.runIf(backendUp)('real transactional email trigger points against a REA
     expect(shipRes.status).toBe(200);
   }, 15000);
 
-  it('CRITICAL: manually confirming delivery succeeds regardless of email delivery', async () => {
+  it('CRITICAL: manually confirming delivery (as the hub) succeeds regardless of email delivery', async () => {
     const { token: adminToken } = await login('admin@leap.dev', 'admin_dev_password_123');
     const buyer = await createSignedUpBuyer();
     const orderRes = await fetch(`${BACKEND_URL}/order`, {
@@ -95,11 +111,11 @@ describe.runIf(backendUp)('real transactional email trigger points against a REA
     });
     const order = await orderRes.json();
     const subOrderId = order.supplierSubOrders[0].subOrderId;
-    const supplierToken = await shipAndDeliverSubOrder(adminToken, subOrderId, `TXN-EMAIL-DELIVER-${Date.now()}`);
+    const { hubToken, shipmentId } = await shipAndDeliverSubOrder(adminToken, subOrderId, `TXN-EMAIL-DELIVER-${Date.now()}`, order.id);
 
-    const deliverRes = await fetch(`${BACKEND_URL}/supplier/me/orders/${subOrderId}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supplierToken}` },
-      body: JSON.stringify({ status: 'delivered', deliveryNote: 'Testing the real email trigger' }),
+    const deliverRes = await fetch(`${BACKEND_URL}/hub/me/shipments/${shipmentId}/confirm-delivery`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${hubToken}` },
+      body: JSON.stringify({ deliveryNote: 'Testing the real email trigger' }),
     });
     expect(deliverRes.status).toBe(200);
   }, 15000);
@@ -113,17 +129,19 @@ describe.runIf(backendUp)('real transactional email trigger points against a REA
     });
     const order = await orderRes.json();
     const subOrderId = order.supplierSubOrders[0].subOrderId;
-    const supplierToken = await shipAndDeliverSubOrder(adminToken, subOrderId, `TXN-EMAIL-PAYOUT-${Date.now()}`);
-    await fetch(`${BACKEND_URL}/supplier/me/orders/${subOrderId}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supplierToken}` },
-      body: JSON.stringify({ status: 'delivered', deliveryNote: 'Testing the real payout email trigger' }),
+    const { hubToken, shipmentId } = await shipAndDeliverSubOrder(adminToken, subOrderId, `TXN-EMAIL-PAYOUT-${Date.now()}`, order.id);
+    await fetch(`${BACKEND_URL}/hub/me/shipments/${shipmentId}/confirm-delivery`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${hubToken}` },
+      body: JSON.stringify({ deliveryNote: 'Testing the real payout email trigger' }),
     });
 
     // Real DB access to backdate delivery past the real return window --
     // same real pattern already established in payouts.integration.test.js.
+    // CONFIRMED (migration 027): the real delivered_at now lives on
+    // hub_shipments, not supplier_sub_orders.
     const { Pool } = await import('pg');
     const pool = new Pool({ connectionString: process.env.DATABASE_URL || 'postgresql://leap_dev:leap_dev_password@localhost:5432/leap_marketplace_dev' });
-    await pool.query(`UPDATE supplier_sub_orders SET delivered_at = now() - interval '10 days' WHERE id = $1`, [subOrderId]);
+    await pool.query(`UPDATE hub_shipments SET delivered_at = now() - interval '10 days' WHERE sub_order_id = $1`, [subOrderId]);
     await pool.end();
 
     const payoutRes = await fetch(`${BACKEND_URL}/payouts`, {

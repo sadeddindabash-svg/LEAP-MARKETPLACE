@@ -288,18 +288,21 @@ below).
   is rejected with a clear message, not silently allowed. Once shipped,
   the hub's own inspection workflow takes over — see the new
   `apps/hub-portal/README.md`.
-- **Real carrier tracking (new, migration 026)**: a real, honest gap
-  was found — "delivered" was entirely self-reported by the supplier,
-  with no independent confirmation, even though it gates real payout
-  eligibility and review verification. Real carrier tracking (a 17TRACK
-  webhook — see `services/api/README.md`'s "Real carrier tracking
-  integration" section) is now the preferred, trusted path. Manually
-  confirming delivery yourself here is a real, deliberate fallback —
-  selecting "Delivered" now opens a real inline note field explaining
-  why (e.g. real tracking never updated), rather than a single click.
-  Once real carrier tracking has already confirmed a delivery, this
-  manual option is rejected outright — carrier provenance can never be
-  silently downgraded to a manual claim.
+- **Real carrier tracking (migration 026), corrected to the hub
+  (migration 027)**: a real, honest gap was found — "delivered" was
+  entirely self-reported by the supplier, with no independent
+  confirmation, even though it gates real payout eligibility and review
+  verification. **A real bug was then found and fixed, directly by the
+  person**: this business's suppliers ship locally within China —
+  their own tracking number only covers the domestic Supplier → Hub
+  leg, never the actual final leg to the buyer. Delivery confirmation
+  (both the real 17TRACK webhook and the manual fallback) now lives in
+  the hub portal instead — see `apps/hub-portal/README.md` and
+  `services/api/README.md`'s "Real bug fixed: delivery confirmation
+  moved to the hub" section. This supplier portal's own "Delivered"
+  status option was removed entirely — the supplier's real leg
+  correctly ends at "Shipped" (to the hub), matching the original
+  Supplier → Hub → Buyer design all along.
 
 ## Returns & disputes (SUP-030)
 
@@ -395,7 +398,7 @@ npm run dev       # http://localhost:5173
 npm test
 ```
 
-Twelve test files, 69 tests total, all passing:
+Twelve test files, 71 tests total, all passing:
 - `src/bulkImport.integration.test.js` (10, REAL backend) — a real
   batch with valid items, one missing a required field, and one with
   unmatched optional fields — confirmed best-effort, not all-or-
@@ -409,15 +412,20 @@ Twelve test files, 69 tests total, all passing:
   and per-item limits; an English-named item stores no Chinese
   original, unlike a Chinese-named one; and non-suppliers are rejected
   from all 3 real endpoints.
-- `src/carrierWebhook.integration.test.js` (7, REAL backend) — a
-  request with no real signature, or a genuinely wrong one, is
-  rejected; a correctly signed delivered event updates the real
-  sub-order with carrier provenance; a non-delivered status update is
-  correctly skipped, not an error; a real best-effort batch — an
-  unmatched tracking number never blocks other real entries; once
-  carrier-confirmed, a supplier can no longer manually override that
-  real delivery confirmation; manual delivery confirmation requires a
-  real note; a missing data array is rejected.
+- `src/carrierWebhook.integration.test.js` (9, REAL backend, rewritten
+  for migration 027) — a request with no real signature, or a
+  genuinely wrong one, is rejected; a correctly signed delivered event
+  updates the real HUB shipment (not the supplier's own record) with
+  carrier provenance; **the webhook does NOT match against the real
+  supplier's own domestic tracking number — only the real hub's
+  final-leg one** (the exact real bug this migration fixed); a
+  non-delivered status update is correctly skipped, not an error; a
+  real best-effort batch — an unmatched tracking number never blocks
+  other real entries; once carrier-confirmed, the hub can no longer
+  manually override that real delivery confirmation; manual delivery
+  confirmation (by the hub) requires a real note; a supplier can no
+  longer set status to `'delivered'` at all — that real ability moved
+  to the hub; a missing data array is rejected.
 - `src/BulkUploadFlow.test.jsx` (5, mocked, full component tree) — My
   Drafts shows real drafts with their real missing fields; a fully-
   matched draft only shows the photo upload step, not category/part/

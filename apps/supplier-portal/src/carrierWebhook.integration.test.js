@@ -30,7 +30,13 @@ async function callWebhook(payload, signature) {
   return { status: res.status, body: await res.json() };
 }
 
-async function createShippedSubOrder(adminToken, trackingNumber) {
+// CONFIRMED (migration 027): a supplier in this real business ships
+// locally within China, hub to hub -- their own tracking number only
+// ever covers that domestic Supplier -> Hub leg. The real final leg
+// that actually reaches the buyer is the HUB's own shipment, using the
+// hub's OWN tracking number -- that's the real one the carrier webhook
+// must match against, not the supplier's.
+async function createShipmentAwaitingFinalLeg(adminToken) {
   const suffix = Date.now() + Math.random();
   const signupRes = await fetch(`${BACKEND_URL}/auth/signup`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -52,13 +58,28 @@ async function createShippedSubOrder(adminToken, trackingNumber) {
   const { token: supplierToken } = await login('supplier@leap.dev', 'supplier_dev_password_123');
   await fetch(`${BACKEND_URL}/supplier/me/orders/${subOrderId}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supplierToken}` },
-    body: JSON.stringify({ status: 'shipped', trackingNumber }),
+    body: JSON.stringify({ status: 'shipped', trackingNumber: `DOMESTIC-CN-${suffix}` }),
   });
 
-  return subOrderId;
+  const { token: hubToken } = await login('hub@leap.dev', 'hub_dev_password_123');
+  const shipmentRows = await fetch(`${BACKEND_URL}/hub/me/shipments`, { headers: { Authorization: `Bearer ${hubToken}` } }).then((r) => r.json());
+  const shipment = shipmentRows.find((s) => s.orderId === order.id);
+  for (const step of ['received', 'opened', 'inspected', 'packed']) {
+    await fetch(`${BACKEND_URL}/hub/me/shipments/${shipment.id}/events`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${hubToken}` },
+      body: JSON.stringify({ step, photos: ['/uploads/test.jpg'] }),
+    });
+  }
+  const hubTrackingNumber = `INTL-FINAL-LEG-${suffix}`;
+  await fetch(`${BACKEND_URL}/hub/me/shipments/${shipment.id}/events`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${hubToken}` },
+    body: JSON.stringify({ step: 'shipped_to_buyer', photos: ['/uploads/test.jpg'], trackingNumber: hubTrackingNumber }),
+  });
+
+  return { hubShipmentId: shipment.id, hubTrackingNumber, hubToken };
 }
 
-describe.runIf(backendUp)('real 17TRACK carrier webhook + hybrid delivery confirmation against a REAL running backend', () => {
+describe.runIf(backendUp)('real 17TRACK carrier webhook + hub-based delivery confirmation against a REAL running backend', () => {
   it('CRITICAL: a request with no real signature, or a genuinely wrong one, is rejected', async () => {
     const payload = { data: [{ number: 'X', track_info: { latest_status: { status: 'Delivered' } } }] };
     const noSig = await callWebhook(payload, '');
@@ -68,78 +89,131 @@ describe.runIf(backendUp)('real 17TRACK carrier webhook + hybrid delivery confir
     expect(wrongSig.status).toBe(401);
   });
 
-  it('CRITICAL: a genuinely, correctly signed delivered event updates the real sub-order with carrier provenance', async () => {
+  it('CRITICAL: a genuinely, correctly signed delivered event updates the real HUB shipment (not the supplier\'s own record) with carrier provenance', async () => {
     const { token: adminToken } = await login('admin@leap.dev', 'admin_dev_password_123');
-    const trackingNumber = `WEBHOOK-TEST-${Date.now()}`;
-    const subOrderId = await createShippedSubOrder(adminToken, trackingNumber);
+    const { hubShipmentId, hubTrackingNumber } = await createShipmentAwaitingFinalLeg(adminToken);
 
     const { status, body } = await callWebhook({
-      data: [{ number: trackingNumber, carrier: 100001, track_info: { latest_status: { status: 'Delivered' }, latest_event: { time_iso: '2026-07-18T10:00:00+08:00' } } }],
+      data: [{ number: hubTrackingNumber, carrier: 100001, track_info: { latest_status: { status: 'Delivered' }, latest_event: { time_iso: '2026-07-18T10:00:00+08:00' } } }],
     });
     expect(status).toBe(200);
-    expect(body.results[0]).toMatchObject({ trackingNumber, success: true, subOrderId });
-  }, 15000);
+    expect(body.results[0]).toMatchObject({ trackingNumber: hubTrackingNumber, success: true, hubShipmentId });
+  }, 20000);
 
-  it('CRITICAL: a non-delivered status update is real, correctly skipped -- not an error, and does not touch the sub-order', async () => {
+  it('CRITICAL: the webhook does NOT match against the real supplier\'s own domestic tracking number -- only the real hub\'s final-leg one', async () => {
     const { token: adminToken } = await login('admin@leap.dev', 'admin_dev_password_123');
-    const trackingNumber = `WEBHOOK-SKIP-${Date.now()}`;
-    await createShippedSubOrder(adminToken, trackingNumber);
+    const suffix = Date.now() + Math.random();
+    const signupRes = await fetch(`${BACKEND_URL}/auth/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `carrier-webhook-test-${suffix}@example.com`, password: 'test_password_123' }),
+    });
+    const { user: buyer } = await signupRes.json();
+    const orderRes = await fetch(`${BACKEND_URL}/order`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: [{ productId: 'p1', quantity: 1 }], userId: buyer.id }),
+    });
+    const order = await orderRes.json();
+    const subOrderId = order.supplierSubOrders[0].subOrderId;
+    const domesticTrackingNumber = `DOMESTIC-ONLY-${suffix}`;
+
+    await fetch(`${BACKEND_URL}/hub/assign/${subOrderId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ hubId: 'hub_guangzhou' }),
+    });
+    const { token: supplierToken } = await login('supplier@leap.dev', 'supplier_dev_password_123');
+    await fetch(`${BACKEND_URL}/supplier/me/orders/${subOrderId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supplierToken}` },
+      body: JSON.stringify({ status: 'shipped', trackingNumber: domesticTrackingNumber }),
+    });
 
     const { body } = await callWebhook({
-      data: [{ number: trackingNumber, track_info: { latest_status: { status: 'InTransit' } } }],
+      data: [{ number: domesticTrackingNumber, carrier: 100001, track_info: { latest_status: { status: 'Delivered' } } }],
     });
-    expect(body.results[0]).toMatchObject({ trackingNumber, success: true, skipped: true });
+    expect(body.results[0].success).toBe(false);
   }, 15000);
+
+  it('CRITICAL: a non-delivered status update is real, correctly skipped -- not an error', async () => {
+    const { token: adminToken } = await login('admin@leap.dev', 'admin_dev_password_123');
+    const { hubTrackingNumber } = await createShipmentAwaitingFinalLeg(adminToken);
+
+    const { body } = await callWebhook({
+      data: [{ number: hubTrackingNumber, track_info: { latest_status: { status: 'InTransit' } } }],
+    });
+    expect(body.results[0]).toMatchObject({ trackingNumber: hubTrackingNumber, success: true, skipped: true });
+  }, 20000);
 
   it('CRITICAL: a real, best-effort batch -- an unmatched tracking number never blocks the other real entries', async () => {
     const { token: adminToken } = await login('admin@leap.dev', 'admin_dev_password_123');
-    const trackingNumber = `WEBHOOK-BATCH-${Date.now()}`;
-    const subOrderId = await createShippedSubOrder(adminToken, trackingNumber);
+    const { hubShipmentId, hubTrackingNumber } = await createShipmentAwaitingFinalLeg(adminToken);
 
     const { body } = await callWebhook({
       data: [
         { number: 'DEFINITELY-NOT-A-REAL-TRACKING-NUMBER', track_info: { latest_status: { status: 'Delivered' } } },
-        { number: trackingNumber, carrier: 100001, track_info: { latest_status: { status: 'Delivered' }, latest_event: { time_iso: '2026-07-18T10:00:00+08:00' } } },
+        { number: hubTrackingNumber, carrier: 100001, track_info: { latest_status: { status: 'Delivered' }, latest_event: { time_iso: '2026-07-18T10:00:00+08:00' } } },
       ],
     });
     expect(body.results[0].success).toBe(false);
-    expect(body.results[1]).toMatchObject({ trackingNumber, success: true, subOrderId });
-  }, 15000);
+    expect(body.results[1]).toMatchObject({ trackingNumber: hubTrackingNumber, success: true, hubShipmentId });
+  }, 20000);
 
-  it('CRITICAL: once carrier-confirmed, a supplier can no longer manually override that real delivery confirmation', async () => {
+  it('CRITICAL: once carrier-confirmed, the hub can no longer manually override that real delivery confirmation', async () => {
     const { token: adminToken } = await login('admin@leap.dev', 'admin_dev_password_123');
-    const trackingNumber = `WEBHOOK-OVERRIDE-${Date.now()}`;
-    const subOrderId = await createShippedSubOrder(adminToken, trackingNumber);
+    const { hubShipmentId, hubTrackingNumber, hubToken } = await createShipmentAwaitingFinalLeg(adminToken);
     await callWebhook({
-      data: [{ number: trackingNumber, carrier: 100001, track_info: { latest_status: { status: 'Delivered' }, latest_event: { time_iso: '2026-07-18T10:00:00+08:00' } } }],
+      data: [{ number: hubTrackingNumber, carrier: 100001, track_info: { latest_status: { status: 'Delivered' }, latest_event: { time_iso: '2026-07-18T10:00:00+08:00' } } }],
     });
 
-    const { token: supplierToken } = await login('supplier@leap.dev', 'supplier_dev_password_123');
-    const res = await fetch(`${BACKEND_URL}/supplier/me/orders/${subOrderId}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supplierToken}` },
-      body: JSON.stringify({ status: 'delivered', deliveryNote: 'trying to override' }),
+    const res = await fetch(`${BACKEND_URL}/hub/me/shipments/${hubShipmentId}/confirm-delivery`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${hubToken}` },
+      body: JSON.stringify({ deliveryNote: 'trying to override' }),
     });
     expect(res.status).toBe(400);
     expect((await res.json()).error).toContain('carrier tracking');
-  }, 15000);
+  }, 20000);
 
-  it('CRITICAL: manual delivery confirmation requires a real note; without one it is rejected', async () => {
+  it('CRITICAL: manual delivery confirmation (by the hub) requires a real note; without one it is rejected', async () => {
     const { token: adminToken } = await login('admin@leap.dev', 'admin_dev_password_123');
-    const subOrderId = await createShippedSubOrder(adminToken, `WEBHOOK-NOTE-${Date.now()}`);
+    const { hubShipmentId, hubToken } = await createShipmentAwaitingFinalLeg(adminToken);
 
-    const { token: supplierToken } = await login('supplier@leap.dev', 'supplier_dev_password_123');
-    const withoutNote = await fetch(`${BACKEND_URL}/supplier/me/orders/${subOrderId}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supplierToken}` },
-      body: JSON.stringify({ status: 'delivered' }),
+    const withoutNote = await fetch(`${BACKEND_URL}/hub/me/shipments/${hubShipmentId}/confirm-delivery`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${hubToken}` },
+      body: JSON.stringify({}),
     });
     expect(withoutNote.status).toBe(400);
 
-    const withNote = await fetch(`${BACKEND_URL}/supplier/me/orders/${subOrderId}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supplierToken}` },
-      body: JSON.stringify({ status: 'delivered', deliveryNote: 'Tracking never updated, buyer confirmed via chat' }),
+    const withNote = await fetch(`${BACKEND_URL}/hub/me/shipments/${hubShipmentId}/confirm-delivery`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${hubToken}` },
+      body: JSON.stringify({ deliveryNote: 'Tracking never updated, buyer confirmed via chat' }),
     });
     expect(withNote.status).toBe(200);
-  }, 15000);
+  }, 20000);
+
+  it('CRITICAL: a supplier can no longer set status to \'delivered\' at all -- that real ability moved to the hub', async () => {
+    const { token: adminToken } = await login('admin@leap.dev', 'admin_dev_password_123');
+    const { token: supplierToken } = await login('supplier@leap.dev', 'supplier_dev_password_123');
+    const suffix = Date.now() + Math.random();
+    const signupRes = await fetch(`${BACKEND_URL}/auth/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `carrier-webhook-test-${suffix}@example.com`, password: 'test_password_123' }),
+    });
+    const { user: buyer } = await signupRes.json();
+    const orderRes = await fetch(`${BACKEND_URL}/order`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: [{ productId: 'p1', quantity: 1 }], userId: buyer.id }),
+    });
+    const order = await orderRes.json();
+    const subOrderId = order.supplierSubOrders[0].subOrderId;
+    await fetch(`${BACKEND_URL}/hub/assign/${subOrderId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ hubId: 'hub_guangzhou' }),
+    });
+
+    const res = await fetch(`${BACKEND_URL}/supplier/me/orders/${subOrderId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supplierToken}` },
+      body: JSON.stringify({ status: 'delivered' }),
+    });
+    expect(res.status).toBe(400);
+  });
 
   it('a real missing data array is rejected as a bad request', async () => {
     const { status } = await callWebhook({ event: 'TRACKING_UPDATED' });

@@ -1036,6 +1036,56 @@ provided and gracefully omitted when not; real amount and correct
 singular/plural wording; every template personalizes the greeting with
 a real name and falls back gracefully without one.
 
+## Real bug fixed: delivery confirmation moved to the hub (migration 027)
+
+**Found directly by the person, not by me**: this business's real
+suppliers ship LOCALLY within China — city to city, supplier to hub.
+Their own tracking number only ever covers that domestic Supplier ->
+Hub leg (migration 011's own header comment had already correctly
+established this two-leg design: Supplier -> Hub -> Buyer). But
+migrations 024 and 026 built real carrier tracking and delivery
+confirmation entirely against `supplier_sub_orders` — the wrong real
+tracking number, and the wrong real owner. A supplier has no real
+visibility into whether a buyer actually received anything; only the
+HUB's own final leg (or a real carrier covering that same leg) does.
+
+**The real fix**: delivery confirmation — both the 17TRACK webhook and
+the manual fallback — now lives on `hub_shipments`, matched against the
+hub's own tracking number (already collected in
+`hub_shipment_events.tracking_number` for the `'shipped_to_buyer'` step,
+per migration 011's original design) rather than the supplier's.
+`hub_shipments.status` gains a real `'delivered'` value, reached only
+after `'shipped_to_buyer'`. `carrier_code`, `delivery_confirmed_by`
+(`'carrier'`/`'hub_manual'`), and `delivery_note` all moved from
+`supplier_sub_orders` to `hub_shipments`. The supplier's own endpoint
+lost `'delivered'` entirely — their real leg now correctly ends at
+`'shipped'` (to the hub), matching migration 011's design all along.
+
+**New `PATCH /hub/me/shipments/:id/confirm-delivery`** — the real
+manual fallback, now a hub-staff action, requiring the same real short
+note as before and rejecting outright if the shipment was already
+carrier-confirmed. Payout eligibility, review verified-purchase
+checks, and the return-window deadline were all updated to read from
+`hub_shipments` instead of `supplier_sub_orders`.
+
+**The real, previous (incorrect) columns on `supplier_sub_orders` were
+deliberately left in place** rather than dropped — this is dev/test
+data, not a real production cutover needing a careful backfill, and
+leaving them avoids any risk to existing data or code still mid-deploy.
+
+**Re-verified end-to-end**: manually confirmed a supplier can no longer
+set `'delivered'` at all; walked a real shipment through the full real
+hub workflow to `'shipped_to_buyer'`; confirmed the webhook correctly
+does NOT match the supplier's old domestic tracking number but DOES
+match the hub's real final-leg one; confirmed payout eligibility and
+review verified-purchase both correctly reflect hub-based delivery now.
+Every existing test touching the old supplier-based delivery flow
+(`payouts.integration.test.js`, `reviews.integration.test.js`,
+`transactionalEmails.integration.test.js`,
+`carrierWebhook.integration.test.js`) was updated to walk the real,
+corrected hub workflow instead — full three-app suite (312/71/12 = 395
+tests) re-run to confirm genuine stability.
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category

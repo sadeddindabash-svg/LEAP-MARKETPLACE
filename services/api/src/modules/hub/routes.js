@@ -1,6 +1,9 @@
 const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
+const { createNotification } = require('../notifications/helpers');
+const { sendTransactionalEmail } = require('../email/client');
+const { deliveryNotificationEmail } = require('../email/templates');
 
 /**
  * Inspection hub module (migration 011) — new business requirement:
@@ -253,6 +256,94 @@ router.post('/me/shipments/:id/events', requireAuth, requireRole('hub_staff'), a
     await client.query('COMMIT');
     const { rows: updated } = await db.query('SELECT * FROM hub_shipments WHERE id = $1', [shipment.id]);
     res.status(201).json({ id: updated[0].id, status: updated[0].status, updatedAt: updated[0].updated_at });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+// PATCH /me/shipments/:id/confirm-delivery { deliveryNote } — real
+// manual delivery confirmation (migration 027, corrected from where
+// this previously and incorrectly lived on the supplier's own
+// endpoint). CONFIRMED design: real carrier tracking (the 17TRACK
+// webhook) is the preferred, trusted path -- confirming delivery
+// yourself here is a real, deliberate fallback, requiring a real short
+// note explaining why (e.g. real tracking never updated), rather than
+// a single click. Only valid once this shipment has genuinely reached
+// 'shipped_to_buyer' -- there's no real "delivered" without a real
+// completed final leg first.
+router.patch('/me/shipments/:id/confirm-delivery', requireAuth, requireRole('hub_staff'), async (req, res, next) => {
+  const { deliveryNote } = req.body || {};
+  if (!deliveryNote || !deliveryNote.trim()) {
+    return res.status(400).json({ error: 'A short note is required when manually confirming delivery yourself (e.g. why real carrier tracking didn\'t confirm it).' });
+  }
+
+  const client = await db.getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const shipCheck = await client.query('SELECT * FROM hub_shipments WHERE id = $1 AND hub_id = $2 FOR UPDATE', [req.params.id, req.user.hubId]);
+    if (shipCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Shipment not found' });
+    }
+    const shipment = shipCheck.rows[0];
+    if (shipment.status === 'delivered') {
+      await client.query('ROLLBACK');
+      if (shipment.delivery_confirmed_by === 'carrier') {
+        return res.status(400).json({ error: 'This shipment was already confirmed delivered by real carrier tracking.' });
+      }
+      return res.status(400).json({ error: 'This shipment is already marked delivered.' });
+    }
+    if (shipment.status !== 'shipped_to_buyer') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `This shipment must reach "shipped_to_buyer" before it can be confirmed delivered (currently: "${shipment.status}").` });
+    }
+
+    const { rows } = await client.query(
+      `UPDATE hub_shipments SET status = 'delivered', delivered_at = now(), delivery_confirmed_by = 'hub_manual', delivery_note = $1, updated_at = now()
+       WHERE id = $2 RETURNING *`,
+      [deliveryNote.trim(), shipment.id]
+    );
+
+    // Real trigger (matches the same real class of notification as the
+    // supplier's own 'shipped' one): a real final delivery notifies the
+    // real buyer.
+    const { rows: subOrderRows } = await client.query('SELECT order_id FROM supplier_sub_orders WHERE id = $1', [shipment.sub_order_id]);
+    const orderId = subOrderRows[0]?.order_id;
+    const { rows: orderRows } = await client.query('SELECT buyer_id FROM orders WHERE id = $1', [orderId]);
+    await createNotification({
+      userId: orderRows[0]?.buyer_id,
+      type: 'order_status',
+      title: 'Your order has been delivered',
+      body: `Order ${orderId} is now delivered.`,
+      linkType: 'order',
+      linkId: orderId,
+    }, client);
+
+    await client.query('COMMIT');
+
+    // Real delivery notification email (new) -- deliberately AFTER the
+    // commit, as a real, best-effort follow-up -- same reasoning as
+    // every other real transactional email trigger.
+    try {
+      const { rows: orderRows2 } = await db.query('SELECT buyer_id, guest_email FROM orders WHERE id = $1', [orderId]);
+      let recipientEmail = orderRows2[0]?.guest_email || null;
+      let recipientName = null;
+      if (orderRows2[0]?.buyer_id) {
+        const { rows: userRows } = await db.query('SELECT email, name FROM users WHERE id = $1', [orderRows2[0].buyer_id]);
+        if (userRows.length > 0) { recipientEmail = userRows[0].email; recipientName = userRows[0].name; }
+      }
+      if (recipientEmail) {
+        const { html, text } = deliveryNotificationEmail({ recipientName, orderId });
+        await sendTransactionalEmail({ to: recipientEmail, subject: `Your order has been delivered — ${orderId}`, html, text, fallbackLogLabel: 'order-delivered-hub-manual' });
+      }
+    } catch (err) {
+      console.error('Hub-confirmed delivery email failed (non-fatal):', err.message);
+    }
+
+    res.json({ id: rows[0].id, status: rows[0].status, deliveredAt: rows[0].delivered_at, deliveryConfirmedBy: rows[0].delivery_confirmed_by });
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);

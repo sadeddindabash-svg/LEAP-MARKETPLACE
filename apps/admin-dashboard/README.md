@@ -591,17 +591,18 @@ Forty-seven test files, 312 tests total, all passing:
   payout confirmation shows the real amount with correct real
   singular/plural wording; all 4 personalize the greeting with a real
   name and fall back gracefully without one.
-- `src/transactionalEmails.integration.test.js` (5, REAL backend, new) —
+- `src/transactionalEmails.integration.test.js` (5, REAL backend) —
   placing a real order succeeds regardless of email delivery; a real
   guest order (no account) is also handled correctly; marking a
   sub-order shipped succeeds regardless of email delivery; manually
-  confirming delivery succeeds regardless of email delivery; recording
-  a real payout succeeds regardless of email delivery to the supplier.
-  See `services/api/README.md`'s "Real transactional emails beyond
-  password reset" section for the full real trigger-point design —
-  every one deliberately fires AFTER its real underlying action already
-  committed, as a genuine best-effort follow-up that can never block or
-  roll back the real thing that triggered it.
+  confirming delivery (as the hub, migration 027) succeeds regardless
+  of email delivery; recording a real payout succeeds regardless of
+  email delivery to the supplier. See `services/api/README.md`'s
+  "Real transactional emails beyond password reset" section for the
+  full real trigger-point design — every one deliberately fires AFTER
+  its real underlying action already committed, as a genuine
+  best-effort follow-up that can never block or roll back the real
+  thing that triggered it.
 - `src/orders.integration.test.js` (4, REAL backend) — order list/detail
 - `src/OrdersFlow.test.jsx` (5, mocked, full component tree) — orders UI
   flow, plus real hub-assignment coverage: renders the assigned-hub view
@@ -859,7 +860,13 @@ Forty-seven test files, 312 tests total, all passing:
   sub-order eligible for payout when it should have been excluded, and
   inflating a later assertion's expected total. Fixed by filing the
   real return first (genuinely within the window), then backdating
-  delivery afterward to simulate time having passed since.
+  delivery afterward to simulate time having passed since. **Updated
+  for migration 027**: this file's own delivery-confirmation test
+  helpers now walk the full real hub workflow (received → opened →
+  inspected → packed → shipped_to_buyer → confirm-delivery) instead of
+  the old, incorrect supplier-based one — see
+  `services/api/README.md`'s "Real bug fixed: delivery confirmation
+  moved to the hub" section.
 - `src/PayoutsFlow.test.jsx` (4, mocked, full component tree) — shows
   the real amount owed per supplier, not fabricated numbers or a fake
   schedule; recording a payout calls the real endpoint, clears the
@@ -883,7 +890,10 @@ Forty-seven test files, 312 tests total, all passing:
   reset that state between runs (unlike `payouts.integration.test.js`).
   Fixed by asserting the real DELTA (count before vs. after this test's
   own two submissions), confirmed by running the file three times in a
-  row without any cleanup in between.
+  row without any cleanup in between. **Updated for migration 027**:
+  the "verified purchase" helper now walks the full real hub workflow
+  to reach a genuine delivered state, instead of the old, incorrect
+  supplier-based one.
 - `src/ReviewsFlow.test.jsx` (4, mocked, full component tree) — shows
   the real pending review with its real rating and comment; approving
   a review calls the real endpoint and removes it from the pending

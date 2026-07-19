@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import {
   getStoredToken, saveToken, clearToken, getCurrentUser, SessionExpiredError,
-  fetchMyShipments, fetchMyShipmentById, recordShipmentEvent, uploadEvidencePhoto,
+  fetchMyShipments, fetchMyShipmentById, recordShipmentEvent, uploadEvidencePhoto, confirmDelivery,
 } from "./auth";
 import LoginPage from "./LoginPage";
 import { HubContext, useHub } from "./hubContext";
@@ -27,11 +27,13 @@ const STEP_INFO = {
   inspected: { next: "packed", label: "Inspected", actionLabel: "Confirm Packed", icon: PackagePlus, promptTitle: "Packing for the buyer", promptHint: "Photograph the item repackaged and ready to ship." },
   packed: { next: "shipped_to_buyer", label: "Packed", actionLabel: "Confirm Shipped", icon: Truck, promptTitle: "Shipping to the buyer", promptHint: "Photograph the final package label, and enter the tracking number." },
   shipped_to_buyer: { next: null, label: "Shipped to buyer", actionLabel: null, icon: ClipboardCheck, promptTitle: null, promptHint: null },
+  delivered: { next: null, label: "Delivered", actionLabel: null, icon: PackageCheck, promptTitle: null, promptHint: null },
   flagged: { next: null, label: "Flagged", actionLabel: null, icon: AlertTriangle, promptTitle: null, promptHint: null },
 };
 const STATUS_COLOR = {
   awaiting_receipt: [C.amber, C.amberBg], received: [C.torque, C.torqueBg], opened: [C.torque, C.torqueBg],
   inspected: [C.torque, C.torqueBg], packed: [C.torque, C.torqueBg], shipped_to_buyer: [C.gauge, C.gaugeBg],
+  delivered: [C.gauge, C.gaugeBg],
   flagged: [C.red, C.redBg],
 };
 
@@ -70,6 +72,7 @@ const FILTERS = [
   { id: "awaiting_receipt", label: "Awaiting receipt" },
   { id: "in_progress", label: "In progress" },
   { id: "shipped_to_buyer", label: "Shipped" },
+  { id: "delivered", label: "Delivered" },
   { id: "flagged", label: "Flagged" },
 ];
 const IN_PROGRESS_STATUSES = ["received", "opened", "inspected", "packed"];
@@ -180,6 +183,7 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showFlagForm, setShowFlagForm] = useState(false);
+  const [deliveryNote, setDeliveryNote] = useState("");
 
   const load = () => {
     setLoadState("loading");
@@ -233,6 +237,25 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
     }
   };
 
+  const submitConfirmDelivery = async () => {
+    if (!deliveryNote.trim()) {
+      setErrorMessage("A short note is required (e.g. why real carrier tracking didn't confirm it).");
+      return;
+    }
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    try {
+      await confirmDelivery(getStoredToken(), shipmentId, deliveryNote.trim());
+      setDeliveryNote("");
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   if (loadState === "loading") {
     return <div style={{ padding: 40, textAlign: "center", ...body, color: C.muted, fontSize: 13 }}>Loading…</div>;
   }
@@ -241,7 +264,12 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
   }
 
   const info = STEP_INFO[shipment.status];
-  const isTerminal = shipment.status === "shipped_to_buyer" || shipment.status === "flagged";
+  // CONFIRMED (migration 027): "shipped_to_buyer" is no longer the real
+  // terminal state -- a real "Confirm Delivered" action (or real
+  // carrier tracking) still needs to happen from here. Only "delivered"
+  // and "flagged" are genuinely final now.
+  const isTerminal = shipment.status === "delivered" || shipment.status === "flagged";
+  const needsDeliveryConfirmation = shipment.status === "shipped_to_buyer";
 
   return (
     <div>
@@ -338,6 +366,29 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
             <button onClick={() => setShowFlagForm(false)} style={{ ...body, width: "100%", marginTop: 8, padding: "11px 16px", borderRadius: 9, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
               Cancel
             </button>
+          </div>
+        )}
+
+        {needsDeliveryConfirmation && (
+          <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <PackageCheck size={18} color={C.ink} />
+              <div style={{ ...disp, fontSize: 16, fontWeight: 700, color: C.ink }}>Confirm delivered</div>
+            </div>
+            <div style={{ ...body, fontSize: 12, color: C.muted, marginBottom: 10 }}>
+              Real carrier tracking is the preferred way to confirm this — a real webhook will mark this delivered automatically once the carrier confirms it. Only confirm here yourself if that hasn't happened and you have real, independent confirmation the buyer received it.
+            </div>
+            <textarea
+              value={deliveryNote}
+              onChange={(e) => setDeliveryNote(e.target.value)}
+              placeholder="e.g. tracking never updated, buyer confirmed receipt via chat"
+              style={{ ...body, width: "100%", minHeight: 60, padding: 10, borderRadius: 8, border: `1px solid ${C.line}`, marginBottom: 10, resize: "vertical", boxSizing: "border-box" }}
+            />
+            <button
+              disabled={isSubmitting || !deliveryNote.trim()}
+              onClick={submitConfirmDelivery}
+              style={{ ...body, width: "100%", padding: 12, borderRadius: 8, border: "none", background: (isSubmitting || !deliveryNote.trim()) ? "#D1D5DB" : C.gauge, color: "#fff", fontSize: 13, fontWeight: 700, cursor: (isSubmitting || !deliveryNote.trim()) ? "default" : "pointer" }}
+            >{isSubmitting ? "Confirming…" : "Confirm delivered"}</button>
           </div>
         )}
 

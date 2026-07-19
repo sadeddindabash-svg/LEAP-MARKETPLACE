@@ -23,8 +23,9 @@ async function hasVerifiedPurchase(client, buyerId, productId) {
   const { rows } = await client.query(
     `SELECT 1 FROM order_line_items oli
      JOIN supplier_sub_orders so ON so.id = oli.sub_order_id
+     JOIN hub_shipments hs ON hs.sub_order_id = so.id
      JOIN orders o ON o.id = so.order_id
-     WHERE oli.product_id = $1 AND o.buyer_id = $2 AND so.status = 'delivered'
+     WHERE oli.product_id = $1 AND o.buyer_id = $2 AND hs.status = 'delivered'
      LIMIT 1`,
     [productId, buyerId]
   );
