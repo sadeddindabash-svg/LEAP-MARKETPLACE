@@ -264,6 +264,16 @@ export async function fetchFxRate(token) {
 
 export const updateFxRate = (token, pair, rate) => fitmentMutate("PATCH", "/pricing/fx-rate", token, { pair, rate });
 
+// Real automatic/manual FX rate mode toggle (migration 028).
+export async function fetchFxRateMode(token) {
+  const response = await fetch(`${API_BASE_URL}/pricing/fx-rate-mode`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) throw new Error(`Failed to load FX rate mode (${response.status})`);
+  return response.json();
+}
+
+export const updateFxRateMode = (token, mode) => fitmentMutate("PATCH", "/pricing/fx-rate-mode", token, { mode });
+
 export async function previewPricing(token, { supplierCostCny, weightKg, lengthCm, widthCm, heightCm }) {
   const response = await fetch(`${API_BASE_URL}/pricing/preview`, {
     method: "POST",

@@ -31,6 +31,7 @@ const platformSettingsRoutes = require('./modules/platform-settings/routes');
 const payoutsRoutes = require('./modules/payouts/routes');
 const reviewsRoutes = require('./modules/reviews/routes');
 const webhooksRoutes = require('./modules/webhooks/routes');
+const { startScheduledFxRateRefresh } = require('./modules/pricing/fxRateRefresh');
 const pricingRoutes = require('./modules/pricing/routes');
 
 assertRequiredEnvInProduction();
@@ -91,6 +92,12 @@ if (require.main === module) {
   app.listen(env.port, () => {
     console.log(`Leap API listening on http://localhost:${env.port} (${env.nodeEnv})`);
   });
+  // Real, once-a-day live FX rate refresh (migration 028) -- only when
+  // the server actually runs, never when this file is required for
+  // testing (see modules/pricing/fxRateRefresh.js for the full real
+  // design, including the honest limitation that this couldn't be
+  // tested against the real, live Frankfurter API from this sandbox).
+  startScheduledFxRateRefresh();
 }
 
 module.exports = app;

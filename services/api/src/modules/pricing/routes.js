@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { calculateBuyerPriceUsd } = require('./engine');
+const { refreshLiveFxRate, getFxRateMode } = require('./fxRateRefresh');
 
 /**
  * Admin-only management of the real pricing equation — the fee
@@ -165,6 +166,15 @@ router.patch('/fx-rate', requireAuth, requireRole('admin'), requirePageAccess('p
     if (!pair || rate === undefined || rate === null || rate <= 0) {
       return res.status(400).json({ error: 'pair and a positive rate are required' });
     }
+    // CONFIRMED (migration 028): a real automatic/manual toggle, not a
+    // one-way switch -- while in 'automatic' mode, a manual entry here
+    // would just get silently overwritten by the next real scheduled
+    // refresh, which would be confusing. Require switching to 'manual'
+    // mode first, so the person's real intent is unambiguous.
+    const { rows: modeRows } = await db.query("SELECT value FROM platform_settings WHERE key = 'fx_rate_mode'");
+    if ((modeRows[0]?.value || 'manual') === 'automatic') {
+      return res.status(400).json({ error: 'Switch to manual mode first before setting a rate by hand — otherwise the next automatic refresh would just overwrite it.' });
+    }
     await db.query(
       `INSERT INTO fx_rates (currency_pair, rate, source, updated_at) VALUES ($1, $2, 'manual', now())
        ON CONFLICT (currency_pair) DO UPDATE SET rate = $2, source = 'manual', updated_at = now()`,
@@ -173,6 +183,39 @@ router.patch('/fx-rate', requireAuth, requireRole('admin'), requirePageAccess('p
     const { rows } = await db.query('SELECT * FROM fx_rates WHERE currency_pair = $1', [pair]);
     const r = rows[0];
     res.json({ currencyPair: r.currency_pair, rate: Number(r.rate), source: r.source, updatedAt: r.updated_at });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET/PATCH /pricing/fx-rate-mode — the real automatic/manual toggle
+// (migration 028). Switching TO 'automatic' triggers a real, immediate
+// refresh right away, rather than waiting up to a real 24 hours for
+// the next scheduled tick.
+router.get('/fx-rate-mode', requireAuth, requireRole('admin'), requirePageAccess('pricing'), async (req, res, next) => {
+  try {
+    const mode = await getFxRateMode();
+    res.json({ mode });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/fx-rate-mode', requireAuth, requireRole('admin'), requirePageAccess('pricing'), async (req, res, next) => {
+  try {
+    const { mode } = req.body || {};
+    if (!['automatic', 'manual'].includes(mode)) {
+      return res.status(400).json({ error: "mode must be 'automatic' or 'manual'" });
+    }
+    await db.query(
+      `INSERT INTO platform_settings (key, value, updated_at) VALUES ('fx_rate_mode', $1, now())
+       ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = now()`,
+      [mode]
+    );
+    if (mode === 'automatic') {
+      await refreshLiveFxRate('CNY_USD');
+    }
+    res.json({ mode });
   } catch (err) {
     next(err);
   }

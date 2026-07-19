@@ -351,10 +351,22 @@ buyer-facing USD price from a supplier's RMB cost — see
 `services/api/README.md`'s "Real pricing engine" section for the full
 backend design.
 
-- **Exchange rate**: shows the current real rate with a badge
-  distinguishing `Manual` from `Live` (no live provider is connected in
-  this environment — same category of external dependency as the
-  payment gateways), and a real inline field to update it.
+- **Exchange rate (new: real automatic/manual toggle, migration 028)**:
+  shows the current real rate with a badge distinguishing `Manual` from
+  `Live`. A real toggle switches between the two — Automatic refreshes
+  once a real day from a genuinely free, no-API-key live rate provider
+  (Frankfurter.app, backed by real European Central Bank data); Manual
+  shows the real inline field to set it by hand, and is the confirmed
+  real default (applying this feature causes zero behavior change until
+  an admin explicitly switches it on). While in Automatic mode, the
+  manual field is hidden and the manual update endpoint itself is
+  rejected — switching back to Manual first is required, so a manual
+  entry can never be silently overwritten by the next real automatic
+  refresh. See `services/api/README.md`'s "Real live FX rate" section
+  for the full real design, including the honest limitation that this
+  sandbox's own network restrictions meant the actual live Frankfurter
+  call could only be confirmed to fail gracefully here, not verified
+  end-to-end with a real successful response.
 - **Fee components**: every fee (Leap Platform Fee, Bank Fee, Shipping
   Fee, Local Transport Fee, Overhead Fee, Customs Duty, VAT, Payment
   Gateway Fee, FX Margin, Insurance — 10 real seeded defaults, all
@@ -560,7 +572,7 @@ product can submit a review for it.
 npm test
 ```
 
-Forty-seven test files, 312 tests total, all passing:
+Forty-eight test files, 318 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/passwordReset.integration.test.js` (5, REAL backend) — a real
@@ -788,12 +800,12 @@ Forty-seven test files, 312 tests total, all passing:
   first component cannot move up and the real last cannot move down; an
   invalid direction and a nonexistent component are both rejected; and
   non-admins cannot reorder fee components.
-- `src/PricingFlow.test.jsx` (7, mocked, full component tree) — renders
+- `src/PricingFlow.test.jsx` (9, mocked, full component tree) — renders
   the real seeded fee component and current FX rate, adding a new fee
   calls the real create endpoint and shows up immediately, updating the
   FX rate calls the real update endpoint, and the preview calculator
   shows a real computed breakdown (and a clear error with no cost
-  entered). Plus 2 new real reordering UI tests (new): clicking the
+  entered). Plus 2 real reordering UI tests: clicking the
   real move-down arrow calls the real move endpoint and the fee order
   genuinely updates; the real move-up arrow is disabled for the first
   fee component. **A real bug in this test itself was found and
@@ -803,7 +815,22 @@ Forty-seven test files, 312 tests total, all passing:
   ASC` — meaning a swap changed the real underlying values but the mock
   kept returning the stale display order, making a genuinely correct
   reorder look like a failing test. Fixed by sorting the mock's
-  response the same way the real backend does.
+  response the same way the real backend does. **Plus 2 new tests
+  (migration 028)**: defaults to Manual mode, showing the real editable
+  rate input; toggling to Automatic calls the real endpoint and hides
+  the manual rate input.
+- `src/fxRateMode.integration.test.js` (4, REAL backend, new) —
+  defaults to manual mode, and the manual rate endpoint works normally
+  in that mode; switching to automatic mode rejects the manual rate
+  endpoint with a real, clear message; an invalid mode value is
+  rejected and non-admins are blocked from both endpoints; restores
+  manual mode afterward so other tests and manual use are unaffected.
+  See `services/api/README.md`'s "Real live FX rate" section for the
+  full real design, including the honest limitation that this
+  sandbox's own network restrictions meant the actual live Frankfurter
+  API call could only be confirmed to fail gracefully here (a real
+  403 from the egress proxy), not verified end-to-end with a real
+  successful response.
 - `src/adminPermissions.integration.test.js` (12, REAL backend) — the
   real seeded admin is confirmed a real owner with full access;
   **Scenario 1** — a real support-only admin can access Tickets and

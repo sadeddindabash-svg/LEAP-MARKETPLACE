@@ -10,6 +10,7 @@ function mockFetchRouter() {
     { id: 'fee_bank', name: 'Bank Fee', type: 'percentage', value: 2, sortOrder: 20, isActive: true, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
   ];
   let fxRate = { currencyPair: 'CNY_USD', rate: 0.14, source: 'manual', updatedAt: '2026-01-01T00:00:00.000Z' };
+  let fxRateMode = 'manual';
 
   return vi.fn((url, options) => {
     const u = String(url);
@@ -50,6 +51,13 @@ function mockFetchRouter() {
       return Promise.resolve({ ok: true, json: async () => fxRate });
     }
     if (u.endsWith('/pricing/fx-rate')) return Promise.resolve({ ok: true, json: async () => fxRate });
+    if (method === 'PATCH' && u.endsWith('/pricing/fx-rate-mode')) {
+      const b = JSON.parse(options.body);
+      if (!['automatic', 'manual'].includes(b.mode)) return Promise.resolve({ ok: false, status: 400, json: async () => ({ error: "mode must be 'automatic' or 'manual'" }) });
+      fxRateMode = b.mode;
+      return Promise.resolve({ ok: true, json: async () => ({ mode: fxRateMode }) });
+    }
+    if (u.endsWith('/pricing/fx-rate-mode')) return Promise.resolve({ ok: true, json: async () => ({ mode: fxRateMode }) });
     if (method === 'POST' && u.endsWith('/pricing/preview')) {
       const b = JSON.parse(options.body);
       return Promise.resolve({
@@ -166,5 +174,26 @@ describe('Pricing page — real fee/FX-rate management and preview calculator (m
 
     await waitFor(() => screen.getByText('Leap Platform Fee'));
     expect(screen.getAllByTitle('Move up')[0]).toBeDisabled();
+  });
+
+  it('CRITICAL: defaults to Manual mode, showing the real editable rate input', async () => {
+    globalThis.fetch = mockFetchRouter();
+    render(<LeapAdminApp />);
+    await loginAndGoToPricing();
+
+    await waitFor(() => screen.getByDisplayValue('0.14'));
+    expect(screen.getAllByText('Manual').length).toBeGreaterThan(0);
+  });
+
+  it('CRITICAL: toggling to Automatic calls the real endpoint and hides the manual rate input', async () => {
+    globalThis.fetch = mockFetchRouter();
+    render(<LeapAdminApp />);
+    await loginAndGoToPricing();
+
+    await waitFor(() => screen.getByDisplayValue('0.14'));
+    fireEvent.click(screen.getByRole('button', { name: 'Manual' }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Automatic' })).toBeInTheDocument());
+    expect(screen.queryByDisplayValue('0.14')).not.toBeInTheDocument();
   });
 });

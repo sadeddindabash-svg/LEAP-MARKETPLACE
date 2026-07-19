@@ -4,7 +4,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
   createBrand, deleteBrand, createModel, deleteModel, createGeneration, deleteGeneration, createEngine, deleteEngine, createTransmission, deleteTransmission,
   fetchHubLocations, createHubLocation, deleteHubLocation, assignHubToSubOrder,
-  fetchFeeComponents, createFeeComponent, updateFeeComponent, deleteFeeComponent, moveFeeComponent, fetchFxRate, updateFxRate, previewPricing,
+  fetchFeeComponents, createFeeComponent, updateFeeComponent, deleteFeeComponent, moveFeeComponent, fetchFxRate, updateFxRate, fetchFxRateMode, updateFxRateMode, previewPricing,
   fetchFlaggedShipments,
   fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart,
   fetchSupplierMessagesInbox, fetchSupplierMessageThread, sendSupplierMessage,
@@ -1379,6 +1379,8 @@ function PricingPage({ onSessionExpired }) {
 
   const [rateInput, setRateInput] = useState("");
   const [isSavingRate, setIsSavingRate] = useState(false);
+  const [fxRateMode, setFxRateMode] = useState("manual");
+  const [isSavingMode, setIsSavingMode] = useState(false);
 
   const [previewCost, setPreviewCost] = useState("");
   const [previewWeight, setPreviewWeight] = useState("");
@@ -1391,8 +1393,8 @@ function PricingPage({ onSessionExpired }) {
 
   const load = () => {
     setLoadState("loading");
-    Promise.all([fetchFeeComponents(getStoredToken()), fetchFxRate(getStoredToken())])
-      .then(([f, rate]) => { setFees(f); setFxRate(rate); setRateInput(String(rate.rate)); setLoadState("ready"); })
+    Promise.all([fetchFeeComponents(getStoredToken()), fetchFxRate(getStoredToken()), fetchFxRateMode(getStoredToken())])
+      .then(([f, rate, modeResult]) => { setFees(f); setFxRate(rate); setRateInput(String(rate.rate)); setFxRateMode(modeResult.mode); setLoadState("ready"); })
       .catch((err) => {
         if (err instanceof SessionExpiredError) return onSessionExpired();
         setErrorMessage(err.message);
@@ -1478,6 +1480,24 @@ function PricingPage({ onSessionExpired }) {
     }
   };
 
+  // Real automatic/manual toggle (migration 028) -- switching to
+  // automatic triggers a real, immediate live refresh from
+  // Frankfurter.app rather than waiting up to a real 24 hours.
+  const handleToggleFxRateMode = async () => {
+    const newMode = fxRateMode === "automatic" ? "manual" : "automatic";
+    setIsSavingMode(true);
+    setErrorMessage(null);
+    try {
+      await updateFxRateMode(getStoredToken(), newMode);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSavingMode(false);
+    }
+  };
+
   const handlePreview = async () => {
     setPreviewError(null);
     setPreviewResult(null);
@@ -1519,15 +1539,29 @@ function PricingPage({ onSessionExpired }) {
                   <Badge label={fxRate.source === "live" ? "Live" : "Manual"} color={fxRate.source === "live" ? C.gauge : C.amber} bg={fxRate.source === "live" ? C.gaugeBg : C.amberBg} />
                   <span style={{ ...body, fontSize: 11.5, color: C.muted }}>Last updated {new Date(fxRate.updatedAt).toLocaleString()}</span>
                 </div>
-                <div style={{ ...body, fontSize: 11.5, color: C.muted, marginBottom: 10 }}>
-                  No live rate provider is connected yet (needs a real API subscription, same as the payment gateways) — this manually-set rate is what the calculation actually uses today.
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0", borderTop: `1px solid ${C.line}`, borderBottom: `1px solid ${C.line}`, marginBottom: 14 }}>
+                  <div>
+                    <div style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>{fxRateMode === "automatic" ? "Automatic" : "Manual"}</div>
+                    <div style={{ ...body, fontSize: 11.5, color: C.muted, marginTop: 2 }}>
+                      {fxRateMode === "automatic" ? "Refreshed once a day from a real, free live rate (Frankfurter.app)." : "You set the rate by hand below."}
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleToggleFxRateMode}
+                    disabled={isSavingMode}
+                    style={{ ...body, padding: "7px 14px", borderRadius: 8, border: "none", background: fxRateMode === "automatic" ? C.gauge : C.line, color: fxRateMode === "automatic" ? "#fff" : C.muted, fontSize: 12, fontWeight: 700, cursor: isSavingMode ? "default" : "pointer" }}
+                  >{isSavingMode ? "…" : fxRateMode === "automatic" ? "Automatic" : "Manual"}</button>
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <input type="number" step="0.0001" value={rateInput} onChange={(e) => setRateInput(e.target.value)} style={{ ...body, width: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
-                  <button disabled={isSavingRate} onClick={handleSaveRate} style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: isSavingRate ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSavingRate ? "default" : "pointer" }}>
-                    {isSavingRate ? "Saving…" : "Update rate"}
-                  </button>
-                </div>
+                {fxRateMode === "manual" ? (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input type="number" step="0.0001" value={rateInput} onChange={(e) => setRateInput(e.target.value)} style={{ ...body, width: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+                    <button disabled={isSavingRate} onClick={handleSaveRate} style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: isSavingRate ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSavingRate ? "default" : "pointer" }}>
+                      {isSavingRate ? "Saving…" : "Update rate"}
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>{fxRate.rate}</div>
+                )}
               </>
             )}
             {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}

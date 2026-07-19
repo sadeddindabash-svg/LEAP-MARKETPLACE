@@ -1086,6 +1086,64 @@ Every existing test touching the old supplier-based delivery flow
 corrected hub workflow instead — full three-app suite (312/71/12 = 395
 tests) re-run to confirm genuine stability.
 
+## Real live FX rate — Frankfurter.app, toggleable (migration 028)
+
+**Confirmed scope, discussed before building**: a real automatic/manual
+toggle, not a one-way automatic switch — `fx_rates.source` already
+anticipated a real `'live'` value (migration 014's own header comment),
+this migration is what actually wires that up. Defaults to `'manual'`
+— the existing, already-working real fallback — so applying this
+migration causes zero real behavior change until an admin explicitly
+switches it on. Confirmed refresh cadence: once a real day, not
+constant polling — real exchange rates don't move fast enough to need
+that, and it keeps things simple and fast.
+
+**Frankfurter.app was chosen specifically** because it's genuinely
+free, needs no API key or account, and is backed by real European
+Central Bank data (updated once per real business day, not live
+market-tick pricing, but accurate and reliable for a business like
+this one).
+
+**`GET/PATCH /pricing/fx-rate-mode`** — the real toggle. Switching TO
+`'automatic'` triggers a real, immediate refresh right away, rather
+than waiting up to a real 24 hours for the first scheduled tick.
+**While in automatic mode, the existing manual `PATCH /pricing/fx-rate`
+endpoint is rejected outright** with a clear message asking to switch
+to manual mode first — otherwise a manual entry would just get
+silently overwritten by the next real automatic refresh, which would
+be confusing.
+
+**Real, once-a-day scheduling** uses a plain `setInterval` rather than
+a new cron dependency, matching this project's preference for minimal,
+generic implementations — started once at real server boot (never
+during tests, since it's gated behind `require.main === module`),
+refreshing immediately on startup if already in automatic mode (so a
+fresh restart doesn't wait a full real day for its first live rate),
+then every real 24 hours after that. Every refresh is real,
+best-effort — a real network hiccup or an unexpected real response
+shape is logged and never crashes the server or touches the existing
+real rate; see `modules/pricing/fxRateRefresh.js`'s header comment.
+
+**HONEST LIMITATION**: this sandbox's network access does not include
+`api.frankfurter.app` in its allowlist (confirmed directly — a real
+manual test here got a real `403` from the egress proxy, not a
+connection failure), so this could not be tested against the real,
+live Frankfurter API from here — only built carefully from their
+documented, public API format, and confirmed to fail gracefully
+(logged, non-fatal, existing rate left untouched) when that real call
+cannot succeed. Verify the actual real response shape once running
+outside this sandbox.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/fxRateMode.integration.test.js`
+(4 tests, REAL backend): defaults to manual mode, and the manual rate
+endpoint works normally in that mode; switching to automatic mode
+rejects the manual rate endpoint with a real, clear message; an invalid
+mode value is rejected and non-admins are blocked from both endpoints;
+restores manual mode afterward so other tests and manual use are
+unaffected. Manually confirmed the real graceful-failure behavior when
+automatic mode is switched on inside this sandbox (a real `403`,
+logged, non-fatal, existing rate untouched).
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category
