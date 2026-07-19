@@ -3,6 +3,8 @@ const db = require('../../../db/pool');
 const { requireAuth, optionalAuth, requirePageAccessIfAdmin } = require('../auth/middleware');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
 const { validatePromoCode, calculateDiscountUsd, recordRedemption, checkAndGrantReferralReward } = require('../promotions/helpers');
+const { sendTransactionalEmail } = require('../email/client');
+const { orderConfirmationEmail } = require('../email/templates');
 
 /**
  * Order module — BUY-031, BUY-050–053. A single buyer order splits into
@@ -154,6 +156,31 @@ router.post('/', async (req, res, next) => {
     } catch (err) {
       // Logged, not fatal — the order itself is real and already committed.
       console.error('checkAndGrantReferralReward failed (non-fatal):', err.message);
+    }
+
+    // Real order confirmation email (new) -- same best-effort, after-
+    // commit pattern as the referral check above: never blocks or rolls
+    // back the real order that already succeeded. Real product names
+    // fetched fresh here since the earlier SELECT never needed them.
+    try {
+      let recipientEmail = guestEmail || null;
+      let recipientName = null;
+      if (userId) {
+        const { rows: userRows } = await db.query('SELECT email, name FROM users WHERE id = $1', [userId]);
+        if (userRows.length > 0) {
+          recipientEmail = userRows[0].email;
+          recipientName = userRows[0].name;
+        }
+      }
+      if (recipientEmail) {
+        const { rows: nameRows } = await db.query('SELECT id, name FROM products WHERE id = ANY($1::text[])', [productIds]);
+        const nameById = Object.fromEntries(nameRows.map((r) => [r.id, r.name]));
+        const emailItems = items.map((i) => ({ name: nameById[i.productId] || i.productId, quantity: i.quantity, price: buyerUnitPrices[i.productId] }));
+        const { html, text } = orderConfirmationEmail({ recipientName, orderId, items: emailItems, total, currencyCode });
+        await sendTransactionalEmail({ to: recipientEmail, subject: `Order confirmed — ${orderId}`, html, text, fallbackLogLabel: 'order-confirmation' });
+      }
+    } catch (err) {
+      console.error('Order confirmation email failed (non-fatal):', err.message);
     }
 
     res.status(201).json({

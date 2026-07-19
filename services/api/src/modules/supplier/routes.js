@@ -2,6 +2,8 @@ const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { createNotification } = require('../notifications/helpers');
+const { sendTransactionalEmail } = require('../email/client');
+const { shippingNotificationEmail, deliveryNotificationEmail } = require('../email/templates');
 const { validateFitment, tryMatchCategoryAndPart, tryMatchPosition, tryMatchDimensions, validateCompleteFields } = require('./productValidation');
 
 /**
@@ -672,6 +674,38 @@ router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), asy
     }
 
     await client.query('COMMIT');
+
+    // Real shipping/delivery notification emails (new) -- deliberately
+    // AFTER the commit, as a real, best-effort follow-up: a real SMTP
+    // network call has no business holding the transaction open, and
+    // an email hiccup should never roll back a real status update that
+    // already succeeded. Handles both a real logged-in buyer and a real
+    // guest order (guest_email), unlike the in-app notification above
+    // which only ever applies to a real logged-in buyer.
+    if (status === 'shipped' || status === 'delivered') {
+      try {
+        const { rows: orderRows } = await db.query('SELECT buyer_id, guest_email FROM orders WHERE id = $1', [rows[0].order_id]);
+        let recipientEmail = orderRows[0]?.guest_email || null;
+        let recipientName = null;
+        if (orderRows[0]?.buyer_id) {
+          const { rows: userRows } = await db.query('SELECT email, name FROM users WHERE id = $1', [orderRows[0].buyer_id]);
+          if (userRows.length > 0) { recipientEmail = userRows[0].email; recipientName = userRows[0].name; }
+        }
+        if (recipientEmail) {
+          const { html, text } = status === 'shipped'
+            ? shippingNotificationEmail({ recipientName, orderId: rows[0].order_id, trackingNumber: rows[0].tracking_number })
+            : deliveryNotificationEmail({ recipientName, orderId: rows[0].order_id });
+          await sendTransactionalEmail({
+            to: recipientEmail,
+            subject: status === 'shipped' ? `Your order has shipped — ${rows[0].order_id}` : `Your order has been delivered — ${rows[0].order_id}`,
+            html, text, fallbackLogLabel: `order-${status}`,
+          });
+        }
+      } catch (err) {
+        console.error(`Order ${status} email failed (non-fatal):`, err.message);
+      }
+    }
+
     res.json({ subOrderId: rows[0].id, orderId: rows[0].order_id, status: rows[0].status, trackingNumber: rows[0].tracking_number });
   } catch (err) {
     await client.query('ROLLBACK');

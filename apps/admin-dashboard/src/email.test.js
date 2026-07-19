@@ -85,3 +85,61 @@ describe('real branded password reset email template (services/api/src/modules/e
     expect(text).toContain('45 minutes');
   });
 });
+
+describe('real transactional email templates (new) — order confirmation, shipping/delivery notifications, payout confirmation', () => {
+  it('CRITICAL: order confirmation includes the real order id, every real item, and the real total — not a fabricated summary', async () => {
+    const { orderConfirmationEmail } = await import('../../../services/api/src/modules/email/templates.js');
+    const { html, text } = orderConfirmationEmail({
+      recipientName: 'Wei Zhang', orderId: 'LP-123456',
+      items: [{ name: 'Front Brake Disc', quantity: 2, price: 39.99 }, { name: 'Oil Filter', quantity: 1, price: 12.5 }],
+      total: 92.48, currencyCode: 'USD',
+    });
+    expect(html).toContain('LP-123456');
+    expect(html).toContain('Front Brake Disc');
+    expect(html).toContain('Oil Filter');
+    expect(html).toContain('92.48');
+    expect(text).toContain('LP-123456');
+    expect(text).toContain('92.48');
+  });
+
+  it('shipping notification includes the real tracking number when provided, and omits it gracefully when not', async () => {
+    const { shippingNotificationEmail } = await import('../../../services/api/src/modules/email/templates.js');
+    const withTracking = shippingNotificationEmail({ recipientName: 'Wei', orderId: 'LP-1', trackingNumber: 'TRACK-999' });
+    expect(withTracking.html).toContain('TRACK-999');
+    expect(withTracking.text).toContain('TRACK-999');
+
+    const withoutTracking = shippingNotificationEmail({ recipientName: 'Wei', orderId: 'LP-1', trackingNumber: null });
+    expect(withoutTracking.html).not.toContain('null');
+    expect(withoutTracking.html).toContain('LP-1');
+  });
+
+  it('delivery notification includes the real order id', async () => {
+    const { deliveryNotificationEmail } = await import('../../../services/api/src/modules/email/templates.js');
+    const { html, text } = deliveryNotificationEmail({ recipientName: 'Wei', orderId: 'LP-7777' });
+    expect(html).toContain('LP-7777');
+    expect(text).toContain('LP-7777');
+  });
+
+  it('CRITICAL: payout confirmation shows the real amount and real sub-order count, with correct real singular/plural wording', async () => {
+    const { payoutConfirmationEmail } = await import('../../../services/api/src/modules/email/templates.js');
+    const single = payoutConfirmationEmail({ recipientName: 'Guangzhou AutoParts', amount: 70.38, currencyCode: 'USD', subOrderCount: 1 });
+    expect(single.html).toContain('70.38');
+    expect(single.html).toContain('1 order');
+    expect(single.html).not.toContain('1 orders');
+
+    const multiple = payoutConfirmationEmail({ recipientName: 'Guangzhou AutoParts', amount: 240.00, currencyCode: 'USD', subOrderCount: 3 });
+    expect(multiple.html).toContain('3 orders');
+  });
+
+  it('all 4 new templates personalize the greeting with a real recipient name, and fall back gracefully without one', async () => {
+    const { orderConfirmationEmail, shippingNotificationEmail, deliveryNotificationEmail, payoutConfirmationEmail } = await import('../../../services/api/src/modules/email/templates.js');
+    const noName1 = orderConfirmationEmail({ recipientName: null, orderId: 'LP-1', items: [], total: 0, currencyCode: 'USD' });
+    const noName2 = shippingNotificationEmail({ recipientName: null, orderId: 'LP-1', trackingNumber: null });
+    const noName3 = deliveryNotificationEmail({ recipientName: null, orderId: 'LP-1' });
+    const noName4 = payoutConfirmationEmail({ recipientName: null, amount: 10, currencyCode: 'USD', subOrderCount: 1 });
+    for (const { html } of [noName1, noName2, noName3, noName4]) {
+      expect(html).toContain('Hi,');
+      expect(html).not.toContain('null');
+    }
+  });
+});

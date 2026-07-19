@@ -560,7 +560,7 @@ product can submit a review for it.
 npm test
 ```
 
-Forty-six test files, 302 tests total, all passing:
+Forty-seven test files, 312 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/passwordReset.integration.test.js` (5, REAL backend) — a real
@@ -571,8 +571,8 @@ Forty-six test files, 302 tests total, all passing:
   here — a real reset genuinely changes the password: the old password
   stops working, the new one works, and the same token cannot be reused
   a second time.
-- `src/email.test.js` (6, unit tests) — real generic SMTP email
-  delivery (new): `isEmailConfigured()` correctly reports false with no
+- `src/email.test.js` (11, unit tests) — real generic SMTP email
+  delivery: `isEmailConfigured()` correctly reports false with no
   real env vars, false with only a genuinely partial configuration, and
   true once all 5 real required vars are set; the real branded password-
   reset template includes the real reset URL in both HTML and plain-
@@ -583,7 +583,25 @@ Forty-six test files, 302 tests total, all passing:
   documented reason `sendEmail()`'s actual SMTP transport behavior isn't
   covered by this automated suite (a real cross-package module
   boundary, same as the storage and translation modules) and how that
-  logic was verified instead.
+  logic was verified instead. **Plus 5 new tests (new)** directly
+  against the 4 new transactional email templates: order confirmation
+  shows the real order id, every real item, and the real total; shipping
+  notification shows the real tracking number when provided and omits
+  it gracefully when not; delivery notification shows the real order id;
+  payout confirmation shows the real amount with correct real
+  singular/plural wording; all 4 personalize the greeting with a real
+  name and fall back gracefully without one.
+- `src/transactionalEmails.integration.test.js` (5, REAL backend, new) —
+  placing a real order succeeds regardless of email delivery; a real
+  guest order (no account) is also handled correctly; marking a
+  sub-order shipped succeeds regardless of email delivery; manually
+  confirming delivery succeeds regardless of email delivery; recording
+  a real payout succeeds regardless of email delivery to the supplier.
+  See `services/api/README.md`'s "Real transactional emails beyond
+  password reset" section for the full real trigger-point design —
+  every one deliberately fires AFTER its real underlying action already
+  committed, as a genuine best-effort follow-up that can never block or
+  roll back the real thing that triggered it.
 - `src/orders.integration.test.js` (4, REAL backend) — order list/detail
 - `src/OrdersFlow.test.jsx` (5, mocked, full component tree) — orders UI
   flow, plus real hub-assignment coverage: renders the assigned-hub view

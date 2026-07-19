@@ -1,6 +1,8 @@
 const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
+const { sendTransactionalEmail } = require('../email/client');
+const { payoutConfirmationEmail } = require('../email/templates');
 
 /**
  * Real payouts (migration 024). CONFIRMED SCOPE, discussed and refined
@@ -125,6 +127,21 @@ router.post('/', requireAuth, requireRole('admin'), requirePageAccess('payouts')
       await client.query('INSERT INTO payout_sub_orders (payout_id, sub_order_id) VALUES ($1, $2)', [payoutId, row.sub_order_id]);
     }
     await client.query('COMMIT');
+
+    // Real payout confirmation email (new) -- best-effort, after commit,
+    // same reasoning as every other real transactional email trigger:
+    // a real SMTP call has no business inside the real payout
+    // transaction, and an email hiccup should never affect a payout
+    // that's already genuinely recorded.
+    try {
+      const { rows: userRows } = await db.query('SELECT email, name FROM users WHERE supplier_id = $1 AND role = $2', [supplierId, 'supplier']);
+      if (userRows.length > 0) {
+        const { html, text } = payoutConfirmationEmail({ recipientName: userRows[0].name, amount: totalAmount, currencyCode: payoutRows[0].currency_code, subOrderCount: eligibleRows.length });
+        await sendTransactionalEmail({ to: userRows[0].email, subject: 'Payout recorded', html, text, fallbackLogLabel: 'payout-confirmation' });
+      }
+    } catch (err) {
+      console.error('Payout confirmation email failed (non-fatal):', err.message);
+    }
 
     res.status(201).json({
       id: payoutId,

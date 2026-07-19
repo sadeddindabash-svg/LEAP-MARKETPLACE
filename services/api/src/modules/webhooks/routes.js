@@ -1,6 +1,8 @@
 const express = require('express');
 const crypto = require('crypto');
 const db = require('../../../db/pool');
+const { sendTransactionalEmail } = require('../email/client');
+const { deliveryNotificationEmail } = require('../email/templates');
 
 /**
  * Real 17TRACK webhook integration (migration 026). CONFIRMED SCOPE:
@@ -77,13 +79,32 @@ router.post('/17track', async (req, res, next) => {
              status = 'delivered', delivered_at = $1, delivery_confirmed_by = 'carrier',
              carrier_code = COALESCE(carrier_code, $2)
            WHERE tracking_number = $3 AND status != 'delivered'
-           RETURNING id`,
+           RETURNING id, order_id`,
           [deliveredAt, carrierCode ? String(carrierCode) : null, trackingNumber]
         );
         if (rows.length === 0) {
           results.push({ trackingNumber, success: false, error: 'No matching real sub-order found for this tracking number, or it was already delivered' });
         } else {
           results.push({ trackingNumber, success: true, subOrderId: rows[0].id });
+          // Real delivery notification email (new) -- best-effort, same
+          // as the supplier's own manual delivery path -- a real carrier
+          // confirmation deserves the exact same real notification a
+          // manual confirmation would trigger.
+          try {
+            const { rows: orderRows } = await db.query('SELECT buyer_id, guest_email FROM orders WHERE id = $1', [rows[0].order_id]);
+            let recipientEmail = orderRows[0]?.guest_email || null;
+            let recipientName = null;
+            if (orderRows[0]?.buyer_id) {
+              const { rows: userRows } = await db.query('SELECT email, name FROM users WHERE id = $1', [orderRows[0].buyer_id]);
+              if (userRows.length > 0) { recipientEmail = userRows[0].email; recipientName = userRows[0].name; }
+            }
+            if (recipientEmail) {
+              const { html, text } = deliveryNotificationEmail({ recipientName, orderId: rows[0].order_id });
+              await sendTransactionalEmail({ to: recipientEmail, subject: `Your order has been delivered — ${rows[0].order_id}`, html, text, fallbackLogLabel: 'order-delivered-carrier' });
+            }
+          } catch (emailErr) {
+            console.error('Carrier-confirmed delivery email failed (non-fatal):', emailErr.message);
+          }
         }
       } catch (err) {
         results.push({ trackingNumber, success: false, error: 'Internal error updating this sub-order' });

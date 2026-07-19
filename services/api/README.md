@@ -996,6 +996,46 @@ now-orphaned test buyer accounts, handled in real dependency order),
 confirmed the same endpoint dropped to ~19ms afterward, and re-ran the
 full three-app suite to confirm genuine stability.
 
+## Real transactional emails beyond password reset (new)
+
+Four new real trigger points, all reusing the same generic SMTP
+infrastructure already built for password reset — no new email
+provider decision needed. Each is a real, best-effort follow-up AFTER
+its real underlying action already committed successfully — a real
+SMTP network call has no business inside a database transaction, and
+an email hiccup must never roll back or block a real order, shipment,
+delivery, or payout that already genuinely succeeded. Falls back to an
+honest console log when SMTP isn't configured, same as password reset.
+
+- **Order confirmation** — sent right after a real order is placed
+  (`POST /order`), to a real logged-in buyer's account email or a real
+  guest's `guestEmail`. Real product names are fetched fresh for the
+  email (the order-placement flow itself never needed them).
+- **Shipping notification** — sent when a sub-order is marked
+  `'shipped'`, including the real tracking number when one was given.
+- **Delivery notification** — sent when a sub-order reaches
+  `'delivered'`, from EITHER real path: the supplier's own manual
+  confirmation, or a real carrier-confirmed delivery via the 17TRACK
+  webhook (migration 026) — a carrier-confirmed delivery gets the exact
+  same real notification a manual one would.
+- **Payout confirmation** — sent to the real supplier's own account
+  email (via `users.supplier_id`) right after a real payout is
+  recorded, showing the real amount and how many real orders it
+  covered.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/transactionalEmails.integration.test.js`
+(5 tests, REAL backend): placing a real order succeeds regardless of
+email delivery; a real guest order (no account) is also handled
+correctly; marking a sub-order shipped succeeds regardless of email
+delivery; manually confirming delivery succeeds regardless of email
+delivery; recording a real payout succeeds regardless of email
+delivery to the supplier. Plus `apps/admin-dashboard/src/email.test.js`
+(5 new tests) directly against the 4 new template functions — real
+order id/items/total shown correctly; real tracking number shown when
+provided and gracefully omitted when not; real amount and correct
+singular/plural wording; every template personalizes the greeting with
+a real name and falls back gracefully without one.
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category

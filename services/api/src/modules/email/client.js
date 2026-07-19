@@ -71,4 +71,27 @@ async function sendEmail({ to, subject, html, text }) {
   });
 }
 
-module.exports = { isEmailConfigured, sendEmail };
+/**
+ * Real, best-effort transactional email send (new) -- the same real
+ * pattern already established for password reset, extracted into one
+ * shared helper rather than duplicated at each of the real new trigger
+ * points (order confirmation, shipping/delivery notifications, payout
+ * confirmation). Never throws -- a real SMTP failure (bad credentials,
+ * provider rejected it, network issue) falls back to an honest console
+ * log rather than losing the notification entirely, and never blocks
+ * the real underlying action (placing an order, marking something
+ * shipped, recording a payout) that triggered it.
+ */
+async function sendTransactionalEmail({ to, subject, html, text, fallbackLogLabel }) {
+  if (!isEmailConfigured()) {
+    console.log(`[${fallbackLogLabel}] Email not configured -- would have sent to ${to}: ${subject}`);
+    return;
+  }
+  try {
+    await sendEmail({ to, subject, html, text });
+  } catch (err) {
+    console.error(`[${fallbackLogLabel}] Email delivery failed, continuing without it:`, err.message);
+  }
+}
+
+module.exports = { isEmailConfigured, sendEmail, sendTransactionalEmail };
