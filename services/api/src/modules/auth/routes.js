@@ -57,8 +57,23 @@ router.post('/signup', async (req, res, next) => {
     // signup error; see promotions/helpers.js's recordReferral for why.
     await recordReferral(referralCode, userId);
 
+    // Real guest-to-account conversion (migration 029) — any real
+    // guest order already placed under this exact email is now linked
+    // to the real new account, so real order history isn't lost the
+    // moment someone who checked out as a guest actually signs up.
+    let linkedOrderCount = 0;
+    try {
+      const { rows: linkedRows } = await db.query(
+        `UPDATE orders SET buyer_id = $1 WHERE guest_email = $2 AND buyer_id IS NULL RETURNING id`,
+        [userId, email]
+      );
+      linkedOrderCount = linkedRows.length;
+    } catch (err) {
+      console.error('Guest order linking failed (non-fatal):', err.message);
+    }
+
     const user = { id: userId, email, role: 'buyer' };
-    res.status(201).json({ token: signToken(user), user: { id: userId, email, name: name || null, role: 'buyer' } });
+    res.status(201).json({ token: signToken(user), user: { id: userId, email, name: name || null, role: 'buyer' }, linkedOrderCount });
   } catch (err) {
     next(err);
   }

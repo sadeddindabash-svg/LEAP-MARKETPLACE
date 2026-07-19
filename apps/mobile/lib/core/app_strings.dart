@@ -56,6 +56,7 @@ class AppStrings {
     'status_delivered': {'en': 'Delivered', 'ar': 'تم التسليم'},
     'status_dispute': {'en': 'Dispute', 'ar': 'نزاع'},
     'status_cancelled': {'en': 'Cancelled', 'ar': 'ملغى'},
+    'status_cancelled': {'en': 'Cancelled', 'ar': 'ملغى'},
     'status_open': {'en': 'Open', 'ar': 'مفتوحة'},
     'status_in_progress': {'en': 'In progress', 'ar': 'قيد التنفيذ'},
     'status_resolved': {'en': 'Resolved', 'ar': 'تم الحل'},

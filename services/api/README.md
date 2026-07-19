@@ -1144,6 +1144,55 @@ unaffected. Manually confirmed the real graceful-failure behavior when
 automatic mode is switched on inside this sandbox (a real `403`,
 logged, non-fatal, existing rate untouched).
 
+## Real order cancellation (migration 029)
+
+**Confirmed scope, discussed before building**: a buyer can cancel
+their own real order only while every real sub-order within it is
+still `'pending'` or `'preparing'` — the moment even one genuinely
+ships, self-service cancellation is rejected with a clear message
+pointing to support instead. Since real payment capture isn't built
+yet, cancelling is purely a real status change right now — there's no
+real captured payment to refund.
+
+**`POST /order/:id/cancel`** — real ownership check (a real logged-in
+buyer or a real matching `guestEmail`, same pattern as `GET
+/order/:id`), real eligibility check (every sub-order still
+pending/preparing), sets both the order and every one of its
+sub-orders to `'cancelled'` in one real transaction. A real, best-effort
+notification is sent to every real supplier whose sub-order was just
+cancelled, since it concerns them too, not just the buyer.
+
+## Real guest-to-account conversion (migration 029)
+
+**Confirmed scope**: prompted right on the real order confirmation
+moment (not via a separate email). At real signup, any existing real
+guest order placed under that exact same email is automatically linked
+to the new real account — `orders.buyer_id` is set, so it shows up in
+real order history immediately, without needing any separate "claim
+this order" step. `POST /auth/signup` now returns a real
+`linkedOrderCount` so the caller can show an honest, accurate
+confirmation (or nothing at all when it's genuinely zero).
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/orderLifecycle.integration.test.js`
+(7 tests, REAL backend): a buyer can cancel their own order while
+pending; cancelling an already-cancelled order is rejected; once a
+real sub-order has shipped, cancellation is rejected with a clear
+message; a real guest order can be cancelled with the correct guest
+email and is rejected with the wrong one; a different buyer cannot
+cancel someone else's order; signing up with the same email a real
+guest order used links that order to the new account; a fresh signup
+with no prior guest orders reports zero linked orders.
+
+**Mobile app**: a real "Cancel order" button on the order detail
+screen, shown only when the real backend's own eligibility check would
+actually allow it (mirrored client-side so the button never appears
+only to fail). A real, dismissable "Save your order history" prompt
+shows right after a real guest order is placed, pre-filling the exact
+guest email used (since signing up with that same email is what
+genuinely links it) — see `apps/mobile/README.md`'s equivalent section
+for the full real UI design and its own honest limitation (this
+sandbox has no Flutter SDK to run or test this code).
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category

@@ -141,7 +141,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Order ${result['id']} ${trRead(context, 'order_placed_success')}')),
         );
-        context.go('/orders');
+        // Real guest-to-account conversion prompt (migration 029) --
+        // shown right after a real guest order is placed, confirmed
+        // design: only for a real guest checkout, never a logged-in
+        // buyer who obviously already has an account.
+        if (!auth.isLoggedIn) {
+          await _showGuestAccountPrompt(_guestEmailController.text.trim());
+        }
+        if (mounted) context.go('/orders');
       }
     } on ApiException catch (e) {
       setState(() => _errorMessage = e.message);
@@ -150,6 +157,39 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     } finally {
       if (mounted) setState(() => _isPlacingOrder = false);
     }
+  }
+
+  // Real guest-to-account conversion prompt (migration 029) --
+  // confirmed design: shown right on the order confirmation moment,
+  // not via a separate email. Real, dismissable -- a guest is never
+  // forced into creating an account, just genuinely nudged. Pre-fills
+  // the exact real guest email used, since signing up with that exact
+  // same email is what genuinely links the just-placed order to it.
+  Future<void> _showGuestAccountPrompt(String guestEmail) async {
+    if (!mounted) return;
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(isAr ? 'احفظ سجل طلباتك' : 'Save your order history'),
+        content: Text(isAr
+            ? 'أنشئ حسابًا لتتبع هذا الطلب وأي طلبات مستقبلية في مكان واحد.'
+            : 'Create an account to track this order — and any future ones — in one place.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(isAr ? 'لاحقًا' : 'Maybe later'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              context.push('/signup', extra: {'prefillEmail': guestEmail});
+            },
+            child: Text(isAr ? 'إنشاء حساب' : 'Create account'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

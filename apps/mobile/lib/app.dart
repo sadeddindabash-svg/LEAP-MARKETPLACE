@@ -94,7 +94,10 @@ final GoRouter appRouter = GoRouter(
     GoRoute(path: '/support/new', builder: (context, state) => const NewTicketScreen()),
     GoRoute(path: '/support/:id', builder: (context, state) => TicketDetailScreen(ticketId: state.pathParameters['id']!)),
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
-    GoRoute(path: '/signup', builder: (context, state) => const SignupScreen()),
+    GoRoute(path: '/signup', builder: (context, state) {
+      final extra = state.extra as Map<String, dynamic>?;
+      return SignupScreen(prefillEmail: extra?['prefillEmail'] as String?);
+    }),
     GoRoute(path: '/forgot-password', builder: (context, state) => const ForgotPasswordScreen()),
     GoRoute(path: '/reset-password', builder: (context, state) => const ResetPasswordScreen()),
   ],

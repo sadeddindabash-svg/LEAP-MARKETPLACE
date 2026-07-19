@@ -540,6 +540,41 @@ cross-checked directly against the actual source files it depends on,
 not assumed. Real device/emulator testing is needed to confirm this
 behaves correctly end-to-end.
 
+## Real order cancellation + real guest-to-account conversion (new)
+
+See `services/api/README.md`'s "Real order cancellation" and "Real
+guest-to-account conversion" sections for the full real backend design
+(migration 029).
+
+A real "Cancel order" button on the order detail screen — shown only
+when the real backend's own eligibility check (every sub-order still
+pending/preparing) would actually allow it, mirrored client-side so
+this button is never visible only to fail when tapped. A real
+confirmation dialog before the real cancel call fires, and the real
+backend's own rejection message (e.g. once something has genuinely
+shipped) shows directly if it's rejected anyway (a real race, however
+unlikely, between loading the screen and something shipping a moment
+later).
+
+A real, dismissable "Save your order history" dialog shows right after
+a real guest order is placed — confirmed design: on the confirmation
+moment itself, not via a separate email. Pre-fills the exact guest
+email just used, since signing up with that same email is what
+genuinely links the just-placed order to the new account. `AuthState.signup()`
+now returns the real number of orders that got linked, and the signup
+screen shows an honest confirmation only when that number is genuinely
+above zero — never a generic "welcome" message implying something
+happened when it didn't.
+
+**Honest limitation, same as the reviews section above**: this sandbox
+has no Flutter SDK, so none of this could be run or tested here beyond
+careful manual review — bracket balance checked across every touched
+file, and the `context.push('/signup', extra: {...})` pattern (the
+first use of `extra` anywhere in this codebase) was verified against
+`go_router`'s own documented, standard API rather than assumed. Real
+device/emulator testing is needed to confirm this behaves correctly
+end-to-end.
+
 ## Setup
 
 1. Install Flutter: https://docs.flutter.dev/get-started/install

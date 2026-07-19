@@ -268,6 +268,22 @@ class ApiClient {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  /// Real order cancellation (migration 029) -- only allowed by the
+  /// real backend while every real sub-order is still pending or
+  /// preparing; throws the real backend's own message otherwise (e.g.
+  /// once something has genuinely shipped).
+  Future<void> cancelOrder(String token, String orderId) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/order/$orderId/cancel'),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      body: jsonEncode({}),
+    );
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode != 200) {
+      throw ApiException(body['error'] as String? ?? 'Failed to cancel order (${response.statusCode})');
+    }
+  }
+
   // ---------------- Cart (BUY-030–032) ----------------
   // All three cart endpoints below return the same full-item shape (see
   // services/api/src/modules/cart/routes.js header comment) — every

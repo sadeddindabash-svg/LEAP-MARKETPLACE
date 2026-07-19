@@ -5,6 +5,7 @@ const { calculateBuyerPriceUsd } = require('../pricing/engine');
 const { validatePromoCode, calculateDiscountUsd, recordRedemption, checkAndGrantReferralReward } = require('../promotions/helpers');
 const { sendTransactionalEmail } = require('../email/client');
 const { orderConfirmationEmail } = require('../email/templates');
+const { createNotification } = require('../notifications/helpers');
 
 /**
  * Order module — BUY-031, BUY-050–053. A single buyer order splits into
@@ -374,6 +375,79 @@ router.get('/', requireAuth, requirePageAccessIfAdmin('orders'), async (req, res
     res.json(filtered);
   } catch (err) {
     next(err);
+  }
+});
+
+// POST /:id/cancel { guestEmail? } — real, buyer-initiated cancellation.
+// CONFIRMED SCOPE: only allowed while every real sub-order is still
+// 'pending' or 'preparing' -- the moment even one genuinely ships,
+// this is rejected and becomes a real support conversation instead.
+// Real payment capture isn't built yet, so cancelling is purely a real
+// status change right now -- there's no real captured payment to
+// refund.
+router.post('/:id/cancel', optionalAuth, async (req, res, next) => {
+  const client = await db.getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: orderRows } = await client.query('SELECT * FROM orders WHERE id = $1 FOR UPDATE', [req.params.id]);
+    if (orderRows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    const order = orderRows[0];
+
+    const isOwningBuyer = req.user && order.buyer_id && req.user.sub === order.buyer_id;
+    const guestEmailMatches = order.guest_email && req.body?.guestEmail && req.body.guestEmail === order.guest_email;
+    if (!isOwningBuyer && !guestEmailMatches) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (order.status === 'cancelled') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'This order is already cancelled.' });
+    }
+
+    const { rows: subOrders } = await client.query('SELECT id, supplier_id, status FROM supplier_sub_orders WHERE order_id = $1', [req.params.id]);
+    const alreadyShipped = subOrders.some((so) => !['pending', 'preparing'].includes(so.status));
+    if (alreadyShipped) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'This order can no longer be cancelled — at least one part has already shipped. Contact support for help instead.' });
+    }
+
+    await client.query(`UPDATE orders SET status = 'cancelled' WHERE id = $1`, [req.params.id]);
+    await client.query(`UPDATE supplier_sub_orders SET status = 'cancelled' WHERE order_id = $1`, [req.params.id]);
+
+    await client.query('COMMIT');
+
+    // Real supplier notification (new) -- best-effort, after commit,
+    // same reasoning as every other real transactional trigger: a
+    // cancelled order concerns every real supplier whose sub-order was
+    // just cancelled, not just the buyer.
+    try {
+      for (const so of subOrders) {
+        const { rows: supplierUserRows } = await db.query('SELECT id FROM users WHERE supplier_id = $1 AND role = $2', [so.supplier_id, 'supplier']);
+        if (supplierUserRows.length > 0) {
+          await createNotification({
+            userId: supplierUserRows[0].id,
+            type: 'order_status',
+            title: 'An order was cancelled',
+            body: `Order ${req.params.id} was cancelled by the buyer before it shipped.`,
+            linkType: 'order',
+            linkId: req.params.id,
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Cancellation supplier notification failed (non-fatal):', err.message);
+    }
+
+    res.json({ id: req.params.id, status: 'cancelled' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
   }
 });
 

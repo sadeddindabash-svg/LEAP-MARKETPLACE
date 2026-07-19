@@ -7,7 +7,12 @@ import '../../core/auth_state.dart';
 import '../../services/api_client.dart';
 
 class SignupScreen extends StatefulWidget {
-  const SignupScreen({super.key});
+  // Real pre-fill for the guest-to-account conversion flow (migration
+  // 029) -- when set, this is the exact real guest email a just-placed
+  // order used, since signing up with that exact same email is what
+  // genuinely links it. Null for a normal, unrelated signup.
+  final String? prefillEmail;
+  const SignupScreen({super.key, this.prefillEmail});
 
   @override
   State<SignupScreen> createState() => _SignupScreenState();
@@ -21,6 +26,14 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _isSubmitting = false;
   String? _errorMessage;
 
+  @override
+  void initState() {
+    super.initState();
+    if (widget.prefillEmail != null) {
+      _emailController.text = widget.prefillEmail!;
+    }
+  }
+
   Future<void> _submit() async {
     if (_passwordController.text.length < 8) {
       setState(() => _errorMessage = trRead(context, 'password_too_short'));
@@ -31,13 +44,26 @@ class _SignupScreenState extends State<SignupScreen> {
       _errorMessage = null;
     });
     try {
-      await context.read<AuthState>().signup(
+      final linkedOrderCount = await context.read<AuthState>().signup(
             _emailController.text.trim(),
             _passwordController.text,
             name: _nameController.text.trim().isEmpty ? null : _nameController.text.trim(),
             referralCode: _referralCodeController.text.trim().isEmpty ? null : _referralCodeController.text.trim(),
           );
-      if (mounted) context.go('/account');
+      if (mounted) {
+        // Real guest-to-account conversion confirmation (migration 029)
+        // -- only shown when a real prior guest order under this exact
+        // email genuinely got linked, never a generic message.
+        if (linkedOrderCount > 0) {
+          final isAr = Localizations.localeOf(context).languageCode == 'ar';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(isAr
+                ? (linkedOrderCount == 1 ? 'تم ربط طلب سابق بحسابك.' : 'تم ربط $linkedOrderCount طلبات سابقة بحسابك.')
+                : (linkedOrderCount == 1 ? 'A previous order was linked to your account.' : '$linkedOrderCount previous orders were linked to your account.'))),
+          );
+        }
+        context.go('/account');
+      }
     } on ApiException catch (e) {
       setState(() => _errorMessage = e.message);
     } catch (e) {

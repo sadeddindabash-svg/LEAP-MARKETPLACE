@@ -67,6 +67,48 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
+  bool _isCancellable() {
+    // CONFIRMED (migration 029): cancellable only while every real
+    // sub-order is still pending/preparing -- matches the real
+    // backend's own check exactly, so this button only ever appears
+    // when the real cancel call would actually succeed.
+    if (_order == null) return false;
+    if (_order!['status'] == 'cancelled') return false;
+    final subOrders = (_order!['supplierSubOrders'] as List).cast<Map<String, dynamic>>();
+    return subOrders.every((so) => ['pending', 'preparing'].contains(so['status']));
+  }
+
+  Future<void> _confirmAndCancelOrder() async {
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(isAr ? 'إلغاء الطلب؟' : 'Cancel this order?'),
+        content: Text(isAr ? 'لا يمكن التراجع عن هذا الإجراء.' : 'This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: Text(isAr ? 'رجوع' : 'Back')),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: Text(isAr ? 'إلغاء الطلب' : 'Cancel order')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final auth = context.read<AuthState>();
+    try {
+      await ApiClient().cancelOrder(auth.token!, widget.orderId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(isAr ? 'تم إلغاء الطلب.' : 'Order cancelled.')),
+        );
+        _load();
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -95,6 +137,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           Text(tr(context, 'shipped_by'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
           const SizedBox(height: 8),
           for (final so in subOrders) _SupplierSubOrderCard(subOrder: so, onRequestReturn: _openReturnRequest),
+          if (_isCancellable()) ...[
+            const SizedBox(height: 20),
+            OutlinedButton(
+              onPressed: _confirmAndCancelOrder,
+              style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red), minimumSize: const Size.fromHeight(48)),
+              child: Text(Localizations.localeOf(context).languageCode == 'ar' ? 'إلغاء الطلب' : 'Cancel order'),
+            ),
+          ],
         ],
       ),
     );

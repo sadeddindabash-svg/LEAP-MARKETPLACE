@@ -53,12 +53,16 @@ class AuthState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> signup(String email, String password, {String? name, String? referralCode}) async {
+  // Returns the real number of guest orders just linked to this new
+  // account (migration 029) -- 0 means none, which is the normal case
+  // for someone who never checked out as a guest under this email.
+  Future<int> signup(String email, String password, {String? name, String? referralCode}) async {
     final result = await _apiClient.signup(email, password, name: name, referralCode: referralCode);
     _token = result['token'] as String;
     _user = result['user'] as Map<String, dynamic>;
     await _secureStorage.write(key: _tokenKey, value: _token);
     notifyListeners();
+    return (result['linkedOrderCount'] as int?) ?? 0;
   }
 
   Future<void> logout() async {
