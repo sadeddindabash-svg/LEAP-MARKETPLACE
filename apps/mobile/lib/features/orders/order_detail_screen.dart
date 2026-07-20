@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
@@ -209,6 +210,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           Text(tr(context, 'shipped_by'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
           const SizedBox(height: 8),
           for (final so in subOrders) _SupplierSubOrderCard(subOrder: so, onRequestReturn: _openReturnRequest),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () => context.push('/orders/${widget.orderId}/tracking'),
+            icon: const Icon(Icons.local_shipping_outlined, size: 18),
+            label: Text(Localizations.localeOf(context).languageCode == 'ar' ? 'تتبع الطلب' : 'Track your package'),
+          ),
           if (_isCancellable()) ...[
             const SizedBox(height: 20),
             OutlinedButton(

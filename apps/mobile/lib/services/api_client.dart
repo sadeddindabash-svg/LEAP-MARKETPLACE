@@ -269,6 +269,20 @@ class ApiClient {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  /// Real live tracking timeline (new) -- merges our own real hub
+  /// milestones with real live carrier events from 17TRACK's query
+  /// API, for the hub's own final-leg tracking number.
+  Future<Map<String, dynamic>> fetchOrderTracking(String token, String orderId) async {
+    final response = await _client.get(
+      Uri.parse('$baseUrl/order/$orderId/tracking'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (response.statusCode != 200) {
+      throw ApiException('Failed to load tracking (${response.statusCode})');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   /// Real order cancellation (migration 029) -- only allowed by the
   /// real backend while every real sub-order is still pending or
   /// preparing; throws the real backend's own message otherwise (e.g.

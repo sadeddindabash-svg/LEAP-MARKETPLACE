@@ -1398,6 +1398,66 @@ by wrapping the tick's real body in a real `try`/`catch`, logging and
 continuing rather than crashing — the next scheduled tick will simply
 try again.
 
+## Real live carrier tracking events (new)
+
+**Confirmed scope**: real, granular carrier events (e.g. "departed
+origin facility," "customs clearance," "out for delivery") pulled
+directly from 17TRACK's own tracking-QUERY API, not just the webhook
+PUSH already integrated (migrations 026/027, which only ever tells us
+the final `'delivered'` moment, never the events leading up to it).
+
+**`services/api/src/modules/tracking/liveTracking.js`** — merges two
+real, independent sources into one real timeline for the buyer:
+
+- **Our own real hub milestones** (received, opened, inspected,
+  packed, shipped to you, delivered) — always real and available,
+  never dependent on any external API succeeding.
+- **Real live carrier events**, queried from 17TRACK for the hub's own
+  final-leg tracking number (never the supplier's domestic one — see
+  migration 027's own header comment). Registers the tracking number
+  first (a real, documented no-op if already registered), then queries
+  for its current real event history.
+
+**`GET /order/:id/tracking`** — real, buyer-facing, same real ownership
+check as every other order endpoint (owning buyer, matching
+`guestEmail`, or admin).
+
+**A new required env var**: `TRACK17_API_KEY` — separate from the
+existing `TRACK17_WEBHOOK_SECRET` (the query API and the webhook are
+two different real 17TRACK products, with different credentials).
+Missing this real key is handled as a real, honest fallback — the
+carrier-events portion is simply skipped (logged, not an error), and
+the real hub milestones still show correctly regardless.
+
+**HONEST LIMITATION, same as the existing webhook integration**: this
+was built entirely from 17TRACK's documented v2.2 API structure, not
+verified against a real, live account (no such account exists to test
+against here). The real endpoint paths, the real register step, and
+the real response shape (`data.accepted[].track_info.tracking.providers[].events[]`)
+are their own documented API as of this project's training data —
+17TRACK has changed API versions before and may again. Verify the
+actual real request/response shape against your own live account
+(their dashboard has a real request tester) before relying on this,
+and adjust `parseTrackingEvents()` if what you see differs. Parsing is
+deliberately defensive — any real shape mismatch returns a real, empty
+carrier-events list rather than throwing, so the hub milestones (which
+never depend on this) are never at risk.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/liveTracking.integration.test.js`
+(4 tests, REAL backend): an order with nothing shipped yet returns a
+genuinely empty timeline, not an error; real hub milestones show
+correctly and the hub tracking number is used, never the supplier's
+domestic one; a different buyer cannot see this order's real tracking;
+an admin can see tracking for any real order, and a real guest order
+works with the correct email, rejected with the wrong one. The real
+carrier-query portion itself could only be confirmed to fail
+gracefully in this sandbox (no `TRACK17_API_KEY` configured here) —
+verify the actual live query once you have real 17TRACK credentials.
+
+**Mobile app**: a new "Track your package" screen, reached via a
+button on the order detail screen, showing the real merged timeline as
+a visual, icon-based list.
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category

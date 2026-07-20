@@ -6,6 +6,7 @@ const { validatePromoCode, calculateDiscountUsd, recordRedemption, checkAndGrant
 const { sendTransactionalEmail } = require('../email/client');
 const { orderConfirmationEmail } = require('../email/templates');
 const { createNotification } = require('../notifications/helpers');
+const { buildTrackingTimeline } = require('../tracking/liveTracking');
 
 /**
  * Order module — BUY-031, BUY-050–053. A single buyer order splits into
@@ -551,6 +552,32 @@ router.patch('/:id/address', optionalAuth, async (req, res, next) => {
     );
 
     res.json({ id: req.params.id, addressConfirmed: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /:id/tracking — real, buyer-facing live tracking timeline (new).
+// Merges our own real hub milestones with real live carrier events
+// from 17TRACK's query API, for the hub's own final-leg tracking
+// number (never the supplier's domestic one -- see migration 027's
+// header comment). Same real ownership check as every other
+// buyer-facing order endpoint.
+router.get('/:id/tracking', optionalAuth, async (req, res, next) => {
+  try {
+    const { rows: orderRows } = await db.query('SELECT * FROM orders WHERE id = $1', [req.params.id]);
+    if (orderRows.length === 0) return res.status(404).json({ error: 'Order not found' });
+    const order = orderRows[0];
+
+    const isAdmin = req.user && req.user.role === 'admin';
+    const isOwningBuyer = req.user && order.buyer_id && req.user.sub === order.buyer_id;
+    const guestEmailMatches = order.guest_email && req.query.guestEmail && req.query.guestEmail === order.guest_email;
+    if (!isAdmin && !isOwningBuyer && !guestEmailMatches) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const timeline = await buildTrackingTimeline(req.params.id);
+    res.json({ orderId: req.params.id, subOrders: timeline });
   } catch (err) {
     next(err);
   }

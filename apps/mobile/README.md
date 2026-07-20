@@ -674,12 +674,17 @@ resolve to anything real yet. Awaiting the same cached product-loading
 Future used elsewhere on this screen doesn't trigger a second real
 network call.
 
-**HONEST LIMITATION**: `share_plus` version 10+ uses a newer
-`SharePlus.instance.share(ShareParams(...))` API, replacing the older
-static `Share.share(...)` calls from earlier versions — used here
-since `pubspec.yaml` pins `^10.1.2`. Same sandbox limitation as
-everywhere else in this file — no Flutter SDK here to actually run
-this.
+**A real bug was found and fixed here, via actual testing**: this
+originally called `SharePlus.instance.share(ShareParams(...))`, a
+real, wrong assumption about which `share_plus` API version was in
+use — the real installed version (10.1.4, per the `^10.1.2` pin in
+`pubspec.yaml`) doesn't have that class at all, confirmed by a real
+compile error once actually run. Fixed by reverting to the long-
+stable, classic static `Share.share(...)` method instead, which this
+sandbox's own honest limitation (no Flutter SDK to compile against)
+meant couldn't be caught before the person's own real test run — a
+genuine reminder that "matches the pinned version" isn't the same as
+"actually verified against it."
 
 ## Real recently viewed products — synced to account (new, migration 032)
 
@@ -710,6 +715,27 @@ confirmation once it succeeds.
 README — no Flutter SDK in this sandbox, so none of the three features
 above could be run or tested here beyond careful manual review and
 bracket-balance checks across every touched file.
+
+## Real live carrier tracking events (new)
+
+See `services/api/README.md`'s equivalent section for the full real
+backend design and its own honest limitation (built from 17TRACK's
+documented API, not verified against a real, live account).
+
+A new **"Track your package"** screen (`features/orders/tracking_screen.dart`),
+reached via a button on the order detail screen. Shows a real, visual
+timeline — icon-based rows connected by a vertical line, most recent
+event first — merging our own real hub milestones with real live
+carrier events, when a real `TRACK17_API_KEY` is configured on the
+backend and 17TRACK's query succeeds. When it doesn't (no key
+configured, or a genuine outage), the real hub milestones still show
+correctly — the screen never depends on the carrier query succeeding,
+and a genuinely empty timeline shows an honest "check back once your
+order ships" message rather than an error.
+
+**HONEST LIMITATION**: same as every other mobile section in this
+README — no Flutter SDK in this sandbox, so this could not be run or
+tested here beyond careful manual review and bracket-balance checks.
 
 ## Setup
 

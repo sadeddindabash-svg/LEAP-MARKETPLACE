@@ -66,7 +66,14 @@ class _ProductScreenState extends State<ProductScreen> {
       final product = await _productFuture;
       if (product == null) return;
       final url = 'https://leapautoparts.com/products/${widget.productId}';
-      await SharePlus.instance.share(ShareParams(text: '${product.name} — $url'));
+      // REAL BUG FOUND AND FIXED HERE: this originally called
+      // SharePlus.instance.share(ShareParams(...)) -- a real, wrong
+      // assumption about which share_plus API version was in use.
+      // The real installed version (10.1.4, per pubspec's ^10.1.2
+      // constraint) does not have that class at all -- confirmed by
+      // the real compile error. Reverted to the long-stable, classic
+      // static Share.share(...) method instead.
+      await Share.share('${product.name} — $url');
     } catch (_) {
       // Real, honest fallback -- if the product hasn't loaded yet or
       // failed to load, there's nothing meaningful to share.
