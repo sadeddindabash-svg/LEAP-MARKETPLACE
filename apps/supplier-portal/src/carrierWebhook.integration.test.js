@@ -4,6 +4,9 @@ import { login } from './auth';
 
 const BACKEND_URL = 'http://localhost:4000';
 const WEBHOOK_SECRET = 'test_webhook_secret_for_dev_only';
+// Real, valid test address (migration 030 now requires one for a real
+// logged-in buyer placing an order).
+const TEST_ADDRESS = { recipientName: 'Test Buyer', phone: '555-0100', country: 'USA', city: 'Springfield', streetAddress: '123 Test St' };
 
 async function isBackendUp() {
   try {
@@ -46,7 +49,7 @@ async function createShipmentAwaitingFinalLeg(adminToken) {
 
   const orderRes = await fetch(`${BACKEND_URL}/order`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ items: [{ productId: 'p1', quantity: 1 }], userId: buyer.id }),
+    body: JSON.stringify({ items: [{ productId: 'p1', quantity: 1 }], userId: buyer.id, address: TEST_ADDRESS }),
   });
   const order = await orderRes.json();
   const subOrderId = order.supplierSubOrders[0].subOrderId;
@@ -110,7 +113,7 @@ describe.runIf(backendUp)('real 17TRACK carrier webhook + hub-based delivery con
     const { user: buyer } = await signupRes.json();
     const orderRes = await fetch(`${BACKEND_URL}/order`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: [{ productId: 'p1', quantity: 1 }], userId: buyer.id }),
+      body: JSON.stringify({ items: [{ productId: 'p1', quantity: 1 }], userId: buyer.id, address: TEST_ADDRESS }),
     });
     const order = await orderRes.json();
     const subOrderId = order.supplierSubOrders[0].subOrderId;
@@ -199,7 +202,7 @@ describe.runIf(backendUp)('real 17TRACK carrier webhook + hub-based delivery con
     const { user: buyer } = await signupRes.json();
     const orderRes = await fetch(`${BACKEND_URL}/order`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: [{ productId: 'p1', quantity: 1 }], userId: buyer.id }),
+      body: JSON.stringify({ items: [{ productId: 'p1', quantity: 1 }], userId: buyer.id, address: TEST_ADDRESS }),
     });
     const order = await orderRes.json();
     const subOrderId = order.supplierSubOrders[0].subOrderId;

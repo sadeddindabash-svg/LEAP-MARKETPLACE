@@ -54,15 +54,29 @@ class _SignupScreenState extends State<SignupScreen> {
         // Real guest-to-account conversion confirmation (migration 029)
         // -- only shown when a real prior guest order under this exact
         // email genuinely got linked, never a generic message.
+        //
+        // REAL BUG FOUND AND FIXED HERE: this originally used a
+        // SnackBar, shown immediately before navigating to '/account'
+        // right after -- but context.go() REPLACES the navigation
+        // stack, disposing the Scaffold the SnackBar was attached to
+        // almost instantly, so it never actually stayed visible long
+        // enough to read. A real dialog blocks until the person
+        // dismisses it themselves, so it can never be silently
+        // destroyed by the navigation that follows.
         if (linkedOrderCount > 0) {
           final isAr = Localizations.localeOf(context).languageCode == 'ar';
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(isAr
-                ? (linkedOrderCount == 1 ? 'تم ربط طلب سابق بحسابك.' : 'تم ربط $linkedOrderCount طلبات سابقة بحسابك.')
-                : (linkedOrderCount == 1 ? 'A previous order was linked to your account.' : '$linkedOrderCount previous orders were linked to your account.'))),
+          await showDialog<void>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              title: Text(isAr ? 'مرحبًا بك' : 'Welcome'),
+              content: Text(isAr
+                  ? (linkedOrderCount == 1 ? 'تم ربط طلب سابق بحسابك.' : 'تم ربط $linkedOrderCount طلبات سابقة بحسابك.')
+                  : (linkedOrderCount == 1 ? 'A previous order was linked to your account.' : '$linkedOrderCount previous orders were linked to your account.')),
+              actions: [FilledButton(onPressed: () => Navigator.of(dialogContext).pop(), child: Text(isAr ? 'حسنًا' : 'OK'))],
+            ),
           );
         }
-        context.go('/account');
+        if (mounted) context.go('/account');
       }
     } on ApiException catch (e) {
       setState(() => _errorMessage = e.message);

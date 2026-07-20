@@ -575,6 +575,57 @@ first use of `extra` anywhere in this codebase) was verified against
 device/emulator testing is needed to confirm this behaves correctly
 end-to-end.
 
+## Real order shipping addresses (new, migration 030)
+
+See `services/api/README.md`'s "Real order shipping addresses" section
+for the full real backend design — a real, honest gap found first: no
+order ever actually collected a real shipping address.
+
+**Checkout screen**: a real logged-in buyer now sees a real address
+picker — their real saved addresses (radio-button style), or an inline
+form to add a new one. A new address typed in is saved to their real
+account first (so it's there to reuse next time); if that fails (e.g.
+the real 3-address cap), the order still goes through using the
+address typed in, just not saved for later. Placing the order is
+blocked with a real, clear error until a real address is selected or
+completed.
+
+**Guest checkout**: unchanged at the point of placing the order — just
+email, as before. Right after confirmation, a real bottom sheet
+requests device location permission, and — if granted — reverse-
+geocodes it via OpenStreetMap's free Nominatim service (same
+free-provider reasoning as the Frankfurter FX rate integration; no API
+key needed) into a real, editable address suggestion: "Is this your
+delivery address?" Confirming saves it via the real `PATCH
+/order/:id/address` endpoint. Declining, or the location genuinely
+being unavailable/denied, leaves the order in the real "pending
+address" state — never blocks getting to the order confirmation.
+
+**Order detail screen**: shows a real "pending address" banner with an
+"Add address" action when an order has none yet, or the real confirmed
+address when it does.
+
+**HONEST LIMITATIONS**:
+- Same as every other mobile section in this README — no Flutter SDK
+  in this sandbox, so none of this could be run or tested here beyond
+  careful manual review and bracket-balance checks across every
+  touched file.
+- The `geolocator` package (added to `pubspec.yaml`) needs real,
+  platform-specific permission setup this sandbox cannot touch, since
+  the real `android/` and `ios/` folders are generated locally (via
+  `flutter create .`), not committed to this repo. **For Android**, add
+  `<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />`
+  (and `ACCESS_COARSE_LOCATION`) to `AndroidManifest.xml`. **For iOS**,
+  add a real `NSLocationWhenInUseUsageDescription` string to
+  `Info.plist`. **For web** (this app's primary real testing
+  environment so far, via `flutter run -d chrome`), no extra setup is
+  needed — the browser's own built-in permission prompt handles it
+  directly.
+- Nominatim's real usage policy asks that heavy/bulk use go through
+  their own paid or self-hosted options instead — fine for this app's
+  real, one-off, human-triggered lookup per guest order, not meant for
+  bulk geocoding.
+
 ## Setup
 
 1. Install Flutter: https://docs.flutter.dev/get-started/install

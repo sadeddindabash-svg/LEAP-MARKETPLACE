@@ -56,7 +56,6 @@ class AppStrings {
     'status_delivered': {'en': 'Delivered', 'ar': 'تم التسليم'},
     'status_dispute': {'en': 'Dispute', 'ar': 'نزاع'},
     'status_cancelled': {'en': 'Cancelled', 'ar': 'ملغى'},
-    'status_cancelled': {'en': 'Cancelled', 'ar': 'ملغى'},
     'status_open': {'en': 'Open', 'ar': 'مفتوحة'},
     'status_in_progress': {'en': 'In progress', 'ar': 'قيد التنفيذ'},
     'status_resolved': {'en': 'Resolved', 'ar': 'تم الحل'},
@@ -140,6 +139,8 @@ class AppStrings {
     'order_summary': {'en': 'Order summary', 'ar': 'ملخص الطلب'},
     'place_order': {'en': 'Place order', 'ar': 'إتمام الطلب'},
     'please_enter_email_order': {'en': 'Please enter an email for your order confirmation.', 'ar': 'يرجى إدخال بريد إلكتروني لتأكيد طلبك.'},
+    'please_complete_address': {'en': 'Please fill in every field of your delivery address.', 'ar': 'يرجى تعبئة جميع حقول عنوان التسليم.'},
+    'please_select_address': {'en': 'Please select a delivery address.', 'ar': 'يرجى اختيار عنوان التسليم.'},
     'order_placed_success': {'en': 'placed successfully', 'ar': 'تم الطلب بنجاح'},
     'order_placement_error': {'en': 'Something went wrong placing your order. Please try again.', 'ar': 'حدث خطأ أثناء تقديم طلبك. يرجى المحاولة مرة أخرى.'},
 

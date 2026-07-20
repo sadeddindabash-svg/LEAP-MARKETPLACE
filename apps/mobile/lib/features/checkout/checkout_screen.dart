@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../core/config/app_config.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
@@ -38,6 +39,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   bool _isPlacingOrder = false;
   String? _errorMessage;
 
+  // Real shipping address state (migration 030) -- a real logged-in
+  // buyer must pick a real saved address or add a new one right here;
+  // a real guest places an order without one, confirmed afterward
+  // instead (see order_detail_screen.dart's pending-address banner).
+  List<dynamic> _savedAddresses = [];
+  String? _selectedAddressId;
+  bool _isAddingNewAddress = false;
+  bool _isLoadingAddresses = false;
+  final _newAddrRecipientController = TextEditingController();
+  final _newAddrPhoneController = TextEditingController();
+  final _newAddrCountryController = TextEditingController();
+  final _newAddrCityController = TextEditingController();
+  final _newAddrStreetController = TextEditingController();
+
   // Real promo code state -- validated live against the real backend
   // before checkout, then re-validated server-side again at real order
   // placement (never trust a client-side check alone).
@@ -57,9 +72,46 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    // Real saved addresses, fetched once on load -- only meaningful
+    // for a real logged-in buyer (migration 030).
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadSavedAddresses());
+  }
+
+  Future<void> _loadSavedAddresses() async {
+    final auth = context.read<AuthState>();
+    if (!auth.isLoggedIn) return;
+    setState(() => _isLoadingAddresses = true);
+    try {
+      final addresses = await ApiClient().fetchMyAddresses(auth.token!);
+      setState(() {
+        _savedAddresses = addresses;
+        if (addresses.isNotEmpty) {
+          final defaultAddr = addresses.firstWhere((a) => a['isDefault'] == true, orElse: () => addresses.first);
+          _selectedAddressId = defaultAddr['id'] as String;
+        } else {
+          _isAddingNewAddress = true; // no real saved addresses yet -- go straight to the real inline form
+        }
+      });
+    } catch (_) {
+      // Real, honest fallback: if this fails, just let the buyer add
+      // one manually rather than blocking checkout entirely.
+      setState(() => _isAddingNewAddress = true);
+    } finally {
+      if (mounted) setState(() => _isLoadingAddresses = false);
+    }
+  }
+
+  @override
   void dispose() {
     _guestEmailController.dispose();
     _promoCodeController.dispose();
+    _newAddrRecipientController.dispose();
+    _newAddrPhoneController.dispose();
+    _newAddrCountryController.dispose();
+    _newAddrCityController.dispose();
+    _newAddrStreetController.dispose();
     super.dispose();
   }
 
@@ -124,6 +176,49 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
 
+    // Real address validation (migration 030) -- a real logged-in
+    // buyer must have picked a saved address or filled in a new one;
+    // a real guest has no such requirement (their address comes after
+    // confirmation instead).
+    String? addressId;
+    Map<String, dynamic>? inlineAddress;
+    if (auth.isLoggedIn) {
+      if (_isAddingNewAddress) {
+        if (_newAddrRecipientController.text.trim().isEmpty ||
+            _newAddrPhoneController.text.trim().isEmpty ||
+            _newAddrCountryController.text.trim().isEmpty ||
+            _newAddrCityController.text.trim().isEmpty ||
+            _newAddrStreetController.text.trim().isEmpty) {
+          setState(() => _errorMessage = trRead(context, 'please_complete_address'));
+          return;
+        }
+        inlineAddress = {
+          'recipientName': _newAddrRecipientController.text.trim(),
+          'phone': _newAddrPhoneController.text.trim(),
+          'country': _newAddrCountryController.text.trim(),
+          'city': _newAddrCityController.text.trim(),
+          'streetAddress': _newAddrStreetController.text.trim(),
+        };
+        // Real, best-effort save to the real account address book, so
+        // it's there to pick next time -- if it fails (e.g. the real
+        // 3-address cap), this order still goes through using the
+        // real inline address typed in, just not saved for reuse.
+        try {
+          final saved = await ApiClient().createAddress(auth.token!, {'label': 'Address', ...inlineAddress});
+          addressId = saved['id'] as String?;
+          inlineAddress = null;
+        } catch (_) {
+          // Real, honest fallback -- proceed with the inline address as-is.
+        }
+      } else {
+        if (_selectedAddressId == null) {
+          setState(() => _errorMessage = trRead(context, 'please_select_address'));
+          return;
+        }
+        addressId = _selectedAddressId;
+      }
+    }
+
     setState(() {
       _isPlacingOrder = true;
       _errorMessage = null;
@@ -135,20 +230,40 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         userId: auth.isLoggedIn ? auth.user!['id'] as String : null,
         guestEmail: auth.isLoggedIn ? null : _guestEmailController.text.trim(),
         promoCode: _appliedPromoCode,
+        addressId: addressId,
+        address: inlineAddress,
       );
       await cart.clearAfterOrder();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Order ${result['id']} ${trRead(context, 'order_placed_success')}')),
         );
+        // Real geolocation-based address suggestion (migration 030) --
+        // confirmed design: shown right after a real guest order is
+        // placed (they have no address on file yet), before the
+        // account-creation prompt. Real, dismissable -- never blocks
+        // getting to '/orders' if declined.
+        if (!auth.isLoggedIn) {
+          await _showAddressSuggestion(result['id'] as String, _guestEmailController.text.trim());
+        }
         // Real guest-to-account conversion prompt (migration 029) --
         // shown right after a real guest order is placed, confirmed
         // design: only for a real guest checkout, never a logged-in
         // buyer who obviously already has an account.
+        var choseToCreateAccount = false;
         if (!auth.isLoggedIn) {
-          await _showGuestAccountPrompt(_guestEmailController.text.trim());
+          choseToCreateAccount = await _showGuestAccountPrompt(_guestEmailController.text.trim());
         }
-        if (mounted) context.go('/orders');
+        // REAL BUG FOUND AND FIXED HERE: this used to always navigate to
+        // '/orders' after the prompt closed, regardless of what was
+        // chosen -- but when "Create account" was tapped, that real
+        // push to '/signup' was racing against this real go('/orders')
+        // firing right after, since a dialog's own Future resolves the
+        // instant it's popped, not after any navigation triggered by
+        // its own button finishes. Skip this navigation entirely when
+        // signup was chosen -- the push to '/signup' is the real, final
+        // destination in that case, not a stop on the way to '/orders'.
+        if (mounted && !choseToCreateAccount) context.go('/orders');
       }
     } on ApiException catch (e) {
       setState(() => _errorMessage = e.message);
@@ -159,15 +274,66 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
+  // Real geolocation-based address suggestion (migration 030).
+  // CONFIRMED design, refined over several rounds before building: a
+  // real device location only gives real coordinates, not a full
+  // postal address -- reverse-geocoded into a real, editable
+  // suggestion (never blindly trusted), shown as a real form the
+  // person reviews and adjusts before confirming. Real, dismissable --
+  // declining (or denying location permission) leaves the real order
+  // in a real, honest "pending address" state instead, with a real
+  // "Add address" action always available later from the order detail
+  // screen.
+  Future<void> _showAddressSuggestion(String orderId, String guestEmail) async {
+    if (!mounted) return;
+    Map<String, dynamic>? suggested;
+    try {
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        suggested = null;
+      } else {
+        final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+        if (serviceEnabled) {
+          final position = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium, timeLimit: Duration(seconds: 8)),
+          );
+          suggested = await ApiClient().reverseGeocode(position.latitude, position.longitude);
+        }
+      }
+    } catch (_) {
+      suggested = null; // Real, honest fallback -- an empty, manually-fillable form instead.
+    }
+
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => _AddressConfirmationSheet(
+        orderId: orderId,
+        guestEmail: guestEmail,
+        suggestedCity: suggested?['city'] as String? ?? '',
+        suggestedCountry: suggested?['country'] as String? ?? '',
+        suggestedStreet: suggested?['streetAddress'] as String? ?? '',
+        wasSuggested: suggested != null,
+      ),
+    );
+  }
+
   // Real guest-to-account conversion prompt (migration 029) --
   // confirmed design: shown right on the order confirmation moment,
   // not via a separate email. Real, dismissable -- a guest is never
   // forced into creating an account, just genuinely nudged. Pre-fills
   // the exact real guest email used, since signing up with that exact
   // same email is what genuinely links the just-placed order to it.
-  Future<void> _showGuestAccountPrompt(String guestEmail) async {
-    if (!mounted) return;
+  // Returns true if the person chose to create an account, so the
+  // caller can skip navigating anywhere else afterward.
+  Future<bool> _showGuestAccountPrompt(String guestEmail) async {
+    if (!mounted) return false;
     final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    var choseToCreateAccount = false;
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -182,11 +348,71 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ),
           FilledButton(
             onPressed: () {
+              choseToCreateAccount = true;
               Navigator.of(dialogContext).pop();
-              context.push('/signup', extra: {'prefillEmail': guestEmail});
             },
             child: Text(isAr ? 'إنشاء حساب' : 'Create account'),
           ),
+        ],
+      ),
+    );
+    // The real push to '/signup' happens AFTER the dialog has fully
+    // closed, not from inside its own button handler -- avoids the
+    // exact real race this fix addresses.
+    if (choseToCreateAccount && mounted) {
+      context.push('/signup', extra: {'prefillEmail': guestEmail});
+    }
+    return choseToCreateAccount;
+  }
+
+  // Real shipping address picker (migration 030) -- a real logged-in
+  // buyer picks a real saved address or fills in a new one right here;
+  // required before placing the order.
+  Widget _buildAddressPicker() {
+    if (_isLoadingAddresses) {
+      return const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()));
+    }
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(border: Border.all(color: LeapColors.line), borderRadius: BorderRadius.circular(10)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Delivery address', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+          const SizedBox(height: 8),
+          if (_savedAddresses.isNotEmpty && !_isAddingNewAddress) ...[
+            for (final a in _savedAddresses)
+              RadioListTile<String>(
+                contentPadding: EdgeInsets.zero,
+                value: a['id'] as String,
+                groupValue: _selectedAddressId,
+                onChanged: (v) => setState(() => _selectedAddressId = v),
+                title: Text(a['label'] as String? ?? 'Address', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                subtitle: Text('${a['streetAddress']}, ${a['city']}, ${a['country']}', style: const TextStyle(fontSize: 12)),
+              ),
+            TextButton.icon(
+              onPressed: () => setState(() => _isAddingNewAddress = true),
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Add a new address'),
+            ),
+          ] else ...[
+            TextField(controller: _newAddrRecipientController, decoration: const InputDecoration(labelText: 'Recipient name')),
+            const SizedBox(height: 8),
+            TextField(controller: _newAddrPhoneController, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone')),
+            const SizedBox(height: 8),
+            TextField(controller: _newAddrCountryController, decoration: const InputDecoration(labelText: 'Country')),
+            const SizedBox(height: 8),
+            TextField(controller: _newAddrCityController, decoration: const InputDecoration(labelText: 'City')),
+            const SizedBox(height: 8),
+            TextField(controller: _newAddrStreetController, decoration: const InputDecoration(labelText: 'Street address')),
+            if (_savedAddresses.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => setState(() => _isAddingNewAddress = false),
+                child: const Text('Choose a saved address instead'),
+              ),
+            ],
+          ],
         ],
       ),
     );
@@ -234,6 +460,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               onPressed: () => context.push('/login'),
               child: Text(tr(context, 'have_account_login_instead')),
             ),
+          ],
+          if (auth.isLoggedIn) ...[
+            const SizedBox(height: 16),
+            _buildAddressPicker(),
           ],
           const SizedBox(height: 12),
           Text(tr(context, 'payment_method'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
@@ -316,6 +546,145 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           child: _isPlacingOrder
               ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
               : Text('${tr(context, 'place_order')} · \$${(cart.total - _previewDiscount(cart.total)).toStringAsFixed(2)}'),
+        ),
+      ),
+    );
+  }
+}
+
+// Real, editable address confirmation sheet (migration 030) -- shown
+// after a real guest order is placed, pre-filled from real reverse
+// geocoding when available (never blindly trusted -- always editable),
+// or a real empty form when location wasn't available/granted.
+class _AddressConfirmationSheet extends StatefulWidget {
+  final String orderId;
+  final String guestEmail;
+  final String suggestedCity;
+  final String suggestedCountry;
+  final String suggestedStreet;
+  final bool wasSuggested;
+
+  const _AddressConfirmationSheet({
+    required this.orderId,
+    required this.guestEmail,
+    required this.suggestedCity,
+    required this.suggestedCountry,
+    required this.suggestedStreet,
+    required this.wasSuggested,
+  });
+
+  @override
+  State<_AddressConfirmationSheet> createState() => _AddressConfirmationSheetState();
+}
+
+class _AddressConfirmationSheetState extends State<_AddressConfirmationSheet> {
+  late final _recipientController = TextEditingController();
+  late final _phoneController = TextEditingController();
+  late final _countryController = TextEditingController(text: widget.suggestedCountry);
+  late final _cityController = TextEditingController(text: widget.suggestedCity);
+  late final _streetController = TextEditingController(text: widget.suggestedStreet);
+  bool _isSaving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _recipientController.dispose();
+    _phoneController.dispose();
+    _countryController.dispose();
+    _cityController.dispose();
+    _streetController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _confirm() async {
+    if (_recipientController.text.trim().isEmpty ||
+        _phoneController.text.trim().isEmpty ||
+        _countryController.text.trim().isEmpty ||
+        _cityController.text.trim().isEmpty ||
+        _streetController.text.trim().isEmpty) {
+      setState(() => _error = 'Please fill in every field.');
+      return;
+    }
+    setState(() { _isSaving = true; _error = null; });
+    try {
+      await ApiClient().confirmOrderAddress(
+        widget.orderId,
+        {
+          'recipientName': _recipientController.text.trim(),
+          'phone': _phoneController.text.trim(),
+          'country': _countryController.text.trim(),
+          'city': _cityController.text.trim(),
+          'streetAddress': _streetController.text.trim(),
+        },
+        guestEmail: widget.guestEmail,
+        source: widget.wasSuggested ? 'geolocation' : 'manual',
+      );
+      if (mounted) Navigator.of(context).pop();
+    } on ApiException catch (e) {
+      setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 20, right: 20, top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.wasSuggested ? 'Is this your delivery address?' : 'Add your delivery address',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              widget.wasSuggested
+                  ? 'We found this from your location — check it over and adjust anything before confirming.'
+                  : 'We couldn\'t detect your location. Fill this in so we know where to ship your order.',
+              style: const TextStyle(fontSize: 12.5, color: LeapColors.muted),
+            ),
+            const SizedBox(height: 16),
+            TextField(controller: _recipientController, decoration: const InputDecoration(labelText: 'Recipient name')),
+            const SizedBox(height: 10),
+            TextField(controller: _phoneController, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone')),
+            const SizedBox(height: 10),
+            TextField(controller: _countryController, decoration: const InputDecoration(labelText: 'Country')),
+            const SizedBox(height: 10),
+            TextField(controller: _cityController, decoration: const InputDecoration(labelText: 'City')),
+            const SizedBox(height: 10),
+            TextField(controller: _streetController, decoration: const InputDecoration(labelText: 'Street address')),
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 12.5)),
+            ],
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
+                    child: const Text('Add later'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _isSaving ? null : _confirm,
+                    child: _isSaving
+                        ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Text('Confirm'),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

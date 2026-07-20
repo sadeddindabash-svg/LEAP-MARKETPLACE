@@ -17,6 +17,9 @@ import {
  * not "which app owns this feature."
  */
 const BACKEND_URL = 'http://localhost:4000';
+// Real, valid test address (migration 030 now requires one for a real
+// logged-in buyer placing an order).
+const TEST_ADDRESS = { recipientName: 'Test Buyer', phone: '555-0100', country: 'USA', city: 'Springfield', streetAddress: '123 Test St' };
 
 async function isBackendUp() {
   try {
@@ -102,7 +105,7 @@ describe.runIf(backendUp)('buyer-side ticket and return-case viewing (closing a 
     const orderRes = await fetch(`${BACKEND_URL}/order`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${buyerToken}` },
-      body: JSON.stringify({ items: [{ productId: 'p1', quantity: 1 }], userId: buyer?.id }),
+      body: JSON.stringify({ items: [{ productId: 'p1', quantity: 1 }], userId: buyer?.id, address: TEST_ADDRESS }),
     });
     const order = await orderRes.json();
     const subOrderId = order.supplierSubOrders[0].subOrderId;
@@ -131,7 +134,7 @@ describe.runIf(backendUp)('buyer-side ticket and return-case viewing (closing a 
     const orderRes = await fetch(`${BACKEND_URL}/order`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${buyerAToken}` },
-      body: JSON.stringify({ items: [{ productId: 'p1', quantity: 1 }], userId: buyerA?.id }),
+      body: JSON.stringify({ items: [{ productId: 'p1', quantity: 1 }], userId: buyerA?.id, address: TEST_ADDRESS }),
     });
     const order = await orderRes.json();
     const subOrderId = order.supplierSubOrders[0].subOrderId;

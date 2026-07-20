@@ -1193,6 +1193,77 @@ genuinely links it) — see `apps/mobile/README.md`'s equivalent section
 for the full real UI design and its own honest limitation (this
 sandbox has no Flutter SDK to run or test this code).
 
+## Real order shipping addresses (migration 030)
+
+**A real, honest gap was found first, raised directly by the person**:
+no order, guest or logged-in, ever actually collected a real shipping
+address — the existing real "saved addresses" feature
+(`buyer_addresses`, migration 017) was never connected to placing an
+order at all.
+
+**Confirmed fix, refined over several real rounds before building**: a
+real logged-in buyer must now provide a real address at checkout —
+either picking a saved one (`addressId`) or adding a new one right
+there (`address`) — since they already have a real account to save it
+to. A real guest, who has no such account, can still place an order
+with just their email as before; their address is collected
+afterward instead, via a real geolocation-based suggestion
+(reverse-geocoded, editable, never blindly trusted) or a real manual
+"Add address" action — the order sits in a real, honest "pending
+address" state in the meantime.
+
+**`order_addresses`** — one real row per order, captured permanently at
+the moment it's confirmed, deliberately NOT a live reference to
+`buyer_addresses` (a buyer editing or deleting a saved address later
+must never silently change where an already-placed real order ships
+to). Real provenance tracked via `source`: `'saved_address'` (copied
+from a real saved address), `'manual'` (typed in directly), or
+`'geolocation'` (a guest's real reverse-geocoded location, confirmed
+by them). A real order's address status is deliberately DERIVED from
+whether a real row exists here, not a separate flag that could drift
+out of sync.
+
+**`POST /order`** now requires `address` or `addressId` whenever
+`userId` is present — rejected with a clear 400 otherwise. A real
+`addressId` is looked up fresh and verified to actually belong to that
+buyer before being copied in (never silently trusted). For a real
+guest (`guestEmail` only), both remain optional.
+
+**`PATCH /order/:id/address`** — the real, post-confirmation path,
+used by a real guest completing a real "pending" order (or a logged-in
+buyer correcting one), using the same real ownership check as every
+other buyer-facing order endpoint (owning buyer or matching
+`guestEmail`).
+
+**A significant, real blast radius**: 10 existing test files across all
+three apps created orders via a logged-in `userId` without any address
+— every one was updated to include a real, valid test address,
+re-verified passing individually before the full suite was re-run.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/orderAddresses.integration.test.js`
+(7 tests, REAL backend): a logged-in buyer cannot place an order
+without a real address or addressId; a real inline address requires
+every real field and is saved with `source: 'manual'`; a real saved
+address is correctly copied via `addressId` with `source:
+'saved_address'`; an `addressId` belonging to a different buyer is
+rejected, not silently used; a real guest order can be placed with no
+address at all (a real, honest pending state, not an error); a real
+guest can confirm their address afterward via `PATCH`, correctly
+tagged `source: 'geolocation'`; the wrong guest email is rejected when
+confirming, and a real address can be updated after being set once.
+
+**Mobile app**: a real address picker at checkout for a logged-in
+buyer (pick a saved address, or add a new one — saved to their real
+account for reuse when possible). For a real guest, a real
+geolocation-based suggestion shows right after order confirmation,
+using OpenStreetMap's free Nominatim service to reverse-geocode a real
+device location into an editable address (same free-provider reasoning
+as the Frankfurter FX rate integration) — declining, or the location
+being unavailable, leaves the order in the real "pending address"
+state, with a real "Add address" action always available afterward
+from the order detail screen. See `apps/mobile/README.md`'s equivalent
+section for the full real UI design and its own honest limitations.
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category

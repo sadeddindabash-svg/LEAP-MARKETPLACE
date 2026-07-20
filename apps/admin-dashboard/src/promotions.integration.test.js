@@ -13,6 +13,9 @@ async function isBackendUp() {
 }
 
 const backendUp = await isBackendUp();
+// Real, valid test address (migration 030 now requires one for a real
+// logged-in buyer placing an order).
+const TEST_ADDRESS = { recipientName: 'Test Buyer', phone: '555-0100', country: 'USA', city: 'Springfield', streetAddress: '123 Test St' };
 
 async function registerFreshBuyer(referralCode) {
   const suffix = Date.now() + Math.random();
@@ -26,7 +29,7 @@ async function registerFreshBuyer(referralCode) {
 async function placeOrder(userId, promoCode) {
   const res = await fetch(`${BACKEND_URL}/order`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ items: [{ productId: 'p1', quantity: 1 }], userId, promoCode }),
+    body: JSON.stringify({ items: [{ productId: 'p1', quantity: 1 }], userId, promoCode, address: TEST_ADDRESS }),
   });
   return { status: res.status, body: await res.json() };
 }

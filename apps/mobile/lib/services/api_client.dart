@@ -342,6 +342,8 @@ class ApiClient {
     String? userId,
     String? guestEmail,
     String? promoCode,
+    Map<String, dynamic>? address,
+    String? addressId,
   }) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/order'),
@@ -351,6 +353,8 @@ class ApiClient {
         if (userId != null) 'userId': userId,
         if (guestEmail != null) 'guestEmail': guestEmail,
         if (promoCode != null && promoCode.isNotEmpty) 'promoCode': promoCode,
+        if (address != null) 'address': address,
+        if (addressId != null) 'addressId': addressId,
       }),
     );
     final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -358,6 +362,60 @@ class ApiClient {
       throw ApiException(body['error'] as String? ?? 'Failed to place order (${response.statusCode})');
     }
     return body;
+  }
+
+  /// Real, post-confirmation address (migration 030) -- lets a real
+  /// guest (or a logged-in buyer correcting one) set the real shipping
+  /// address on an order that doesn't have one yet, or replace an
+  /// existing one. `source` is 'manual' or 'geolocation'.
+  Future<void> confirmOrderAddress(String orderId, Map<String, dynamic> address, {String? guestEmail, String? token, String source = 'manual'}) async {
+    final response = await _client.patch(
+      Uri.parse('$baseUrl/order/$orderId/address'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'address': address,
+        'source': source,
+        if (guestEmail != null) 'guestEmail': guestEmail,
+      }),
+    );
+    if (response.statusCode != 200) {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      throw ApiException(body['error'] as String? ?? 'Failed to save address (${response.statusCode})');
+    }
+  }
+
+  /// Real reverse geocoding via OpenStreetMap's free Nominatim service
+  /// (migration 030) -- confirmed choice: genuinely free, no API key,
+  /// matching the same reasoning as the Frankfurter FX rate provider.
+  /// HONEST LIMITATION: Nominatim's real usage policy requires a real,
+  /// identifying User-Agent and asks that high-volume use go through
+  /// their own paid/self-hosted options instead -- fine for this app's
+  /// real, human-triggered, one-off usage per guest order, not meant
+  /// for bulk lookups. Returns null on any real failure -- the caller
+  /// falls back to a real, empty, manually-fillable form rather than
+  /// blocking the person on a geocoding hiccup.
+  Future<Map<String, dynamic>?> reverseGeocode(double latitude, double longitude) async {
+    try {
+      final uri = Uri.parse('https://nominatim.openstreetmap.org/reverse?format=json&lat=$latitude&lon=$longitude&addressdetails=1');
+      final response = await _client.get(uri, headers: {'User-Agent': 'LeapAutoPartsMarketplace/1.0'});
+      if (response.statusCode != 200) return null;
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      final addr = body['address'] as Map<String, dynamic>?;
+      if (addr == null) return null;
+      final street = [addr['house_number'], addr['road']].where((v) => v != null && (v as String).isNotEmpty).join(' ');
+      final city = (addr['city'] ?? addr['town'] ?? addr['village'] ?? addr['county']) as String?;
+      final country = addr['country'] as String?;
+      return {
+        'streetAddress': street.isNotEmpty ? street : (body['display_name'] as String? ?? ''),
+        'city': city ?? '',
+        'country': country ?? '',
+      };
+    } catch (_) {
+      return null;
+    }
   }
 
   // ---------------- Support tickets (BUY-060/061) ----------------

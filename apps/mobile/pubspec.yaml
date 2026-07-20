@@ -16,6 +16,7 @@ dependencies:
   intl: ^0.19.0                # currency / date formatting per locale
   flutter_secure_storage: ^9.2.2  # auth token storage (never plain SharedPreferences for tokens)
   uuid: ^4.4.0                     # generates a persistent per-device cart ID
+  geolocator: ^13.0.1              # real device location, for the guest post-order address suggestion (migration 030)
 
 dev_dependencies:
   flutter_test:

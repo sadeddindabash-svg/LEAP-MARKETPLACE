@@ -14,6 +14,11 @@ async function isBackendUp() {
 
 const backendUp = await isBackendUp();
 
+// Real, valid test address (migration 030 now requires one for a real
+// logged-in buyer placing an order) -- shared across every test in
+// this file that places an order via userId.
+const TEST_ADDRESS = { recipientName: 'Test Buyer', phone: '555-0100', country: 'USA', city: 'Springfield', streetAddress: '123 Test St' };
+
 async function createSignedUpBuyer(emailOverride) {
   const suffix = Date.now() + Math.random();
   const email = emailOverride || `order-lifecycle-test-${suffix}@example.com`;
@@ -27,7 +32,7 @@ async function createSignedUpBuyer(emailOverride) {
 async function placeOrder({ userId, guestEmail }) {
   const res = await fetch(`${BACKEND_URL}/order`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ items: [{ productId: 'p1', quantity: 1 }], userId, guestEmail }),
+    body: JSON.stringify({ items: [{ productId: 'p1', quantity: 1 }], userId, guestEmail, address: userId ? TEST_ADDRESS : undefined }),
   });
   return res.json();
 }

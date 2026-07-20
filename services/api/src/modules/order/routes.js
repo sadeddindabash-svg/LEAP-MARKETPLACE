@@ -27,14 +27,32 @@ async function nextOrderId(client) {
   return `LP-${200000 + Number(rows[0].n)}`;
 }
 
-// POST /order  { items: [{productId, quantity}], userId?, guestEmail? }
+// POST /order  { items: [{productId, quantity}], userId?, guestEmail?, address?, addressId? }
 router.post('/', async (req, res, next) => {
-  const { items, userId, guestEmail, promoCode } = req.body || {};
+  const { items, userId, guestEmail, promoCode, address, addressId } = req.body || {};
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'items is required and must be non-empty' });
   }
   if (!userId && !guestEmail) {
     return res.status(400).json({ error: 'either userId or guestEmail is required (guest checkout)' });
+  }
+  // CONFIRMED (migration 030): a real logged-in buyer must provide a
+  // real shipping address at checkout -- either picking a saved one
+  // (addressId) or adding a new one right there (address) -- since
+  // they already have a real account to save it to. A real guest has
+  // no such account; their address is optional here and collected
+  // afterward instead (see PATCH /order/:id/address) -- the order
+  // simply has no real order_addresses row until then, a real, honest
+  // "pending address" state, not a silently missing one.
+  if (userId && !address && !addressId) {
+    return res.status(400).json({ error: 'A shipping address (or a saved addressId) is required to place an order.' });
+  }
+  const ADDRESS_REQUIRED_FIELDS = ['recipientName', 'phone', 'country', 'city', 'streetAddress'];
+  if (address) {
+    const missing = ADDRESS_REQUIRED_FIELDS.filter((f) => !address[f]);
+    if (missing.length > 0) {
+      return res.status(400).json({ error: `Address is missing required field(s): ${missing.join(', ')}` });
+    }
   }
 
   const client = await db.getPool().connect();
@@ -117,6 +135,35 @@ router.post('/', async (req, res, next) => {
     );
     if (appliedPromoCode) {
       await recordRedemption(appliedPromoCode, userId || null, orderId, client);
+    }
+
+    // Real shipping address (migration 030) -- a real saved address
+    // (looked up fresh, then copied — never a live reference, so a
+    // buyer later editing or deleting that saved address can never
+    // silently change where this already-placed real order ships to),
+    // a real inline one, or genuinely none yet for a real guest who
+    // hasn't provided one (a real, honest "pending" state).
+    if (addressId) {
+      const { rows: savedRows } = await client.query(
+        'SELECT * FROM buyer_addresses WHERE id = $1 AND buyer_id = $2',
+        [addressId, userId]
+      );
+      if (savedRows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'That saved address was not found on your account.' });
+      }
+      const saved = savedRows[0];
+      await client.query(
+        `INSERT INTO order_addresses (order_id, recipient_name, phone, country, city, street_address, postal_code, source)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'saved_address')`,
+        [orderId, saved.recipient_name, saved.phone, saved.country, saved.city, saved.street_address, saved.postal_code]
+      );
+    } else if (address) {
+      await client.query(
+        `INSERT INTO order_addresses (order_id, recipient_name, phone, country, city, street_address, postal_code, source)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'manual')`,
+        [orderId, address.recipientName, address.phone, address.country, address.city, address.streetAddress, address.postalCode || null]
+      );
     }
 
     // Group items by supplier -> one supplier_sub_order per supplier.
@@ -290,6 +337,19 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
       });
     }
 
+    // Real shipping address status (migration 030) -- null means a
+    // real, honest "pending address" state, not a silently missing one.
+    const { rows: addressRows } = await db.query('SELECT * FROM order_addresses WHERE order_id = $1', [req.params.id]);
+    const address = addressRows.length > 0 ? {
+      recipientName: addressRows[0].recipient_name,
+      phone: addressRows[0].phone,
+      country: addressRows[0].country,
+      city: addressRows[0].city,
+      streetAddress: addressRows[0].street_address,
+      postalCode: addressRows[0].postal_code,
+      source: addressRows[0].source,
+    } : null;
+
     res.json({
       id: order.id,
       userId: order.buyer_id,
@@ -302,6 +362,7 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
       promoCode: order.promo_code,
       currencyCode: order.currency_code,
       placedAt: order.placed_at,
+      address,
       supplierSubOrders,
     });
   } catch (err) {
@@ -448,6 +509,50 @@ router.post('/:id/cancel', optionalAuth, async (req, res, next) => {
     next(err);
   } finally {
     client.release();
+  }
+});
+
+// PATCH /:id/address { address, source?, guestEmail? } — real, post-
+// confirmation address (migration 030). CONFIRMED design: a real
+// guest can add their real address here after the fact (via a real
+// geolocation-based suggestion they've reviewed/edited, or by typing
+// one in manually) -- either way, it's the same real endpoint,
+// distinguished only by the real `source` value. Also lets a logged-in
+// buyer correct/replace an existing order's address if genuinely
+// needed, using the same real ownership check as every other
+// buyer-facing order endpoint.
+router.patch('/:id/address', optionalAuth, async (req, res, next) => {
+  try {
+    const { address, source, guestEmail } = req.body || {};
+    if (!address) return res.status(400).json({ error: 'address is required' });
+    const ADDRESS_REQUIRED_FIELDS = ['recipientName', 'phone', 'country', 'city', 'streetAddress'];
+    const missing = ADDRESS_REQUIRED_FIELDS.filter((f) => !address[f]);
+    if (missing.length > 0) {
+      return res.status(400).json({ error: `Address is missing required field(s): ${missing.join(', ')}` });
+    }
+    const realSource = ['manual', 'geolocation'].includes(source) ? source : 'manual';
+
+    const { rows: orderRows } = await db.query('SELECT * FROM orders WHERE id = $1', [req.params.id]);
+    if (orderRows.length === 0) return res.status(404).json({ error: 'Order not found' });
+    const order = orderRows[0];
+
+    const isOwningBuyer = req.user && order.buyer_id && req.user.sub === order.buyer_id;
+    const guestEmailMatches = order.guest_email && guestEmail && guestEmail === order.guest_email;
+    if (!isOwningBuyer && !guestEmailMatches) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    await db.query(
+      `INSERT INTO order_addresses (order_id, recipient_name, phone, country, city, street_address, postal_code, source)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (order_id) DO UPDATE SET
+         recipient_name = $2, phone = $3, country = $4, city = $5, street_address = $6, postal_code = $7, source = $8, confirmed_at = now()`,
+      [req.params.id, address.recipientName, address.phone, address.country, address.city, address.streetAddress, address.postalCode || null, realSource]
+    );
+
+    res.json({ id: req.params.id, addressConfirmed: true });
+  } catch (err) {
+    next(err);
   }
 });
 

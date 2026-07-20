@@ -67,6 +67,73 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
+  // Real "pending address" banner (migration 030) -- a real, honest
+  // state shown instead of a silently missing shipping address. Real
+  // guests reach this after declining/skipping the geolocation
+  // suggestion at checkout; a real logged-in buyer should never
+  // actually see this (their address is required at checkout), but
+  // it's handled here too in case of any real edge case.
+  Widget _buildPendingAddressBanner() {
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: const Color(0xFFFDF1EB), borderRadius: BorderRadius.circular(10)),
+      child: Row(
+        children: [
+          const Icon(Icons.location_off_outlined, size: 18, color: LeapColors.signal),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              isAr ? 'الطلب معلّق حتى تؤكد عنوان التسليم.' : 'Order pending — add your delivery address to continue.',
+              style: const TextStyle(fontSize: 12.5, color: LeapColors.ink),
+            ),
+          ),
+          TextButton(
+            onPressed: _openAddAddress,
+            child: Text(isAr ? 'إضافة عنوان' : 'Add address'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConfirmedAddress(Map<String, dynamic> address) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(border: Border.all(color: LeapColors.line), borderRadius: BorderRadius.circular(10)),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.location_on_outlined, size: 18, color: LeapColors.muted),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '${address['recipientName']}\n${address['streetAddress']}, ${address['city']}, ${address['country']}',
+              style: const TextStyle(fontSize: 12.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openAddAddress() {
+    final auth = context.read<AuthState>();
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => _AddAddressSheet(
+        orderId: widget.orderId,
+        guestEmail: _order?['guestEmail'] as String?,
+        token: auth.token,
+        onSaved: () {
+          Navigator.of(context).pop();
+          _load();
+        },
+      ),
+    );
+  }
+
   bool _isCancellable() {
     // CONFIRMED (migration 029): cancellable only while every real
     // sub-order is still pending/preparing -- matches the real
@@ -133,6 +200,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           ),
           const SizedBox(height: 6),
           Text('\$${(_order!['total'] as num).toStringAsFixed(2)} ${_order!['currencyCode']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20)),
+          const SizedBox(height: 16),
+          if (_order!['address'] == null)
+            _buildPendingAddressBanner()
+          else
+            _buildConfirmedAddress(_order!['address'] as Map<String, dynamic>),
           const SizedBox(height: 20),
           Text(tr(context, 'shipped_by'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
           const SizedBox(height: 8),
@@ -193,6 +265,112 @@ class _SupplierSubOrderCard extends StatelessWidget {
                 onPressed: () => onRequestReturn(subOrder['subOrderId'] as int, supplierName),
                 child: Text(tr(context, 'request_a_return'), style: const TextStyle(fontSize: 12.5)),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Real "Add address" sheet (migration 030) -- used both for a real
+// guest completing a real "pending" order, and available generically
+// for any order missing an address. Plain manual entry here -- the
+// real geolocation-based suggestion only happens once, right at
+// checkout (see checkout_screen.dart's _AddressConfirmationSheet).
+class _AddAddressSheet extends StatefulWidget {
+  final String orderId;
+  final String? guestEmail;
+  final String? token;
+  final VoidCallback onSaved;
+
+  const _AddAddressSheet({required this.orderId, required this.guestEmail, required this.token, required this.onSaved});
+
+  @override
+  State<_AddAddressSheet> createState() => _AddAddressSheetState();
+}
+
+class _AddAddressSheetState extends State<_AddAddressSheet> {
+  final _recipientController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _countryController = TextEditingController();
+  final _cityController = TextEditingController();
+  final _streetController = TextEditingController();
+  bool _isSaving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _recipientController.dispose();
+    _phoneController.dispose();
+    _countryController.dispose();
+    _cityController.dispose();
+    _streetController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_recipientController.text.trim().isEmpty ||
+        _phoneController.text.trim().isEmpty ||
+        _countryController.text.trim().isEmpty ||
+        _cityController.text.trim().isEmpty ||
+        _streetController.text.trim().isEmpty) {
+      setState(() => _error = 'Please fill in every field.');
+      return;
+    }
+    setState(() { _isSaving = true; _error = null; });
+    try {
+      await ApiClient().confirmOrderAddress(
+        widget.orderId,
+        {
+          'recipientName': _recipientController.text.trim(),
+          'phone': _phoneController.text.trim(),
+          'country': _countryController.text.trim(),
+          'city': _cityController.text.trim(),
+          'streetAddress': _streetController.text.trim(),
+        },
+        guestEmail: widget.guestEmail,
+        token: widget.token,
+        source: 'manual',
+      );
+      widget.onSaved();
+    } on ApiException catch (e) {
+      setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(left: 20, right: 20, top: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Add your delivery address', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 16),
+            TextField(controller: _recipientController, decoration: const InputDecoration(labelText: 'Recipient name')),
+            const SizedBox(height: 10),
+            TextField(controller: _phoneController, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone')),
+            const SizedBox(height: 10),
+            TextField(controller: _countryController, decoration: const InputDecoration(labelText: 'Country')),
+            const SizedBox(height: 10),
+            TextField(controller: _cityController, decoration: const InputDecoration(labelText: 'City')),
+            const SizedBox(height: 10),
+            TextField(controller: _streetController, decoration: const InputDecoration(labelText: 'Street address')),
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 12.5)),
+            ],
+            const SizedBox(height: 18),
+            FilledButton(
+              onPressed: _isSaving ? null : _save,
+              child: _isSaving
+                  ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Save address'),
             ),
           ],
         ),
