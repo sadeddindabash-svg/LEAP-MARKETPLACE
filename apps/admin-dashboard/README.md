@@ -558,7 +558,9 @@ visible anywhere or counts toward a product's average rating — the
 same real quality gate every product listing already goes through.
 Approve or reject each pending review directly, with its real star
 rating and comment shown alongside which real product and buyer it's
-for.
+for. **Real photo thumbnails (up to 3, migration 031)** now show
+alongside a review when a buyer attached any, rendered the same way
+existing photo thumbnails elsewhere in this app already are.
 
 A real **"Require verified purchase to review"** toggle sits at the
 top — confirmed design: whether a review needs a genuine delivered
@@ -572,7 +574,7 @@ product can submit a review for it.
 npm test
 ```
 
-Forty-eight test files, 318 tests total, all passing:
+Fifty-one test files, 339 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/passwordReset.integration.test.js` (5, REAL backend) — a real
@@ -718,6 +720,26 @@ Forty-eight test files, 318 tests total, all passing:
   and — the one that matters most for not breaking anything real — an
   admin can still see any order, confirmed against the same endpoint the
   admin dashboard's Orders page actually calls.
+- `src/orderLifecycle.integration.test.js` (7, REAL backend, migration
+  029) — a buyer can cancel their own real order while it's still
+  pending; cancelling an already-cancelled order is rejected; once a
+  real sub-order has shipped, cancellation is rejected with a clear
+  message; a real guest order can be cancelled with the correct guest
+  email and is rejected with the wrong one; a different buyer cannot
+  cancel someone else's order; signing up with the same email a real
+  guest order used links that order to the new account and reports the
+  real count; a fresh signup with no prior guest orders reports zero.
+- `src/orderAddresses.integration.test.js` (7, REAL backend, migration
+  030) — a logged-in buyer cannot place an order without a real address
+  or `addressId`; a real inline address requires every field and saves
+  with `source: 'manual'`; a real saved address is correctly copied via
+  `addressId` with `source: 'saved_address'`; an `addressId` belonging
+  to a different buyer is rejected, not silently used; a real guest
+  order can be placed with no address at all (a real, honest pending
+  state, not an error); a real guest can confirm their address
+  afterward via `PATCH`, correctly tagged `source: 'geolocation'`; the
+  wrong guest email is rejected when confirming, and a real address can
+  be updated after being set once.
 - `src/fitmentAdmin.integration.test.js` (7, REAL backend) — rejects
   unauthenticated and non-admin creation, a duplicate brand name gets a
   clear 409 rather than a raw DB error, a full real
@@ -921,6 +943,21 @@ Forty-eight test files, 318 tests total, all passing:
   the "verified purchase" helper now walks the full real hub workflow
   to reach a genuine delivered state, instead of the old, incorrect
   supplier-based one.
+- `src/reviewPhotos.integration.test.js` (7, REAL backend, new) — a
+  review can be submitted with up to 3 real photos; a 4th is rejected
+  (the real confirmed cap); a review with no photos remains valid;
+  re-submitting with different photos fully REPLACES the previous real
+  set, not appends; photos correctly show in the admin moderation
+  queue, the moderate response itself, and the real public endpoint
+  once approved; deleting a review also genuinely removes its real
+  photos via cascade; a real buyer (not just supplier/hub_staff) can
+  now use the shared photo upload endpoint. **A real bug was found and
+  fixed here**: the moderation endpoint's own response never attached
+  photos, unlike every other endpoint in this module — approving or
+  rejecting a review with photos showed `photos: []` in that one
+  specific reply, even though they were genuinely still saved and
+  visible everywhere else. See `services/api/README.md`'s "Real photos
+  on product reviews" section for the full real design.
 - `src/ReviewsFlow.test.jsx` (4, mocked, full component tree) — shows
   the real pending review with its real rating and comment; approving
   a review calls the real endpoint and removes it from the pending

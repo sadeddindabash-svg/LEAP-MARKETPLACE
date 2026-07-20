@@ -2359,6 +2359,13 @@ function ReviewsPage({ onSessionExpired }) {
                 <div style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 4 }}>{r.productName}</div>
                 <div style={{ marginBottom: 6 }}><StarRatingDisplay rating={r.rating} /></div>
                 {r.comment && <div style={{ ...body, fontSize: 12.5, color: C.ink, marginBottom: 4 }}>{r.comment}</div>}
+                {r.photos && r.photos.length > 0 && (
+                  <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                    {r.photos.map((url, i) => (
+                      <img key={i} src={`${API_BASE_URL}${url}`} alt="" style={{ width: 56, height: 56, borderRadius: 8, objectFit: "cover", border: `1px solid ${C.line}` }} />
+                    ))}
+                  </div>
+                )}
                 <div style={{ ...body, fontSize: 11, color: C.muted }}>{r.buyerName || "Buyer"} · {new Date(r.createdAt).toLocaleDateString()}</div>
               </div>
               <div style={{ display: "flex", gap: 8 }}>

@@ -8,6 +8,7 @@ class Review {
   final int rating;
   final String? comment;
   final DateTime createdAt;
+  final List<String> photos;
 
   Review({
     required this.id,
@@ -15,6 +16,7 @@ class Review {
     required this.rating,
     required this.comment,
     required this.createdAt,
+    this.photos = const [],
   });
 
   factory Review.fromJson(Map<String, dynamic> json) => Review(
@@ -23,6 +25,7 @@ class Review {
         rating: json['rating'] as int,
         comment: json['comment'] as String?,
         createdAt: DateTime.parse(json['createdAt'] as String),
+        photos: (json['photos'] as List?)?.cast<String>() ?? const [],
       );
 }
 
@@ -53,8 +56,9 @@ class MyReview {
   final int rating;
   final String? comment;
   final String status;
+  final List<String> photos;
 
-  MyReview({required this.id, required this.productId, required this.rating, required this.comment, required this.status});
+  MyReview({required this.id, required this.productId, required this.rating, required this.comment, required this.status, this.photos = const []});
 
   factory MyReview.fromJson(Map<String, dynamic> json) => MyReview(
         id: json['id'] as int,
@@ -62,5 +66,6 @@ class MyReview {
         rating: json['rating'] as int,
         comment: json['comment'] as String?,
         status: json['status'] as String,
+        photos: (json['photos'] as List?)?.cast<String>() ?? const [],
       );
 }

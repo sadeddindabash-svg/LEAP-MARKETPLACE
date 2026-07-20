@@ -89,15 +89,16 @@ describe.runIf(backendUp)('real product image upload (local disk fallback / clou
     expect(status).toBe(401);
   });
 
-  it('a buyer (not a supplier or hub staff) cannot upload a product image', async () => {
+  it('CRITICAL: a real buyer can now also upload real images (migration 031, for review photos) -- previously rejected here, deliberately changed', async () => {
     const signupRes = await fetch(`${BACKEND_URL}/auth/signup`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: `upload-test-${Date.now()}@example.com`, password: 'test_password_123' }),
     });
     const { token } = await signupRes.json();
     const buffer = loadFixture('valid-test-image.jpg');
-    const { status } = await uploadImage(token, 'valid.jpg', buffer);
-    expect(status).toBe(403);
+    const { status, body } = await uploadImage(token, 'valid.jpg', buffer);
+    expect(status).toBe(201);
+    expect(body.storage).toBe('local');
   });
 
   it('a real hub staff account (not just suppliers) can also upload real images, for shipment-inspection evidence', async () => {

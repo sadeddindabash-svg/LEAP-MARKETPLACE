@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import '../core/config/app_config.dart';
 import '../models/product.dart';
 import '../models/category.dart';
@@ -565,11 +566,33 @@ class ApiClient {
   /// ApiException with the real backend message on failure — including
   /// the real "only buyers who have received this product" message when
   /// verified purchase is required and this buyer hasn't received it.
-  Future<MyReview> submitReview(String token, {required String productId, required int rating, String? comment}) async {
+  /// Real photo upload for a review (migration 031), reusing the same
+  /// real backend endpoint already built for supplier product photos
+  /// and hub evidence photos -- the actual work there (validate real
+  /// dimensions/type, save, return a real URL) is identical regardless
+  /// of what the photo is evidence of.
+  Future<String> uploadReviewPhoto(String token, XFile file) async {
+    final request = http.MultipartRequest('POST', Uri.parse('$baseUrl/uploads/product-image'));
+    request.headers['Authorization'] = 'Bearer $token';
+    request.files.add(await http.MultipartFile.fromPath('image', file.path));
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode != 201) {
+      throw ApiException(body['error'] as String? ?? 'Failed to upload photo (${response.statusCode})');
+    }
+    return body['url'] as String;
+  }
+
+  Future<MyReview> submitReview(String token, {required String productId, required int rating, String? comment, List<String>? photos}) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/reviews'),
       headers: _authHeaders(token),
-      body: jsonEncode({'productId': productId, 'rating': rating, if (comment != null && comment.isNotEmpty) 'comment': comment}),
+      body: jsonEncode({
+        'productId': productId, 'rating': rating,
+        if (comment != null && comment.isNotEmpty) 'comment': comment,
+        if (photos != null) 'photos': photos,
+      }),
     );
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode != 201) throw ApiException(body['error'] as String? ?? 'Failed to submit review (${response.statusCode})');

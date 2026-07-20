@@ -232,11 +232,20 @@ router.get('/products/:id/reviews', async (req, res, next) => {
        ORDER BY r.updated_at DESC`,
       [req.params.id]
     );
+    // Real review photos (migration 031) -- batched in one real query
+    // rather than one per review.
+    const { rows: photoRows } = rows.length > 0
+      ? await db.query('SELECT review_id, url FROM review_photos WHERE review_id = ANY($1::int[]) ORDER BY review_id, sort_order ASC', [rows.map((r) => r.id)])
+      : { rows: [] };
+    const photosByReview = {};
+    for (const p of photoRows) {
+      (photosByReview[p.review_id] ||= []).push(p.url);
+    }
     const averageRating = rows.length > 0 ? rows.reduce((s, r) => s + r.rating, 0) / rows.length : null;
     res.json({
       averageRating,
       reviewCount: rows.length,
-      reviews: rows.map((r) => ({ id: r.id, buyerName: r.buyer_name, rating: r.rating, comment: r.comment, createdAt: r.created_at })),
+      reviews: rows.map((r) => ({ id: r.id, buyerName: r.buyer_name, rating: r.rating, comment: r.comment, createdAt: r.created_at, photos: photosByReview[r.id] || [] })),
     });
   } catch (err) {
     next(err);

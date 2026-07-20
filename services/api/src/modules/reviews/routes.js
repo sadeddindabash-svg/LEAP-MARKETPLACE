@@ -32,6 +32,8 @@ async function hasVerifiedPurchase(client, buyerId, productId) {
   return rows.length > 0;
 }
 
+const MAX_REVIEW_PHOTOS = 3;
+
 function toReviewDto(row) {
   return {
     id: row.id,
@@ -43,7 +45,24 @@ function toReviewDto(row) {
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    photos: row.photos || [],
   };
+}
+
+// Real, batched photo attachment (migration 031) -- one real query for
+// however many real reviews are being returned, rather than a real
+// query-per-review in a loop.
+async function attachPhotos(client, rows) {
+  if (rows.length === 0) return rows;
+  const { rows: photoRows } = await client.query(
+    'SELECT review_id, url FROM review_photos WHERE review_id = ANY($1::int[]) ORDER BY review_id, sort_order ASC',
+    [rows.map((r) => r.id)]
+  );
+  const photosByReview = {};
+  for (const p of photoRows) {
+    (photosByReview[p.review_id] ||= []).push(p.url);
+  }
+  return rows.map((r) => ({ ...r, photos: photosByReview[r.id] || [] }));
 }
 
 // POST /reviews { productId, rating, comment? } — real submit-or-edit.
@@ -54,9 +73,12 @@ function toReviewDto(row) {
 router.post('/', requireAuth, async (req, res, next) => {
   const client = await db.getPool().connect();
   try {
-    const { productId, rating, comment } = req.body || {};
+    const { productId, rating, comment, photos } = req.body || {};
     if (!productId || !Number.isInteger(rating) || rating < 1 || rating > 5) {
       return res.status(400).json({ error: 'productId and an integer rating (1-5) are required' });
+    }
+    if (photos !== undefined && (!Array.isArray(photos) || photos.length > MAX_REVIEW_PHOTOS)) {
+      return res.status(400).json({ error: `photos must be an array of up to ${MAX_REVIEW_PHOTOS} URLs` });
     }
 
     const needsVerified = await requiresVerifiedPurchase(client);
@@ -67,6 +89,7 @@ router.post('/', requireAuth, async (req, res, next) => {
       }
     }
 
+    await client.query('BEGIN');
     const { rows } = await client.query(
       `INSERT INTO product_reviews (product_id, buyer_id, rating, comment, status, updated_at)
        VALUES ($1, $2, $3, $4, 'pending', now())
@@ -75,8 +98,24 @@ router.post('/', requireAuth, async (req, res, next) => {
        RETURNING *`,
       [productId, req.user.sub, rating, comment || null]
     );
-    res.status(201).json(toReviewDto(rows[0]));
+    const reviewId = rows[0].id;
+
+    // Real photos (migration 031) -- a real edit fully REPLACES the
+    // previous real set (a resubmitted review already goes back to
+    // 'pending' for real re-review; its photos should reflect the real
+    // current submission, not accumulate stale ones from before).
+    if (photos !== undefined) {
+      await client.query('DELETE FROM review_photos WHERE review_id = $1', [reviewId]);
+      for (let i = 0; i < photos.length; i++) {
+        await client.query('INSERT INTO review_photos (review_id, url, sort_order) VALUES ($1, $2, $3)', [reviewId, photos[i], i]);
+      }
+    }
+    await client.query('COMMIT');
+
+    const [withPhotos] = await attachPhotos(db, [rows[0]]);
+    res.status(201).json(toReviewDto(withPhotos));
   } catch (err) {
+    await client.query('ROLLBACK');
     next(err);
   } finally {
     client.release();
@@ -89,7 +128,8 @@ router.post('/', requireAuth, async (req, res, next) => {
 router.get('/me', requireAuth, async (req, res, next) => {
   try {
     const { rows } = await db.query('SELECT * FROM product_reviews WHERE buyer_id = $1 ORDER BY updated_at DESC', [req.user.sub]);
-    res.json(rows.map(toReviewDto));
+    const withPhotos = await attachPhotos(db, rows);
+    res.json(withPhotos.map(toReviewDto));
   } catch (err) {
     next(err);
   }
@@ -117,7 +157,8 @@ router.get('/pending', requireAuth, requireRole('admin'), requirePageAccess('rev
        WHERE r.status = 'pending'
        ORDER BY r.created_at ASC`
     );
-    res.json(rows.map((row) => ({ ...toReviewDto(row), productName: row.product_name })));
+    const withPhotos = await attachPhotos(db, rows);
+    res.json(withPhotos.map((row) => ({ ...toReviewDto(row), productName: row.product_name })));
   } catch (err) {
     next(err);
   }
@@ -138,7 +179,8 @@ router.patch('/:id/moderate', requireAuth, requireRole('admin'), requirePageAcce
       [newStatus, req.params.id]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Review not found' });
-    res.json(toReviewDto(rows[0]));
+    const [withPhotos] = await attachPhotos(db, rows);
+    res.json(toReviewDto(withPhotos));
   } catch (err) {
     next(err);
   }

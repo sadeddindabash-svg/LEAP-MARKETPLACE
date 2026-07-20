@@ -1264,6 +1264,54 @@ state, with a real "Add address" action always available afterward
 from the order detail screen. See `apps/mobile/README.md`'s equivalent
 section for the full real UI design and its own honest limitations.
 
+## Real photos on product reviews (migration 031)
+
+**Confirmed scope**: up to 3 real photos per review, genuinely optional
+— a review remains valid with just a rating and no photos, same as
+before this migration. Reuses the same real upload endpoint already
+built for supplier product photos and hub evidence photos (`POST
+/uploads/product-image`) — the actual work there (validate real
+dimensions/type, save, return a real URL) is identical regardless of
+what the photo is evidence of. **That endpoint's role check was
+broadened to include `'buyer'`** (previously `supplier`/`hub_staff`
+only).
+
+**`review_photos`** — one real row per photo, cascade-deleted with its
+review (a real `ON DELETE CASCADE`, not application-level cleanup).
+`POST /reviews` accepts an optional `photos` array; re-submitting a
+review with different photos **fully replaces** the previous real set
+(deletes and re-inserts), rather than appending — matching how a
+resubmission already sends the whole review back to `'pending'` for
+real re-review.
+
+**A real bug was found and fixed while testing this**: the moderation
+endpoint (`PATCH /reviews/:id/moderate`) built its response from the
+raw updated row, which never had a real `photos` field attached —
+approving or rejecting a review with photos would show `photos: []` in
+that one specific response, even though the photos were genuinely
+still there (correctly visible everywhere else — the pending queue,
+the public endpoint). Fixed by attaching photos to that response too,
+the same way every other endpoint in this module already does.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/reviewPhotos.integration.test.js`
+(7 tests, REAL backend): a review can be submitted with up to 3 real
+photos; a 4th is rejected; a review with no photos remains valid;
+re-submitting with different photos fully replaces the previous set;
+photos correctly show in the moderation queue, the moderate response
+itself (the real bug above), and the public endpoint once approved;
+deleting a review also genuinely removes its photos via cascade; a
+real buyer (not just supplier/hub_staff) can now use the shared upload
+endpoint. **A second, real, pre-existing test needed updating**: an
+existing upload test asserted the OLD behavior (a buyer gets rejected)
+— correctly updated to assert the new, intentional one instead.
+
+**Mobile app**: a real photo picker in the review form (up to 3, using
+the device's photo gallery), with thumbnails and per-photo removal
+before submitting; photos also show on both the buyer's own
+in-progress review and every approved review displayed publicly. See
+`apps/mobile/README.md`'s equivalent section for the full real UI
+design and its own honest limitations.
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category

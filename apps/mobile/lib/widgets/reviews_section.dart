@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
 import '../core/theme.dart';
 import '../core/auth_state.dart';
 import '../models/review.dart';
 import '../services/api_client.dart';
+import '../core/config/app_config.dart';
 
 /// Real reviews section for the product detail screen (new). Shows the
 /// real average rating and real approved reviews (see
@@ -33,6 +35,10 @@ class _ReviewsSectionState extends State<ReviewsSection> {
   String? _errorMessage;
   String? _loadedForProductId;
 
+  // Real review photos (migration 031) -- confirmed cap of 3, optional.
+  final List<String> _selectedPhotos = [];
+  bool _isUploadingPhoto = false;
+
   void _ensureLoaded(String? token) {
     if (_loadedForProductId == widget.productId) return;
     _loadedForProductId = widget.productId;
@@ -45,6 +51,9 @@ class _ReviewsSectionState extends State<ReviewsSection> {
             _myReview = mine.first;
             _formRating = _myReview!.rating;
             _commentController.text = _myReview!.comment ?? '';
+            _selectedPhotos
+              ..clear()
+              ..addAll(_myReview!.photos);
           });
         }
       }).catchError((_) {}); // real, non-fatal -- the public summary above still renders either way
@@ -59,6 +68,7 @@ class _ReviewsSectionState extends State<ReviewsSection> {
         productId: widget.productId,
         rating: _formRating,
         comment: _commentController.text.trim(),
+        photos: _selectedPhotos,
       );
       if (!mounted) return;
       setState(() {
@@ -72,6 +82,27 @@ class _ReviewsSectionState extends State<ReviewsSection> {
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
+  }
+
+  static const _maxReviewPhotos = 3;
+
+  Future<void> _pickAndUploadPhoto(String token) async {
+    if (_selectedPhotos.length >= _maxReviewPhotos) return;
+    final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
+    if (picked == null) return;
+    setState(() => _isUploadingPhoto = true);
+    try {
+      final url = await ApiClient().uploadReviewPhoto(token, picked);
+      if (mounted) setState(() => _selectedPhotos.add(url));
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _errorMessage = e.message);
+    } finally {
+      if (mounted) setState(() => _isUploadingPhoto = false);
+    }
+  }
+
+  void _removePhoto(int index) {
+    setState(() => _selectedPhotos.removeAt(index));
   }
 
   @override
@@ -146,6 +177,21 @@ class _ReviewsSectionState extends State<ReviewsSection> {
                             const SizedBox(height: 4),
                             Text(r.comment!, style: const TextStyle(fontSize: 13)),
                           ],
+                          if (r.photos.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                for (final url in r.photos)
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 6),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.network('${AppConfig.apiBaseUrl}$url', width: 56, height: 56, fit: BoxFit.cover),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                     )),
@@ -172,6 +218,41 @@ class _ReviewsSectionState extends State<ReviewsSection> {
                   controller: _commentController,
                   maxLines: 3,
                   decoration: InputDecoration(hintText: _lCommentHint, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8, runSpacing: 8,
+                  children: [
+                    for (var i = 0; i < _selectedPhotos.length; i++)
+                      Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.network('${AppConfig.apiBaseUrl}${_selectedPhotos[i]}', width: 64, height: 64, fit: BoxFit.cover),
+                          ),
+                          Positioned(
+                            top: -6, right: -6,
+                            child: IconButton(
+                              icon: const Icon(Icons.cancel, size: 18, color: LeapColors.muted),
+                              onPressed: () => _removePhoto(i),
+                              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                              padding: EdgeInsets.zero,
+                            ),
+                          ),
+                        ],
+                      ),
+                    if (_selectedPhotos.length < _maxReviewPhotos)
+                      InkWell(
+                        onTap: _isUploadingPhoto ? null : () => _pickAndUploadPhoto(auth.token!),
+                        child: Container(
+                          width: 64, height: 64,
+                          decoration: BoxDecoration(border: Border.all(color: LeapColors.line), borderRadius: BorderRadius.circular(8)),
+                          child: _isUploadingPhoto
+                              ? const Center(child: SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)))
+                              : const Icon(Icons.add_a_photo_outlined, color: LeapColors.muted, size: 22),
+                        ),
+                      ),
+                  ],
                 ),
                 if (_errorMessage != null) ...[
                   const SizedBox(height: 8),

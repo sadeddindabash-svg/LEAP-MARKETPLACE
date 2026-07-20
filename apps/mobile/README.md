@@ -626,6 +626,43 @@ address when it does.
   real, one-off, human-triggered lookup per guest order, not meant for
   bulk geocoding.
 
+## Real photos on product reviews (new, migration 031)
+
+See `services/api/README.md`'s "Real photos on product reviews" section
+for the full real backend design — confirmed cap of 3 optional photos
+per review, reusing the same real upload endpoint already built for
+supplier product photos and hub evidence photos (now broadened to
+allow buyers too).
+
+**Review form** (`widgets/reviews_section.dart`): a real photo picker
+button (up to 3) sits below the comment field, using the device's
+photo gallery. Each selected photo uploads immediately and shows as a
+real thumbnail with its own remove button — never a blind "attach and
+hope" pattern. Editing an existing review pre-fills its real, previously
+saved photos, and re-submitting fully replaces the set, matching the
+real backend's own replace-not-append behavior.
+
+**Reviews display**: real photo thumbnails now show on every approved
+review in the public list, using the same `AppConfig.apiBaseUrl`
+pattern already used elsewhere in this app for other uploaded images.
+
+**HONEST LIMITATIONS**:
+- Same as every other mobile section in this README — no Flutter SDK in
+  this sandbox, so none of this could be run or tested here beyond
+  careful manual review and bracket-balance checks across every touched
+  file.
+- The new `image_picker` package needs real, platform-specific
+  permission setup this sandbox cannot touch, for the same reason as
+  `geolocator` above (the real `android/` and `ios/` folders are
+  generated locally, not committed to this repo). **For Android**, a
+  real photo-library permission is typically handled by `image_picker`
+  itself via its own bundled manifest entries for modern Android
+  versions, but verify this once building for a real device. **For
+  iOS**, add a real `NSPhotoLibraryUsageDescription` string to
+  `Info.plist`. **For web** (this app's primary real testing environment
+  so far), no extra setup is needed — the browser's own native file
+  picker handles it directly.
+
 ## Setup
 
 1. Install Flutter: https://docs.flutter.dev/get-started/install
