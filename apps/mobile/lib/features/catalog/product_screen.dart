@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../core/theme.dart';
+import '../../core/auth_state.dart';
 import '../../core/cart_state.dart';
 import '../../core/language_state.dart';
 import '../../models/product.dart';
@@ -41,6 +43,33 @@ class _ProductScreenState extends State<ProductScreen> {
     if (_loadedForLanguage != language) {
       _loadedForLanguage = language;
       _productFuture = ApiClient().fetchProductById(widget.productId, lang: language);
+      // Real recently viewed products (migration 032), synced to the
+      // real buyer's account -- confirmed scope: logged-in buyers
+      // only, since a real guest has no account for this to sync to.
+      // Real, best-effort, fire-and-forget -- a genuine failure here
+      // should never block viewing the actual product.
+      final token = context.read<AuthState>().token;
+      if (token != null) {
+        ApiClient().recordProductView(token, widget.productId).catchError((_) {});
+      }
+    }
+  }
+
+  // Real shareable product link (new) -- confirmed scope: the real
+  // share ACTION only for now, using the device's own native share
+  // sheet; the actual real public web page this URL points to is
+  // confirmed, deliberate follow-up work, not built yet. Awaiting the
+  // same cached `_productFuture` here doesn't trigger a second real
+  // network call -- Dart Futures resolve once and are reused.
+  Future<void> _shareProduct() async {
+    try {
+      final product = await _productFuture;
+      if (product == null) return;
+      final url = 'https://leapautoparts.com/products/${widget.productId}';
+      await SharePlus.instance.share(ShareParams(text: '${product.name} — $url'));
+    } catch (_) {
+      // Real, honest fallback -- if the product hasn't loaded yet or
+      // failed to load, there's nothing meaningful to share.
     }
   }
 
@@ -68,7 +97,12 @@ class _ProductScreenState extends State<ProductScreen> {
     _ensureLoaded(language);
 
     return Scaffold(
-      appBar: AppBar(title: Text(language == 'ar' ? 'تفاصيل المنتج' : 'Item details')),
+      appBar: AppBar(
+        title: Text(language == 'ar' ? 'تفاصيل المنتج' : 'Item details'),
+        actions: [
+          IconButton(icon: const Icon(Icons.share_outlined), onPressed: _shareProduct, tooltip: language == 'ar' ? 'مشاركة' : 'Share'),
+        ],
+      ),
       body: FutureBuilder<Product>(
         future: _productFuture,
         builder: (context, snapshot) {

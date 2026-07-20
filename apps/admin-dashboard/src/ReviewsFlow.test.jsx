@@ -8,8 +8,13 @@ const MOCK_PENDING = [
   { id: 1, productId: 'p1', productName: 'RIDEX Front Brake Disc', buyerName: 'Test Buyer', rating: 5, comment: 'Great product', status: 'pending', createdAt: '2026-07-01T00:00:00.000Z' },
 ];
 
+const MOCK_FLAGGED = [
+  { id: 2, productId: 'p2', productName: 'MAHLE Oil Filter', buyerName: 'Another Buyer', rating: 1, comment: 'Bad review', status: 'approved', createdAt: '2026-07-02T00:00:00.000Z', flagCount: 2, flagReasons: ['Spam', 'Offensive'] },
+];
+
 function mockFetchRouter() {
   let pending = [...MOCK_PENDING];
+  let flagged = [...MOCK_FLAGGED];
   let requireVerified = false;
   return vi.fn((url, options) => {
     const u = String(url);
@@ -17,9 +22,16 @@ function mockFetchRouter() {
     if (u.includes('/auth/login')) return Promise.resolve({ ok: true, json: async () => ({ token: 'fake.jwt.token', user: OWNER_USER }) });
     if (u.includes('/auth/me')) return Promise.resolve({ ok: true, json: async () => OWNER_USER });
     if (u.endsWith('/reviews/pending')) return Promise.resolve({ ok: true, json: async () => pending });
+    if (u.endsWith('/reviews/flagged')) return Promise.resolve({ ok: true, json: async () => flagged });
+    if (method === 'POST' && u.match(/\/reviews\/\d+\/dismiss-flags$/)) {
+      const id = Number(u.split('/').slice(-2)[0]);
+      flagged = flagged.filter((r) => r.id !== id);
+      return Promise.resolve({ ok: true, json: async () => ({ reviewId: id, dismissedCount: 1 }) });
+    }
     if (method === 'PATCH' && u.match(/\/reviews\/\d+\/moderate$/)) {
       const id = Number(u.split('/').slice(-2)[0]);
       pending = pending.filter((r) => r.id !== id);
+      flagged = flagged.filter((r) => r.id !== id);
       return Promise.resolve({ ok: true, json: async () => ({ id, status: 'approved' }) });
     }
     if (u.endsWith('/platform-settings/require-verified-purchase-for-reviews') && method === 'GET') {
@@ -89,5 +101,44 @@ describe('Real Reviews moderation page (mocked fetch, full component tree)', () 
     fireEvent.click(screen.getByRole('button', { name: /reject/i }));
 
     await waitFor(() => expect(screen.getByText(/nothing awaiting review/i)).toBeInTheDocument());
+  });
+
+  it('CRITICAL: switching to the Flagged tab shows the real flag count and every real reason given', async () => {
+    globalThis.fetch = mockFetchRouter();
+    render(<LeapAdminApp />);
+    await loginAndGoToReviews();
+    await waitFor(() => screen.getByText('RIDEX Front Brake Disc'));
+
+    fireEvent.click(screen.getByRole('button', { name: /^flagged$/i }));
+    await waitFor(() => screen.getByText('MAHLE Oil Filter'));
+    expect(screen.getByText(/reported 2 times/i)).toBeInTheDocument();
+    expect(screen.getByText('“Spam”')).toBeInTheDocument();
+    expect(screen.getByText('“Offensive”')).toBeInTheDocument();
+  });
+
+  it('CRITICAL: dismissing flags calls the real endpoint and removes it from the flagged queue', async () => {
+    globalThis.fetch = mockFetchRouter();
+    render(<LeapAdminApp />);
+    await loginAndGoToReviews();
+    await waitFor(() => screen.getByText('RIDEX Front Brake Disc'));
+
+    fireEvent.click(screen.getByRole('button', { name: /^flagged$/i }));
+    await waitFor(() => screen.getByText('MAHLE Oil Filter'));
+    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
+
+    await waitFor(() => expect(screen.getByText(/no reviews have been reported/i)).toBeInTheDocument());
+  });
+
+  it('hiding a flagged review calls the real moderate endpoint with reject', async () => {
+    globalThis.fetch = mockFetchRouter();
+    render(<LeapAdminApp />);
+    await loginAndGoToReviews();
+    await waitFor(() => screen.getByText('RIDEX Front Brake Disc'));
+
+    fireEvent.click(screen.getByRole('button', { name: /^flagged$/i }));
+    await waitFor(() => screen.getByText('MAHLE Oil Filter'));
+    fireEvent.click(screen.getByRole('button', { name: /hide review/i }));
+
+    await waitFor(() => expect(screen.getByText(/no reviews have been reported/i)).toBeInTheDocument());
   });
 });

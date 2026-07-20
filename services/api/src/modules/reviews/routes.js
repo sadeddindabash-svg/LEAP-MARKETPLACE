@@ -186,4 +186,75 @@ router.patch('/:id/moderate', requireAuth, requireRole('admin'), requirePageAcce
   }
 });
 
+// POST /reviews/:id/flag { reason } — real report/flag (migration
+// 033). CONFIRMED SCOPE: requires a real short reason, one real flag
+// per buyer per review (re-flagging is a genuine no-op, not an error --
+// the buyer's real intent is already recorded). Never auto-hides
+// anything -- a real admin always makes the actual call, via the real
+// flagged queue below.
+router.post('/:id/flag', requireAuth, async (req, res, next) => {
+  try {
+    const { reason } = req.body || {};
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ error: 'A short reason is required to report a review.' });
+    }
+    const { rows: reviewRows } = await db.query('SELECT id FROM product_reviews WHERE id = $1', [req.params.id]);
+    if (reviewRows.length === 0) return res.status(404).json({ error: 'Review not found' });
+
+    await db.query(
+      `INSERT INTO review_flags (review_id, buyer_id, reason) VALUES ($1, $2, $3)
+       ON CONFLICT (review_id, buyer_id) DO NOTHING`,
+      [req.params.id, req.user.sub, reason.trim()]
+    );
+    res.status(201).json({ reviewId: Number(req.params.id), flagged: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /reviews/flagged — real admin queue: every real review with at
+// least one real flag, most recently flagged first, with the real
+// flag count and every real reason given (an admin reviewing a
+// pattern of flags benefits from seeing all of them, not just one).
+router.get('/flagged', requireAuth, requireRole('admin'), requirePageAccess('reviews'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT r.*, u.name AS buyer_name, p.name AS product_name,
+              COUNT(f.id)::int AS flag_count,
+              array_agg(f.reason ORDER BY f.created_at DESC) AS flag_reasons,
+              MAX(f.created_at) AS last_flagged_at
+       FROM product_reviews r
+       JOIN review_flags f ON f.review_id = r.id
+       JOIN users u ON u.id = r.buyer_id
+       JOIN products p ON p.id = r.product_id
+       GROUP BY r.id, u.name, p.name
+       ORDER BY last_flagged_at DESC`
+    );
+    const withPhotos = await attachPhotos(db, rows);
+    res.json(withPhotos.map((row) => ({
+      ...toReviewDto(row),
+      productName: row.product_name,
+      flagCount: row.flag_count,
+      flagReasons: row.flag_reasons,
+      lastFlaggedAt: row.last_flagged_at,
+    })));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /reviews/:id/dismiss-flags — real admin action: clears every
+// real flag on this review without changing its real status at all.
+// To hide the review instead, the existing real PATCH
+// /reviews/:id/moderate { action: 'reject' } is the real, correct
+// endpoint -- no separate "hide" action needed here.
+router.post('/:id/dismiss-flags', requireAuth, requireRole('admin'), requirePageAccess('reviews'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query('DELETE FROM review_flags WHERE review_id = $1 RETURNING id', [req.params.id]);
+    res.json({ reviewId: Number(req.params.id), dismissedCount: rows.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

@@ -1312,6 +1312,92 @@ in-progress review and every approved review displayed publicly. See
 `apps/mobile/README.md`'s equivalent section for the full real UI
 design and its own honest limitations.
 
+## Real shareable product links — share action only (new)
+
+**Confirmed scope**: just the real native share action for now, using
+the device's own share sheet — not a real public web page yet (that's
+confirmed, deliberate follow-up work). No backend change at all — see
+`apps/mobile/README.md`'s equivalent section for the mobile
+implementation.
+
+## Real recently viewed products — synced to account (migration 032)
+
+**Confirmed scope**: synced to the real buyer's account (not
+device-local), so it follows them across devices. Real logged-in
+buyers only — a real guest has no account for this to sync to.
+
+**`recently_viewed_products`** — one real row per buyer+product pair. A
+repeat real view of the same product updates `viewed_at` (a real "move
+to the front" behavior) rather than creating a duplicate row. `GET
+/recently-viewed/me` returns the real, most recent 20, newest first,
+reusing the catalog module's buyer-facing product DTO helpers (same
+real pattern as the existing wishlist module) so it never risks
+drifting from what a product looks like elsewhere.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/recentlyViewed.integration.test.js`
+(4 tests, REAL backend): recording a view and fetching the list shows
+it, most recent first; re-viewing a product moves it back to the
+front rather than duplicating it; an unauthenticated request is
+rejected and a nonexistent product is rejected too; a real buyer with
+no views yet gets a genuinely empty list, not an error.
+
+## Real reporting/flagging of inappropriate reviews (migration 033)
+
+**Confirmed scope**: a real buyer can flag a review with a required
+short reason. One real flag per buyer per review (a real UNIQUE
+constraint) — prevents the same account from repeatedly flagging the
+same review to force it up an admin queue; re-flagging is a genuine,
+harmless no-op, not a duplicate or an error. Flagging never auto-hides
+anything — same real pattern as every other moderation flow in this
+project: a real admin always makes the actual call.
+
+**`review_flags`** — one real row per flag, cascade-deleted with its
+review. `GET /reviews/flagged` (admin) shows every real flagged review
+with its flag count and every real reason given, most recently flagged
+first. An admin can either **dismiss** the real flags (`POST
+/reviews/:id/dismiss-flags` — the review stays exactly as it was) or
+**hide** the review outright, reusing the existing real `PATCH
+/reviews/:id/moderate { action: 'reject' }` — no new review status was
+needed, since a rejected review is already correctly hidden from
+public view.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/reviewFlags.integration.test.js`
+(6 tests, REAL backend): flagging without a real reason is rejected,
+with one it succeeds; re-flagging the same review by the same buyer is
+a genuine no-op, not a duplicate; the real admin flagged queue shows
+flag count and every real reason given; dismissing flags clears them
+and removes the review from the queue without changing its status;
+non-admins cannot see the flagged queue or dismiss flags; flagging a
+nonexistent review is rejected with a real 404.
+
+**Admin dashboard**: the Reviews page gained a real Pending/Flagged tab
+toggle. **A real bug was found and fixed while building this**:
+switching tabs re-rendered immediately with the new tab selected, but
+the real reviews array still briefly held the PREVIOUS tab's data
+until the new fetch resolved — a pending review has no real
+`flagReasons` field, so rendering it under the flagged tab's own
+render logic crashed. Fixed two ways: clearing the reviews array
+immediately on every tab switch (better UX, avoids a stale-data
+flash), and making the render itself defensive (`(r.flagReasons ||
+[])`) so a mismatched shape can never crash the page even if the
+timing gap reopens some other way.
+
+## Real bug found and fixed: the live FX rate scheduler could crash the entire server
+
+**Found and fixed in this same pass, unrelated to the three features
+above**: `startScheduledFxRateRefresh()`'s own tick function (migration
+028) had no real `try`/`catch` around it at all. If the real database
+was ever unavailable for even a moment right when a real scheduled
+tick fired, `getFxRateMode()`'s own query would throw, and since
+nothing ever caught it, Node treated it as a real unhandled promise
+rejection and **crashed the entire API server** — not just skipped
+that one tick. A real, temporary database hiccup should never take
+down the whole real API; every other real background/best-effort
+action in this project already follows this same real pattern. Fixed
+by wrapping the tick's real body in a real `try`/`catch`, logging and
+continuing rather than crashing — the next scheduled tick will simply
+try again.
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category

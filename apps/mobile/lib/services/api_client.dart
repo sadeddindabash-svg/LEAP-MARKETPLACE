@@ -615,6 +615,36 @@ class ApiClient {
     if (response.statusCode != 204) throw ApiException('Failed to delete review (${response.statusCode})');
   }
 
+  /// Real report/flag a review (migration 033) -- requires a real
+  /// short reason; re-flagging the same real review is a genuine
+  /// no-op server-side, never an error.
+  Future<void> flagReview(String token, int reviewId, String reason) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/reviews/$reviewId/flag'),
+      headers: _authHeaders(token),
+      body: jsonEncode({'reason': reason}),
+    );
+    if (response.statusCode != 201) {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      throw ApiException(body['error'] as String? ?? 'Failed to report review (${response.statusCode})');
+    }
+  }
+
+  /// Real recently viewed products (migration 032), synced to the
+  /// buyer's real account. Best-effort, real-fire-and-forget from the
+  /// caller's point of view -- a genuine failure here should never
+  /// block viewing the actual product.
+  Future<void> recordProductView(String token, String productId) async {
+    await _client.post(Uri.parse('$baseUrl/recently-viewed/$productId'), headers: _authHeaders(token));
+  }
+
+  Future<List<Product>> fetchRecentlyViewed(String token) async {
+    final response = await _client.get(Uri.parse('$baseUrl/recently-viewed/me'), headers: _authHeaders(token));
+    if (response.statusCode != 200) throw ApiException('Failed to load recently viewed products (${response.statusCode})');
+    final body = jsonDecode(response.body) as List;
+    return body.map((e) => Product.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   /// Real notifications — triggered by real order changes and message/
   /// ticket replies (see services/api/src/modules/notifications/).
   Future<List<dynamic>> fetchNotifications(String token) async {

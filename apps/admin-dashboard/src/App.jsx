@@ -12,6 +12,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchAdminUsers, createAdminUser, updateAdminPermissions, deleteAdminUser,
   fetchPayoutsOwed, fetchPayoutHistory, recordPayout, fetchReturnWindow, updateReturnWindow, updateCategoryCommission,
   fetchPendingReviews, moderateReview, fetchRequireVerifiedPurchase, updateRequireVerifiedPurchase,
+  fetchFlaggedReviews, dismissReviewFlags,
 } from "./auth";
 import {
   LayoutGrid, ShoppingBag, Store, PackageSearch, Wallet, LifeBuoy, Settings,
@@ -2277,6 +2278,7 @@ function StarRatingDisplay({ rating }) {
 }
 
 function ReviewsPage({ onSessionExpired }) {
+  const [activeTab, setActiveTab] = useState("pending");
   const [reviews, setReviews] = useState([]);
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
@@ -2286,7 +2288,15 @@ function ReviewsPage({ onSessionExpired }) {
 
   const load = () => {
     setLoadState("loading");
-    Promise.all([fetchPendingReviews(getStoredToken()), fetchRequireVerifiedPurchase(getStoredToken())])
+    // Real, defensive clearing on every tab switch -- avoids briefly
+    // showing the real previous tab's stale reviews while the new
+    // tab's real data is still in flight. The render logic itself is
+    // ALSO defensive (see the flagReasons fallback below), since React
+    // can still render once with the new activeTab before this state
+    // update takes effect -- belt and suspenders, not just one fix.
+    setReviews([]);
+    const fetchReviews = activeTab === "pending" ? fetchPendingReviews(getStoredToken()) : fetchFlaggedReviews(getStoredToken());
+    Promise.all([fetchReviews, fetchRequireVerifiedPurchase(getStoredToken())])
       .then(([reviewData, settingData]) => {
         setReviews(reviewData);
         setRequireVerified(settingData.requireVerifiedPurchase);
@@ -2298,13 +2308,32 @@ function ReviewsPage({ onSessionExpired }) {
         setLoadState("error");
       });
   };
-  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(load, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleModerate = async (reviewId, action) => {
     setActioningId(reviewId);
     setErrorMessage(null);
     try {
       await moderateReview(getStoredToken(), reviewId, action);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  // Real dismiss-flags action (migration 033) -- clears the real flags
+  // on this review without changing its real status at all. To hide
+  // the review instead, the existing real "Reject" action (above) is
+  // reused directly, since a rejected review is already correctly
+  // hidden from public view -- no separate "hide" action needed.
+  const handleDismissFlags = async (reviewId) => {
+    setActioningId(reviewId);
+    setErrorMessage(null);
+    try {
+      await dismissReviewFlags(getStoredToken(), reviewId);
       load();
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
@@ -2330,7 +2359,7 @@ function ReviewsPage({ onSessionExpired }) {
 
   return (
     <div>
-      <TopBar title="Reviews" subtitle={loadState === "ready" ? `${reviews.length} pending review${reviews.length === 1 ? "" : "s"}` : "Loading…"} />
+      <TopBar title="Reviews" subtitle={loadState === "ready" ? `${reviews.length} ${activeTab} review${reviews.length === 1 ? "" : "s"}` : "Loading…"} />
       <div style={{ padding: 24 }}>
         <Card style={{ marginBottom: 16 }}>
           <div style={{ padding: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -2346,11 +2375,24 @@ function ReviewsPage({ onSessionExpired }) {
           </div>
         </Card>
 
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          <button
+            onClick={() => setActiveTab("pending")}
+            style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: activeTab === "pending" ? C.ink : C.line, color: activeTab === "pending" ? "#fff" : C.muted, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}
+          >Pending</button>
+          <button
+            onClick={() => setActiveTab("flagged")}
+            style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: activeTab === "flagged" ? C.ink : C.line, color: activeTab === "flagged" ? "#fff" : C.muted, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}
+          >Flagged</button>
+        </div>
+
         {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>}
         {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading…</div></Card>}
         {loadState === "error" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>Couldn't load reviews: {errorMessage}</div></Card>}
         {loadState === "ready" && reviews.length === 0 && (
-          <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Nothing awaiting review right now.</div></Card>
+          <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>
+            {activeTab === "pending" ? "Nothing awaiting review right now." : "No reviews have been reported."}
+          </div></Card>
         )}
         {loadState === "ready" && reviews.map((r) => (
           <Card key={r.id} style={{ marginBottom: 12 }}>
@@ -2367,18 +2409,45 @@ function ReviewsPage({ onSessionExpired }) {
                   </div>
                 )}
                 <div style={{ ...body, fontSize: 11, color: C.muted }}>{r.buyerName || "Buyer"} · {new Date(r.createdAt).toLocaleDateString()}</div>
+                {activeTab === "flagged" && (
+                  <div style={{ marginTop: 8, padding: 10, background: C.redBg, borderRadius: 8 }}>
+                    <div style={{ ...body, fontSize: 12, fontWeight: 700, color: C.red, marginBottom: 4 }}>
+                      Reported {r.flagCount} time{r.flagCount === 1 ? "" : "s"}
+                    </div>
+                    {(r.flagReasons || []).map((reason, i) => (
+                      <div key={i} style={{ ...body, fontSize: 11.5, color: C.ink }}>“{reason}”</div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  disabled={actioningId === r.id}
-                  onClick={() => handleModerate(r.id, "approve")}
-                  style={{ ...body, padding: "7px 14px", borderRadius: 8, border: "none", background: C.gauge, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-                >Approve</button>
-                <button
-                  disabled={actioningId === r.id}
-                  onClick={() => handleModerate(r.id, "reject")}
-                  style={{ ...body, padding: "7px 14px", borderRadius: 8, border: "none", background: C.redBg, color: C.red, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-                >Reject</button>
+                {activeTab === "pending" ? (
+                  <>
+                    <button
+                      disabled={actioningId === r.id}
+                      onClick={() => handleModerate(r.id, "approve")}
+                      style={{ ...body, padding: "7px 14px", borderRadius: 8, border: "none", background: C.gauge, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                    >Approve</button>
+                    <button
+                      disabled={actioningId === r.id}
+                      onClick={() => handleModerate(r.id, "reject")}
+                      style={{ ...body, padding: "7px 14px", borderRadius: 8, border: "none", background: C.redBg, color: C.red, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                    >Reject</button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      disabled={actioningId === r.id}
+                      onClick={() => handleDismissFlags(r.id)}
+                      style={{ ...body, padding: "7px 14px", borderRadius: 8, border: "none", background: C.line, color: C.muted, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                    >Dismiss</button>
+                    <button
+                      disabled={actioningId === r.id}
+                      onClick={() => handleModerate(r.id, "reject")}
+                      style={{ ...body, padding: "7px 14px", borderRadius: 8, border: "none", background: C.redBg, color: C.red, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                    >Hide review</button>
+                  </>
+                )}
               </div>
             </div>
           </Card>

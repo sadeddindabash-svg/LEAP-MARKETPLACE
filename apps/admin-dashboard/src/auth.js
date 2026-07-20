@@ -568,6 +568,25 @@ export async function moderateReview(token, reviewId, action) {
   return data;
 }
 
+// Real review flagging/reporting (migration 033).
+export async function fetchFlaggedReviews(token) {
+  const response = await fetch(`${API_BASE_URL}/reviews/flagged`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) throw new Error(`Failed to load flagged reviews (${response.status})`);
+  return response.json();
+}
+
+export async function dismissReviewFlags(token, reviewId) {
+  const response = await fetch(`${API_BASE_URL}/reviews/${reviewId}/dismiss-flags`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
 export async function fetchRequireVerifiedPurchase(token) {
   const response = await fetch(`${API_BASE_URL}/platform-settings/require-verified-purchase-for-reviews`, { headers: { Authorization: `Bearer ${token}` } });
   if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");

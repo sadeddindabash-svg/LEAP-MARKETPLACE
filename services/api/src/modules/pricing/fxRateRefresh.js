@@ -72,9 +72,22 @@ async function getFxRateMode() {
 // later switch back to 'manual' is honored without needing a restart.
 function startScheduledFxRateRefresh(currencyPair = 'CNY_USD') {
   const tick = async () => {
-    const mode = await getFxRateMode();
-    if (mode === 'automatic') {
-      await refreshLiveFxRate(currencyPair);
+    // REAL BUG FOUND AND FIXED HERE: this originally had no real
+    // try/catch around it at all -- if the real database was
+    // unavailable for even a moment right when this real scheduled
+    // tick fired, getFxRateMode()'s own real query would throw, and
+    // since nothing here ever caught it, Node treated it as a real
+    // unhandled promise rejection and crashed the entire server. A
+    // real, temporary DB hiccup should never take down the whole real
+    // API -- every other real background/best-effort action in this
+    // project already follows this same real pattern.
+    try {
+      const mode = await getFxRateMode();
+      if (mode === 'automatic') {
+        await refreshLiveFxRate(currencyPair);
+      }
+    } catch (err) {
+      console.error('[fx-rate] Scheduled tick failed (non-fatal, will retry next interval):', err.message);
     }
   };
   tick(); // real, immediate check on startup

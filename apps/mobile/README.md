@@ -663,6 +663,54 @@ pattern already used elsewhere in this app for other uploaded images.
   so far), no extra setup is needed — the browser's own native file
   picker handles it directly.
 
+## Real shareable product links — share action only (new)
+
+Confirmed scope: just the real share action for now, using the
+device's native share sheet (`share_plus`) — not a real public web page
+yet, which is confirmed, deliberate follow-up work. A real Share icon
+on the product screen's app bar shares the product's real name plus a
+real URL (`https://leapautoparts.com/products/:id`) that doesn't
+resolve to anything real yet. Awaiting the same cached product-loading
+Future used elsewhere on this screen doesn't trigger a second real
+network call.
+
+**HONEST LIMITATION**: `share_plus` version 10+ uses a newer
+`SharePlus.instance.share(ShareParams(...))` API, replacing the older
+static `Share.share(...)` calls from earlier versions — used here
+since `pubspec.yaml` pins `^10.1.2`. Same sandbox limitation as
+everywhere else in this file — no Flutter SDK here to actually run
+this.
+
+## Real recently viewed products — synced to account (new, migration 032)
+
+See `services/api/README.md`'s equivalent section for the full real
+backend design — confirmed synced to the buyer's real account, logged-
+in buyers only.
+
+A real product view is recorded automatically (best-effort, fire-and-
+forget — a genuine failure here never blocks viewing the actual
+product) whenever a logged-in buyer opens a product screen. A real
+horizontal "Recently viewed" section shows on the home screen, right
+after the existing "Shopping for" card — only rendered once real data
+has actually loaded and is genuinely non-empty, never an empty
+placeholder row.
+
+## Real reporting/flagging of inappropriate reviews (new, migration 033)
+
+See `services/api/README.md`'s equivalent section for the full real
+backend design — confirmed scope: a required real reason, one real
+flag per buyer per review.
+
+A real "Report" link sits below each approved review, visible only to
+a logged-in buyer. Tapping it opens a real dialog asking for a short
+reason; submitting calls the real backend and shows a real
+confirmation once it succeeds.
+
+**HONEST LIMITATIONS**: same as every other mobile section in this
+README — no Flutter SDK in this sandbox, so none of the three features
+above could be run or tested here beyond careful manual review and
+bracket-balance checks across every touched file.
+
 ## Setup
 
 1. Install Flutter: https://docs.flutter.dev/get-started/install

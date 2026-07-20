@@ -51,6 +51,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<List<Product>>? _feedFuture;
   String? _loadedForFeedKey;
 
+  // Real recently viewed products (migration 032), synced to the real
+  // buyer's account -- confirmed scope: logged-in buyers only.
+  Future<List<Product>>? _recentlyViewedFuture;
+
   @override
   void initState() {
     super.initState();
@@ -60,6 +64,12 @@ class _HomeScreenState extends State<HomeScreen> {
   void _ensureGarageLoaded(AuthState auth) {
     if (_garageFuture == null && auth.isLoggedIn) {
       _garageFuture = ApiClient().fetchMyGarage(auth.token!);
+    }
+  }
+
+  void _ensureRecentlyViewedLoaded(AuthState auth) {
+    if (_recentlyViewedFuture == null && auth.isLoggedIn) {
+      _recentlyViewedFuture = ApiClient().fetchRecentlyViewed(auth.token!);
     }
   }
 
@@ -90,6 +100,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final language = context.watch<LanguageState>().language;
     final isAr = context.watch<LanguageState>().isArabic;
     _ensureGarageLoaded(auth);
+    _ensureRecentlyViewedLoaded(auth);
 
     return Scaffold(
       body: SafeArea(
@@ -121,6 +132,38 @@ class _HomeScreenState extends State<HomeScreen> {
             // 2. Shopping for -- real garage data
             _ShoppingForCard(garageFuture: _garageFuture, isLoggedIn: auth.isLoggedIn),
             const SizedBox(height: 20),
+            // 2.5. Recently viewed -- real, synced to the buyer's real
+            // account (migration 032) -- logged-in buyers only.
+            if (auth.isLoggedIn)
+              FutureBuilder<List<Product>>(
+                future: _recentlyViewedFuture,
+                builder: (context, snapshot) {
+                  final products = snapshot.data ?? [];
+                  if (snapshot.connectionState != ConnectionState.done || products.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(isAr ? 'شوهدت مؤخرًا' : 'Recently viewed', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        height: 210,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: products.length,
+                          separatorBuilder: (context, i) => const SizedBox(width: 10),
+                          itemBuilder: (context, i) {
+                            final p = products[i];
+                            return SizedBox(width: 140, child: ProductCard(product: p, onTap: () => context.push('/product/${p.id}')));
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+                  );
+                },
+              ),
             // 3. Shop by category
             Text(tr(context, 'shop_by_category'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
             const SizedBox(height: 12),

@@ -568,13 +568,29 @@ order behind it is an admin decision, not fixed either way. Turning
 this on immediately means only buyers who actually received a given
 product can submit a review for it.
 
+**Real Pending/Flagged tab toggle (migration 033)**: a real buyer can
+report an inappropriate review with a required reason; the Flagged tab
+shows every real flagged review with its flag count and every real
+reason given, most recently flagged first. An admin can **Dismiss**
+the flags (the review stays exactly as it was) or **Hide review**
+outright, reusing the same real Reject action already used on the
+Pending tab — no separate "hide" action needed, since a rejected
+review is already correctly hidden from public view. **A real bug was
+found and fixed while building this**: switching tabs could briefly
+crash the page, since the real reviews array still held the previous
+tab's data for one render before the new fetch resolved, and a pending
+review has no real `flagReasons` field the flagged tab's render logic
+expected. Fixed two ways — clearing the list immediately on every tab
+switch, and making the render itself defensive so a mismatched shape
+can never crash the page.
+
 ## Testing
 
 ```bash
 npm test
 ```
 
-Fifty-one test files, 339 tests total, all passing:
+Fifty-three test files, 352 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/passwordReset.integration.test.js` (5, REAL backend) — a real
@@ -958,12 +974,30 @@ Fifty-one test files, 339 tests total, all passing:
   specific reply, even though they were genuinely still saved and
   visible everywhere else. See `services/api/README.md`'s "Real photos
   on product reviews" section for the full real design.
-- `src/ReviewsFlow.test.jsx` (4, mocked, full component tree) — shows
+- `src/recentlyViewed.integration.test.js` (4, REAL backend, new,
+  migration 032) — recording a view and fetching the list shows it,
+  most recent first; re-viewing a product moves it back to the front
+  rather than duplicating it; an unauthenticated request is rejected
+  and a nonexistent product is rejected too; a real buyer with no
+  views yet gets a genuinely empty list, not an error.
+- `src/reviewFlags.integration.test.js` (6, REAL backend, new,
+  migration 033) — flagging without a real reason is rejected, with
+  one it succeeds; re-flagging the same review by the same buyer is a
+  genuine no-op, not a duplicate; the real admin flagged queue shows
+  flag count and every real reason given; dismissing flags clears them
+  and removes the review from the queue without changing its status;
+  non-admins cannot see the flagged queue or dismiss flags; flagging a
+  nonexistent review is rejected with a real 404.
+- `src/ReviewsFlow.test.jsx` (7, mocked, full component tree) — shows
   the real pending review with its real rating and comment; approving
   a review calls the real endpoint and removes it from the pending
   queue; the verified-purchase toggle calls the real endpoint and
   reflects the real saved state; rejecting a review also removes it
-  from the pending queue.
+  from the pending queue. **Plus 3 new tests (migration 033)**:
+  switching to the Flagged tab shows the real flag count and every
+  real reason given; dismissing flags calls the real endpoint and
+  removes it from the flagged queue; hiding a flagged review calls the
+  real moderate endpoint with reject.
 - `src/uploads.integration.test.js` (6, REAL backend, real multipart
   file uploads against two real JPEG fixtures — one valid 900x900, one
   genuinely too-small 400x400) — a real, valid high-resolution image

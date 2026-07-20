@@ -105,6 +105,41 @@ class _ReviewsSectionState extends State<ReviewsSection> {
     setState(() => _selectedPhotos.removeAt(index));
   }
 
+  // Real report/flag a review (migration 033) -- confirmed scope:
+  // requires a real short reason, one real flag per buyer per review.
+  Future<void> _showReportDialog(String token, int reviewId) async {
+    final reasonController = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(widget.isAr ? 'الإفادة عن هذا التقييم' : 'Report this review'),
+        content: TextField(
+          controller: reasonController,
+          maxLines: 2,
+          decoration: InputDecoration(hintText: widget.isAr ? 'سبب الإفادة' : 'Why are you reporting this?'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: Text(widget.isAr ? 'إلغاء' : 'Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(reasonController.text.trim()),
+            child: Text(widget.isAr ? 'إرسال' : 'Submit'),
+          ),
+        ],
+      ),
+    );
+    if (reason == null || reason.isEmpty || !mounted) return;
+    try {
+      await ApiClient().flagReview(token, reviewId, reason);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(widget.isAr ? 'تم إرسال إفادتك.' : 'Your report was submitted.')),
+        );
+      }
+    } on ApiException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
   @override
   void dispose() {
     _commentController.dispose();
@@ -190,6 +225,16 @@ class _ReviewsSectionState extends State<ReviewsSection> {
                                     ),
                                   ),
                               ],
+                            ),
+                          ],
+                          if (auth.isLoggedIn) ...[
+                            const SizedBox(height: 4),
+                            GestureDetector(
+                              onTap: () => _showReportDialog(auth.token!, r.id),
+                              child: Text(
+                                widget.isAr ? 'إفادة' : 'Report',
+                                style: const TextStyle(fontSize: 11.5, color: LeapColors.muted, decoration: TextDecoration.underline),
+                              ),
                             ),
                           ],
                         ],
