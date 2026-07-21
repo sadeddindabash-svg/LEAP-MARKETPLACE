@@ -46,6 +46,7 @@ function toReviewDto(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     photos: row.photos || [],
+    isVerifiedPurchase: row.is_verified_purchase,
   };
 }
 
@@ -82,21 +83,23 @@ router.post('/', requireAuth, async (req, res, next) => {
     }
 
     const needsVerified = await requiresVerifiedPurchase(client);
-    if (needsVerified) {
-      const verified = await hasVerifiedPurchase(client, req.user.sub, productId);
-      if (!verified) {
-        return res.status(403).json({ error: 'Only buyers who have received this product can leave a review.' });
-      }
+    // Real, always computed regardless of the toggle above (migration
+    // 035) -- the toggle only ever controlled whether this gates
+    // submission; the real badge shown on the review itself is a
+    // separate, always-real concern.
+    const isVerifiedPurchase = await hasVerifiedPurchase(client, req.user.sub, productId);
+    if (needsVerified && !isVerifiedPurchase) {
+      return res.status(403).json({ error: 'Only buyers who have received this product can leave a review.' });
     }
 
     await client.query('BEGIN');
     const { rows } = await client.query(
-      `INSERT INTO product_reviews (product_id, buyer_id, rating, comment, status, updated_at)
-       VALUES ($1, $2, $3, $4, 'pending', now())
+      `INSERT INTO product_reviews (product_id, buyer_id, rating, comment, status, is_verified_purchase, updated_at)
+       VALUES ($1, $2, $3, $4, 'pending', $5, now())
        ON CONFLICT (product_id, buyer_id)
-       DO UPDATE SET rating = $3, comment = $4, status = 'pending', updated_at = now()
+       DO UPDATE SET rating = $3, comment = $4, status = 'pending', is_verified_purchase = $5, updated_at = now()
        RETURNING *`,
-      [productId, req.user.sub, rating, comment || null]
+      [productId, req.user.sub, rating, comment || null, isVerifiedPurchase]
     );
     const reviewId = rows[0].id;
 

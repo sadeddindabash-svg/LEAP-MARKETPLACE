@@ -245,7 +245,7 @@ router.get('/products/:id/reviews', async (req, res, next) => {
     res.json({
       averageRating,
       reviewCount: rows.length,
-      reviews: rows.map((r) => ({ id: r.id, buyerName: r.buyer_name, rating: r.rating, comment: r.comment, createdAt: r.created_at, photos: photosByReview[r.id] || [] })),
+      reviews: rows.map((r) => ({ id: r.id, buyerName: r.buyer_name, rating: r.rating, comment: r.comment, createdAt: r.created_at, photos: photosByReview[r.id] || [], isVerifiedPurchase: r.is_verified_purchase })),
     });
   } catch (err) {
     next(err);

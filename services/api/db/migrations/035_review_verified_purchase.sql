@@ -1,0 +1,19 @@
+-- Migration 035: real verified-purchase badge on reviews.
+--
+-- CONFIRMED, real gap found first: the existing "require verified
+-- purchase to review" toggle (migration 025) only ever used
+-- hasVerifiedPurchase() as a real gate at submission time -- whether
+-- THAT specific review came from a real verified purchase was never
+-- actually stored anywhere. This meant: (a) with the toggle off, no
+-- review ever showed whether its author had genuinely bought the
+-- product, even when they had; (b) even with the toggle on, the
+-- real, already-computed answer was thrown away right after the gate
+-- check, not persisted for display.
+--
+-- Real, deliberate design: computed and stored ONCE, at the moment a
+-- real review is submitted (a real snapshot of that real moment), not
+-- re-computed live on every real page view -- a buyer's later return
+-- or refund shouldn't retroactively change what their review's badge
+-- said at the time, matching how order_addresses (migration 030) and
+-- other snapshot-style real data in this project already work.
+ALTER TABLE product_reviews ADD COLUMN IF NOT EXISTS is_verified_purchase BOOLEAN NOT NULL DEFAULT false;

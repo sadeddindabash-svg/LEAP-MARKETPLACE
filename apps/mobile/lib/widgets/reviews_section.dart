@@ -206,6 +206,17 @@ class _ReviewsSectionState extends State<ReviewsSection> {
                               _StarRow(rating: r.rating, size: 13),
                               const SizedBox(width: 8),
                               Text(r.buyerName ?? (widget.isAr ? 'مشترٍ' : 'Buyer'), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5)),
+                              if (r.isVerifiedPurchase) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(color: const Color(0xFFE8F7F0), borderRadius: BorderRadius.circular(4)),
+                                  child: Text(
+                                    widget.isAr ? '✓ شراء موثّق' : '✓ Verified Purchase',
+                                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: LeapColors.gauge),
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                           if (r.comment != null && r.comment!.isNotEmpty) ...[

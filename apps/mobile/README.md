@@ -737,6 +737,18 @@ order ships" message rather than an error.
 README — no Flutter SDK in this sandbox, so this could not be run or
 tested here beyond careful manual review and bracket-balance checks.
 
+## Real verified-purchase badge on reviews (new, migration 035)
+
+See `services/api/README.md`'s equivalent section for the full real
+backend design — a real, honest gap closed: whether a review's author
+genuinely bought the product was previously only ever checked at
+submission time, never stored for display.
+
+A real "✓ Verified Purchase" badge now shows next to the buyer name on
+any review that qualifies, in `widgets/reviews_section.dart` — same
+real component used for both the buyer's own in-progress review and
+every approved review shown publicly.
+
 ## Setup
 
 1. Install Flutter: https://docs.flutter.dev/get-started/install

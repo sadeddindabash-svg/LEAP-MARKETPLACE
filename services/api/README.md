@@ -1521,6 +1521,41 @@ matched two real elements) — fixed by asserting on the count instead of
 a single element, the same real pattern already used elsewhere in this
 project for exactly this kind of accidental text collision.
 
+## Real verified-purchase badge on reviews (migration 035)
+
+**A real, honest gap was found first**: the existing "require verified
+purchase to review" toggle (migration 025) only ever used
+`hasVerifiedPurchase()` as a real gate at submission time — whether
+that specific review came from a real verified purchase was never
+actually stored anywhere. With the toggle off, no review ever showed
+whether its author had genuinely bought the product, even when they
+had; even with the toggle on, the real, already-computed answer was
+thrown away right after the gate check, not persisted for display.
+
+**Real, deliberate design**: `is_verified_purchase` is computed and
+stored ONCE, at the moment a review is submitted (a real snapshot of
+that moment) — not re-computed live on every page view. A buyer's
+later return or refund shouldn't retroactively change what their
+review's badge said at the time, matching how `order_addresses`
+(migration 030) and other snapshot-style data in this project already
+work. Re-submitting an existing review (a real edit, sent back to
+`'pending'`) re-checks and re-stores the status fresh, so a buyer who
+reviews before delivery and edits afterward gets the real, updated
+badge.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/verifiedPurchaseReview.integration.test.js`
+(3 tests, REAL backend, using the full real hub delivery workflow): a
+review from a buyer with no real purchase is stored as `false`; a
+review from a buyer with a genuinely delivered order is stored as
+`true`, correctly shown in the moderate response and the real public
+endpoint; a real, later edit of the same review re-checks and
+re-stores the real status.
+
+**Shown across all three buyer-facing surfaces**: the admin dashboard's
+Reviews page, the mobile app's reviews section, and the web
+storefront's product page all show a real "✓ Verified Purchase" badge
+next to a review when it applies.
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category

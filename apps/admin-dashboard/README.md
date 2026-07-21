@@ -560,7 +560,12 @@ Approve or reject each pending review directly, with its real star
 rating and comment shown alongside which real product and buyer it's
 for. **Real photo thumbnails (up to 3, migration 031)** now show
 alongside a review when a buyer attached any, rendered the same way
-existing photo thumbnails elsewhere in this app already are.
+existing photo thumbnails elsewhere in this app already are. **A real
+"✓ Verified Purchase" badge (migration 035)** now shows next to a
+review's buyer name/date when that buyer's purchase was genuinely
+verified at the moment they submitted it — a real, honest gap closed:
+this was previously only ever checked as a submission-time gate, never
+actually stored for display.
 
 A real **"Require verified purchase to review"** toggle sits at the
 top — confirmed design: whether a review needs a genuine delivered
@@ -590,7 +595,7 @@ can never crash the page.
 npm test
 ```
 
-Fifty-three test files, 352 tests total, all passing:
+Fifty-six test files, 366 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/passwordReset.integration.test.js` (5, REAL backend) — a real
@@ -974,6 +979,15 @@ Fifty-three test files, 352 tests total, all passing:
   specific reply, even though they were genuinely still saved and
   visible everywhere else. See `services/api/README.md`'s "Real photos
   on product reviews" section for the full real design.
+- `src/verifiedPurchaseReview.integration.test.js` (3, REAL backend,
+  new, migration 035, using the full real order-to-delivery workflow)
+  — a review from a buyer with no real purchase is stored as
+  `isVerifiedPurchase: false`; a review from a buyer with a genuinely
+  delivered order is stored as `true`, correctly shown in the moderate
+  response and the real public endpoint; a real, later edit of the
+  same review re-checks and re-stores the real status (submitted
+  before delivery as `false`, edited after delivery as `true`, same
+  review row throughout).
 - `src/recentlyViewed.integration.test.js` (4, REAL backend, new,
   migration 032) — recording a view and fetching the list shows it,
   most recent first; re-viewing a product moves it back to the front

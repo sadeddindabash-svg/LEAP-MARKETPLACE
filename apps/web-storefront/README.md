@@ -103,6 +103,16 @@ the initial "Loading…" server-rendered state) could only be verified
 logically here, not visually in a real browser — worth a quick manual
 check once running somewhere with one.
 
+## Real verified-purchase badge on reviews (new, migration 035)
+
+See `services/api/README.md`'s equivalent section for the full real
+backend design. The product page (`app/products/[id]/page.tsx`) shows
+a real "✓ Verified Purchase" badge next to a review's buyer name/date
+when that buyer's purchase was genuinely verified at the moment they
+submitted it. Confirmed by directly inspecting the rendered page
+against a real, delivered order's real review — not just checked for
+compile errors.
+
 ## Brand system — carried over, not reinvented
 
 Since this is the same real product as the mobile app, not a

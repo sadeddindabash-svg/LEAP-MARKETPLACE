@@ -9,6 +9,7 @@ class Review {
   final String? comment;
   final DateTime createdAt;
   final List<String> photos;
+  final bool isVerifiedPurchase;
 
   Review({
     required this.id,
@@ -17,6 +18,7 @@ class Review {
     required this.comment,
     required this.createdAt,
     this.photos = const [],
+    this.isVerifiedPurchase = false,
   });
 
   factory Review.fromJson(Map<String, dynamic> json) => Review(
@@ -26,6 +28,7 @@ class Review {
         comment: json['comment'] as String?,
         createdAt: DateTime.parse(json['createdAt'] as String),
         photos: (json['photos'] as List?)?.cast<String>() ?? const [],
+        isVerifiedPurchase: json['isVerifiedPurchase'] as bool? ?? false,
       );
 }
 

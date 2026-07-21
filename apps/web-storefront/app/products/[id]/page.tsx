@@ -149,9 +149,16 @@ export default async function ProductPage({ params }: PageProps) {
                   {"☆".repeat(5 - r.rating)}
                 </p>
                 {r.comment && <p className="mt-2 text-sm">{r.comment}</p>}
-                <p className="mt-2 text-xs text-muted">
-                  {r.buyerName || "Buyer"} ·{" "}
-                  {new Date(r.createdAt).toLocaleDateString()}
+                <p className="mt-2 text-xs text-muted flex items-center gap-2">
+                  <span>
+                    {r.buyerName || "Buyer"} ·{" "}
+                    {new Date(r.createdAt).toLocaleDateString()}
+                  </span>
+                  {r.isVerifiedPurchase && (
+                    <span className="text-[10px] font-bold text-gauge bg-[#E8F7F0] px-1.5 py-0.5 rounded">
+                      ✓ Verified Purchase
+                    </span>
+                  )}
                 </p>
               </div>
             ))}

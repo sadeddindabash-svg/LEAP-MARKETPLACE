@@ -59,6 +59,7 @@ export interface ReviewsSummary {
     comment: string | null;
     createdAt: string;
     photos: string[];
+    isVerifiedPurchase: boolean;
   }>;
 }
 

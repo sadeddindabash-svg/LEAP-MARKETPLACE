@@ -2408,7 +2408,14 @@ function ReviewsPage({ onSessionExpired }) {
                     ))}
                   </div>
                 )}
-                <div style={{ ...body, fontSize: 11, color: C.muted }}>{r.buyerName || "Buyer"} · {new Date(r.createdAt).toLocaleDateString()}</div>
+                <div style={{ ...body, fontSize: 11, color: C.muted, display: "flex", alignItems: "center", gap: 6 }}>
+                  {r.buyerName || "Buyer"} · {new Date(r.createdAt).toLocaleDateString()}
+                  {r.isVerifiedPurchase && (
+                    <span style={{ ...body, fontSize: 10, fontWeight: 700, color: C.gauge, background: "#E8F7F0", padding: "2px 6px", borderRadius: 4 }}>
+                      ✓ Verified Purchase
+                    </span>
+                  )}
+                </div>
                 {activeTab === "flagged" && (
                   <div style={{ marginTop: 8, padding: 10, background: C.redBg, borderRadius: 8 }}>
                     <div style={{ ...body, fontSize: 12, fontWeight: 700, color: C.red, marginBottom: 4 }}>
