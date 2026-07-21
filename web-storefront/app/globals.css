@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+/*
+ * Brand tokens carried over EXACTLY from apps/mobile/lib/core/theme.dart
+ * (itself carried over from docs/prototypes/leap_mobile_prototype.jsx)
+ * so this storefront is visually the same product as the app, not a
+ * reskin. Same reasoning for the fonts below: Barlow Condensed (an
+ * industrial, gauge-cluster display face -- fitting for an auto parts
+ * catalog), Inter for body copy, JetBrains Mono for part numbers and
+ * the "plate chip" fitment badge (the mobile app's own established
+ * signature element, carried over below in globals rather than
+ * reinvented).
+ */
+:root {
+  --color-ink: #14171c;
+  --color-chalk: #f5f6f8;
+  --color-line: #e4e6ea;
+  --color-signal: #e8622c;
+  --color-signal-dark: #c94f1e;
+  --color-torque: #2a5fd9;
+  --color-gauge: #1e9d6b;
+  --color-amber: #b9791f;
+  --color-muted: #6b7280;
+}
+
+@theme inline {
+  --color-ink: var(--color-ink);
+  --color-chalk: var(--color-chalk);
+  --color-line: var(--color-line);
+  --color-signal: var(--color-signal);
+  --color-signal-dark: var(--color-signal-dark);
+  --color-torque: var(--color-torque);
+  --color-gauge: var(--color-gauge);
+  --color-amber: var(--color-amber);
+  --color-muted: var(--color-muted);
+  --font-display: var(--font-barlow-condensed);
+  --font-body: var(--font-inter);
+  --font-plate: var(--font-jetbrains-mono);
+}
+
+body {
+  background: var(--color-chalk);
+  color: var(--color-ink);
+  font-family: var(--font-body), sans-serif;
+}
+
+/* The "plate chip" -- the established signature element carried over
+   exactly from apps/mobile/lib/widgets/plate_chip.dart's own header
+   comment: "keep it consistent rather than reskinning per-screen." */
+.plate-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1.5px solid var(--color-ink);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-family: var(--font-plate), monospace;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--color-ink);
+  white-space: nowrap;
+}
