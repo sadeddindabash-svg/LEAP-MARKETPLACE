@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import LoginPage from "./LoginPage";
+import { exportToExcel } from "./exportToExcel";
 import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, verifySupplier, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
   createBrand, deleteBrand, createModel, deleteModel, createGeneration, deleteGeneration, createEngine, deleteEngine, createTransmission, deleteTransmission,
@@ -372,7 +373,30 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
             }}>{label}</button>
           ))}
         </div>
-        <button style={{ ...body, display: "flex", alignItems: "center", gap: 6, padding: "7px 13px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, border: `1px solid ${C.line}`, background: "#fff", cursor: "pointer" }}>
+        <button
+          disabled={filtered.length === 0}
+          onClick={() => exportToExcel({
+            filename: `orders-${filter}-${new Date().toISOString().slice(0, 10)}`,
+            sheetName: "Orders",
+            columns: [
+              { header: "Order ID", key: "id", width: 16 },
+              { header: "Buyer", key: "buyer", width: 30 },
+              { header: "Total", key: "total", width: 12 },
+              { header: "Currency", key: "currencyCode", width: 10 },
+              { header: "Placed", key: "placedAt", width: 18 },
+              { header: "Status", key: "status", width: 14 },
+            ],
+            rows: filtered.map((o) => ({
+              id: o.id,
+              buyer: o.userId || o.guestEmail || "—",
+              total: Number(o.total),
+              currencyCode: o.currencyCode,
+              placedAt: new Date(o.placedAt).toLocaleDateString(),
+              status: getOrderStatusMeta(o.status).label,
+            })),
+          })}
+          style={{ ...body, display: "flex", alignItems: "center", gap: 6, padding: "7px 13px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, border: `1px solid ${C.line}`, background: "#fff", cursor: filtered.length === 0 ? "default" : "pointer", opacity: filtered.length === 0 ? 0.5 : 1 }}
+        >
           <Download size={13} /> Export
         </button>
       </div>
@@ -2535,7 +2559,38 @@ function PayoutsPage({ onSessionExpired }) {
 
         {loadState === "ready" && (
           <>
-            <Card title="Amount owed" style={{ marginBottom: 16 }}>
+            <Card
+              title="Amount owed"
+              style={{ marginBottom: 16 }}
+              action={
+                owed.length > 0 && (
+                  <button
+                    onClick={() => exportToExcel({
+                      filename: `payouts-owed-${new Date().toISOString().slice(0, 10)}`,
+                      sheetName: "Amount Owed",
+                      columns: [
+                        { header: "Supplier", key: "supplierName", width: 30 },
+                        { header: "Amount owed", key: "amountOwed", width: 16 },
+                        { header: "Eligible orders", key: "eligibleSubOrderCount", width: 16 },
+                        { header: "Payout method", key: "payoutMethod", width: 40 },
+                      ],
+                      rows: owed.map((o) => {
+                        const method = payoutMethods[o.supplierId];
+                        return {
+                          supplierName: o.supplierName,
+                          amountOwed: o.amountOwed,
+                          eligibleSubOrderCount: o.eligibleSubOrderCount,
+                          payoutMethod: method ? `${method.bankName} — ${method.accountNumber} (${method.accountHolderName})` : "None on file",
+                        };
+                      }),
+                    })}
+                    style={{ ...body, display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    <Download size={14} /> Export
+                  </button>
+                )
+              }
+            >
               {owed.length === 0 ? (
                 <div style={{ padding: 24, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Nothing is currently owed to any supplier.</div>
               ) : (
@@ -2575,7 +2630,36 @@ function PayoutsPage({ onSessionExpired }) {
               )}
             </Card>
 
-            <Card title="Payout history">
+            <Card
+              title="Payout history"
+              action={
+                history.length > 0 && (
+                  <button
+                    onClick={() => exportToExcel({
+                      filename: `payout-history-${new Date().toISOString().slice(0, 10)}`,
+                      sheetName: "Payout History",
+                      columns: [
+                        { header: "Supplier", key: "supplierName", width: 30 },
+                        { header: "Amount", key: "amount", width: 14 },
+                        { header: "Orders covered", key: "subOrderCount", width: 16 },
+                        { header: "Date", key: "date", width: 16 },
+                        { header: "Notes", key: "notes", width: 40 },
+                      ],
+                      rows: history.map((p) => ({
+                        supplierName: p.supplierName,
+                        amount: p.amount,
+                        subOrderCount: p.subOrderCount,
+                        date: new Date(p.createdAt).toLocaleDateString(),
+                        notes: p.notes || "",
+                      })),
+                    })}
+                    style={{ ...body, display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    <Download size={14} /> Export
+                  </button>
+                )
+              }
+            >
               {history.length === 0 ? (
                 <div style={{ padding: 24, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>No payouts recorded yet.</div>
               ) : (
@@ -3358,7 +3442,39 @@ function AuditLogSection({ currentUser, onSessionExpired }) {
   if (!currentUser.isOwner) return null;
 
   return (
-    <Card title="Audit log" style={{ flex: 1, minWidth: 420 }}>
+    <Card
+      title="Audit log"
+      style={{ flex: 1, minWidth: 420 }}
+      action={
+        entries.length > 0 && (
+          <button
+            onClick={() => exportToExcel({
+              filename: `audit-log-${new Date().toISOString().slice(0, 10)}`,
+              sheetName: "Audit Log",
+              columns: [
+                { header: "Date/time", key: "createdAt", width: 22 },
+                { header: "Admin", key: "adminEmail", width: 28 },
+                { header: "Action", key: "action", width: 28 },
+                { header: "Target type", key: "targetType", width: 16 },
+                { header: "Target ID", key: "targetId", width: 20 },
+                { header: "Details", key: "details", width: 50 },
+              ],
+              rows: entries.map((e) => ({
+                createdAt: new Date(e.createdAt).toLocaleString(),
+                adminEmail: e.adminEmail,
+                action: e.action,
+                targetType: e.targetType,
+                targetId: e.targetId || "",
+                details: e.details ? JSON.stringify(e.details) : "",
+              })),
+            })}
+            style={{ ...body, display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+          >
+            <Download size={14} /> Export
+          </button>
+        )
+      }
+    >
       <div style={{ padding: 16 }}>
         <div style={{ ...body, fontSize: 11.5, color: C.muted, marginBottom: 12 }}>
           A real record of sensitive admin actions — supplier verification, review moderation, payouts, promo codes, admin account changes, and pricing/settings changes.

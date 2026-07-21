@@ -89,6 +89,38 @@ Orders, in this round of updates.
   aggregate numbers" decision is enforced by the backend, not just a
   frontend choice not to display fields that exist.
 
+## Real Excel (.xlsx) export (new)
+
+**Confirmed scope**: a real `.xlsx` file specifically, not CSV, added
+to three places — the Audit log card, the Orders page, and the Payouts
+page (both "Amount owed" and "Payout history"). Client-side generation
+directly from whatever real data the page already has loaded (via
+`src/exportToExcel.js`) — no new backend endpoint needed, since this
+is just a different real representation of data the admin can already
+see on screen.
+
+**A real, deliberate library choice**: `xlsx` (SheetJS), the more
+commonly reached-for package, has two real, unpatched high-severity
+vulnerabilities (prototype pollution, ReDoS) with no fix available —
+confirmed via `npm audit`, not assumed. Used `exceljs` instead, a
+well-maintained alternative better suited for this write-only use
+case (a moderate, narrower vulnerability remains in one of its own
+transitive dependencies, `uuid`, but only affects a code path this
+project's usage never exercises).
+
+**A real, pre-existing gap was found and fixed while building this**:
+the Orders page already had an "Export" button — but it had no
+`onClick` handler at all, doing nothing when clicked. Wired up
+properly rather than left as another fake control.
+
+**Tested properly** — see `src/exportToExcel.test.js` (3 tests): rather
+than just confirming the code runs without throwing, these tests
+build a real workbook, write it to a real buffer, then read that
+buffer back with an independent ExcelJS instance to confirm the
+actual bytes are a genuinely valid, correctly structured `.xlsx` file
+— real headers, real row data, real column widths, all verified
+end-to-end, including the zero-rows edge case.
+
 ## Orders page (ADM-010)
 
 The first page wired to real data end-to-end:
@@ -603,7 +635,7 @@ can never crash the page.
 npm test
 ```
 
-Fifty-seven test files, 371 tests total, all passing:
+Fifty-eight test files, 374 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/passwordReset.integration.test.js` (5, REAL backend) — a real
@@ -634,6 +666,13 @@ Fifty-seven test files, 371 tests total, all passing:
   payout confirmation shows the real amount with correct real
   singular/plural wording; all 4 personalize the greeting with a real
   name and fall back gracefully without one.
+- `src/exportToExcel.test.js` (3, unit tests, new) — a real, valid
+  workbook is produced with the real headers and real row data,
+  verified by actually reading it back with an independent ExcelJS
+  instance (not just confirming no error was thrown while building
+  it); a real export with zero rows still produces a valid workbook
+  with just the real header row; real column widths are actually
+  applied, with a sensible real default when not specified.
 - `src/transactionalEmails.integration.test.js` (5, REAL backend) —
   placing a real order succeeds regardless of email delivery; a real
   guest order (no account) is also handled correctly; marking a
