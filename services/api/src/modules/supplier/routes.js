@@ -29,6 +29,15 @@ function toSupplierDto(row) {
   };
 }
 
+function toPayoutMethodDto(row) {
+  return {
+    bankName: row.bank_name,
+    accountNumber: row.account_number,
+    accountHolderName: row.account_holder_name,
+    updatedAt: row.updated_at,
+  };
+}
+
 // GET /supplier — admin only. Listing count is derived via a live join
 // against products rather than stored, so it's never stale.
 router.get('/', requireAuth, requireRole('admin'), requirePageAccess('suppliers'), async (req, res, next) => {
@@ -140,6 +149,52 @@ router.get('/me', requireAuth, requireRole('supplier'), async (req, res, next) =
     const { rows } = await db.query('SELECT * FROM suppliers WHERE id = $1', [req.user.supplierId]);
     if (rows.length === 0) return res.status(404).json({ error: 'Supplier not found' });
     res.json(toSupplierDto({ ...rows[0], listing_count: 0 }));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET/PUT /supplier/me/payout-method — real supplier payout method
+// (migration 034). CONFIRMED SCOPE: simple, universal fields only.
+// One real row per supplier -- a PUT always replaces whatever was
+// there before, rather than keeping a history.
+router.get('/me/payout-method', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT * FROM supplier_payout_methods WHERE supplier_id = $1', [req.user.supplierId]);
+    if (rows.length === 0) return res.json(null);
+    res.json(toPayoutMethodDto(rows[0]));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/me/payout-method', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    const { bankName, accountNumber, accountHolderName } = req.body || {};
+    if (!bankName || !accountNumber || !accountHolderName) {
+      return res.status(400).json({ error: 'bankName, accountNumber, and accountHolderName are all required.' });
+    }
+    const { rows } = await db.query(
+      `INSERT INTO supplier_payout_methods (supplier_id, bank_name, account_number, account_holder_name, updated_at)
+       VALUES ($1, $2, $3, $4, now())
+       ON CONFLICT (supplier_id) DO UPDATE SET bank_name = $2, account_number = $3, account_holder_name = $4, updated_at = now()
+       RETURNING *`,
+      [req.user.supplierId, bankName, accountNumber, accountHolderName]
+    );
+    res.json(toPayoutMethodDto(rows[0]));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /supplier/:id/payout-method — real admin view, needed when
+// recording a payout so an admin can see (or confirm the real absence
+// of) where the money is actually supposed to go.
+router.get('/:id/payout-method', requireAuth, requireRole('admin'), requirePageAccess('payouts'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT * FROM supplier_payout_methods WHERE supplier_id = $1', [req.params.id]);
+    if (rows.length === 0) return res.json(null);
+    res.json(toPayoutMethodDto(rows[0]));
   } catch (err) {
     next(err);
   }

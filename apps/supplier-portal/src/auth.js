@@ -176,6 +176,15 @@ export function fetchMyMessages(token) {
   return authedGet("/supplier-messages/me", token);
 }
 
+// Real supplier payout method (migration 034).
+export function fetchMyPayoutMethod(token) {
+  return authedGet("/supplier/me/payout-method", token);
+}
+
+export function updateMyPayoutMethod(token, { bankName, accountNumber, accountHolderName }) {
+  return authedMutate("PUT", "/supplier/me/payout-method", token, { bankName, accountNumber, accountHolderName });
+}
+
 export function sendMyMessage(token, text) {
   return authedMutate("POST", "/supplier-messages/me", token, { text });
 }

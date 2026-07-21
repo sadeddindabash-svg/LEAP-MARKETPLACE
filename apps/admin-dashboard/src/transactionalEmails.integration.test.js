@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { login } from './auth';
 
 const BACKEND_URL = 'http://localhost:4000';
@@ -57,6 +57,16 @@ async function shipAndDeliverSubOrder(adminToken, subOrderId, trackingNumber, or
 }
 
 describe.runIf(backendUp)('real transactional email trigger points against a REAL running backend', () => {
+  // CONFIRMED (migration 034): recording a real payout now requires a
+  // real payout method to exist first.
+  beforeAll(async () => {
+    const { token } = await login('supplier@leap.dev', 'supplier_dev_password_123');
+    await fetch(`${BACKEND_URL}/supplier/me/payout-method`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ bankName: 'Test Bank', accountNumber: '000111222', accountHolderName: 'Test Supplier Account' }),
+    });
+  });
+
   // NOTE: no real SMTP credentials exist in this environment, so these
   // tests confirm each real trigger point genuinely FIRES (the
   // endpoint succeeds and the underlying action completes correctly)

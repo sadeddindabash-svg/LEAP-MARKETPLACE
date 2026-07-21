@@ -1458,6 +1458,69 @@ verify the actual live query once you have real 17TRACK credentials.
 button on the order detail screen, showing the real merged timeline as
 a visual, icon-based list.
 
+## Real supplier payout method (migration 034)
+
+**Confirmed scope**: simple, universal fields only — bank name,
+account number, account holder name — no country-specific fields
+(IBAN, routing number, etc.) for now. One real row per supplier — a
+PUT always replaces whatever was there before, rather than keeping a
+history (a real payout already records its own amount and date
+permanently; this was never going to double as a bank-details audit
+log).
+
+**A real, honest gap this closes**: `POST /payouts` now requires a
+real payout method to exist first, checked before the real payout
+transaction even opens — recording a payout with genuinely nowhere for
+the money to go was a real, honest gap. `GET/PUT
+/supplier/me/payout-method` for a supplier to view/set their own;
+`GET /supplier/:id/payout-method` for an admin, needed when recording
+a payout so they can actually see (or confirm the real absence of)
+where the money is supposed to go.
+
+**A significant, real blast radius**: 2 existing test files
+(`payouts.integration.test.js`, `transactionalEmails.integration.test.js`)
+recorded payouts without ever setting a payout method first — both
+updated with a real `beforeAll` step ensuring the test supplier has one
+before any payout-recording test runs.
+
+**A real, honest gap was ALSO found in the supplier portal while
+building this**: its existing Finance page already had a "Payout
+account" card — but it was 100% fake, hardcoded placeholder text
+("China Construction Bank •••• 8842," a made-up account holder name),
+never connected to anything real. Replaced with a real, editable form.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/payoutMethod.integration.test.js`
+(5 tests, REAL backend): a supplier with no real payout method on file
+gets a genuine `null`, not an error; setting one requires every real
+field; a real, complete payout method saves and can be fetched back
+correctly, and a real update replaces it; an admin can view a real
+payout method but a non-admin cannot view another supplier's;
+recording a payout is rejected when the supplier has no real payout
+method on file, with a real, clear message.
+
+**Supplier portal**: the Finance page's payout-method card now fetches
+and saves real data — showing the real saved details with an Edit
+action when one exists, or going straight to a real editable form when
+none does yet. 3 new component tests. **A real mistake of my own was
+found and fixed while building this**: the Chinese-language branch of
+this new form was accidentally written in Arabic instead — caught by
+directly reviewing the diff, not by any automated check, since a
+component test asserting on the wrong-but-still-present text wouldn't
+have caught a language mix-up on its own.
+
+**Admin dashboard**: the Payouts page gained a "Payout method" column,
+showing the real bank details or a clear "No payout method on file"
+warning; the "Record payout" button now disables when a supplier has
+none, matching the backend's own hard requirement so an admin sees the
+problem immediately rather than getting a failed request. 2 new tests.
+**A real test-writing mistake was found and fixed**: 3 pre-existing
+tests broke the moment a real payout method's account holder name
+happened to be the exact same text as the supplier's own name shown
+elsewhere in the same table (`getByText`, singular, now correctly
+matched two real elements) — fixed by asserting on the count instead of
+a single element, the same real pattern already used elsewhere in this
+project for exactly this kind of accidental text collision.
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category

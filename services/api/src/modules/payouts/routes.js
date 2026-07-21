@@ -107,6 +107,16 @@ router.post('/', requireAuth, requireRole('admin'), requirePageAccess('payouts')
       return res.status(400).json({ error: 'supplierId is required' });
     }
 
+    // CONFIRMED (migration 034): a real payout must have somewhere
+    // real to go -- recording one without a real payout method on
+    // file was a genuine, honest gap. Checked here, before the
+    // transaction even opens, so a missing payout method never
+    // produces a real payout row with no real destination.
+    const { rows: payoutMethodRows } = await client.query('SELECT 1 FROM supplier_payout_methods WHERE supplier_id = $1', [supplierId]);
+    if (payoutMethodRows.length === 0) {
+      return res.status(400).json({ error: 'This supplier has no payout method on file yet — add their bank details before recording a payout.' });
+    }
+
     await client.query('BEGIN');
     const { rows: eligibleRows } = await client.query(
       `${ELIGIBLE_SUB_ORDERS_CTE}

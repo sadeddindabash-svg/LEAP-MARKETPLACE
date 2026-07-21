@@ -495,6 +495,16 @@ export async function fetchPayoutsOwed(token) {
   return response.json();
 }
 
+// Real supplier payout method (migration 034) -- shown alongside the
+// amount owed so an admin can actually see (or confirm the real
+// absence of) where the money is supposed to go.
+export async function fetchSupplierPayoutMethod(token, supplierId) {
+  const response = await fetch(`${API_BASE_URL}/supplier/${supplierId}/payout-method`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) throw new Error(`Failed to load payout method (${response.status})`);
+  return response.json();
+}
+
 export async function fetchPayoutHistory(token) {
   const response = await fetch(`${API_BASE_URL}/payouts`, { headers: { Authorization: `Bearer ${token}` } });
   if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");

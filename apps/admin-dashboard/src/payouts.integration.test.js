@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { Pool } from 'pg';
 import { login } from './auth';
 
@@ -83,6 +83,17 @@ async function backdateDelivery(subOrderId, daysAgo) {
 }
 
 describe.runIf(backendUp)('real return window + real payouts foundation against a REAL running backend', () => {
+  // CONFIRMED (migration 034): recording a real payout now requires a
+  // real payout method to exist first. Set once here, for the real
+  // supplier ('s1') every payout test in this file already uses.
+  beforeAll(async () => {
+    const { token } = await login('supplier@leap.dev', 'supplier_dev_password_123');
+    await fetch(`${BACKEND_URL}/supplier/me/payout-method`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ bankName: 'Test Bank', accountNumber: '000111222', accountHolderName: 'Test Supplier Account' }),
+    });
+  });
+
   it('CRITICAL: the real return window is admin-configurable within 3-7 days, rejecting anything outside that real range', async () => {
     const { token } = await login('admin@leap.dev', 'admin_dev_password_123');
     const tooLow = await fetch(`${BACKEND_URL}/platform-settings/return-window`, {

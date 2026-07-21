@@ -10,7 +10,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchSupplierMessagesInbox, fetchSupplierMessageThread, sendSupplierMessage,
   fetchPromoCodes, createPromoCode, updatePromoCode, deletePromoCode,
   fetchAdminUsers, createAdminUser, updateAdminPermissions, deleteAdminUser,
-  fetchPayoutsOwed, fetchPayoutHistory, recordPayout, fetchReturnWindow, updateReturnWindow, updateCategoryCommission,
+  fetchPayoutsOwed, fetchPayoutHistory, recordPayout, fetchSupplierPayoutMethod, fetchReturnWindow, updateReturnWindow, updateCategoryCommission,
   fetchPendingReviews, moderateReview, fetchRequireVerifiedPurchase, updateRequireVerifiedPurchase,
   fetchFlaggedReviews, dismissReviewFlags,
 } from "./auth";
@@ -2459,6 +2459,7 @@ function ReviewsPage({ onSessionExpired }) {
 
 function PayoutsPage({ onSessionExpired }) {
   const [owed, setOwed] = useState([]);
+  const [payoutMethods, setPayoutMethods] = useState({}); // supplierId -> payout method (or null)
   const [history, setHistory] = useState([]);
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
@@ -2467,7 +2468,24 @@ function PayoutsPage({ onSessionExpired }) {
   const load = () => {
     setLoadState("loading");
     Promise.all([fetchPayoutsOwed(getStoredToken()), fetchPayoutHistory(getStoredToken())])
-      .then(([owedData, historyData]) => { setOwed(owedData); setHistory(historyData); setLoadState("ready"); })
+      .then(async ([owedData, historyData]) => {
+        setOwed(owedData);
+        setHistory(historyData);
+        // Real payout method per supplier currently owed (migration
+        // 034) -- fetched alongside, so an admin can see (or confirm
+        // the real absence of) where the money is supposed to go,
+        // right next to the amount and the Record payout action.
+        const methods = {};
+        await Promise.all(owedData.map(async (o) => {
+          try {
+            methods[o.supplierId] = await fetchSupplierPayoutMethod(getStoredToken(), o.supplierId);
+          } catch {
+            methods[o.supplierId] = null;
+          }
+        }));
+        setPayoutMethods(methods);
+        setLoadState("ready");
+      })
       .catch((err) => {
         if (err instanceof SessionExpiredError) return onSessionExpired();
         setErrorMessage(err.message);
@@ -2514,22 +2532,36 @@ function PayoutsPage({ onSessionExpired }) {
                 <div style={{ padding: 24, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Nothing is currently owed to any supplier.</div>
               ) : (
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr><Th>Supplier</Th><Th align="right">Owed</Th><Th align="right">Eligible orders</Th><Th></Th></tr></thead>
+                  <thead><tr><Th>Supplier</Th><Th align="right">Owed</Th><Th align="right">Eligible orders</Th><Th>Payout method</Th><Th></Th></tr></thead>
                   <tbody>
-                    {owed.map((o) => (
+                    {owed.map((o) => {
+                      const method = payoutMethods[o.supplierId];
+                      return (
                       <tr key={o.supplierId}>
                         <Td style={{ fontWeight: 600 }}>{o.supplierName}</Td>
                         <Td align="right">${o.amountOwed.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Td>
                         <Td align="right" style={{ color: C.muted }}>{o.eligibleSubOrderCount}</Td>
+                        <Td>
+                          {method ? (
+                            <div style={{ ...body, fontSize: 12 }}>
+                              <div style={{ fontWeight: 600 }}>{method.bankName} — {method.accountNumber}</div>
+                              <div style={{ color: C.muted, fontSize: 11 }}>{method.accountHolderName}</div>
+                            </div>
+                          ) : (
+                            <span style={{ ...body, fontSize: 11.5, color: C.red, background: C.redBg, padding: "3px 8px", borderRadius: 6 }}>No payout method on file</span>
+                          )}
+                        </Td>
                         <Td align="right">
                           <button
-                            disabled={payingSupplierId === o.supplierId}
+                            disabled={payingSupplierId === o.supplierId || !method}
                             onClick={() => handleRecordPayout(o.supplierId)}
-                            style={{ ...body, padding: "7px 14px", borderRadius: 8, border: "none", background: payingSupplierId === o.supplierId ? "#D1D5DB" : C.gauge, color: "#fff", fontSize: 12, fontWeight: 700, cursor: payingSupplierId === o.supplierId ? "default" : "pointer" }}
+                            title={!method ? "This supplier has no payout method on file yet" : undefined}
+                            style={{ ...body, padding: "7px 14px", borderRadius: 8, border: "none", background: (payingSupplierId === o.supplierId || !method) ? "#D1D5DB" : C.gauge, color: "#fff", fontSize: 12, fontWeight: 700, cursor: (payingSupplierId === o.supplierId || !method) ? "default" : "pointer" }}
                           >{payingSupplierId === o.supplierId ? "Recording…" : "Record payout"}</button>
                         </Td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               )}

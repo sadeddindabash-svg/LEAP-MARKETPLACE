@@ -22,6 +22,7 @@ import {
   uploadProductImage, API_BASE_URL,
   fetchCategories, fetchPartsForCategory,
   fetchMyMessages, sendMyMessage,
+  fetchMyPayoutMethod, updateMyPayoutMethod,
   fetchMyNotifications, fetchUnreadNotificationCount, markNotificationRead, markAllNotificationsRead,
   bulkImportProducts, fetchMyDrafts, completeDraftProduct,
 } from "./auth";
@@ -1929,7 +1930,60 @@ function MessagesPage() {
 
 function FinancePage() {
   const { t, lang } = useLang();
+  const { onSessionExpired } = useSupplier();
   const fi = t.finance;
+
+  // Real supplier payout method (migration 034) -- replaces what was
+  // previously entirely fake, hardcoded placeholder text here ("China
+  // Construction Bank •••• 8842", a made-up account holder name never
+  // connected to anything real).
+  const [payoutMethod, setPayoutMethod] = useState(undefined); // undefined = loading, null = none on file yet
+  const [isEditing, setIsEditing] = useState(false);
+  const [bankName, setBankName] = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
+  const [accountHolderName, setAccountHolderName] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  useEffect(() => {
+    fetchMyPayoutMethod(getStoredToken())
+      .then((result) => {
+        setPayoutMethod(result);
+        if (result) {
+          setBankName(result.bankName);
+          setAccountNumber(result.accountNumber);
+          setAccountHolderName(result.accountHolderName);
+        } else {
+          setIsEditing(true); // no real payout method yet -- go straight to the real form
+        }
+      })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSave = async () => {
+    if (!bankName.trim() || !accountNumber.trim() || !accountHolderName.trim()) {
+      setErrorMessage(lang === "zh" ? "请填写所有字段" : "Please fill in every field.");
+      return;
+    }
+    setIsSaving(true);
+    setErrorMessage(null);
+    try {
+      const result = await updateMyPayoutMethod(getStoredToken(), {
+        bankName: bankName.trim(), accountNumber: accountNumber.trim(), accountHolderName: accountHolderName.trim(),
+      });
+      setPayoutMethod(result);
+      setIsEditing(false);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div>
       <TopBar title={fi.title} subtitle={fi.subtitle} />
@@ -1958,12 +2012,50 @@ function FinancePage() {
           </table>
         </Card>
         <Card title={fi.bankTitle}>
-          <div style={{ padding: 16, display: "flex", alignItems: "center", gap: 12 }}>
-            <CreditCard size={20} color={C.muted} />
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 700 }}>{fi.bankLine1}</div>
-              <div style={{ fontSize: 11.5, color: C.muted }}>{fi.bankLine2}</div>
-            </div>
+          <div style={{ padding: 16 }}>
+            {payoutMethod === undefined && <div style={{ fontSize: 12.5, color: C.muted }}>Loading…</div>}
+            {payoutMethod !== undefined && !isEditing && payoutMethod && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <CreditCard size={20} color={C.muted} />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{payoutMethod.bankName} — {payoutMethod.accountNumber}</div>
+                    <div style={{ fontSize: 11.5, color: C.muted }}>{lang === "zh" ? "户名：" : "Account holder: "}{payoutMethod.accountHolderName}</div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsEditing(true)}
+                  style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                >{lang === "zh" ? "编辑" : "Edit"}</button>
+              </div>
+            )}
+            {payoutMethod !== undefined && isEditing && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 360 }}>
+                <div style={{ fontSize: 11.5, color: C.muted }}>
+                  {lang === "zh" ? "请输入用于接收付款的银行账户信息。" : "Enter the bank account details payouts should be sent to."}
+                </div>
+                <input placeholder={lang === "zh" ? "银行名称" : "Bank name"} value={bankName} onChange={(e) => setBankName(e.target.value)}
+                  style={{ padding: "8px 11px", borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13 }} />
+                <input placeholder={lang === "zh" ? "账号" : "Account number"} value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)}
+                  style={{ padding: "8px 11px", borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13 }} />
+                <input placeholder={lang === "zh" ? "账户持有人姓名" : "Account holder name"} value={accountHolderName} onChange={(e) => setAccountHolderName(e.target.value)}
+                  style={{ padding: "8px 11px", borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13 }} />
+                {errorMessage && <div style={{ fontSize: 12, color: C.red }}>{errorMessage}</div>}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    disabled={isSaving}
+                    onClick={handleSave}
+                    style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: isSaving ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSaving ? "default" : "pointer" }}
+                  >{isSaving ? "…" : (lang === "zh" ? "保存" : "Save")}</button>
+                  {payoutMethod && (
+                    <button
+                      onClick={() => { setIsEditing(false); setBankName(payoutMethod.bankName); setAccountNumber(payoutMethod.accountNumber); setAccountHolderName(payoutMethod.accountHolderName); setErrorMessage(null); }}
+                      style={{ padding: "8px 16px", borderRadius: 8, border: `1px solid ${C.line}`, background: "none", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}
+                    >{lang === "zh" ? "取消" : "Cancel"}</button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </Card>
       </div>

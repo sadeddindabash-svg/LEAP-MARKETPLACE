@@ -11,7 +11,7 @@ const MOCK_HISTORY_INITIAL = [
   { id: 1, supplierId: 's2', supplierName: 'Ningbo Filtration Ltd.', amount: 88.50, currencyCode: 'USD', notes: 'Prior payout', subOrderCount: 2, createdAt: '2026-06-01T00:00:00.000Z' },
 ];
 
-function mockFetchRouter() {
+function mockFetchRouter({ payoutMethod = { bankName: 'Bank of China', accountNumber: '111222333', accountHolderName: 'Guangzhou AutoParts Co.' } } = {}) {
   let owed = [...MOCK_OWED];
   let history = [...MOCK_HISTORY_INITIAL];
   return vi.fn((url, options) => {
@@ -20,6 +20,7 @@ function mockFetchRouter() {
     if (u.includes('/auth/login')) return Promise.resolve({ ok: true, json: async () => ({ token: 'fake.jwt.token', user: OWNER_USER }) });
     if (u.includes('/auth/me')) return Promise.resolve({ ok: true, json: async () => OWNER_USER });
     if (u.endsWith('/payouts/owed')) return Promise.resolve({ ok: true, json: async () => owed });
+    if (u.endsWith('/supplier/s1/payout-method')) return Promise.resolve({ ok: true, json: async () => payoutMethod });
     if (method === 'POST' && u.endsWith('/payouts')) {
       const body = JSON.parse(options.body);
       const paidEntry = owed.find((o) => o.supplierId === body.supplierId);
@@ -53,7 +54,7 @@ describe('Real Payouts page (mocked fetch, full component tree)', () => {
     render(<LeapAdminApp />);
     await loginAndGoToPayouts();
 
-    await waitFor(() => screen.getByText('Guangzhou AutoParts Co.'));
+    await waitFor(() => expect(screen.getAllByText('Guangzhou AutoParts Co.').length).toBeGreaterThan(0));
     expect(screen.getAllByText('$140.76').length).toBeGreaterThan(0);
     expect(screen.queryByText(/next scheduled payout run/i)).not.toBeInTheDocument();
   });
@@ -63,7 +64,7 @@ describe('Real Payouts page (mocked fetch, full component tree)', () => {
     render(<LeapAdminApp />);
     await loginAndGoToPayouts();
 
-    await waitFor(() => screen.getByText('Guangzhou AutoParts Co.'));
+    await waitFor(() => expect(screen.getAllByText('Guangzhou AutoParts Co.').length).toBeGreaterThan(0));
     fireEvent.click(screen.getByRole('button', { name: /record payout/i }));
 
     await waitFor(() => expect(screen.queryByRole('button', { name: /record payout/i })).not.toBeInTheDocument());
@@ -86,9 +87,27 @@ describe('Real Payouts page (mocked fetch, full component tree)', () => {
     render(<LeapAdminApp />);
     await loginAndGoToPayouts();
 
-    await waitFor(() => screen.getByText('Guangzhou AutoParts Co.'));
+    await waitFor(() => expect(screen.getAllByText('Guangzhou AutoParts Co.').length).toBeGreaterThan(0));
     fireEvent.click(screen.getByRole('button', { name: /record payout/i }));
 
     await waitFor(() => expect(screen.getByText(/nothing is currently owed/i)).toBeInTheDocument());
+  });
+
+  it('CRITICAL: shows the real supplier payout method (migration 034) alongside the amount owed', async () => {
+    globalThis.fetch = mockFetchRouter();
+    render(<LeapAdminApp />);
+    await loginAndGoToPayouts();
+
+    await waitFor(() => expect(screen.getByText(/Bank of China — 111222333/)).toBeInTheDocument());
+    expect(screen.getByText('Guangzhou AutoParts Co.', { selector: 'div' })).toBeInTheDocument();
+  });
+
+  it('CRITICAL: with no real payout method on file, shows a clear warning and disables Record payout', async () => {
+    globalThis.fetch = mockFetchRouter({ payoutMethod: null });
+    render(<LeapAdminApp />);
+    await loginAndGoToPayouts();
+
+    await waitFor(() => expect(screen.getByText(/no payout method on file/i)).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /record payout/i })).toBeDisabled();
   });
 });
