@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
+const { logAdminAction } = require('../audit/helpers');
 
 /**
  * Real product reviews (migration 025). CONFIRMED SCOPE, discussed
@@ -182,6 +183,7 @@ router.patch('/:id/moderate', requireAuth, requireRole('admin'), requirePageAcce
       [newStatus, req.params.id]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Review not found' });
+    await logAdminAction(req, `review_${action}`, 'review', req.params.id, { productId: rows[0].product_id });
     const [withPhotos] = await attachPhotos(db, rows);
     res.json(toReviewDto(withPhotos));
   } catch (err) {
@@ -254,6 +256,7 @@ router.get('/flagged', requireAuth, requireRole('admin'), requirePageAccess('rev
 router.post('/:id/dismiss-flags', requireAuth, requireRole('admin'), requirePageAccess('reviews'), async (req, res, next) => {
   try {
     const { rows } = await db.query('DELETE FROM review_flags WHERE review_id = $1 RETURNING id', [req.params.id]);
+    await logAdminAction(req, 'review_dismiss_flags', 'review', req.params.id, { dismissedCount: rows.length });
     res.json({ reviewId: Number(req.params.id), dismissedCount: rows.length });
   } catch (err) {
     next(err);

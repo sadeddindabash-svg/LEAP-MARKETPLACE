@@ -1556,6 +1556,54 @@ Reviews page, the mobile app's reviews section, and the web
 storefront's product page all show a real "✓ Verified Purchase" badge
 next to a review when it applies.
 
+## Real audit log of admin actions (migration 036)
+
+**Confirmed scope**: a genuinely useful, practical subset of sensitive,
+state-changing admin actions — not literally every one of the 63 real
+admin-only endpoints in this project (most are simple reads with
+nothing real to audit). Logged: supplier verification decisions,
+review moderation and flag dismissal, payout recording, promo code
+creation, admin account creation/permission changes/removal, category
+commission changes, return window changes, the "require verified
+purchase" toggle, and FX rate/mode changes — the real actions with
+real financial, trust, or access-control consequences.
+
+**`services/api/src/modules/audit/helpers.js`** — a single, shared
+`logAdminAction()` helper, called from each instrumented endpoint.
+Real, best-effort, fire-and-forget — a genuine logging failure should
+never break the real underlying admin action itself (a payout should
+still be recorded even if, somehow, writing its own audit row fails).
+`details` is a real JSONB blob rather than a fixed set of columns —
+different real actions naturally carry different real context (a
+payout has an amount, a permission change has a page list), and
+forcing them into one rigid shape would either lose real detail or
+need a wide table of mostly-null columns.
+
+**`GET /admin/audit-log`** — real, owner-only (reuses the existing
+`requireOwner` middleware, the same real restriction already used for
+admin account management), optionally filtered by `?action=...`,
+capped at a real, reasonable default of 200 entries.
+
+**A real bug was found and fixed while testing this**: `promo_codes`
+has no real `id` column at all — the code itself is the natural
+primary key. The first attempt at logging a promo code's creation
+tried to log `rows[0].id`, which was genuinely `undefined`, silently
+becoming a real `null` target. Fixed to log the real `code` string
+instead, confirmed by an actual test assertion on the target value, not
+just that *some* row got logged.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/auditLog.integration.test.js`
+(5 tests, REAL backend): a real promo code creation is logged with the
+real code as its target; a real category commission change is logged
+with the real new value; a real review moderation action is logged
+with the real product ID; only the real owner account can view the
+audit log, not a regular admin; a non-admin (buyer) cannot view it at
+all.
+
+**Admin dashboard**: a new "Audit log" card on the Settings page,
+visible only to the owner account, matching the same restriction
+already used for the "Team & permissions" section right above it.
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category

@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, requireOwner } = require('../auth/middleware');
+const { logAdminAction } = require('../audit/helpers');
 
 /**
  * Real admin team & permissions management (migration 022). Owner-only
@@ -83,6 +84,7 @@ router.post('/', requireAuth, requireRole('admin'), requireOwner, async (req, re
       await client.query('INSERT INTO admin_page_permissions (user_id, page_id) VALUES ($1, $2)', [userId, pageId]);
     }
     await client.query('COMMIT');
+    await logAdminAction(req, 'admin_account_created', 'admin_user', userId, { email, allowedPages: pages });
 
     const { rows } = await db.query('SELECT id, email, name, is_owner, created_at FROM users WHERE id = $1', [userId]);
     res.status(201).json(toAdminUserDto(rows[0], pages));
@@ -122,6 +124,7 @@ router.patch('/:id/permissions', requireAuth, requireRole('admin'), requireOwner
       await client.query('INSERT INTO admin_page_permissions (user_id, page_id) VALUES ($1, $2)', [req.params.id, pageId]);
     }
     await client.query('COMMIT');
+    await logAdminAction(req, 'admin_permissions_changed', 'admin_user', req.params.id, { allowedPages: pages });
 
     const { rows } = await db.query('SELECT id, email, name, is_owner, created_at FROM users WHERE id = $1', [req.params.id]);
     res.json(toAdminUserDto(rows[0], pages));
@@ -138,12 +141,13 @@ router.delete('/:id', requireAuth, requireRole('admin'), requireOwner, async (re
     if (req.params.id === req.user.sub) {
       return res.status(400).json({ error: 'You cannot remove your own account.' });
     }
-    const userCheck = await db.query("SELECT id, is_owner FROM users WHERE id = $1 AND role = 'admin'", [req.params.id]);
+    const userCheck = await db.query("SELECT id, email, is_owner FROM users WHERE id = $1 AND role = 'admin'", [req.params.id]);
     if (userCheck.rows.length === 0) return res.status(404).json({ error: 'Admin user not found' });
     if (userCheck.rows[0].is_owner) {
       return res.status(400).json({ error: 'The owner account cannot be removed.' });
     }
     await db.query('DELETE FROM users WHERE id = $1', [req.params.id]);
+    await logAdminAction(req, 'admin_account_removed', 'admin_user', req.params.id, { email: userCheck.rows[0].email });
     res.status(204).end();
   } catch (err) {
     next(err);

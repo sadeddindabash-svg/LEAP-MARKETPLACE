@@ -12,6 +12,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchAdminUsers, createAdminUser, updateAdminPermissions, deleteAdminUser,
   fetchPayoutsOwed, fetchPayoutHistory, recordPayout, fetchSupplierPayoutMethod, fetchReturnWindow, updateReturnWindow, updateCategoryCommission,
   fetchPendingReviews, moderateReview, fetchRequireVerifiedPurchase, updateRequireVerifiedPurchase,
+  fetchAuditLog,
   fetchFlaggedReviews, dismissReviewFlags,
 } from "./auth";
 import {
@@ -3333,6 +3334,63 @@ function ReturnWindowSection({ onSessionExpired }) {
   );
 }
 
+function AuditLogSection({ currentUser, onSessionExpired }) {
+  const [entries, setEntries] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  useEffect(() => {
+    if (!currentUser.isOwner) return;
+    fetchAuditLog(getStoredToken())
+      .then((data) => { setEntries(data); setLoadState("ready"); })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Real, owner-only section (migration 036) -- who did what across
+  // the whole real platform is sensitive enough that it shouldn't be
+  // visible to every admin, only the one account with full real
+  // oversight, matching the same real restriction already used for
+  // admin account management just above.
+  if (!currentUser.isOwner) return null;
+
+  return (
+    <Card title="Audit log" style={{ flex: 1, minWidth: 420 }}>
+      <div style={{ padding: 16 }}>
+        <div style={{ ...body, fontSize: 11.5, color: C.muted, marginBottom: 12 }}>
+          A real record of sensitive admin actions — supplier verification, review moderation, payouts, promo codes, admin account changes, and pricing/settings changes.
+        </div>
+        {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}
+        {loadState === "error" && <div style={{ ...body, fontSize: 12.5, color: C.red }}>Couldn't load the audit log: {errorMessage}</div>}
+        {loadState === "ready" && entries.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>No actions recorded yet.</div>}
+        {loadState === "ready" && entries.length > 0 && (
+          <div style={{ maxHeight: 360, overflowY: "auto" }}>
+            {entries.map((e) => (
+              <div key={e.id} style={{ padding: "10px 0", borderBottom: `1px solid ${C.line}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                  <span style={{ ...body, fontSize: 12.5, fontWeight: 700 }}>{e.action.replace(/_/g, " ")}</span>
+                  <span style={{ ...body, fontSize: 11, color: C.muted }}>{new Date(e.createdAt).toLocaleString()}</span>
+                </div>
+                <div style={{ ...body, fontSize: 11.5, color: C.muted, marginTop: 2 }}>
+                  {e.adminEmail} · {e.targetType}{e.targetId ? ` #${e.targetId}` : ""}
+                </div>
+                {e.details && (
+                  <div style={{ ...body, fontSize: 11, color: C.muted, marginTop: 2, fontFamily: "monospace" }}>
+                    {Object.entries(e.details).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(' · ')}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function SettingsPage({ currentUser, onSessionExpired }) {
   return (
     <div>
@@ -3341,6 +3399,7 @@ function SettingsPage({ currentUser, onSessionExpired }) {
         <TeamPermissionsSection currentUser={currentUser} onSessionExpired={onSessionExpired} />
         <CommissionRulesSection onSessionExpired={onSessionExpired} />
         <ReturnWindowSection onSessionExpired={onSessionExpired} />
+        <AuditLogSection currentUser={currentUser} onSessionExpired={onSessionExpired} />
       </div>
     </div>
   );

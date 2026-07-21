@@ -3,6 +3,7 @@ const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { createNotification } = require('../notifications/helpers');
 const { sendTransactionalEmail } = require('../email/client');
+const { logAdminAction } = require('../audit/helpers');
 const { shippingNotificationEmail } = require('../email/templates');
 const { validateFitment, tryMatchCategoryAndPart, tryMatchPosition, tryMatchDimensions, validateCompleteFields } = require('./productValidation');
 
@@ -67,6 +68,7 @@ router.patch('/:id/verify', requireAuth, requireRole('admin'), requirePageAccess
       [status, req.params.id]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Supplier not found' });
+    await logAdminAction(req, 'supplier_verification', 'supplier', req.params.id, { status, supplierName: rows[0].name });
     // Note: listingCount is intentionally omitted here (not re-joined) —
     // the client already has it from the list view and this response is
     // just confirming the status change, not a full record refresh.

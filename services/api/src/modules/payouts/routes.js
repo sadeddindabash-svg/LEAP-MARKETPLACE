@@ -3,6 +3,7 @@ const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { sendTransactionalEmail } = require('../email/client');
 const { payoutConfirmationEmail } = require('../email/templates');
+const { logAdminAction } = require('../audit/helpers');
 
 /**
  * Real payouts (migration 024). CONFIRMED SCOPE, discussed and refined
@@ -138,6 +139,7 @@ router.post('/', requireAuth, requireRole('admin'), requirePageAccess('payouts')
       await client.query('INSERT INTO payout_sub_orders (payout_id, sub_order_id) VALUES ($1, $2)', [payoutId, row.sub_order_id]);
     }
     await client.query('COMMIT');
+    await logAdminAction(req, 'payout_recorded', 'payout', payoutId, { supplierId, amount: Number(totalAmount.toFixed(2)), subOrderCount: eligibleRows.length });
 
     // Real payout confirmation email (new) -- best-effort, after commit,
     // same reasoning as every other real transactional email trigger:

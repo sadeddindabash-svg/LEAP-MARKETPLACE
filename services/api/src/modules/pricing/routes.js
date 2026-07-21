@@ -3,6 +3,7 @@ const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { calculateBuyerPriceUsd } = require('./engine');
 const { refreshLiveFxRate, getFxRateMode } = require('./fxRateRefresh');
+const { logAdminAction } = require('../audit/helpers');
 
 /**
  * Admin-only management of the real pricing equation — the fee
@@ -182,6 +183,7 @@ router.patch('/fx-rate', requireAuth, requireRole('admin'), requirePageAccess('p
     );
     const { rows } = await db.query('SELECT * FROM fx_rates WHERE currency_pair = $1', [pair]);
     const r = rows[0];
+    await logAdminAction(req, 'fx_rate_set_manual', 'fx_rate', pair, { rate: Number(r.rate) });
     res.json({ currencyPair: r.currency_pair, rate: Number(r.rate), source: r.source, updatedAt: r.updated_at });
   } catch (err) {
     next(err);
@@ -215,6 +217,7 @@ router.patch('/fx-rate-mode', requireAuth, requireRole('admin'), requirePageAcce
     if (mode === 'automatic') {
       await refreshLiveFxRate('CNY_USD');
     }
+    await logAdminAction(req, 'fx_rate_mode_changed', 'platform_setting', 'fx_rate_mode', { mode });
     res.json({ mode });
   } catch (err) {
     next(err);

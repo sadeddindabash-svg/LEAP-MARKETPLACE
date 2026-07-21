@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, optionalAuth, requirePageAccess } = require('../auth/middleware');
+const { logAdminAction } = require('../audit/helpers');
 const { validatePromoCode } = require('../promotions/helpers');
 
 /**
@@ -59,6 +60,7 @@ router.post('/', requireAuth, requireRole('admin'), requirePageAccess('promoCode
       ]
     );
     const { rows } = await db.query('SELECT * FROM promo_codes WHERE code = $1', [code]);
+    await logAdminAction(req, 'promo_code_created', 'promo_code', code, { type, value: type === 'free_shipping' ? null : value });
     res.status(201).json(toPromoCodeDto(rows[0]));
   } catch (err) {
     if (err.code === '23505') return res.status(400).json({ error: `A code "${req.body?.code}" already exists` });

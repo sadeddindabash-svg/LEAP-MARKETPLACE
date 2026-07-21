@@ -615,3 +615,11 @@ export async function updateRequireVerifiedPurchase(token, requireVerifiedPurcha
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
   return data;
 }
+
+// Real audit log of admin actions (migration 036) -- owner-only.
+export async function fetchAuditLog(token) {
+  const response = await fetch(`${API_BASE_URL}/admin/audit-log`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) throw new Error(`Failed to load audit log (${response.status})`);
+  return response.json();
+}

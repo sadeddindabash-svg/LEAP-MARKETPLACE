@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
+const { logAdminAction } = require('../audit/helpers');
 
 /**
  * Catalog module — products, categories, translations.
@@ -456,6 +457,7 @@ router.patch('/categories/:id/commission', requireAuth, requireRole('admin'), re
       [value, req.params.id]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Category not found' });
+    await logAdminAction(req, 'category_commission_changed', 'category', req.params.id, { commissionPercent: value });
     res.json(toCategoryDto(rows[0]));
   } catch (err) {
     next(err);

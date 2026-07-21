@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole } = require('../auth/middleware');
+const { logAdminAction } = require('../audit/helpers');
 
 /**
  * Real, generic admin-configurable platform settings (migration 024).
@@ -38,6 +39,7 @@ router.patch('/return-window', requireAuth, requireRole('admin'), async (req, re
        ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = now()`,
       [String(value)]
     );
+    await logAdminAction(req, 'return_window_changed', 'platform_setting', 'return_window_days', { returnWindowDays: value });
     res.json({ returnWindowDays: value });
   } catch (err) {
     next(err);
@@ -66,6 +68,7 @@ router.patch('/require-verified-purchase-for-reviews', requireAuth, requireRole(
        ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = now()`,
       [String(requireVerifiedPurchase)]
     );
+    await logAdminAction(req, 'require_verified_purchase_toggled', 'platform_setting', 'require_verified_purchase_for_reviews', { requireVerifiedPurchase });
     res.json({ requireVerifiedPurchase });
   } catch (err) {
     next(err);

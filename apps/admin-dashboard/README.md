@@ -551,6 +551,14 @@ of days (3–7, the confirmed real range) — this is both the real
 deadline for a buyer to file a return at all, and the real threshold
 for when an order becomes eligible for payout.
 
+A new **Audit log** card (migration 036) — visible only to the owner
+account, same restriction already used for the "Team & permissions"
+section above it — shows a real, chronological record of sensitive
+admin actions: supplier verification decisions, review moderation and
+flag dismissal, payout recording, promo code creation, admin account
+changes, category commission changes, return window changes, and FX
+rate/mode changes.
+
 ## Reviews page (new)
 
 Every real submitted review needs real admin moderation before it's
@@ -595,7 +603,7 @@ can never crash the page.
 npm test
 ```
 
-Fifty-six test files, 366 tests total, all passing:
+Fifty-seven test files, 371 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/passwordReset.integration.test.js` (5, REAL backend) — a real
@@ -988,6 +996,17 @@ Fifty-six test files, 366 tests total, all passing:
   same review re-checks and re-stores the real status (submitted
   before delivery as `false`, edited after delivery as `true`, same
   review row throughout).
+- `src/auditLog.integration.test.js` (5, REAL backend, new, migration
+  036) — a real promo code creation is logged with the real code as
+  its target; a real category commission change is logged with the
+  real new value; a real review moderation action is logged with the
+  real product ID; only the real owner account can view the audit
+  log, not a regular admin; a non-admin (buyer) cannot view it at all.
+  **A real bug was found and fixed here**: `promo_codes` has no real
+  `id` column at all — the code itself is the natural key. The first
+  attempt logged `rows[0].id`, genuinely `undefined`, silently
+  becoming a `null` target — fixed to log the real `code` string
+  instead.
 - `src/recentlyViewed.integration.test.js` (4, REAL backend, new,
   migration 032) — recording a view and fetching the list shows it,
   most recent first; re-viewing a product moves it back to the front
