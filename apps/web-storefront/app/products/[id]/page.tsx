@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { AddToCartButton } from "@/components/AddToCartButton";
 import {
   fetchProductById,
   fetchProductReviews,
@@ -121,10 +122,8 @@ export default async function ProductPage({ params }: PageProps) {
             </p>
           )}
 
-          <div className="mt-8 rounded-lg border border-line bg-white p-4 text-sm text-muted">
-            To place an order, use the Leap Auto Parts mobile app — this
-            product page is here so you can find and research real parts
-            from a web search.
+          <div className="mt-8">
+            <AddToCartButton productId={product.id} inStock={product.stockQuantity > 0} />
           </div>
         </div>
       </div>

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Barlow_Condensed, Inter, JetBrains_Mono } from "next/font/google";
 import Link from "next/link";
+import { CartProvider } from "@/components/CartProvider";
+import CartIcon from "@/components/CartIcon";
 import "./globals.css";
 
 // Real brand fonts, carried over exactly from the established system
@@ -43,27 +45,30 @@ export default function RootLayout({
       className={`${barlowCondensed.variable} ${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-chalk text-ink">
-        <header className="border-b border-line bg-white sticky top-0 z-10">
-          <div className="mx-auto max-w-6xl px-6 h-16 flex items-center justify-between">
-            <Link
-              href="/"
-              className="font-display font-bold text-2xl tracking-tight text-ink"
-            >
-              LEAP<span className="text-signal">.</span>
-            </Link>
-            <nav className="flex items-center gap-6 text-sm font-medium">
-              <Link href="/search" className="text-muted hover:text-ink">
-                Search
+        <CartProvider>
+          <header className="border-b border-line bg-white sticky top-0 z-10">
+            <div className="mx-auto max-w-6xl px-6 h-16 flex items-center justify-between">
+              <Link
+                href="/"
+                className="font-display font-bold text-2xl tracking-tight text-ink"
+              >
+                LEAP<span className="text-signal">.</span>
               </Link>
-            </nav>
-          </div>
-        </header>
-        <main className="flex-1">{children}</main>
-        <footer className="border-t border-line bg-white">
-          <div className="mx-auto max-w-6xl px-6 py-10 text-sm text-muted">
-            <p>© {new Date().getFullYear()} Leap Auto Parts.</p>
-          </div>
-        </footer>
+              <nav className="flex items-center gap-6 text-sm font-medium">
+                <Link href="/search" className="text-muted hover:text-ink">
+                  Search
+                </Link>
+                <CartIcon />
+              </nav>
+            </div>
+          </header>
+          <main className="flex-1">{children}</main>
+          <footer className="border-t border-line bg-white">
+            <div className="mx-auto max-w-6xl px-6 py-10 text-sm text-muted">
+              <p>© {new Date().getFullYear()} Leap Auto Parts.</p>
+            </div>
+          </footer>
+        </CartProvider>
       </body>
     </html>
   );

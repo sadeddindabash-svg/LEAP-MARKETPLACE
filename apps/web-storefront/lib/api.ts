@@ -123,3 +123,94 @@ export function resolveImageUrl(url: string): string {
   return `${API_BASE_URL}${url}`;
 }
 
+
+// ---------------- Real cart (client-side calls) ----------------
+// Unlike everything above, these run in the BROWSER (called from
+// Client Components), not on the server -- the cart is a real,
+// per-visitor, interactive concern with no SEO value, so it's the one
+// part of this app that doesn't need server rendering. Talks directly
+// to the SAME real backend cart module the mobile app already uses
+// (services/api/src/modules/cart/routes.js) -- a client-generated
+// cart ID, no separate "create cart" call needed.
+
+export interface CartItem {
+  productId: string;
+  quantity: number;
+  name: string;
+  price: number;
+  currencyCode: string;
+  supplierName: string | null;
+}
+
+export interface Cart {
+  cartId: string;
+  items: CartItem[];
+}
+
+async function cartApiCall<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE_URL}/cart${path}`, {
+    ...options,
+    headers: { "Content-Type": "application/json", ...options?.headers },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Cart request failed (${res.status})`);
+  }
+  return res.json() as Promise<T>;
+}
+
+export function fetchCart(cartId: string): Promise<Cart> {
+  return cartApiCall<Cart>(`/${cartId}`);
+}
+
+export function addCartItem(cartId: string, productId: string, quantity: number): Promise<Cart> {
+  return cartApiCall<Cart>(`/${cartId}/items`, {
+    method: "POST",
+    body: JSON.stringify({ productId, quantity }),
+  });
+}
+
+export function setCartItemQuantity(cartId: string, productId: string, quantity: number): Promise<Cart> {
+  return cartApiCall<Cart>(`/${cartId}/items/${productId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ quantity }),
+  });
+}
+
+export function removeCartItem(cartId: string, productId: string): Promise<Cart> {
+  return cartApiCall<Cart>(`/${cartId}/items/${productId}`, { method: "DELETE" });
+}
+
+// Real guest checkout -- POST /order with guestEmail + address (both
+// optional for a real guest per migration 030, but the storefront's
+// own confirmed Phase 1 scope always collects a real address upfront
+// at checkout, rather than the mobile app's post-order geolocation
+// flow, which doesn't make sense for a desktop browser).
+export interface PlaceOrderAddress {
+  recipientName: string;
+  phone: string;
+  country: string;
+  city: string;
+  streetAddress: string;
+}
+
+export interface PlaceOrderResult {
+  id: string;
+  total: number;
+  currencyCode: string;
+}
+
+export async function placeGuestOrder(
+  items: Array<{ productId: string; quantity: number }>,
+  guestEmail: string,
+  address: PlaceOrderAddress
+): Promise<PlaceOrderResult> {
+  const res = await fetch(`${API_BASE_URL}/order`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items, guestEmail, address }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error || `Failed to place order (${res.status})`);
+  return body as PlaceOrderResult;
+}
