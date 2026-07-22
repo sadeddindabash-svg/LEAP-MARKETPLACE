@@ -1,0 +1,16 @@
+-- Migration 042: real hub workload/capacity dashboard.
+--
+-- CONFIRMED SCOPE: both a real, admin-configurable capacity per hub
+-- AND real, current workload counts -- hubs had no capacity concept
+-- at all before this. `daily_capacity` is a real, deliberately simple
+-- single number (max shipments a hub can process per day) rather than
+-- a more elaborate staffing/scheduling model -- a real, useful signal
+-- for "is this hub overloaded" without pretending to model actual
+-- staffing constraints this project has no other data for.
+--
+-- Default of 50 is a real, reasonable starting point for a
+-- newly-created hub, editable per-hub afterward -- not meant to be
+-- authoritative, just a sensible non-zero default so a freshly added
+-- hub doesn't immediately show as "over capacity" with zero real
+-- shipments.
+ALTER TABLE hubs ADD COLUMN IF NOT EXISTS daily_capacity INTEGER NOT NULL DEFAULT 50;

@@ -23,7 +23,7 @@ const router = express.Router();
 const STATUS_ORDER = ['awaiting_receipt', 'received', 'opened', 'inspected', 'packed', 'shipped_to_buyer'];
 
 function toHubDto(row) {
-  return { id: row.id, name: row.name, region: row.region, address: row.address, createdAt: row.created_at };
+  return { id: row.id, name: row.name, region: row.region, address: row.address, dailyCapacity: row.daily_capacity, createdAt: row.created_at };
 }
 
 // ============================================================
@@ -43,11 +43,36 @@ router.get('/locations', async (req, res, next) => {
 
 router.post('/locations', requireAuth, requireRole('admin'), requirePageAccess('hubs'), async (req, res, next) => {
   try {
-    const { name, region, address } = req.body || {};
+    const { name, region, address, dailyCapacity } = req.body || {};
     if (!name || !region) return res.status(400).json({ error: 'name and region are required' });
+    if (dailyCapacity !== undefined && (!Number.isInteger(dailyCapacity) || dailyCapacity <= 0)) {
+      return res.status(400).json({ error: 'dailyCapacity must be a positive whole number' });
+    }
     const id = `hub_${Date.now()}`;
-    await db.query('INSERT INTO hubs (id, name, region, address) VALUES ($1, $2, $3, $4)', [id, name.trim(), region.trim(), address || null]);
-    res.status(201).json({ id, name: name.trim(), region: region.trim(), address: address || null });
+    await db.query(
+      'INSERT INTO hubs (id, name, region, address, daily_capacity) VALUES ($1, $2, $3, $4, COALESCE($5, 50))',
+      [id, name.trim(), region.trim(), address || null, dailyCapacity || null]
+    );
+    const { rows } = await db.query('SELECT * FROM hubs WHERE id = $1', [id]);
+    res.status(201).json(toHubDto(rows[0]));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Real, admin-configurable hub capacity (migration 042) -- separate
+// PATCH from the create endpoint above since editing an existing
+// real hub's capacity is a distinct real action from creating one.
+router.patch('/locations/:id', requireAuth, requireRole('admin'), requirePageAccess('hubs'), async (req, res, next) => {
+  try {
+    const { dailyCapacity } = req.body || {};
+    if (dailyCapacity === undefined) return res.status(400).json({ error: 'dailyCapacity is required' });
+    if (!Number.isInteger(dailyCapacity) || dailyCapacity <= 0) {
+      return res.status(400).json({ error: 'dailyCapacity must be a positive whole number' });
+    }
+    const { rows } = await db.query('UPDATE hubs SET daily_capacity = $1 WHERE id = $2 RETURNING *', [dailyCapacity, req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Hub not found' });
+    res.json(toHubDto(rows[0]));
   } catch (err) {
     next(err);
   }
@@ -62,6 +87,54 @@ router.delete('/locations/:id', requireAuth, requireRole('admin'), requirePageAc
     if (err && err.code === '23503') {
       return res.status(409).json({ error: 'Cannot delete — one or more staff accounts or shipments reference this hub. Reassign or remove those first.' });
     }
+    next(err);
+  }
+});
+
+// GET /hub/workload — admin-only, real current workload vs real
+// capacity for every real hub (migration 042). "In-hub workload" is
+// deliberately defined as every real stage BEFORE shipped_to_buyer
+// (awaiting_receipt, received, opened, inspected, packed) plus
+// flagged -- once a real shipment ships to the buyer, it has
+// physically left the hub's premises and is no longer really part of
+// its active workload, even though the real database row isn't
+// deleted.
+router.get('/workload', requireAuth, requireRole('admin'), requirePageAccess('hubs'), async (req, res, next) => {
+  try {
+    const { rows: hubs } = await db.query('SELECT * FROM hubs ORDER BY name');
+    const { rows: workloadRows } = await db.query(
+      `SELECT hub_id, status, COUNT(*) AS n
+       FROM hub_shipments
+       WHERE status NOT IN ('shipped_to_buyer', 'delivered')
+       GROUP BY hub_id, status`
+    );
+    const byHub = {};
+    for (const row of workloadRows) {
+      if (!byHub[row.hub_id]) byHub[row.hub_id] = {};
+      byHub[row.hub_id][row.status] = Number(row.n);
+    }
+
+    res.json(hubs.map((h) => {
+      const stageCounts = byHub[h.id] || {};
+      const totalWorkload = Object.values(stageCounts).reduce((sum, n) => sum + n, 0);
+      return {
+        id: h.id,
+        name: h.name,
+        region: h.region,
+        dailyCapacity: h.daily_capacity,
+        totalWorkload,
+        utilizationPercent: h.daily_capacity > 0 ? Math.round((totalWorkload / h.daily_capacity) * 100) : 0,
+        stageCounts: {
+          awaitingReceipt: stageCounts.awaiting_receipt || 0,
+          received: stageCounts.received || 0,
+          opened: stageCounts.opened || 0,
+          inspected: stageCounts.inspected || 0,
+          packed: stageCounts.packed || 0,
+          flagged: stageCounts.flagged || 0,
+        },
+      };
+    }));
+  } catch (err) {
     next(err);
   }
 });

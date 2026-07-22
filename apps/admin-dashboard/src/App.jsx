@@ -15,6 +15,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchPendingReviews, moderateReview, fetchRequireVerifiedPurchase, updateRequireVerifiedPurchase,
   fetchAuditLog,
   fetchSupplierAnalytics,
+  fetchHubWorkload, updateHubCapacity,
   fetchFlaggedReviews, dismissReviewFlags,
 } from "./auth";
 import {
@@ -1445,6 +1446,99 @@ function VehicleDataPage({ onSessionExpired }) {
 // the same real-data-with-real-protection pattern: deleting a hub that
 // real staff accounts or shipments reference is refused, not silently
 // allowed or a raw DB error.
+// Real hub workload/capacity dashboard (migration 042). "In-hub
+// workload" is deliberately every real stage BEFORE shipped_to_buyer
+// plus flagged -- once shipped to the buyer, a real shipment has
+// physically left the hub and isn't really part of its active
+// workload anymore, even though the row isn't deleted.
+function HubWorkloadSection({ onSessionExpired }) {
+  const [workload, setWorkload] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editValue, setEditValue] = useState("");
+
+  const load = () => {
+    setLoadState("loading");
+    fetchHubWorkload(getStoredToken())
+      .then((data) => { setWorkload(data); setLoadState("ready"); })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSaveCapacity = async (hubId) => {
+    const value = parseInt(editValue, 10);
+    if (!Number.isInteger(value) || value <= 0) {
+      setErrorMessage("Capacity must be a positive whole number.");
+      return;
+    }
+    try {
+      await updateHubCapacity(getStoredToken(), hubId, value);
+      setEditingId(null);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
+  return (
+    <Card title="Hub workload & capacity">
+      <div style={{ padding: 16 }}>
+        {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}
+        {loadState === "error" && <div style={{ ...body, fontSize: 12.5, color: C.red }}>{errorMessage}</div>}
+        {loadState === "ready" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {workload.map((h) => (
+              <div key={h.id} style={{ border: `1px solid ${C.line}`, borderRadius: 10, padding: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <span style={{ ...disp, fontWeight: 700, fontSize: 14 }}>{h.name}</span>
+                    <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }}>{h.region}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ ...body, fontSize: 12, fontWeight: 700, color: h.utilizationPercent >= 100 ? C.red : h.utilizationPercent >= 75 ? C.amber : C.gauge }}>
+                      {h.totalWorkload} / {h.dailyCapacity} ({h.utilizationPercent}%)
+                    </span>
+                    {editingId === h.id ? (
+                      <>
+                        <input
+                          type="number"
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          style={{ ...body, width: 70, border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 8px", fontSize: 12 }}
+                        />
+                        <button onClick={() => handleSaveCapacity(h.id)} style={{ ...body, fontSize: 11.5, fontWeight: 700, color: "#fff", background: C.signal, border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>Save</button>
+                        <button onClick={() => setEditingId(null)} style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>Cancel</button>
+                      </>
+                    ) : (
+                      <button onClick={() => { setEditingId(h.id); setEditValue(String(h.dailyCapacity)); }} style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>Edit capacity</button>
+                    )}
+                  </div>
+                </div>
+                <div style={{ height: 6, borderRadius: 3, background: C.line, overflow: "hidden", marginTop: 10 }}>
+                  <div style={{ height: "100%", width: `${Math.min(h.utilizationPercent, 100)}%`, background: h.utilizationPercent >= 100 ? C.red : h.utilizationPercent >= 75 ? C.amber : C.gauge, borderRadius: 3 }} />
+                </div>
+                <div style={{ display: "flex", gap: 14, marginTop: 10, flexWrap: "wrap" }}>
+                  {Object.entries(h.stageCounts).map(([stage, count]) => (
+                    <span key={stage} style={{ ...body, fontSize: 11, color: C.muted }}>
+                      {stage.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase())}: <strong style={{ color: C.ink }}>{count}</strong>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function HubsPage({ onSessionExpired }) {
   const [hubs, setHubs] = useState([]);
   const [loadState, setLoadState] = useState("loading");
@@ -1492,7 +1586,8 @@ function HubsPage({ onSessionExpired }) {
   return (
     <div>
       <TopBar title="Inspection Hubs" subtitle="Regional facilities between suppliers and buyers — receive, inspect, pack, ship" />
-      <div style={{ padding: 24 }}>
+      <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+        <HubWorkloadSection onSessionExpired={onSessionExpired} />
         <Card>
           <div style={{ padding: 18 }}>
             {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 14 }}>{errorMessage}</div>}

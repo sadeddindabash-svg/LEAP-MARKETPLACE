@@ -355,6 +355,20 @@ and deleting a hub that real staff accounts or shipments still
 reference is refused with a clear message, not silently allowed or a
 raw database error.
 
+**New (migration 042)**: a real workload/capacity section at the top
+of this page. Every hub now has a real, admin-configurable daily
+capacity (default 50), and shows its real current in-hub workload
+(every stage before shipping to the buyer, plus flagged) as a progress
+bar and per-stage breakdown, with an inline "Edit capacity" control.
+See `services/api/README.md`'s "Real hub workload/capacity dashboard"
+section for the full real backend design. **Two real bugs were found
+and fixed while running the full regression suite after adding this**:
+an existing mocked test for this page didn't know about the new
+workload endpoint call and received the wrong data shape; a related
+issue where the hub's name/region now genuinely appear twice on the
+page (workload section plus the existing list) needed a couple of test
+assertions updated to check for "at least one match."
+
 ## Hub assignment on the Order detail page (new)
 
 Each supplier sub-order on the Order detail page (see "Orders page"
@@ -648,7 +662,7 @@ can never crash the page.
 npm test
 ```
 
-Sixty-four test files, 401 tests total, all passing:
+Sixty-five test files, 406 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/passwordReset.integration.test.js` (5, REAL backend) — a real
@@ -1146,6 +1160,15 @@ Sixty-four test files, 401 tests total, all passing:
   it turned out to already be fully built and working from an earlier
   session — confirmed by actually running its existing test file, all
   5 passing, no new work needed there.
+- `src/hubWorkload.integration.test.js` (5, REAL backend, new,
+  migration 042) — a real new hub is created with a sensible default
+  capacity, and workload starts at zero; a real, explicit capacity can
+  be set on creation and updated afterward; a negative or zero
+  capacity is rejected on both create and update; a non-admin cannot
+  view workload or update hub capacity; workload genuinely excludes
+  shipments already shipped to the buyer or delivered, confirmed by
+  cross-checking the total against the sum of its own stage
+  breakdown.
 - `src/recentlyViewed.integration.test.js` (4, REAL backend, new,
   migration 032) — recording a view and fetching the list shows it,
   most recent first; re-viewing a product moves it back to the front

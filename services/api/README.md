@@ -1900,6 +1900,49 @@ endpoint; low-stock products genuinely reflect products at or below
 their own real threshold, verified by cross-checking against the
 real, full product list rather than trusting the count alone.
 
+## Real hub workload/capacity dashboard (migration 042)
+
+**Confirmed scope**: both a real, admin-configurable capacity per hub
+AND real, current workload counts — hubs had no capacity concept at
+all before this. `hubs.daily_capacity` is a real, deliberately simple
+single number (max shipments a hub can process per day) rather than a
+more elaborate staffing/scheduling model — a real, useful signal for
+"is this hub overloaded" without pretending to model actual staffing
+constraints this project has no other data for. Defaults to 50 on a
+new hub, editable per-hub afterward via a new `PATCH /hub/locations/:id`.
+
+**`GET /hub/workload`** (admin-only) — "in-hub workload" is
+deliberately defined as every real stage BEFORE `shipped_to_buyer`
+(`awaiting_receipt`, `received`, `opened`, `inspected`, `packed`) plus
+`flagged`. Once a real shipment ships to the buyer, it has physically
+left the hub's premises and is no longer really part of its active
+workload, even though the real database row isn't deleted or moved.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/hubWorkload.integration.test.js`
+(5 tests, REAL backend): a real new hub is created with a sensible
+default capacity, and workload starts at zero; a real, explicit
+capacity can be set on creation and updated afterward; a negative or
+zero capacity is rejected on both create and update; a non-admin
+cannot view workload or update hub capacity; workload genuinely
+excludes shipments already shipped to the buyer or delivered
+(confirmed by cross-checking the total against the sum of its own
+stage breakdown).
+
+**Admin dashboard**: a new workload/capacity section at the top of the
+existing Inspection Hubs page, with a progress bar per hub and an
+inline "Edit capacity" control.
+
+**Two real bugs were found and fixed while running the full
+regression suite**: an existing mocked test for this same page didn't
+know about the new `/hub/workload` endpoint call, receiving the wrong
+data shape (an empty object where a real array was expected) and
+failing when the component tried to map over it — fixed by adding a
+real mock handler. A second, related issue: the hub's name and region
+now genuinely appear twice on the page (once in the new workload
+section, once in the existing list) — the same real "text now matches
+twice" pattern already fixed once before elsewhere in this project —
+fixed by asserting on "at least one match" instead of exactly one.
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category

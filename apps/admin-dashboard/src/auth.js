@@ -635,3 +635,26 @@ export async function fetchSupplierAnalytics(token, supplierId) {
   }
   return response.json();
 }
+
+// Real hub workload/capacity dashboard (migration 042).
+export async function fetchHubWorkload(token) {
+  const response = await fetch(`${API_BASE_URL}/hub/workload`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || `Failed to load hub workload (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function updateHubCapacity(token, hubId, dailyCapacity) {
+  const response = await fetch(`${API_BASE_URL}/hub/locations/${hubId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ dailyCapacity }),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Failed to update capacity (${response.status})`);
+  return data;
+}

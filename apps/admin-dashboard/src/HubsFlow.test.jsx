@@ -21,6 +21,12 @@ function mockFetchRouter() {
       return Promise.resolve({ ok: true, status: 201, json: async () => newHub });
     }
     if (u.endsWith('/hub/locations')) return Promise.resolve({ ok: true, json: async () => hubs });
+    if (u.endsWith('/hub/workload')) {
+      return Promise.resolve({ ok: true, json: async () => hubs.map((h) => ({
+        id: h.id, name: h.name, region: h.region, dailyCapacity: 50, totalWorkload: 0, utilizationPercent: 0,
+        stageCounts: { awaitingReceipt: 0, received: 0, opened: 0, inspected: 0, packed: 0, flagged: 0 },
+      })) });
+    }
     return Promise.resolve({ ok: true, json: async () => ({}) });
   });
 }
@@ -44,8 +50,8 @@ describe('Hubs page — real hub location management (mocked fetch, real compone
     render(<LeapAdminApp />);
     await loginAndGoToHubs();
 
-    await waitFor(() => expect(screen.getByText('Guangzhou Inspection Hub')).toBeInTheDocument());
-    expect(screen.getByText(/China \(South\)/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText('Guangzhou Inspection Hub').length).toBeGreaterThan(0));
+    expect(screen.getAllByText(/China \(South\)/).length).toBeGreaterThan(0);
   });
 
   it('adding a new hub calls the real create endpoint and shows it immediately', async () => {
