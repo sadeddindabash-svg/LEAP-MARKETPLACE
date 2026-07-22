@@ -1671,6 +1671,60 @@ real low-stock notification fires exactly once, right when crossing
 the real threshold; a supplier can configure their own real threshold
 per product; a negative threshold is rejected.
 
+## Real price-drop alerts on wishlist items (migration 038)
+
+**Confirmed design**: prices in this project are computed live (see
+`services/api/src/modules/pricing/engine.js`), never stored — so
+detecting a real "drop" needs a real, periodically re-checked snapshot
+to compare against, not a live-vs-live comparison with nothing to
+compare to. `products.last_known_buyer_price_usd` is that real
+snapshot — deliberately nullable: `NULL` means this product has never
+been checked yet, so the first real scheduled check for it only
+RECORDS a real baseline rather than notifying anyone.
+
+**`services/api/src/modules/priceDropAlerts/check.js`** — a real,
+best-effort sweep across every real currently-wishlisted product
+(there's no real reason to compute prices for products nobody has
+expressed any real interest in). Runs automatically every real 6
+hours (`startScheduledPriceDropCheck()`, same `setInterval` pattern as
+the FX rate refresh, called once at real server startup), and can also
+be triggered on demand via **`POST /admin/price-drop-alerts/check`**
+(admin-only) — genuinely useful for an admin who doesn't want to wait
+for the next scheduled tick, and for automated testing.
+
+Notifies every real buyer with that product wishlisted exactly once
+per genuine drop (a real, deliberate 0.5-cent epsilon absorbs
+floating-point noise between two runs with identical underlying
+inputs — only a real, meaningful drop counts). The real snapshot is
+always updated after each check regardless of outcome — a real,
+sliding comparison window against the most recently checked price, not
+a fixed original price compared against forever.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/priceDropAlerts.integration.test.js`
+(5 tests, REAL backend): the first real check on a product only
+records a real baseline, with no notification; a real price drop
+notifies every real buyer with that product wishlisted, with the
+correct before/after prices; a buyer who does NOT have the product
+wishlisted is never notified of its price drop; a real price increase
+(or no change) never fires a false drop notification; a non-admin
+cannot trigger a manual check.
+
+**A REAL, SIGNIFICANT FINDING while building and testing this**:
+running the full test suite surfaced that `p1` and `p4` — the two
+products nearly every real test file in this whole project reuses as
+a shared fixture for placing real orders — had their real stock
+genuinely depleted to 0 by the accumulated real test runs across this
+whole project's history, now that migration 037 made stock genuinely
+real. This caused a real, widespread wave of ~60 unrelated test
+failures the moment stock became enforced, since none of those tests
+had ever needed to think about running out. Fixed at both levels: the
+real running database was replenished directly, and `db/seed.js` now
+seeds both with a real, deliberately large stock quantity (100,000) —
+not pretending they're some hidden unlimited special case in the
+actual product logic, just large enough that ordinary real test usage
+won't realistically exhaust it. See `db/seed.js`'s own comment for the
+full real reasoning.
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category

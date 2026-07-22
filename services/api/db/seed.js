@@ -47,9 +47,25 @@ async function main() {
   `);
 
   await pool.query(`
+    -- REAL BUG FOUND AND FIXED HERE, via actual testing: p1 and p4 are
+    -- the two products nearly every real test file in this whole
+    -- project reuses as a shared fixture for placing real orders. Once
+    -- migration 037 made stock genuinely real (decremented, oversell
+    -- prevented), repeated real test runs across this whole project's
+    -- history had actually depleted p1 all the way to a real 0 --
+    -- causing a real, widespread wave of test failures the moment
+    -- stock became real, since every one of those tests had always
+    -- assumed placing an order here was free and infinite. A real,
+    -- deliberately large stock quantity here (100,000, not a small
+    -- "reasonable" number) keeps these two shared fixtures functionally
+    -- inexhaustible for real testing purposes, without pretending this
+    -- is some hidden, unlimited special case in the actual product
+    -- logic itself -- it's still a real, finite number that oversell
+    -- prevention still genuinely enforces, just large enough that
+    -- ordinary real test usage won't realistically hit it.
     INSERT INTO products (id, supplier_id, name, category, price, currency_code, stock_quantity, estimated_delivery_days, rating, review_count, status) VALUES
-      ('p1', 's1', 'RIDEX Front Brake Disc, Vented 300mm', 'brake', 34.90, 'USD', 320, 6, 4.6, 812, 'active'),
-      ('p4', 's2', 'MAHLE Oil Filter Element', 'filters', 6.90, 'USD', 540, 4, 4.7, 2210, 'active'),
+      ('p1', 's1', 'RIDEX Front Brake Disc, Vented 300mm', 'brake', 34.90, 'USD', 100000, 6, 4.6, 812, 'active'),
+      ('p4', 's2', 'MAHLE Oil Filter Element', 'filters', 6.90, 'USD', 100000, 4, 4.7, 2210, 'active'),
       ('p9', 's3', '6-Speed Manual Transmission Gear Set', 'transmission', 210.00, 'USD', 40, 12, NULL, 0, 'translating')
     ON CONFLICT (id) DO NOTHING;
   `);

@@ -34,6 +34,8 @@ const payoutsRoutes = require('./modules/payouts/routes');
 const reviewsRoutes = require('./modules/reviews/routes');
 const webhooksRoutes = require('./modules/webhooks/routes');
 const { startScheduledFxRateRefresh } = require('./modules/pricing/fxRateRefresh');
+const { startScheduledPriceDropCheck } = require('./modules/priceDropAlerts/check');
+const priceDropAlertsRoutes = require('./modules/priceDropAlerts/routes');
 const pricingRoutes = require('./modules/pricing/routes');
 
 assertRequiredEnvInProduction();
@@ -83,6 +85,7 @@ app.use('/referrals', referralsRoutes);
 app.use('/promo-codes', promoCodesRoutes);
 app.use('/admin-users', adminUsersRoutes);
 app.use('/admin/audit-log', auditRoutes);
+app.use('/admin/price-drop-alerts', priceDropAlertsRoutes);
 app.use('/platform-settings', platformSettingsRoutes);
 app.use('/payouts', payoutsRoutes);
 app.use('/reviews', reviewsRoutes);
@@ -102,6 +105,10 @@ if (require.main === module) {
   // design, including the honest limitation that this couldn't be
   // tested against the real, live Frankfurter API from this sandbox).
   startScheduledFxRateRefresh();
+  // Real, every-6-hours price-drop check across wishlisted products
+  // (migration 038) -- same real startup guard as the FX rate refresh
+  // above, only when the server actually runs, never during testing.
+  startScheduledPriceDropCheck();
 }
 
 module.exports = app;

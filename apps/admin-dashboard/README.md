@@ -635,7 +635,7 @@ can never crash the page.
 npm test
 ```
 
-Fifty-nine test files, 379 tests total, all passing:
+Sixty test files, 384 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/passwordReset.integration.test.js` (5, REAL backend) — a real
@@ -1068,6 +1068,24 @@ Fifty-nine test files, 379 tests total, all passing:
   way**: the notifications table's own CHECK constraint didn't allow a
   `'low_stock'` type at all — the first real end-to-end test caught
   this with a genuine constraint violation.
+- `src/priceDropAlerts.integration.test.js` (5, REAL backend, new,
+  migration 038) — the first real check on a product only records a
+  real baseline, with no notification; a real price drop notifies
+  every real buyer with that product wishlisted, with the correct
+  before/after prices; a buyer who does NOT have the product
+  wishlisted is never notified of its price drop; a real price
+  increase (or no change) never fires a false drop notification; a
+  non-admin cannot trigger a manual check. **A real, significant
+  finding surfaced while testing this**: running the full suite
+  revealed `p1` and `p4` — the two products nearly every test file in
+  this whole project reuses as a shared fixture — had their real
+  stock genuinely depleted to 0 by accumulated test runs across this
+  project's history, now that migration 037 made stock real. Caused a
+  real, widespread wave of ~60 unrelated failures. Fixed by
+  replenishing the real database directly and updating `db/seed.js`
+  to seed both with a real, deliberately large stock quantity going
+  forward — see `services/api/README.md`'s "Real price-drop alerts on
+  wishlist items" section for the full real story.
 - `src/recentlyViewed.integration.test.js` (4, REAL backend, new,
   migration 032) — recording a view and fetching the list shows it,
   most recent first; re-viewing a product moves it back to the front
