@@ -52,21 +52,29 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   void _openReturnRequest(int subOrderId, String supplierLabel) {
+    // Real fix: capture THIS page's own context explicitly, before the
+    // showModalBottomSheet builder below shadows the name `context` with
+    // the bottom sheet's own (about-to-be-popped) context. The original
+    // code used the shadowed, sheet-owned context for both the pop() and
+    // the ScaffoldMessenger call after it -- which silently showed no
+    // SnackBar at all, since that context belongs to the very route being
+    // removed. Confirmed live in a real browser, not just reasoned about.
+    final pageContext = context;
     showModalBottomSheet(
-      context: context,
+      context: pageContext,
       isScrollControlled: true,
-      builder: (context) => _ReturnRequestSheet(
+      builder: (sheetContext) => _ReturnRequestSheet(
         subOrderId: subOrderId,
         supplierLabel: supplierLabel,
         onSubmitted: () {
-          Navigator.of(context).pop();
-          ScaffoldMessenger.of(context).showSnackBar(
+          Navigator.of(sheetContext).pop();
+          ScaffoldMessenger.of(pageContext).showSnackBar(
             SnackBar(
-              content: Text(trRead(context, 'return_request_sent')),
+              content: Text(trRead(pageContext, 'return_request_sent')),
               // Real deep link straight to the new case in My Returns
               // (see returns_screen.dart) -- otherwise a buyer who just
               // filed a return has no obvious next step to go check on it.
-              action: SnackBarAction(label: trRead(context, 'view'), onPressed: () => context.push('/returns')),
+              action: SnackBarAction(label: trRead(pageContext, 'view'), onPressed: () => pageContext.push('/returns')),
             ),
           );
         },
