@@ -1385,6 +1385,22 @@ add a new mocked component test that logs in, give it a valid
 `/overview` mock too, even if the test itself is about something else
 entirely.
 
+## Real Excel export on Suppliers and Returns pages (new)
+
+**A real inconsistency found and closed**: `exportToExcel()` (see
+`src/exportToExcel.js`) already existed and was wired up on Orders,
+Payouts, and Audit Log — but not on the Suppliers or Returns &
+Disputes pages, despite both being exactly the kind of list an
+operations team would want offline for reporting. Same reusable
+util, same pattern — Suppliers exports name/contact/listing count/
+status/joined date; Returns exports case/order/buyer/reason/status/
+updated date.
+
+**Verified**: full regression pass on both pages
+(`SuppliersFlow.test.jsx` 3/3, `returns.integration.test.js` 8/8,
+against the real running backend) — no existing behavior changed,
+only a new button added to each.
+
 ## Next steps to make this real
 
 1. Wire the `TopBar`'s hardcoded user display to the real logged-in admin

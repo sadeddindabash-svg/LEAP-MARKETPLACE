@@ -858,6 +858,31 @@ function SuppliersPage({ onSessionExpired }) {
   return (
     <div>
       <TopBar title="Suppliers" subtitle={loadState === "ready" ? `${verifiedCount} verified · ${pendingCount} pending review` : "Loading…"} />
+      <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "flex-end" }}>
+        {/* Real export (new) -- same reusable exportToExcel() util already
+            used for Orders/Payouts/Audit Log, just never added here. */}
+        <button
+          disabled={suppliers.length === 0}
+          onClick={() => exportToExcel({
+            filename: `suppliers-${new Date().toISOString().slice(0, 10)}`,
+            sheetName: "Suppliers",
+            columns: [
+              { header: "Supplier", key: "name", width: 30 },
+              { header: "Contact email", key: "contactEmail", width: 30 },
+              { header: "Listings", key: "listingCount", width: 12 },
+              { header: "Status", key: "verificationStatus", width: 16 },
+              { header: "Joined", key: "createdAt", width: 16 },
+            ],
+            rows: suppliers.map((s) => ({
+              name: s.name, contactEmail: s.contactEmail || "—", listingCount: s.listingCount,
+              verificationStatus: s.verificationStatus, createdAt: new Date(s.createdAt).toLocaleDateString(),
+            })),
+          })}
+          style={{ display: "flex", alignItems: "center", gap: 6, ...body, fontSize: 12.5, fontWeight: 700, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, cursor: suppliers.length === 0 ? "default" : "pointer", opacity: suppliers.length === 0 ? 0.5 : 1 }}
+        >
+          <Download size={13} /> Export
+        </button>
+      </div>
       <div style={{ padding: 24 }}>
         {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading suppliers…</div></Card>}
         {loadState === "error" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>Couldn't load suppliers: {errorMessage}</div></Card>}
@@ -3258,6 +3283,33 @@ function ReturnsPage({ onOpenCase, onSessionExpired }) {
   return (
     <div>
       <TopBar title="Returns & disputes" subtitle={loadState === "ready" ? `${cases.length} cases` : "Loading…"} />
+      <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "flex-end" }}>
+        {/* Real export (new) -- same reusable exportToExcel() util already
+            used for Orders/Payouts/Audit Log, just never added here. */}
+        <button
+          disabled={cases.length === 0}
+          onClick={() => exportToExcel({
+            filename: `returns-${new Date().toISOString().slice(0, 10)}`,
+            sheetName: "Returns",
+            columns: [
+              { header: "Case", key: "id", width: 14 },
+              { header: "Order", key: "orderId", width: 16 },
+              { header: "Buyer", key: "buyer", width: 30 },
+              { header: "Reason", key: "reason", width: 30 },
+              { header: "Status", key: "status", width: 16 },
+              { header: "Updated", key: "updatedAt", width: 16 },
+            ],
+            rows: cases.map((c) => ({
+              id: c.id, orderId: c.orderId, buyer: c.buyerId || c.guestEmail || "—",
+              reason: c.reason, status: getReturnStatusMeta(c.status).label,
+              updatedAt: new Date(c.updatedAt).toLocaleDateString(),
+            })),
+          })}
+          style={{ display: "flex", alignItems: "center", gap: 6, ...body, fontSize: 12.5, fontWeight: 700, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, cursor: cases.length === 0 ? "default" : "pointer", opacity: cases.length === 0 ? 0.5 : 1 }}
+        >
+          <Download size={13} /> Export
+        </button>
+      </div>
       <div style={{ padding: 24 }}>
         {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading return cases…</div></Card>}
         {loadState === "error" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>Couldn't load return cases: {errorMessage}</div></Card>}
