@@ -1943,6 +1943,40 @@ section, once in the existing list) — the same real "text now matches
 twice" pattern already fixed once before elsewhere in this project —
 fixed by asserting on "at least one match" instead of exactly one.
 
+## Flagging a shipment now auto-opens a real, linked return case
+
+**A real gap closed, previously flagged in `apps/hub-portal/README.md`'s
+own "next steps" as not yet wired**: a hub staff member flagging a
+quality issue during inspection previously only made the shipment
+visible to admin via `GET /hub/flagged` — a real dispute case had to be
+opened manually and separately, with no automatic link between the two.
+
+**`POST /hub/me/shipments/:id/events`** with `step: 'flagged'` now
+opens a real `return_cases` row in the SAME transaction as the flag
+itself (atomic — either both happen, or neither does), resolving the
+real buyer (or guest email) via the sub-order → order chain, with an
+initial `admin`-authored message quoting the hub staff's own flag note.
+The buyer sees this immediately via their own `GET /returns/my-cases` —
+same real return-case system as any buyer-initiated request.
+
+**No new migration or schema link needed**: `GET /hub/flagged` now also
+returns `returnCaseId`, found by joining on `sub_order_id` rather than a
+stored foreign key — a sub-order's `hub_shipment` is unique (migration
+011), and a flag always creates exactly one case for it, so the most
+recent matching case genuinely is the one this flag created. A flag
+from before this feature existed correctly returns `returnCaseId: null`
+— an honest gap for old data, not a false positive.
+
+**Verified end-to-end against the real running backend**: placed a real
+order, routed it through a real hub, flagged the shipment with a real
+note and photo, confirmed `GET /hub/flagged` returned a real
+`RC-`-prefixed case ID, confirmed fetching that case as admin showed the
+correct order/sub-order/status and an admin-authored message quoting
+the real flag note, and confirmed the same buyer's own
+`GET /returns/my-cases` genuinely lists it too — not a
+self-consistent mock, real shared data across three different views
+(hub, admin, buyer).
+
 ## Real hub performance metrics — average time per stage (second item in the hub operations group)
 
 **Confirmed design**: average time between real, consecutive stage
@@ -1986,6 +2020,34 @@ number; a non-admin cannot view performance metrics.
 **Admin dashboard**: a new table on the Inspection Hubs page, right
 below the workload/capacity section, showing each hub's average time
 per stage transition with its real sample count.
+
+## Real cache headers on uploaded images
+
+**A real gap found while scoping image-caching work in the mobile app**:
+`app.use('/uploads', express.static(...))` had no cache headers at all —
+every app loading a product/review/return/hub-evidence photo
+(mobile, admin dashboard, supplier portal, hub portal, web storefront)
+relied on a conditional GET (304) on every repeat view rather than
+skipping the network round-trip entirely.
+
+**Fixed with `maxAge: '365d', immutable: true`** — safe to cache this
+aggressively because every uploaded filename is a fresh
+`crypto.randomBytes(16)` hex string generated per upload (see
+`modules/uploads/routes.js`), never reused: a given URL's content can
+never change, only a brand-new URL is created for a new photo. This is
+on top of, not instead of, the mobile app's own on-device
+`CachedNetworkImage` cache (see `apps/mobile/README.md`'s "Real image
+caching" section) — that one avoids the request reaching the network
+at all; this one makes any request that does reach the network as
+cheap as possible for every OTHER app that has no client-side cache of
+its own.
+
+**Verified against the real running backend**: confirmed a real
+uploaded file now returns `Cache-Control: public, max-age=31536000,
+immutable`, and confirmed a nonexistent file still correctly 404s
+(unaffected). Full regression pass: supplier-portal (74/74),
+admin-dashboard (11/11 spot-checked, hub + returns suites),
+hub-portal (4/4) — all still passing.
 
 ## Product search (added to GET /catalog/products)
 

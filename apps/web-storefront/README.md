@@ -274,9 +274,10 @@ there), but the component tests genuinely run and must pass.
 2. **Verify the confirmation page's client-side hydration** in a real
    browser — logically correct but only verified via curl here (see
    the cart/checkout section above).
-3. **Account features**: login/signup, order history, and
-   saved-address checkout — a real, separate, confirmed next pass, not
-   built here.
+3. **Remaining account features**: order history and saved-address
+   checkout — login/signup themselves are already real (see "Real
+   account login/signup + saved searches" above); these two are the
+   genuine remaining next pass.
 4. **A real, production domain** for `NEXT_PUBLIC_SITE_URL` — the
    sitemap and metadata currently default to `localhost`.
 5. **Real analytics** (e.g. Google Search Console verification) once

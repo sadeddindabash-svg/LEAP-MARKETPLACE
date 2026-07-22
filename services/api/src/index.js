@@ -59,7 +59,24 @@ app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf; } }));
 // Serves uploaded product images — see modules/uploads/routes.js header
 // comment for why this is local disk (real, working) rather than real
 // object storage (the production-ready choice, not yet wired up).
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+//
+// REAL GAP FOUND AND FIXED HERE: this had no cache headers at all
+// before -- express.static's own default (no maxAge set) sends no real
+// Cache-Control directive, so every app loading these images (mobile,
+// admin dashboard, supplier/hub portals, web storefront) relied on a
+// conditional GET (304) on every repeat view rather than skipping the
+// network round-trip entirely. Safe to cache aggressively and
+// immutably: every uploaded filename is a fresh crypto.randomBytes(16)
+// hex string generated per upload (see uploads/routes.js) -- a given
+// URL's content can never change, only a brand-new URL is ever created
+// for a new photo. This is on TOP of, not instead of, the mobile app's
+// own on-device CachedNetworkImage cache -- that one avoids the
+// request even reaching the network at all; this one makes any
+// request that does reach the network as cheap as possible.
+app.use('/uploads', express.static(path.join(__dirname, '../uploads'), {
+  maxAge: '365d',
+  immutable: true,
+}));
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', env: env.nodeEnv, timestamp: new Date().toISOString() });
