@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 import '../core/config/app_config.dart';
 import '../models/product.dart';
@@ -19,6 +20,28 @@ class ApiClient {
   ApiClient({String? baseUrl, http.Client? client})
       : baseUrl = baseUrl ?? AppConfig.apiBaseUrl,
         _client = client ?? http.Client();
+
+  /// REAL BUG FOUND AND FIXED HERE (second real bug in this exact spot,
+  /// found right after fixing the first): the backend's upload endpoint
+  /// (services/api/src/modules/uploads/routes.js) validates the
+  /// REQUEST's mimetype against an allow-list (image/jpeg, image/png,
+  /// image/webp) -- MultipartFile.fromBytes with no explicit
+  /// contentType defaults to application/octet-stream, which that
+  /// allow-list correctly rejects. fromPath used to infer this from the
+  /// file extension automatically; fromBytes does not, so it has to be
+  /// set explicitly here. Prefers the real XFile.mimeType (reliably
+  /// populated on web, from the browser's own File.type), falling back
+  /// to a real extension-based guess on platforms where that's null.
+  static MediaType _mediaTypeFor(XFile file) {
+    final reported = file.mimeType;
+    if (reported != null && reported.startsWith('image/')) {
+      return MediaType.parse(reported);
+    }
+    final name = file.name.toLowerCase();
+    if (name.endsWith('.png')) return MediaType('image', 'png');
+    if (name.endsWith('.webp')) return MediaType('image', 'webp');
+    return MediaType('image', 'jpeg'); // matches pickImage's own default output format
+  }
 
   /// Turns a relative media path (e.g. "/uploads/abc123.jpg", as returned
   /// by product.images) into a real, fully-qualified URL the app can
@@ -550,7 +573,7 @@ class ApiClient {
     final request = http.MultipartRequest('POST', Uri.parse('$baseUrl/uploads/product-image'));
     request.headers['Authorization'] = 'Bearer $token';
     final bytes = await file.readAsBytes();
-    request.files.add(http.MultipartFile.fromBytes('image', bytes, filename: file.name));
+    request.files.add(http.MultipartFile.fromBytes('image', bytes, filename: file.name, contentType: _mediaTypeFor(file)));
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
     final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -698,7 +721,7 @@ class ApiClient {
     final request = http.MultipartRequest('POST', Uri.parse('$baseUrl/uploads/product-image'));
     request.headers['Authorization'] = 'Bearer $token';
     final bytes = await file.readAsBytes();
-    request.files.add(http.MultipartFile.fromBytes('image', bytes, filename: file.name));
+    request.files.add(http.MultipartFile.fromBytes('image', bytes, filename: file.name, contentType: _mediaTypeFor(file)));
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
     final body = jsonDecode(response.body) as Map<String, dynamic>;
