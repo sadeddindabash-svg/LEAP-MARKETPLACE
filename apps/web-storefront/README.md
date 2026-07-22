@@ -235,6 +235,38 @@ npm run build         # real production build
 npm run start          # serve the real production build
 ```
 
+## Testing (new — this app had zero test files before)
+
+**A real, honest gap, found and closed**: unlike every other app in
+this monorepo, this one had no test files and no `test` script in
+`package.json` at all. Added the same Vitest + jsdom + React Testing
+Library toolchain already used in `apps/admin-dashboard` and
+`apps/supplier-portal`, adapted for this app's Next.js `@/*` path alias
+(`vitest.config.ts` maps it manually, since Vitest doesn't read Next's
+own module resolution config).
+
+```bash
+npm test
+```
+
+Two real test files, 8 tests total, all passing:
+- `lib/api.integration.test.ts` (6, REAL backend — skips cleanly if
+  `services/api` isn't running, same `describe.runIf(backendUp)`
+  pattern used throughout this project's other integration tests) —
+  real categories/products load, a real computed price is always a
+  positive number, a category filter never leaks a product from a
+  different category, product detail fetches the right real product,
+  a nonexistent product returns `null` rather than throwing, and a real
+  cart genuinely persists an added item across two separate fetches.
+- `components/CartIcon.test.tsx` (2, mocked fetch) — no badge on a real
+  empty cart, and adding a real item updates the badge without a page
+  reload.
+
+Also added a matching `web-storefront` job to
+`.github/workflows/ci.yml` (checkout → `npm ci` → `npm run lint` →
+`npm test`) — the integration tests will skip in CI (no live backend
+there), but the component tests genuinely run and must pass.
+
 ## Next steps to make this real
 
 1. **Verify the real Google Fonts fetch** once deployed somewhere

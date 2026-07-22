@@ -173,6 +173,9 @@ Two test files, 12 tests, all passing:
    flag.
 3. Real object storage for evidence photos (see the honest limitation
    noted above) — same next step already flagged for product photos.
-4. Buyer-facing mobile tracking UI showing the expanded two-leg journey
-   (the backend already supports this via the order detail endpoint;
-   the mobile screen itself hasn't been built yet).
+4. ~~Buyer-facing mobile tracking UI~~ — **done**, not a next step
+   anymore: `apps/mobile/lib/features/orders/tracking_screen.dart`
+   already shows the expanded two-leg journey (hub milestones merged
+   with live carrier events), reading it straight off the order detail
+   endpoint this portal's own backend module powers. This note was
+   stale — left uncorrected until now.

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, createContext, useContext } from "react";
 import LoginPage from "./LoginPage";
 import { exportToExcel } from "./exportToExcel";
 import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, verifySupplier, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
@@ -150,7 +150,28 @@ function Td({ children, align, style }) {
   return <td style={{ ...body, fontSize: 13, color: C.ink, padding: "13px 16px", borderBottom: `1px solid ${C.line}`, textAlign: align || "left", ...style }}>{children}</td>;
 }
 
+// Real, minimal context (new) -- so TopBar (rendered once per page, ~20
+// call sites, each only passing title/subtitle) can read the real
+// logged-in admin without threading currentUser through every single
+// page component's props. Provided once, at AdminDashboardShell.
+const CurrentUserContext = createContext(null);
+
+// REAL BUG FOUND AND FIXED HERE: this previously always showed a
+// hardcoded "Omar M. / Ops Admin" placeholder, regardless of who was
+// actually logged in -- flagged as a known gap in this project's own
+// README for a while, never fixed until now. Now reads the real
+// logged-in admin via CurrentUserContext (same currentUser already
+// used correctly in the sidebar footer below).
 function TopBar({ title, subtitle }) {
+  const currentUser = useContext(CurrentUserContext);
+  const displayName = currentUser?.name || currentUser?.email || "Admin";
+  const initials = displayName
+    .split(/[\s@.]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0].toUpperCase())
+    .join('') || "A";
+  const roleLabel = currentUser?.isOwner ? "Owner" : "Admin";
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
       <div>
@@ -164,10 +185,10 @@ function TopBar({ title, subtitle }) {
         </div>
         <Bell size={18} color={C.ink} />
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.ink, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", ...body, fontWeight: 700, fontSize: 12.5 }}>OM</div>
+          <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.ink, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", ...body, fontWeight: 700, fontSize: 12.5 }}>{initials}</div>
           <div>
-            <div style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.ink }}>Omar M.</div>
-            <div style={{ ...body, fontSize: 10.5, color: C.muted }}>Ops Admin</div>
+            <div style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.ink }}>{displayName}</div>
+            <div style={{ ...body, fontSize: 10.5, color: C.muted }}>{roleLabel}</div>
           </div>
         </div>
       </div>
@@ -3926,6 +3947,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   else if (page === "settings") content = <SettingsPage currentUser={currentUser} onSessionExpired={onLogout} />;
 
   return (
+    <CurrentUserContext.Provider value={currentUser}>
     <div style={{ display: "flex", height: "100%", minHeight: 700, background: C.canvas, ...body }}>
       <style>{FONT_IMPORT}</style>
       <style>{`tbody tr:hover { background: ${C.canvas}; }`}</style>
@@ -3970,6 +3992,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
         {content}
       </div>
     </div>
+    </CurrentUserContext.Provider>
   );
 }
 
