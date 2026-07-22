@@ -189,6 +189,7 @@ class AppStrings {
 
     // ---- Wishlist (new) ----
     'wishlist': {'en': 'Wishlist', 'ar': 'المفضلة'},
+    'saved_searches': {'en': 'Saved Searches', 'ar': 'عمليات البحث المحفوظة'},
     'no_wishlist_items_yet': {'en': 'Nothing saved yet. Tap the heart on a product to save it here.', 'ar': 'لا شيء محفوظ بعد. اضغط على القلب في أي منتج لحفظه هنا.'},
     'added_to_wishlist': {'en': 'Added to wishlist', 'ar': 'أُضيف إلى المفضلة'},
     'removed_from_wishlist': {'en': 'Removed from wishlist', 'ar': 'أُزيل من المفضلة'},

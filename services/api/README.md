@@ -1725,6 +1725,65 @@ actual product logic, just large enough that ordinary real test usage
 won't realistically exhaust it. See `db/seed.js`'s own comment for the
 full real reasoning.
 
+## Real saved searches with notifications (migration 039)
+
+**Confirmed scope**: available in both the mobile app and the web
+storefront — which meant building real login/signup for the
+storefront too, since it had none before this (a real, separate,
+confirmed decision, not scope creep — saved searches genuinely cannot
+work for a visitor with no real account).
+
+**A real, deliberate design choice**: `last_seen_product_ids`
+compares the real, current full match SET against the real,
+previously-seen set, rather than a timestamp comparison. A product can
+start matching a saved search for reasons that have nothing to do
+with when it was created (getting approved days after submission, a
+translation completing, its category changing) — this catches every
+one of those, not just "created after last check".
+
+**`buildProductMatchQuery()`** (extracted from `GET /catalog/products`
+into a shared, exported function) — both the real storefront/mobile
+search endpoint and this real saved-search sweep run the exact same
+real matching rules, rather than two versions that could quietly
+drift apart over time.
+
+Same real scheduling pattern as price-drop alerts: runs automatically
+every real 6 hours, plus an on-demand **`POST /admin/saved-searches/check`**
+(admin-only) for testing and for an admin who doesn't want to wait.
+
+**A real bug was already found and fixed here** (from a prior pass):
+whether a saved search's check was its genuine first-ever check must
+be judged from `last_checked_at` being real-ly `NULL`, not from
+`previousIds.size > 0` — a saved search can legitimately have zero
+real matches on its first check, and the old, wrong condition would
+have silently suppressed every future real notification for it
+forever, since the previously-seen set would stay empty check after
+check until a match finally showed up — at which point it would still
+look exactly like "the first check" and get skipped again.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/savedSearches.integration.test.js`
+(5 tests, REAL backend): the first real check only records a real
+baseline, with no notification, even with zero matches; a real,
+genuinely new match after the baseline correctly notifies (the exact
+scenario the bug above would have broken); a real, subsequent check
+with no further new matches does not re-notify; a buyer can list and
+delete their own real saved searches, and cannot delete another
+buyer's (404, not 403 — the same "don't confirm it exists" pattern
+used elsewhere); a non-admin cannot trigger a manual check.
+
+**Web storefront**: new, real, minimal login/signup
+(`components/AuthProvider.tsx`) — confirmed scope: just enough to
+unblock saved searches, backed by the same real accounts every other
+part of this project uses. Order history and saved-address checkout
+remain a real, separate, confirmed next pass. A real "Save this
+search" action on the search page, and a real `/saved-searches`
+management page.
+
+**Mobile app**: a real "Save this search" action in the search
+screen's app bar (only shown once real results have loaded, and only
+to a logged-in buyer), and a new Saved Searches screen reachable from
+Account.
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category

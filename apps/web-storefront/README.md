@@ -113,6 +113,39 @@ submitted it. Confirmed by directly inspecting the rendered page
 against a real, delivered order's real review — not just checked for
 compile errors.
 
+## Real account login/signup + saved searches (new, migration 039)
+
+**Confirmed scope**: just enough real login/signup to unblock saved
+searches — this storefront had no account system at all before this.
+Order history and saved-address checkout remain a real, separate,
+confirmed next pass, not built here.
+
+**`components/AuthProvider.tsx`** — a real cookie holds the JWT
+(30-day expiry, same real pattern and reasoning as the cart ID cookie
+in `CartProvider.tsx`) so a session survives a page refresh. Backed by
+the exact same real `/auth/signup`, `/auth/login`, `/auth/me`
+endpoints every other part of this project already uses — no separate
+storefront-only account system.
+
+**`/login`** and **`/signup`** — real, minimal forms. **`AccountLink`**
+in the header shows "Log in" when signed out, or the buyer's name plus
+a real log-out action when signed in.
+
+**`/saved-searches`** — a real management page (requires login,
+matching the backend's own requirement); **`SaveSearchButton`** on the
+search page lets a logged-in buyer save the current search term/
+category with a real label. See `services/api/README.md`'s "Real
+saved searches with notifications" section for the full real backend
+design, including a real bug (found and fixed in an earlier pass) this
+depends on being fixed correctly.
+
+**Confirmed via a real production build**: all 13 routes compile
+cleanly (`npm run build`), and the rendered HTML for `/login`,
+`/signup`, and `/saved-searches` was checked directly — the actual
+interactive login/signup flow itself could only be reasoned about
+logically here, not clicked through in a real browser (same honest
+limitation as the checkout confirmation page's client-side hydration).
+
 ## Brand system — carried over, not reinvented
 
 Since this is the same real product as the mobile app, not a

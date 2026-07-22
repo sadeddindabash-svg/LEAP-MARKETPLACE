@@ -749,6 +749,22 @@ any review that qualifies, in `widgets/reviews_section.dart` — same
 real component used for both the buyer's own in-progress review and
 every approved review shown publicly.
 
+## Real saved searches with notifications (new, migration 039)
+
+See `services/api/README.md`'s equivalent section for the full real
+backend design (confirmed scope: available in both this app and the
+new web storefront). A real "Save this search" action in
+`features/search/search_screen.dart`'s app bar — only shown once real
+results have actually loaded, and only to a real logged-in buyer
+(checked via the existing `AuthState`) — prompts for a real label,
+then saves via the real backend. A new
+`features/saved_searches/saved_searches_screen.dart`, reachable from
+Account, lists and removes a buyer's own real saved searches.
+
+**HONEST LIMITATION**: same as every other mobile section in this
+README — no Flutter SDK in this sandbox, so this could not be run or
+tested here beyond careful manual review and bracket-balance checks.
+
 ## Setup
 
 1. Install Flutter: https://docs.flutter.dev/get-started/install

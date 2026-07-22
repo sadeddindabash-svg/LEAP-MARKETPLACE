@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { fetchCategories, fetchProducts, resolveImageUrl } from "@/lib/api";
+import { SaveSearchButton } from "@/components/SaveSearchButton";
 
 interface PageProps {
   searchParams: Promise<{ q?: string; category?: string }>;
@@ -64,9 +65,12 @@ export default async function SearchPage({ searchParams }: PageProps) {
         </aside>
 
         <div className="flex-1">
-          <p className="text-sm text-muted mb-4">
-            {products.length} part{products.length === 1 ? "" : "s"} found
-          </p>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm text-muted">
+              {products.length} part{products.length === 1 ? "" : "s"} found
+            </p>
+            <SaveSearchButton searchTerm={q} category={category} />
+          </div>
           {products.length === 0 ? (
             <p className="text-muted">
               No parts match your search. Try a different term or category.

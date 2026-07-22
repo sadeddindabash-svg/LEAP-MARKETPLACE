@@ -215,3 +215,49 @@ export async function placeGuestOrder(
   if (!res.ok) throw new Error(body.error || `Failed to place order (${res.status})`);
   return body as PlaceOrderResult;
 }
+
+// ---------------- Real saved searches (client-side calls) ----------------
+// Same reasoning as the cart section above -- these run in the
+// browser (Client Components), require a real logged-in account, and
+// have no SEO value.
+
+export interface SavedSearch {
+  id: number;
+  label: string;
+  searchTerm: string | null;
+  category: string | null;
+  createdAt: string;
+  lastCheckedAt: string | null;
+}
+
+async function savedSearchApiCall<T>(path: string, token: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE_URL}/saved-searches${path}`, {
+    ...options,
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...options?.headers },
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Saved search request failed (${res.status})`);
+  return body as T;
+}
+
+export function fetchSavedSearches(token: string): Promise<SavedSearch[]> {
+  return savedSearchApiCall<SavedSearch[]>("/me", token);
+}
+
+export function createSavedSearch(
+  token: string,
+  params: { searchTerm?: string; category?: string; label: string }
+): Promise<SavedSearch> {
+  return savedSearchApiCall<SavedSearch>("/me", token, { method: "POST", body: JSON.stringify(params) });
+}
+
+export async function deleteSavedSearch(token: string, id: number): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/saved-searches/me/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Failed to delete saved search (${res.status})`);
+  }
+}

@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { Barlow_Condensed, Inter, JetBrains_Mono } from "next/font/google";
 import Link from "next/link";
 import { CartProvider } from "@/components/CartProvider";
+import { AuthProvider } from "@/components/AuthProvider";
 import CartIcon from "@/components/CartIcon";
+import AccountLink from "@/components/AccountLink";
 import "./globals.css";
 
 // Real brand fonts, carried over exactly from the established system
@@ -45,6 +47,7 @@ export default function RootLayout({
       className={`${barlowCondensed.variable} ${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-chalk text-ink">
+        <AuthProvider>
         <CartProvider>
           <header className="border-b border-line bg-white sticky top-0 z-10">
             <div className="mx-auto max-w-6xl px-6 h-16 flex items-center justify-between">
@@ -58,6 +61,7 @@ export default function RootLayout({
                 <Link href="/search" className="text-muted hover:text-ink">
                   Search
                 </Link>
+                <AccountLink />
                 <CartIcon />
               </nav>
             </div>
@@ -69,6 +73,7 @@ export default function RootLayout({
             </div>
           </footer>
         </CartProvider>
+        </AuthProvider>
       </body>
     </html>
   );

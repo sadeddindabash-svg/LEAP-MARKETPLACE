@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/language_state.dart';
+import '../../core/auth_state.dart';
 import '../../models/product.dart';
 import '../../services/api_client.dart';
 
@@ -63,6 +64,8 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   Widget build(BuildContext context) {
     final isAr = context.watch<LanguageState>().isArabic;
+    final isLoggedIn = context.watch<AuthState>().isLoggedIn;
+    final hasQuery = _controller.text.trim().isNotEmpty;
     return Scaffold(
       appBar: AppBar(
         title: TextField(
@@ -75,9 +78,58 @@ class _SearchScreenState extends State<SearchScreen> {
             border: InputBorder.none,
           ),
         ),
+        actions: [
+          if (isLoggedIn && hasQuery && _results != null)
+            IconButton(
+              icon: const Icon(Icons.bookmark_add_outlined),
+              tooltip: isAr ? 'حفظ هذا البحث' : 'Save this search',
+              onPressed: () => _showSaveSearchDialog(context, isAr),
+            ),
+        ],
       ),
       body: _buildBody(isAr),
     );
+  }
+
+  // Real "Save this search" action (migration 039) -- prompts for a
+  // real label, then saves via the real backend. Only shown once real
+  // results have actually loaded, and only to a real logged-in buyer.
+  Future<void> _showSaveSearchDialog(BuildContext context, bool isAr) async {
+    final labelController = TextEditingController(text: _lastQuery);
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(isAr ? 'حفظ هذا البحث' : 'Save this search'),
+        content: TextField(
+          controller: labelController,
+          autofocus: true,
+          decoration: InputDecoration(labelText: isAr ? 'اسم البحث' : 'Name this search'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(isAr ? 'إلغاء' : 'Cancel')),
+          TextButton(
+            onPressed: () async {
+              final token = context.read<AuthState>().token;
+              if (token == null) return Navigator.pop(dialogContext, false);
+              try {
+                await ApiClient().createSavedSearch(token, searchTerm: _lastQuery, label: labelController.text.trim().isEmpty ? _lastQuery : labelController.text.trim());
+                if (dialogContext.mounted) Navigator.pop(dialogContext, true);
+              } on ApiException catch (e) {
+                if (dialogContext.mounted) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text(e.message)));
+                }
+              }
+            },
+            child: Text(isAr ? 'حفظ' : 'Save'),
+          ),
+        ],
+      ),
+    );
+    if (saved == true && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(isAr ? 'تم حفظ البحث — سنُعلمك بالنتائج الجديدة' : 'Search saved — we\'ll notify you of new matches')),
+      );
+    }
   }
 
   Widget _buildBody(bool isAr) {

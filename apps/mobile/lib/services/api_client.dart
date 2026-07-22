@@ -7,6 +7,7 @@ import '../models/category.dart';
 import '../models/cart_item.dart';
 import '../models/vehicle.dart';
 import '../models/review.dart';
+import '../models/saved_search.dart';
 
 /// Thin wrapper around services/api. Kept deliberately simple for the MVP —
 /// swap in a generated client (e.g. from an OpenAPI spec) once the backend
@@ -563,6 +564,35 @@ class ApiClient {
     if (response.statusCode != 204) throw ApiException('Failed to remove from wishlist (${response.statusCode})');
   }
 
+  /// Real saved searches (new) — see
+  /// services/api/src/modules/savedSearches/routes.js. A real,
+  /// periodic backend sweep notifies the buyer when a genuinely new
+  /// product matches later; this app's own job is just real CRUD.
+  Future<List<SavedSearch>> fetchSavedSearches(String token) async {
+    final response = await _client.get(Uri.parse('$baseUrl/saved-searches/me'), headers: _authHeaders(token));
+    if (response.statusCode != 200) throw ApiException('Failed to load saved searches (${response.statusCode})');
+    final body = jsonDecode(response.body) as List;
+    return body.map((e) => SavedSearch.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<SavedSearch> createSavedSearch(String token, {String? searchTerm, String? category, required String label}) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/saved-searches/me'),
+      headers: {..._authHeaders(token), 'Content-Type': 'application/json'},
+      body: jsonEncode({'searchTerm': searchTerm, 'category': category, 'label': label}),
+    );
+    if (response.statusCode != 201) {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      throw ApiException(body['error'] as String? ?? 'Failed to save search (${response.statusCode})');
+    }
+    return SavedSearch.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<void> deleteSavedSearch(String token, int id) async {
+    final response = await _client.delete(Uri.parse('$baseUrl/saved-searches/me/$id'), headers: _authHeaders(token));
+    if (response.statusCode != 204) throw ApiException('Failed to delete saved search (${response.statusCode})');
+  }
+
   /// Real product reviews (new) — see
   /// services/api/src/modules/reviews/routes.js. Public: only ever
   /// returns real 'approved' reviews and a real average computed
@@ -657,6 +687,33 @@ class ApiClient {
     if (response.statusCode != 200) throw ApiException('Failed to load recently viewed products (${response.statusCode})');
     final body = jsonDecode(response.body) as List;
     return body.map((e) => Product.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Real saved searches (migration 039) -- a real, periodic backend
+  /// sweep notifies the buyer when a genuinely new product matches.
+  Future<List<SavedSearch>> fetchSavedSearches(String token) async {
+    final response = await _client.get(Uri.parse('$baseUrl/saved-searches/me'), headers: _authHeaders(token));
+    if (response.statusCode != 200) throw ApiException('Failed to load saved searches (${response.statusCode})');
+    final body = jsonDecode(response.body) as List;
+    return body.map((e) => SavedSearch.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<SavedSearch> createSavedSearch(String token, {String? searchTerm, String? category, required String label}) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/saved-searches/me'),
+      headers: {'Content-Type': 'application/json', ..._authHeaders(token)},
+      body: jsonEncode({if (searchTerm != null) 'searchTerm': searchTerm, if (category != null) 'category': category, 'label': label}),
+    );
+    if (response.statusCode != 201) {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      throw ApiException(body['error'] as String? ?? 'Failed to save search (${response.statusCode})');
+    }
+    return SavedSearch.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<void> deleteSavedSearch(String token, int id) async {
+    final response = await _client.delete(Uri.parse('$baseUrl/saved-searches/me/$id'), headers: _authHeaders(token));
+    if (response.statusCode != 204) throw ApiException('Failed to remove saved search (${response.statusCode})');
   }
 
   /// Real notifications — triggered by real order changes and message/

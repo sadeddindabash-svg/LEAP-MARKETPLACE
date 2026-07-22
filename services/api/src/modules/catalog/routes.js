@@ -121,66 +121,57 @@ async function attachPrimaryFitment(dto, productId) {
 }
 
 // GET /catalog/products?category=brake&part=Front+Brake+Disc&vehicleId=v1&search=bmw+brake&sort=newest&lang=en|ar
+// Real, shared search-matching logic -- extracted so both the real
+// GET /products endpoint below and the real saved-searches scheduled
+// check (services/api/src/modules/savedSearches/check.js) run the
+// EXACT same real matching rules, rather than two versions that could
+// quietly drift apart over time. Returns real product IDs only
+// (lightweight -- sufficient for saved-search diffing, which never
+// needs full DTOs); GET /products still does its own DTO-building
+// with these IDs' underlying rows.
+function buildProductMatchQuery({ category, part, vehicleId, search }) {
+  const conditions = [];
+  const params = [];
+  let sql = `SELECT p.* FROM products p`;
+  if (vehicleId) {
+    sql += ` JOIN product_fitment pf ON pf.product_id = p.id AND pf.vehicle_id = $${params.length + 1}`;
+    params.push(vehicleId);
+  }
+  conditions.push(`p.status = 'active'`);
+  if (category) {
+    conditions.push(`p.category = $${params.length + 1}`);
+    params.push(category);
+  }
+  if (part) {
+    conditions.push(`p.part = $${params.length + 1}`);
+    params.push(part);
+  }
+  if (search && search.trim()) {
+    const words = search.trim().split(/\s+/).slice(0, 8);
+    for (const word of words) {
+      const idx = params.length + 1;
+      conditions.push(
+        `(p.name ILIKE $${idx} OR p.name_ar ILIKE $${idx} OR p.part ILIKE $${idx} OR p.oem_number ILIKE $${idx} OR p.category ILIKE $${idx}
+          OR EXISTS (
+            SELECT 1 FROM product_fitment_entries pfe
+            JOIN vehicle_generations vg ON vg.id = pfe.generation_id
+            JOIN vehicle_models vm ON vm.id = vg.model_id
+            JOIN vehicle_brands vb ON vb.id = vm.brand_id
+            WHERE pfe.product_id = p.id AND (vb.name ILIKE $${idx} OR vm.name ILIKE $${idx})
+          ))`
+      );
+      params.push(`%${word}%`);
+    }
+  }
+  if (conditions.length > 0) sql += ` WHERE ${conditions.join(' AND ')}`;
+  return { sql, params };
+}
+
 router.get('/products', async (req, res, next) => {
   try {
     const { category, part, vehicleId, search, sort, lang } = req.query;
-    const conditions = [];
-    const params = [];
-
-    let sql = `SELECT p.* FROM products p`;
-    if (vehicleId) {
-      sql += ` JOIN product_fitment pf ON pf.product_id = p.id AND pf.vehicle_id = $${params.length + 1}`;
-      params.push(vehicleId);
-    }
-
-    // BUG FIX, found while adding search: this endpoint had NO status
-    // filter at all -- a still-'translating' or 'pending' product (not
-    // yet reviewed, not yet buyer-facing per every other part of this
-    // system) could leak into buyer browsing and search results. Real
-    // and worth fixing here rather than separately, since search is
-    // exactly where an unapproved listing would first become visible.
-    conditions.push(`p.status = 'active'`);
-
-    if (category) {
-      conditions.push(`p.category = $${params.length + 1}`);
-      params.push(category);
-    }
-
-    // Real EXACT part filter -- distinct from `search`, which fuzzy-
-    // matches partial words. This is for "tap a real Part in the
-    // category browser, see exactly the products for that Part" --
-    // wants precision, not a fuzzy multi-word match.
-    if (part) {
-      conditions.push(`p.part = $${params.length + 1}`);
-      params.push(part);
-    }
-
-    // Real multi-word search: EVERY word must match SOMEWHERE (name in
-    // either language, part, OEM number, category, or the vehicle
-    // brand/model this product fits) -- "bmw brake" finds brake
-    // products that fit a BMW, not just literal string "bmw brake".
-    // Uses EXISTS rather than a JOIN to the fitment cascade so a
-    // product with multiple fitment entries doesn't come back as
-    // duplicate rows.
-    if (search && search.trim()) {
-      const words = search.trim().split(/\s+/).slice(0, 8); // cap word count -- a search box isn't meant to take a paragraph
-      for (const word of words) {
-        const idx = params.length + 1;
-        conditions.push(
-          `(p.name ILIKE $${idx} OR p.name_ar ILIKE $${idx} OR p.part ILIKE $${idx} OR p.oem_number ILIKE $${idx} OR p.category ILIKE $${idx}
-            OR EXISTS (
-              SELECT 1 FROM product_fitment_entries pfe
-              JOIN vehicle_generations vg ON vg.id = pfe.generation_id
-              JOIN vehicle_models vm ON vm.id = vg.model_id
-              JOIN vehicle_brands vb ON vb.id = vm.brand_id
-              WHERE pfe.product_id = p.id AND (vb.name ILIKE $${idx} OR vm.name ILIKE $${idx})
-            ))`
-        );
-        params.push(`%${word}%`);
-      }
-    }
-
-    if (conditions.length > 0) sql += ` WHERE ${conditions.join(' AND ')}`;
+    const { sql: baseSql, params } = buildProductMatchQuery({ category, part, vehicleId, search });
+    let sql = baseSql;
 
     // Real, explicit ordering -- this endpoint previously had NO
     // ORDER BY at all (whatever order Postgres happened to return was
@@ -564,3 +555,4 @@ module.exports = router;
 module.exports.toBuyerProductDto = toBuyerProductDto;
 module.exports.attachBuyerPrice = attachBuyerPrice;
 module.exports.attachBuyerImages = attachBuyerImages;
+module.exports.buildProductMatchQuery = buildProductMatchQuery;

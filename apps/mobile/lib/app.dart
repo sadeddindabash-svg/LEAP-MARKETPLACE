@@ -21,6 +21,7 @@ import 'features/orders/tracking_screen.dart';
 import 'features/account/account_screen.dart';
 import 'features/account/addresses_screen.dart';
 import 'features/account/wishlist_screen.dart';
+import 'features/saved_searches/saved_searches_screen.dart';
 import 'features/account/notifications_screen.dart';
 import 'features/account/referrals_screen.dart';
 import 'features/account/address_form_screen.dart';
@@ -50,6 +51,7 @@ final GoRouter appRouter = GoRouter(
     GoRoute(path: '/garage/add', builder: (context, state) => const AddVehicleScreen()),
     GoRoute(path: '/addresses', builder: (context, state) => const AddressesScreen()),
     GoRoute(path: '/wishlist', builder: (context, state) => const WishlistScreen()),
+    GoRoute(path: '/saved-searches', builder: (context, state) => const SavedSearchesScreen()),
     GoRoute(path: '/notifications', builder: (context, state) => const NotificationsScreen()),
     GoRoute(path: '/referrals', builder: (context, state) => const ReferralsScreen()),
     GoRoute(path: '/addresses/add', builder: (context, state) => const AddressFormScreen()),

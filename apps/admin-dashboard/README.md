@@ -635,7 +635,7 @@ can never crash the page.
 npm test
 ```
 
-Sixty test files, 384 tests total, all passing:
+Sixty-one test files, 389 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/passwordReset.integration.test.js` (5, REAL backend) — a real
@@ -1086,6 +1086,17 @@ Sixty test files, 384 tests total, all passing:
   to seed both with a real, deliberately large stock quantity going
   forward — see `services/api/README.md`'s "Real price-drop alerts on
   wishlist items" section for the full real story.
+- `src/savedSearches.integration.test.js` (5, REAL backend, new,
+  migration 039) — the first real check on a saved search only
+  records a real baseline, with no notification, even with zero
+  matches; a real, genuinely new match after the baseline correctly
+  notifies — confirms the fix for a real bug (already found and fixed
+  in an earlier pass) where a zero-match baseline incorrectly
+  suppressed every future notification forever; a real, subsequent
+  check with no further new matches does not re-notify; a buyer can
+  list and delete their own real saved searches, and cannot delete
+  another buyer's (404, not 403); a non-admin cannot trigger a manual
+  check.
 - `src/recentlyViewed.integration.test.js` (4, REAL backend, new,
   migration 032) — recording a view and fetching the list shows it,
   most recent first; re-viewing a product moves it back to the front

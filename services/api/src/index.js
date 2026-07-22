@@ -36,6 +36,9 @@ const webhooksRoutes = require('./modules/webhooks/routes');
 const { startScheduledFxRateRefresh } = require('./modules/pricing/fxRateRefresh');
 const { startScheduledPriceDropCheck } = require('./modules/priceDropAlerts/check');
 const priceDropAlertsRoutes = require('./modules/priceDropAlerts/routes');
+const savedSearchesRoutes = require('./modules/savedSearches/routes');
+const savedSearchesAdminRoutes = require('./modules/savedSearches/adminRoutes');
+const { startScheduledSavedSearchCheck } = require('./modules/savedSearches/check');
 const pricingRoutes = require('./modules/pricing/routes');
 
 assertRequiredEnvInProduction();
@@ -86,6 +89,8 @@ app.use('/promo-codes', promoCodesRoutes);
 app.use('/admin-users', adminUsersRoutes);
 app.use('/admin/audit-log', auditRoutes);
 app.use('/admin/price-drop-alerts', priceDropAlertsRoutes);
+app.use('/saved-searches', savedSearchesRoutes);
+app.use('/admin/saved-searches', savedSearchesAdminRoutes);
 app.use('/platform-settings', platformSettingsRoutes);
 app.use('/payouts', payoutsRoutes);
 app.use('/reviews', reviewsRoutes);
@@ -109,6 +114,9 @@ if (require.main === module) {
   // (migration 038) -- same real startup guard as the FX rate refresh
   // above, only when the server actually runs, never during testing.
   startScheduledPriceDropCheck();
+  // Real, every-6-hours saved-search check (migration 039) -- same
+  // real startup guard as above, only when the server actually runs.
+  startScheduledSavedSearchCheck();
 }
 
 module.exports = app;
