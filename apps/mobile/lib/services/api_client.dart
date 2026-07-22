@@ -689,33 +689,6 @@ class ApiClient {
     return body.map((e) => Product.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  /// Real saved searches (migration 039) -- a real, periodic backend
-  /// sweep notifies the buyer when a genuinely new product matches.
-  Future<List<SavedSearch>> fetchSavedSearches(String token) async {
-    final response = await _client.get(Uri.parse('$baseUrl/saved-searches/me'), headers: _authHeaders(token));
-    if (response.statusCode != 200) throw ApiException('Failed to load saved searches (${response.statusCode})');
-    final body = jsonDecode(response.body) as List;
-    return body.map((e) => SavedSearch.fromJson(e as Map<String, dynamic>)).toList();
-  }
-
-  Future<SavedSearch> createSavedSearch(String token, {String? searchTerm, String? category, required String label}) async {
-    final response = await _client.post(
-      Uri.parse('$baseUrl/saved-searches/me'),
-      headers: {'Content-Type': 'application/json', ..._authHeaders(token)},
-      body: jsonEncode({if (searchTerm != null) 'searchTerm': searchTerm, if (category != null) 'category': category, 'label': label}),
-    );
-    if (response.statusCode != 201) {
-      final body = jsonDecode(response.body) as Map<String, dynamic>;
-      throw ApiException(body['error'] as String? ?? 'Failed to save search (${response.statusCode})');
-    }
-    return SavedSearch.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
-  }
-
-  Future<void> deleteSavedSearch(String token, int id) async {
-    final response = await _client.delete(Uri.parse('$baseUrl/saved-searches/me/$id'), headers: _authHeaders(token));
-    if (response.statusCode != 204) throw ApiException('Failed to remove saved search (${response.statusCode})');
-  }
-
   /// Real notifications — triggered by real order changes and message/
   /// ticket replies (see services/api/src/modules/notifications/).
   Future<List<dynamic>> fetchNotifications(String token) async {
