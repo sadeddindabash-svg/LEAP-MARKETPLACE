@@ -1,0 +1,12 @@
+-- Migration 040: real weekly email digest for suppliers.
+--
+-- CONFIRMED SCOPE: weekly frequency, summarizing new orders, new
+-- reviews, and new messages since the last real digest (or since the
+-- supplier account was created, if none has been sent yet).
+--
+-- `last_digest_sent_at` lives on `suppliers` (not `users`) since a
+-- digest is genuinely about the supplier's own business activity, not
+-- the login account itself -- the same real distinction already made
+-- elsewhere in this project (payout methods, verification status all
+-- live on `suppliers` too).
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS last_digest_sent_at TIMESTAMPTZ;

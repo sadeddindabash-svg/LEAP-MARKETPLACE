@@ -39,6 +39,8 @@ const priceDropAlertsRoutes = require('./modules/priceDropAlerts/routes');
 const savedSearchesRoutes = require('./modules/savedSearches/routes');
 const savedSearchesAdminRoutes = require('./modules/savedSearches/adminRoutes');
 const { startScheduledSavedSearchCheck } = require('./modules/savedSearches/check');
+const supplierDigestRoutes = require('./modules/supplierDigest/routes');
+const { startScheduledSupplierDigest } = require('./modules/supplierDigest/send');
 const pricingRoutes = require('./modules/pricing/routes');
 
 assertRequiredEnvInProduction();
@@ -91,6 +93,7 @@ app.use('/admin/audit-log', auditRoutes);
 app.use('/admin/price-drop-alerts', priceDropAlertsRoutes);
 app.use('/saved-searches', savedSearchesRoutes);
 app.use('/admin/saved-searches', savedSearchesAdminRoutes);
+app.use('/admin/supplier-digest', supplierDigestRoutes);
 app.use('/platform-settings', platformSettingsRoutes);
 app.use('/payouts', payoutsRoutes);
 app.use('/reviews', reviewsRoutes);
@@ -117,6 +120,9 @@ if (require.main === module) {
   // Real, every-6-hours saved-search check (migration 039) -- same
   // real startup guard as above, only when the server actually runs.
   startScheduledSavedSearchCheck();
+  // Real, once-a-day check for due weekly supplier digests (migration
+  // 040) -- same real startup guard as above.
+  startScheduledSupplierDigest();
 }
 
 module.exports = app;

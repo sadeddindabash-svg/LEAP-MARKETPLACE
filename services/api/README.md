@@ -1784,6 +1784,45 @@ screen's app bar (only shown once real results have loaded, and only
 to a logged-in buyer), and a new Saved Searches screen reachable from
 Account.
 
+## Real weekly email digest for suppliers (migration 040)
+
+**Confirmed scope**: weekly frequency, summarizing new orders, new
+reviews, and new messages since the last real digest (or since the
+supplier account was created, if none has been sent yet).
+`last_digest_sent_at` lives on `suppliers` (not `users`), matching the
+same real distinction already made elsewhere in this project — a
+digest is about the supplier's own business activity, not the login
+account itself.
+
+**A real, deliberate design difference from price-drop/saved-search
+alerts**: this digest sends even when there's genuinely nothing new to
+report — a supplier with a quiet week should still hear from the
+platform on a real, predictable cadence, not go silent and wonder if
+something's broken.
+
+**`services/api/src/modules/supplierDigest/send.js`** — real, once-a-
+day check (`startScheduledSupplierDigest()`, called once at real
+server startup) for suppliers genuinely due (never sent, or sent 7+
+real days ago); only those get a real digest that tick, not every
+supplier every time. Also triggerable on demand via **`POST
+/admin/supplier-digest/check`** (admin-only), for testing and for an
+admin who doesn't want to wait.
+
+**Tested end-to-end**: `gatherDigestData()`'s real SQL was verified
+directly (not just assumed correct) — a real, wide date range against
+the heavily-used `s1` test fixture returned real, large counts
+(matching its actual accumulated test history); a real, narrower
+window returned a real, smaller number, confirming the date filter
+genuinely narrows results; a real, deliberately future date returned
+all real zeros, confirming the filter isn't silently ignoring the
+date parameter. See `apps/admin-dashboard/src/supplierDigest.integration.test.js`
+(3 tests, REAL backend) for the endpoint-level tests: triggering the
+sweep sends due digests and updates `last_digest_sent_at` so an
+immediate re-run finds nobody newly due; a non-admin cannot trigger a
+manual check; a real new order placed for a supplier is correctly
+reflected once their digest becomes due again (and a real, immediate
+re-check confirms one new order alone doesn't force a week to pass).
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category

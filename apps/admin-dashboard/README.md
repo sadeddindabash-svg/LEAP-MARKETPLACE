@@ -635,7 +635,7 @@ can never crash the page.
 npm test
 ```
 
-Sixty-one test files, 389 tests total, all passing:
+Sixty-two test files, 392 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/passwordReset.integration.test.js` (5, REAL backend) — a real
@@ -1097,6 +1097,18 @@ Sixty-one test files, 389 tests total, all passing:
   list and delete their own real saved searches, and cannot delete
   another buyer's (404, not 403); a non-admin cannot trigger a manual
   check.
+- `src/supplierDigest.integration.test.js` (3, REAL backend, new,
+  migration 040) — triggering the sweep sends due digests and updates
+  `last_digest_sent_at` so an immediate re-run finds nobody newly due;
+  a non-admin cannot trigger a manual check; a real new order placed
+  for a supplier is correctly reflected once their digest becomes due
+  again, and a real, immediate re-check confirms one new order alone
+  doesn't force a real week to pass. `gatherDigestData()`'s own SQL
+  was separately verified directly against the real, heavily-used
+  `s1` fixture — a wide date range returned real, large counts, a
+  narrower one returned fewer, and a deliberately future date returned
+  all real zeros, confirming the date filter genuinely narrows results
+  rather than silently ignoring the parameter.
 - `src/recentlyViewed.integration.test.js` (4, REAL backend, new,
   migration 032) — recording a view and fetching the list shows it,
   most recent first; re-viewing a product moves it back to the front
