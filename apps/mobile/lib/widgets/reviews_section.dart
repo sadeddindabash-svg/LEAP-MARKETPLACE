@@ -97,6 +97,11 @@ class _ReviewsSectionState extends State<ReviewsSection> {
       if (mounted) setState(() => _selectedPhotos.add(url));
     } on ApiException catch (e) {
       if (mounted) setState(() => _errorMessage = e.message);
+    } catch (e) {
+      // Defense in depth -- see uploadReturnPhoto's identical fix for
+      // the real bug this guards against (a non-ApiException failure
+      // silently vanishing with no visible error at all).
+      if (mounted) setState(() => _errorMessage = 'Could not upload photo: $e');
     } finally {
       if (mounted) setState(() => _isUploadingPhoto = false);
     }

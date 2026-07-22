@@ -447,6 +447,13 @@ class _ReturnRequestSheetState extends State<_ReturnRequestSheet> {
       if (mounted) setState(() => _uploadedPhotoUrls.add(url));
     } on ApiException catch (e) {
       if (mounted) setState(() => _errorMessage = e.message);
+    } catch (e) {
+      // Defense in depth: the previous bug in this exact spot (fromPath
+      // failing on Flutter Web) threw a non-ApiException exception that
+      // was never caught anywhere, so the picker silently did nothing.
+      // A future failure of this same class should at least surface
+      // something, not repeat that silence.
+      if (mounted) setState(() => _errorMessage = 'Could not upload photo: $e');
     } finally {
       if (mounted) setState(() => _isUploadingPhoto = false);
     }

@@ -537,10 +537,20 @@ class ApiClient {
   /// in buyer token, same as that endpoint's role check -- a guest return
   /// (this app never actually reaches that path today; see
   /// order_detail_screen.dart's header comment) couldn't attach one.
+  ///
+  /// REAL BUG FOUND AND FIXED HERE (confirmed live in a real browser, not
+  /// just reasoned about): MultipartFile.fromPath reads via dart:io,
+  /// which does not work on Flutter Web -- an XFile's .path there is a
+  /// blob URL, not a real filesystem path. That threw an exception that
+  /// wasn't an ApiException, so it was never caught, and the picker
+  /// silently did nothing with no visible error at all. Fixed by reading
+  /// real bytes via XFile.readAsBytes() (works identically on web and
+  /// native) and using MultipartFile.fromBytes instead.
   Future<String> uploadReturnPhoto(String token, XFile file) async {
     final request = http.MultipartRequest('POST', Uri.parse('$baseUrl/uploads/product-image'));
     request.headers['Authorization'] = 'Bearer $token';
-    request.files.add(await http.MultipartFile.fromPath('image', file.path));
+    final bytes = await file.readAsBytes();
+    request.files.add(http.MultipartFile.fromBytes('image', bytes, filename: file.name));
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
     final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -674,10 +684,21 @@ class ApiClient {
   /// and hub evidence photos -- the actual work there (validate real
   /// dimensions/type, save, return a real URL) is identical regardless
   /// of what the photo is evidence of.
+  ///
+  /// REAL BUG FOUND AND FIXED HERE (found while fixing the identical
+  /// copy-pasted bug in uploadReturnPhoto, confirmed live in a real
+  /// browser): MultipartFile.fromPath reads via dart:io, which does not
+  /// work on Flutter Web -- an XFile's .path there is a blob URL, not a
+  /// real filesystem path. The photo picker silently did nothing on web
+  /// with no visible error, since the resulting exception wasn't an
+  /// ApiException and was never caught anywhere. Fixed by reading real
+  /// bytes via XFile.readAsBytes() (works identically on web and
+  /// native) and using MultipartFile.fromBytes instead.
   Future<String> uploadReviewPhoto(String token, XFile file) async {
     final request = http.MultipartRequest('POST', Uri.parse('$baseUrl/uploads/product-image'));
     request.headers['Authorization'] = 'Bearer $token';
-    request.files.add(await http.MultipartFile.fromPath('image', file.path));
+    final bytes = await file.readAsBytes();
+    request.files.add(http.MultipartFile.fromBytes('image', bytes, filename: file.name));
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
     final body = jsonDecode(response.body) as Map<String, dynamic>;
