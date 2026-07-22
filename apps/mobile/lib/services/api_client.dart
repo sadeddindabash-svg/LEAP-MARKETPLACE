@@ -93,12 +93,15 @@ class ApiClient {
   /// for the full multi-word matching logic). Empty/whitespace-only
   /// queries are the caller's responsibility to avoid; this method
   /// doesn't special-case that.
-  Future<List<Product>> searchProducts(String query, {String lang = 'en', String? generationId, int? year}) async {
+  Future<List<Product>> searchProducts(String query, {String lang = 'en', String? generationId, int? year, String? sort, num? minPrice, num? maxPrice}) async {
     final uri = Uri.parse('$baseUrl/catalog/products').replace(queryParameters: {
       if (query.isNotEmpty) 'search': query,
       'lang': lang,
       if (generationId != null) 'generationId': generationId,
       if (year != null) 'year': '$year',
+      if (sort != null) 'sort': sort,
+      if (minPrice != null) 'minPrice': '$minPrice',
+      if (maxPrice != null) 'maxPrice': '$maxPrice',
     });
     final response = await _client.get(uri);
     if (response.statusCode != 200) {
@@ -515,13 +518,36 @@ class ApiClient {
 
   // ---------------- Return/dispute cases (BUY-053) ----------------
 
-  Future<Map<String, dynamic>> createReturnCase({String? token, required int subOrderId, required String reason, required String message, String? guestEmail}) async {
+  Future<Map<String, dynamic>> createReturnCase({String? token, required int subOrderId, required String reason, required String message, String? guestEmail, List<String>? photos}) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/returns'),
       headers: _authHeaders(token),
-      body: jsonEncode({'subOrderId': subOrderId, 'reason': reason, 'message': message, if (guestEmail != null) 'guestEmail': guestEmail}),
+      body: jsonEncode({
+        'subOrderId': subOrderId, 'reason': reason, 'message': message,
+        if (guestEmail != null) 'guestEmail': guestEmail,
+        if (photos != null && photos.isNotEmpty) 'photos': photos,
+      }),
     );
     return _decodeOrThrow(response);
+  }
+
+  /// Real, optional evidence photo upload for a return request (migration
+  /// 043), reusing the same real backend endpoint as review/hub photos --
+  /// see uploadReviewPhoto's own comment for why. Requires a real logged-
+  /// in buyer token, same as that endpoint's role check -- a guest return
+  /// (this app never actually reaches that path today; see
+  /// order_detail_screen.dart's header comment) couldn't attach one.
+  Future<String> uploadReturnPhoto(String token, XFile file) async {
+    final request = http.MultipartRequest('POST', Uri.parse('$baseUrl/uploads/product-image'));
+    request.headers['Authorization'] = 'Bearer $token';
+    request.files.add(await http.MultipartFile.fromPath('image', file.path));
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode != 201) {
+      throw ApiException(body['error'] as String? ?? 'Failed to upload photo (${response.statusCode})');
+    }
+    return body['url'] as String;
   }
 
   Future<List<dynamic>> fetchMyReturnCases(String token) async {

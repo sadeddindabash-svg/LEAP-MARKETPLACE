@@ -2081,6 +2081,60 @@ narrowed further to 18, confirmed a year with no real matching fitment
 entries correctly returns zero (not a false positive), and confirmed
 `generationId` composes cleanly with `sort=newest` without error.
 
+## Price range + sort by price for search (added to GET /catalog/products)
+
+**A real architectural wrinkle, not just missing query params**: buyer-
+facing price is NOT a raw column — a CNY-priced product's real buyer
+price goes through the pricing engine's currency conversion + fee
+calculation, computed in application code AFTER the SQL query runs (see
+`attachBuyerPrice`). So `minPrice`/`maxPrice`/`sort=price_asc`/
+`sort=price_desc` are deliberately applied in JS, on the already-built
+DTOs, not as SQL `WHERE`/`ORDER BY` clauses — those would filter/sort on
+the wrong number entirely for any CNY-priced product. This endpoint has
+no pagination today, so doing this in JS is correct at the catalog's
+current scale.
+
+**`GET /catalog/products?minPrice=30&maxPrice=100&sort=price_asc`** —
+composes correctly with every other filter on this endpoint
+(`category`, `part`, `search`, `generationId`, `year`).
+
+**Verified end-to-end against the real running backend**: confirmed
+`sort=price_asc`/`price_desc` genuinely sort the real computed prices
+(not the raw column) in the correct order, confirmed `minPrice`/
+`maxPrice` narrow to only real products within range, and confirmed all
+three compose correctly together with `generationId` in a single request.
+
+## Return case evidence photos (new, migration 043)
+
+**A real, optional addition**: a buyer filing a return could describe
+damage/wrong-item in text, but had no way to show it — unlike a product
+review, which already supports photos (migration 031). Mirrors that
+same "at least one, enforced in application code" pattern's structure,
+but genuinely optional here (0 or more) — there's no equivalent hard
+business rule forcing a photo on every return the way there is for a
+hub inspection step or a supplier's minimum product-photo count.
+
+**`POST /returns`** now accepts an optional `photos: string[]` (URLs
+from the same generic `/uploads/product-image` upload endpoint reviews
+and hub photos already use). Photos attach to the CASE as a whole, not
+to an individual message — filed once, at request time.
+
+**Deliberate isolation, matching this module's own existing design**:
+photos are exposed via `GET /returns/my-cases/:id` (buyer) and
+`GET /returns/:id` (admin) — but **never** through
+`GET /returns/supplier/me/:id`. A supplier seeing the buyer's own
+evidence photos directly would be the identical structural leak the two
+separate buyer/supplier message-thread tables (migration 007) exist to
+prevent.
+
+**Verified end-to-end against the real running backend**: uploaded a
+real evidence photo, filed a return referencing it, confirmed it appears
+in both the buyer's own case view and the admin's arbitration view,
+confirmed a supplier fetching the SAME case via their own endpoint gets
+no `photos` field at all (isolation genuinely enforced, not just
+undocumented), and confirmed a return filed with no photos returns a
+real empty array rather than an error or a missing field.
+
 ## Category + parts reference lists (migration 015)
 
 **Confirmed requirement**: major categories and the specific parts that

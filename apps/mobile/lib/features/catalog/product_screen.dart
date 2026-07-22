@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/theme.dart';
@@ -329,10 +330,11 @@ class _PhotoGalleryState extends State<_PhotoGallery> {
             child: PageView.builder(
               itemCount: widget.images.length,
               onPageChanged: (i) => setState(() => _index = i),
-              itemBuilder: (context, i) => Image.network(
-                ApiClient.resolveMediaUrl(widget.images[i]),
+              itemBuilder: (context, i) => CachedNetworkImage(
+                imageUrl: ApiClient.resolveMediaUrl(widget.images[i]),
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stack) => Container(
+                placeholder: (context, url) => Container(color: LeapColors.chalk),
+                errorWidget: (context, url, error) => Container(
                   color: LeapColors.chalk,
                   child: const Center(child: Icon(Icons.broken_image_outlined, size: 40, color: LeapColors.muted)),
                 ),

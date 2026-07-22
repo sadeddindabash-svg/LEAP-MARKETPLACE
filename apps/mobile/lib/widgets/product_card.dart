@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../core/theme.dart';
 import '../core/app_strings.dart';
@@ -98,11 +99,12 @@ class _ProductCardState extends State<ProductCard> {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
                   child: p.images.isNotEmpty
-                      ? Image.network(
-                          ApiClient.resolveMediaUrl(p.images.first),
+                      ? CachedNetworkImage(
+                          imageUrl: ApiClient.resolveMediaUrl(p.images.first),
                           fit: BoxFit.cover,
                           width: double.infinity,
-                          errorBuilder: (context, error, stack) => Container(
+                          placeholder: (context, url) => Container(color: LeapColors.chalk),
+                          errorWidget: (context, url, error) => Container(
                             color: LeapColors.chalk,
                             child: const Icon(Icons.broken_image_outlined, color: LeapColors.muted),
                           ),

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
+import '../../core/config/app_config.dart';
 import '../../services/api_client.dart';
 
 /// Real message thread for one return case — GET/POST
@@ -81,6 +83,7 @@ class _ReturnCaseDetailScreenState extends State<ReturnCaseDetailScreen> {
     }
 
     final messages = (_returnCase!['messages'] as List).cast<Map<String, dynamic>>();
+    final photos = (_returnCase!['photos'] as List?)?.cast<String>() ?? [];
     return Scaffold(
       appBar: AppBar(title: Text(_returnCase!['reason'] as String, maxLines: 1, overflow: TextOverflow.ellipsis)),
       body: Column(
@@ -107,9 +110,30 @@ class _ReturnCaseDetailScreenState extends State<ReturnCaseDetailScreen> {
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.all(16),
-              itemCount: messages.length,
+              itemCount: messages.length + (photos.isNotEmpty ? 1 : 0),
               itemBuilder: (context, i) {
-                final m = messages[i];
+                // Real evidence photos (migration 043), shown once at the
+                // top of the thread -- they attach to the case as a
+                // whole (filed once, not per-message), not interleaved
+                // between individual messages.
+                if (photos.isNotEmpty && i == 0) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: SizedBox(
+                      height: 72,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: photos.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (context, j) => ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: CachedNetworkImage(imageUrl: '${AppConfig.apiBaseUrl}${photos[j]}', width: 72, height: 72, fit: BoxFit.cover),
+                        ),
+                      ),
+                    ),
+                  );
+                }
+                final m = messages[i - (photos.isNotEmpty ? 1 : 0)];
                 final isAdmin = m['senderRole'] == 'admin';
                 return Align(
                   alignment: isAdmin ? Alignment.centerLeft : Alignment.centerRight,

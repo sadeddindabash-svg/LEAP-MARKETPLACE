@@ -171,6 +171,7 @@ class AppStrings {
     'reason_label': {'en': 'Reason (e.g. wrong item, damaged)', 'ar': 'السبب (مثال: منتج خاطئ، تالف)'},
     'details_label': {'en': 'Details', 'ar': 'التفاصيل'},
     'submit_request': {'en': 'Submit request', 'ar': 'إرسال الطلب'},
+    'attach_photos_optional': {'en': 'Attach photos (optional)', 'ar': 'إرفاق صور (اختياري)'},
     'return_request_sent': {'en': 'Return request sent to the Leap team.', 'ar': 'تم إرسال طلب الإرجاع إلى فريق Leap.'},
     'view': {'en': 'View', 'ar': 'عرض'},
 

@@ -197,7 +197,7 @@ function buildProductMatchQuery({ category, part, vehicleId, search, generationI
 
 router.get('/products', async (req, res, next) => {
   try {
-    const { category, part, vehicleId, search, sort, lang, generationId, year } = req.query;
+    const { category, part, vehicleId, search, sort, lang, generationId, year, minPrice, maxPrice } = req.query;
     const { sql: baseSql, params } = buildProductMatchQuery({ category, part, vehicleId, search, generationId, year });
     let sql = baseSql;
 
@@ -207,15 +207,40 @@ router.get('/products', async (req, res, next) => {
     // filter option on the home feed; the default (no sort param)
     // stays unordered-by-date for now, matching prior behavior for
     // category/search browsing where recency isn't the point.
+    // Deliberately NOT handling sort=price_asc/price_desc here in SQL --
+    // see below for why.
     if (sort === 'newest') sql += ' ORDER BY p.created_at DESC';
 
     const { rows } = await db.query(sql, params);
-    const dtos = await Promise.all(rows.map(async (r) => {
+    let dtos = await Promise.all(rows.map(async (r) => {
       let dto = toBuyerProductDto(r, lang);
       dto = await attachBuyerImages(dto, r.id);
       dto = await attachBuyerPrice(dto, r);
       return dto;
     }));
+
+    // Real price range filter + price sort (new) -- deliberately applied
+    // HERE, in application code, after attachBuyerPrice runs, not as SQL
+    // WHERE/ORDER BY clauses. Buyer-facing price is NOT a raw column: a
+    // CNY-priced product's real buyer price is computed via the pricing
+    // engine's currency conversion + fee calculation (see
+    // attachBuyerPrice above), so `p.price` in the database is often the
+    // supplier's own CNY cost, not what a buyer actually sees or should
+    // be filtered/sorted by. This endpoint has no pagination today (see
+    // this file's own header/README notes), so filtering and sorting in
+    // JS after the fact is correct at this catalog's current scale --
+    // revisit if real pagination is ever added.
+    if (minPrice !== undefined) {
+      const min = Number(minPrice);
+      dtos = dtos.filter((d) => d.price >= min);
+    }
+    if (maxPrice !== undefined) {
+      const max = Number(maxPrice);
+      dtos = dtos.filter((d) => d.price <= max);
+    }
+    if (sort === 'price_asc') dtos.sort((a, b) => a.price - b.price);
+    else if (sort === 'price_desc') dtos.sort((a, b) => b.price - a.price);
+
     res.json(dtos);
   } catch (err) {
     next(err);

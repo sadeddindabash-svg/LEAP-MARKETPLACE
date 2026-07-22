@@ -417,6 +417,71 @@ specific `year` narrowed further, and confirmed a year with no real
 matching fitment entries correctly returns zero results rather than a
 false positive.
 
+## Search: sort & price range (new)
+
+Same architectural note as the backend README's matching section:
+buyer price is computed post-query (currency conversion + fees for
+CNY-priced products), so `minPrice`/`maxPrice`/price sort are applied
+server-side in application code, not raw SQL — this screen just passes
+the params through.
+
+- `lib/features/search/sort_and_price_sheet.dart` (new): a plain form
+  (not a drill-down cascade like the vehicle filter) — Sort chips
+  (Relevance/Price ↑/Price ↓/Newest) plus optional min/max price
+  fields. Composes with the vehicle filter and free-text search, each
+  shown as its own dismissible chip above results.
+- `ApiClient.searchProducts()`: now also accepts optional `sort`/
+  `minPrice`/`maxPrice`.
+- **Verified end-to-end against the real running backend**: confirmed
+  price sort genuinely orders by the real computed price, confirmed the
+  price range narrows to only real in-range products, and confirmed all
+  three filter types (vehicle, sort, price range) compose correctly in
+  a single request.
+
+## Return request evidence photos (new, migration 043)
+
+Reviews already supported photos; returns didn't — closed that gap.
+
+- `order_detail_screen.dart`'s return-request sheet now has a real
+  photo picker (up to 3, mirroring `reviews_section.dart`'s exact UI
+  pattern), reusing the same generic upload endpoint via a new
+  `ApiClient.uploadReturnPhoto()`.
+- `return_case_detail_screen.dart` shows attached photos in a strip at
+  the top of the message thread.
+- **Verified end-to-end against the real running backend**: uploaded a
+  real photo, filed a return referencing it, confirmed it shows in the
+  buyer's own case detail, and confirmed a return filed with no photos
+  shows no photo strip (real empty array, not an error).
+
+## Order tracking: real auto-refresh (new)
+
+`tracking_screen.dart` previously loaded once and never updated again —
+a buyer had to manually leave and re-enter the screen to see progress.
+Now polls every 20s while the screen is open (silent — a failed
+background poll never wipes an already-loaded timeline with an error
+screen, only the very first load can show an error state), plus a real
+pull-to-refresh gesture for an immediate manual check.
+
+## Real image caching (new)
+
+Every product thumbnail was `Image.network` — re-fetched from the
+network on every scroll back into view across the home feed, category
+browse, and search results, since `product_card.dart` rebuilds
+constantly in a scrolling list. Added `cached_network_image` and
+swapped all four `Image.network` call sites (`product_card.dart`,
+`product_screen.dart`'s gallery, and both spots in
+`reviews_section.dart`) to `CachedNetworkImage`, which caches to disk
+after the first real fetch.
+
+## CI actually tests this app now (new)
+
+`.github/workflows/ci.yml` previously had a literal placeholder comment
+— `# --- Repeat similar jobs for apps/supplier-portal, apps/mobile,
+services/api ---` — meaning no CI job ever ran `flutter analyze` or
+`flutter test` on a push or PR. Added a real job: checkout → set up
+Flutter 3.12.2 stable → `flutter pub get` → `flutter analyze` →
+`flutter test`.
+
 ## Home feed redesign (new)
 
 **Confirmed exact sequence, top to bottom**: search bar → "Shopping

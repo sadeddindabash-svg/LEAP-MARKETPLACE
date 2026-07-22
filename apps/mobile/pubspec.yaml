@@ -9,6 +9,12 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # Real image caching (new) -- product images were previously
+  # Image.network everywhere, meaning the SAME product's thumbnail
+  # re-fetched from the network on every scroll back into view (home
+  # feed, category browse, search results all rebuild product_card.dart
+  # repeatedly). Caches to disk after the first real fetch.
+  cached_network_image: ^3.4.1
   cupertino_icons: ^1.0.6
   go_router: ^14.2.0          # declarative routing between screens
   provider: ^6.1.2            # simple state management for the MVP

@@ -58,11 +58,14 @@ function toSupplierCaseDto(row) {
 // Buyer-facing: create a return request (guest checkout compatible).
 // ============================================================
 
-// POST /returns  { subOrderId, reason, message, guestEmail? }
+// POST /returns  { subOrderId, reason, message, guestEmail?, photos? }
 router.post('/', optionalAuth, async (req, res, next) => {
-  const { subOrderId, reason, message, guestEmail } = req.body || {};
+  const { subOrderId, reason, message, guestEmail, photos } = req.body || {};
   if (!subOrderId || !reason || !message) {
     return res.status(400).json({ error: 'subOrderId, reason, and message are required' });
+  }
+  if (photos !== undefined && !Array.isArray(photos)) {
+    return res.status(400).json({ error: 'photos must be an array of URLs if provided' });
   }
   const buyerId = req.user ? req.user.sub : null;
   if (!buyerId && !guestEmail) {
@@ -110,6 +113,19 @@ router.post('/', optionalAuth, async (req, res, next) => {
       `INSERT INTO return_case_buyer_messages (case_id, sender_role, message) VALUES ($1, 'buyer', $2)`,
       [id, message]
     );
+    // Optional evidence photos (migration 043) -- deliberately optional,
+    // not required: unlike a hub inspection step (mandatory photo per
+    // step) or a supplier's product listing (mandatory minimum photo
+    // count), a buyer's return request has no equivalent hard business
+    // rule requiring one. Photos genuinely help arbitration, but
+    // forcing one on, say, a "wrong item shipped" claim where the
+    // packing slip alone tells the whole story would be friction with
+    // no real benefit.
+    if (Array.isArray(photos) && photos.length > 0) {
+      for (let i = 0; i < photos.length; i++) {
+        await client.query('INSERT INTO return_case_photos (case_id, url, sort_order) VALUES ($1, $2, $3)', [id, photos[i], i]);
+      }
+    }
     await client.query('COMMIT');
     res.status(201).json({ id, orderId, subOrderId, reason, status: 'awaiting' });
   } catch (err) {
@@ -213,10 +229,12 @@ router.get('/my-cases/:id', requireAuth, async (req, res, next) => {
       'SELECT sender_role, message, created_at FROM return_case_buyer_messages WHERE case_id = $1 ORDER BY created_at ASC',
       [req.params.id]
     );
+    const { rows: photoRows } = await db.query('SELECT url FROM return_case_photos WHERE case_id = $1 ORDER BY sort_order', [req.params.id]);
     // Deliberately NOT including supplierMessages here — see header note.
     res.json({
       ...toCaseSummaryDto(rows[0]),
       messages: buyerMessages.map((m) => ({ senderRole: m.sender_role, message: m.message, createdAt: m.created_at })),
+      photos: photoRows.map((p) => p.url),
     });
   } catch (err) {
     next(err);
@@ -268,10 +286,12 @@ router.get('/:id', requireAuth, requireRole('admin'), requirePageAccess('returns
       'SELECT sender_role, message, created_at FROM return_case_supplier_messages WHERE case_id = $1 ORDER BY created_at ASC',
       [req.params.id]
     );
+    const { rows: photoRows } = await db.query('SELECT url FROM return_case_photos WHERE case_id = $1 ORDER BY sort_order', [req.params.id]);
     res.json({
       ...toCaseSummaryDto(rows[0]),
       buyerMessages: buyerMessages.map((m) => ({ senderRole: m.sender_role, message: m.message, createdAt: m.created_at })),
       supplierMessages: supplierMessages.map((m) => ({ senderRole: m.sender_role, message: m.message, createdAt: m.created_at })),
+      photos: photoRows.map((p) => p.url),
     });
   } catch (err) {
     next(err);

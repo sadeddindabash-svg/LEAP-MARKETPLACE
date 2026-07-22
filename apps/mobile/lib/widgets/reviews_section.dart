@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import '../core/theme.dart';
@@ -232,7 +233,7 @@ class _ReviewsSectionState extends State<ReviewsSection> {
                                     padding: const EdgeInsets.only(right: 6),
                                     child: ClipRRect(
                                       borderRadius: BorderRadius.circular(8),
-                                      child: Image.network('${AppConfig.apiBaseUrl}$url', width: 56, height: 56, fit: BoxFit.cover),
+                                      child: CachedNetworkImage(imageUrl: '${AppConfig.apiBaseUrl}$url', width: 56, height: 56, fit: BoxFit.cover),
                                     ),
                                   ),
                               ],
@@ -284,7 +285,7 @@ class _ReviewsSectionState extends State<ReviewsSection> {
                         children: [
                           ClipRRect(
                             borderRadius: BorderRadius.circular(8),
-                            child: Image.network('${AppConfig.apiBaseUrl}${_selectedPhotos[i]}', width: 64, height: 64, fit: BoxFit.cover),
+                            child: CachedNetworkImage(imageUrl: '${AppConfig.apiBaseUrl}${_selectedPhotos[i]}', width: 64, height: 64, fit: BoxFit.cover),
                           ),
                           Positioned(
                             top: -6, right: -6,

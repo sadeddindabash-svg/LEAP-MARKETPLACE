@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
+import '../../core/config/app_config.dart';
 import '../../services/api_client.dart';
 import '../../widgets/plate_chip.dart';
 
@@ -416,11 +419,41 @@ class _ReturnRequestSheetState extends State<_ReturnRequestSheet> {
   bool _isSubmitting = false;
   String? _errorMessage;
 
+  // Real, optional evidence photos (migration 043) -- same "up to 3,
+  // optional" pattern as reviews_section.dart's photo picker, reusing
+  // the identical generic upload endpoint. Genuinely optional: a return
+  // request has no equivalent business rule forcing one (see the
+  // backend route's own comment for why).
+  static const _maxPhotos = 3;
+  final List<String> _uploadedPhotoUrls = [];
+  bool _isUploadingPhoto = false;
+
   @override
   void dispose() {
     _reasonController.dispose();
     _messageController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickAndUploadPhoto() async {
+    if (_uploadedPhotoUrls.length >= _maxPhotos) return;
+    final token = context.read<AuthState>().token;
+    if (token == null) return; // Photo evidence requires a real logged-in buyer -- see uploadReturnPhoto's own comment.
+    final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
+    if (picked == null) return;
+    setState(() => _isUploadingPhoto = true);
+    try {
+      final url = await ApiClient().uploadReturnPhoto(token, picked);
+      if (mounted) setState(() => _uploadedPhotoUrls.add(url));
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _errorMessage = e.message);
+    } finally {
+      if (mounted) setState(() => _isUploadingPhoto = false);
+    }
+  }
+
+  void _removePhoto(int index) {
+    setState(() => _uploadedPhotoUrls.removeAt(index));
   }
 
   Future<void> _submit() async {
@@ -439,6 +472,7 @@ class _ReturnRequestSheetState extends State<_ReturnRequestSheet> {
         subOrderId: widget.subOrderId,
         reason: _reasonController.text.trim(),
         message: _messageController.text.trim(),
+        photos: _uploadedPhotoUrls.isEmpty ? null : _uploadedPhotoUrls,
       );
       widget.onSubmitted();
     } on ApiException catch (e) {
@@ -474,6 +508,46 @@ class _ReturnRequestSheetState extends State<_ReturnRequestSheet> {
             controller: _messageController,
             maxLines: 4,
             decoration: InputDecoration(labelText: tr(context, 'details_label'), alignLabelWithHint: true),
+          ),
+          const SizedBox(height: 12),
+          Text(tr(context, 'attach_photos_optional'), style: const TextStyle(fontSize: 12, color: LeapColors.muted)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              for (var i = 0; i < _uploadedPhotoUrls.length; i++)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: CachedNetworkImage(imageUrl: '${AppConfig.apiBaseUrl}${_uploadedPhotoUrls[i]}', width: 64, height: 64, fit: BoxFit.cover),
+                      ),
+                      Positioned(
+                        top: -6, right: -6,
+                        child: IconButton(
+                          icon: const Icon(Icons.cancel, size: 18, color: LeapColors.muted),
+                          onPressed: () => _removePhoto(i),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              if (_uploadedPhotoUrls.length < _maxPhotos)
+                InkWell(
+                  onTap: _isUploadingPhoto ? null : _pickAndUploadPhoto,
+                  child: Container(
+                    width: 64, height: 64,
+                    decoration: BoxDecoration(border: Border.all(color: LeapColors.line), borderRadius: BorderRadius.circular(8)),
+                    child: Center(
+                      child: _isUploadingPhoto
+                          ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.add_a_photo_outlined, color: LeapColors.muted, size: 22),
+                    ),
+                  ),
+                ),
+            ],
           ),
           if (_errorMessage != null) ...[
             const SizedBox(height: 12),

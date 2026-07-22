@@ -8,6 +8,7 @@ import '../../core/auth_state.dart';
 import '../../models/product.dart';
 import '../../services/api_client.dart';
 import 'vehicle_filter_sheet.dart';
+import 'sort_and_price_sheet.dart';
 
 /// BUY-0xx: real product search — part name, OEM number, category, or
 /// vehicle brand/model. Was a dead, read-only text field on the home
@@ -30,6 +31,8 @@ class _SearchScreenState extends State<SearchScreen> {
   // Real Brand/Model/Generation(Year) filter (new) -- see
   // vehicle_filter_sheet.dart. Null means no vehicle filter applied.
   VehicleFilterSelection? _vehicleFilter;
+  // Real sort/price-range filter (new) -- see sort_and_price_sheet.dart.
+  SortAndPriceSelection? _sortAndPrice;
 
   @override
   void dispose() {
@@ -40,10 +43,10 @@ class _SearchScreenState extends State<SearchScreen> {
 
   void _onChanged(String query) {
     _debounce?.cancel();
-    // A vehicle filter alone is a real, meaningful search ("show me
-    // everything that fits my F20") -- only bail out early when there's
-    // truly nothing to search by, text OR filter.
-    if (query.trim().isEmpty && _vehicleFilter == null) {
+    // A vehicle filter or a sort/price filter alone is a real, meaningful
+    // search ("show me everything under $50") -- only bail out early
+    // when there's truly nothing to search by: no text, no filters.
+    if (query.trim().isEmpty && _vehicleFilter == null && (_sortAndPrice == null || _sortAndPrice!.isEmpty)) {
       setState(() { _results = null; _error = null; });
       return;
     }
@@ -68,7 +71,33 @@ class _SearchScreenState extends State<SearchScreen> {
   void _clearVehicleFilter() {
     setState(() => _vehicleFilter = null);
     _debounce?.cancel();
-    if (_controller.text.trim().isEmpty) {
+    if (_controller.text.trim().isEmpty && (_sortAndPrice == null || _sortAndPrice!.isEmpty)) {
+      setState(() { _results = null; _error = null; });
+    } else {
+      _runSearch(_controller.text.trim());
+    }
+  }
+
+  Future<void> _pickSortAndPrice() async {
+    final selection = await showModalBottomSheet<SortAndPriceSelection>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => SortAndPriceSheet(initial: _sortAndPrice),
+    );
+    if (selection == null) return;
+    setState(() => _sortAndPrice = selection.isEmpty ? null : selection);
+    _debounce?.cancel();
+    if (_controller.text.trim().isEmpty && _vehicleFilter == null && selection.isEmpty) {
+      setState(() { _results = null; _error = null; });
+    } else {
+      _runSearch(_controller.text.trim());
+    }
+  }
+
+  void _clearSortAndPrice() {
+    setState(() => _sortAndPrice = null);
+    _debounce?.cancel();
+    if (_controller.text.trim().isEmpty && _vehicleFilter == null) {
       setState(() { _results = null; _error = null; });
     } else {
       _runSearch(_controller.text.trim());
@@ -76,7 +105,7 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Future<void> _runSearch(String query) async {
-    if (query.isEmpty && _vehicleFilter == null) return;
+    if (query.isEmpty && _vehicleFilter == null && (_sortAndPrice == null || _sortAndPrice!.isEmpty)) return;
     _lastQuery = query;
     setState(() { _isSearching = true; _error = null; });
     try {
@@ -86,6 +115,9 @@ class _SearchScreenState extends State<SearchScreen> {
         lang: language,
         generationId: _vehicleFilter?.generationId,
         year: _vehicleFilter?.year,
+        sort: _sortAndPrice?.sort,
+        minPrice: _sortAndPrice?.minPrice,
+        maxPrice: _sortAndPrice?.maxPrice,
       );
       if (_lastQuery == query && mounted) {
         setState(() { _results = results; _isSearching = false; });
@@ -118,6 +150,11 @@ class _SearchScreenState extends State<SearchScreen> {
             tooltip: isAr ? 'تصفية حسب المركبة' : 'Filter by vehicle',
             onPressed: _pickVehicleFilter,
           ),
+          IconButton(
+            icon: Icon(Icons.tune, color: (_sortAndPrice != null && !_sortAndPrice!.isEmpty) ? LeapColors.signal : null),
+            tooltip: isAr ? 'الترتيب والسعر' : 'Sort & price',
+            onPressed: _pickSortAndPrice,
+          ),
           if (isLoggedIn && hasQuery && _results != null)
             IconButton(
               icon: const Icon(Icons.bookmark_add_outlined),
@@ -128,16 +165,25 @@ class _SearchScreenState extends State<SearchScreen> {
       ),
       body: Column(
         children: [
-          if (_vehicleFilter != null)
+          if (_vehicleFilter != null || (_sortAndPrice != null && !_sortAndPrice!.isEmpty))
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Chip(
-                  avatar: const Icon(Icons.directions_car_filled_outlined, size: 16),
-                  label: Text(_vehicleFilter!.label, style: const TextStyle(fontSize: 12.5)),
-                  onDeleted: _clearVehicleFilter,
-                ),
+              child: Wrap(
+                spacing: 8,
+                children: [
+                  if (_vehicleFilter != null)
+                    Chip(
+                      avatar: const Icon(Icons.directions_car_filled_outlined, size: 16),
+                      label: Text(_vehicleFilter!.label, style: const TextStyle(fontSize: 12.5)),
+                      onDeleted: _clearVehicleFilter,
+                    ),
+                  if (_sortAndPrice != null && !_sortAndPrice!.isEmpty)
+                    Chip(
+                      avatar: const Icon(Icons.tune, size: 16),
+                      label: Text(_sortAndPrice!.label, style: const TextStyle(fontSize: 12.5)),
+                      onDeleted: _clearSortAndPrice,
+                    ),
+                ],
               ),
             ),
           Expanded(child: _buildBody(isAr)),
@@ -188,7 +234,7 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Widget _buildBody(bool isAr) {
-    if (_controller.text.trim().isEmpty && _vehicleFilter == null) {
+    if (_controller.text.trim().isEmpty && _vehicleFilter == null && (_sortAndPrice == null || _sortAndPrice!.isEmpty)) {
       return Center(
         child: Text(isAr ? 'ابدأ الكتابة للبحث' : 'Start typing to search', style: const TextStyle(color: LeapColors.muted)),
       );
