@@ -105,7 +105,7 @@ describe.runIf(backendUp)('real saved searches with new-match notifications agai
 
     const notifications = await fetch(`${BACKEND_URL}/notifications/me`, { headers: { Authorization: `Bearer ${buyer.token}` } }).then((r) => r.json());
     expect(notifications.filter((n) => n.type === 'saved_search_match' && n.body.includes(term)).length).toBe(1);
-  });
+  }, 20000); // real, deliberately generous timeout -- three real full-sweep checks against a saved_searches table that has genuinely grown across this whole project's accumulated test history.
 
   it("a buyer can list and delete their own real saved searches, and cannot delete another buyer's", async () => {
     const buyer1 = await createBuyer();

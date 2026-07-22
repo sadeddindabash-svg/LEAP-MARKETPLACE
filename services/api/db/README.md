@@ -111,6 +111,7 @@ See `migrations/001_init.sql` for the full schema with comments. Summary:
 | `suppliers.last_digest_sent_at` (migration 040) | Real, confirmed weekly cadence — summarizes new orders, reviews, and messages since the last real digest. Deliberately sends even with nothing new to report, unlike price-drop/saved-search alerts — see `services/api/README.md`'s "Real weekly email digest for suppliers" section |
 | `promo_codes.starts_at` (migration 041) | A real, honest finding first: auto-expiring already worked (confirmed directly, not assumed) — the genuinely missing half was a real future-start date, for a planned upcoming promotion. Nullable, mirrors `expires_at`'s own pattern — see `services/api/README.md`'s "Real scheduled (future-start) promo codes" section |
 | `hubs.daily_capacity` (migration 042) | Real, confirmed both a capacity ceiling AND live workload counts — hubs had no capacity concept at all before this. Deliberately simple (one number, default 50), not an elaborate staffing model — see `services/api/README.md`'s "Real hub workload/capacity dashboard" section |
+| *(no new schema)* — hub performance metrics | Average time per stage transition, computed via a real SQL window function over `hub_shipment_events`' existing timestamps (migration 011) — no new columns needed, same as supplier analytics. See `services/api/README.md`'s "Real hub performance metrics" section |
 
 **Not yet covered** (add a future migration once these backend modules
 exist — currently only in the admin-dashboard/supplier-portal prototypes,

@@ -27,6 +27,12 @@ function mockFetchRouter() {
         stageCounts: { awaitingReceipt: 0, received: 0, opened: 0, inspected: 0, packed: 0, flagged: 0 },
       })) });
     }
+    if (u.endsWith('/hub/performance')) {
+      return Promise.resolve({ ok: true, json: async () => hubs.map((h) => ({
+        id: h.id, name: h.name, region: h.region,
+        stageTimes: { toOpened: null, toInspected: null, toPacked: null, toShippedToBuyer: null },
+      })) });
+    }
     return Promise.resolve({ ok: true, json: async () => ({}) });
   });
 }

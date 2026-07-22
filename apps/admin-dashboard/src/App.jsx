@@ -16,6 +16,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchAuditLog,
   fetchSupplierAnalytics,
   fetchHubWorkload, updateHubCapacity,
+  fetchHubPerformance,
   fetchFlaggedReviews, dismissReviewFlags,
 } from "./auth";
 import {
@@ -1539,6 +1540,76 @@ function HubWorkloadSection({ onSessionExpired }) {
   );
 }
 
+// Real, deliberately simple duration formatter -- no library needed
+// for "2h 15m" / "45s" style output.
+function formatDuration(seconds) {
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const remMinutes = minutes % 60;
+  return remMinutes > 0 ? `${hours}h ${remMinutes}m` : `${hours}h`;
+}
+
+// Real hub performance metrics (migration 043) -- average time per
+// real stage transition, for every real hub. See
+// services/api/src/modules/hub/routes.js's GET /hub/performance for
+// the full real design, including why 'flagged' events are excluded
+// from this real, linear-stage calculation.
+function HubPerformanceSection({ onSessionExpired }) {
+  const [performance, setPerformance] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  useEffect(() => {
+    fetchHubPerformance(getStoredToken())
+      .then((data) => { setPerformance(data); setLoadState("ready"); })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const stages = [
+    { key: "toOpened", label: "Received → Opened" },
+    { key: "toInspected", label: "Opened → Inspected" },
+    { key: "toPacked", label: "Inspected → Packed" },
+    { key: "toShippedToBuyer", label: "Packed → Shipped" },
+  ];
+
+  return (
+    <Card title="Hub performance — average time per stage">
+      <div style={{ padding: 16 }}>
+        {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}
+        {loadState === "error" && <div style={{ ...body, fontSize: 12.5, color: C.red }}>{errorMessage}</div>}
+        {loadState === "ready" && (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <Th>Hub</Th>
+                {stages.map((s) => <Th key={s.key} align="right">{s.label}</Th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {performance.map((h) => (
+                <tr key={h.id}>
+                  <Td style={{ fontWeight: 700 }}>{h.name}</Td>
+                  {stages.map((s) => (
+                    <Td key={s.key} align="right" style={{ color: h.stageTimes[s.key] ? C.ink : C.muted }}>
+                      {h.stageTimes[s.key] ? `${formatDuration(h.stageTimes[s.key].avgSeconds)} (n=${h.stageTimes[s.key].sampleCount})` : "—"}
+                    </Td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function HubsPage({ onSessionExpired }) {
   const [hubs, setHubs] = useState([]);
   const [loadState, setLoadState] = useState("loading");
@@ -1588,6 +1659,7 @@ function HubsPage({ onSessionExpired }) {
       <TopBar title="Inspection Hubs" subtitle="Regional facilities between suppliers and buyers — receive, inspect, pack, ship" />
       <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
         <HubWorkloadSection onSessionExpired={onSessionExpired} />
+        <HubPerformanceSection onSessionExpired={onSessionExpired} />
         <Card>
           <div style={{ padding: 18 }}>
             {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 14 }}>{errorMessage}</div>}

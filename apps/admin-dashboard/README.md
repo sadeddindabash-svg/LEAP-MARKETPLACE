@@ -369,6 +369,19 @@ issue where the hub's name/region now genuinely appear twice on the
 page (workload section plus the existing list) needed a couple of test
 assertions updated to check for "at least one match."
 
+**New**: a real performance metrics table right below the
+workload/capacity section — average time per stage transition
+(received→opened→inspected→packed→shipped) for every hub, with its
+real sample count. See `services/api/README.md`'s "Real hub
+performance metrics" section for the full real design, including a
+genuinely interesting verification finding: this project's shared dev
+database has accumulated so much rapid, scripted test activity that
+the aggregate average can round to 0 even when the underlying
+calculation is completely correct — confirmed by checking one
+shipment's raw timestamps directly, not by assuming the number was
+wrong. The exact same mocked-test fix pattern from the workload
+section above applied here too, for the same real reason.
+
 ## Hub assignment on the Order detail page (new)
 
 Each supplier sub-order on the Order detail page (see "Orders page"
@@ -662,7 +675,7 @@ can never crash the page.
 npm test
 ```
 
-Sixty-five test files, 406 tests total, all passing:
+Sixty-six test files, 409 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/passwordReset.integration.test.js` (5, REAL backend) — a real
@@ -1169,6 +1182,14 @@ Sixty-five test files, 406 tests total, all passing:
   shipments already shipped to the buyer or delivered, confirmed by
   cross-checking the total against the sum of its own stage
   breakdown.
+- `src/hubPerformance.integration.test.js` (3, REAL backend, new) —
+  average time between real stage transitions is genuinely computed
+  from real timestamps, verified by checking the real sample count
+  increased by exactly one after a real, deliberately delayed
+  transition (the aggregate average itself is too diluted by
+  pre-existing rapid test samples to assert on directly); a hub with
+  no real shipment activity shows null stage times, not zero or a
+  fabricated number; a non-admin cannot view performance metrics.
 - `src/recentlyViewed.integration.test.js` (4, REAL backend, new,
   migration 032) — recording a view and fetching the list shows it,
   most recent first; re-viewing a product moves it back to the front

@@ -658,3 +658,14 @@ export async function updateHubCapacity(token, hubId, dailyCapacity) {
   if (!response.ok) throw new Error(data.error || `Failed to update capacity (${response.status})`);
   return data;
 }
+
+// Real hub performance metrics -- average time per stage transition.
+export async function fetchHubPerformance(token) {
+  const response = await fetch(`${API_BASE_URL}/hub/performance`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || `Failed to load hub performance (${response.status})`);
+  }
+  return response.json();
+}

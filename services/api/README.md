@@ -1943,6 +1943,50 @@ section, once in the existing list) — the same real "text now matches
 twice" pattern already fixed once before elsewhere in this project —
 fixed by asserting on "at least one match" instead of exactly one.
 
+## Real hub performance metrics — average time per stage (second item in the hub operations group)
+
+**Confirmed design**: average time between real, consecutive stage
+transitions, computed via a real SQL window function (`LAG`) comparing
+each real event's timestamp to the one immediately before it, for the
+SAME real shipment — no new schema needed, every real timestamp
+already existed on `hub_shipment_events` (migration 011).
+
+`flagged` events are deliberately excluded from this ordering — a flag
+can happen at any point and doesn't represent a normal, linear
+processing step, so including it would distort what "average time to
+move from X to Y" actually means. A flagged shipment's other, real
+linear events still count normally.
+
+**`GET /hub/performance`** (admin-only) returns, for every real hub,
+the average seconds (and real sample count) for each of the 4 real
+linear transitions: received→opened, opened→inspected,
+inspected→packed, packed→shipped-to-buyer. A hub with no real activity
+yet returns `null` for each, not a fabricated zero.
+
+**A real, honest verification finding**: this project's shared dev
+database has accumulated so much real, rapid, scripted test activity
+that most existing samples show essentially instant transitions
+(milliseconds apart) — so the real aggregate average across hundreds
+of them can genuinely round to 0 even when the underlying calculation
+is completely correct. Confirmed this wasn't a bug by checking a
+single real shipment's raw event timestamps directly (a real 3.03s and
+4.02s gap, matching two deliberate real delays introduced specifically
+to test this) — the math was right all along, just diluted by an
+overwhelming volume of near-instant automated test data.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/hubPerformance.integration.test.js`
+(3 tests, REAL backend): average time between real stage transitions
+is genuinely computed from real timestamps (verified by checking the
+real sample count increased by exactly one after a real, deliberately
+delayed transition, since the aggregate average itself is too diluted
+by pre-existing samples to assert on directly); a hub with no real
+shipment activity shows null stage times, not zero or a fabricated
+number; a non-admin cannot view performance metrics.
+
+**Admin dashboard**: a new table on the Inspection Hubs page, right
+below the workload/capacity section, showing each hub's average time
+per stage transition with its real sample count.
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category

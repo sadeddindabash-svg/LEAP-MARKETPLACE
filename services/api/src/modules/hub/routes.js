@@ -139,6 +139,58 @@ router.get('/workload', requireAuth, requireRole('admin'), requirePageAccess('hu
   }
 });
 
+// GET /hub/performance — admin-only, real average processing time
+// per stage transition, for every real hub.
+//
+// CONFIRMED, deliberate design: only the 5 real LINEAR stages
+// (received -> opened -> inspected -> packed -> shipped_to_buyer) are
+// used to compute a real "time in previous stage" average via a real
+// window function (LAG) comparing each real event's timestamp to the
+// one immediately before it, for the SAME real shipment. 'flagged'
+// events are deliberately excluded from this ordering -- a flag can
+// happen at any point and doesn't represent a normal, linear
+// processing step, so including it would distort what "average time
+// to move from X to Y" actually means. A flagged shipment's OTHER,
+// real linear events still count normally.
+router.get('/performance', requireAuth, requireRole('admin'), requirePageAccess('hubs'), async (req, res, next) => {
+  try {
+    const { rows: hubs } = await db.query('SELECT id, name, region FROM hubs ORDER BY name');
+    const { rows: perfRows } = await db.query(`
+      WITH linear_events AS (
+        SELECT hse.shipment_id, hs.hub_id, hse.step, hse.created_at,
+               LAG(hse.created_at) OVER (PARTITION BY hse.shipment_id ORDER BY hse.created_at) AS prev_created_at
+        FROM hub_shipment_events hse
+        JOIN hub_shipments hs ON hs.id = hse.shipment_id
+        WHERE hse.step != 'flagged'
+      )
+      SELECT hub_id, step, AVG(EXTRACT(EPOCH FROM (created_at - prev_created_at))) AS avg_seconds, COUNT(*) AS sample_count
+      FROM linear_events
+      WHERE prev_created_at IS NOT NULL
+      GROUP BY hub_id, step
+    `);
+
+    const byHub = {};
+    for (const row of perfRows) {
+      if (!byHub[row.hub_id]) byHub[row.hub_id] = {};
+      byHub[row.hub_id][row.step] = { avgSeconds: Math.round(Number(row.avg_seconds)), sampleCount: Number(row.sample_count) };
+    }
+
+    res.json(hubs.map((h) => ({
+      id: h.id,
+      name: h.name,
+      region: h.region,
+      stageTimes: {
+        toOpened: byHub[h.id]?.opened || null,
+        toInspected: byHub[h.id]?.inspected || null,
+        toPacked: byHub[h.id]?.packed || null,
+        toShippedToBuyer: byHub[h.id]?.shipped_to_buyer || null,
+      },
+    })));
+  } catch (err) {
+    next(err);
+  }
+});
+
 // PATCH /hub/assign/:subOrderId  { hubId } — admin assigns which hub a
 // sub-order routes through. Required before a supplier can mark it shipped.
 router.patch('/assign/:subOrderId', requireAuth, requireRole('admin'), requirePageAccess('hubs'), async (req, res, next) => {
