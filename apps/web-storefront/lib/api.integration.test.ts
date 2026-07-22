@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fetchCategories, fetchProducts, fetchProductById, fetchCart, addCartItem } from './api';
+import { fetchCategories, fetchProducts, fetchProductById, fetchCart, addCartItem, fetchMyOrders, fetchOrderById } from './api';
 
 const BACKEND_URL = 'http://localhost:4000';
 
@@ -66,5 +66,82 @@ describe.runIf(backendUp)('web-storefront API client against a REAL running back
     expect(cart.items.length).toBe(1);
     expect(cart.items[0].productId).toBe(products[0].id);
     expect(cart.items[0].quantity).toBe(2);
+  });
+
+  // Real order history + detail (new) -- the biggest gap this app had:
+  // a buyer who checked out here could never see a past order again.
+  it('CRITICAL: a real placed order shows up in the real buyer\'s own order history', async () => {
+    const suffix = Date.now();
+    const signupRes = await fetch(`${BACKEND_URL}/auth/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `storefront-orders-test-${suffix}@example.com`, password: 'test_password_123' }),
+    });
+    const { token, user } = await signupRes.json();
+
+    const products = await fetchProducts();
+    await fetch(`${BACKEND_URL}/order`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: [{ productId: products[0].id, quantity: 1 }], userId: user.id,
+        address: { recipientName: 'Test Buyer', phone: '555-0100', country: 'USA', city: 'Springfield', streetAddress: '123 Test St' },
+      }),
+    });
+
+    const orders = await fetchMyOrders(token);
+    expect(orders.length).toBe(1);
+    expect(orders[0].total).toBeGreaterThan(0);
+    expect(typeof orders[0].displayStatus).toBe('string');
+  });
+
+  it('CRITICAL: order detail shows the real per-supplier split and real line items', async () => {
+    const suffix = Date.now();
+    const signupRes = await fetch(`${BACKEND_URL}/auth/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `storefront-orderdetail-test-${suffix}@example.com`, password: 'test_password_123' }),
+    });
+    const { token, user } = await signupRes.json();
+
+    const products = await fetchProducts();
+    const orderRes = await fetch(`${BACKEND_URL}/order`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: [{ productId: products[0].id, quantity: 2 }], userId: user.id,
+        address: { recipientName: 'Test Buyer', phone: '555-0100', country: 'USA', city: 'Springfield', streetAddress: '123 Test St' },
+      }),
+    });
+    const placedOrder = await orderRes.json();
+
+    const detail = await fetchOrderById(token, placedOrder.id);
+    expect(detail.id).toBe(placedOrder.id);
+    expect(detail.supplierSubOrders.length).toBeGreaterThan(0);
+    expect(detail.supplierSubOrders[0].items[0].quantity).toBe(2);
+    expect(detail.address?.recipientName).toBe('Test Buyer');
+  });
+
+  it('a DIFFERENT buyer cannot fetch someone else\'s order detail', async () => {
+    const suffix = Date.now();
+    const ownerSignup = await fetch(`${BACKEND_URL}/auth/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `storefront-owner-test-${suffix}@example.com`, password: 'test_password_123' }),
+    });
+    const { user: owner } = await ownerSignup.json();
+
+    const products = await fetchProducts();
+    const orderRes = await fetch(`${BACKEND_URL}/order`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: [{ productId: products[0].id, quantity: 1 }], userId: owner.id,
+        address: { recipientName: 'Owner', phone: '555-0100', country: 'USA', city: 'Springfield', streetAddress: '123 Test St' },
+      }),
+    });
+    const placedOrder = await orderRes.json();
+
+    const otherSignup = await fetch(`${BACKEND_URL}/auth/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `storefront-intruder-test-${suffix}@example.com`, password: 'test_password_123' }),
+    });
+    const { token: intruderToken } = await otherSignup.json();
+
+    await expect(fetchOrderById(intruderToken, placedOrder.id)).rejects.toThrow();
   });
 });

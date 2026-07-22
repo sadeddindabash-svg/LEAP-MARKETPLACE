@@ -261,3 +261,105 @@ export async function deleteSavedSearch(token: string, id: number): Promise<void
     throw new Error(body.error || `Failed to delete saved search (${res.status})`);
   }
 }
+
+// ---------------- Real order history + detail (client-side calls, new) ----------------
+// Same reasoning as saved searches above -- real logged-in account,
+// no SEO value, browser-only. Closes the single biggest gap this
+// storefront had: a buyer who checked out here previously had no way
+// to ever see a past order again. Same real GET /order and
+// GET /order/:id endpoints the mobile app already uses -- verified
+// directly against services/api/src/modules/order/routes.js's own DTO
+// shape rather than assumed.
+
+export interface OrderSummary {
+  id: string;
+  status: string;
+  displayStatus: string;
+  total: number;
+  currencyCode: string;
+  placedAt: string;
+}
+
+export interface HubShipmentEvent {
+  step: string;
+  notes: string | null;
+  trackingNumber: string | null;
+  performedBy: string | null;
+  createdAt: string;
+  photos: string[];
+}
+
+export interface HubShipment {
+  id: number;
+  status: string;
+  updatedAt: string;
+  events: HubShipmentEvent[];
+}
+
+export interface OrderLineItem {
+  productId: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+export interface SupplierSubOrder {
+  subOrderId: number;
+  supplierId: string;
+  supplierName: string | null;
+  status: string;
+  trackingNumber: string | null;
+  hubId: string | null;
+  hubName: string | null;
+  hubShipment: HubShipment | null;
+  items: OrderLineItem[];
+}
+
+export interface OrderAddress {
+  recipientName: string;
+  phone: string;
+  country: string;
+  city: string;
+  streetAddress: string;
+  postalCode: string | null;
+  source: string;
+}
+
+export interface OrderDetail {
+  id: string;
+  userId: string | null;
+  guestEmail: string | null;
+  isGuestOrder: boolean;
+  status: string;
+  displayStatus: string;
+  total: number;
+  discountAmount: number;
+  promoCode: string | null;
+  currencyCode: string;
+  placedAt: string;
+  address: OrderAddress | null;
+  supplierSubOrders: SupplierSubOrder[];
+}
+
+export async function fetchMyOrders(token: string): Promise<OrderSummary[]> {
+  const res = await fetch(`${API_BASE_URL}/order`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Failed to load orders (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function fetchOrderById(token: string, orderId: string): Promise<OrderDetail> {
+  const res = await fetch(`${API_BASE_URL}/order/${orderId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Failed to load order (${res.status})`);
+  }
+  return res.json();
+}
+

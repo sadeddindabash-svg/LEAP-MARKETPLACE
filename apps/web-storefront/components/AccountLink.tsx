@@ -22,6 +22,9 @@ export default function AccountLink() {
 
   return (
     <div className="flex items-center gap-3">
+      <Link href="/orders" className="text-muted hover:text-ink">
+        Orders
+      </Link>
       <Link href="/saved-searches" className="text-muted hover:text-ink">
         {user.name || user.email}
       </Link>

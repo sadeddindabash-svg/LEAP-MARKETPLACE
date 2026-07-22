@@ -267,6 +267,40 @@ Also added a matching `web-storefront` job to
 `npm test`) — the integration tests will skip in CI (no live backend
 there), but the component tests genuinely run and must pass.
 
+## Real order history + order detail (new) — the single biggest gap closed
+
+**Confirmed the actual gap first**: this storefront had login/signup
+and cart/checkout, but a buyer who placed a real order here had no way
+to ever see it again — checkout only ever showed a one-time
+confirmation page. Closed with the same real `GET /order` and
+`GET /order/:id` endpoints the mobile app already uses.
+
+- **`/orders`** — real order history, requires login (matching the
+  backend's own scoping — `GET /order` is buyer-scoped server-side).
+  Shows each order's real computed total, currency, placed date, and
+  real derived display status.
+- **`/orders/[id]`** — real detail: the actual per-supplier split (one
+  order can be fulfilled by multiple suppliers, each with its own
+  status/tracking — same structure the admin dashboard and mobile app
+  already show), real line items with quantities and prices, the real
+  shipping address (or an honest "pending" state), and the real hub
+  inspection timeline where one exists.
+- **`AccountLink`** now has an "Orders" link alongside the existing
+  saved-searches link.
+- `lib/api.ts`: new `fetchMyOrders`/`fetchOrderById`, typed against the
+  real backend DTO shape (`services/api/src/modules/order/routes.js`)
+  rather than assumed.
+
+**Verified end-to-end against the real running backend** — not just
+code review: placed a real order for a real signed-up buyer, confirmed
+it appears in that buyer's own order history with a real positive
+total, confirmed order detail shows the real per-supplier split with
+the correct real quantity and the real shipping address, and confirmed
+— critically — that a **different** buyer genuinely cannot fetch
+someone else's order detail (a real 404, matching the backend's own
+ownership check, not just relying on the frontend to behave). Full
+suite: 11/11 passing.
+
 ## Next steps to make this real
 
 1. **Verify the real Google Fonts fetch** once deployed somewhere
@@ -274,10 +308,10 @@ there), but the component tests genuinely run and must pass.
 2. **Verify the confirmation page's client-side hydration** in a real
    browser — logically correct but only verified via curl here (see
    the cart/checkout section above).
-3. **Remaining account features**: order history and saved-address
-   checkout — login/signup themselves are already real (see "Real
-   account login/signup + saved searches" above); these two are the
-   genuine remaining next pass.
+3. **Remaining account feature**: saved-address checkout (pick a
+   previously-used address instead of typing it every time) — login/
+   signup and order history are already real (see their own sections
+   above); this is the genuine remaining next pass.
 4. **A real, production domain** for `NEXT_PUBLIC_SITE_URL` — the
    sitemap and metadata currently default to `localhost`.
 5. **Real analytics** (e.g. Google Search Console verification) once
