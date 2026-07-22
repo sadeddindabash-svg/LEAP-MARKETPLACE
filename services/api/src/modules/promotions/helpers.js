@@ -97,6 +97,10 @@ async function validatePromoCode(code, buyerId) {
   const promo = rows[0];
 
   if (!promo.is_active) return { valid: false, reason: 'This code is no longer active.' };
+  // Real, scheduled (future-start) promo codes (migration 041) -- a
+  // real code created today for a planned upcoming promotion isn't
+  // usable until its own real starts_at arrives.
+  if (promo.starts_at && new Date(promo.starts_at) > new Date()) return { valid: false, reason: 'This code is not active yet.' };
   if (promo.expires_at && new Date(promo.expires_at) < new Date()) return { valid: false, reason: 'This code has expired.' };
 
   if (promo.max_total_uses != null) {

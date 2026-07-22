@@ -2131,6 +2131,7 @@ function PromoCodesPage({ onSessionExpired }) {
   const [newValue, setNewValue] = useState("");
   const [newMaxTotalUses, setNewMaxTotalUses] = useState("");
   const [newMaxUsesPerBuyer, setNewMaxUsesPerBuyer] = useState("1");
+  const [newStartsAt, setNewStartsAt] = useState("");
   const [newExpiresAt, setNewExpiresAt] = useState("");
   // Real audience targeting (migration 021) -- combinable, AND logic.
   const [newRequireNewUser, setNewRequireNewUser] = useState(false);
@@ -2156,6 +2157,10 @@ function PromoCodesPage({ onSessionExpired }) {
       setErrorMessage("A code, and a value for percentage/flat codes, are required.");
       return;
     }
+    if (newStartsAt && newExpiresAt && new Date(newStartsAt) >= new Date(newExpiresAt)) {
+      setErrorMessage("The start date must be before the expiry date.");
+      return;
+    }
     setIsSubmitting(true);
     setErrorMessage(null);
     try {
@@ -2165,13 +2170,14 @@ function PromoCodesPage({ onSessionExpired }) {
         value: newType === "free_shipping" ? null : Number(newValue),
         maxTotalUses: newMaxTotalUses ? Number(newMaxTotalUses) : null,
         maxUsesPerBuyer: Number(newMaxUsesPerBuyer) || 1,
+        startsAt: newStartsAt ? new Date(newStartsAt).toISOString() : null,
         expiresAt: newExpiresAt ? new Date(newExpiresAt).toISOString() : null,
         requireNewUser: newRequireNewUser,
         minTotalSpend: newMinTotalSpend ? Number(newMinTotalSpend) : null,
         minOrderCount: newMinOrderCount ? Number(newMinOrderCount) : null,
         minInactiveDays: newMinInactiveDays ? Number(newMinInactiveDays) : null,
       });
-      setNewCode(""); setNewValue(""); setNewMaxTotalUses(""); setNewMaxUsesPerBuyer("1"); setNewExpiresAt("");
+      setNewCode(""); setNewValue(""); setNewMaxTotalUses(""); setNewMaxUsesPerBuyer("1"); setNewStartsAt(""); setNewExpiresAt("");
       setNewRequireNewUser(false); setNewMinTotalSpend(""); setNewMinOrderCount(""); setNewMinInactiveDays("");
       load();
     } catch (err) {
@@ -2222,7 +2228,14 @@ function PromoCodesPage({ onSessionExpired }) {
               )}
               <input value={newMaxTotalUses} onChange={(e) => setNewMaxTotalUses(e.target.value)} type="number" placeholder="Max total uses (blank = ∞)" style={{ ...body, width: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
               <input value={newMaxUsesPerBuyer} onChange={(e) => setNewMaxUsesPerBuyer(e.target.value)} type="number" placeholder="Max per buyer" style={{ ...body, width: 110, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
-              <input value={newExpiresAt} onChange={(e) => setNewExpiresAt(e.target.value)} type="date" style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <span style={{ ...body, fontSize: 10, color: C.muted }}>Starts (blank = now)</span>
+                <input value={newStartsAt} onChange={(e) => setNewStartsAt(e.target.value)} type="date" style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <span style={{ ...body, fontSize: 10, color: C.muted }}>Expires (blank = never)</span>
+                <input value={newExpiresAt} onChange={(e) => setNewExpiresAt(e.target.value)} type="date" style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              </div>
               <button disabled={isSubmitting} onClick={handleCreate} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
                 <Check size={13} /> Create
               </button>
@@ -2248,12 +2261,16 @@ function PromoCodesPage({ onSessionExpired }) {
                     <span style={{ ...disp, fontSize: 15, fontWeight: 700, color: C.ink }}>{c.code}</span>
                     <PlateChip small>{c.source === "referral" ? "Referral" : "Admin"}</PlateChip>
                     {!c.isActive && <span style={{ ...body, fontSize: 10.5, fontWeight: 700, color: C.muted, border: `1px solid ${C.line}`, borderRadius: 6, padding: "2px 7px" }}>Inactive</span>}
+                    {c.startsAt && new Date(c.startsAt) > new Date() && (
+                      <span style={{ ...body, fontSize: 10.5, fontWeight: 700, color: C.torque, border: `1px solid ${C.torque}`, borderRadius: 6, padding: "2px 7px" }}>Scheduled</span>
+                    )}
                   </div>
                   <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 3 }}>
                     {c.type === "percentage" && `${c.value}% off`}
                     {c.type === "flat" && `$${c.value} off`}
                     {c.type === "free_shipping" && "Free shipping"}
                     {" · "}Max {c.maxTotalUses ?? "∞"} uses total, {c.maxUsesPerBuyer} per buyer
+                    {c.startsAt && ` · Starts ${new Date(c.startsAt).toLocaleDateString()}`}
                     {c.expiresAt && ` · Expires ${new Date(c.expiresAt).toLocaleDateString()}`}
                   </div>
                   {(c.requireNewUser || c.minTotalSpend != null || c.minOrderCount != null || c.minInactiveDays != null) && (

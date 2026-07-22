@@ -1,0 +1,16 @@
+-- Migration 041: real scheduled (future-start) promo codes.
+--
+-- A REAL, HONEST FINDING FIRST: auto-expiring promo codes already
+-- existed and already worked correctly end-to-end (expires_at is
+-- already checked in validatePromoCode(), already settable from the
+-- admin dashboard's own creation form, already shown in the list) --
+-- confirmed by directly creating a real, already-expired code and
+-- validating it, not assumed. The genuinely missing half of "scheduled
+-- /auto-expiring" was the "scheduled" part: no way to create a real
+-- code today that only becomes active at a real future date, for a
+-- planned upcoming promotion.
+--
+-- `starts_at` is nullable, matching `expires_at`'s own real pattern --
+-- NULL means active immediately, same as NULL `expires_at` meaning
+-- "never expires".
+ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS starts_at TIMESTAMPTZ;

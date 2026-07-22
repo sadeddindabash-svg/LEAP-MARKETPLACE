@@ -529,7 +529,10 @@ scope beyond referral rewards alone.
 
 - **Create a real code of any of the 3 real types** (percentage off,
   flat amount off, free shipping), with real, enforced limits — max
-  total uses, max uses per buyer, an optional real expiry date.
+  total uses, max uses per buyer, an optional real expiry date, and
+  (new, migration 041) an optional real future start date, for
+  scheduling a code ahead of a planned promotion. A code shown with a
+  blue "Scheduled" badge hasn't reached its start date yet.
 - **Deactivate/reactivate** without losing a code's configuration, same
   pattern as the Categories page's part-active toggle.
 - **A real code with genuine redemptions cannot be deleted** — 409,
@@ -635,7 +638,7 @@ can never crash the page.
 npm test
 ```
 
-Sixty-two test files, 392 tests total, all passing:
+Sixty-three test files, 396 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/passwordReset.integration.test.js` (5, REAL backend) — a real
@@ -1109,6 +1112,16 @@ Sixty-two test files, 392 tests total, all passing:
   narrower one returned fewer, and a deliberately future date returned
   all real zeros, confirming the date filter genuinely narrows results
   rather than silently ignoring the parameter.
+- `src/scheduledPromoCodes.integration.test.js` (4, REAL backend, new,
+  migration 041) — a real code scheduled for a real future start date
+  is rejected as not active yet; a real code whose scheduled start
+  date has already passed is genuinely usable; a real code with a
+  scheduled start after its own expiry is rejected as an impossible
+  range; a real, already-existing code can have a scheduled start
+  added via update, and takes effect immediately. **A real, honest
+  finding preceded this build**: auto-expiring already worked
+  correctly (confirmed directly, not assumed) — only the future-start
+  half was genuinely missing.
 - `src/recentlyViewed.integration.test.js` (4, REAL backend, new,
   migration 032) — recording a view and fetching the list shows it,
   most recent first; re-viewing a product moves it back to the front

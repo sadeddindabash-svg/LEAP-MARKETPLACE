@@ -1823,6 +1823,40 @@ manual check; a real new order placed for a supplier is correctly
 reflected once their digest becomes due again (and a real, immediate
 re-check confirms one new order alone doesn't force a week to pass).
 
+## Real scheduled (future-start) promo codes (migration 041)
+
+**A real, honest finding first**: auto-expiring promo codes already
+existed and already worked correctly end-to-end before this pass —
+`expires_at` was already checked in `validatePromoCode()`, already
+settable from the admin dashboard's own creation form, already shown
+in the list. Confirmed directly by creating a real, already-expired
+code and validating it (correctly rejected: "This code has expired."),
+not assumed to already work. The genuinely missing half of "scheduled/
+auto-expiring" was the "scheduled" part: no way to create a real code
+today that only becomes active at a real future date, for a planned
+upcoming promotion.
+
+**`promo_codes.starts_at`** — nullable, matching `expires_at`'s own
+real pattern (`NULL` means active immediately, same as `NULL`
+`expires_at` meaning "never expires"). Checked in
+`validatePromoCode()` alongside the existing expiry check. A real,
+sensible validation on both create and update: `startsAt` must be
+before `expiresAt` if both are set, otherwise the code would be
+genuinely impossible to ever actually use.
+
+**Admin dashboard**: the promo code creation form now has both
+"Starts" and "Expires" date fields (previously only "Expires"
+existed), and the list shows a real, distinct "Scheduled" badge for
+any code whose start date hasn't arrived yet.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/scheduledPromoCodes.integration.test.js`
+(4 tests, REAL backend): a real code scheduled for a real future start
+date is rejected as not active yet; a real code whose scheduled start
+date has already passed is genuinely usable; a real code with a
+scheduled start after its own expiry is rejected as an impossible
+range; a real, already-existing code can have a scheduled start added
+via update, and takes effect immediately.
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category

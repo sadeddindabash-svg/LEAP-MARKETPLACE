@@ -20,6 +20,7 @@ function toPromoCodeDto(row) {
     source: row.source,
     maxTotalUses: row.max_total_uses,
     maxUsesPerBuyer: row.max_uses_per_buyer,
+    startsAt: row.starts_at,
     expiresAt: row.expires_at,
     isActive: row.is_active,
     createdAt: row.created_at,
@@ -42,7 +43,7 @@ router.get('/', requireAuth, requireRole('admin'), requirePageAccess('promoCodes
 
 router.post('/', requireAuth, requireRole('admin'), requirePageAccess('promoCodes'), async (req, res, next) => {
   try {
-    const { code, type, value, maxTotalUses, maxUsesPerBuyer, expiresAt, requireNewUser, minTotalSpend, minOrderCount, minInactiveDays } = req.body || {};
+    const { code, type, value, maxTotalUses, maxUsesPerBuyer, startsAt, expiresAt, requireNewUser, minTotalSpend, minOrderCount, minInactiveDays } = req.body || {};
     if (!code || !type) return res.status(400).json({ error: 'code and type are required' });
     if (!['percentage', 'flat', 'free_shipping'].includes(type)) {
       return res.status(400).json({ error: 'type must be one of: percentage, flat, free_shipping' });
@@ -50,12 +51,18 @@ router.post('/', requireAuth, requireRole('admin'), requirePageAccess('promoCode
     if (type !== 'free_shipping' && (value == null || value <= 0)) {
       return res.status(400).json({ error: 'value must be a positive number for percentage/flat codes' });
     }
+    // Real, sensible validation: a real scheduled start must come
+    // before a real expiry, if both are set -- otherwise the code
+    // would be genuinely impossible to ever actually use.
+    if (startsAt && expiresAt && new Date(startsAt) >= new Date(expiresAt)) {
+      return res.status(400).json({ error: 'startsAt must be before expiresAt' });
+    }
 
     await db.query(
-      `INSERT INTO promo_codes (code, type, value, source, created_by_admin_id, max_total_uses, max_uses_per_buyer, expires_at, require_new_user, min_total_spend, min_order_count, min_inactive_days)
-       VALUES ($1, $2, $3, 'admin', $4, $5, $6, $7, $8, $9, $10, $11)`,
+      `INSERT INTO promo_codes (code, type, value, source, created_by_admin_id, max_total_uses, max_uses_per_buyer, starts_at, expires_at, require_new_user, min_total_spend, min_order_count, min_inactive_days)
+       VALUES ($1, $2, $3, 'admin', $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
-        code, type, type === 'free_shipping' ? null : value, req.user.sub, maxTotalUses || null, maxUsesPerBuyer || 1, expiresAt || null,
+        code, type, type === 'free_shipping' ? null : value, req.user.sub, maxTotalUses || null, maxUsesPerBuyer || 1, startsAt || null, expiresAt || null,
         Boolean(requireNewUser), minTotalSpend || null, minOrderCount || null, minInactiveDays || null,
       ]
     );
@@ -70,14 +77,15 @@ router.post('/', requireAuth, requireRole('admin'), requirePageAccess('promoCode
 
 router.patch('/:code', requireAuth, requireRole('admin'), requirePageAccess('promoCodes'), async (req, res, next) => {
   try {
-    const { isActive, expiresAt, maxTotalUses } = req.body || {};
+    const { isActive, startsAt, expiresAt, maxTotalUses } = req.body || {};
     const { rows } = await db.query(
       `UPDATE promo_codes SET
          is_active = COALESCE($1, is_active),
-         expires_at = COALESCE($2, expires_at),
-         max_total_uses = COALESCE($3, max_total_uses)
-       WHERE code = $4 RETURNING *`,
-      [isActive, expiresAt, maxTotalUses, req.params.code]
+         starts_at = COALESCE($2, starts_at),
+         expires_at = COALESCE($3, expires_at),
+         max_total_uses = COALESCE($4, max_total_uses)
+       WHERE code = $5 RETURNING *`,
+      [isActive, startsAt, expiresAt, maxTotalUses, req.params.code]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Promo code not found' });
     res.json(toPromoCodeDto(rows[0]));
