@@ -233,6 +233,22 @@ them would be a real bug, not a naming nitpick.
   again — checking every field each screen reads actually exists in the
   real response.
 
+**A real gap found later, while scoping the search vehicle filter below
+— flagged here, NOT fixed in this pass, tracked as a separate
+follow-up**: saving worked exactly as verified above, but a saved
+vehicle here can never actually filter the catalog to a real product.
+`GET /fitment/vehicles` (used here) and `product_fitment` (what a saved
+vehicle would need to join against to match real products) are a
+completely separate, unpopulated system from the structured
+Brand→Model→Generation cascade every real product's fitment is
+actually stored in (`product_fitment_entries`, migration 010) — see
+`services/api/README.md`'s "Brand/Model/Generation(Year) filter for
+search" section for the full finding. In practice, this means My
+Garage's own "shop for my vehicle" promise doesn't hold today. The fix
+is a real, separate piece of work — likely migrating this feature onto
+the same structured cascade the new search filter uses — not a quick
+patch alongside it.
+
 ## Language setting & product page redesign (new)
 
 **Confirmed business decision**: a real, persistent, app-wide language
@@ -363,6 +379,43 @@ The home screen's search box was a dead, read-only field with a literal
 full verification of the search logic this screen calls, including the
 real bug it caught and fixed (unapproved products leaking into search
 results before this pass).
+
+## Search: Brand/Model/Generation(Year) vehicle filter (new)
+
+**A real gap found while scoping this, not just a cosmetic filter add**:
+search's existing `vehicleId` param (never used by this screen) joins
+`product_fitment`, a table nothing in the whole codebase ever writes to
+— see `services/api/README.md`'s matching section for the full finding.
+Every real product's fitment lives only in the structured
+Brand→Model→Generation cascade a supplier submits against. Built this
+filter against THAT real, populated system instead.
+
+- `lib/features/search/vehicle_filter_sheet.dart` (new): a real
+  Brand → Model → Generation → Year picker, via
+  `GET /fitment/brands` → `/brands/:id/models` → `/models/:id/generations`
+  — the same cascade the supplier portal already uses to submit real
+  fitment, deliberately not the flat `GET /fitment/makes`/`/vehicles`
+  pair My Garage uses (see "My Garage" section below — that feature has
+  the same dead-end problem for the same reason, tracked as a separate
+  follow-up). The Year step is skipped automatically when a generation
+  only spans one year, and offers "Any year in this generation"
+  alongside specific years otherwise.
+- `search_screen.dart`: a new car icon in the app bar opens the picker;
+  an active filter shows as a dismissible chip above results. Selecting
+  a vehicle now works as a standalone search with no text typed at all
+  ("show me everything that fits my F20") — required loosening this
+  screen's prior all-or-nothing behavior of refusing to search unless
+  there was real text in the box.
+- `ApiClient.searchProducts()`: now accepts optional `generationId`/
+  `year`, passed straight through to the real backend filter.
+
+**Verified end-to-end against the real running backend** — not just
+code review: fetched real seeded brands/models/generations, confirmed
+`generationId` alone narrowed the full catalog down to only the real
+products actually fitted to that generation, confirmed adding a
+specific `year` narrowed further, and confirmed a year with no real
+matching fitment entries correctly returns zero results rather than a
+false positive.
 
 ## Home feed redesign (new)
 

@@ -93,14 +93,47 @@ class ApiClient {
   /// for the full multi-word matching logic). Empty/whitespace-only
   /// queries are the caller's responsibility to avoid; this method
   /// doesn't special-case that.
-  Future<List<Product>> searchProducts(String query, {String lang = 'en'}) async {
-    final uri = Uri.parse('$baseUrl/catalog/products').replace(queryParameters: {'search': query, 'lang': lang});
+  Future<List<Product>> searchProducts(String query, {String lang = 'en', String? generationId, int? year}) async {
+    final uri = Uri.parse('$baseUrl/catalog/products').replace(queryParameters: {
+      if (query.isNotEmpty) 'search': query,
+      'lang': lang,
+      if (generationId != null) 'generationId': generationId,
+      if (year != null) 'year': '$year',
+    });
     final response = await _client.get(uri);
     if (response.statusCode != 200) {
       throw ApiException('Search failed (${response.statusCode})');
     }
     final body = jsonDecode(response.body) as List;
     return body.map((e) => Product.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  // ---------------- Structured Brand -> Model -> Generation cascade
+  // (migration 010) -- the SAME reference data the supplier portal uses
+  // to submit real fitment claims, now also exposed here for the
+  // buyer-facing search filter (see search_screen.dart). Deliberately
+  // NOT the flat GET /fitment/makes|vehicles pair used by My Garage --
+  // that flat table is never actually referenced by any real product's
+  // fitment (confirmed directly), so a Garage-style filter here would
+  // silently match nothing real. Raw maps, not a typed model, matching
+  // the same lightweight pattern already used for orders/notifications.
+
+  Future<List<dynamic>> fetchVehicleBrands() async {
+    final response = await _client.get(Uri.parse('$baseUrl/fitment/brands'));
+    if (response.statusCode != 200) throw ApiException('Failed to load brands (${response.statusCode})');
+    return jsonDecode(response.body) as List<dynamic>;
+  }
+
+  Future<List<dynamic>> fetchModelsForBrand(String brandId) async {
+    final response = await _client.get(Uri.parse('$baseUrl/fitment/brands/$brandId/models'));
+    if (response.statusCode != 200) throw ApiException('Failed to load models (${response.statusCode})');
+    return jsonDecode(response.body) as List<dynamic>;
+  }
+
+  Future<List<dynamic>> fetchGenerationsForModel(String modelId) async {
+    final response = await _client.get(Uri.parse('$baseUrl/fitment/models/$modelId/generations'));
+    if (response.statusCode != 200) throw ApiException('Failed to load generations (${response.statusCode})');
+    return jsonDecode(response.body) as List<dynamic>;
   }
 
   Future<Product> fetchProductById(String productId, {String lang = 'en'}) async {

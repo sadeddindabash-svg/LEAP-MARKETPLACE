@@ -2037,6 +2037,50 @@ and `sort=newest` returns products in genuine creation-time order
 (verified against two real products created moments apart, not assumed
 from incidental database behavior).
 
+## Brand/Model/Generation(Year) filter for search (added to GET /catalog/products)
+
+**A real gap found while scoping this**: `GET /catalog/products` already
+had a `vehicleId` filter — but it joins `product_fitment`, a table
+**nothing in this codebase ever writes to** (confirmed by grep, not
+assumed). Every real product's fitment claim lives only in
+`product_fitment_entries`, the structured Brand→Model→Generation cascade
+a supplier actually submits against (migration 010). So `vehicleId` has
+never matched a single real product — and the buyer-facing My Garage
+feature, which saves a vehicle from the OTHER (flat, unpopulated-for-
+matching) `vehicles` table, has the same dead-end problem. That's a
+separate, existing bug being tracked separately, not fixed in this pass.
+
+**`GET /catalog/products?generationId=gen_bmw_1_series_f20`** (new) —
+real filter via `EXISTS` against `product_fitment_entries` (not a
+`JOIN`, same reasoning as the search clause above: one product can have
+multiple fitment entries, and a `JOIN` would duplicate result rows).
+Optionally combine with **`&year=2018`** to narrow to a specific year
+within that generation's range — a generation spans a real year range
+(e.g. F20 is 2015–2019), and a supplier's fitment entry records the
+specific year(s) they actually confirmed, not just "somewhere in this
+generation." Composes correctly with `category`, `part`, `search`, and
+`sort`.
+
+**Mobile**: `lib/features/search/vehicle_filter_sheet.dart` (new) — a
+real Brand → Model → Generation → Year picker, reusing the same
+`GET /fitment/brands` → `/brands/:id/models` → `/models/:id/generations`
+endpoints the supplier portal already uses (deliberately not the flat
+`GET /fitment/makes`/`/vehicles` pair My Garage uses, for the reason
+above). The year step is skipped automatically for a single-year
+generation, and offers "Any year in this generation" alongside specific
+years otherwise. Selecting a vehicle now also works as a standalone
+search with no text typed at all — "show me everything that fits my
+F20" — which required loosening `search_screen.dart`'s prior behavior
+of refusing to search at all on empty text.
+
+**Verified end-to-end against the real running backend**: fetched real
+seeded brands/models/generations, confirmed `generationId` alone
+narrowed the full 29-product catalog down to the 27 real products
+actually fitted to `gen_bmw_1_series_f20`, confirmed adding `year=2018`
+narrowed further to 18, confirmed a year with no real matching fitment
+entries correctly returns zero (not a false positive), and confirmed
+`generationId` composes cleanly with `sort=newest` without error.
+
 ## Category + parts reference lists (migration 015)
 
 **Confirmed requirement**: major categories and the specific parts that

@@ -129,7 +129,7 @@ async function attachPrimaryFitment(dto, productId) {
 // (lightweight -- sufficient for saved-search diffing, which never
 // needs full DTOs); GET /products still does its own DTO-building
 // with these IDs' underlying rows.
-function buildProductMatchQuery({ category, part, vehicleId, search }) {
+function buildProductMatchQuery({ category, part, vehicleId, search, generationId, year }) {
   const conditions = [];
   const params = [];
   let sql = `SELECT p.* FROM products p`;
@@ -145,6 +145,34 @@ function buildProductMatchQuery({ category, part, vehicleId, search }) {
   if (part) {
     conditions.push(`p.part = $${params.length + 1}`);
     params.push(part);
+  }
+  // Real Brand -> Model -> Generation(Year) filter (new) -- matches
+  // against product_fitment_entries, the structured cascade a supplier
+  // actually submits real fitment claims against (migration 010).
+  // Deliberately NOT reusing the vehicleId/product_fitment join above --
+  // that flat table is never written to anywhere in this codebase
+  // (confirmed directly, not assumed): every real product's fitment
+  // lives only in product_fitment_entries. EXISTS, not a JOIN, since one
+  // product can have multiple fitment entries and a JOIN here would
+  // duplicate result rows (same reasoning as the search clause below).
+  // `year` is optional and only meaningful alongside generationId -- a
+  // generation spans a real year range, and a supplier's fitment entry
+  // records the specific year(s) they confirmed, not just the
+  // generation as a whole.
+  if (generationId) {
+    const genIdx = params.length + 1;
+    params.push(generationId);
+    if (year) {
+      const yearIdx = params.length + 1;
+      params.push(Number(year));
+      conditions.push(
+        `EXISTS (SELECT 1 FROM product_fitment_entries pfe2 WHERE pfe2.product_id = p.id AND pfe2.generation_id = $${genIdx} AND pfe2.year = $${yearIdx})`
+      );
+    } else {
+      conditions.push(
+        `EXISTS (SELECT 1 FROM product_fitment_entries pfe2 WHERE pfe2.product_id = p.id AND pfe2.generation_id = $${genIdx})`
+      );
+    }
   }
   if (search && search.trim()) {
     const words = search.trim().split(/\s+/).slice(0, 8);
@@ -169,8 +197,8 @@ function buildProductMatchQuery({ category, part, vehicleId, search }) {
 
 router.get('/products', async (req, res, next) => {
   try {
-    const { category, part, vehicleId, search, sort, lang } = req.query;
-    const { sql: baseSql, params } = buildProductMatchQuery({ category, part, vehicleId, search });
+    const { category, part, vehicleId, search, sort, lang, generationId, year } = req.query;
+    const { sql: baseSql, params } = buildProductMatchQuery({ category, part, vehicleId, search, generationId, year });
     let sql = baseSql;
 
     // Real, explicit ordering -- this endpoint previously had NO
