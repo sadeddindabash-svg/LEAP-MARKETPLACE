@@ -61,6 +61,16 @@ class AppStrings {
     'status_resolved': {'en': 'Resolved', 'ar': 'تم الحل'},
     'status_closed': {'en': 'Closed', 'ar': 'مغلقة'},
 
+    // ---- Return case statuses (return_cases.status — see
+    // services/api/src/modules/returns/routes.js's PATCH /:id for the
+    // full real set: awaiting, in_progress, approved, rejected,
+    // completed. 'in_progress' reuses the key already defined above for
+    // support tickets, same real status word either way.)
+    'status_awaiting': {'en': 'Awaiting review', 'ar': 'قيد المراجعة'},
+    'status_approved': {'en': 'Approved', 'ar': 'موافق عليه'},
+    'status_rejected': {'en': 'Rejected', 'ar': 'مرفوض'},
+    'status_completed': {'en': 'Completed', 'ar': 'مكتمل'},
+
     'status_returns': {'en': 'Returns', 'ar': 'المرتجعات'},
     'tab_all': {'en': 'All', 'ar': 'الكل'},
 
@@ -162,6 +172,17 @@ class AppStrings {
     'details_label': {'en': 'Details', 'ar': 'التفاصيل'},
     'submit_request': {'en': 'Submit request', 'ar': 'إرسال الطلب'},
     'return_request_sent': {'en': 'Return request sent to the Leap team.', 'ar': 'تم إرسال طلب الإرجاع إلى فريق Leap.'},
+    'view': {'en': 'View', 'ar': 'عرض'},
+
+    // ---- My Returns (list + detail thread — GET/POST /returns/my-cases,
+    // same real backend the return-request sheet above already posts to;
+    // this is the missing "check on it afterward" half of that flow) ----
+    'my_returns': {'en': 'My returns', 'ar': 'مرتجعاتي'},
+    'login_to_see_returns': {'en': "Log in to see your return requests.\n(Guest return requests are handled by email — you won't be able to track them here unless you have an account.)", 'ar': 'سجّل الدخول لرؤية طلبات الإرجاع الخاصة بك.\n(تتم معالجة طلبات إرجاع الضيف عبر البريد الإلكتروني — لن تتمكن من تتبعها هنا إلا إذا كان لديك حساب.)'},
+    'could_not_load_returns': {'en': 'Could not load return requests:', 'ar': 'تعذر تحميل طلبات الإرجاع:'},
+    'no_returns_yet': {'en': 'No return requests yet.', 'ar': 'لا توجد طلبات إرجاع بعد.'},
+    'could_not_load_return': {'en': 'Could not load this return request.', 'ar': 'تعذر تحميل طلب الإرجاع هذا.'},
+    'return_case_order_label': {'en': 'For order', 'ar': 'للطلب'},
 
     // ---- Account ----
     'account': {'en': 'Account', 'ar': 'الحساب'},

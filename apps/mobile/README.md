@@ -163,6 +163,48 @@ screen at all, only the list.
   checked every field the screen reads (`supplierName`, `trackingNumber`,
   `items`, `subOrderId`, etc.) actually exists in the real response.
 
+## My Returns — status & follow-up thread (closes a real, previously-flagged gap)
+
+The return-request sheet above (BUY-053) could already SUBMIT a return
+via `POST /returns` — but there was no way for a buyer to check on it
+afterward. The API client already had `fetchMyReturnCases`,
+`fetchReturnCaseDetail`, and `sendReturnCaseMessage` written (confirmed
+by grep — not assumed), but none of the three were ever called from any
+screen. This pass wires that existing, unused API surface up to real UI:
+
+- `lib/features/orders/returns_screen.dart` (new): the real list, via
+  `GET /returns/my-cases` — same login-gated pattern as
+  `orders_screen.dart` and `chat_screen.dart` (a guest-filed return
+  isn't listable without an account, since the backend scopes this
+  route to a real `buyer_id`). Deliberately no "new return" FAB, unlike
+  the support-ticket list's — a return case is always tied to a
+  specific sub-order, so it only ever starts from that order's detail
+  page, never a blank form here.
+- `lib/features/orders/return_case_detail_screen.dart` (new): the real
+  buyer<->admin message thread for one case, via
+  `GET`/`POST /returns/my-cases/:id(/messages)` — structurally the same
+  isolation as the support-ticket thread (this case's separate
+  supplier<->admin thread, if any, is never fetched or shown here; see
+  the backend module's header comment for why that split is enforced
+  at the query level).
+- Reachable from Account → **My returns**, and directly from the
+  return-request-sent snackbar's new **View** action — so a buyer who
+  just filed a return has an obvious next step instead of a dead end.
+- Four new status labels added to `app_strings.dart`
+  (`status_awaiting`/`approved`/`rejected`/`completed`) to cover the
+  real `return_cases.status` values the SRS's `trStatus` fallback
+  hadn't been given bilingual text for yet — `in_progress` already
+  existed, reused from the ticket-status set since it's the same real
+  status word either way.
+- **Verified against the real backend**: ran the exact sequence — log
+  in as the same seeded buyer, `GET /returns/my-cases`, confirmed the
+  return case filed in the previous pass's verification run is listed
+  with its real `reason`/`status`/`orderId`, opened it via
+  `GET /returns/my-cases/:id` and confirmed the original buyer message
+  is the first entry in `messages`, then posted a follow-up via
+  `POST /returns/my-cases/:id/messages` and confirmed it appears at the
+  end of the thread on a second fetch.
+
 ## My Garage — saved vehicles (BUY-004, BUY-010–012)
 
 A genuinely new backend feature, not just a mock-to-real conversion —

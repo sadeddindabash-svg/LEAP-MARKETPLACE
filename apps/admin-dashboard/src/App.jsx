@@ -1551,11 +1551,13 @@ function formatDuration(seconds) {
   return remMinutes > 0 ? `${hours}h ${remMinutes}m` : `${hours}h`;
 }
 
-// Real hub performance metrics (migration 043) -- average time per
-// real stage transition, for every real hub. See
-// services/api/src/modules/hub/routes.js's GET /hub/performance for
-// the full real design, including why 'flagged' events are excluded
-// from this real, linear-stage calculation.
+// Real hub performance metrics (no new migration needed -- built
+// entirely on hub_shipment_events' existing timestamps from migration
+// 011, same as supplier analytics; see services/api/db/README.md's
+// migration table) -- average time per real stage transition, for
+// every real hub. See services/api/src/modules/hub/routes.js's
+// GET /hub/performance for the full real design, including why
+// 'flagged' events are excluded from this real, linear-stage calculation.
 function HubPerformanceSection({ onSessionExpired }) {
   const [performance, setPerformance] = useState([]);
   const [loadState, setLoadState] = useState("loading");

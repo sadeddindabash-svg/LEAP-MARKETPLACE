@@ -61,7 +61,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         onSubmitted: () {
           Navigator.of(context).pop();
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(trRead(context, 'return_request_sent'))),
+            SnackBar(
+              content: Text(trRead(context, 'return_request_sent')),
+              // Real deep link straight to the new case in My Returns
+              // (see returns_screen.dart) -- otherwise a buyer who just
+              // filed a return has no obvious next step to go check on it.
+              action: SnackBarAction(label: trRead(context, 'view'), onPressed: () => context.push('/returns')),
+            ),
           );
         },
       ),

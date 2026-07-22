@@ -14,9 +14,12 @@ const { deliveryNotificationEmail } = require('../email/templates');
  *   - Admin: manage hub locations, assign a hub to a sub-order
  *   - Hub staff (role='hub_staff', scoped to req.user.hubId): their own
  *     hub's inbound queue and step-by-step shipment workflow
- *   - (Buyers/suppliers don't call this module directly yet — the
- *     buyer-facing tracking UI reflecting hub status is a planned
- *     fast-follow, not built in this pass.)
+ *   - (Suppliers don't call this module directly — buyers don't call
+ *     it directly either, but the mobile buyer app's tracking screen
+ *     does reflect real hub status: see
+ *     apps/mobile/lib/features/orders/tracking_screen.dart, which reads
+ *     hub milestones off the order detail response. That fast-follow
+ *     has already shipped; this comment previously said otherwise.)
  */
 const router = express.Router();
 
