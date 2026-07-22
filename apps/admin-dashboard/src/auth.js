@@ -623,3 +623,15 @@ export async function fetchAuditLog(token) {
   if (!response.ok) throw new Error(`Failed to load audit log (${response.status})`);
   return response.json();
 }
+
+// Real supplier analytics -- an admin picks any one real supplier to
+// view (confirmed scope: not a platform-wide aggregate).
+export async function fetchSupplierAnalytics(token, supplierId) {
+  const response = await fetch(`${API_BASE_URL}/supplier/${supplierId}/analytics`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || `Failed to load supplier analytics (${response.status})`);
+  }
+  return response.json();
+}

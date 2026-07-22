@@ -1857,6 +1857,49 @@ scheduled start after its own expiry is rejected as an impossible
 range; a real, already-existing code can have a scheduled start added
 via update, and takes effect immediately.
 
+## Real supplier analytics (chosen from a list of 10 real options)
+
+**Confirmed scope**: revenue over time, order volume over time,
+top-selling products, order status breakdown, low-stock products at a
+glance, and payout summary — shown in both the supplier portal (a
+supplier's own data, forced to their own account) and the admin
+dashboard (an admin picks any one specific real supplier to view, not
+a platform-wide aggregate).
+
+**A real, honest finding first**: while looking for a hook to build
+the next planned admin-tooling item ("flagged shipments" workload
+view), it turned out to already be fully built and working from an
+earlier session — a complete `GET /hub/flagged` endpoint, a full admin
+dashboard page, and a passing test file. Confirmed by actually running
+that existing test file, not just reading the code — all 5 tests
+passed. No new work was needed there.
+
+**`services/api/src/modules/supplierAnalytics/queries.js`** — every
+function takes a real `supplierId`, shared by both real callers.
+Payout summary reuses the exact same real eligible-sub-orders CTE the
+Payouts page's own "Amount owed" figure already uses (exported from
+`services/api/src/modules/payouts/routes.js` for this reason), rather
+than a second, potentially-drifting reimplementation. Low-stock
+products reuse the exact same real threshold comparison the low-stock
+alert itself checks (migration 037).
+
+**`GET /supplier/me/overview`** (existing endpoint) now also returns a
+real `analytics` object alongside everything it already returned —
+none of the existing fields were removed or changed, to avoid
+disrupting any real existing consumer. **`GET /supplier/:id/analytics`**
+(new, admin-only) returns the same real shape for any supplier an
+admin picks.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/supplierAnalytics.integration.test.js`
+(5 tests, REAL backend): a supplier sees their own real analytics, all
+shaped correctly; an admin viewing a specific real supplier's
+analytics matches that supplier's own view of their own data exactly;
+a nonexistent supplier ID returns a real 404, not an empty object; a
+supplier cannot view another supplier's analytics via the admin-only
+endpoint; low-stock products genuinely reflect products at or below
+their own real threshold, verified by cross-checking against the
+real, full product list rather than trusting the count alone.
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category

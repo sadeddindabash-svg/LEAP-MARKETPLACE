@@ -7,7 +7,7 @@ import {
   Lightbulb, Wrench, Fan, Cog, Languages
 } from "lucide-react";
 import {
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar,
 } from "recharts";
 import { LangContext, useLang } from "./langContext";
 import { SupplierContext, useSupplier } from "./supplierContext";
@@ -379,6 +379,118 @@ function TopBar({ title, subtitle }) {
 
 /* ---------------- Pages ---------------- */
 
+// Real supplier analytics (confirmed scope, picked from a list of 10
+// real options): revenue+volume over time, top-selling products,
+// order status breakdown, low-stock products at a glance, and payout
+// summary. Shared shape used by both this supplier portal's own
+// Overview page (below) and the admin dashboard's equivalent section
+// (an admin picks which real supplier to view).
+function SupplierAnalyticsSection({ analytics, lang }) {
+  const revenueTrend = analytics.revenueAndVolume.map((d) => ({
+    d: new Date(d.day).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+    revenue: d.revenue,
+    orders: d.orderCount,
+  }));
+  const l = {
+    revenueTitle: lang === "zh" ? "收入趋势（近 30 天）" : "Revenue trend (last 30 days)",
+    topProductsTitle: lang === "zh" ? "热销商品（按销量）" : "Top-selling products",
+    statusTitle: lang === "zh" ? "订单状态分布" : "Order status breakdown",
+    lowStockTitle: lang === "zh" ? "库存预警" : "Low-stock products",
+    payoutTitle: lang === "zh" ? "结算汇总" : "Payout summary",
+    totalPaid: lang === "zh" ? "历史已付款总额" : "Total paid out",
+    amountOwed: lang === "zh" ? "当前应付金额" : "Current amount owed",
+    noRevenue: lang === "zh" ? "近 30 天暂无收入数据" : "No revenue in the last 30 days.",
+    noProducts: lang === "zh" ? "暂无销售数据" : "No sales data yet.",
+    noLowStock: lang === "zh" ? "暂无库存预警商品" : "Nothing low on stock right now.",
+    units: lang === "zh" ? "件" : "units",
+  };
+
+  return (
+    <>
+      <div style={{ display: "flex", gap: 16 }}>
+        <Card title={l.payoutTitle} style={{ flex: 1 }}>
+          <div style={{ padding: "18px 20px", display: "flex", gap: 24 }}>
+            <div>
+              <div style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>{l.totalPaid}</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: C.ink, marginTop: 4 }}>${analytics.payoutSummary.totalPaid.toFixed(2)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>{l.amountOwed}</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: analytics.payoutSummary.amountOwed > 0 ? C.gauge : C.ink, marginTop: 4 }}>${analytics.payoutSummary.amountOwed.toFixed(2)}</div>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <Card title={l.revenueTitle}>
+        <div style={{ padding: "16px 18px 8px", height: 200 }}>
+          {revenueTrend.length === 0 ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", fontSize: 12.5, color: C.muted }}>{l.noRevenue}</div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={revenueTrend} margin={{ left: 0, right: 10, top: 6, bottom: 0 }}>
+                <CartesianGrid stroke={C.line} vertical={false} />
+                <XAxis dataKey="d" tick={{ fontSize: 11, fill: C.muted }} axisLine={{ stroke: C.line }} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: C.muted }} axisLine={false} tickLine={false} width={40} />
+                <Tooltip formatter={(v, name) => [name === "revenue" ? `$${Number(v).toFixed(2)}` : v, name === "revenue" ? (lang === "zh" ? "收入" : "Revenue") : (lang === "zh" ? "订单" : "Orders")]} contentStyle={{ fontSize: 12, borderRadius: 8, border: `1px solid ${C.line}` }} />
+                <Bar dataKey="revenue" fill={C.signal} radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </Card>
+
+      <div style={{ display: "flex", gap: 16 }}>
+        <Card title={l.topProductsTitle} style={{ flex: 1 }}>
+          <div style={{ padding: 6 }}>
+            {analytics.topProducts.length === 0 && <div style={{ padding: 20, textAlign: "center", fontSize: 12.5, color: C.muted }}>{l.noProducts}</div>}
+            {analytics.topProducts.map((p, i) => (
+              <div key={p.productId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderBottom: i < analytics.topProducts.length - 1 ? `1px solid ${C.line}` : "none" }}>
+                <span style={{ fontSize: 12.5, fontWeight: 600 }}>{p.name}</span>
+                <span style={{ fontSize: 12, color: C.muted }}>{p.unitsSold} {l.units} · ${p.revenue.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card title={l.statusTitle} style={{ flex: 1 }}>
+          <div style={{ padding: 12 }}>
+            {analytics.statusBreakdown.length === 0 && <div style={{ padding: 20, textAlign: "center", fontSize: 12.5, color: C.muted }}>{l.noProducts}</div>}
+            {analytics.statusBreakdown.map((s) => {
+              const total = analytics.statusBreakdown.reduce((sum, x) => sum + x.count, 0);
+              const pct = total > 0 ? (s.count / total) * 100 : 0;
+              return (
+                <div key={s.status} style={{ marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}>
+                    <span style={{ textTransform: "capitalize", fontWeight: 600 }}>{s.status.replace(/_/g, " ")}</span>
+                    <span style={{ color: C.muted }}>{s.count}</span>
+                  </div>
+                  <div style={{ height: 6, borderRadius: 3, background: C.line, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${pct}%`, background: C.signal, borderRadius: 3 }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      </div>
+
+      {analytics.lowStockProducts.length > 0 && (
+        <Card title={l.lowStockTitle}>
+          <div style={{ padding: 6 }}>
+            {analytics.lowStockProducts.slice(0, 8).map((p, i) => (
+              <div key={p.productId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderBottom: i < Math.min(analytics.lowStockProducts.length, 8) - 1 ? `1px solid ${C.line}` : "none" }}>
+                <span style={{ fontSize: 12.5, fontWeight: 600 }}>{p.name}</span>
+                <span style={{ fontSize: 12, color: p.stockQuantity === 0 ? C.red : C.amber, fontWeight: 700 }}>{p.stockQuantity} / {p.lowStockThreshold}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </>
+  );
+}
+
 function OverviewPage({ onSessionExpired }) {
   const { t, lang } = useLang();
   const font = useBodyFont();
@@ -438,6 +550,8 @@ function OverviewPage({ onSessionExpired }) {
           <KpiCard label={l.totalListings} value={String(data.totalListings)} icon={PackageSearch} accent={C.torque} />
           <KpiCard label={l.pendingReturns} value={String(data.pendingReturns)} icon={AlertTriangle} accent={C.red} />
         </div>
+
+        {data.analytics && <SupplierAnalyticsSection analytics={data.analytics} lang={lang} />}
 
         <Card title={l.trendTitle}>
           <div style={{ padding: "16px 18px 8px", height: 220 }}>

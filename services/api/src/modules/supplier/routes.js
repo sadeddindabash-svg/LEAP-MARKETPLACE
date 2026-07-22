@@ -6,6 +6,7 @@ const { sendTransactionalEmail } = require('../email/client');
 const { logAdminAction } = require('../audit/helpers');
 const { shippingNotificationEmail } = require('../email/templates');
 const { validateFitment, tryMatchCategoryAndPart, tryMatchPosition, tryMatchDimensions, validateCompleteFields } = require('./productValidation');
+const { getSupplierAnalytics } = require('../supplierAnalytics/queries');
 
 /**
  * Supplier module — SUP-001–003 (onboarding/verification) from the
@@ -74,6 +75,22 @@ router.patch('/:id/verify', requireAuth, requireRole('admin'), requirePageAccess
     // just confirming the status change, not a full record refresh.
     const { id, name, country, contact_email, verification_status, created_at } = rows[0];
     res.json({ id, name, country, contactEmail: contact_email, verificationStatus: verification_status, createdAt: created_at });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /supplier/:id/analytics — admin-only, real analytics for any one
+// real supplier the admin picks (confirmed scope: not a platform-wide
+// aggregate). Same real getSupplierAnalytics() the supplier's own
+// overview endpoint uses below, just for a supplier the admin chooses
+// rather than forced to req.user.supplierId.
+router.get('/:id/analytics', requireAuth, requireRole('admin'), requirePageAccess('suppliers'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT id FROM suppliers WHERE id = $1', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Supplier not found' });
+    const analytics = await getSupplierAnalytics(req.params.id);
+    res.json(analytics);
   } catch (err) {
     next(err);
   }
@@ -767,7 +784,7 @@ router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), asy
 router.get('/me/overview', requireAuth, requireRole('supplier'), async (req, res, next) => {
   try {
     const supplierId = req.user.supplierId;
-    const [totalOrders, pendingOrders, totalListings, pendingReturns, ordersByDay, topProducts, recentOrders] = await Promise.all([
+    const [totalOrders, pendingOrders, totalListings, pendingReturns, ordersByDay, topProducts, recentOrders, analytics] = await Promise.all([
       db.query('SELECT COUNT(*) AS n FROM supplier_sub_orders WHERE supplier_id = $1', [supplierId]),
       db.query(`SELECT COUNT(*) AS n FROM supplier_sub_orders WHERE supplier_id = $1 AND status IN ('pending', 'preparing')`, [supplierId]),
       db.query('SELECT COUNT(*) AS n FROM products WHERE supplier_id = $1', [supplierId]),
@@ -799,6 +816,13 @@ router.get('/me/overview', requireAuth, requireRole('supplier'), async (req, res
          ORDER BY o.placed_at DESC LIMIT 5`,
         [supplierId]
       ),
+      // Real analytics (confirmed scope, picked from a list of 10 real
+      // options): revenue+volume over time, top-selling products,
+      // order status breakdown, low-stock products, payout summary --
+      // added alongside the existing real overview fields above,
+      // none of which are removed or changed, to avoid disrupting any
+      // real existing consumer of this same endpoint.
+      getSupplierAnalytics(supplierId),
     ]);
 
     res.json({
@@ -809,6 +833,7 @@ router.get('/me/overview', requireAuth, requireRole('supplier'), async (req, res
       ordersByDay: ordersByDay.rows.map((r) => ({ day: r.day, count: Number(r.n) })),
       topProducts: topProducts.rows.map((r) => ({ id: r.id, name: r.name, units: Number(r.units) })),
       recentOrders: recentOrders.rows.map((r) => ({ subOrderId: r.sub_order_id, orderId: r.order_id, status: r.status, placedAt: r.placed_at })),
+      analytics,
     });
   } catch (err) {
     next(err);

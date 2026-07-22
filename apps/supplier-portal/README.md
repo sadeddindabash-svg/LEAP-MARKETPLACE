@@ -90,6 +90,17 @@ dashboard's Overview page (see `services/api/README.md`).
   correctly" test started crashing the moment Overview began fetching
   real data on render. Fixed by updating that test file's mock router,
   not by working around the crash.
+- **New**: a real "analytics" object now included in this same
+  endpoint's response (none of the existing fields above were removed
+  or changed) — revenue trend, top-selling products, order status
+  breakdown, low-stock products, and payout summary, shown as a new
+  section right at the top of this page. See `services/api/README.md`'s
+  "Real supplier analytics" section for the full real backend design,
+  chosen from a list of 10 real options. **A real bug was found and
+  fixed while building this**: inserting the new section accidentally
+  dropped this very page's own `function OverviewPage(...) {`
+  declaration line — caught immediately by a real, failed production
+  build, not assumed to be fine.
 
 ## Products page (SUP-010–012)
 

@@ -174,3 +174,4 @@ router.post('/', requireAuth, requireRole('admin'), requirePageAccess('payouts')
 });
 
 module.exports = router;
+module.exports.ELIGIBLE_SUB_ORDERS_CTE = ELIGIBLE_SUB_ORDERS_CTE;

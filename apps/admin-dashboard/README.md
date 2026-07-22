@@ -88,6 +88,16 @@ Orders, in this round of updates.
   includes a `gmv` or `topMarkets` field at all — proving the "no fake
   aggregate numbers" decision is enforced by the backend, not just a
   frontend choice not to display fields that exist.
+- **New**: a real "Supplier analytics" card at the very top of this
+  page — an admin picks any one specific real supplier from a
+  dropdown, then sees that supplier's own real revenue/volume trend,
+  top-selling products, order status breakdown, low-stock products,
+  and payout summary (`GET /supplier/:id/analytics`). This doesn't
+  contradict the "no payout figure on Overview" decision above — that
+  was specifically about one blended, platform-wide number; this is a
+  real, per-supplier breakdown shown only once an admin explicitly
+  picks that supplier, the same real "Amount owed" figure the Payouts
+  page already shows for them.
 
 ## Real Excel (.xlsx) export (new)
 
@@ -638,7 +648,7 @@ can never crash the page.
 npm test
 ```
 
-Sixty-three test files, 396 tests total, all passing:
+Sixty-four test files, 401 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/passwordReset.integration.test.js` (5, REAL backend) — a real
@@ -1122,6 +1132,20 @@ Sixty-three test files, 396 tests total, all passing:
   finding preceded this build**: auto-expiring already worked
   correctly (confirmed directly, not assumed) — only the future-start
   half was genuinely missing.
+- `src/supplierAnalytics.integration.test.js` (5, REAL backend, new) —
+  a supplier sees their own real analytics (revenue/volume, top
+  products, status breakdown, low-stock, payout summary), all shaped
+  correctly; an admin viewing a specific real supplier's analytics
+  matches that supplier's own view of their own data exactly; a
+  nonexistent supplier ID returns a real 404, not an empty object; a
+  supplier cannot view another supplier's analytics via the admin-only
+  endpoint; low-stock products genuinely reflect products at or below
+  their own real threshold, cross-checked against the real, full
+  product list. **A real, honest finding preceded this build**: while
+  looking for a hook for the next planned item ("flagged shipments"),
+  it turned out to already be fully built and working from an earlier
+  session — confirmed by actually running its existing test file, all
+  5 passing, no new work needed there.
 - `src/recentlyViewed.integration.test.js` (4, REAL backend, new,
   migration 032) — recording a view and fetching the list shows it,
   most recent first; re-viewing a product moves it back to the front

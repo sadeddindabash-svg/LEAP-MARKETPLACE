@@ -14,6 +14,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchPayoutsOwed, fetchPayoutHistory, recordPayout, fetchSupplierPayoutMethod, fetchReturnWindow, updateReturnWindow, updateCategoryCommission,
   fetchPendingReviews, moderateReview, fetchRequireVerifiedPurchase, updateRequireVerifiedPurchase,
   fetchAuditLog,
+  fetchSupplierAnalytics,
   fetchFlaggedReviews, dismissReviewFlags,
 } from "./auth";
 import {
@@ -183,6 +184,143 @@ const CATEGORY_LABELS = {
 };
 const CATEGORY_COLORS = [C.signal, C.torque, C.gauge, C.amber, "#9AA1AC", "#6E7681"];
 
+// Real supplier analytics (confirmed scope, picked from a list of 10
+// real options): revenue+volume over time, top-selling products,
+// order status breakdown, low-stock products at a glance, and payout
+// summary. Confirmed scope for the admin side: an admin picks any one
+// real supplier to view, not a platform-wide aggregate -- same real
+// shape as the supplier portal's own equivalent section, which shows
+// this same data forced to that supplier's own account.
+function SupplierAnalyticsPicker({ onSessionExpired }) {
+  const [suppliers, setSuppliers] = useState([]);
+  const [selectedId, setSelectedId] = useState("");
+  const [analytics, setAnalytics] = useState(null);
+  const [loadState, setLoadState] = useState("idle");
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  useEffect(() => {
+    fetchSuppliers(getStoredToken())
+      .then((data) => setSuppliers(data))
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) onSessionExpired();
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSelect = (id) => {
+    setSelectedId(id);
+    if (!id) { setAnalytics(null); return; }
+    setLoadState("loading");
+    setErrorMessage(null);
+    fetchSupplierAnalytics(getStoredToken(), id)
+      .then((data) => { setAnalytics(data); setLoadState("ready"); })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  };
+
+  const revenueTrend = analytics ? analytics.revenueAndVolume.map((d) => ({
+    d: new Date(d.day).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+    revenue: d.revenue,
+  })) : [];
+
+  return (
+    <Card
+      title="Supplier analytics"
+      action={
+        <select
+          value={selectedId}
+          onChange={(e) => handleSelect(e.target.value)}
+          style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: "6px 10px", fontSize: 12.5 }}
+        >
+          <option value="">Select a supplier…</option>
+          {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+      }
+    >
+      <div style={{ padding: 16 }}>
+        {loadState === "idle" && <div style={{ ...body, fontSize: 12.5, color: C.muted, textAlign: "center", padding: 20 }}>Pick a supplier above to see their analytics.</div>}
+        {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted, textAlign: "center", padding: 20 }}>Loading…</div>}
+        {loadState === "error" && <div style={{ ...body, fontSize: 12.5, color: C.red, textAlign: "center", padding: 20 }}>{errorMessage}</div>}
+        {loadState === "ready" && analytics && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display: "flex", gap: 24 }}>
+              <div>
+                <div style={{ ...body, fontSize: 11, color: C.muted, fontWeight: 600 }}>Total paid out</div>
+                <div style={{ ...disp, fontSize: 22, fontWeight: 700, color: C.ink, marginTop: 2 }}>${analytics.payoutSummary.totalPaid.toFixed(2)}</div>
+              </div>
+              <div>
+                <div style={{ ...body, fontSize: 11, color: C.muted, fontWeight: 600 }}>Current amount owed</div>
+                <div style={{ ...disp, fontSize: 22, fontWeight: 700, color: analytics.payoutSummary.amountOwed > 0 ? C.gauge : C.ink, marginTop: 2 }}>${analytics.payoutSummary.amountOwed.toFixed(2)}</div>
+              </div>
+            </div>
+
+            <div style={{ height: 180 }}>
+              {revenueTrend.length === 0 ? (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", ...body, fontSize: 12.5, color: C.muted }}>No revenue in the last 30 days.</div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={revenueTrend} margin={{ left: 0, right: 10, top: 6, bottom: 0 }}>
+                    <CartesianGrid stroke={C.line} vertical={false} />
+                    <XAxis dataKey="d" tick={{ fontSize: 11, fill: C.muted }} axisLine={{ stroke: C.line }} tickLine={false} />
+                    <YAxis tick={{ fontSize: 11, fill: C.muted }} axisLine={false} tickLine={false} width={40} />
+                    <Tooltip formatter={(v) => [`$${Number(v).toFixed(2)}`, "Revenue"]} contentStyle={{ fontSize: 12, borderRadius: 8, border: `1px solid ${C.line}` }} />
+                    <Bar dataKey="revenue" fill={C.signal} radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+
+            <div style={{ display: "flex", gap: 16 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ ...body, fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>Top-selling products</div>
+                {analytics.topProducts.length === 0 && <div style={{ ...body, fontSize: 12, color: C.muted }}>No sales data yet.</div>}
+                {analytics.topProducts.map((p) => (
+                  <div key={p.productId} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "5px 0", borderBottom: `1px solid ${C.line}` }}>
+                    <span style={{ fontWeight: 600 }}>{p.name}</span>
+                    <span style={{ color: C.muted }}>{p.unitsSold} units · ${p.revenue.toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ ...body, fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>Order status breakdown</div>
+                {analytics.statusBreakdown.map((s) => {
+                  const total = analytics.statusBreakdown.reduce((sum, x) => sum + x.count, 0);
+                  const pct = total > 0 ? (s.count / total) * 100 : 0;
+                  return (
+                    <div key={s.status} style={{ marginBottom: 8 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5 }}>
+                        <span style={{ textTransform: "capitalize", fontWeight: 600 }}>{s.status.replace(/_/g, " ")}</span>
+                        <span style={{ color: C.muted }}>{s.count}</span>
+                      </div>
+                      <div style={{ height: 5, borderRadius: 3, background: C.line, overflow: "hidden", marginTop: 2 }}>
+                        <div style={{ height: "100%", width: `${pct}%`, background: C.signal, borderRadius: 3 }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {analytics.lowStockProducts.length > 0 && (
+              <div>
+                <div style={{ ...body, fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>Low-stock products</div>
+                {analytics.lowStockProducts.slice(0, 6).map((p) => (
+                  <div key={p.productId} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "5px 0", borderBottom: `1px solid ${C.line}` }}>
+                    <span style={{ fontWeight: 600 }}>{p.name}</span>
+                    <span style={{ fontWeight: 700, color: p.stockQuantity === 0 ? C.red : C.amber }}>{p.stockQuantity} / {p.lowStockThreshold}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function OverviewPage({ onSessionExpired }) {
   const [data, setData] = useState(null);
   const [loadState, setLoadState] = useState("loading");
@@ -227,6 +365,8 @@ function OverviewPage({ onSessionExpired }) {
     <div>
       <TopBar title="Overview" subtitle="Real counts across the platform — see README for what's intentionally not shown yet (blended $ GMV, top markets by country)" />
       <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+        <SupplierAnalyticsPicker onSessionExpired={onSessionExpired} />
+
         <div style={{ display: "flex", gap: 16 }}>
           <KpiCard label="Total orders" value={data.totalOrders.toLocaleString()} icon={ShoppingBag} />
           <KpiCard label="Active suppliers" value={data.activeSuppliers.toLocaleString()} icon={Store} />
