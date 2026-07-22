@@ -1418,6 +1418,7 @@ function ProductsPage() {
   const [products, setProducts] = useState([]);
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
+  const [editingProduct, setEditingProduct] = useState(null);
   const { t, lang } = useLang();
   const { onSessionExpired } = useSupplier();
 
@@ -1462,10 +1463,10 @@ function ProductsPage() {
                 there's no icon/category-image field, so showing either
                 would be fake data with nothing real behind it. */}
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead><tr><Th>{t.products.thProduct}</Th><Th>{t.products.thCategory}</Th><Th align="right">{t.products.thPrice}</Th><Th align="right">{t.products.thStock}</Th><Th>{t.products.thStatus}</Th></tr></thead>
+              <thead><tr><Th>{t.products.thProduct}</Th><Th>{t.products.thCategory}</Th><Th align="right">{t.products.thPrice}</Th><Th align="right">{t.products.thStock}</Th><Th>{t.products.thStatus}</Th><Th></Th></tr></thead>
               <tbody>
                 {products.length === 0 && (
-                  <tr><td colSpan={5} style={{ textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>{lang === "zh" ? "暂无商品" : "No products yet."}</td></tr>
+                  <tr><td colSpan={6} style={{ textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>{lang === "zh" ? "暂无商品" : "No products yet."}</td></tr>
                 )}
                 {products.map(p => (
                   <tr key={p.id}>
@@ -1474,12 +1475,105 @@ function ProductsPage() {
                     <Td align="right" style={{ fontWeight: 700 }}>${Number(p.price).toFixed(2)} {p.currencyCode}</Td>
                     <Td align="right" style={{ color: p.stockQuantity === 0 ? C.red : p.stockQuantity < 20 ? C.amber : C.ink, fontWeight: p.stockQuantity < 20 ? 700 : 400 }}>{p.stockQuantity}</Td>
                     <Td><Badge label={t.statusProduct[p.status] || p.status} statusKey={p.status} /></Td>
+                    <Td align="right">
+                      <button
+                        onClick={() => setEditingProduct(p)}
+                        style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${C.line}`, background: "#fff", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
+                      >{lang === "zh" ? "编辑" : "Edit"}</button>
+                    </Td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </Card>
         )}
+      </div>
+      {editingProduct && (
+        <EditProductModal
+          product={editingProduct}
+          onClose={() => setEditingProduct(null)}
+          onSaved={() => { setEditingProduct(null); load(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// Real product edit -- confirmed scope: price, stock, and the real
+// supplier-configurable low-stock alert threshold (migration 037).
+// updateProduct() itself already existed in this app's own API client
+// but was never actually called anywhere -- there was genuinely no
+// way to edit a real existing product's price or stock at all before
+// this, only at creation time.
+function EditProductModal({ product, onClose, onSaved }) {
+  const { lang } = useLang();
+  const { onSessionExpired } = useSupplier();
+  const [price, setPrice] = useState(String(product.price));
+  const [stockQuantity, setStockQuantity] = useState(String(product.stockQuantity));
+  const [lowStockThreshold, setLowStockThreshold] = useState(String(product.lowStockThreshold ?? 5));
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleSave = async () => {
+    const priceNum = parseFloat(price);
+    const stockNum = parseInt(stockQuantity, 10);
+    const thresholdNum = parseInt(lowStockThreshold, 10);
+    if (!Number.isFinite(priceNum) || priceNum < 0) {
+      setError(lang === "zh" ? "请输入有效价格" : "Enter a valid price.");
+      return;
+    }
+    if (!Number.isInteger(stockNum) || stockNum < 0) {
+      setError(lang === "zh" ? "请输入有效库存数量" : "Enter a valid stock quantity.");
+      return;
+    }
+    if (!Number.isInteger(thresholdNum) || thresholdNum < 0) {
+      setError(lang === "zh" ? "请输入有效的库存预警阈值" : "Enter a valid low-stock threshold.");
+      return;
+    }
+    setIsSaving(true);
+    setError(null);
+    try {
+      await updateProduct(getStoredToken(), product.id, { price: priceNum, stockQuantity: stockNum, lowStockThreshold: thresholdNum });
+      onSaved();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
+      <div style={{ background: "#fff", borderRadius: 12, padding: 24, width: 380, maxWidth: "90vw" }}>
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{product.name}</div>
+        <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>{lang === "zh" ? "编辑价格、库存与库存预警阈值" : "Edit price, stock, and low-stock alert threshold"}</div>
+
+        <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>{lang === "zh" ? "价格 (USD)" : "Price (USD)"}</label>
+        <input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)}
+          style={{ width: "100%", padding: "8px 11px", borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13, marginBottom: 12, boxSizing: "border-box" }} />
+
+        <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>{lang === "zh" ? "库存数量" : "Stock quantity"}</label>
+        <input type="number" step="1" value={stockQuantity} onChange={(e) => setStockQuantity(e.target.value)}
+          style={{ width: "100%", padding: "8px 11px", borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13, marginBottom: 12, boxSizing: "border-box" }} />
+
+        <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>{lang === "zh" ? "库存预警阈值" : "Low-stock alert threshold"}</label>
+        <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>
+          {lang === "zh" ? "库存降至此数量或以下时，您将收到通知。" : "You'll be notified once when stock falls to this level or below."}
+        </div>
+        <input type="number" step="1" value={lowStockThreshold} onChange={(e) => setLowStockThreshold(e.target.value)}
+          style={{ width: "100%", padding: "8px 11px", borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13, marginBottom: 12, boxSizing: "border-box" }} />
+
+        {error && <div style={{ fontSize: 12, color: C.red, marginBottom: 12 }}>{error}</div>}
+
+        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+          <button onClick={onClose} disabled={isSaving} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            {lang === "zh" ? "取消" : "Cancel"}
+          </button>
+          <button onClick={handleSave} disabled={isSaving} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+            {isSaving ? "…" : (lang === "zh" ? "保存" : "Save")}
+          </button>
+        </div>
       </div>
     </div>
   );

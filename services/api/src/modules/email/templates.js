@@ -156,4 +156,4 @@ function payoutConfirmationEmail({ recipientName, amount, currencyCode, subOrder
   return { html, text };
 }
 
-module.exports = { passwordResetEmail, orderConfirmationEmail, shippingNotificationEmail, deliveryNotificationEmail, payoutConfirmationEmail };
+module.exports = { passwordResetEmail, orderConfirmationEmail, shippingNotificationEmail, deliveryNotificationEmail, payoutConfirmationEmail, wrapEmailBody };

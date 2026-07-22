@@ -31,6 +31,12 @@ async function createApprovedCnyProduct({ priceCny, weightKg, lengthCm, widthCm,
       nameZh: `定价引擎测试 ${suffix}`,
       category: 'brake', part: 'Front Brake Disc', position: 'Front', oemNumber: `PRICING-${suffix}`,
       price: priceCny, currencyCode: 'CNY',
+      // CONFIRMED (migration 037): a real product with no real stock
+      // declared defaults to 0 and is genuinely unorderable now that
+      // stock is actually enforced -- this test file places real
+      // orders against its own test products, so it needs a real
+      // stock quantity here, not the honest-but-zero default.
+      stockQuantity: 100,
       fitment: { generationId: 'gen_bmw_1_series_f20', year: 2018 },
       images: ['/uploads/p-a.jpg', '/uploads/p-b.jpg', '/uploads/p-c.jpg'],
       weightKg, lengthCm, widthCm, heightCm,

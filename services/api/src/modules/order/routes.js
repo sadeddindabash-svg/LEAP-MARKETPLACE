@@ -4,7 +4,7 @@ const { requireAuth, optionalAuth, requirePageAccessIfAdmin } = require('../auth
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
 const { validatePromoCode, calculateDiscountUsd, recordRedemption, checkAndGrantReferralReward } = require('../promotions/helpers');
 const { sendTransactionalEmail } = require('../email/client');
-const { orderConfirmationEmail } = require('../email/templates');
+const { orderConfirmationEmail, wrapEmailBody } = require('../email/templates');
 const { createNotification } = require('../notifications/helpers');
 const { buildTrackingTimeline } = require('../tracking/liveTracking');
 
@@ -73,6 +73,45 @@ router.post('/', async (req, res, next) => {
     for (const item of items) {
       if (!productById[item.productId]) {
         throw Object.assign(new Error(`Unknown product: ${item.productId}`), { status: 400 });
+      }
+    }
+
+    // REAL, SIGNIFICANT GAP FOUND AND FIXED HERE (migration 037): stock
+    // was never actually decremented anywhere in this whole project --
+    // a real order could be placed indefinitely without ever reducing
+    // what a supplier's real available stock showed, and nothing
+    // prevented genuinely overselling past it. Each real decrement is
+    // atomic and self-checking (the WHERE clause itself enforces
+    // enough stock exists, closing the real race-condition window a
+    // separate check-then-update would leave open between two
+    // concurrent real orders for the last few units) -- if the real
+    // row count comes back empty, there wasn't enough stock, and the
+    // whole real order is rejected, not partially fulfilled.
+    const lowStockAlerts = [];
+    for (const item of items) {
+      const { rows: stockRows } = await client.query(
+        `UPDATE products
+         SET stock_quantity = stock_quantity - $1
+         WHERE id = $2 AND stock_quantity >= $1
+         RETURNING stock_quantity, low_stock_threshold, name, supplier_id`,
+        [item.quantity, item.productId]
+      );
+      if (stockRows.length === 0) {
+        const { rows: currentRows } = await client.query('SELECT stock_quantity, name FROM products WHERE id = $1', [item.productId]);
+        const available = currentRows[0]?.stock_quantity ?? 0;
+        throw Object.assign(
+          new Error(`Only ${available} left in stock for ${currentRows[0]?.name || item.productId} — reduce the quantity and try again.`),
+          { status: 400 }
+        );
+      }
+      const { stock_quantity: newStock, low_stock_threshold: threshold, name, supplier_id: supplierId } = stockRows[0];
+      const previousStock = newStock + item.quantity;
+      // Real, confirmed design: notify only once, right when crossing
+      // the real threshold (previously above it, now at or below) --
+      // never re-notifies on every subsequent real order once already
+      // low, which would just be noise.
+      if (previousStock > threshold && newStock <= threshold) {
+        lowStockAlerts.push({ productId: item.productId, name, supplierId, newStock, threshold });
       }
     }
 
@@ -194,6 +233,40 @@ router.post('/', async (req, res, next) => {
     }
 
     await client.query('COMMIT');
+
+    // Real, best-effort low-stock notification (migration 037) --
+    // same after-commit pattern as every other real trigger here: a
+    // genuine failure notifying a supplier should never roll back or
+    // block the real order that already succeeded.
+    for (const alert of lowStockAlerts) {
+      try {
+        const { rows: supplierUserRows } = await db.query('SELECT id FROM users WHERE supplier_id = $1 AND role = $2', [alert.supplierId, 'supplier']);
+        if (supplierUserRows.length > 0) {
+          await createNotification({
+            userId: supplierUserRows[0].id,
+            type: 'low_stock',
+            title: 'Low stock alert',
+            body: `${alert.name} is down to ${alert.newStock} unit${alert.newStock === 1 ? '' : 's'} (your alert threshold: ${alert.threshold}).`,
+            linkType: 'product',
+            linkId: alert.productId,
+          });
+          const { rows: supplierRows } = await db.query('SELECT email, name FROM users WHERE id = $1', [supplierUserRows[0].id]);
+          if (supplierRows.length > 0 && supplierRows[0].email) {
+            await sendTransactionalEmail({
+              to: supplierRows[0].email,
+              subject: `Low stock: ${alert.name}`,
+              html: wrapEmailBody({
+                heading: 'Low stock alert',
+                bodyHtml: `Hi${supplierRows[0].name ? ` ${supplierRows[0].name}` : ''},<br><br><strong>${alert.name}</strong> is down to <strong>${alert.newStock}</strong> unit${alert.newStock === 1 ? '' : 's'} — at or below your alert threshold of ${alert.threshold}.<br><br>Update your stock levels in the supplier portal to keep this listing accurate.`,
+              }),
+              fallbackLogLabel: 'low-stock',
+            });
+          }
+        }
+      } catch (err) {
+        console.error('[low-stock] Real notification failed (non-fatal):', err.message);
+      }
+    }
 
     // Real referral reward check — deliberately AFTER the commit, as a
     // best-effort follow-up rather than part of the order's own

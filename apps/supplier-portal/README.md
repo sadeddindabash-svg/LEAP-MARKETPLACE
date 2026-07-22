@@ -95,10 +95,24 @@ dashboard's Overview page (see `services/api/README.md`).
 
 - `GET /supplier/me/products` — only this supplier's own products, scoped
   server-side (not just filtered in the UI) via `WHERE supplier_id = ...`.
-- `PATCH /supplier/me/products/:id` — edit price/stock. Ownership is
-  enforced by the `WHERE` clause itself, not a lookup-then-check — trying
-  to edit another supplier's product returns 404 (not 403), the same
-  "don't confirm it exists" behavior used elsewhere in this codebase.
+- `PATCH /supplier/me/products/:id` — edit price/stock/low-stock
+  threshold. Ownership is enforced by the `WHERE` clause itself, not a
+  lookup-then-check — trying to edit another supplier's product
+  returns 404 (not 403), the same "don't confirm it exists" behavior
+  used elsewhere in this codebase.
+
+**A real, standalone gap was found and fixed (migration 037)**: this
+endpoint — and the `updateProduct()` function in this app's own API
+client — already existed, but neither was ever actually wired up
+anywhere in the UI. There was genuinely no way to edit an existing
+real product's price or stock at all after creation, only during
+initial submission — the README above described this as done when it
+wasn't. Fixed with a real "Edit" action on each row and a real modal
+(`EditProductModal`) for price, stock, and the new, real,
+supplier-configurable low-stock alert threshold — see
+`services/api/README.md`'s "Real stock decrementing, oversell
+prevention, and low-stock alerts" section for the full real backend
+design this connects to.
 
 ### Structured product submission (this pass)
 

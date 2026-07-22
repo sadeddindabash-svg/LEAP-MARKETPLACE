@@ -102,6 +102,7 @@ function toProductDto(row) {
     price: Number(row.price),
     currencyCode: row.currency_code,
     stockQuantity: row.stock_quantity,
+    lowStockThreshold: row.low_stock_threshold,
     estimatedDeliveryDays: row.estimated_delivery_days,
     weightKg: row.weight_kg === null ? null : Number(row.weight_kg),
     lengthCm: row.length_cm === null ? null : Number(row.length_cm),
@@ -568,17 +569,21 @@ router.patch('/me/products/:id/complete', requireAuth, requireRole('supplier'), 
 // looks identical to "not found", which is the correct thing to leak here.
 router.patch('/me/products/:id', requireAuth, requireRole('supplier'), async (req, res, next) => {
   try {
-    const { price, stockQuantity } = req.body || {};
-    if (price === undefined && stockQuantity === undefined) {
-      return res.status(400).json({ error: 'Provide at least one of: price, stockQuantity' });
+    const { price, stockQuantity, lowStockThreshold } = req.body || {};
+    if (price === undefined && stockQuantity === undefined && lowStockThreshold === undefined) {
+      return res.status(400).json({ error: 'Provide at least one of: price, stockQuantity, lowStockThreshold' });
+    }
+    if (lowStockThreshold !== undefined && (!Number.isInteger(lowStockThreshold) || lowStockThreshold < 0)) {
+      return res.status(400).json({ error: 'lowStockThreshold must be a whole number of 0 or more' });
     }
     const { rows } = await db.query(
       `UPDATE products SET
          price = COALESCE($1, price),
-         stock_quantity = COALESCE($2, stock_quantity)
-       WHERE id = $3 AND supplier_id = $4
+         stock_quantity = COALESCE($2, stock_quantity),
+         low_stock_threshold = COALESCE($3, low_stock_threshold)
+       WHERE id = $4 AND supplier_id = $5
        RETURNING *`,
-      [price ?? null, stockQuantity ?? null, req.params.id, req.user.supplierId]
+      [price ?? null, stockQuantity ?? null, lowStockThreshold ?? null, req.params.id, req.user.supplierId]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
     res.json(await attachImagesAndFitment(toProductDto(rows[0])));

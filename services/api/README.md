@@ -1604,6 +1604,73 @@ all.
 visible only to the owner account, matching the same restriction
 already used for the "Team & permissions" section right above it.
 
+## Real stock decrementing, oversell prevention, and low-stock alerts (migration 037)
+
+**A real, significant gap was found first**, raised directly by the
+person before building the originally-requested low-stock alert
+feature: `stock_quantity` was never actually decremented anywhere in
+this whole project — a real order could be placed indefinitely without
+ever reducing what a supplier's real available stock showed, and
+nothing prevented a real order from genuinely overselling past it. A
+low-stock alert is meaningless without real stock tracking underneath
+it, so this migration fixes that first, then builds the originally-
+requested alert on top of it.
+
+**`POST /order`** now decrements stock atomically and self-checks
+in the same real SQL statement:
+```sql
+UPDATE products SET stock_quantity = stock_quantity - $1
+WHERE id = $2 AND stock_quantity >= $1
+RETURNING stock_quantity, low_stock_threshold, name, supplier_id
+```
+This closes the real race-condition window a separate check-then-
+update would leave open between two concurrent real orders for the
+last few units — if the real row count comes back empty, there wasn't
+enough stock, and the whole real order is rejected with a clear
+message (`"Only N left in stock for X"`), not partially fulfilled.
+
+**Low-stock alerts**: a real, supplier-configurable threshold per
+product (`low_stock_threshold`, default 5) — a supplier selling a
+slow-moving, expensive part may want a real alert at 2 units left; one
+selling a fast-moving, cheap one may want it at 20. Notifies exactly
+once, right when crossing the threshold (previously above it, now at
+or below) — never re-notifies on every subsequent real order once
+already low, which would just be noise. Set via the existing `PATCH
+/supplier/me/products/:id` endpoint (now also accepting
+`lowStockThreshold` alongside `price`/`stockQuantity`).
+
+**A real bug was found and fixed while testing this**: the
+`notifications` table's own CHECK constraint (migration 019) only ever
+allowed a fixed, specific set of real notification types —
+`'low_stock'` wasn't among them, so the real notification attempt
+genuinely failed with a real constraint violation the first time this
+was tested end-to-end, not just assumed to work. Fixed by widening the
+real constraint to include it.
+
+**A second, real regression was found and fixed** in an *existing*
+test (`pricing.integration.test.js`): it created test products without
+ever specifying stock, which — correctly, under the new real
+enforcement — defaults to 0 and is genuinely unorderable. Fixed by
+giving that test's products a real stock quantity to work with, rather
+than loosening the new real enforcement to accommodate it.
+
+**A separate, standalone real gap was also found and fixed**: the
+supplier portal already imported `updateProduct()` from its own API
+client, but never actually called it anywhere — there was genuinely no
+way to edit an existing real product's price or stock at all after
+creation, only at initial submission. Built a real "Edit" action and
+modal on the products table (price, stock, and the new low-stock
+threshold), which is also where the threshold above is actually set
+from the supplier's side.
+
+**Tested end-to-end** — see `apps/admin-dashboard/src/lowStockAlerts.integration.test.js`
+(5 tests, REAL backend): placing a real order genuinely decrements
+stock by the ordered quantity; a real order that would oversell past
+available stock is rejected, and stock is left completely unchanged; a
+real low-stock notification fires exactly once, right when crossing
+the real threshold; a supplier can configure their own real threshold
+per product; a negative threshold is rejected.
+
 ## Product search (added to GET /catalog/products)
 
 **A real gap, not previously covered**: buyers could filter by category

@@ -635,7 +635,7 @@ can never crash the page.
 npm test
 ```
 
-Fifty-eight test files, 374 tests total, all passing:
+Fifty-nine test files, 379 tests total, all passing:
 - `src/App.test.jsx` (7, mocked) — auth flows
 - `src/auth.integration.test.js` (4, REAL backend) — login/session
 - `src/passwordReset.integration.test.js` (5, REAL backend) — a real
@@ -889,7 +889,13 @@ Fifty-eight test files, 374 tests total, all passing:
   real preview before and after rather than assuming the math; the real
   first component cannot move up and the real last cannot move down; an
   invalid direction and a nonexistent component are both rejected; and
-  non-admins cannot reorder fee components.
+  non-admins cannot reorder fee components. **A second real regression
+  was found and fixed here (migration 037)**: the "placed order locks
+  in the price" test's product-creation helper never specified a real
+  stock quantity, which — correctly, under real stock enforcement
+  added elsewhere — now defaults to 0 and is genuinely unorderable.
+  Fixed by giving it a real stock quantity, rather than loosening the
+  new real enforcement to accommodate an old test.
 - `src/PricingFlow.test.jsx` (9, mocked, full component tree) — renders
   the real seeded fee component and current FX rate, adding a new fee
   calls the real create endpoint and shows up immediately, updating the
@@ -1046,6 +1052,22 @@ Fifty-eight test files, 374 tests total, all passing:
   attempt logged `rows[0].id`, genuinely `undefined`, silently
   becoming a `null` target — fixed to log the real `code` string
   instead.
+- `src/lowStockAlerts.integration.test.js` (5, REAL backend, new,
+  migration 037) — placing a real order genuinely decrements stock by
+  the ordered quantity; a real order that would oversell past
+  available stock is rejected, and stock is left completely
+  unchanged; a real low-stock notification fires exactly once, right
+  when crossing the real threshold (confirmed by placing a second
+  order that crosses further below and checking the count stays at
+  1); a supplier can configure their own real threshold per product; a
+  negative threshold is rejected. **A real, significant, prerequisite
+  gap was found and fixed first**: stock was never actually
+  decremented anywhere in this whole project, and nothing prevented
+  overselling — both fixed here as the real foundation this alert
+  feature depends on. **A real bug was found and fixed along the
+  way**: the notifications table's own CHECK constraint didn't allow a
+  `'low_stock'` type at all — the first real end-to-end test caught
+  this with a genuine constraint violation.
 - `src/recentlyViewed.integration.test.js` (4, REAL backend, new,
   migration 032) — recording a view and fetching the list shows it,
   most recent first; re-viewing a product moves it back to the front
