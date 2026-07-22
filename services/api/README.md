@@ -2135,6 +2135,21 @@ no `photos` field at all (isolation genuinely enforced, not just
 undocumented), and confirmed a return filed with no photos returns a
 real empty array rather than an error or a missing field.
 
+**A real, honest gap in the FIRST pass of this feature, found by an
+actual user testing it live**: the admin dashboard's
+`ReturnCaseDetailPage` (`apps/admin-dashboard/src/App.jsx`) was never
+updated to render this new `photos` field — the API had it, but no UI
+consumed it, so an admin saw a return with attached evidence and no way
+to actually see the evidence. Fixed by adding a photo strip to the
+existing "Case details" card (same `<img src={API_BASE_URL + url}>`
+pattern already used for review/hub photos elsewhere in this file), and
+added a real integration test (`returns.integration.test.js`) confirming
+the data reaches the admin correctly — though note that test covers the
+DATA half only; there's no automated check that the photos actually
+render as pixels on screen, since this project's admin-dashboard test
+harness is mocked-fetch component renders and real-backend data checks,
+not a full browser/E2E tool.
+
 ## Category + parts reference lists (migration 015)
 
 **Confirmed requirement**: major categories and the specific parts that

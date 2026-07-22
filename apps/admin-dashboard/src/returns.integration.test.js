@@ -15,7 +15,7 @@ async function isBackendUp() {
   }
 }
 
-async function createTestReturnCase() {
+async function createTestReturnCase(photos) {
   const orderRes = await fetch(`${BACKEND_URL}/order`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -27,7 +27,11 @@ async function createTestReturnCase() {
   const caseRes = await fetch(`${BACKEND_URL}/returns`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ subOrderId, reason: 'Integration test reason', message: 'Integration test initial message', guestEmail: `admin-returns-test-${Date.now()}@example.com` }),
+    body: JSON.stringify({
+      subOrderId, reason: 'Integration test reason', message: 'Integration test initial message',
+      guestEmail: `admin-returns-test-${Date.now()}@example.com`,
+      ...(photos ? { photos } : {}),
+    }),
   });
   return caseRes.json();
 }
@@ -95,5 +99,24 @@ describe.runIf(backendUp)('admin return-case management against a REAL running b
     const created = await createTestReturnCase();
     const { token } = await login('admin@leap.dev', 'admin_dev_password_123');
     await expect(updateReturnCaseStatus(token, created.id, 'banana')).rejects.toThrow();
+  });
+
+  // Migration 043 -- real gap found and fixed: the backend already
+  // returned this field, but ReturnCaseDetailPage in App.jsx never
+  // rendered it, so an admin filing through a real case with attached
+  // evidence photos saw nothing. This confirms the DATA half works;
+  // there is no automated check for the actual pixels rendering on
+  // screen (would need a real component/E2E test harness this project
+  // doesn't have for admin-dashboard beyond mocked-fetch renders).
+  it('admin sees real evidence photos attached at filing time, and a case with none has a real empty array', async () => {
+    const withPhotos = await createTestReturnCase(['/uploads/test-evidence-1.jpg', '/uploads/test-evidence-2.jpg']);
+    const withoutPhotos = await createTestReturnCase();
+    const { token } = await login('admin@leap.dev', 'admin_dev_password_123');
+
+    const detailWithPhotos = await fetchReturnCaseById(token, withPhotos.id);
+    expect(detailWithPhotos.photos).toEqual(['/uploads/test-evidence-1.jpg', '/uploads/test-evidence-2.jpg']);
+
+    const detailWithoutPhotos = await fetchReturnCaseById(token, withoutPhotos.id);
+    expect(detailWithoutPhotos.photos).toEqual([]);
   });
 });

@@ -3405,6 +3405,24 @@ function ReturnCaseDetailPage({ caseId, onBack, onSessionExpired }) {
               <div style={{ ...body, fontSize: 13, fontWeight: 600 }}>{returnCase.buyerId || returnCase.guestEmail}</div>
               <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 6 }}>Related order</div>
               <PlateChip small>{returnCase.orderId}</PlateChip>
+              {/* Real evidence photos (migration 043) -- this field was
+                  already returned by GET /returns/:id, just never
+                  rendered here until now. Deliberately shown in this
+                  admin-only card, not the buyer/supplier threads --
+                  matches the backend's own isolation (never exposed via
+                  GET /returns/supplier/me/:id at all). */}
+              {returnCase.photos && returnCase.photos.length > 0 && (
+                <>
+                  <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 6 }}>Evidence photos</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {returnCase.photos.map((url, i) => (
+                      <a key={i} href={`${API_BASE_URL}${url}`} target="_blank" rel="noreferrer">
+                        <img src={`${API_BASE_URL}${url}`} alt="" style={{ width: 64, height: 64, borderRadius: 8, objectFit: "cover", border: `1px solid ${C.line}` }} />
+                      </a>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </Card>
           <Card title="Status">
