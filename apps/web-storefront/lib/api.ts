@@ -94,11 +94,24 @@ export async function fetchProducts(params: {
   category?: string;
   search?: string;
   sort?: string;
+  // Real vehicle-fitment filter (new) -- the same generationId/year
+  // filter the mobile app's own search vehicle picker already uses
+  // (see services/api/README.md's "Brand/Model/Generation(Year) filter
+  // for search" section), against the real, structured
+  // Brand->Model->Generation cascade every real product's fitment is
+  // actually stored in -- not the flat, unpopulated-for-matching
+  // reference table this storefront's own My Garage equivalent would
+  // otherwise risk repeating (see apps/mobile/README.md's "My Garage"
+  // section for that exact real bug, already fixed there).
+  generationId?: string;
+  year?: number;
 } = {}): Promise<ProductSummary[]> {
   const query = new URLSearchParams();
   if (params.category) query.set("category", params.category);
   if (params.search) query.set("search", params.search);
   if (params.sort) query.set("sort", params.sort);
+  if (params.generationId) query.set("generationId", params.generationId);
+  if (params.year) query.set("year", String(params.year));
   const qs = query.toString();
   const data = await apiGet<ProductSummary[]>(`/catalog/products${qs ? `?${qs}` : ""}`);
   return data ?? [];
@@ -690,4 +703,45 @@ export async function sendReturnCaseMessage(caseId: string, message: string, aut
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || `Failed to send message (${res.status})`);
   }
+}
+
+// ---------------- Real vehicle fitment cascade (new) ----------------
+// Reuses the SAME real GET /fitment/brands -> /brands/:id/models ->
+// /models/:id/generations cascade the mobile app's own search vehicle
+// filter and the supplier portal's product-submission form already
+// use -- the real, populated Brand->Model->Generation system every
+// real product's fitment is actually stored in.
+
+export interface VehicleBrand {
+  id: string;
+  name: string;
+}
+
+export interface VehicleModel {
+  id: string;
+  brandId: string;
+  name: string;
+}
+
+export interface VehicleGeneration {
+  id: string;
+  modelId: string;
+  name: string;
+  yearStart: number;
+  yearEnd: number | null;
+}
+
+export async function fetchVehicleBrands(): Promise<VehicleBrand[]> {
+  const data = await apiGet<VehicleBrand[]>("/fitment/brands");
+  return data ?? [];
+}
+
+export async function fetchModelsForBrand(brandId: string): Promise<VehicleModel[]> {
+  const data = await apiGet<VehicleModel[]>(`/fitment/brands/${brandId}/models`);
+  return data ?? [];
+}
+
+export async function fetchGenerationsForModel(modelId: string): Promise<VehicleGeneration[]> {
+  const data = await apiGet<VehicleGeneration[]>(`/fitment/models/${modelId}/generations`);
+  return data ?? [];
 }

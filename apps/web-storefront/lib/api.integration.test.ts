@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fetchCategories, fetchProducts, fetchProductById, fetchCart, addCartItem, fetchMyOrders, fetchOrderById, fetchWishlist, checkWishlisted, addToWishlist, removeFromWishlist, submitReview, fetchMyReferral, fetchNotifications, fetchUnreadNotificationCount, markNotificationRead, markAllNotificationsRead, resolveNotificationLink, fetchMyReturnCases, fetchReturnCase, sendReturnCaseMessage, placeOrder, fetchMyAddresses, createAddress } from './api';
+import { fetchCategories, fetchProducts, fetchProductById, fetchCart, addCartItem, fetchMyOrders, fetchOrderById, fetchWishlist, checkWishlisted, addToWishlist, removeFromWishlist, submitReview, fetchMyReferral, fetchNotifications, fetchUnreadNotificationCount, markNotificationRead, markAllNotificationsRead, resolveNotificationLink, fetchMyReturnCases, fetchReturnCase, sendReturnCaseMessage, placeOrder, fetchMyAddresses, createAddress, fetchVehicleBrands, fetchModelsForBrand, fetchGenerationsForModel } from './api';
 
 const BACKEND_URL = 'http://localhost:4000';
 
@@ -551,5 +551,38 @@ describe.runIf(backendUp)('checkout (account-aware, real saved addresses) agains
 
     const addresses = await fetchMyAddresses(token);
     expect(addresses.length).toBe(3);
+  });
+});
+
+// Real vehicle-fitment filter (new) -- closes a real, confirmed gap:
+// this storefront had zero vehicle-based filtering before this.
+describe.runIf(backendUp)('vehicle fitment cascade + product filter against a REAL running backend', () => {
+  it('CRITICAL: the full real Brand -> Model -> Generation -> Year cascade returns real data at every level', async () => {
+    const brands = await fetchVehicleBrands();
+    const bmw = brands.find((b) => b.name === 'BMW');
+    expect(bmw).toBeDefined();
+
+    const models = await fetchModelsForBrand(bmw!.id);
+    const oneSeries = models.find((m) => m.name === '1 Series');
+    expect(oneSeries).toBeDefined();
+
+    const generations = await fetchGenerationsForModel(oneSeries!.id);
+    const f20 = generations.find((g) => g.name === 'F20');
+    expect(f20).toBeDefined();
+    expect(f20!.yearStart).toBe(2015);
+    expect(f20!.yearEnd).toBe(2019);
+  });
+
+  it('CRITICAL: filtering products by a real generation+year genuinely narrows to real matching products, not zero and not everything', async () => {
+    const allProducts = await fetchProducts();
+    const filtered = await fetchProducts({ generationId: 'gen_bmw_1_series_f20', year: 2018 });
+
+    expect(filtered.length).toBeGreaterThan(0);
+    expect(filtered.length).toBeLessThan(allProducts.length);
+  });
+
+  it('a nonexistent generation genuinely returns zero real products, not an error or everything', async () => {
+    const filtered = await fetchProducts({ generationId: 'not-a-real-generation', year: 2018 });
+    expect(filtered.length).toBe(0);
   });
 });

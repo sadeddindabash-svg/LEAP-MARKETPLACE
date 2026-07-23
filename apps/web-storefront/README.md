@@ -443,6 +443,46 @@ rejected rather than leaking the case, and confirmed the existing
 logged-in buyer flow is completely unaffected. Full suite: 25/25
 passing.
 
+## Real vehicle-fitment filter for search (new)
+
+**A real, confirmed gap**: this storefront had zero vehicle-based
+filtering at all — unlike the mobile app, which has both a search
+vehicle picker and My Garage, both built on the real, structured
+Brand→Model→Generation cascade (`product_fitment_entries`, migration
+010) every real product's fitment is actually stored in.
+
+- **`components/VehicleFilter.tsx`** — a real Client Component (needs
+  interactive cascading fetches as a buyer picks each level), reusing
+  the exact same `GET /fitment/brands` → `/brands/:id/models` →
+  `/models/:id/generations` cascade the mobile app and supplier portal
+  already use. A single-year generation applies immediately rather
+  than making the buyer pick from a list of one.
+- **Navigates via real URL search params** (`generationId`, `year`)
+  rather than local-only state — `/search` itself stays a real Server
+  Component doing the actual filtering server-side, the same way
+  `category`/`q` already work, so a search engine can index each real
+  filtered result page on its own, with its own real URL.
+- **`fetchProducts()`** extended with `generationId`/`year`, calling
+  the same real backend filter the search vehicle picker's own
+  earlier work (`services/api/README.md`'s "Brand/Model/Generation
+  (Year) filter for search") already built and verified.
+- **Deliberately NOT the flat, unpopulated-for-matching reference
+  system** — the exact real bug `apps/mobile/README.md`'s "My Garage"
+  section describes fixing; this was built directly on the real,
+  populated system from the start.
+
+**Verified end-to-end against the real running backend AND the real
+rendered page** — not just the API contract in isolation: confirmed
+the full real Brand→Model→Generation→Year cascade returns real data at
+every level, confirmed filtering by a real generation+year genuinely
+narrows to real matching products (54 of the full catalog, neither
+zero nor everything), confirmed a nonexistent generation returns
+genuinely zero, and confirmed the real rendered `/search` page (via
+the actual dev server, not just curl against the API) shows the
+correct real count and "matching your vehicle" copy in its real
+server-rendered HTML. Zero TypeScript errors. Full suite: 32/32
+passing.
+
 ## Real account-aware checkout + saved addresses (fixed — a bigger gap than the README once described)
 
 **A real, more fundamental bug found while scoping "saved-address

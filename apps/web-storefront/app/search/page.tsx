@@ -1,10 +1,12 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { fetchCategories, fetchProducts, resolveImageUrl } from "@/lib/api";
 import { SaveSearchButton } from "@/components/SaveSearchButton";
+import { VehicleFilter } from "@/components/VehicleFilter";
 
 interface PageProps {
-  searchParams: Promise<{ q?: string; category?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; generationId?: string; year?: string }>;
 }
 
 export async function generateMetadata({
@@ -17,14 +19,15 @@ export async function generateMetadata({
 }
 
 // Real Server Component -- re-fetches real, filtered results on every
-// real navigation (a new search query or category is a real new page
-// request in this model), so a search engine can index each real
-// filtered result page on its own, with its own real URL.
+// real navigation (a new search query, category, or real vehicle
+// fitment is a real new page request in this model), so a search
+// engine can index each real filtered result page on its own, with
+// its own real URL.
 export default async function SearchPage({ searchParams }: PageProps) {
-  const { q, category } = await searchParams;
+  const { q, category, generationId, year } = await searchParams;
   const [categories, products] = await Promise.all([
     fetchCategories(),
-    fetchProducts({ search: q, category }),
+    fetchProducts({ search: q, category, generationId, year: year ? Number(year) : undefined }),
   ]);
 
   return (
@@ -40,40 +43,53 @@ export default async function SearchPage({ searchParams }: PageProps) {
       </form>
 
       <div className="flex gap-8">
-        <aside className="w-48 shrink-0">
-          <h2 className="font-display font-bold text-lg mb-3">Category</h2>
-          <ul className="space-y-1 text-sm">
-            <li>
-              <Link
-                href={`/search${q ? `?q=${encodeURIComponent(q)}` : ""}`}
-                className={!category ? "font-semibold text-signal" : "text-muted hover:text-ink"}
-              >
-                All categories
-              </Link>
-            </li>
-            {categories.map((c) => (
-              <li key={c.id}>
+        <aside className="w-56 shrink-0 space-y-6">
+          {/* Real <Suspense> boundary required around useSearchParams()
+              (see app/checkout/confirmation/page.tsx's own comment for
+              the full finding -- a real production build fails
+              outright without one, not just a warning). */}
+          <Suspense fallback={<div className="rounded-lg border border-line bg-white p-4 text-sm text-muted">Loading…</div>}>
+            <VehicleFilter />
+          </Suspense>
+
+          <div>
+            <h2 className="font-display font-bold text-lg mb-3">Category</h2>
+            <ul className="space-y-1 text-sm">
+              <li>
                 <Link
-                  href={`/search?category=${encodeURIComponent(c.id)}${q ? `&q=${encodeURIComponent(q)}` : ""}`}
-                  className={category === c.id ? "font-semibold text-signal" : "text-muted hover:text-ink"}
+                  href={`/search${q ? `?q=${encodeURIComponent(q)}` : ""}`}
+                  className={!category ? "font-semibold text-signal" : "text-muted hover:text-ink"}
                 >
-                  {c.nameEn}
+                  All categories
                 </Link>
               </li>
-            ))}
-          </ul>
+              {categories.map((c) => (
+                <li key={c.id}>
+                  <Link
+                    href={`/search?category=${encodeURIComponent(c.id)}${q ? `&q=${encodeURIComponent(q)}` : ""}`}
+                    className={category === c.id ? "font-semibold text-signal" : "text-muted hover:text-ink"}
+                  >
+                    {c.nameEn}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
         </aside>
 
         <div className="flex-1">
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm text-muted">
               {products.length} part{products.length === 1 ? "" : "s"} found
+              {generationId && " matching your vehicle"}
             </p>
             <SaveSearchButton searchTerm={q} category={category} />
           </div>
           {products.length === 0 ? (
             <p className="text-muted">
-              No parts match your search. Try a different term or category.
+              {generationId
+                ? "No parts match your vehicle yet. Try browsing without the vehicle filter."
+                : "No parts match your search. Try a different term or category."}
             </p>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
