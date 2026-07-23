@@ -205,19 +205,73 @@ export interface PlaceOrderResult {
   currencyCode: string;
 }
 
-export async function placeGuestOrder(
+// REAL BUG FOUND AND FIXED HERE: this used to always send guestEmail,
+// even for a real logged-in buyer (checked via useAuth() in
+// app/checkout/page.tsx) -- every single order placed through this
+// storefront's checkout became a guest order, buyer_id null, with zero
+// connection to the real account that was actually logged in. The
+// real backend (POST /order) already accepted userId + addressId (a
+// saved address) the whole time; this client function just never used
+// either. Renamed from placeGuestOrder to placeOrder to match its real,
+// dual (guest OR logged-in) purpose -- the only real caller
+// (app/checkout/page.tsx) is updated in the same pass.
+export async function placeOrder(
   items: Array<{ productId: string; quantity: number }>,
-  guestEmail: string,
-  address: PlaceOrderAddress
+  auth: { userId?: string; guestEmail?: string },
+  addressInput: { addressId: string } | { address: PlaceOrderAddress }
 ): Promise<PlaceOrderResult> {
   const res = await fetch(`${API_BASE_URL}/order`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ items, guestEmail, address }),
+    body: JSON.stringify({ items, ...auth, ...addressInput }),
   });
   const body = await res.json();
   if (!res.ok) throw new Error(body.error || `Failed to place order (${res.status})`);
   return body as PlaceOrderResult;
+}
+
+// ---------------- Real buyer address book (client-side calls, new) ----------------
+// Reuses the SAME real GET/POST/DELETE /addresses/me* endpoints the
+// mobile app already uses (migration 017) -- a real logged-in buyer
+// can save up to 3 addresses, enforced by the backend itself, not
+// re-checked here.
+
+export interface SavedAddress {
+  id: string;
+  label: string;
+  recipientName: string;
+  phone: string;
+  country: string;
+  city: string;
+  streetAddress: string;
+  postalCode: string | null;
+  isDefault: boolean;
+  createdAt: string;
+}
+
+export async function fetchMyAddresses(token: string): Promise<SavedAddress[]> {
+  const res = await fetch(`${API_BASE_URL}/addresses/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Failed to load addresses (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function createAddress(
+  token: string,
+  address: { label: string; recipientName: string; phone: string; country: string; city: string; streetAddress: string; postalCode?: string; isDefault?: boolean }
+): Promise<SavedAddress> {
+  const res = await fetch(`${API_BASE_URL}/addresses/me`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(address),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error || `Failed to save address (${res.status})`);
+  return body as SavedAddress;
 }
 
 // ---------------- Real saved searches (client-side calls) ----------------

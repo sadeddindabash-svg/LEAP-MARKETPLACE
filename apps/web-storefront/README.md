@@ -443,6 +443,39 @@ rejected rather than leaking the case, and confirmed the existing
 logged-in buyer flow is completely unaffected. Full suite: 25/25
 passing.
 
+## Real account-aware checkout + saved addresses (fixed — a bigger gap than the README once described)
+
+**A real, more fundamental bug found while scoping "saved-address
+checkout" (a next-step this README itself listed)**: checkout never
+recognized a logged-in buyer at all — `placeGuestOrder` always sent
+`guestEmail`, even when `useAuth()` (already used elsewhere in this
+app) would have shown a real logged-in user. Every single order placed
+through this storefront became a guest order, `buyer_id` null,
+completely disconnected from the real account that was logged in the
+whole time — checked directly against the real backend, not assumed.
+
+- **Renamed `placeGuestOrder` → `placeOrder`** to match its real,
+  dual purpose, and made `app/checkout/page.tsx` genuinely check
+  `useAuth()` — the actual missing piece.
+- **A logged-in buyer now sees their real saved addresses** (reusing
+  the SAME `GET/POST /addresses/me*` endpoints the mobile app already
+  uses, migration 017 — up to 3, enforced by the backend, not
+  re-checked here), can pick one directly, or add a new one with an
+  optional "save for next time."
+- **Guest checkout is completely unchanged** — same manual-entry flow
+  as before this fix, for anyone not logged in.
+
+**Verified end-to-end against the real running backend**: placed a
+real order as a real logged-in buyer with a brand-new address and
+confirmed it's genuinely attached to that account (found via the
+account's own real order-history endpoint, not just trusting the
+response) — not a guest order; placed a second real order using a real
+previously-saved address by ID and confirmed the order's real shipping
+address matches it; confirmed guest checkout still places a real order
+exactly as before; and confirmed the real 3-address cap is enforced
+and surfaced correctly to the client. Zero TypeScript errors. Full
+suite: 29/29 passing.
+
 ## Next steps to make this real
 
 1. **Verify the real Google Fonts fetch** once deployed somewhere
@@ -450,10 +483,13 @@ passing.
 2. **Verify the confirmation page's client-side hydration** in a real
    browser — logically correct but only verified via curl here (see
    the cart/checkout section above).
-3. **Remaining account feature**: saved-address checkout (pick a
+3. ~~**Remaining account feature**: saved-address checkout (pick a
    previously-used address instead of typing it every time) — login/
    signup and order history are already real (see their own sections
-   above); this is the genuine remaining next pass.
+   above); this is the genuine remaining next pass.~~ **Done** — see
+   "Real account-aware checkout + saved addresses" above. Turned out
+   to be a bigger fix than this note implied: checkout wasn't even
+   account-aware at all before this pass.
 4. **A real, production domain** for `NEXT_PUBLIC_SITE_URL` — the
    sitemap and metadata currently default to `localhost`.
 5. **Real analytics** (e.g. Google Search Console verification) once

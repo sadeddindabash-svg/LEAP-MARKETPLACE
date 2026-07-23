@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fetchCategories, fetchProducts, fetchProductById, fetchCart, addCartItem, fetchMyOrders, fetchOrderById, fetchWishlist, checkWishlisted, addToWishlist, removeFromWishlist, submitReview, fetchMyReferral, fetchNotifications, fetchUnreadNotificationCount, markNotificationRead, markAllNotificationsRead, resolveNotificationLink, fetchMyReturnCases, fetchReturnCase, sendReturnCaseMessage } from './api';
+import { fetchCategories, fetchProducts, fetchProductById, fetchCart, addCartItem, fetchMyOrders, fetchOrderById, fetchWishlist, checkWishlisted, addToWishlist, removeFromWishlist, submitReview, fetchMyReferral, fetchNotifications, fetchUnreadNotificationCount, markNotificationRead, markAllNotificationsRead, resolveNotificationLink, fetchMyReturnCases, fetchReturnCase, sendReturnCaseMessage, placeOrder, fetchMyAddresses, createAddress } from './api';
 
 const BACKEND_URL = 'http://localhost:4000';
 
@@ -469,5 +469,87 @@ describe.runIf(backendUp)('returns (guest + logged-in access) against a REAL run
 
     const fetched = await fetchReturnCase(createdCase.id, { token });
     expect(fetched.id).toBe(createdCase.id);
+  });
+});
+
+// Real account-aware checkout (new) -- the fix
+describe.runIf(backendUp)('checkout (account-aware, real saved addresses) against a REAL running backend', () => {
+  it('CRITICAL: a logged-in buyer placing an order with a NEW address is genuinely attached to their real account, not a guest order', async () => {
+    const suffix = Date.now();
+    const signupRes = await fetch(`${BACKEND_URL}/auth/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `storefront-checkout-test-${suffix}@example.com`, password: 'test_password_123' }),
+    });
+    const { token, user } = await signupRes.json();
+    const products = await fetchProducts();
+
+    const order = await placeOrder(
+      [{ productId: products[0].id, quantity: 1 }],
+      { userId: user.id },
+      { address: { recipientName: 'Test Buyer', phone: '555-0100', country: 'USA', city: 'Springfield', streetAddress: '123 Test St' } }
+    );
+
+    // Real, direct proof this order is genuinely attached to the real
+    // account, not a guest order with buyer_id null -- fetched via the
+    // account's own order-history endpoint, which only ever returns a
+    // real buyer's own orders.
+    const myOrders = await fetchMyOrders(token);
+    expect(myOrders.find((o) => o.id === order.id)).toBeDefined();
+  });
+
+  it('CRITICAL: a real saved address can be used directly (addressId) without re-entering it, and the real order reflects it', async () => {
+    const suffix = Date.now();
+    const signupRes = await fetch(`${BACKEND_URL}/auth/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `storefront-savedaddr-test-${suffix}@example.com`, password: 'test_password_123' }),
+    });
+    const { token, user } = await signupRes.json();
+
+    const savedAddress = await createAddress(token, {
+      label: 'Home', recipientName: 'Saved Buyer', phone: '555-0200', country: 'USA', city: 'Metropolis', streetAddress: '456 Saved St',
+    });
+    expect(savedAddress.isDefault).toBe(true); // the buyer's first real address is real-default by definition
+
+    const products = await fetchProducts();
+    const order = await placeOrder(
+      [{ productId: products[0].id, quantity: 1 }],
+      { userId: user.id },
+      { addressId: savedAddress.id }
+    );
+
+    const detail = await fetchOrderById(token, order.id);
+    expect(detail.address?.recipientName).toBe('Saved Buyer');
+    expect(detail.address?.streetAddress).toBe('456 Saved St');
+  });
+
+  it('a real guest checkout still works exactly as before this fix (no regression)', async () => {
+    const suffix = Date.now();
+    const guestEmail = `storefront-guest-checkout-test-${suffix}@example.com`;
+    const products = await fetchProducts();
+
+    const order = await placeOrder(
+      [{ productId: products[0].id, quantity: 1 }],
+      { guestEmail },
+      { address: { recipientName: 'Guest Buyer', phone: '555-0300', country: 'USA', city: 'Gotham', streetAddress: '789 Guest Ave' } }
+    );
+    expect(order.id).toBeTruthy();
+    expect(order.total).toBeGreaterThan(0);
+  });
+
+  it('the real 3-address cap is enforced by the backend, surfaced correctly to the client', async () => {
+    const suffix = Date.now();
+    const signupRes = await fetch(`${BACKEND_URL}/auth/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `storefront-addresscap-test-${suffix}@example.com`, password: 'test_password_123' }),
+    });
+    const { token } = await signupRes.json();
+
+    for (let i = 0; i < 3; i++) {
+      await createAddress(token, { label: `Address ${i}`, recipientName: 'Test', phone: '555-0000', country: 'USA', city: 'City', streetAddress: `${i} St` });
+    }
+    await expect(createAddress(token, { label: 'One too many', recipientName: 'Test', phone: '555-0000', country: 'USA', city: 'City', streetAddress: '4 St' })).rejects.toThrow(/up to 3/);
+
+    const addresses = await fetchMyAddresses(token);
+    expect(addresses.length).toBe(3);
   });
 });

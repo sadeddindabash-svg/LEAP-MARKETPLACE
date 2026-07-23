@@ -29,12 +29,16 @@ on undecided commission rates and now real (see its own section below).
 - Sidebar footer now shows the real logged-in admin's name/email and a
   working logout button (previously hardcoded "3 teammates online").
 
-**Known gap**: the `TopBar` component (shown at the top of every page)
+~~**Known gap**: the `TopBar` component (shown at the top of every page)
 still has a hardcoded "Omar M. / Ops Admin" placeholder — it wasn't wired
 to the real logged-in user because that would require threading the user
 down through every page component or introducing React Context, which felt
 like scope creep for this pass. Worth fixing before this ships anywhere
-real; see the comment above `TopBar` in `App.jsx`.
+real; see the comment above `TopBar` in `App.jsx`.~~ **Done** — fixed via a
+new `CurrentUserContext` (exactly the React Context approach this note
+once called scope creep). `TopBar` now shows the real logged-in admin's
+name/email and role everywhere. This note was stale, left uncorrected
+until now.
 
 ### Getting a real admin login to test with
 
@@ -1464,8 +1468,10 @@ only a new button added to each.
 
 ## Next steps to make this real
 
-1. Wire the `TopBar`'s hardcoded user display to the real logged-in admin
-   (see "Known gap" above).
+1. ~~Wire the `TopBar`'s hardcoded user display to the real logged-in
+   admin (see "Known gap" above).~~ **Done** — see the "Real global
+   search" section above, which introduced the same `CurrentUserContext`
+   this fix needed.
 2. Split `src/App.jsx` into separate files under `src/pages/` and
    `src/components/` — it currently works as one large file (that's how
    the prototype was authored) but should be broken up before more people
