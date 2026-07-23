@@ -562,6 +562,41 @@ The full existing admin-dashboard test suite (93 tests) was also re-run
 against the updated backend to confirm nothing broke there — still
 93/93 passing.
 
+## Real per-product low-stock threshold, everywhere (fixed)
+
+**A real, confirmed gap, found while scoping "does this portal have a
+low-stock summary"** — it already did (the Overview page's own
+low-stock card), so nothing needed building there. What actually
+needed fixing was more specific: the Products page's own stock-level
+table highlighting hardcoded `< 20` for every product, completely
+ignoring each product's own real, configurable `lowStockThreshold`
+(migration 037) — the exact real value the Overview card and the
+backend's own real alert-triggering logic already used correctly.
+
+**Confirmed as a real bug against actual data, not just reasoned
+about**: found real seeded products where a stock of 9–15 units (well
+above their real threshold of 5) were being wrongly highlighted as
+low stock under the old hardcoded logic — and the inverse case (a
+genuinely low product whose real threshold happens to be above 20)
+would have been silently missed entirely.
+
+- **Products table**: now colors/bolds a row using
+  `stockQuantity < lowStockThreshold` (that product's own real value),
+  not a fixed number.
+- **New "Low stock" filter tab** (alongside "All"): closes a real,
+  separate gap — the Overview page's low-stock card caps at 8 real
+  items with no way to see the rest. This filter shows every real
+  low-stock product, with a real live count in the tab label.
+
+**Verified against the real running backend**: fetched real supplier
+products, confirmed several had real stock/threshold combinations
+where the old hardcoded logic and the real per-product logic
+genuinely disagreed. Real component test (`ProductsListFlow.test.jsx`)
+uses three products chosen specifically to distinguish old-vs-new
+behavior (a false negative, a false positive, and a case where both
+happened to already agree) — 2/2 passing. Full regression: 76/76
+passing.
+
 ## Next steps to make this real
 
 1. Wire the Finance/Payouts page — blocked on the commission-rate
@@ -569,5 +604,9 @@ against the updated backend to confirm nothing broke there — still
    Payouts page is still mock.
 2. Split `src/App.jsx` into separate files (pages/components) — same note
    as the admin dashboard; this file is large now.
-3. Add the OEM/fitment/description/image fields to real backend storage,
-   then restore them to the Add Product form.
+3. ~~Add the OEM/fitment/description/image fields to real backend
+   storage, then restore them to the Add Product form.~~ **Done** —
+   this was a stale note. `AddProductForm` was rebuilt with the full
+   cascading fitment picker, description, OEM number, and photo upload
+   already — see "Structured product submission" above. Left
+   uncorrected here until now.

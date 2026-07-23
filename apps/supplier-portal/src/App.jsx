@@ -76,6 +76,7 @@ const STRINGS = {
       title: "商品管理", subtitle: (n) => `共 ${n} 个商品 · 平台展示语言由系统自动翻译`,
       bulkUpload: "批量上传", addProduct: "手动添加商品",
       thProduct: "商品", thCategory: "分类", thPrice: "价格", thStock: "库存", thFitment: "适配车型", thStatus: "状态",
+      filterAll: "全部", filterLowStock: (n) => `库存预警 (${n})`,
       addForm: {
         title: "手动添加商品", nameLabel: "商品名称（中文）", namePlaceholder: "例如：RIDEX 前刹车盘（通风型 300mm）",
         categoryLabel: "商品分类", categories: ["刹车系统", "发动机", "电气系统", "滤清器", "悬挂系统", "照明系统"],
@@ -161,6 +162,7 @@ const STRINGS = {
       title: "Products", subtitle: (n) => `${n} products · buyer-facing text is translated automatically`,
       bulkUpload: "Bulk upload", addProduct: "Add product",
       thProduct: "Product", thCategory: "Category", thPrice: "Price", thStock: "Stock", thFitment: "Fitment", thStatus: "Status",
+      filterAll: "All", filterLowStock: (n) => `Low stock (${n})`,
       addForm: {
         title: "Add product", nameLabel: "Product name (Chinese)", namePlaceholder: "e.g. RIDEX Front Brake Disc, Vented 300mm",
         categoryLabel: "Category", categories: ["Brake System", "Engine", "Electrical", "Filters", "Suspension", "Lighting"],
@@ -1533,6 +1535,14 @@ function ProductsPage() {
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
   const [editingProduct, setEditingProduct] = useState(null);
+  // Real stock filter (new) -- closes a real gap: the Overview page's
+  // own low-stock card (see AnalyticsPage/OverviewPage above) caps at
+  // 8 real items with no way to see the rest. This filter shows every
+  // real low-stock product, using each product's own real,
+  // configurable lowStockThreshold (migration 037) -- the same real
+  // value the table's per-row color highlighting now correctly uses
+  // too (see the fix just above this component).
+  const [stockFilter, setStockFilter] = useState("all");
   const { t, lang } = useLang();
   const { onSessionExpired } = useSupplier();
 
@@ -1552,6 +1562,9 @@ function ProductsPage() {
   if (mode === "bulk") return <div style={{ padding: 24 }}><BulkUploadPanel onCancel={() => setMode("list")} onImported={load} /></div>;
   if (mode === "drafts") return <div style={{ padding: 24 }}><DraftsPanel onCancel={() => { setMode("list"); load(); }} /></div>;
 
+  const lowStockProducts = products.filter((p) => p.stockQuantity < p.lowStockThreshold);
+  const visibleProducts = stockFilter === "lowStock" ? lowStockProducts : products;
+
   return (
     <div>
       <TopBar title={t.products.title} subtitle={loadState === "ready" ? t.products.subtitle(products.length) : "…"} />
@@ -1566,6 +1579,22 @@ function ProductsPage() {
           <Plus size={13} /> {t.products.addProduct}
         </button>
       </div>
+      {loadState === "ready" && (
+        <div style={{ padding: "14px 24px 0", display: "flex", gap: 6 }}>
+          {["all", "lowStock"].map((f) => (
+            <button
+              key={f}
+              onClick={() => setStockFilter(f)}
+              style={{
+                padding: "7px 13px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+                border: `1px solid ${stockFilter === f ? C.ink : C.line}`, background: stockFilter === f ? C.ink : "#fff",
+                color: stockFilter === f ? "#fff" : (f === "lowStock" && lowStockProducts.length > 0 ? C.amber : C.ink),
+                fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif",
+              }}
+            >{f === "all" ? t.products.filterAll : t.products.filterLowStock(lowStockProducts.length)}</button>
+          ))}
+        </div>
+      )}
       <div style={{ padding: 24 }}>
         {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", fontSize: 13, color: C.muted }}>{lang === "zh" ? "加载中…" : "Loading…"}</div></Card>}
         {loadState === "error" && <Card><div style={{ padding: 32, textAlign: "center", fontSize: 13, color: C.red }}>{errorMessage}</div></Card>}
@@ -1579,15 +1608,26 @@ function ProductsPage() {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr><Th>{t.products.thProduct}</Th><Th>{t.products.thCategory}</Th><Th align="right">{t.products.thPrice}</Th><Th align="right">{t.products.thStock}</Th><Th>{t.products.thStatus}</Th><Th></Th></tr></thead>
               <tbody>
-                {products.length === 0 && (
+                {visibleProducts.length === 0 && (
                   <tr><td colSpan={6} style={{ textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>{lang === "zh" ? "暂无商品" : "No products yet."}</td></tr>
                 )}
-                {products.map(p => (
+                {visibleProducts.map(p => (
                   <tr key={p.id}>
                     <Td style={{ fontWeight: 700 }}>{p.name}</Td>
                     <Td style={{ color: C.muted }}>{p.category}</Td>
                     <Td align="right" style={{ fontWeight: 700 }}>${Number(p.price).toFixed(2)} {p.currencyCode}</Td>
-                    <Td align="right" style={{ color: p.stockQuantity === 0 ? C.red : p.stockQuantity < 20 ? C.amber : C.ink, fontWeight: p.stockQuantity < 20 ? 700 : 400 }}>{p.stockQuantity}</Td>
+                    {/* REAL BUG FOUND AND FIXED HERE: this used to hardcode
+                        `< 20` for every product, ignoring each product's own
+                        real, configurable lowStockThreshold (migration 037,
+                        set via EditProductModal below) -- a product with a
+                        threshold of 50 and 30 in stock (genuinely low, per
+                        that supplier's own real setting) showed as normal
+                        black text; a product with a threshold of 5 and 15
+                        in stock (genuinely fine) showed as a false amber
+                        warning. The separate low-stock analytics card
+                        already used the real per-product threshold
+                        correctly -- this table just hadn't been. */}
+                    <Td align="right" style={{ color: p.stockQuantity === 0 ? C.red : p.stockQuantity < p.lowStockThreshold ? C.amber : C.ink, fontWeight: p.stockQuantity < p.lowStockThreshold ? 700 : 400 }}>{p.stockQuantity}</Td>
                     <Td><Badge label={t.statusProduct[p.status] || p.status} statusKey={p.status} /></Td>
                     <Td align="right">
                       <button
