@@ -1,4 +1,5 @@
 import React, { useState, useEffect, createContext, useContext } from "react";
+import { FONT_IMPORT, C, disp, mono, useBodyFont } from "./theme";
 import {
   LayoutGrid, PackageSearch, ShoppingBag, RotateCcw, MessageSquare, Wallet, Settings,
   Search, Bell, ChevronRight, ChevronLeft, TrendingUp, Plus, Upload, Download, Check, X,
@@ -33,21 +34,6 @@ import {
    字体: Noto Sans SC (中文) · Inter (英文界面) · Barlow Condensed (数字)
    JetBrains Mono (单号/编码，双语言下保持不变)
    ============================================================ */
-
-const FONT_IMPORT = "@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=Inter:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap');";
-
-const C = {
-  ink: "#14171C", canvas: "#F5F6F8", card: "#FFFFFF", line: "#E4E6EA",
-  signal: "#E8622C", torque: "#2A5FD9", gauge: "#1E9D6B", amber: "#B9791F", red: "#C0362C",
-  muted: "#6B7280", gaugeBg: "#E4F5EC", amberBg: "#FCEFD8", torqueBg: "#E9EFFC", redBg: "#FBE7E5",
-};
-const disp = { fontFamily: "'Barlow Condensed', sans-serif" };
-const mono = { fontFamily: "'JetBrains Mono', monospace" };
-// body font switches with language so CJK glyphs render properly in zh mode
-function useBodyFont() {
-  const { lang } = useLang();
-  return { fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" };
-}
 
 /* ---------------- Language context ---------------- */
 

@@ -634,6 +634,25 @@ behavior (a false negative, a false positive, and a case where both
 happened to already agree) — 2/2 passing. Full regression: 76/76
 passing.
 
+## Real first step toward splitting `App.jsx` (new)
+
+**A real, safe, incremental step** toward this file's own long-standing
+next-step ("split `src/App.jsx` into separate files ... this file is
+large now" — same note already acted on for `apps/admin-dashboard`
+this session). Extracted the shared design tokens (`C`, `disp`, `mono`,
+`FONT_IMPORT`, and the language-aware `useBodyFont()` hook) into a new
+`src/theme.js` — no behavior change, just a real module boundary where
+this file previously defined them inline. `useBodyFont()` imports
+`useLang` from `./langContext` directly, so no circular-import risk.
+
+**Checked for the same class of regression found in the admin
+dashboard's equivalent extraction** (a fragile, position-based test
+selector silently broken by an earlier, unrelated UI change) — none
+found in this app's own test suite.
+
+**Verified**: full regression pass, 77/77 passing across all 14 test
+files, unchanged from before this extraction.
+
 ## Next steps to make this real
 
 1. Wire the Finance/Payouts page — blocked on the commission-rate
