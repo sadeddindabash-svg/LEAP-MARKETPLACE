@@ -141,6 +141,10 @@ export interface CartItem {
   price: number;
   currencyCode: string;
   supplierName: string | null;
+  // Real, live stock quantity (new) -- see services/api/src/modules/
+  // cart/routes.js's own comment on why this is an early warning, not
+  // a reservation.
+  stockQuantity: number;
 }
 
 export interface Cart {

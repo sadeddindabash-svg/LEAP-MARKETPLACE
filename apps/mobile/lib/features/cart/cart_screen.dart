@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/cart_state.dart';
 import '../../models/cart_item.dart';
+import '../../services/api_client.dart';
 
 /// BUY-030–031: cart holds items from multiple suppliers but presents one
 /// unified basket and total; splitting into supplier sub-orders happens at
@@ -122,9 +123,37 @@ class _CartItemRow extends StatelessWidget {
   final CartItem item;
   const _CartItemRow({required this.item});
 
+  // REAL BUG FOUND AND FIXED HERE: the +/- stepper's onPressed calls
+  // were fire-and-forget (`() => cart.setQuantity(...)`, never awaited
+  // or wrapped in a try/catch) -- the exact same class of bug found and
+  // fixed in the photo-upload code earlier this session. A real
+  // rejection from the backend's new stock check (services/api/src/
+  // modules/cart/routes.js) would throw an ApiException that nothing
+  // ever caught, silently doing nothing with no visible feedback at
+  // all. Fixed by awaiting and catching here instead.
+  Future<void> _changeQuantity(BuildContext context, CartState cart, int newQuantity) async {
+    try {
+      await cart.setQuantity(item.productId, newQuantity);
+    } on ApiException catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cart = context.read<CartState>();
+    // Real, proactive stock limit (new) -- disables "+" right at the
+    // real stock ceiling, rather than only reacting after the backend
+    // rejects it. Genuinely honest either way: stock isn't reserved
+    // per-cart anywhere in this schema (see the backend's own comment),
+    // so this can still occasionally be beaten by another buyer between
+    // this check and real order placement -- that race is handled
+    // correctly there, not pretended away here.
+    final atStockLimit = item.quantity >= item.stockQuantity;
+    final remainingAfterThis = item.stockQuantity - item.quantity;
+
     return Padding(
       padding: const EdgeInsets.all(12),
       child: Row(
@@ -142,6 +171,16 @@ class _CartItemRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(item.name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
+                if (remainingAfterThis <= 5)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      remainingAfterThis <= 0
+                          ? tr(context, 'cart_at_stock_limit')
+                          : '${tr(context, 'cart_only')} $remainingAfterThis ${tr(context, 'cart_left_in_stock')}',
+                      style: const TextStyle(fontSize: 10.5, color: LeapColors.signal, fontWeight: FontWeight.w600),
+                    ),
+                  ),
                 const SizedBox(height: 6),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -154,7 +193,7 @@ class _CartItemRow extends StatelessWidget {
                             iconSize: 14,
                             padding: const EdgeInsets.all(6),
                             constraints: const BoxConstraints(),
-                            onPressed: () => cart.setQuantity(item.productId, item.quantity - 1),
+                            onPressed: () => _changeQuantity(context, cart, item.quantity - 1),
                             icon: const Icon(Icons.remove),
                           ),
                           SizedBox(width: 18, child: Text('${item.quantity}', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
@@ -162,7 +201,7 @@ class _CartItemRow extends StatelessWidget {
                             iconSize: 14,
                             padding: const EdgeInsets.all(6),
                             constraints: const BoxConstraints(),
-                            onPressed: () => cart.setQuantity(item.productId, item.quantity + 1),
+                            onPressed: atStockLimit ? null : () => _changeQuantity(context, cart, item.quantity + 1),
                             icon: const Icon(Icons.add),
                           ),
                         ],

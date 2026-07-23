@@ -2180,6 +2180,44 @@ confirmed cross-buyer isolation and idempotent save/delete still hold
 under the new schema. `garage.integration.test.js`: 13/13 passing
 (rewritten from the old vehicleId-based version).
 
+## Real stock validation on the cart
+
+**A real, confirmed gap, not a data-integrity risk**: the cart never
+checked `stock_quantity` at all — a buyer could cart 500 units of
+something with 3 in stock with zero feedback until checkout. Checked
+order placement FIRST before assuming this needed fixing: it already
+has a real, atomic `stock_quantity >= $1` guard
+(`services/api/src/modules/order/routes.js`), so real overselling was
+never actually possible — this is a genuine UX gap, not a correctness
+one.
+
+**`GET /cart/:cartId`** now includes each item's real `stockQuantity`.
+**`POST`/`PATCH /cart/:cartId/items*`** now reject a request that would
+exceed it, with a clear message naming the product and the real
+remaining count.
+
+**Honest, deliberate limitation**: stock isn't reserved per-cart
+anywhere in this schema — this check reads the same live, shared
+number two different buyers could each pass at the same time for the
+last unit. Only one of them will actually get it at real order
+placement, where the atomic guard lives. This is a real early-warning
+for the common case, not a promise of a reservation.
+
+**Mobile**: the cart's +/- stepper now disables "+" right at the real
+limit and shows a low-stock hint. Also fixed a real, separate bug found
+while building this — the stepper's `onPressed` calls were fire-and-
+forget, never awaited or wrapped in a try/catch (the same class of bug
+found and fixed in the photo-upload code earlier this session): a real
+rejection from this new check would have thrown an exception nothing
+ever caught, silently doing nothing with no visible feedback.
+
+**Verified against the real running backend**: added exactly a real
+product's stock quantity (succeeded), confirmed one more was rejected
+with the real remaining count named, confirmed the same for `PATCH`
+(the endpoint the actual quantity stepper calls), and ran the full
+existing cart-persistence regression (unaffected, since normal-sized
+cart operations stay well under real stock levels).
+
 ## Price range + sort by price for search (added to GET /catalog/products)
 
 **A real architectural wrinkle, not just missing query params**: buyer-

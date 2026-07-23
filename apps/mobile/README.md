@@ -205,6 +205,27 @@ screen. This pass wires that existing, unused API surface up to real UI:
   `POST /returns/my-cases/:id/messages` and confirmed it appears at the
   end of the thread on a second fetch.
 
+## Real stock validation in the cart (new)
+
+**A real UX gap, not a data-integrity risk** (order placement already
+had a real, atomic stock guard — checked first before assuming this
+needed fixing): the cart never checked stock at all. `CartItem` now
+carries a real `stockQuantity`; the +/- stepper on `cart_screen.dart`
+disables "+" right at the real limit and shows a low-stock hint.
+
+**A real, separate bug found and fixed while building this**: the
+stepper's `onPressed` calls were fire-and-forget — never awaited or
+wrapped in a try/catch, the exact same class of bug found and fixed in
+the photo-upload code earlier this session. A real rejection from the
+backend's new stock check would have thrown an exception nothing ever
+caught, silently doing nothing with no visible feedback at all. Fixed
+by awaiting and catching properly.
+
+**Verified against the real running backend**: confirmed adding exactly
+a real product's stock quantity succeeds, confirmed one more is
+rejected with the real remaining count named, and confirmed the same
+for the exact endpoint the quantity stepper itself calls.
+
 ## My Garage — saved vehicles (BUY-004, BUY-010–012)
 
 **REAL BUG FOUND AND FIXED (backend migration 044)**: this feature was

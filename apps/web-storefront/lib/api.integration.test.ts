@@ -68,6 +68,23 @@ describe.runIf(backendUp)('web-storefront API client against a REAL running back
     expect(cart.items[0].quantity).toBe(2);
   });
 
+  it('CRITICAL: the cart genuinely rejects adding more than the real stock quantity', async () => {
+    const cartId = `test-cart-stock-${Date.now()}`;
+    const products = await fetchProducts();
+    const product = products.find((p) => p.stockQuantity > 0)!;
+
+    // Real stock is a live number, not an unlimited assumption -- confirm
+    // adding exactly the available amount works...
+    await addCartItem(cartId, product.id, product.stockQuantity);
+    const cart = await fetchCart(cartId);
+    expect(cart.items[0].quantity).toBe(product.stockQuantity);
+    expect(cart.items[0].stockQuantity).toBe(product.stockQuantity);
+
+    // ...but one more than that is genuinely rejected, not silently
+    // allowed (the real, previously-missing gap this closes).
+    await expect(addCartItem(cartId, product.id, 1)).rejects.toThrow(/left in stock/);
+  });
+
   // Real order history + detail (new) -- the biggest gap this app had:
   // a buyer who checked out here could never see a past order again.
   it('CRITICAL: a real placed order shows up in the real buyer\'s own order history', async () => {
