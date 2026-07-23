@@ -2221,6 +2221,34 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired }) {
   return (
     <div>
       <TopBar title="Flagged Shipments" subtitle="Quality issues hub staff have flagged during inspection, across every order" />
+      <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "flex-end" }}>
+        {/* Real export (new) -- same reusable exportToExcel() util
+            already used across most other list pages, just never
+            added here. */}
+        <button
+          disabled={shipments.length === 0}
+          onClick={() => exportToExcel({
+            filename: `flagged-shipments-${new Date().toISOString().slice(0, 10)}`,
+            sheetName: "Flagged Shipments",
+            columns: [
+              { header: "Order", key: "orderId", width: 16 },
+              { header: "Supplier", key: "supplierName", width: 28 },
+              { header: "Hub", key: "hubName", width: 22 },
+              { header: "Flagged at", key: "flaggedAt", width: 18 },
+              { header: "Return case", key: "returnCaseId", width: 14 },
+              { header: "Note", key: "flagNote", width: 50 },
+            ],
+            rows: shipments.map((s) => ({
+              orderId: s.orderId, supplierName: s.supplierName, hubName: s.hubName || "No hub",
+              flaggedAt: new Date(s.flaggedAt).toLocaleString(),
+              returnCaseId: s.returnCaseId || "—", flagNote: s.flagNote || "",
+            })),
+          })}
+          style={{ display: "flex", alignItems: "center", gap: 6, ...body, fontSize: 12.5, fontWeight: 700, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, cursor: shipments.length === 0 ? "default" : "pointer", opacity: shipments.length === 0 ? 0.5 : 1 }}
+        >
+          <Download size={13} /> Export
+        </button>
+      </div>
       <div style={{ padding: 24 }}>
         {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>}
 
@@ -2718,6 +2746,40 @@ function PromoCodesPage({ onSessionExpired }) {
   return (
     <div>
       <TopBar title="Promo Codes" subtitle="Real admin-created event/campaign codes, and real referral-generated rewards — one system" />
+      <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "flex-end" }}>
+        {/* Real export (new) -- same reusable exportToExcel() util
+            already used for Orders/Suppliers/Payouts/Returns/Audit
+            Log/Tickets, just never added here. */}
+        <button
+          disabled={codes.length === 0}
+          onClick={() => exportToExcel({
+            filename: `promo-codes-${new Date().toISOString().slice(0, 10)}`,
+            sheetName: "Promo Codes",
+            columns: [
+              { header: "Code", key: "code", width: 18 },
+              { header: "Source", key: "source", width: 12 },
+              { header: "Type", key: "type", width: 14 },
+              { header: "Value", key: "value", width: 12 },
+              { header: "Active", key: "isActive", width: 10 },
+              { header: "Max total uses", key: "maxTotalUses", width: 14 },
+              { header: "Max per buyer", key: "maxUsesPerBuyer", width: 14 },
+              { header: "Starts", key: "startsAt", width: 16 },
+              { header: "Expires", key: "expiresAt", width: 16 },
+            ],
+            rows: codes.map((c) => ({
+              code: c.code, source: c.source === "referral" ? "Referral" : "Admin",
+              type: c.type, value: c.type === "free_shipping" ? "—" : c.value,
+              isActive: c.isActive ? "Yes" : "No",
+              maxTotalUses: c.maxTotalUses ?? "Unlimited", maxUsesPerBuyer: c.maxUsesPerBuyer,
+              startsAt: c.startsAt ? new Date(c.startsAt).toLocaleDateString() : "—",
+              expiresAt: c.expiresAt ? new Date(c.expiresAt).toLocaleDateString() : "—",
+            })),
+          })}
+          style={{ display: "flex", alignItems: "center", gap: 6, ...body, fontSize: 12.5, fontWeight: 700, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, cursor: codes.length === 0 ? "default" : "pointer", opacity: codes.length === 0 ? 0.5 : 1 }}
+        >
+          <Download size={13} /> Export
+        </button>
+      </div>
       <div style={{ padding: 24 }}>
         {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>}
 
@@ -3231,6 +3293,35 @@ function TicketsPage({ onOpenTicket, onSessionExpired }) {
   return (
     <div>
       <TopBar title="Support tickets" subtitle={loadState === "ready" ? `${openCount} open · buyer ↔ platform only` : "Loading…"} />
+      <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "flex-end" }}>
+        {/* Real export (new) -- same reusable exportToExcel() util
+            already used for Orders/Suppliers/Payouts/Returns/Audit Log,
+            just never added here. */}
+        <button
+          disabled={tickets.length === 0}
+          onClick={() => exportToExcel({
+            filename: `support-tickets-${new Date().toISOString().slice(0, 10)}`,
+            sheetName: "Support Tickets",
+            columns: [
+              { header: "Ticket", key: "id", width: 14 },
+              { header: "Subject", key: "subject", width: 30 },
+              { header: "Buyer", key: "buyer", width: 30 },
+              { header: "Order", key: "orderId", width: 16 },
+              { header: "Priority", key: "priority", width: 12 },
+              { header: "Status", key: "status", width: 16 },
+              { header: "Updated", key: "updatedAt", width: 16 },
+            ],
+            rows: tickets.map((t) => ({
+              id: t.id, subject: t.subject, buyer: t.buyerId || t.guestEmail || "—",
+              orderId: t.orderId || "—", priority: t.priority, status: t.status,
+              updatedAt: new Date(t.updatedAt).toLocaleDateString(),
+            })),
+          })}
+          style={{ display: "flex", alignItems: "center", gap: 6, ...body, fontSize: 12.5, fontWeight: 700, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, cursor: tickets.length === 0 ? "default" : "pointer", opacity: tickets.length === 0 ? 0.5 : 1 }}
+        >
+          <Download size={13} /> Export
+        </button>
+      </div>
       <div style={{ padding: 24 }}>
         {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading tickets…</div></Card>}
         {loadState === "error" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>Couldn't load tickets: {errorMessage}</div></Card>}

@@ -1601,6 +1601,19 @@ Full regression across Overview/Suppliers/Hubs/Returns: 18/19 passing
 flakiness confirmed multiple times earlier this session — passes
 cleanly in complete isolation, unrelated to this feature).
 
+## Real Excel export, closing every remaining gap (Tickets, Promo Codes, Flagged Shipments)
+
+**A real, confirmed gap, checked before assuming it was complete**:
+export already existed on Orders, Payouts, Audit Log, Suppliers, and
+Returns — but a full sweep of every list-style page found three more
+natural candidates that had been missed: Support Tickets, Promo Codes,
+and Flagged Shipments. Same reusable `exportToExcel()` util, same UI
+pattern as the existing pages.
+
+**Verified**: full regression pass across all three modified pages'
+own test suites (13/13), plus the complete admin-dashboard suite —
+68 test files, 422/422 tests, zero failures.
+
 ## Real Excel export on Suppliers and Returns pages (new)
 
 **A real inconsistency found and closed**: `exportToExcel()` (see
