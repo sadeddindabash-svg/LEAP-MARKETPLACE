@@ -2,6 +2,7 @@ import React, { useState, useEffect, createContext, useContext } from "react";
 import LoginPage from "./LoginPage";
 import { exportToExcel } from "./exportToExcel";
 import { FONT_IMPORT, C, disp, body, mono } from "./theme";
+import { PlateChip, Badge, Stars, KpiCard, Card, Th, Td } from "./components/ui";
 import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, fetchSupplierById, verifySupplier, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
   createBrand, deleteBrand, createModel, deleteModel, createGeneration, deleteGeneration, createEngine, deleteEngine, createTransmission, deleteTransmission,
@@ -68,65 +69,7 @@ function getOrderStatusMeta(status) {
 
 /* ---------------- shared bits ---------------- */
 
-function PlateChip({ children, small }) {
-  return (
-    <span style={{
-      ...mono, border: `1.5px solid ${C.ink}`, color: C.ink, display: "inline-flex", alignItems: "center",
-      padding: small ? "2px 7px" : "4px 10px", borderRadius: 6, fontSize: small ? 10.5 : 12, fontWeight: 700,
-      letterSpacing: "0.05em",
-    }}>{children}</span>
-  );
-}
-function Badge({ label, color, bg }) {
-  return <span style={{ ...body, background: bg, color, fontWeight: 700, fontSize: 11, padding: "4px 10px", borderRadius: 999, textTransform: "uppercase", letterSpacing: "0.02em", whiteSpace: "nowrap" }}>{label}</span>;
-}
-function Stars({ rating }) {
-  if (rating == null) return <span style={{ ...body, fontSize: 11.5, color: C.muted }}>—</span>;
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-      <Star size={12} fill={C.amber} color={C.amber} />
-      <span style={{ ...body, fontSize: 12, fontWeight: 600, color: C.ink }}>{rating}</span>
-    </span>
-  );
-}
 
-function KpiCard({ label, value, delta, positive, icon: Icon }) {
-  return (
-    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: 16, flex: 1, minWidth: 0 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-        <span style={{ ...body, fontSize: 11.5, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.03em" }}>{label}</span>
-        <Icon size={16} color={C.muted} />
-      </div>
-      <div style={{ ...disp, fontSize: 28, fontWeight: 700, color: C.ink, marginBottom: 4 }}>{value}</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-        {positive ? <TrendingUp size={13} color={C.gauge} /> : <TrendingDown size={13} color={C.red} />}
-        <span style={{ ...body, fontSize: 12, fontWeight: 600, color: positive ? C.gauge : C.red }}>{delta}</span>
-        <span style={{ ...body, fontSize: 11.5, color: C.muted }}>vs last week</span>
-      </div>
-    </div>
-  );
-}
-
-function Card({ title, action, children, style }) {
-  return (
-    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, overflow: "hidden", ...style }}>
-      {title && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 18px", borderBottom: `1px solid ${C.line}` }}>
-          <span style={{ ...disp, fontSize: 16, fontWeight: 600, color: C.ink }}>{title}</span>
-          {action}
-        </div>
-      )}
-      {children}
-    </div>
-  );
-}
-
-function Th({ children, align }) {
-  return <th style={{ ...body, textAlign: align || "left", fontSize: 10.5, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.04em", padding: "10px 16px", borderBottom: `1px solid ${C.line}`, whiteSpace: "nowrap" }}>{children}</th>;
-}
-function Td({ children, align, style }) {
-  return <td style={{ ...body, fontSize: 13, color: C.ink, padding: "13px 16px", borderBottom: `1px solid ${C.line}`, textAlign: align || "left", ...style }}>{children}</td>;
-}
 
 // Real, minimal context (new) -- so TopBar (rendered once per page, ~20
 // call sites, each only passing title/subtitle) can read the real

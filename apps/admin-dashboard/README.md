@@ -1431,6 +1431,38 @@ pre-existing parallel-test-isolation flakiness confirmed multiple
 times earlier this session (passes cleanly alone, only flakes when
 many files run concurrently).
 
+## A second, real step toward splitting `App.jsx` — plus a real environment-only issue found
+
+**Extracted the small, purely presentational UI primitives** used
+across almost every page — `PlateChip`, `Badge`, `Stars`, `KpiCard`,
+`Card`, `Th`, `Td` — into a new `src/components/ui.jsx`, matching this
+file's own documented target structure (`src/pages/` and
+`src/components/`) exactly. No behavior change. Double-checked (and
+initially got wrong, then corrected) which `lucide-react` icons were
+still needed directly in `App.jsx` itself versus only within the
+newly-extracted components — `Star`/`TrendingUp`/`TrendingDown` turned
+out to still be used directly elsewhere on the page too (a manual
+star-rating widget, a KPI card icon reference, and a nav icon), so
+they stayed in `App.jsx`'s own import list rather than being removed.
+
+**A real environment-only issue found and resolved while verifying
+this, unrelated to the extraction itself**: running the FULL suite
+surfaced `password authentication failed for user "leap_dev"` across
+several integration test files — these connect directly to Postgres
+with their own hardcoded fallback connection string, separate from the
+main app's own `.env`-configured connection, and this sandbox's
+`DATABASE_URL` had never been exported to match. Setting it correctly
+(`postgresql://postgres:postgres@localhost:5432/leap_dev`, matching
+`services/api/.env`) resolved it immediately — not a code bug at all.
+
+**Verified**: with `DATABASE_URL` set correctly, the ENTIRE suite now
+passes cleanly — all 68 test files, 422/422 tests, zero failures. This
+also suggests some of the "flakiness" attributed to parallel-test-
+isolation earlier this session may have partly been this same missing
+environment variable all along, though at least one confirmed instance
+(`SupplierAnalyticsPicker`'s missing mock, found via reading the actual
+test code) was a genuine, separate, unrelated gap.
+
 ## Real notification bell (new) — closes another 100%-decorative gap
 
 **A real, confirmed gap, found by actually reading the component**:
