@@ -3921,21 +3921,43 @@ function ReturnWindowSection({ onSessionExpired }) {
   );
 }
 
+// Real, exact set of every action type this codebase actually logs
+// (confirmed by grepping every real logAdminAction(...) call site, not
+// guessed) -- used to populate a real filter dropdown rather than free
+// text an admin would have to already know the exact internal string for.
+const AUDIT_ACTION_TYPES = [
+  'admin_account_created', 'admin_account_removed', 'admin_permissions_changed',
+  'category_commission_changed', 'fx_rate_mode_changed', 'fx_rate_set_manual',
+  'payout_recorded', 'promo_code_created', 'require_verified_purchase_toggled',
+  'return_window_changed', 'review_approve', 'review_dismiss_flags', 'review_reject',
+  'supplier_verification',
+];
+
 function AuditLogSection({ currentUser, onSessionExpired }) {
   const [entries, setEntries] = useState([]);
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
+  // Real filters (new) -- closes a real gap: this previously always
+  // fetched the same fixed 200 most-recent entries with no way to
+  // narrow by action type or real date range, even though the backend
+  // already supported an action filter (just never wired up here) and
+  // now also supports a real date range.
+  const [actionFilter, setActionFilter] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
-  useEffect(() => {
+  const load = () => {
     if (!currentUser.isOwner) return;
-    fetchAuditLog(getStoredToken())
+    setLoadState("loading");
+    fetchAuditLog(getStoredToken(), { action: actionFilter || undefined, startDate: startDate || undefined, endDate: endDate || undefined })
       .then((data) => { setEntries(data); setLoadState("ready"); })
       .catch((err) => {
         if (err instanceof SessionExpiredError) return onSessionExpired();
         setErrorMessage(err.message);
         setLoadState("error");
       });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  };
+  useEffect(load, [actionFilter, startDate, endDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Real, owner-only section (migration 036) -- who did what across
   // the whole real platform is sensitive enough that it shouldn't be
@@ -3982,9 +4004,37 @@ function AuditLogSection({ currentUser, onSessionExpired }) {
         <div style={{ ...body, fontSize: 11.5, color: C.muted, marginBottom: 12 }}>
           A real record of sensitive admin actions — supplier verification, review moderation, payouts, promo codes, admin account changes, and pricing/settings changes.
         </div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+          <select
+            value={actionFilter}
+            onChange={(e) => setActionFilter(e.target.value)}
+            style={{ ...body, fontSize: 12, padding: "6px 8px", borderRadius: 6, border: `1px solid ${C.line}`, background: "#fff" }}
+          >
+            <option value="">All actions</option>
+            {AUDIT_ACTION_TYPES.map((a) => <option key={a} value={a}>{a.replace(/_/g, " ")}</option>)}
+          </select>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            style={{ ...body, fontSize: 12, padding: "5px 8px", borderRadius: 6, border: `1px solid ${C.line}` }}
+          />
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            style={{ ...body, fontSize: 12, padding: "5px 8px", borderRadius: 6, border: `1px solid ${C.line}` }}
+          />
+          {(actionFilter || startDate || endDate) && (
+            <button
+              onClick={() => { setActionFilter(""); setStartDate(""); setEndDate(""); }}
+              style={{ ...body, fontSize: 12, fontWeight: 700, color: C.muted, background: "none", border: "none", cursor: "pointer" }}
+            >Clear</button>
+          )}
+        </div>
         {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}
         {loadState === "error" && <div style={{ ...body, fontSize: 12.5, color: C.red }}>Couldn't load the audit log: {errorMessage}</div>}
-        {loadState === "ready" && entries.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>No actions recorded yet.</div>}
+        {loadState === "ready" && entries.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>No actions recorded{(actionFilter || startDate || endDate) ? " matching these filters" : " yet"}.</div>}
         {loadState === "ready" && entries.length > 0 && (
           <div style={{ maxHeight: 360, overflowY: "auto" }}>
             {entries.map((e) => (

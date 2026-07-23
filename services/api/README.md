@@ -2218,6 +2218,19 @@ with the real remaining count named, confirmed the same for `PATCH`
 existing cart-persistence regression (unaffected, since normal-sized
 cart operations stay well under real stock levels).
 
+## Real audit log date-range filter (new)
+
+**`GET /admin/audit-log`** now accepts `startDate`/`endDate`, composing
+with the existing `action` filter. `endDate` is inclusive of the whole
+real day (`created_at < endDate + 1 day`), not just midnight of that
+day — an admin picking "today" as the end date means through the end
+of today.
+
+**Verified against the real running backend**: created a real promo
+code, confirmed a date range covering today includes it, confirmed a
+range from 2020 genuinely excludes it, and confirmed the action filter
+composes correctly with the date range.
+
 ## Real admin global search (new)
 
 **A real, confirmed gap**: the admin dashboard's `TopBar` search box was

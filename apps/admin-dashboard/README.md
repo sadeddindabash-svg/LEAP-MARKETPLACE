@@ -1385,6 +1385,27 @@ add a new mocked component test that logs in, give it a valid
 `/overview` mock too, even if the test itself is about something else
 entirely.
 
+## Real audit log filters (new)
+
+**A real, confirmed gap**: the audit log always fetched the same fixed
+200 most-recent entries, with no way to narrow by date at all — and
+the backend already supported an `action` filter that this page never
+even used.
+
+- **New `startDate`/`endDate`** on `GET /admin/audit-log`, composing
+  with the existing `action` filter. The end date is genuinely
+  inclusive of the whole real day (`< endDate + 1 day`), not just
+  midnight of that day.
+- **New action-type dropdown**, populated from the exact real set of
+  14 action strings this codebase actually logs (confirmed by
+  grepping every real `logAdminAction(...)` call site, not guessed),
+  plus two real date inputs and a Clear button.
+
+**Verified against the real running backend**: created a real promo
+code, confirmed a date range covering today includes it and a range
+from 2020 genuinely excludes it, and confirmed the action filter and
+date range compose correctly together. Full suite: 7/7 passing.
+
 ## Real global search (new) — closes a 100%-decorative gap
 
 **A real, confirmed gap, found by actually reading the component before

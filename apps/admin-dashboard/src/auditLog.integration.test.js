@@ -96,4 +96,43 @@ describe.runIf(backendUp)('real admin audit log against a REAL running backend',
     const res = await fetch(`${BACKEND_URL}/admin/audit-log`, { headers: { Authorization: `Bearer ${token}` } });
     expect(res.status).toBe(403);
   });
+
+  // Real date-range filter (new) -- previously the audit log had no
+  // way to narrow by date at all.
+  it('CRITICAL: a real date-range filter genuinely narrows to only entries within it, using the real date this test itself creates one on', async () => {
+    const { token } = await login('admin@leap.dev', 'admin_dev_password_123');
+    const code = `AUDITDATETEST${Date.now()}`;
+    await fetch(`${BACKEND_URL}/promo-codes`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ code, type: 'flat', value: 5 }),
+    });
+
+    const today = new Date().toISOString().slice(0, 10);
+    const logToday = await fetch(`${BACKEND_URL}/admin/audit-log?startDate=${today}&endDate=${today}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+    expect(logToday.find((e) => e.targetId === code)).toBeTruthy();
+
+    // A real range that couldn't possibly include an entry created
+    // just now must genuinely exclude it.
+    const logPast = await fetch(`${BACKEND_URL}/admin/audit-log?startDate=2020-01-01&endDate=2020-01-02`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+    expect(logPast.find((e) => e.targetId === code)).toBeFalsy();
+
+    // The end date is genuinely inclusive of the WHOLE day, not just
+    // midnight of that day -- an admin picking "today" as the end date
+    // means "through the end of today."
+    expect(logToday.length).toBeGreaterThan(0);
+  });
+
+  it('the action filter and date-range filter genuinely compose together, not just independently', async () => {
+    const { token } = await login('admin@leap.dev', 'admin_dev_password_123');
+    const code = `AUDITCOMBOTEST${Date.now()}`;
+    await fetch(`${BACKEND_URL}/promo-codes`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ code, type: 'flat', value: 5 }),
+    });
+
+    const today = new Date().toISOString().slice(0, 10);
+    const combined = await fetch(`${BACKEND_URL}/admin/audit-log?action=promo_code_created&startDate=${today}&endDate=${today}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+    expect(combined.find((e) => e.targetId === code)).toBeTruthy();
+    expect(combined.every((e) => e.action === 'promo_code_created')).toBe(true);
+  });
 });
