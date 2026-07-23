@@ -12,9 +12,11 @@ import '../../services/api_client.dart';
 /// this same constraint.
 ///
 /// This screen shows the buyer's own ticket list — real data via
-/// GET /support/my-tickets. Requires login: guest-created tickets aren't
-/// listable without an account, same limitation as guest order history
-/// (see orders_screen.dart's identical login-gate pattern).
+/// GET /support/my-tickets. Requires login to LIST every ticket (no
+/// "list all my tickets" exists for a guest without a real account,
+/// same reasoning as guest order history) -- but a guest can still
+/// track ONE specific ticket by ID + email (real gap closed here,
+/// mirroring the same fix already made for returns), or file a new one.
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
 
@@ -24,11 +26,20 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   late Future<List<dynamic>> _ticketsFuture;
+  final _lookupIdController = TextEditingController();
+  final _lookupEmailController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _ticketsFuture = _load();
+  }
+
+  @override
+  void dispose() {
+    _lookupIdController.dispose();
+    _lookupEmailController.dispose();
+    super.dispose();
   }
 
   Future<List<dynamic>> _load() async {
@@ -41,6 +52,11 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() => _ticketsFuture = _load());
   }
 
+  void _trackTicket() {
+    if (_lookupIdController.text.trim().isEmpty || _lookupEmailController.text.trim().isEmpty) return;
+    context.push('/support/${_lookupIdController.text.trim()}?guestEmail=${Uri.encodeQueryComponent(_lookupEmailController.text.trim())}');
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
@@ -51,17 +67,23 @@ class _ChatScreenState extends State<ChatScreen> {
         body: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Icon(Icons.support_agent_outlined, size: 40, color: LeapColors.muted),
-              const SizedBox(height: 12),
-              Text(
-                tr(context, 'login_to_message'),
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: LeapColors.muted, fontSize: 13),
-              ),
+              Text(tr(context, 'track_a_ticket'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+              const SizedBox(height: 8),
+              Text(tr(context, 'track_ticket_hint'), style: const TextStyle(color: LeapColors.muted, fontSize: 12.5)),
               const SizedBox(height: 16),
-              ElevatedButton(onPressed: () => context.push('/login'), child: Text(tr(context, 'log_in'))),
+              TextField(controller: _lookupIdController, decoration: InputDecoration(labelText: tr(context, 'ticket_id_label'))),
+              const SizedBox(height: 12),
+              TextField(controller: _lookupEmailController, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: tr(context, 'email_label'))),
+              const SizedBox(height: 12),
+              ElevatedButton(onPressed: _trackTicket, child: Text(tr(context, 'track'))),
+              const SizedBox(height: 24),
+              OutlinedButton(onPressed: () => context.push('/support/new'), child: Text(tr(context, 'new_support_ticket'))),
+              const SizedBox(height: 16),
+              Center(
+                child: TextButton(onPressed: () => context.push('/login'), child: Text(tr(context, 'log_in_to_see_all_tickets'))),
+              ),
             ],
           ),
         ),

@@ -236,6 +236,13 @@ class AppStrings {
     'send': {'en': 'Send', 'ar': 'إرسال'},
     'ticket': {'en': 'Ticket', 'ar': 'التذكرة'},
     'could_not_load_ticket': {'en': 'Could not load this ticket.', 'ar': 'تعذر تحميل هذه التذكرة.'},
+    'enter_email_to_view_ticket': {'en': 'Enter the email this ticket was filed under to view it.', 'ar': 'أدخل البريد الإلكتروني الذي قُدمت به هذه التذكرة لعرضها.'},
+    'track_a_ticket': {'en': 'Track a ticket', 'ar': 'تتبع تذكرة'},
+    'track_ticket_hint': {'en': 'Enter your ticket ID (from your confirmation) and the email you used to file it.', 'ar': 'أدخل رقم التذكرة (من رسالة التأكيد) والبريد الإلكتروني الذي استخدمته لتقديمها.'},
+    'ticket_id_label': {'en': 'Ticket ID', 'ar': 'رقم التذكرة'},
+    'track': {'en': 'Track', 'ar': 'تتبع'},
+    'log_in_to_see_all_tickets': {'en': 'Log in to see all your tickets', 'ar': 'سجّل الدخول لرؤية جميع تذاكرك'},
+    'email_required_for_guest': {'en': 'Please provide an email so we can reach you.', 'ar': 'يرجى تقديم بريد إلكتروني حتى نتمكن من التواصل معك.'},
     'type_a_message': {'en': 'Type a message…', 'ar': 'اكتب رسالة…'},
 
     // ---- Auth: login ----

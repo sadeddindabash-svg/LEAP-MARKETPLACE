@@ -7,10 +7,12 @@ import '../../core/auth_state.dart';
 import '../../services/api_client.dart';
 
 /// Composes a new support ticket. Works for a logged-in buyer (sends
-/// their token) or, in principle, a guest (the backend supports it via
-/// guestEmail) — but this screen is only reachable from the ticket list,
-/// which is itself login-gated (see chat_screen.dart), so in practice
-/// this is always called with a logged-in buyer for now.
+/// their token) or a real guest (sends a real guestEmail) -- REAL GAP
+/// CLOSED HERE: this screen used to only ever be reached from the
+/// ticket list, which was itself login-gated, so in practice this was
+/// always called with a logged-in buyer. chat_screen.dart's own
+/// logged-out state now offers this screen directly too, so a real
+/// guest email field appears when not logged in.
 class NewTicketScreen extends StatefulWidget {
   const NewTicketScreen({super.key});
 
@@ -21,6 +23,7 @@ class NewTicketScreen extends StatefulWidget {
 class _NewTicketScreenState extends State<NewTicketScreen> {
   final _subjectController = TextEditingController();
   final _messageController = TextEditingController();
+  final _guestEmailController = TextEditingController();
   bool _isSubmitting = false;
   String? _errorMessage;
 
@@ -28,26 +31,41 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
   void dispose() {
     _subjectController.dispose();
     _messageController.dispose();
+    _guestEmailController.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
+    final auth = context.read<AuthState>();
     if (_subjectController.text.trim().isEmpty || _messageController.text.trim().isEmpty) {
       setState(() => _errorMessage = trRead(context, 'please_fill_both_fields'));
+      return;
+    }
+    if (!auth.isLoggedIn && _guestEmailController.text.trim().isEmpty) {
+      setState(() => _errorMessage = trRead(context, 'email_required_for_guest'));
       return;
     }
     setState(() {
       _isSubmitting = true;
       _errorMessage = null;
     });
-    final auth = context.read<AuthState>();
     try {
-      await ApiClient().createTicket(
+      final result = await ApiClient().createTicket(
         token: auth.token,
         subject: _subjectController.text.trim(),
         message: _messageController.text.trim(),
+        guestEmail: auth.isLoggedIn ? null : _guestEmailController.text.trim(),
       );
-      if (mounted) context.pop();
+      if (!mounted) return;
+      if (auth.isLoggedIn) {
+        context.pop();
+      } else {
+        // Real, immediate hand-off for a guest -- straight to the real
+        // ticket thread they just created, using the same real email
+        // they just entered, rather than leaving them with no way to
+        // find it again until this pass.
+        context.pushReplacement('/support/${result['id']}?guestEmail=${Uri.encodeQueryComponent(_guestEmailController.text.trim())}');
+      }
     } on ApiException catch (e) {
       setState(() => _errorMessage = e.message);
     } finally {
@@ -57,6 +75,7 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthState>();
     return Scaffold(
       appBar: AppBar(title: Text(tr(context, 'new_support_ticket'))),
       body: Padding(
@@ -71,6 +90,10 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
               maxLines: 5,
               decoration: InputDecoration(labelText: tr(context, 'how_can_we_help'), alignLabelWithHint: true),
             ),
+            if (!auth.isLoggedIn) ...[
+              const SizedBox(height: 12),
+              TextField(controller: _guestEmailController, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: tr(context, 'email_label'))),
+            ],
             if (_errorMessage != null) ...[
               const SizedBox(height: 12),
               Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 12.5)),

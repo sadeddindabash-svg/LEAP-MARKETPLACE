@@ -163,6 +163,52 @@ screen at all, only the list.
   checked every field the screen reads (`supplierName`, `trackingNumber`,
   `items`, `subOrderId`, etc.) actually exists in the real response.
 
+## Guest support ticket tracking (new) — mirrors the same fix already proven for returns and web-storefront
+
+**A real, confirmed gap**: `createTicket` already supported filing a
+ticket as a guest (`guestEmail`), but `fetchTicketDetail` and
+`sendTicketMessage` both required a real token — a guest who filed a
+ticket had no way to ever check on it again.
+`ticket_detail_screen.dart` used to silently do nothing for a guest
+(`if (!auth.isLoggedIn) return;`, leaving the screen stuck on its
+loading spinner forever) — confirmed directly by reading the code,
+not assumed.
+
+- **`api_client.dart`**: `fetchTicketDetail`/`sendTicketMessage`
+  rewritten to take an optional `token` OR `guestEmail`, calling the
+  backend's real `optionalAuth` + matching-`guestEmail` endpoints
+  (already fixed this session — see `services/api/README.md`'s "Guest
+  support ticket tracking" section).
+- **`ticket_detail_screen.dart`**: a guest reaches this screen either
+  via `chat_screen.dart`'s new "Track a ticket" entry (guest email
+  already known) or a shared link with `?guestEmail=` in the URL; if
+  neither is present, shows a real inline email prompt rather than
+  getting stuck.
+- **`chat_screen.dart`**: the logged-out state is no longer just a
+  dead end pointing at login — a real "Track a ticket" form (ticket ID
+  + email), a real "New ticket" entry for guests, and a login link for
+  buyers who want to see every ticket in one place (there's still no
+  "list all my tickets" for a guest without a real account — same
+  reasoning as guest order history).
+- **`new_ticket_screen.dart`**: the file's own comment used to say this
+  was "always called with a logged-in buyer for now" — no longer true,
+  since `chat_screen.dart` now offers it directly to guests too. A real
+  guest email field appears when not logged in, and a newly-created
+  guest ticket hands off immediately to its own real thread using the
+  same email just entered.
+
+**Honest limitation on verification**: this sandbox has no Flutter SDK
+to compile or run against (the same limitation documented for the
+`share_plus` fix earlier this session) — verified as thoroughly as
+possible without one: confirmed every changed function's call site was
+updated to the new signature (no stale callers left), confirmed
+bracket/brace balance across every touched file, and confirmed the
+real backend endpoints these calls hit were already verified
+end-to-end for the exact same guest-access pattern (see this session's
+web-storefront support-ticket work, which exercises the identical real
+API surface). The real, primary remaining verification is a real
+`flutter run` on the person's own machine.
+
 ## My Returns — status & follow-up thread (closes a real, previously-flagged gap)
 
 The return-request sheet above (BUY-053) could already SUBMIT a return

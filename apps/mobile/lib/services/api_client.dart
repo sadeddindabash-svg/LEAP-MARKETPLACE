@@ -520,16 +520,25 @@ class ApiClient {
     return jsonDecode(response.body) as List<dynamic>;
   }
 
-  Future<Map<String, dynamic>> fetchTicketDetail(String token, String ticketId) async {
-    final response = await _client.get(Uri.parse('$baseUrl/support/my-tickets/$ticketId'), headers: _authHeaders(token));
+  /// Real gap closed here (mirrors the same fix already made for
+  /// returns -- see returns_screen.dart's own comment): the backend's
+  /// GET /support/my-tickets/:id now supports a real guest lookup via
+  /// a matching ?guestEmail=, the same optionalAuth pattern
+  /// GET /order/:id and GET /returns/my-cases/:id already use. This
+  /// was only ever called with a real logged-in token before.
+  Future<Map<String, dynamic>> fetchTicketDetail(String ticketId, {String? token, String? guestEmail}) async {
+    final uri = Uri.parse('$baseUrl/support/my-tickets/$ticketId').replace(
+      queryParameters: guestEmail != null ? {'guestEmail': guestEmail} : null,
+    );
+    final response = await _client.get(uri, headers: _authHeaders(token));
     return _decodeOrThrow(response);
   }
 
-  Future<Map<String, dynamic>> sendTicketMessage(String token, String ticketId, String message) async {
+  Future<Map<String, dynamic>> sendTicketMessage(String ticketId, String message, {String? token, String? guestEmail}) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/support/my-tickets/$ticketId/messages'),
       headers: _authHeaders(token),
-      body: jsonEncode({'message': message}),
+      body: jsonEncode({'message': message, if (guestEmail != null) 'guestEmail': guestEmail}),
     );
     return _decodeOrThrow(response);
   }

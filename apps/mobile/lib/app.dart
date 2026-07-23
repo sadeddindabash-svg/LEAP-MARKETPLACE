@@ -98,7 +98,7 @@ final GoRouter appRouter = GoRouter(
     GoRoute(path: '/returns/:id', builder: (context, state) => ReturnCaseDetailScreen(caseId: state.pathParameters['id']!)),
     GoRoute(path: '/support', builder: (context, state) => const ChatScreen()),
     GoRoute(path: '/support/new', builder: (context, state) => const NewTicketScreen()),
-    GoRoute(path: '/support/:id', builder: (context, state) => TicketDetailScreen(ticketId: state.pathParameters['id']!)),
+    GoRoute(path: '/support/:id', builder: (context, state) => TicketDetailScreen(ticketId: state.pathParameters['id']!, guestEmail: state.uri.queryParameters['guestEmail'])),
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
     GoRoute(path: '/signup', builder: (context, state) {
       final extra = state.extra as Map<String, dynamic>?;
