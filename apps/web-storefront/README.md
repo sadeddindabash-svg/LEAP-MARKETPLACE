@@ -417,6 +417,40 @@ confirmed marking it read brings the count back to `0`, and confirmed
 `markAllNotificationsRead` genuinely clears multiple real unread
 notifications at once. Full suite: 21/21 passing.
 
+## Real support tickets (new)
+
+**A real, confirmed gap**: this storefront had no support-ticket UI at
+all — the notification bell's own `resolveNotificationLink` had to
+deliberately return `null` for ticket-type notifications specifically
+because of this. Closed the same way returns was closed: found and
+fixed the same real backend gap first (`GET`/`POST /support/
+my-tickets/:id*` were `requireAuth` only, mirrored exactly to
+`optionalAuth` + matching `guestEmail`), then built the real UI on
+top.
+
+- **`/support`** — two real modes: a logged-in buyer sees a real list
+  (`GET /support/my-tickets`) plus a "New ticket" form; a guest gets a
+  real ticket-ID + email lookup form plus a guest-email-required "New
+  ticket" form (there's no "list all my tickets" for a guest without a
+  real account — same reasoning as `/orders` and `/returns`).
+- **`/support/[id]`** — real thread (messages, reply), working for
+  both. If a guest lands here directly without `?guestEmail=` in the
+  URL, shows a real inline email prompt rather than a 404.
+- **`resolveNotificationLink` fixed** — a `ticket`-type notification
+  now genuinely resolves to `/support/[id]`, closing the honest gap
+  the notifications feature (built earlier this session) had to leave
+  open at the time.
+
+**Verified end-to-end against the real running backend**: filed a
+ticket as a real guest, confirmed they can fetch it and reply with
+zero login at all, confirmed a genuinely different (wrong) email is
+rejected rather than leaking the ticket, and confirmed the existing
+logged-in buyer flow is completely unaffected. Zero TypeScript errors.
+Full suite: 35/35 passing (also confirmed several earlier, unrelated
+failures during this same run were purely real stock depletion from
+many hours of cumulative testing against this persistent database —
+not a regression — resolved by reseeding, not by any code change).
+
 ## Real returns (new) — genuinely the last remaining gap, now closed
 
 **`/returns`** — two real modes: a logged-in buyer sees a real list

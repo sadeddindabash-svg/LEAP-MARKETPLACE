@@ -167,17 +167,32 @@ router.get('/my-tickets', requireAuth, async (req, res, next) => {
   }
 });
 
-router.get('/my-tickets/:id', requireAuth, async (req, res, next) => {
+// GET /support/my-tickets/:id — real gap closed here, mirroring the
+// exact same fix already proven for returns (see
+// services/api/README.md's "Guest return tracking" section): a guest
+// who filed a ticket (POST /support/tickets above supports guestEmail)
+// previously had no way to ever check on it again. Now optionalAuth,
+// matching the same established pattern GET /order/:id and
+// GET /returns/my-cases/:id already use: a logged-in buyer sees their
+// own ticket as before, OR a guest supplying the real guestEmail the
+// ticket was actually filed under (a second factor beyond just
+// knowing the ticket ID).
+router.get('/my-tickets/:id', optionalAuth, async (req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT * FROM support_tickets WHERE id = $1 AND buyer_id = $2', [req.params.id, req.user.sub]);
+    const { rows } = await db.query('SELECT * FROM support_tickets WHERE id = $1', [req.params.id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Ticket not found' });
+    const ticket = rows[0];
+
+    const isOwningBuyer = req.user && ticket.buyer_id && req.user.sub === ticket.buyer_id;
+    const guestEmailMatches = ticket.guest_email && req.query.guestEmail && req.query.guestEmail === ticket.guest_email;
+    if (!isOwningBuyer && !guestEmailMatches) return res.status(404).json({ error: 'Ticket not found' });
 
     const { rows: messages } = await db.query(
       'SELECT sender_role, message, created_at FROM support_ticket_messages WHERE ticket_id = $1 ORDER BY created_at ASC',
       [req.params.id]
     );
     res.json({
-      ...toTicketSummaryDto(rows[0]),
+      ...toTicketSummaryDto(ticket),
       messages: messages.map((m) => ({ senderRole: m.sender_role, message: m.message, createdAt: m.created_at })),
     });
   } catch (err) {
@@ -185,14 +200,21 @@ router.get('/my-tickets/:id', requireAuth, async (req, res, next) => {
   }
 });
 
-// POST /support/my-tickets/:id/messages — buyer follows up on their own ticket.
-router.post('/my-tickets/:id/messages', requireAuth, async (req, res, next) => {
+// POST /support/my-tickets/:id/messages  { message, guestEmail? } --
+// buyer OR guest (matching email) follows up on their own ticket.
+// Same optionalAuth + guestEmail-match pattern as the GET above.
+router.post('/my-tickets/:id/messages', optionalAuth, async (req, res, next) => {
   try {
-    const { message } = req.body || {};
+    const { message, guestEmail } = req.body || {};
     if (!message) return res.status(400).json({ error: 'message is required' });
 
-    const ownershipCheck = await db.query('SELECT id FROM support_tickets WHERE id = $1 AND buyer_id = $2', [req.params.id, req.user.sub]);
-    if (ownershipCheck.rows.length === 0) return res.status(404).json({ error: 'Ticket not found' });
+    const { rows } = await db.query('SELECT * FROM support_tickets WHERE id = $1', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Ticket not found' });
+    const ticket = rows[0];
+
+    const isOwningBuyer = req.user && ticket.buyer_id && req.user.sub === ticket.buyer_id;
+    const guestEmailMatches = ticket.guest_email && guestEmail && guestEmail === ticket.guest_email;
+    if (!isOwningBuyer && !guestEmailMatches) return res.status(404).json({ error: 'Ticket not found' });
 
     await db.query(`INSERT INTO support_ticket_messages (ticket_id, sender_role, message) VALUES ($1, 'buyer', $2)`, [req.params.id, message]);
     await db.query('UPDATE support_tickets SET updated_at = now() WHERE id = $1', [req.params.id]);

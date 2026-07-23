@@ -2298,6 +2298,22 @@ by name, matched multiple real orders by ID prefix (correctly capped
 at 5), confirmed a too-short query returns empty without erroring, and
 confirmed an unauthenticated request is rejected (401).
 
+## Guest support ticket tracking (real gap closed, same pattern as returns)
+
+**The exact same real gap as returns, closed the exact same way**:
+`POST /support/tickets` already supported filing a ticket as a guest
+(`guestEmail`), but `GET`/`POST /support/my-tickets/:id*` were
+`requireAuth` only — a guest who filed a ticket had no way to ever
+check on it again. Mirrors `GET /order/:id` and `GET /returns/my-cases
+/:id`'s own established `optionalAuth` + matching-`guestEmail` pattern
+exactly.
+
+**Verified against the real running backend**: filed a ticket as a
+real guest, confirmed they can fetch it and reply with zero login,
+confirmed a genuinely different (wrong) email is rejected rather than
+leaking the ticket, and confirmed the existing logged-in buyer flow
+(admin-dashboard's `TicketsFlow.test.jsx`) is completely unaffected.
+
 ## Guest return tracking (real gap closed)
 
 **A real, confirmed gap**: `POST /returns` already supported filing a

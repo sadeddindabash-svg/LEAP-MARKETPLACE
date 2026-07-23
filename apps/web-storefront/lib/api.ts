@@ -616,16 +616,17 @@ export async function markAllNotificationsRead(token: string): Promise<void> {
   });
 }
 
-// Real deep-link resolution for a notification's real linkType/linkId
-// -- 'ticket' deliberately has no real page here (this storefront has
-// no support-ticket UI at all, unlike the mobile app), so it's an
-// honest null rather than a link to a page that doesn't exist.
+// Real deep-link resolution for a notification's real linkType/linkId.
+// 'ticket' used to correctly resolve to null -- this storefront had no
+// support-ticket UI at all. Now that /support/[id] is real, it
+// resolves there instead.
 export function resolveNotificationLink(n: Notification): string | null {
   if (!n.linkType || !n.linkId) return null;
   switch (n.linkType) {
     case "order": return `/orders/${n.linkId}`;
     case "product": return `/products/${n.linkId}`;
     case "saved_search": return "/saved-searches";
+    case "ticket": return `/support/${n.linkId}`;
     default: return null;
   }
 }
@@ -744,4 +745,91 @@ export async function fetchModelsForBrand(brandId: string): Promise<VehicleModel
 export async function fetchGenerationsForModel(modelId: string): Promise<VehicleGeneration[]> {
   const data = await apiGet<VehicleGeneration[]>(`/fitment/models/${modelId}/generations`);
   return data ?? [];
+}
+
+// ---------------- Real support tickets (client-side calls, new) ----------------
+// Reuses the SAME real GET/POST /support/my-tickets* endpoints the
+// mobile app already uses -- now genuinely guest-accessible too (a
+// real gap closed this session: previously requireAuth only, so a
+// guest who filed a ticket via POST /support/tickets with guestEmail
+// could never check on it again). Mirrors GET /order/:id and
+// GET /returns/my-cases/:id's own established account-or-matching-
+// guestEmail pattern exactly.
+
+export interface SupportTicketMessage {
+  senderRole: string;
+  message: string;
+  createdAt: string;
+}
+
+export interface SupportTicketDetail {
+  id: string;
+  subject: string;
+  buyerId: string | null;
+  guestEmail: string | null;
+  orderId: string | null;
+  status: string;
+  priority: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: SupportTicketMessage[];
+}
+
+export interface SupportTicketSummary {
+  id: string;
+  subject: string;
+  orderId: string | null;
+  status: string;
+  priority: string;
+  updatedAt: string;
+}
+
+export async function createSupportTicket(
+  input: { subject: string; message: string; orderId?: string },
+  auth: { token?: string; guestEmail?: string }
+): Promise<{ id: string }> {
+  const res = await fetch(`${API_BASE_URL}/support/tickets`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}) },
+    body: JSON.stringify({ ...input, ...(auth.guestEmail ? { guestEmail: auth.guestEmail } : {}) }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error || `Failed to create ticket (${res.status})`);
+  return body;
+}
+
+export async function fetchMyTickets(token: string): Promise<SupportTicketSummary[]> {
+  const res = await fetch(`${API_BASE_URL}/support/my-tickets`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Failed to load tickets (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function fetchSupportTicket(ticketId: string, auth: { token?: string; guestEmail?: string }): Promise<SupportTicketDetail> {
+  const url = new URL(`${API_BASE_URL}/support/my-tickets/${ticketId}`);
+  if (auth.guestEmail) url.searchParams.set("guestEmail", auth.guestEmail);
+  const res = await fetch(url.toString(), {
+    headers: auth.token ? { Authorization: `Bearer ${auth.token}` } : {},
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Ticket not found (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function sendSupportTicketMessage(ticketId: string, message: string, auth: { token?: string; guestEmail?: string }): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/support/my-tickets/${ticketId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}) },
+    body: JSON.stringify({ message, ...(auth.guestEmail ? { guestEmail: auth.guestEmail } : {}) }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Failed to send message (${res.status})`);
+  }
 }

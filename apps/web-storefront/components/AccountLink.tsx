@@ -12,13 +12,19 @@ export default function AccountLink() {
 
   if (isLoading) return null;
 
-  // Real, always-visible Returns link (new) -- unlike Orders/Wishlist/
-  // Referrals below, which are genuinely account-only concepts, a
-  // guest can track a return too (via a matching email lookup -- see
-  // app/returns/page.tsx), so this isn't gated behind login.
+  // Real, always-visible Returns/Support links (new) -- unlike Orders/
+  // Wishlist/Referrals below, which are genuinely account-only
+  // concepts, a guest can track a return or a support ticket too (via
+  // a matching email lookup -- see app/returns/page.tsx and
+  // app/support/page.tsx), so neither is gated behind login.
   const returnsLink = (
     <Link href="/returns" className="text-muted hover:text-ink">
       Returns
+    </Link>
+  );
+  const supportLink = (
+    <Link href="/support" className="text-muted hover:text-ink">
+      Support
     </Link>
   );
 
@@ -26,6 +32,7 @@ export default function AccountLink() {
     return (
       <div className="flex items-center gap-3">
         {returnsLink}
+        {supportLink}
         <Link href="/login" className="text-muted hover:text-ink">
           Log in
         </Link>
@@ -39,6 +46,7 @@ export default function AccountLink() {
         Orders
       </Link>
       {returnsLink}
+      {supportLink}
       <Link href="/wishlist" className="text-muted hover:text-ink">
         Wishlist
       </Link>

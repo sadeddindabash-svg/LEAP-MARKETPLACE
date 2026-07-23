@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fetchCategories, fetchProducts, fetchProductById, fetchCart, addCartItem, fetchMyOrders, fetchOrderById, fetchWishlist, checkWishlisted, addToWishlist, removeFromWishlist, submitReview, fetchMyReferral, fetchNotifications, fetchUnreadNotificationCount, markNotificationRead, markAllNotificationsRead, resolveNotificationLink, fetchMyReturnCases, fetchReturnCase, sendReturnCaseMessage, placeOrder, fetchMyAddresses, createAddress, fetchVehicleBrands, fetchModelsForBrand, fetchGenerationsForModel } from './api';
+import { fetchCategories, fetchProducts, fetchProductById, fetchCart, addCartItem, fetchMyOrders, fetchOrderById, fetchWishlist, checkWishlisted, addToWishlist, removeFromWishlist, submitReview, fetchMyReferral, fetchNotifications, fetchUnreadNotificationCount, markNotificationRead, markAllNotificationsRead, resolveNotificationLink, fetchMyReturnCases, fetchReturnCase, sendReturnCaseMessage, placeOrder, fetchMyAddresses, createAddress, fetchVehicleBrands, fetchModelsForBrand, fetchGenerationsForModel, createSupportTicket, fetchMyTickets, fetchSupportTicket, sendSupportTicketMessage } from './api';
 
 const BACKEND_URL = 'http://localhost:4000';
 
@@ -331,10 +331,9 @@ describe.runIf(backendUp)('notifications against a REAL running backend', () => 
     expect(notifications.length).toBe(1);
     expect(notifications[0].isRead).toBe(false);
     expect(notifications[0].linkType).toBe('ticket');
-    // Real, honest gap: this storefront has no support-ticket page, so
-    // resolveNotificationLink must return null here, not a link to a
-    // page that doesn't exist.
-    expect(resolveNotificationLink(notifications[0])).toBeNull();
+    // A real support ticket page now exists (app/support/[id]/page.tsx)
+    // -- this used to correctly resolve to null when it didn't.
+    expect(resolveNotificationLink(notifications[0])).toBe(`/support/${notifications[0].linkId}`);
 
     await markNotificationRead(buyerToken, notifications[0].id);
     const afterMarkRead = await fetchUnreadNotificationCount(buyerToken);
@@ -374,10 +373,11 @@ describe.runIf(backendUp)('notifications against a REAL running backend', () => 
     expect(notifications.every((n) => n.isRead)).toBe(true);
   });
 
-  it('resolveNotificationLink correctly maps order and product link types to real pages', () => {
+  it('resolveNotificationLink correctly maps order, product, saved_search, and ticket link types to real pages', () => {
     expect(resolveNotificationLink({ id: 1, type: 'order_status', title: '', body: '', linkType: 'order', linkId: 'LP-123', isRead: false, createdAt: '' })).toBe('/orders/LP-123');
     expect(resolveNotificationLink({ id: 2, type: 'price_drop', title: '', body: '', linkType: 'product', linkId: 'p1', isRead: false, createdAt: '' })).toBe('/products/p1');
     expect(resolveNotificationLink({ id: 3, type: 'saved_search_match', title: '', body: '', linkType: 'saved_search', linkId: '5', isRead: false, createdAt: '' })).toBe('/saved-searches');
+    expect(resolveNotificationLink({ id: 4, type: 'ticket_reply', title: '', body: '', linkType: 'ticket', linkId: 'T-999', isRead: false, createdAt: '' })).toBe('/support/T-999');
   });
 });
 
@@ -584,5 +584,59 @@ describe.runIf(backendUp)('vehicle fitment cascade + product filter against a RE
   it('a nonexistent generation genuinely returns zero real products, not an error or everything', async () => {
     const filtered = await fetchProducts({ generationId: 'not-a-real-generation', year: 2018 });
     expect(filtered.length).toBe(0);
+  });
+});
+
+// Real support tickets (new) -- the guest-access fix, mirroring returns
+describe.runIf(backendUp)('support tickets (guest + logged-in access) against a REAL running backend', () => {
+  it('CRITICAL: a guest who files a ticket can check on it later with the real matching email, with no login at all', async () => {
+    const suffix = Date.now();
+    const guestEmail = `storefront-guest-ticket-${suffix}@example.com`;
+
+    const created = await createSupportTicket(
+      { subject: 'Test ticket', message: 'My order never arrived' },
+      { guestEmail }
+    );
+
+    // The real point of this fix: no token anywhere, just the matching email.
+    const fetched = await fetchSupportTicket(created.id, { guestEmail });
+    expect(fetched.id).toBe(created.id);
+    expect(fetched.messages[0].message).toBe('My order never arrived');
+
+    await sendSupportTicketMessage(created.id, 'Any update?', { guestEmail });
+    const afterReply = await fetchSupportTicket(created.id, { guestEmail });
+    expect(afterReply.messages.length).toBe(2);
+    expect(afterReply.messages[1].message).toBe('Any update?');
+  });
+
+  it('a guest supplying the WRONG email cannot access someone else\'s ticket', async () => {
+    const suffix = Date.now();
+    const guestEmail = `storefront-guest-wrong-ticket-${suffix}@example.com`;
+    const created = await createSupportTicket(
+      { subject: 'Test ticket', message: 'Not what I ordered' },
+      { guestEmail }
+    );
+
+    await expect(fetchSupportTicket(created.id, { guestEmail: 'someone-else@example.com' })).rejects.toThrow();
+  });
+
+  it('a logged-in buyer\'s own ticket still works exactly as before (no regression)', async () => {
+    const suffix = Date.now();
+    const signupRes = await fetch(`${BACKEND_URL}/auth/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `storefront-buyer-ticket-${suffix}@example.com`, password: 'test_password_123' }),
+    });
+    const { token } = await signupRes.json();
+
+    const created = await createSupportTicket(
+      { subject: 'Account ticket', message: 'Question about my account' },
+      { token }
+    );
+
+    const list = await fetchMyTickets(token);
+    expect(list.find((t) => t.id === created.id)).toBeDefined();
+
+    const fetched = await fetchSupportTicket(created.id, { token });
+    expect(fetched.id).toBe(created.id);
   });
 });
