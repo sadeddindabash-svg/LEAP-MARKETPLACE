@@ -220,10 +220,23 @@ router.get('/my-cases', requireAuth, async (req, res, next) => {
   }
 });
 
-router.get('/my-cases/:id', requireAuth, async (req, res, next) => {
+// GET /returns/my-cases/:id — real gap closed here: previously
+// requireAuth only, so a guest who filed a return (POST / above
+// supports guestEmail) could never check on it again. Now optionalAuth,
+// matching the EXACT security pattern GET /order/:id already uses: a
+// logged-in buyer sees their own case as before, OR a guest supplying
+// the real ?guestEmail= this case was actually filed under (a second
+// factor beyond just knowing the case ID, same reasoning as the order
+// module's own header comment).
+router.get('/my-cases/:id', optionalAuth, async (req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT * FROM return_cases WHERE id = $1 AND buyer_id = $2', [req.params.id, req.user.sub]);
+    const { rows } = await db.query('SELECT * FROM return_cases WHERE id = $1', [req.params.id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Return case not found' });
+    const caseRow = rows[0];
+
+    const isOwningBuyer = req.user && caseRow.buyer_id && req.user.sub === caseRow.buyer_id;
+    const guestEmailMatches = caseRow.guest_email && req.query.guestEmail && req.query.guestEmail === caseRow.guest_email;
+    if (!isOwningBuyer && !guestEmailMatches) return res.status(404).json({ error: 'Return case not found' });
 
     const { rows: buyerMessages } = await db.query(
       'SELECT sender_role, message, created_at FROM return_case_buyer_messages WHERE case_id = $1 ORDER BY created_at ASC',
@@ -232,7 +245,7 @@ router.get('/my-cases/:id', requireAuth, async (req, res, next) => {
     const { rows: photoRows } = await db.query('SELECT url FROM return_case_photos WHERE case_id = $1 ORDER BY sort_order', [req.params.id]);
     // Deliberately NOT including supplierMessages here — see header note.
     res.json({
-      ...toCaseSummaryDto(rows[0]),
+      ...toCaseSummaryDto(caseRow),
       messages: buyerMessages.map((m) => ({ senderRole: m.sender_role, message: m.message, createdAt: m.created_at })),
       photos: photoRows.map((p) => p.url),
     });
@@ -241,14 +254,21 @@ router.get('/my-cases/:id', requireAuth, async (req, res, next) => {
   }
 });
 
-// POST /returns/my-cases/:id/messages — buyer follows up on their own case.
-router.post('/my-cases/:id/messages', requireAuth, async (req, res, next) => {
+// POST /returns/my-cases/:id/messages  { message, guestEmail? } — buyer
+// OR guest (matching email) follows up on their own case. Same
+// optionalAuth + guestEmail-match pattern as the GET above.
+router.post('/my-cases/:id/messages', optionalAuth, async (req, res, next) => {
   try {
-    const { message } = req.body || {};
+    const { message, guestEmail } = req.body || {};
     if (!message) return res.status(400).json({ error: 'message is required' });
 
-    const ownershipCheck = await db.query('SELECT id FROM return_cases WHERE id = $1 AND buyer_id = $2', [req.params.id, req.user.sub]);
-    if (ownershipCheck.rows.length === 0) return res.status(404).json({ error: 'Return case not found' });
+    const { rows } = await db.query('SELECT * FROM return_cases WHERE id = $1', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Return case not found' });
+    const caseRow = rows[0];
+
+    const isOwningBuyer = req.user && caseRow.buyer_id && req.user.sub === caseRow.buyer_id;
+    const guestEmailMatches = caseRow.guest_email && guestEmail && guestEmail === caseRow.guest_email;
+    if (!isOwningBuyer && !guestEmailMatches) return res.status(404).json({ error: 'Return case not found' });
 
     await db.query(`INSERT INTO return_case_buyer_messages (case_id, sender_role, message) VALUES ($1, 'buyer', $2)`, [req.params.id, message]);
     await db.query('UPDATE return_cases SET updated_at = now() WHERE id = $1', [req.params.id]);

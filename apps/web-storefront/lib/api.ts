@@ -562,3 +562,78 @@ export function resolveNotificationLink(n: Notification): string | null {
     default: return null;
   }
 }
+
+// ---------------- Real returns (client-side calls, new) ----------------
+// Reuses the SAME real GET/POST /returns/my-cases* endpoints the
+// mobile app already uses -- now genuinely guest-accessible too (a
+// real gap closed this session: previously requireAuth only, so a
+// guest who filed a return via POST /returns with guestEmail could
+// never check on it again). A logged-in buyer passes `token`; a guest
+// passes the real guestEmail their return was filed under instead --
+// exactly mirroring GET /order/:id's own established
+// account-or-matching-guestEmail pattern.
+
+export interface ReturnCaseMessage {
+  senderRole: string;
+  message: string;
+  createdAt: string;
+}
+
+export interface ReturnCaseDetail {
+  id: string;
+  orderId: string;
+  subOrderId: number;
+  buyerId: string | null;
+  guestEmail: string | null;
+  reason: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: ReturnCaseMessage[];
+  photos: string[];
+}
+
+export interface ReturnCaseSummary {
+  id: string;
+  orderId: string;
+  subOrderId: number;
+  reason: string;
+  status: string;
+  updatedAt: string;
+}
+
+export async function fetchMyReturnCases(token: string): Promise<ReturnCaseSummary[]> {
+  const res = await fetch(`${API_BASE_URL}/returns/my-cases`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Failed to load return cases (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function fetchReturnCase(caseId: string, auth: { token?: string; guestEmail?: string }): Promise<ReturnCaseDetail> {
+  const url = new URL(`${API_BASE_URL}/returns/my-cases/${caseId}`);
+  if (auth.guestEmail) url.searchParams.set("guestEmail", auth.guestEmail);
+  const res = await fetch(url.toString(), {
+    headers: auth.token ? { Authorization: `Bearer ${auth.token}` } : {},
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Return case not found (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function sendReturnCaseMessage(caseId: string, message: string, auth: { token?: string; guestEmail?: string }): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/returns/my-cases/${caseId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}) },
+    body: JSON.stringify({ message, ...(auth.guestEmail ? { guestEmail: auth.guestEmail } : {}) }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Failed to send message (${res.status})`);
+  }
+}

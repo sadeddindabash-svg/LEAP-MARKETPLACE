@@ -2218,6 +2218,35 @@ with the real remaining count named, confirmed the same for `PATCH`
 existing cart-persistence regression (unaffected, since normal-sized
 cart operations stay well under real stock levels).
 
+## Guest return tracking (real gap closed)
+
+**A real, confirmed gap**: `POST /returns` already supported filing a
+return as a guest (`guestEmail`), but `GET`/`POST /returns/my-cases/:id*`
+were `requireAuth` only — a guest who filed a return had no way to
+ever check on it again, reply, or see its status. Mirrors `GET
+/order/:id`'s own established pattern exactly: `optionalAuth`, with a
+logged-in buyer seeing their own case as before, OR a guest supplying
+the real `guestEmail` the case was actually filed under as a second
+factor beyond just knowing the case ID.
+
+**Deliberately NOT extended to `GET /returns/my-cases` (the list)** —
+same reasoning as the order module: there's no natural "list all my
+cases" for a guest without a real account, only a real single-case
+lookup once they already have the ID (e.g. from their return
+confirmation).
+
+**Web storefront**: new `/returns` (real list for a logged-in buyer,
+a real case-ID + email lookup form for a guest) and `/returns/[id]`
+(real thread, works for both). The last remaining item from this app's
+original gap list.
+
+**Verified end-to-end against the real running backend**: filed a
+return as a real guest, confirmed they can fetch it and reply with
+zero login, confirmed a DIFFERENT (wrong) email is genuinely rejected
+rather than leaking the case, and confirmed the existing logged-in
+buyer flow is completely unaffected (same test suite, 8/8 still
+passing). Web-storefront: 25/25 passing.
+
 ## Price range + sort by price for search (added to GET /catalog/products)
 
 **A real architectural wrinkle, not just missing query params**: buyer-

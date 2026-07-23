@@ -205,6 +205,17 @@ screen. This pass wires that existing, unused API surface up to real UI:
   `POST /returns/my-cases/:id/messages` and confirmed it appears at the
   end of the thread on a second fetch.
 
+**A real follow-up flagged here, NOT built in this pass**: this
+screen's own login-gated copy ("Guest return requests are handled by
+email — you won't be able to track them here unless you have an
+account") is now technically stale — the backend genuinely supports
+guest return tracking as of this session (see
+`services/api/README.md`'s "Guest return tracking" section, built for
+web-storefront's own `/returns` page). Bringing that same capability to
+this screen — a real guest-email input path alongside the existing
+login-gated one — is a real, separate, scoped piece of UI work, not a
+quick patch alongside whatever else this session touches.
+
 ## Real stock validation in the cart (new)
 
 **A real UX gap, not a data-integrity risk** (order placement already

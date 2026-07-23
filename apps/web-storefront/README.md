@@ -417,6 +417,32 @@ confirmed marking it read brings the count back to `0`, and confirmed
 `markAllNotificationsRead` genuinely clears multiple real unread
 notifications at once. Full suite: 21/21 passing.
 
+## Real returns (new) — genuinely the last remaining gap, now closed
+
+**`/returns`** — two real modes: a logged-in buyer sees a real list
+(`GET /returns/my-cases`); a guest gets a real case-ID + email lookup
+form instead (there's no "list all my cases" for a guest without a
+real account — same reasoning as `/orders`).
+
+**`/returns/[id]`** — real thread (messages, photos, reply), working
+for both. If a guest lands here directly without `?guestEmail=` in the
+URL, shows a real inline email prompt rather than a 404.
+
+**Closes a real, separate gap found and fixed this session, not just a
+missing page**: `GET`/`POST /returns/my-cases/:id*` were `requireAuth`
+only — a guest who filed a return (already supported via
+`POST /returns`'s `guestEmail`) had no way to ever check on it again.
+Fixed at the backend, mirroring `GET /order/:id`'s own established
+account-or-matching-guestEmail pattern exactly — see
+`services/api/README.md`'s matching section.
+
+**Verified end-to-end against the real running backend**: filed a
+return as a real guest, confirmed they can fetch it and reply with
+zero login at all, confirmed a genuinely different (wrong) email is
+rejected rather than leaking the case, and confirmed the existing
+logged-in buyer flow is completely unaffected. Full suite: 25/25
+passing.
+
 ## Next steps to make this real
 
 1. **Verify the real Google Fonts fetch** once deployed somewhere

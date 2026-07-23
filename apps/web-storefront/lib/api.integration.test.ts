@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fetchCategories, fetchProducts, fetchProductById, fetchCart, addCartItem, fetchMyOrders, fetchOrderById, fetchWishlist, checkWishlisted, addToWishlist, removeFromWishlist, submitReview, fetchMyReferral, fetchNotifications, fetchUnreadNotificationCount, markNotificationRead, markAllNotificationsRead, resolveNotificationLink } from './api';
+import { fetchCategories, fetchProducts, fetchProductById, fetchCart, addCartItem, fetchMyOrders, fetchOrderById, fetchWishlist, checkWishlisted, addToWishlist, removeFromWishlist, submitReview, fetchMyReferral, fetchNotifications, fetchUnreadNotificationCount, markNotificationRead, markAllNotificationsRead, resolveNotificationLink, fetchMyReturnCases, fetchReturnCase, sendReturnCaseMessage } from './api';
 
 const BACKEND_URL = 'http://localhost:4000';
 
@@ -378,5 +378,96 @@ describe.runIf(backendUp)('notifications against a REAL running backend', () => 
     expect(resolveNotificationLink({ id: 1, type: 'order_status', title: '', body: '', linkType: 'order', linkId: 'LP-123', isRead: false, createdAt: '' })).toBe('/orders/LP-123');
     expect(resolveNotificationLink({ id: 2, type: 'price_drop', title: '', body: '', linkType: 'product', linkId: 'p1', isRead: false, createdAt: '' })).toBe('/products/p1');
     expect(resolveNotificationLink({ id: 3, type: 'saved_search_match', title: '', body: '', linkType: 'saved_search', linkId: '5', isRead: false, createdAt: '' })).toBe('/saved-searches');
+  });
+});
+
+// Real returns (new) -- the guest-access fix
+describe.runIf(backendUp)('returns (guest + logged-in access) against a REAL running backend', () => {
+  it('CRITICAL: a guest who files a return can check on it later with the real matching email, with no login at all', async () => {
+    const suffix = Date.now();
+    const guestEmail = `storefront-guest-return-${suffix}@example.com`;
+    const products = await fetchProducts();
+
+    const orderRes = await fetch(`${BACKEND_URL}/order`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: [{ productId: products[0].id, quantity: 1 }], guestEmail,
+        address: { recipientName: 'Guest Buyer', phone: '555-0100', country: 'USA', city: 'Springfield', streetAddress: '123 Test St' },
+      }),
+    });
+    const order = await orderRes.json();
+    const subOrderId = order.supplierSubOrders[0].subOrderId;
+
+    const caseRes = await fetch(`${BACKEND_URL}/returns`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subOrderId, reason: 'Wrong item', message: 'Not what I ordered', guestEmail }),
+    });
+    const createdCase = await caseRes.json();
+
+    // The real point of this fix: no token anywhere, just the matching email.
+    const fetched = await fetchReturnCase(createdCase.id, { guestEmail });
+    expect(fetched.id).toBe(createdCase.id);
+    expect(fetched.messages[0].message).toBe('Not what I ordered');
+
+    await sendReturnCaseMessage(createdCase.id, 'Any update?', { guestEmail });
+    const afterReply = await fetchReturnCase(createdCase.id, { guestEmail });
+    expect(afterReply.messages.length).toBe(2);
+    expect(afterReply.messages[1].message).toBe('Any update?');
+  });
+
+  it('a guest supplying the WRONG email cannot access someone else\'s return case', async () => {
+    const suffix = Date.now();
+    const guestEmail = `storefront-guest-wrong-email-${suffix}@example.com`;
+    const products = await fetchProducts();
+
+    const orderRes = await fetch(`${BACKEND_URL}/order`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: [{ productId: products[0].id, quantity: 1 }], guestEmail,
+        address: { recipientName: 'Guest Buyer', phone: '555-0100', country: 'USA', city: 'Springfield', streetAddress: '123 Test St' },
+      }),
+    });
+    const order = await orderRes.json();
+    const subOrderId = order.supplierSubOrders[0].subOrderId;
+
+    const caseRes = await fetch(`${BACKEND_URL}/returns`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subOrderId, reason: 'Wrong item', message: 'Not what I ordered', guestEmail }),
+    });
+    const createdCase = await caseRes.json();
+
+    await expect(fetchReturnCase(createdCase.id, { guestEmail: 'someone-else@example.com' })).rejects.toThrow();
+  });
+
+  it('a logged-in buyer\'s own return case still works exactly as before (no regression)', async () => {
+    const suffix = Date.now();
+    const signupRes = await fetch(`${BACKEND_URL}/auth/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `storefront-buyer-return-${suffix}@example.com`, password: 'test_password_123' }),
+    });
+    const { token, user } = await signupRes.json();
+    const products = await fetchProducts();
+
+    const orderRes = await fetch(`${BACKEND_URL}/order`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: [{ productId: products[0].id, quantity: 1 }], userId: user.id,
+        address: { recipientName: 'Test Buyer', phone: '555-0100', country: 'USA', city: 'Springfield', streetAddress: '123 Test St' },
+      }),
+    });
+    const order = await orderRes.json();
+    const subOrderId = order.supplierSubOrders[0].subOrderId;
+
+    const caseRes = await fetch(`${BACKEND_URL}/returns`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ subOrderId, reason: 'Damaged', message: 'Arrived broken' }),
+    });
+    const createdCase = await caseRes.json();
+
+    const list = await fetchMyReturnCases(token);
+    expect(list.find((c) => c.id === createdCase.id)).toBeDefined();
+
+    const fetched = await fetchReturnCase(createdCase.id, { token });
+    expect(fetched.id).toBe(createdCase.id);
   });
 });
