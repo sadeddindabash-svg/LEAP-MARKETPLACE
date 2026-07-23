@@ -18,6 +18,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchHubWorkload, updateHubCapacity,
   fetchHubPerformance,
   fetchFlaggedReviews, dismissReviewFlags,
+  searchAdmin,
 } from "./auth";
 import {
   LayoutGrid, ShoppingBag, Store, PackageSearch, Wallet, LifeBuoy, Settings,
@@ -156,6 +157,14 @@ function Td({ children, align, style }) {
 // page component's props. Provided once, at AdminDashboardShell.
 const CurrentUserContext = createContext(null);
 
+// Real navigation context (new) -- lets TopBar's real search results
+// (see below) actually navigate, the same reason CurrentUserContext
+// exists: TopBar is rendered once PER PAGE COMPONENT (OrdersPage,
+// SuppliersPage, etc. each render their own <TopBar>), not once at
+// the shell level, so it has no direct access to AdminDashboardShell's
+// own setOpenOrder/setOpenTicket/setOpenCase/setPage without this.
+const NavigationContext = createContext(null);
+
 // REAL BUG FOUND AND FIXED HERE: this previously always showed a
 // hardcoded "Omar M. / Ops Admin" placeholder, regardless of who was
 // actually logged in -- flagged as a known gap in this project's own
@@ -164,6 +173,7 @@ const CurrentUserContext = createContext(null);
 // used correctly in the sidebar footer below).
 function TopBar({ title, subtitle }) {
   const currentUser = useContext(CurrentUserContext);
+  const nav = useContext(NavigationContext);
   const displayName = currentUser?.name || currentUser?.email || "Admin";
   const initials = displayName
     .split(/[\s@.]+/)
@@ -172,6 +182,7 @@ function TopBar({ title, subtitle }) {
     .map((s) => s[0].toUpperCase())
     .join('') || "A";
   const roleLabel = currentUser?.isOwner ? "Owner" : "Admin";
+
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
       <div>
@@ -179,10 +190,7 @@ function TopBar({ title, subtitle }) {
         {subtitle && <div style={{ ...body, fontSize: 12.5, color: C.muted, marginTop: 2 }}>{subtitle}</div>}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, background: C.canvas, borderRadius: 8, padding: "8px 12px", width: 260 }}>
-          <Search size={14} color={C.muted} />
-          <span style={{ ...body, fontSize: 12.5, color: C.muted }}>Search orders, suppliers, tickets…</span>
-        </div>
+        <GlobalSearch nav={nav} />
         <Bell size={18} color={C.ink} />
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.ink, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", ...body, fontWeight: 700, fontSize: 12.5 }}>{initials}</div>
@@ -192,6 +200,84 @@ function TopBar({ title, subtitle }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// REAL BUG FOUND AND FIXED HERE: this search box was 100% decorative
+// before -- a <span> with placeholder text, not even a real <input>,
+// confirmed directly by reading the component before assuming
+// anything needed building. Real debounced search across the three
+// real categories the placeholder text always claimed
+// ("orders, suppliers, tickets"), via the new GET /admin/search.
+function GlobalSearch({ nav }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+
+  useEffect(() => {
+    if (query.trim().length < 2) {
+      setResults(null);
+      return;
+    }
+    setIsSearching(true);
+    const handle = setTimeout(() => {
+      searchAdmin(getStoredToken(), query.trim())
+        .then((data) => { setResults(data); setIsSearching(false); })
+        .catch(() => { setResults(null); setIsSearching(false); });
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [query]);
+
+  const handleSelectOrder = (id) => { nav?.onOpenOrder(id); setQuery(""); setResults(null); setIsOpen(false); };
+  const handleSelectTicket = (id) => { nav?.onOpenTicket(id); setQuery(""); setResults(null); setIsOpen(false); };
+  // Real, honest scope boundary: there's no supplier detail deep-link
+  // from outside SuppliersPage today (its own drill-down is local
+  // component state, not lifted to the shell like orders/tickets/cases
+  // are) -- navigating to the real Suppliers page is a real, useful
+  // result, just not a direct deep-link into that one supplier yet.
+  const handleSelectSupplier = () => { nav?.onNavigateToPage("suppliers"); setQuery(""); setResults(null); setIsOpen(false); };
+
+  const hasResults = results && (results.orders.length > 0 || results.suppliers.length > 0 || results.tickets.length > 0);
+
+  return (
+    <div style={{ position: "relative", width: 280 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, background: C.canvas, borderRadius: 8, padding: "8px 12px" }}>
+        <Search size={14} color={C.muted} />
+        <input
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setIsOpen(true); }}
+          onFocus={() => setIsOpen(true)}
+          onBlur={() => setTimeout(() => setIsOpen(false), 150)} // real delay so a click on a result registers before the dropdown closes
+          placeholder="Search orders, suppliers, tickets…"
+          style={{ ...body, fontSize: 12.5, color: C.ink, border: "none", background: "none", outline: "none", width: "100%" }}
+        />
+      </div>
+      {isOpen && query.trim().length >= 2 && (
+        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 8, boxShadow: "0 4px 16px rgba(0,0,0,0.08)", zIndex: 20, maxHeight: 360, overflowY: "auto" }}>
+          {isSearching && <div style={{ ...body, fontSize: 12, color: C.muted, padding: 14 }}>Searching…</div>}
+          {!isSearching && !hasResults && <div style={{ ...body, fontSize: 12, color: C.muted, padding: 14 }}>No matches.</div>}
+          {!isSearching && results?.orders.map((r) => (
+            <div key={`order-${r.id}`} onClick={() => handleSelectOrder(r.id)} style={{ padding: "9px 14px", cursor: "pointer", borderBottom: `1px solid ${C.line}` }}>
+              <div style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.ink }}>{r.label}</div>
+              <div style={{ ...body, fontSize: 11, color: C.muted }}>Order · {r.sublabel}</div>
+            </div>
+          ))}
+          {!isSearching && results?.suppliers.map((r) => (
+            <div key={`supplier-${r.id}`} onClick={handleSelectSupplier} style={{ padding: "9px 14px", cursor: "pointer", borderBottom: `1px solid ${C.line}` }}>
+              <div style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.ink }}>{r.label}</div>
+              <div style={{ ...body, fontSize: 11, color: C.muted }}>Supplier · {r.sublabel}</div>
+            </div>
+          ))}
+          {!isSearching && results?.tickets.map((r) => (
+            <div key={`ticket-${r.id}`} onClick={() => handleSelectTicket(r.id)} style={{ padding: "9px 14px", cursor: "pointer" }}>
+              <div style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.ink }}>{r.label}</div>
+              <div style={{ ...body, fontSize: 11, color: C.muted }}>Ticket · {r.sublabel}</div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -4000,6 +4086,12 @@ function AdminDashboardShell({ currentUser, onLogout }) {
 
   return (
     <CurrentUserContext.Provider value={currentUser}>
+    <NavigationContext.Provider value={{
+      onOpenOrder: setOpenOrder,
+      onOpenTicket: setOpenTicket,
+      onOpenCase: setOpenCase,
+      onNavigateToPage: (p) => { setPage(p); setOpenOrder(null); setOpenTicket(null); setOpenCase(null); },
+    }}>
     <div style={{ display: "flex", height: "100%", minHeight: 700, background: C.canvas, ...body }}>
       <style>{FONT_IMPORT}</style>
       <style>{`tbody tr:hover { background: ${C.canvas}; }`}</style>
@@ -4044,6 +4136,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
         {content}
       </div>
     </div>
+    </NavigationContext.Provider>
     </CurrentUserContext.Provider>
   );
 }

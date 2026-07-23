@@ -1385,6 +1385,46 @@ add a new mocked component test that logs in, give it a valid
 `/overview` mock too, even if the test itself is about something else
 entirely.
 
+## Real global search (new) — closes a 100%-decorative gap
+
+**A real, confirmed gap, found by actually reading the component before
+assuming anything needed building**: `TopBar`'s search box was a
+`<span>` with placeholder text ("Search orders, suppliers, tickets…"),
+not even a real `<input>` — zero functionality at all.
+
+- **New `GET /admin/search?q=`** — one combined endpoint (not three
+  separate ones the client would need to coordinate) across the exact
+  three real categories the placeholder text always claimed: orders (by
+  ID), suppliers (by name), tickets (by ID or subject). Each capped at
+  5 real results — this is a type-ahead dropdown, not a search-results
+  page.
+- **New `NavigationContext`** — `TopBar` is rendered once PER PAGE
+  component (every page renders its own `<TopBar>`), not once at the
+  shell level, so it has no direct access to
+  `AdminDashboardShell`'s own `setOpenOrder`/`setOpenTicket`/
+  `setOpenCase`/`setPage` without this — same reasoning as the earlier
+  `CurrentUserContext` fix.
+- **`GlobalSearch`** (new component) — real debounced (300ms) search,
+  a real dropdown, clicking a result actually navigates: an order or
+  ticket deep-links directly into its detail page; a supplier
+  navigates to the Suppliers page (an honest scope boundary — that
+  page's own drill-down into a specific supplier is local component
+  state, not lifted to the shell like orders/tickets/cases are, so a
+  direct deep-link into one specific supplier isn't wired up yet).
+
+**Verified end-to-end against the real running backend**: matched a
+real supplier by name, matched multiple real orders by ID prefix
+(correctly capped at 5, correct sublabel formatting), confirmed a
+too-short query returns empty rather than erroring, and confirmed an
+unauthenticated request is rejected. Real component test
+(`GlobalSearch.test.jsx`): typed a real order ID, clicked the real
+result, confirmed the real order detail page's own distinctive content
+actually renders — not just the search dropdown closing. 2/2 passing.
+Full regression across Overview/Suppliers/Hubs/Returns: 18/19 passing
+(the 1 failure is the same pre-existing parallel-test-isolation
+flakiness confirmed multiple times earlier this session — passes
+cleanly in complete isolation, unrelated to this feature).
+
 ## Real Excel export on Suppliers and Returns pages (new)
 
 **A real inconsistency found and closed**: `exportToExcel()` (see

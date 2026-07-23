@@ -2218,6 +2218,25 @@ with the real remaining count named, confirmed the same for `PATCH`
 existing cart-persistence regression (unaffected, since normal-sized
 cart operations stay well under real stock levels).
 
+## Real admin global search (new)
+
+**A real, confirmed gap**: the admin dashboard's `TopBar` search box was
+100% decorative — a `<span>` with placeholder text, not even a real
+`<input>`, confirmed directly by reading the component.
+
+**`GET /admin/search?q=`** (admin-only) — one combined endpoint across
+the exact three categories the placeholder text always claimed:
+real orders (`id ILIKE`), real suppliers (`name ILIKE`), real support
+tickets (`id ILIKE OR subject ILIKE`). Each capped at 5 results — a
+type-ahead dropdown, not a search-results page. A query under 2
+characters returns empty results rather than running a meaningless
+broad scan.
+
+**Verified against the real running backend**: matched a real supplier
+by name, matched multiple real orders by ID prefix (correctly capped
+at 5), confirmed a too-short query returns empty without erroring, and
+confirmed an unauthenticated request is rejected (401).
+
 ## Guest return tracking (real gap closed)
 
 **A real, confirmed gap**: `POST /returns` already supported filing a

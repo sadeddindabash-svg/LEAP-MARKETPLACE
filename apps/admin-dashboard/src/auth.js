@@ -669,3 +669,12 @@ export async function fetchHubPerformance(token) {
   }
   return response.json();
 }
+
+// ---------------- Real global search (new — closes a real gap: the TopBar's search box was 100% decorative before this) ----------------
+
+export async function searchAdmin(token, query) {
+  const response = await fetch(`${API_BASE_URL}/admin/search?q=${encodeURIComponent(query)}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) throw new Error(`Search failed (${response.status})`);
+  return response.json();
+}
