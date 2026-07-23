@@ -191,7 +191,7 @@ function TopBar({ title, subtitle }) {
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
         <GlobalSearch nav={nav} />
-        <Bell size={18} color={C.ink} />
+        <NotificationBell nav={nav} />
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.ink, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", ...body, fontWeight: 700, fontSize: 12.5 }}>{initials}</div>
           <div>
@@ -283,6 +283,60 @@ function GlobalSearch({ nav }) {
             <div key={`ticket-${r.id}`} onClick={() => handleSelectTicket(r.id)} style={{ padding: "9px 14px", cursor: "pointer" }}>
               <div style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.ink }}>{r.label}</div>
               <div style={{ ...body, fontSize: 11, color: C.muted }}>Ticket · {r.sublabel}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// REAL BUG FOUND AND FIXED HERE: the Bell icon in TopBar was 100%
+// decorative before this -- no badge, no click handler, nothing.
+// Reuses the SAME real aggregate counts the Overview page already
+// computes (GET /overview) plus the same real flagged-shipments count
+// the sidebar badge already uses -- no new backend endpoint needed,
+// all of this data was already real and already correct, just never
+// surfaced anywhere an admin would actually notice it.
+function NotificationBell({ nav }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const counts = nav?.pendingCounts || { pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, openTickets: 0 };
+  const flaggedCount = nav?.flaggedCount || 0;
+  const total = counts.pendingSuppliers + counts.openDisputes + counts.pendingModeration + counts.openTickets + flaggedCount;
+
+  const items = [
+    { count: counts.pendingSuppliers, label: "Suppliers pending review", page: "suppliers" },
+    { count: counts.openDisputes, label: "Open returns/disputes", page: "returns" },
+    { count: counts.pendingModeration, label: "Products pending moderation", page: "moderation" },
+    { count: counts.openTickets, label: "Open support tickets", page: "tickets" },
+    { count: flaggedCount, label: "Flagged shipments", page: "flagged" },
+  ].filter((i) => i.count > 0);
+
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => setIsOpen((v) => !v)}
+        onBlur={() => setTimeout(() => setIsOpen(false), 150)} // real delay so a click on an item registers before the dropdown closes
+        style={{ position: "relative", background: "none", border: "none", cursor: "pointer", display: "flex", padding: 0 }}
+      >
+        <Bell size={18} color={C.ink} />
+        {total > 0 && (
+          <span style={{ position: "absolute", top: -6, right: -6, background: C.signal, color: "#fff", borderRadius: "50%", minWidth: 16, height: 16, fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>
+            {total > 9 ? "9+" : total}
+          </span>
+        )}
+      </button>
+      {isOpen && (
+        <div style={{ position: "absolute", top: "calc(100% + 8px)", right: 0, width: 260, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 8, boxShadow: "0 4px 16px rgba(0,0,0,0.08)", zIndex: 20 }}>
+          {items.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 14 }}>Nothing needs your attention right now.</div>}
+          {items.map((item) => (
+            <div
+              key={item.page}
+              onClick={() => nav?.onNavigateToPage(item.page)}
+              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", cursor: "pointer", borderBottom: `1px solid ${C.line}` }}
+            >
+              <span style={{ ...body, fontSize: 12.5, color: C.ink }}>{item.label}</span>
+              <span style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.signal }}>{item.count}</span>
             </div>
           ))}
         </div>
@@ -4204,12 +4258,26 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   // whole Suppliers list page.
   const [openSupplier, setOpenSupplier] = useState(null);
   const [flaggedCount, setFlaggedCount] = useState(0);
+  // Real notification bell (new) -- closes a real gap: the Bell icon
+  // in TopBar was 100% decorative before this, no badge, no click
+  // handler, nothing. Reuses the SAME real aggregate counts the
+  // Overview page already computes (GET /overview) -- no new backend
+  // endpoint needed, since pendingSuppliers/openDisputes/
+  // pendingModeration/openTickets were already real and already
+  // correct, just never surfaced anywhere except that one page.
+  const [pendingCounts, setPendingCounts] = useState({ pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, openTickets: 0 });
 
   useEffect(() => {
     fetchFlaggedShipments(getStoredToken())
       .then((data) => setFlaggedCount(data.length))
       .catch(() => {}); // non-critical -- the sidebar badge just stays at 0 rather than breaking the shell
-  }, [page]); // refetch whenever navigating, so returning from the Flagged Shipments page reflects any change
+    fetchOverview(getStoredToken())
+      .then((data) => setPendingCounts({
+        pendingSuppliers: data.pendingSuppliers, openDisputes: data.openDisputes,
+        pendingModeration: data.pendingModeration, openTickets: data.openTickets,
+      }))
+      .catch(() => {}); // non-critical -- the bell badge just stays at 0 rather than breaking the shell
+  }, [page]); // refetch whenever navigating, so acting on something reflects in the badge soon after
 
   let content;
   if (openOrder) content = <OrderDetailPage orderId={openOrder} onBack={() => setOpenOrder(null)} onSessionExpired={onLogout} />;
@@ -4241,6 +4309,8 @@ function AdminDashboardShell({ currentUser, onLogout }) {
       onOpenCase: setOpenCase,
       onOpenSupplier: setOpenSupplier,
       onNavigateToPage: (p) => { setPage(p); setOpenOrder(null); setOpenTicket(null); setOpenCase(null); setOpenSupplier(null); },
+      pendingCounts,
+      flaggedCount,
     }}>
     <div style={{ display: "flex", height: "100%", minHeight: 700, background: C.canvas, ...body }}>
       <style>{FONT_IMPORT}</style>

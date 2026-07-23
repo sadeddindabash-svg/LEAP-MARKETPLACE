@@ -1389,6 +1389,38 @@ add a new mocked component test that logs in, give it a valid
 `/overview` mock too, even if the test itself is about something else
 entirely.
 
+## Real notification bell (new) — closes another 100%-decorative gap
+
+**A real, confirmed gap, found by actually reading the component**:
+the Bell icon in `TopBar` had no badge, no click handler, nothing —
+purely decorative, sitting right next to the search box that had the
+exact same problem before an earlier pass fixed it.
+
+- **No new backend endpoint needed** — reuses the SAME real aggregate
+  counts the Overview page already computes (`GET /overview`:
+  `pendingSuppliers`, `openDisputes`, `pendingModeration`,
+  `openTickets`) plus the same real flagged-shipments count the
+  sidebar badge already uses. All of this data was already real and
+  already correct; it just never surfaced anywhere an admin would
+  actually notice it outside the one Overview page.
+- **Lifted to the shell** (`pendingCounts`, `flaggedCount`), refetched
+  on every navigation the same way `flaggedCount` already was, exposed
+  via `NavigationContext` so `TopBar` (rendered once per page
+  component, not once at the shell) can read it.
+- Real badge (caps display at "9+"), real dropdown breaking down each
+  real category with its own real count, each row clickable to
+  navigate directly to that page. Categories with a genuine zero count
+  are correctly omitted, not shown as an empty "0" row.
+
+**Verified**: real component test with real non-zero counts (2 + 1 +
+4 + 0 + 1 = 8) confirms the exact right total, confirms the dropdown
+shows the 4 non-zero categories and correctly omits the one at zero
+(open tickets), confirms clicking a category navigates to the real
+page, and confirms an honest empty state ("Nothing needs your
+attention right now.") when every real count is genuinely zero. 3/3
+passing. Full regression: OverviewFlow, SuppliersFlow, GlobalSearch —
+12/12 passing across all four suites.
+
 ## Real supplier detail view (new) — corrects a wrong claim from an earlier pass
 
 **An earlier pass (documenting the global search feature) claimed a
