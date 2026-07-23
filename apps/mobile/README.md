@@ -207,47 +207,58 @@ screen. This pass wires that existing, unused API surface up to real UI:
 
 ## My Garage — saved vehicles (BUY-004, BUY-010–012)
 
-A genuinely new backend feature, not just a mock-to-real conversion —
-there was no per-buyer "saved vehicles" concept anywhere in the backend
-before this, only the shared Year/Make/Model/Trim reference catalog
-(`GET /fitment/vehicles`, which already existed and worked). Distinguishing
-"every vehicle Leap knows about" from "the vehicles *this buyer* saved"
-matters — see the migration's header comment
-(`services/api/db/migrations/008_saved_vehicles.sql`) for why conflating
-them would be a real bug, not a naming nitpick.
+**REAL BUG FOUND AND FIXED (backend migration 044)**: this feature was
+originally built against the flat Year/Make/Model/Trim reference
+catalog (`GET /fitment/vehicles`) — confirmed working for save/list/
+remove at the time, but flagged afterward, while scoping the search
+vehicle filter, as a real dead end: nothing in the entire codebase ever
+writes a row into `product_fitment`, the join table a saved vehicle
+from that flat system would need to actually match a real product
+against. My Garage's own "shop for my vehicle" promise never actually
+held. Rebuilt on the real, populated system instead — the same
+structured Brand→Model→Generation cascade (`product_fitment_entries`,
+migration 010) every real product's fitment is actually stored in, and
+the exact same system the search vehicle filter already uses.
 
-- `lib/features/garage/garage_screen.dart` — real saved-vehicle list via
-  `GET /garage/me`. Login-gated, same pattern as orders/tickets — there's
-  no guest "garage" concept, saving a vehicle only makes sense tied to
-  an account.
-- `lib/features/garage/add_vehicle_screen.dart` (new) — two-step flow:
-  pick a make (`GET /fitment/makes`), then pick a specific vehicle for
-  that make (`GET /fitment/vehicles?make=...`), then save it
-  (`POST /garage/me`). Saving is idempotent — adding the same vehicle
-  twice doesn't duplicate it, verified against the real backend.
-- Removing a vehicle (`DELETE /garage/me/:vehicleId`) is real too, with a
-  confirmed round-trip back to an updated list.
-- **Verified against the real backend**: ran the exact sequence — signup
-  → fetch makes → fetch vehicles for a make → save one → confirm it
-  appears in the garage list → remove it → confirm the list is empty
-  again — checking every field each screen reads actually exists in the
-  real response.
+- `lib/features/garage/garage_screen.dart` — real saved-vehicle list
+  via `GET /garage/me`. Login-gated, same pattern as orders/tickets.
+  "Add a vehicle" now opens `vehicle_filter_sheet.dart`'s `
+  VehicleFilterSheet` directly (the SAME real Brand→Model→Generation→
+  Year picker search uses) rather than a separate, now-deleted
+  `add_vehicle_screen.dart` built on the old flat system.
+- `lib/models/vehicle.dart` — rebuilt around a real
+  `(generationId, year)` identity plus the real brand/model/generation/
+  year-range fields, replacing the old make/model/trim/yearsRange shape.
+- `POST /garage/me` now takes `{ generationId, year }`, validates the
+  year genuinely falls within that generation's real range (a
+  still-in-production generation has no upper bound to check), and is
+  still idempotent. `DELETE /garage/me/:generationId/:year` replaces
+  the old single-id delete (a real composite key now, matching the
+  real composite primary key on `user_saved_generations`).
+- **The actual, previously-silent bug this closes**: the home feed's
+  "My car" filter tab (`home_screen.dart`) was calling
+  `fetchProducts(vehicleId: ...)` — the same dead path — so it had
+  never once returned a real filtered result. Now calls
+  `fetchProducts(generationId:, year:)`, the real filter.
+- Old `user_saved_vehicles` table and `add_vehicle_screen.dart` are
+  left in place / deleted respectively — the table untouched (this
+  project's non-destructive migration philosophy, in case any real
+  historical data ever needs it), the now-dead screen and its orphaned
+  `fetchMakes()`/`fetchVehiclesByMake()` API methods removed since
+  nothing calls them anymore.
 
-**A real gap found later, while scoping the search vehicle filter below
-— flagged here, NOT fixed in this pass, tracked as a separate
-follow-up**: saving worked exactly as verified above, but a saved
-vehicle here can never actually filter the catalog to a real product.
-`GET /fitment/vehicles` (used here) and `product_fitment` (what a saved
-vehicle would need to join against to match real products) are a
-completely separate, unpopulated system from the structured
-Brand→Model→Generation cascade every real product's fitment is
-actually stored in (`product_fitment_entries`, migration 010) — see
-`services/api/README.md`'s "Brand/Model/Generation(Year) filter for
-search" section for the full finding. In practice, this means My
-Garage's own "shop for my vehicle" promise doesn't hold today. The fix
-is a real, separate piece of work — likely migrating this feature onto
-the same structured cascade the new search filter uses — not a quick
-patch alongside it.
+**Verified end-to-end against the real running backend** — the actual
+loop this bug broke, not just the CRUD operations in isolation: saved a
+real generation+year, confirmed it appears in the garage list with
+correct real brand/model/generation fields, confirmed that SAME
+generation+year genuinely narrows `GET /catalog/products` to real
+matching products (not zero, not everything), confirmed an out-of-range
+year is rejected, confirmed removing one saved year doesn't affect a
+different saved year for the same generation, and confirmed the
+existing cross-buyer isolation and idempotent-save/idempotent-delete
+guarantees still hold under the new schema. Full admin-dashboard
+regression: `garage.integration.test.js` 13/13, `returns.integration
+.test.js` 8/8 (unrelated, confirms no collateral damage).
 
 ## Language setting & product page redesign (new)
 
@@ -394,12 +405,11 @@ filter against THAT real, populated system instead.
   Brand → Model → Generation → Year picker, via
   `GET /fitment/brands` → `/brands/:id/models` → `/models/:id/generations`
   — the same cascade the supplier portal already uses to submit real
-  fitment, deliberately not the flat `GET /fitment/makes`/`/vehicles`
-  pair My Garage uses (see "My Garage" section below — that feature has
-  the same dead-end problem for the same reason, tracked as a separate
-  follow-up). The Year step is skipped automatically when a generation
-  only spans one year, and offers "Any year in this generation"
-  alongside specific years otherwise.
+  fitment. My Garage had the same dead-end problem for the same reason
+  when this was first built — since fixed (see "My Garage" section
+  below) by reusing this exact widget. The Year step is skipped
+  automatically when a generation only spans one year, and offers "Any
+  year in this generation" alongside specific years otherwise.
 - `search_screen.dart`: a new car icon in the app bar opens the picker;
   an active filter shows as a dismissible chip above results. Selecting
   a vehicle now works as a standalone search with no text typed at all

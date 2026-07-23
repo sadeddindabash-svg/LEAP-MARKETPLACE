@@ -24,7 +24,18 @@ async function signupBuyer() {
 
 const backendUp = await isBackendUp();
 
+// REAL BUG FOUND AND FIXED HERE (migration 044): this whole test file
+// used to exercise the old vehicleId-based API, joining a table
+// (product_fitment) nothing in this codebase ever wrote a row into --
+// a saved vehicle could never actually match a real product. Rewritten
+// against the real, populated Brand->Model->Generation cascade (the
+// SAME real seeded reference data -- gen_bmw_1_series_f20 -- already
+// used throughout this project's other real fitment tests), not a
+// mocked or fabricated one.
 describe.runIf(backendUp)('garage (saved vehicles) against a REAL running backend', () => {
+  const REAL_GENERATION_ID = 'gen_bmw_1_series_f20'; // real seeded BMW 1 Series F20, 2015-2019
+  const REAL_YEAR = 2018;
+
   it('rejects unauthenticated access', async () => {
     const res = await fetch(`${BACKEND_URL}/garage/me`);
     expect(res.status).toBe(401);
@@ -37,49 +48,78 @@ describe.runIf(backendUp)('garage (saved vehicles) against a REAL running backen
     expect(garage).toEqual([]);
   });
 
-  it('saves a real reference vehicle and it appears in the garage with full details', async () => {
+  it('saves a real generation+year and it appears in the garage with full real details', async () => {
     const token = await signupBuyer();
     const saveRes = await fetch(`${BACKEND_URL}/garage/me`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ vehicleId: 'v1' }),
+      body: JSON.stringify({ generationId: REAL_GENERATION_ID, year: REAL_YEAR }),
     });
     expect(saveRes.status).toBe(201);
     const saved = await saveRes.json();
-    expect(saved.make).toBe('BMW');
+    expect(saved.brand).toBe('BMW');
+    expect(saved.model).toBe('1 Series');
+    expect(saved.generation).toBe('F20');
+    expect(saved.year).toBe(REAL_YEAR);
 
     const listRes = await fetch(`${BACKEND_URL}/garage/me`, { headers: { Authorization: `Bearer ${token}` } });
     const garage = await listRes.json();
-    expect(garage.find((v) => v.id === 'v1')).toBeDefined();
+    expect(garage.find((v) => v.generationId === REAL_GENERATION_ID && v.year === REAL_YEAR)).toBeDefined();
   });
 
-  it('rejects saving a vehicle ID that does not exist in the reference catalog', async () => {
-    const token = await signupBuyer();
-    const res = await fetch(`${BACKEND_URL}/garage/me`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ vehicleId: 'not-a-real-vehicle' }),
-    });
-    expect(res.status).toBe(404);
-  });
-
-  it('saving the same vehicle twice is idempotent, not an error and not a duplicate', async () => {
+  it('CRITICAL: this saved vehicle actually filters the real catalog to real matching products', async () => {
     const token = await signupBuyer();
     await fetch(`${BACKEND_URL}/garage/me`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ vehicleId: 'v2' }),
+      body: JSON.stringify({ generationId: REAL_GENERATION_ID, year: REAL_YEAR }),
+    });
+
+    const garageRes = await fetch(`${BACKEND_URL}/garage/me`, { headers: { Authorization: `Bearer ${token}` } });
+    const [saved] = await garageRes.json();
+
+    const productsRes = await fetch(`${BACKEND_URL}/catalog/products?generationId=${saved.generationId}&year=${saved.year}`);
+    const products = await productsRes.json();
+    expect(products.length).toBeGreaterThan(0);
+  });
+
+  it('rejects saving a generation ID that does not exist in the reference catalog', async () => {
+    const token = await signupBuyer();
+    const res = await fetch(`${BACKEND_URL}/garage/me`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ generationId: 'not-a-real-generation', year: 2018 }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('rejects a real year outside the real generation\'s actual range', async () => {
+    const token = await signupBuyer();
+    const res = await fetch(`${BACKEND_URL}/garage/me`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ generationId: REAL_GENERATION_ID, year: 1999 }), // F20 is 2015-2019
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('saving the same generation+year twice is idempotent, not an error and not a duplicate', async () => {
+    const token = await signupBuyer();
+    await fetch(`${BACKEND_URL}/garage/me`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ generationId: REAL_GENERATION_ID, year: REAL_YEAR }),
     });
     const secondRes = await fetch(`${BACKEND_URL}/garage/me`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ vehicleId: 'v2' }),
+      body: JSON.stringify({ generationId: REAL_GENERATION_ID, year: REAL_YEAR }),
     });
     expect(secondRes.status).toBe(201);
 
     const listRes = await fetch(`${BACKEND_URL}/garage/me`, { headers: { Authorization: `Bearer ${token}` } });
     const garage = await listRes.json();
-    expect(garage.filter((v) => v.id === 'v2').length).toBe(1);
+    expect(garage.filter((v) => v.generationId === REAL_GENERATION_ID && v.year === REAL_YEAR).length).toBe(1);
   });
 
   it('removing a vehicle actually removes it, confirmed by an independent re-fetch', async () => {
@@ -87,13 +127,31 @@ describe.runIf(backendUp)('garage (saved vehicles) against a REAL running backen
     await fetch(`${BACKEND_URL}/garage/me`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ vehicleId: 'v3' }),
+      body: JSON.stringify({ generationId: REAL_GENERATION_ID, year: REAL_YEAR }),
     });
-    await fetch(`${BACKEND_URL}/garage/me/v3`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    await fetch(`${BACKEND_URL}/garage/me/${REAL_GENERATION_ID}/${REAL_YEAR}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
 
     const listRes = await fetch(`${BACKEND_URL}/garage/me`, { headers: { Authorization: `Bearer ${token}` } });
     const garage = await listRes.json();
-    expect(garage.find((v) => v.id === 'v3')).toBeUndefined();
+    expect(garage.find((v) => v.generationId === REAL_GENERATION_ID && v.year === REAL_YEAR)).toBeUndefined();
+  });
+
+  it('removing one saved year does not remove a different saved year for the same generation', async () => {
+    const token = await signupBuyer();
+    await fetch(`${BACKEND_URL}/garage/me`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ generationId: REAL_GENERATION_ID, year: 2016 }),
+    });
+    await fetch(`${BACKEND_URL}/garage/me`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ generationId: REAL_GENERATION_ID, year: 2018 }),
+    });
+    await fetch(`${BACKEND_URL}/garage/me/${REAL_GENERATION_ID}/2016`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+
+    const listRes = await fetch(`${BACKEND_URL}/garage/me`, { headers: { Authorization: `Bearer ${token}` } });
+    const garage = await listRes.json();
+    expect(garage.find((v) => v.year === 2016)).toBeUndefined();
+    expect(garage.find((v) => v.year === 2018)).toBeDefined();
   });
 
   it('CRITICAL: a second buyer never sees the first buyer\'s saved vehicles', async () => {
@@ -101,7 +159,7 @@ describe.runIf(backendUp)('garage (saved vehicles) against a REAL running backen
     await fetch(`${BACKEND_URL}/garage/me`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenA}` },
-      body: JSON.stringify({ vehicleId: 'v1' }),
+      body: JSON.stringify({ generationId: REAL_GENERATION_ID, year: REAL_YEAR }),
     });
 
     const tokenB = await signupBuyer();
@@ -115,25 +173,35 @@ describe.runIf(backendUp)('garage (saved vehicles) against a REAL running backen
     await fetch(`${BACKEND_URL}/garage/me`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenA}` },
-      body: JSON.stringify({ vehicleId: 'v2' }),
+      body: JSON.stringify({ generationId: REAL_GENERATION_ID, year: REAL_YEAR }),
     });
 
     const tokenB = await signupBuyer();
-    const deleteRes = await fetch(`${BACKEND_URL}/garage/me/v2`, { method: 'DELETE', headers: { Authorization: `Bearer ${tokenB}` } });
+    const deleteRes = await fetch(`${BACKEND_URL}/garage/me/${REAL_GENERATION_ID}/${REAL_YEAR}`, { method: 'DELETE', headers: { Authorization: `Bearer ${tokenB}` } });
     expect(deleteRes.status).toBe(200); // no error, just doesn't affect buyer A's garage
 
     // Confirm buyer A's vehicle is still there — buyer B's delete call had no effect.
     const listResA = await fetch(`${BACKEND_URL}/garage/me`, { headers: { Authorization: `Bearer ${tokenA}` } });
     const garageA = await listResA.json();
-    expect(garageA.find((v) => v.id === 'v2')).toBeDefined();
+    expect(garageA.find((v) => v.generationId === REAL_GENERATION_ID && v.year === REAL_YEAR)).toBeDefined();
   });
 
-  it('rejects a save request with no vehicleId', async () => {
+  it('rejects a save request with no generationId', async () => {
     const token = await signupBuyer();
     const res = await fetch(`${BACKEND_URL}/garage/me`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ year: 2018 }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a save request with no year', async () => {
+    const token = await signupBuyer();
+    const res = await fetch(`${BACKEND_URL}/garage/me`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ generationId: REAL_GENERATION_ID }),
     });
     expect(res.status).toBe(400);
   });

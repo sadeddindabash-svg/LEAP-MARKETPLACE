@@ -94,12 +94,18 @@ class ApiClient {
   /// scoping, browses across everything. `sort: 'newest'` orders by
   /// real creation time (see services/api/README.md's "Product
   /// search" section for why this endpoint previously had no explicit
-  /// ordering at all); `vehicleId` reuses the same real fitment filter
-  /// the category browser already used.
-  Future<List<Product>> fetchProducts({String? sort, String? vehicleId, String lang = 'en'}) async {
+  /// ordering at all).
+  ///
+  /// REAL BUG FOUND AND FIXED HERE (backend migration 044): "My car"
+  /// used to pass `vehicleId`, joining a table nothing in this
+  /// codebase ever wrote a real row into -- it silently returned
+  /// nothing meaningful this whole time. Now takes generationId/year,
+  /// the same real, populated filter the search vehicle picker uses.
+  Future<List<Product>> fetchProducts({String? sort, String? generationId, int? year, String lang = 'en'}) async {
     final uri = Uri.parse('$baseUrl/catalog/products').replace(queryParameters: {
       if (sort != null) 'sort': sort,
-      if (vehicleId != null) 'vehicleId': vehicleId,
+      if (generationId != null) 'generationId': generationId,
+      if (year != null) 'year': '$year',
       'lang': lang,
     });
     final response = await _client.get(uri);
@@ -170,26 +176,15 @@ class ApiClient {
     return Product.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
-  // ---------------- Fitment reference data (BUY-010) ----------------
-  // This is the shared Year/Make/Model/Trim catalog — distinct from a
-  // buyer's own saved vehicles (see "Garage" below). Used for the
-  // "Add a vehicle" flow: pick a make, then pick a specific reference
-  // vehicle, then save it to the garage.
-
-  Future<List<String>> fetchMakes() async {
-    final response = await _client.get(Uri.parse('$baseUrl/fitment/makes'));
-    if (response.statusCode != 200) throw ApiException('Failed to load makes (${response.statusCode})');
-    return (jsonDecode(response.body) as List).cast<String>();
-  }
-
-  Future<List<Vehicle>> fetchVehiclesByMake(String make) async {
-    final response = await _client.get(Uri.parse('$baseUrl/fitment/vehicles?make=${Uri.encodeQueryComponent(make)}'));
-    if (response.statusCode != 200) throw ApiException('Failed to load vehicles (${response.statusCode})');
-    final list = jsonDecode(response.body) as List;
-    return list.map((v) => Vehicle.fromJson(v as Map<String, dynamic>)).toList();
-  }
-
   // ---------------- Garage — buyer's own saved vehicles (BUY-004/010-012) ----------------
+  // REAL BUG FOUND AND FIXED HERE (backend migration 044): this used
+  // to also expose fetchMakes()/fetchVehiclesByMake() for the old
+  // add_vehicle_screen.dart flow, built on the flat, unpopulated-for-
+  // matching `vehicles` reference table -- removed along with that
+  // screen. My Garage now reuses vehicle_filter_sheet.dart's real
+  // Brand->Model->Generation->Year cascade instead (see
+  // garage_screen.dart), against the real, populated structured
+  // fitment system.
 
   Future<List<Vehicle>> fetchMyGarage(String token) async {
     final response = await _client.get(Uri.parse('$baseUrl/garage/me'), headers: {'Authorization': 'Bearer $token'});
@@ -198,11 +193,11 @@ class ApiClient {
     return list.map((v) => Vehicle.fromJson(v as Map<String, dynamic>)).toList();
   }
 
-  Future<List<Vehicle>> addVehicleToGarage(String token, String vehicleId) async {
+  Future<List<Vehicle>> addVehicleToGarage(String token, String generationId, int year) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/garage/me'),
       headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
-      body: jsonEncode({'vehicleId': vehicleId}),
+      body: jsonEncode({'generationId': generationId, 'year': year}),
     );
     if (response.statusCode >= 400) {
       final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -211,8 +206,8 @@ class ApiClient {
     return fetchMyGarage(token);
   }
 
-  Future<List<Vehicle>> removeVehicleFromGarage(String token, String vehicleId) async {
-    final response = await _client.delete(Uri.parse('$baseUrl/garage/me/$vehicleId'), headers: {'Authorization': 'Bearer $token'});
+  Future<List<Vehicle>> removeVehicleFromGarage(String token, String generationId, int year) async {
+    final response = await _client.delete(Uri.parse('$baseUrl/garage/me/$generationId/$year'), headers: {'Authorization': 'Bearer $token'});
     if (response.statusCode != 200) throw ApiException('Failed to remove vehicle (${response.statusCode})');
     final list = jsonDecode(response.body) as List;
     return list.map((v) => Vehicle.fromJson(v as Map<String, dynamic>)).toList();

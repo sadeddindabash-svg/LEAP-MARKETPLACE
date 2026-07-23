@@ -73,14 +73,14 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _ensureFeedLoaded(String language, String? myCarVehicleId) {
-    final key = '$_feedFilter|$language|${myCarVehicleId ?? ""}';
+  void _ensureFeedLoaded(String language, Vehicle? myCarVehicle) {
+    final key = '$_feedFilter|$language|${myCarVehicle?.id ?? ""}';
     if (_loadedForFeedKey == key) return;
     _loadedForFeedKey = key;
     if (_feedFilter == 'newest') {
       _feedFuture = ApiClient().fetchProducts(sort: 'newest', lang: language);
-    } else if (myCarVehicleId != null) {
-      _feedFuture = ApiClient().fetchProducts(vehicleId: myCarVehicleId, lang: language);
+    } else if (myCarVehicle != null) {
+      _feedFuture = ApiClient().fetchProducts(generationId: myCarVehicle.generationId, year: myCarVehicle.year, lang: language);
     } else {
       _feedFuture = Future.value(const []); // no saved vehicle -- real empty state shown separately, not an error
     }
@@ -225,12 +225,12 @@ class _HomeScreenState extends State<HomeScreen> {
             FutureBuilder<List<Vehicle>>(
               future: _garageFuture,
               builder: (context, garageSnapshot) {
-                final firstVehicleId = (garageSnapshot.data?.isNotEmpty ?? false) ? garageSnapshot.data!.first.id : null;
+                final firstVehicle = (garageSnapshot.data?.isNotEmpty ?? false) ? garageSnapshot.data!.first : null;
                 if (_feedFilter == 'my_car' && auth.isLoggedIn && garageSnapshot.connectionState == ConnectionState.waiting) {
                   return const Padding(padding: EdgeInsets.symmetric(vertical: 24), child: Center(child: CircularProgressIndicator()));
                 }
-                _ensureFeedLoaded(language, firstVehicleId);
-                if (_feedFilter == 'my_car' && firstVehicleId == null) {
+                _ensureFeedLoaded(language, firstVehicle);
+                if (_feedFilter == 'my_car' && firstVehicle == null) {
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     child: Text(tr(context, 'add_a_vehicle_for_my_car_filter'), style: const TextStyle(color: LeapColors.muted), textAlign: TextAlign.center),

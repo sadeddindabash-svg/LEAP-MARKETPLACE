@@ -6,11 +6,19 @@ import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../models/vehicle.dart';
 import '../../services/api_client.dart';
+import '../search/vehicle_filter_sheet.dart';
 
 /// BUY-004, BUY-010–012: saved vehicles ("My Garage") drive the fitment
-/// filter across the rest of the app. Phase 1 is Year/Make/Model/Trim only;
-/// VIN lookup is Phase 2 (BUY-014) — don't build VIN decoding into this
-/// screen yet, it depends on a licensed data provider (see SRS Section 11).
+/// filter across the rest of the app.
+///
+/// REAL BUG FOUND AND FIXED HERE (backend migration 044): this screen
+/// used to push a separate '/garage/add' route (add_vehicle_screen.dart)
+/// built on the flat, unpopulated-for-matching vehicles table -- a
+/// saved vehicle could never filter the catalog to a real product.
+/// Now reuses VehicleFilterSheet directly (the same real Brand->Model->
+/// Generation->Year picker the search filter already uses), against
+/// the real, populated structured cascade. add_vehicle_screen.dart is
+/// no longer routed to and has been removed.
 ///
 /// Requires login — there's no guest "garage" concept, unlike guest
 /// checkout; saving a vehicle only makes sense tied to an account.
@@ -41,7 +49,28 @@ class _GarageScreenState extends State<GarageScreen> {
   Future<void> _remove(Vehicle v) async {
     final auth = context.read<AuthState>();
     try {
-      await ApiClient().removeVehicleFromGarage(auth.token!, v.id);
+      await ApiClient().removeVehicleFromGarage(auth.token!, v.generationId, v.year);
+      _refresh();
+    } on ApiException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  Future<void> _addVehicle() async {
+    final selection = await showModalBottomSheet<VehicleFilterSelection>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => const VehicleFilterSheet(),
+    );
+    if (selection == null) return;
+    final auth = context.read<AuthState>();
+    try {
+      // Real fallback for "Any year in this generation" (year: null) --
+      // My Garage always needs ONE definite year (this is meant to be
+      // the buyer's own exact car), unlike search where "any year"
+      // genuinely means "don't narrow." Falls back to the generation's
+      // own real starting year, never a placeholder.
+      await ApiClient().addVehicleToGarage(auth.token!, selection.generationId, selection.year ?? selection.yearStart);
       _refresh();
     } on ApiException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
@@ -102,10 +131,7 @@ class _GarageScreenState extends State<GarageScreen> {
                   ),
                 ),
               OutlinedButton.icon(
-                onPressed: () async {
-                  final added = await context.push<bool>('/garage/add');
-                  if (added == true) _refresh();
-                },
+                onPressed: _addVehicle,
                 icon: const Icon(Icons.add),
                 label: Text(tr(context, 'add_a_vehicle')),
               ),

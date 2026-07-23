@@ -9,7 +9,6 @@ import 'core/app_strings.dart';
 import 'features/home/home_screen.dart';
 import 'features/search/search_screen.dart';
 import 'features/garage/garage_screen.dart';
-import 'features/garage/add_vehicle_screen.dart';
 import 'features/catalog/category_screen.dart';
 import 'features/catalog/category_browse_screen.dart';
 import 'features/catalog/product_screen.dart';
@@ -50,7 +49,6 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(path: '/garage', builder: (context, state) => const GarageScreen()),
     GoRoute(path: '/search', builder: (context, state) => const SearchScreen()),
-    GoRoute(path: '/garage/add', builder: (context, state) => const AddVehicleScreen()),
     GoRoute(path: '/addresses', builder: (context, state) => const AddressesScreen()),
     GoRoute(path: '/wishlist', builder: (context, state) => const WishlistScreen()),
     GoRoute(path: '/saved-searches', builder: (context, state) => const SavedSearchesScreen()),

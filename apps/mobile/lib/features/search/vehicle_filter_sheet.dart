@@ -10,7 +10,14 @@ class VehicleFilterSelection {
   final String generationId;
   final String label; // e.g. "BMW · 1 Series · F20 (2015–2019)"
   final int? year;
-  const VehicleFilterSelection({required this.generationId, required this.label, this.year});
+  // The generation's own real starting year -- always present,
+  // regardless of whether a specific `year` was picked. Search doesn't
+  // need this (an unset `year` genuinely means "any year, don't
+  // narrow"), but a caller that needs ONE definite year no matter what
+  // (e.g. My Garage saving "my exact car") has a real, sensible
+  // fallback here instead of a null.
+  final int yearStart;
+  const VehicleFilterSelection({required this.generationId, required this.label, required this.yearStart, this.year});
 }
 
 /// Real Brand -> Model -> Generation -> Year picker for the search
@@ -77,6 +84,7 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
       Navigator.of(context).pop(VehicleFilterSelection(
         generationId: generation['id'] as String,
         label: _labelFor(generation),
+        yearStart: yearStart,
         year: yearStart,
       ));
       return;
@@ -227,6 +235,7 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
             onTap: () => Navigator.of(context).pop(VehicleFilterSelection(
               generationId: generation['id'] as String,
               label: _labelFor(generation),
+              yearStart: yearStart,
             )),
           );
         }
@@ -236,6 +245,7 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
           onTap: () => Navigator.of(context).pop(VehicleFilterSelection(
             generationId: generation['id'] as String,
             label: _labelFor(generation),
+            yearStart: yearStart,
             year: year,
           )),
         );

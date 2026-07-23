@@ -2143,6 +2143,43 @@ narrowed further to 18, confirmed a year with no real matching fitment
 entries correctly returns zero (not a false positive), and confirmed
 `generationId` composes cleanly with `sort=newest` without error.
 
+## My Garage rebuilt on the real, populated fitment system (migration 044)
+
+**A real bug, found while scoping the search filter above and fixed
+now**: `user_saved_vehicles` (migration 008) saved a buyer's vehicle
+against the flat `vehicles` reference table — but nothing in this
+codebase ever writes a row into `product_fitment`, the join table that
+system would need to actually match real products. My Garage's own
+"shop for my vehicle" promise never held. Also silently broken by the
+same root cause: the mobile app's home-feed "My car" filter, which
+called this same dead `vehicleId` path.
+
+**New `user_saved_generations` table** (`buyer_id, generation_id, year`
+composite primary key) against the real, populated Brand→Model→
+Generation cascade — same system the search filter above uses.
+`GET/POST/DELETE /garage/me*` rewritten accordingly; `POST` validates
+the saved year genuinely falls within that generation's real range.
+Old `user_saved_vehicles` left in place, untouched, rather than dropped
+— this project's non-destructive migration philosophy, in case any
+real historical data ever needs it.
+
+**Mobile**: `add_vehicle_screen.dart` (built on the old flat system) is
+deleted; "Add a vehicle" now reuses the search filter's own
+`VehicleFilterSheet` directly. `home_screen.dart`'s "My car" filter now
+passes `generationId`/`year` instead of the dead `vehicleId` — the
+actual fix for the silent bug described above.
+
+**Verified end-to-end against the real running backend**: saved a real
+generation+year, confirmed it appears with correct real brand/model/
+generation fields, confirmed that SAME generation+year genuinely
+narrows the real catalog to real matching products (not zero, not
+everything — the actual loop this bug broke), confirmed an
+out-of-range year is rejected, confirmed removing one saved year
+doesn't affect a different saved year for the same generation, and
+confirmed cross-buyer isolation and idempotent save/delete still hold
+under the new schema. `garage.integration.test.js`: 13/13 passing
+(rewritten from the old vehicleId-based version).
+
 ## Price range + sort by price for search (added to GET /catalog/products)
 
 **A real architectural wrinkle, not just missing query params**: buyer-
