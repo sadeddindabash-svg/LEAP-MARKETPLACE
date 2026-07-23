@@ -59,13 +59,19 @@ async function loginAndGoToModeration() {
   fireEvent.click(screen.getByRole('button', { name: /moderation/i }));
 }
 
-// The review panel has 4 plain (unlabeled-via-<label>) text inputs in a
-// fixed DOM order: English name, English description, Arabic name,
-// Arabic description. The English name starts pre-filled with the
-// Chinese original (findable via getByDisplayValue); the Arabic ones
-// start empty, so they're targeted by position instead.
+// REAL BUG FOUND AND FIXED HERE: this used to assume a fixed GLOBAL
+// position (index 2 across the *entire* document) for the Arabic name
+// input -- a real, fragile assumption that broke the moment an
+// earlier pass (batch 14, this session) made the TopBar's search box
+// a real <input> instead of a decorative <span>, since that input is
+// now ALSO a real textbox present on every page, shifting every
+// other test's positional indices by one. Fixed by matching a real,
+// stable, semantically meaningful attribute instead of a position:
+// the Arabic name input is the only one on this page with dir="rtl"
+// (Arabic reads right-to-left), so this can never break again just
+// because some unrelated input is added elsewhere on the page.
 function getArabicNameInput() {
-  return screen.getAllByRole('textbox')[2];
+  return screen.getAllByRole('textbox').find((el) => el.getAttribute('dir') === 'rtl');
 }
 
 beforeEach(() => { localStorage.clear(); });

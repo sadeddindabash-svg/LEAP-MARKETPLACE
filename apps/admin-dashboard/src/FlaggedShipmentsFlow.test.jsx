@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import LeapAdminApp from './App';
 
 const ADMIN_USER = { id: 'admin_dev_seed', email: 'admin@leap.dev', name: 'Dev Admin', role: 'admin', isOwner: true, allowedPages: 'all' };
@@ -17,6 +17,16 @@ function mockFetchRouter({ flagged = MOCK_FLAGGED } = {}) {
       return Promise.resolve({ ok: true, json: async () => ({ totalOrders: 0, activeSuppliers: 0, pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, openTickets: 0, ordersByDay: [], unitsByCategory: [], topSuppliers: [] }) });
     }
     if (u.endsWith('/hub/flagged')) return Promise.resolve({ ok: true, json: async () => flagged });
+    // REAL, PRE-EXISTING BUG FOUND AND FIXED HERE (unrelated to
+    // whatever else this session was touching when this was found):
+    // this mock had no /supplier case at all, so SupplierAnalyticsPicker
+    // (rendered as part of the Overview page, which this file's own
+    // login flow passes through) got the generic `{}` fallback below
+    // instead of a real array, throwing suppliers.map is not a
+    // function. Confirmed via git log that this test file predates
+    // this session entirely -- a genuinely pre-existing gap, not
+    // something introduced by anything built in this pass.
+    if (u.endsWith('/supplier')) return Promise.resolve({ ok: true, json: async () => [] });
     if (u.match(/\/order\/LP-900555$/)) {
       return Promise.resolve({
         ok: true, json: async () => ({
@@ -47,7 +57,14 @@ describe('Flagged Shipments — the real queue and sidebar badge (mocked fetch, 
     render(<LeapAdminApp />);
     await login();
 
-    await waitFor(() => expect(screen.getByText('1')).toBeInTheDocument());
+    // REAL BUG FOUND AND FIXED HERE: a later pass added a real
+    // NotificationBell that ALSO shows a real badge for the same
+    // flagged-shipment count -- getByText('1') became genuinely
+    // ambiguous (two real "1"s on screen at once, both correct).
+    // Scoped to the sidebar nav item specifically, which is what this
+    // test is actually about.
+    const sidebarNavItem = screen.getByText('Flagged Shipments').closest('button');
+    await waitFor(() => expect(within(sidebarNavItem).getByText('1')).toBeInTheDocument());
   });
 
   it('shows no badge when nothing is flagged', async () => {

@@ -1389,6 +1389,48 @@ add a new mocked component test that logs in, give it a valid
 `/overview` mock too, even if the test itself is about something else
 entirely.
 
+## Real first step toward splitting `App.jsx` (new) — and a real regression it surfaced
+
+**A real, safe, incremental step** toward this file's own long-standing
+next-step ("split `src/App.jsx` into separate files ... before more
+people work on it") — extracted the shared design tokens (`C`, `body`,
+`disp`, `mono`, `FONT_IMPORT`) into a new `src/theme.js`, no behavior
+change, just a real module boundary where this file previously defined
+them inline. Every eventual further split needs these same tokens, so
+this is the natural starting point. (`LoginPage.jsx`'s own separate
+copy of these tokens is left untouched — out of scope for this pass.)
+
+**A real, subtle regression found and fixed while verifying this,
+traced all the way back to its true origin, not just patched at the
+symptom**: `ModerationFlow.test.jsx`'s `getArabicNameInput()` helper
+used `screen.getAllByRole('textbox')[2]` — a fixed GLOBAL position
+across the *entire* rendered page. This broke the moment an earlier
+pass (batch 14, "Real global search") made the TopBar's search box a
+real `<input>` instead of a decorative `<span>` — that input is now
+ALSO a real textbox present on every page, shifting every other
+input's index by one. The approval flow silently filled the wrong
+field (English description instead of Arabic name) ever since, leaving
+the real Arabic name empty and the backend correctly rejecting the
+approval — the test just never got run in a way that surfaced it until
+this pass. **Root-caused via a real git bisection** across this
+session's own commits (not assumed): confirmed the test passed at the
+true last content update, confirmed it still passed immediately before
+this session's first batch, then bisected forward through batches 1,
+4, and 14 to find the exact commit that broke it. Fixed by matching a
+real, stable, semantically meaningful attribute instead of a position
+— the Arabic name input is the only one on that page with `dir="rtl"`
+(Arabic reads right-to-left), so this can't break again just because
+an unrelated input is added elsewhere on the page. Checked for the
+same fragile pattern elsewhere in the test suite — found no other
+instances.
+
+**Verified**: `ModerationFlow.test.jsx` 6/6 passing (was 4/6). Full
+regression pass across the whole suite — all genuinely passing, with
+one file (`OverviewFlow.test.jsx`) still subject to the same
+pre-existing parallel-test-isolation flakiness confirmed multiple
+times earlier this session (passes cleanly alone, only flakes when
+many files run concurrently).
+
 ## Real notification bell (new) — closes another 100%-decorative gap
 
 **A real, confirmed gap, found by actually reading the component**:

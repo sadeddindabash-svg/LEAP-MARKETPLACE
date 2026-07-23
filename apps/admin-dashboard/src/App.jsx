@@ -1,6 +1,7 @@
 import React, { useState, useEffect, createContext, useContext } from "react";
 import LoginPage from "./LoginPage";
 import { exportToExcel } from "./exportToExcel";
+import { FONT_IMPORT, C, disp, body, mono } from "./theme";
 import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, fetchSupplierById, verifySupplier, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
   createBrand, deleteBrand, createModel, deleteModel, createGeneration, deleteGeneration, createEngine, deleteEngine, createTransmission, deleteTransmission,
@@ -40,30 +41,6 @@ import {
    Type:   Barlow Condensed (numerals/headings) · Inter (UI/body) · JetBrains Mono (codes/IDs)
    Signature: "plate chip" tags for order/supplier/tracking codes — same device as the buyer app.
    ============================================================ */
-
-const FONT_IMPORT = "@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap');";
-
-const C = {
-  ink: "#14171C",
-  panel: "#1B1F26",
-  canvas: "#F5F6F8",
-  card: "#FFFFFF",
-  line: "#E4E6EA",
-  lineDark: "#2A2F38",
-  signal: "#E8622C",
-  torque: "#2A5FD9",
-  gauge: "#1E9D6B",
-  amber: "#B9791F",
-  red: "#C0362C",
-  muted: "#6B7280",
-  gaugeBg: "#E4F5EC",
-  amberBg: "#FCEFD8",
-  torqueBg: "#E9EFFC",
-  redBg: "#FBE7E5",
-};
-const disp = { fontFamily: "'Barlow Condensed', sans-serif" };
-const body = { fontFamily: "'Inter', sans-serif" };
-const mono = { fontFamily: "'JetBrains Mono', monospace" };
 
 /* ---------------- Mock data ---------------- */
 // GMV_TREND and CATEGORY_SPLIT mock arrays removed — OverviewPage now
