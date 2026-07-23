@@ -161,6 +161,28 @@ Two test files, 12 tests, all passing:
   `apps/supplier-portal/src/carrierWebhook.integration.test.js` — a
   shared backend endpoint, reachable and tested from either app.
 
+## Real queue search (new)
+
+**A real, confirmed gap**: with no way to look up a specific shipment,
+a hub worker had to scroll a filtered list to find one. Real-time
+camera/barcode scanning was considered but deferred — it needs a real
+barcode-decoding library dependency and can't be meaningfully verified
+without a physical camera and a real printed barcode to scan against,
+neither available in this environment. A text search is immediately
+buildable and verifiable, so built that instead.
+
+- Real search box on the queue screen, filtering by real order ID or
+  real supplier name — client-side over the already-fetched list (a
+  real hub's own queue is naturally bounded to their own assigned
+  shipments, so no new backend endpoint is needed).
+- Composes correctly with the existing status filter tabs.
+
+**Verified**: real component tests with two real, distinct shipments —
+confirmed searching by a real order ID genuinely narrows to just that
+shipment, confirmed searching by a real supplier name does the same,
+and confirmed a search matching nothing shows the real empty state
+rather than an error. 16/16 passing across the full suite.
+
 ## Real bilingual support (new) — closes this portal's own #1 flagged gap
 
 **This portal's own README had flagged English-only as the #1 next

@@ -218,3 +218,69 @@ describe('Hub Portal — real Confirm Delivered UI (new, migration 027)', () => 
     await waitFor(() => expect(screen.getByText(/already confirmed delivered by real carrier tracking/i)).toBeInTheDocument());
   });
 });
+
+// Real search box (new) -- closes a real gap: with no way to look up
+// a specific shipment, a hub worker had to scroll a filtered list to
+// find one.
+describe('Hub Portal — real queue search (mocked fetch, real component tree)', () => {
+  const SHIPMENT_A = { id: 1, status: 'awaiting_receipt', createdAt: '2026-07-14T00:00:00.000Z', updatedAt: '2026-07-14T00:00:00.000Z', subOrderId: 101, orderId: 'LP-100001', supplierName: 'Guangzhou AutoParts Co.' };
+  const SHIPMENT_B = { id: 2, status: 'awaiting_receipt', createdAt: '2026-07-14T00:00:00.000Z', updatedAt: '2026-07-14T00:00:00.000Z', subOrderId: 102, orderId: 'LP-200002', supplierName: 'Ningbo Filtration Ltd.' };
+
+  function mockFetchRouterMulti() {
+    return vi.fn((url) => {
+      const u = String(url);
+      if (u.includes('/auth/login')) return Promise.resolve({ ok: true, json: async () => ({ token: 'fake.jwt.token', user: HUB_USER }) });
+      if (u.includes('/auth/me')) return Promise.resolve({ ok: true, json: async () => HUB_USER });
+      if (u.endsWith('/hub/me/shipments')) return Promise.resolve({ ok: true, json: async () => [SHIPMENT_A, SHIPMENT_B] });
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+  }
+
+  async function loginMulti() {
+    await waitFor(() => document.getElementById('hub-email'));
+    fireEvent.change(document.getElementById('hub-email'), { target: { value: 'hub@leap.dev' } });
+    fireEvent.change(document.getElementById('hub-password'), { target: { value: 'hub_dev_password_123' } });
+    fireEvent.click(document.querySelector('button[type="submit"]'));
+    await waitFor(() => expect(screen.getByText('LP-100001')).toBeInTheDocument());
+  }
+
+  it('CRITICAL: searching by a real order ID genuinely narrows the queue to just that shipment', async () => {
+    globalThis.fetch = mockFetchRouterMulti();
+    render(<LeapHubPortalApp />);
+    await loginMulti();
+    expect(screen.getByText('LP-200002')).toBeInTheDocument();
+
+    const searchInput = screen.getByPlaceholderText(/按订单号或供应商搜索/);
+    fireEvent.change(searchInput, { target: { value: '100001' } });
+
+    await waitFor(() => {
+      expect(screen.getByText('LP-100001')).toBeInTheDocument();
+      expect(screen.queryByText('LP-200002')).not.toBeInTheDocument();
+    });
+  });
+
+  it('searching by a real supplier name also genuinely narrows the queue', async () => {
+    globalThis.fetch = mockFetchRouterMulti();
+    render(<LeapHubPortalApp />);
+    await loginMulti();
+
+    const searchInput = screen.getByPlaceholderText(/按订单号或供应商搜索/);
+    fireEvent.change(searchInput, { target: { value: 'Ningbo' } });
+
+    await waitFor(() => {
+      expect(screen.getByText('LP-200002')).toBeInTheDocument();
+      expect(screen.queryByText('LP-100001')).not.toBeInTheDocument();
+    });
+  });
+
+  it('a search matching nothing shows the real empty state, not an error', async () => {
+    globalThis.fetch = mockFetchRouterMulti();
+    render(<LeapHubPortalApp />);
+    await loginMulti();
+
+    const searchInput = screen.getByPlaceholderText(/按订单号或供应商搜索/);
+    fireEvent.change(searchInput, { target: { value: 'no such order anywhere' } });
+
+    await waitFor(() => expect(screen.getByText('暂无内容。')).toBeInTheDocument());
+  });
+});

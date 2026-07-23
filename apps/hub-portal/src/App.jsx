@@ -46,6 +46,7 @@ const STRINGS = {
     filters: { all: "全部", awaiting_receipt: "待接收", in_progress: "处理中", shipped_to_buyer: "已发货", delivered: "已送达", flagged: "已标记" },
     queue: {
       title: "入库包裹", shownCount: (n, m) => `共 ${m} 个，显示 ${n} 个`, loading: "加载中…", empty: "暂无内容。",
+      searchPlaceholder: "按订单号或供应商搜索…",
     },
     photoPicker: { addPhoto: "添加照片" },
     detail: {
@@ -88,6 +89,7 @@ const STRINGS = {
     filters: { all: "All", awaiting_receipt: "Awaiting receipt", in_progress: "In progress", shipped_to_buyer: "Shipped", delivered: "Delivered", flagged: "Flagged" },
     queue: {
       title: "Inbound shipments", shownCount: (n, m) => `${n} of ${m} shown`, loading: "Loading…", empty: "Nothing here right now.",
+      searchPlaceholder: "Search by order ID or supplier…",
     },
     photoPicker: { addPhoto: "Add photo" },
     detail: {
@@ -189,6 +191,12 @@ function QueueScreen({ onOpenShipment }) {
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
   const [filter, setFilter] = useState("all");
+  // Real search (new) -- closes a real gap: with no way to look up a
+  // specific shipment, a hub worker had to scroll a filtered list to
+  // find one. Client-side over the already-fetched list -- a real
+  // hub's own real queue is naturally bounded (their own assigned
+  // shipments), so no new backend endpoint is needed for this.
+  const [searchQuery, setSearchQuery] = useState("");
 
   const load = () => {
     setLoadState("loading");
@@ -203,9 +211,17 @@ function QueueScreen({ onOpenShipment }) {
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = shipments.filter((s) => {
-    if (filter === "all") return true;
-    if (filter === "in_progress") return IN_PROGRESS_STATUSES.includes(s.status);
-    return s.status === filter;
+    if (filter === "all") { /* no status filter */ }
+    else if (filter === "in_progress") { if (!IN_PROGRESS_STATUSES.includes(s.status)) return false; }
+    else if (s.status !== filter) return false;
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      const matchesOrder = s.orderId && s.orderId.toLowerCase().includes(q);
+      const matchesSupplier = s.supplierName && s.supplierName.toLowerCase().includes(q);
+      if (!matchesOrder && !matchesSupplier) return false;
+    }
+    return true;
   });
 
   return (
@@ -215,6 +231,15 @@ function QueueScreen({ onOpenShipment }) {
         <div style={{ ...body, fontSize: 12.5, color: C.muted, marginTop: 2 }}>
           {loadState === "ready" ? t.queue.shownCount(filtered.length, shipments.length) : t.queue.loading}
         </div>
+      </div>
+      <div style={{ padding: "14px 20px 0" }}>
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder={t.queue.searchPlaceholder}
+          style={{ ...body, width: "100%", boxSizing: "border-box", padding: "9px 12px", borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13 }}
+        />
       </div>
       <div style={{ display: "flex", gap: 6, padding: "14px 20px 0", overflowX: "auto" }}>
         {FILTER_IDS.map((id) => (
