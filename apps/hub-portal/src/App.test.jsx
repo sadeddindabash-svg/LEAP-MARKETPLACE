@@ -28,12 +28,22 @@ function mockFetchRouter({ eventStatus = 201 } = {}) {
   });
 }
 
+// Real bilingual support (new) -- default language is now "zh" (same
+// default as apps/supplier-portal), so form labels/button text render
+// in Chinese by default. These helpers use language-INDEPENDENT
+// selectors (element id, DOM structure) rather than English text
+// matches, so they keep working regardless of which language is
+// active -- the previous version of this file broke outright the
+// moment the default stopped being English-only, since
+// getByLabelText(/email/i) can never match "邮箱".
 async function login() {
-  await waitFor(() => screen.getByLabelText(/email/i));
-  fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'hub@leap.dev' } });
-  fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'hub_dev_password_123' } });
-  fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
-  await waitFor(() => expect(screen.getByText('Inbound shipments')).toBeInTheDocument());
+  await waitFor(() => document.getElementById('hub-email'));
+  fireEvent.change(document.getElementById('hub-email'), { target: { value: 'hub@leap.dev' } });
+  fireEvent.change(document.getElementById('hub-password'), { target: { value: 'hub_dev_password_123' } });
+  fireEvent.click(document.querySelector('button[type="submit"]'));
+  // Real order id, not translated UI copy -- language-independent proof
+  // the real queue screen loaded with real data.
+  await waitFor(() => expect(screen.getByText('LP-200999')).toBeInTheDocument());
 }
 
 beforeEach(() => { localStorage.clear(); });
@@ -59,13 +69,15 @@ describe('Hub Portal — real login and step workflow (mocked fetch, real compon
     globalThis.fetch = buyerRouter;
     render(<LeapHubPortalApp />);
 
-    await waitFor(() => screen.getByLabelText(/email/i));
-    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'someone@example.com' } });
-    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'whatever123' } });
-    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    await waitFor(() => document.getElementById('hub-email'));
+    fireEvent.change(document.getElementById('hub-email'), { target: { value: 'someone@example.com' } });
+    fireEvent.change(document.getElementById('hub-password'), { target: { value: 'whatever123' } });
+    fireEvent.click(document.querySelector('button[type="submit"]'));
 
-    await waitFor(() => expect(screen.getByText(/doesn't have inspection hub access/i)).toBeInTheDocument());
-    expect(screen.queryByText('Inbound shipments')).not.toBeInTheDocument();
+    // Real client-side rejection message (t.login.noAccess), Chinese by
+    // default -- "该账号没有质检中心访问权限。"
+    await waitFor(() => expect(screen.getByText(/没有质检中心访问权限/)).toBeInTheDocument());
+    expect(screen.queryByText('LP-200999')).not.toBeInTheDocument();
   });
 
   it('opening a shipment shows real items and the current step prompt', async () => {
@@ -74,7 +86,8 @@ describe('Hub Portal — real login and step workflow (mocked fetch, real compon
     await login();
 
     fireEvent.click(await screen.findByText('LP-200999'));
-    await waitFor(() => expect(screen.getByText('Receiving this shipment')).toBeInTheDocument());
+    // t.steps.awaiting_receipt.promptTitle, Chinese: "接收此包裹"
+    await waitFor(() => expect(screen.getByText('接收此包裹')).toBeInTheDocument());
     expect(screen.getByText(/RIDEX Front Brake Disc/)).toBeInTheDocument();
   });
 
@@ -84,10 +97,12 @@ describe('Hub Portal — real login and step workflow (mocked fetch, real compon
     await login();
 
     fireEvent.click(await screen.findByText('LP-200999'));
-    await waitFor(() => screen.getByRole('button', { name: /confirm received/i }));
-    fireEvent.click(screen.getByRole('button', { name: /confirm received/i }));
+    // t.steps.awaiting_receipt.actionLabel, Chinese: "确认已接收"
+    await waitFor(() => screen.getByText('确认已接收'));
+    fireEvent.click(screen.getByText('确认已接收'));
 
-    await waitFor(() => expect(screen.getByText(/at least 1 evidence photo is required/i)).toBeInTheDocument());
+    // t.detail.errPhotoRequired, Chinese: "此步骤至少需要 1 张凭证照片。"
+    await waitFor(() => expect(screen.getByText(/至少需要 1 张凭证照片/)).toBeInTheDocument());
   });
 
   it('the "flag a quality issue" panel opens and can be cancelled back to the normal step view', async () => {
@@ -96,12 +111,15 @@ describe('Hub Portal — real login and step workflow (mocked fetch, real compon
     await login();
 
     fireEvent.click(await screen.findByText('LP-200999'));
-    await waitFor(() => screen.getByRole('button', { name: /flag a quality issue instead/i }));
-    fireEvent.click(screen.getByRole('button', { name: /flag a quality issue instead/i }));
+    // t.detail.flagInstead, Chinese: "改为标记质量问题"
+    await waitFor(() => screen.getByText('改为标记质量问题'));
+    fireEvent.click(screen.getByText('改为标记质量问题'));
 
-    await waitFor(() => expect(screen.getByText('Flag a quality issue')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
-    await waitFor(() => expect(screen.getByText('Receiving this shipment')).toBeInTheDocument());
+    // t.detail.flagTitle, Chinese: "标记质量问题"
+    await waitFor(() => expect(screen.getByText('标记质量问题')).toBeInTheDocument());
+    // t.detail.cancel, Chinese: "取消"
+    fireEvent.click(screen.getByText('取消'));
+    await waitFor(() => expect(screen.getByText('接收此包裹')).toBeInTheDocument());
   });
 
   it('logs out correctly, clearing the session and returning to the login page', async () => {
@@ -109,8 +127,9 @@ describe('Hub Portal — real login and step workflow (mocked fetch, real compon
     render(<LeapHubPortalApp />);
     await login();
 
-    fireEvent.click(screen.getByRole('button', { name: /log out/i }));
-    await waitFor(() => expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument());
+    // t.logout, Chinese: "退出登录"
+    fireEvent.click(screen.getByText('退出登录'));
+    await waitFor(() => expect(document.getElementById('hub-email')).toBeInTheDocument());
     expect(localStorage.getItem('leap_hub_token')).toBeNull();
   });
 });
@@ -135,6 +154,11 @@ describe('Hub Portal — real Confirm Delivered UI (new, migration 027)', () => 
         if (!body.deliveryNote || !body.deliveryNote.trim()) {
           return Promise.resolve({ ok: false, status: 400, json: async () => ({ error: 'A short note is required when manually confirming delivery yourself.' }) });
         }
+        // Real backend error messages are never localized by this
+        // portal -- they're shown exactly as the backend sends them,
+        // in whatever language the backend itself replies in
+        // (English, in this real API). Only this app's OWN UI copy
+        // (labels, buttons, section titles) is translated client-side.
         if (confirmStatus !== 200) return Promise.resolve({ ok: false, status: confirmStatus, json: async () => ({ error: 'This order was already confirmed delivered by real carrier tracking.' }) });
         currentDetail = { ...currentDetail, status: 'delivered' };
         return Promise.resolve({ ok: true, json: async () => ({ id: 42, status: 'delivered', deliveredAt: new Date().toISOString(), deliveryConfirmedBy: 'hub_manual' }) });
@@ -150,7 +174,10 @@ describe('Hub Portal — real Confirm Delivered UI (new, migration 027)', () => 
 
     await waitFor(() => expect(screen.getByText('LP-200999')).toBeInTheDocument());
     fireEvent.click(screen.getByText('LP-200999'));
-    await waitFor(() => expect(screen.getAllByText(/confirm delivered/i).length).toBeGreaterThan(0));
+    // t.detail.confirmDeliveredTitle AND t.detail.confirmDelivered both
+    // say the same Chinese phrase "确认已送达" (title + button), same
+    // real reason the original English version used getAllByText too.
+    await waitFor(() => expect(screen.getAllByText('确认已送达').length).toBeGreaterThan(0));
   });
 
   it('CRITICAL: confirming delivery without a real note is rejected; with one, it succeeds and the shipment moves to delivered', async () => {
@@ -159,17 +186,19 @@ describe('Hub Portal — real Confirm Delivered UI (new, migration 027)', () => 
     await login();
     await waitFor(() => expect(screen.getByText('LP-200999')).toBeInTheDocument());
     fireEvent.click(screen.getByText('LP-200999'));
-    await waitFor(() => expect(screen.getAllByText(/confirm delivered/i).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText('确认已送达').length).toBeGreaterThan(0));
 
-    const confirmButtons = screen.getAllByText(/confirm delivered/i);
+    const confirmButtons = screen.getAllByText('确认已送达');
     const confirmButton = confirmButtons.find((el) => el.tagName === 'BUTTON');
     expect(confirmButton.disabled).toBe(true); // real: disabled with no note typed yet
 
-    const textarea = screen.getByPlaceholderText(/tracking never updated/i);
+    // t.detail.deliveryNotePlaceholder's Chinese text, "物流轨迹未更新" substring
+    const textarea = screen.getByPlaceholderText(/物流轨迹未更新/);
     fireEvent.change(textarea, { target: { value: 'Buyer confirmed receipt via chat' } });
     fireEvent.click(confirmButton);
 
-    await waitFor(() => expect(screen.getByText(/completed its journey/i)).toBeInTheDocument());
+    // t.detail.completedBanner, Chinese: "此包裹已完成送达买家的全部流程。"
+    await waitFor(() => expect(screen.getByText(/完成送达买家的全部流程/)).toBeInTheDocument());
   });
 
   it('shows the real backend rejection message if already carrier-confirmed', async () => {
@@ -178,13 +207,14 @@ describe('Hub Portal — real Confirm Delivered UI (new, migration 027)', () => 
     await login();
     await waitFor(() => expect(screen.getByText('LP-200999')).toBeInTheDocument());
     fireEvent.click(screen.getByText('LP-200999'));
-    await waitFor(() => expect(screen.getAllByText(/confirm delivered/i).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText('确认已送达').length).toBeGreaterThan(0));
 
-    const textarea = screen.getByPlaceholderText(/tracking never updated/i);
+    const textarea = screen.getByPlaceholderText(/物流轨迹未更新/);
     fireEvent.change(textarea, { target: { value: 'trying anyway' } });
-    const confirmButtons = screen.getAllByText(/confirm delivered/i);
+    const confirmButtons = screen.getAllByText('确认已送达');
     fireEvent.click(confirmButtons.find((el) => el.tagName === 'BUTTON'));
 
+    // Real, un-localized backend error message -- unchanged from before.
     await waitFor(() => expect(screen.getByText(/already confirmed delivered by real carrier tracking/i)).toBeInTheDocument());
   });
 });

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { PackageCheck } from "lucide-react";
 import { login } from "./auth";
+import { useLang } from "./langContext";
 
 const C = {
   ink: "#14171C", canvas: "#F5F6F8", card: "#FFFFFF", line: "#E4E6EA",
@@ -10,6 +11,7 @@ const disp = { fontFamily: "'Barlow Condensed', sans-serif" };
 const body = { fontFamily: "'Inter', sans-serif" };
 
 export default function LoginPage({ onLoginSuccess }) {
+  const { t, lang, toggle } = useLang();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
@@ -22,7 +24,7 @@ export default function LoginPage({ onLoginSuccess }) {
     try {
       const { token, user } = await login(email, password);
       if (user.role !== "hub_staff") {
-        setError("This account doesn't have inspection hub access.");
+        setError(t.login.noAccess);
         setIsSubmitting(false);
         return;
       }
@@ -36,15 +38,20 @@ export default function LoginPage({ onLoginSuccess }) {
   return (
     <div style={{ ...body, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: C.canvas }}>
       <form onSubmit={handleSubmit} style={{ width: 360, background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: 32 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-          <div style={{ width: 34, height: 34, borderRadius: 9, background: C.signal, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <PackageCheck size={18} color="#fff" />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 9, background: C.signal, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <PackageCheck size={18} color="#fff" />
+            </div>
+            <div style={{ ...disp, fontSize: 24, fontWeight: 700, color: C.ink }}>{t.appName}</div>
           </div>
-          <div style={{ ...disp, fontSize: 24, fontWeight: 700, color: C.ink }}>LEAP HUB</div>
+          <button type="button" onClick={toggle} style={{ border: `1px solid ${C.line}`, borderRadius: 6, background: "none", fontSize: 11, fontWeight: 700, padding: "4px 8px", cursor: "pointer", color: C.muted }}>
+            {lang === "zh" ? "EN" : "中文"}
+          </button>
         </div>
-        <div style={{ fontSize: 13, color: C.muted, marginBottom: 24 }}>Inspection hub sign-in</div>
+        <div style={{ fontSize: 13, color: C.muted, marginBottom: 24 }}>{t.login.subtitle}</div>
 
-        <label htmlFor="hub-email" style={{ fontSize: 12, fontWeight: 700, color: C.muted, display: "block", marginBottom: 6 }}>Email</label>
+        <label htmlFor="hub-email" style={{ fontSize: 12, fontWeight: 700, color: C.muted, display: "block", marginBottom: 6 }}>{t.login.email}</label>
         <input
           id="hub-email"
           type="email"
@@ -54,7 +61,7 @@ export default function LoginPage({ onLoginSuccess }) {
           style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", borderRadius: 8, border: `1px solid ${C.line}`, marginBottom: 16, fontSize: 14, fontFamily: "inherit" }}
         />
 
-        <label htmlFor="hub-password" style={{ fontSize: 12, fontWeight: 700, color: C.muted, display: "block", marginBottom: 6 }}>Password</label>
+        <label htmlFor="hub-password" style={{ fontSize: 12, fontWeight: 700, color: C.muted, display: "block", marginBottom: 6 }}>{t.login.password}</label>
         <input
           id="hub-password"
           type="password"
@@ -79,11 +86,11 @@ export default function LoginPage({ onLoginSuccess }) {
             cursor: isSubmitting ? "default" : "pointer", fontFamily: "inherit",
           }}
         >
-          {isSubmitting ? "Signing in…" : "Sign in"}
+          {isSubmitting ? t.login.signingIn : t.login.signIn}
         </button>
 
         <div style={{ fontSize: 11.5, color: C.muted, marginTop: 16, textAlign: "center" }}>
-          Access is restricted to Leap inspection hub staff.
+          {t.login.restricted}
         </div>
       </form>
     </div>

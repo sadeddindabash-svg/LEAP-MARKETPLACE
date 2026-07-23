@@ -161,16 +161,56 @@ Two test files, 12 tests, all passing:
   `apps/supplier-portal/src/carrierWebhook.integration.test.js` — a
   shared backend endpoint, reachable and tested from either app.
 
+## Real bilingual support (new) — closes this portal's own #1 flagged gap
+
+**This portal's own README had flagged English-only as the #1 next
+step for a while** — closed using the exact same `LangContext` pattern
+already proven out in `apps/supplier-portal` (`src/langContext.js`,
+identical structure), rather than inventing a new approach.
+
+- Default language is **Chinese** (`zh`), same default as the supplier
+  portal — this hub's own seeded staff account (Guangzhou) is the
+  actual real-world user this matters most for. A visible EN/中文
+  toggle switches instantly (`TopBar` for the authenticated shell,
+  a small button next to the logo on `LoginPage`).
+- Every real piece of UI copy is translated: login form, the full
+  shipment-step sequence (labels, action buttons, prompts, hints for
+  all 5 real inspection steps), filters, the flag-a-quality-issue form,
+  the Confirm Delivered flow, history section, and every real
+  client-side validation message.
+- **Deliberately NOT translated**: real backend error messages (shown
+  exactly as the backend sends them, since the API itself doesn't
+  localize responses) and real data (order IDs, supplier names,
+  product names, staff names) — only this app's own static UI copy.
+
+**A real regression found and fixed while building this**: the
+existing test suite (`App.test.jsx`) broke outright the moment the
+default language stopped being English-only — `getByLabelText(/email/i)`
+can never match a label that now reads "邮箱". Fixed by switching to
+language-independent selectors (element `id`, DOM structure) for form
+interactions, and matching the real Chinese text (now the actual
+default UI) for content assertions — not by avoiding the translation.
+
+**Verified**: full test suite passes, 13/13 — the same real
+end-to-end shipment workflow and flag-to-return-case tests from before
+this change, now running against the real (Chinese-by-default) UI
+rather than the English one they were originally written against.
+
 ## Next steps to make this real
 
-1. Localization — this portal is English-only for now, unlike the
+1. ~~Localization — this portal is English-only for now, unlike the
    supplier portal's bilingual Chinese/English support. If hub staff in
    non-English-speaking regions need this, the same `LangContext`
-   pattern used in the supplier portal could be extended here.
-2. Wire the "flag a quality issue" outcome into the existing
+   pattern used in the supplier portal could be extended here.~~
+   **Done** — real bilingual (Chinese/English) support added, using the
+   exact same `LangContext` pattern as `apps/supplier-portal`. See the
+   new section above this list for the full details.
+2. ~~Wire the "flag a quality issue" outcome into the existing
    Returns/Disputes system, so a flagged shipment automatically creates
    a real return case rather than just being visible to admin as a
-   flag.
+   flag.~~ **Done** — flagging now automatically opens a real, linked
+   return case in the same transaction as the flag itself. See
+   `services/api/README.md`'s matching section for the full design.
 3. Real object storage for evidence photos (see the honest limitation
    noted above) — same next step already flagged for product photos.
 4. ~~Buyer-facing mobile tracking UI~~ — **done**, not a next step
