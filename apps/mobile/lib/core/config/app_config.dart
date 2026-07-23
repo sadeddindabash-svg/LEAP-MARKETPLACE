@@ -92,6 +92,19 @@ class AppConfig {
     defaultValue: 'http://localhost:4000',
   );
 
+  /// REAL BUG FOUND AND FIXED HERE: product sharing used to hardcode
+  /// `https://leapautoparts.com/...`, a domain that has never existed
+  /// -- there was no real web page to share at the time this was
+  /// written. apps/web-storefront now has a genuinely real product
+  /// page at `/products/:id` (see that app's own README), so this
+  /// points there instead. Configurable the same way apiBaseUrl is,
+  /// via --dart-define=STOREFRONT_URL=... at build time; the default
+  /// matches web-storefront's own .env.example NEXT_PUBLIC_SITE_URL.
+  static const String storefrontUrl = String.fromEnvironment(
+    'STOREFRONT_URL',
+    defaultValue: 'http://localhost:3001',
+  );
+
   /// Guest checkout is allowed by default — see the product decision in
   /// docs/Leap_Project_Kickoff_Charter.docx. Buyers are prompted to create
   /// an account on the order confirmation screen, not blocked before

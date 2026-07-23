@@ -865,20 +865,41 @@ pattern already used elsewhere in this app for other uploaded images.
   so far), no extra setup is needed — the browser's own native file
   picker handles it directly.
 
-## Real shareable product links — share action only (new)
+## Real shareable product links (fixed — now points at a real page)
 
-Confirmed scope: just the real share action for now, using the
-device's native share sheet (`share_plus`) — not a real public web page
-yet, which is confirmed, deliberate follow-up work. A real Share icon
-on the product screen's app bar shares the product's real name plus a
-real URL (`https://leapautoparts.com/products/:id`) that doesn't
-resolve to anything real yet. Awaiting the same cached product-loading
-Future used elsewhere on this screen doesn't trigger a second real
-network call.
+**A real gap closed, not just documented as deliberate scope anymore**:
+this used to share a real product's name plus a URL
+(`https://leapautoparts.com/products/:id`) pointing at a domain that
+never existed — confirmed dead scope at the time, since there was no
+real web page anywhere in this project to point to yet.
+`apps/web-storefront` now has a genuinely real product page at
+`/products/:id`, so the share link points there instead —
+`AppConfig.storefrontUrl` (new, mirrors `apiBaseUrl`'s exact
+`String.fromEnvironment` pattern, configurable via
+`--dart-define=STOREFRONT_URL=...` at build time, defaulting to
+`http://localhost:3001` to match web-storefront's own
+`.env.example`).
 
-**A real bug was found and fixed here, via actual testing**: this
-originally called `SharePlus.instance.share(ShareParams(...))`, a
-real, wrong assumption about which `share_plus` API version was in
+**Honest, deliberate scope boundary, not an oversight**: real
+deep-linking (tapping this link reopening the app directly to the
+product, instead of a browser) is a real, separate, larger follow-up —
+it needs real platform configuration (Android App Links / iOS
+Universal Links), each requiring a real hosted verification file on a
+real production domain, neither of which can be meaningfully built or
+verified without one. A real, working web link that opens in any
+browser and shows the real product is still a genuine improvement over
+a dead domain.
+
+**Verified end-to-end, not just assumed to compile**: started
+web-storefront's real dev server, fetched the EXACT URL this fix now
+produces for a real product ID, confirmed the real product's actual
+name renders on the page (not just a `200` with generic content), and
+confirmed a nonexistent product ID correctly `404`s rather than
+silently rendering nothing useful.
+
+**The earlier `share_plus` API-version bug fix (kept for the historical
+record)**: this originally called `SharePlus.instance.share(ShareParams(...))`,
+a real, wrong assumption about which `share_plus` API version was in
 use — the real installed version (10.1.4, per the `^10.1.2` pin in
 `pubspec.yaml`) doesn't have that class at all, confirmed by a real
 compile error once actually run. Fixed by reverting to the long-

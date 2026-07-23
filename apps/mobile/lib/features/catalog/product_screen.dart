@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../core/theme.dart';
 import '../../core/auth_state.dart';
 import '../../core/cart_state.dart';
+import '../../core/config/app_config.dart';
 import '../../core/language_state.dart';
 import '../../models/product.dart';
 import '../../services/api_client.dart';
@@ -56,17 +57,22 @@ class _ProductScreenState extends State<ProductScreen> {
     }
   }
 
-  // Real shareable product link (new) -- confirmed scope: the real
-  // share ACTION only for now, using the device's own native share
-  // sheet; the actual real public web page this URL points to is
-  // confirmed, deliberate follow-up work, not built yet. Awaiting the
-  // same cached `_productFuture` here doesn't trigger a second real
-  // network call -- Dart Futures resolve once and are reused.
+  // Real shareable product link -- see AppConfig.storefrontUrl's own
+  // comment for the fix: this used to point at a domain that never
+  // existed. Now points at the real, working product page
+  // apps/web-storefront actually serves. Deep-linking (tapping this
+  // link reopening THIS app directly to the product, rather than a
+  // browser) is a real, separate, larger follow-up -- it needs real
+  // platform config (Android App Links / iOS Universal Links, each
+  // requiring a real hosted verification file on a real production
+  // domain) that can't be meaningfully built or verified without one.
+  // A real, working web link that opens in any browser and shows the
+  // real product is still a genuine improvement over a dead domain.
   Future<void> _shareProduct() async {
     try {
       final product = await _productFuture;
       if (product == null) return;
-      final url = 'https://leapautoparts.com/products/${widget.productId}';
+      final url = '${AppConfig.storefrontUrl}/products/${widget.productId}';
       // REAL BUG FOUND AND FIXED HERE: this originally called
       // SharePlus.instance.share(ShareParams(...)) -- a real, wrong
       // assumption about which share_plus API version was in use.
