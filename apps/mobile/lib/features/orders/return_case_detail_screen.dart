@@ -13,9 +13,22 @@ import '../../services/api_client.dart';
 /// thread, never the separate supplier<->admin thread the same case
 /// might also have (see the backend module's header comment for why
 /// that split is enforced at the query level, not just in this UI).
+///
+/// REAL GAP CLOSED HERE (mirrors the same fix already made for support
+/// tickets): this screen used to silently do nothing for a guest
+/// (`if (!auth.isLoggedIn) return;`, leaving the screen stuck on its
+/// loading spinner forever) -- the backend's GET/POST
+/// /returns/my-cases/:id* already supported a real guest lookup via a
+/// matching guestEmail this whole time (built earlier this session for
+/// web-storefront's own /returns page); this was just never wired up
+/// on mobile. A guest reaches this screen either via returns_screen
+/// .dart's new "Track a return" entry (guest email already known) or a
+/// shared link with ?guestEmail= in the URL; if neither is present,
+/// shows a real inline email prompt rather than getting stuck.
 class ReturnCaseDetailScreen extends StatefulWidget {
   final String caseId;
-  const ReturnCaseDetailScreen({super.key, required this.caseId});
+  final String? guestEmail;
+  const ReturnCaseDetailScreen({super.key, required this.caseId, this.guestEmail});
 
   @override
   State<ReturnCaseDetailScreen> createState() => _ReturnCaseDetailScreenState();
@@ -26,26 +39,34 @@ class _ReturnCaseDetailScreenState extends State<ReturnCaseDetailScreen> {
   String? _errorMessage;
   bool _isLoading = true;
   bool _isSending = false;
+  bool _needsEmail = false;
+  String? _activeGuestEmail;
   final _replyController = TextEditingController();
+  final _emailController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
+    _activeGuestEmail = widget.guestEmail;
     _load();
   }
 
   @override
   void dispose() {
     _replyController.dispose();
+    _emailController.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
     final auth = context.read<AuthState>();
-    if (!auth.isLoggedIn) return;
-    setState(() => _isLoading = true);
+    if (!auth.isLoggedIn && _activeGuestEmail == null) {
+      setState(() { _needsEmail = true; _isLoading = false; });
+      return;
+    }
+    setState(() { _isLoading = true; _needsEmail = false; });
     try {
-      final returnCase = await ApiClient().fetchReturnCaseDetail(auth.token!, widget.caseId);
+      final returnCase = await ApiClient().fetchReturnCaseDetail(widget.caseId, token: auth.token, guestEmail: _activeGuestEmail);
       setState(() {
         _returnCase = returnCase;
         _isLoading = false;
@@ -58,12 +79,18 @@ class _ReturnCaseDetailScreenState extends State<ReturnCaseDetailScreen> {
     }
   }
 
+  void _submitEmail() {
+    if (_emailController.text.trim().isEmpty) return;
+    setState(() => _activeGuestEmail = _emailController.text.trim());
+    _load();
+  }
+
   Future<void> _sendReply() async {
     if (_replyController.text.trim().isEmpty) return;
     final auth = context.read<AuthState>();
     setState(() => _isSending = true);
     try {
-      await ApiClient().sendReturnCaseMessage(auth.token!, widget.caseId, _replyController.text.trim());
+      await ApiClient().sendReturnCaseMessage(widget.caseId, _replyController.text.trim(), token: auth.token, guestEmail: _activeGuestEmail);
       _replyController.clear();
       await _load();
     } on ApiException catch (e) {
@@ -77,6 +104,25 @@ class _ReturnCaseDetailScreenState extends State<ReturnCaseDetailScreen> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(appBar: AppBar(title: Text(tr(context, 'my_returns'))), body: const Center(child: CircularProgressIndicator()));
+    }
+    if (_needsEmail) {
+      return Scaffold(
+        appBar: AppBar(title: Text(tr(context, 'my_returns'))),
+        body: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(tr(context, 'enter_email_to_view_return'), textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted, fontSize: 13)),
+              const SizedBox(height: 16),
+              TextField(controller: _emailController, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: tr(context, 'email_label'))),
+              const SizedBox(height: 12),
+              ElevatedButton(onPressed: _submitEmail, child: Text(tr(context, 'view'))),
+            ],
+          ),
+        ),
+      );
     }
     if (_errorMessage != null || _returnCase == null) {
       return Scaffold(appBar: AppBar(title: Text(tr(context, 'my_returns'))), body: Center(child: Text(_errorMessage ?? tr(context, 'not_found'), style: const TextStyle(color: LeapColors.muted))));

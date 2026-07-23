@@ -593,16 +593,25 @@ class ApiClient {
     return jsonDecode(response.body) as List<dynamic>;
   }
 
-  Future<Map<String, dynamic>> fetchReturnCaseDetail(String token, String caseId) async {
-    final response = await _client.get(Uri.parse('$baseUrl/returns/my-cases/$caseId'), headers: _authHeaders(token));
+  /// Real gap closed here (mirrors the same fix already made for
+  /// support tickets): the backend's GET /returns/my-cases/:id already
+  /// supported a real guest lookup via a matching ?guestEmail= this
+  /// whole time (built earlier this session for web-storefront's own
+  /// /returns page) -- this was just never wired up on mobile. This was
+  /// only ever called with a real logged-in token before.
+  Future<Map<String, dynamic>> fetchReturnCaseDetail(String caseId, {String? token, String? guestEmail}) async {
+    final uri = Uri.parse('$baseUrl/returns/my-cases/$caseId').replace(
+      queryParameters: guestEmail != null ? {'guestEmail': guestEmail} : null,
+    );
+    final response = await _client.get(uri, headers: _authHeaders(token));
     return _decodeOrThrow(response);
   }
 
-  Future<Map<String, dynamic>> sendReturnCaseMessage(String token, String caseId, String message) async {
+  Future<Map<String, dynamic>> sendReturnCaseMessage(String caseId, String message, {String? token, String? guestEmail}) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/returns/my-cases/$caseId/messages'),
       headers: _authHeaders(token),
-      body: jsonEncode({'message': message}),
+      body: jsonEncode({'message': message, if (guestEmail != null) 'guestEmail': guestEmail}),
     );
     return _decodeOrThrow(response);
   }

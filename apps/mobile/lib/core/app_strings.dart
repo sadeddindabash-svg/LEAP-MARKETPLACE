@@ -186,6 +186,11 @@ class AppStrings {
     'could_not_load_returns': {'en': 'Could not load return requests:', 'ar': 'تعذر تحميل طلبات الإرجاع:'},
     'no_returns_yet': {'en': 'No return requests yet.', 'ar': 'لا توجد طلبات إرجاع بعد.'},
     'could_not_load_return': {'en': 'Could not load this return request.', 'ar': 'تعذر تحميل طلب الإرجاع هذا.'},
+    'enter_email_to_view_return': {'en': 'Enter the email this return was filed under to view it.', 'ar': 'أدخل البريد الإلكتروني الذي قُدم به هذا الإرجاع لعرضه.'},
+    'track_a_return': {'en': 'Track a return', 'ar': 'تتبع إرجاع'},
+    'track_return_hint': {'en': 'Enter your return case ID (from your confirmation) and the email you used to file it.', 'ar': 'أدخل رقم طلب الإرجاع (من رسالة التأكيد) والبريد الإلكتروني الذي استخدمته لتقديمه.'},
+    'return_case_id_label': {'en': 'Return case ID', 'ar': 'رقم طلب الإرجاع'},
+    'log_in_to_see_all_returns': {'en': 'Log in to see all your returns', 'ar': 'سجّل الدخول لرؤية جميع مرتجعاتك'},
     'return_case_order_label': {'en': 'For order', 'ar': 'للطلب'},
 
     // ---- Account ----

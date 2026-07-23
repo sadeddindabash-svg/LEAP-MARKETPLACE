@@ -10,15 +10,17 @@ import '../../services/api_client.dart';
 /// order_detail_screen.dart already lets a buyer SUBMIT a return via
 /// POST /returns — this screen is the other half, showing the real
 /// list of return cases the buyer has filed via GET /returns/my-cases,
-/// so they can check status and follow up. Same login-gate pattern as
-/// orders_screen.dart and chat_screen.dart: guest-filed returns aren't
-/// listable without an account (the backend scopes /returns/my-cases
-/// to a real buyer_id).
+/// so they can check status and follow up. Listing every case still
+/// requires login (the backend scopes /returns/my-cases to a real
+/// buyer_id, and there's no "list all my cases" for a guest without a
+/// real account) -- but a guest can still track ONE specific case by
+/// ID + email (real gap closed here, mirroring the same fix already
+/// made for support tickets).
 ///
 /// Deliberately no "new return" FAB here, unlike chat_screen.dart's
 /// "new ticket" FAB — a return case is always tied to a specific
 /// sub-order, so it's only ever started from that order's detail page,
-/// not from a blank form.
+/// not from a blank form. This stays true for a guest too.
 class ReturnsScreen extends StatefulWidget {
   const ReturnsScreen({super.key});
 
@@ -28,11 +30,20 @@ class ReturnsScreen extends StatefulWidget {
 
 class _ReturnsScreenState extends State<ReturnsScreen> {
   late Future<List<dynamic>> _casesFuture;
+  final _lookupIdController = TextEditingController();
+  final _lookupEmailController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _casesFuture = _load();
+  }
+
+  @override
+  void dispose() {
+    _lookupIdController.dispose();
+    _lookupEmailController.dispose();
+    super.dispose();
   }
 
   Future<List<dynamic>> _load() async {
@@ -45,6 +56,11 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
     setState(() => _casesFuture = _load());
   }
 
+  void _trackReturn() {
+    if (_lookupIdController.text.trim().isEmpty || _lookupEmailController.text.trim().isEmpty) return;
+    context.push('/returns/${_lookupIdController.text.trim()}?guestEmail=${Uri.encodeQueryComponent(_lookupEmailController.text.trim())}');
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
@@ -55,17 +71,21 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
         body: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Icon(Icons.assignment_return_outlined, size: 40, color: LeapColors.muted),
-              const SizedBox(height: 12),
-              Text(
-                tr(context, 'login_to_see_returns'),
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: LeapColors.muted, fontSize: 13),
-              ),
+              Text(tr(context, 'track_a_return'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+              const SizedBox(height: 8),
+              Text(tr(context, 'track_return_hint'), style: const TextStyle(color: LeapColors.muted, fontSize: 12.5)),
               const SizedBox(height: 16),
-              ElevatedButton(onPressed: () => context.push('/login'), child: Text(tr(context, 'log_in'))),
+              TextField(controller: _lookupIdController, decoration: InputDecoration(labelText: tr(context, 'return_case_id_label'))),
+              const SizedBox(height: 12),
+              TextField(controller: _lookupEmailController, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: tr(context, 'email_label'))),
+              const SizedBox(height: 12),
+              ElevatedButton(onPressed: _trackReturn, child: Text(tr(context, 'track'))),
+              const SizedBox(height: 24),
+              Center(
+                child: TextButton(onPressed: () => context.push('/login'), child: Text(tr(context, 'log_in_to_see_all_returns'))),
+              ),
             ],
           ),
         ),
