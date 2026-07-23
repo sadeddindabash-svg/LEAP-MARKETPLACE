@@ -562,6 +562,27 @@ The full existing admin-dashboard test suite (93 tests) was also re-run
 against the updated backend to confirm nothing broke there — still
 93/93 passing.
 
+## Real Excel export (new)
+
+**A real, confirmed gap**: this portal had zero export capability
+anywhere, unlike the admin dashboard, which already has it on every
+list page. Copied the exact same reusable `exportToExcel()` utility
+(byte-for-byte identical — same real, tested workbook-building logic)
+and added it to:
+
+- **Orders** — exports whatever's currently visible (respects the
+  active status filter), not always the full order list.
+- **Products** — same real-time behavior, respecting the active
+  "All"/"Low stock" filter (see the low-stock threshold fix above).
+
+Both real column sets follow this app's own real bilingual convention
+— headers and sheet names in whichever language is active.
+
+**Verified**: copied the exact same real workbook-verification test
+(round-trips a real `.xlsx` buffer through a fresh, independent
+`ExcelJS` instance, not just checking no error was thrown) — 3/3
+passing. Full regression: 80/80 passing across all 15 test files.
+
 ## Real bulk price update (new)
 
 **A real, confirmed gap**: there was no way to adjust multiple real

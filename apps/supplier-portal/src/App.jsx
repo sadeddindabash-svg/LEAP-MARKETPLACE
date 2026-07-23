@@ -1,5 +1,6 @@
 import React, { useState, useEffect, createContext, useContext } from "react";
 import { FONT_IMPORT, C, disp, mono, useBodyFont } from "./theme";
+import { exportToExcel } from "./exportToExcel";
 import {
   LayoutGrid, PackageSearch, ShoppingBag, RotateCcw, MessageSquare, Wallet, Settings,
   Search, Bell, ChevronRight, ChevronLeft, TrendingUp, Plus, Upload, Download, Check, X,
@@ -63,7 +64,7 @@ const STRINGS = {
       bulkUpload: "批量上传", addProduct: "手动添加商品",
       thProduct: "商品", thCategory: "分类", thPrice: "价格", thStock: "库存", thFitment: "适配车型", thStatus: "状态",
       filterAll: "全部", filterLowStock: (n) => `库存预警 (${n})`,
-      bulkPriceSelected: (n) => `已选择 ${n} 个商品`, bulkPriceUpdate: "批量调价",
+      bulkPriceSelected: (n) => `已选择 ${n} 个商品`, bulkPriceUpdate: "批量调价", export: "导出",
       bulkPriceTitle: "批量调整价格", bulkPricePercent: "百分比", bulkPriceFlat: "固定金额",
       bulkPricePercentHint: "例如：输入 10 表示涨价 10%，输入 -10 表示降价 10%",
       bulkPriceFlatHint: "例如：输入 5 表示每件加 $5，输入 -5 表示每件减 $5",
@@ -87,7 +88,7 @@ const STRINGS = {
     orders: {
       title: "订单管理", subtitle: "订单仅通过平台系统分配，无法与买家直接联系",
       filters: ["全部", "待确认", "备货中", "已发货", "异常/纠纷"],
-      thId: "订单编号", thRegion: "买家地区", thItems: "商品", thAmount: "金额", thStatus: "状态",
+      thId: "订单编号", thRegion: "买家地区", thItems: "商品", thAmount: "金额", thStatus: "状态", export: "导出",
       detailTitle: "订单详情", itemsTitle: "商品明细", qty: "数量",
       shippingTitle: "发货信息", regionNote: (r) => `买家收货地区：${r}（系统不显示买家详细联系方式，如有问题请通过平台客服沟通）`,
       carrierLabel: "选择物流公司", carriers: ["顺丰国际 (SF International)", "中国邮政国际 (China Post)", "DHL Express", "第三方海外仓专线"],
@@ -155,7 +156,7 @@ const STRINGS = {
       bulkUpload: "Bulk upload", addProduct: "Add product",
       thProduct: "Product", thCategory: "Category", thPrice: "Price", thStock: "Stock", thFitment: "Fitment", thStatus: "Status",
       filterAll: "All", filterLowStock: (n) => `Low stock (${n})`,
-      bulkPriceSelected: (n) => `${n} selected`, bulkPriceUpdate: "Bulk price update",
+      bulkPriceSelected: (n) => `${n} selected`, bulkPriceUpdate: "Bulk price update", export: "Export",
       bulkPriceTitle: "Bulk price adjustment", bulkPricePercent: "Percentage", bulkPriceFlat: "Flat amount",
       bulkPricePercentHint: "e.g. enter 10 for a 10% increase, -10 for a 10% decrease",
       bulkPriceFlatHint: "e.g. enter 5 to add $5 per item, -5 to subtract $5 per item",
@@ -179,7 +180,7 @@ const STRINGS = {
     orders: {
       title: "Orders", subtitle: "Orders are routed by the platform only \u2014 no direct contact with buyers",
       filters: ["All", "Pending", "Preparing", "Shipped", "Dispute"],
-      thId: "Order", thRegion: "Buyer region", thItems: "Items", thAmount: "Amount", thStatus: "Status",
+      thId: "Order", thRegion: "Buyer region", thItems: "Items", thAmount: "Amount", thStatus: "Status", export: "Export",
       detailTitle: "Order details", itemsTitle: "Order items", qty: "Qty",
       shippingTitle: "Shipping", regionNote: (r) => `Buyer's region: ${r} (buyer contact details are not shown \u2014 use Platform Support for anything you need)`,
       carrierLabel: "Carrier", carriers: ["SF International", "China Post International", "DHL Express", "Third-party overseas warehouse line"],
@@ -1591,17 +1592,44 @@ function ProductsPage() {
               >{f === "all" ? t.products.filterAll : t.products.filterLowStock(lowStockProducts.length)}</button>
             ))}
           </div>
-          {selectedIds.size > 0 && (
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 12.5, color: C.muted, fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}>
-                {t.products.bulkPriceSelected(selectedIds.size)}
-              </span>
-              <button
-                onClick={() => setShowBulkPriceModal(true)}
-                style={{ padding: "7px 13px", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}
-              >{t.products.bulkPriceUpdate}</button>
-            </div>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {selectedIds.size > 0 && (
+              <>
+                <span style={{ fontSize: 12.5, color: C.muted, fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}>
+                  {t.products.bulkPriceSelected(selectedIds.size)}
+                </span>
+                <button
+                  onClick={() => setShowBulkPriceModal(true)}
+                  style={{ padding: "7px 13px", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}
+                >{t.products.bulkPriceUpdate}</button>
+              </>
+            )}
+            {/* Real export (new) -- closes a real gap: this portal had
+                no export capability anywhere before this. Exports
+                whatever's currently visible (respects the active
+                stock filter), not always the full product list. */}
+            <button
+              disabled={visibleProducts.length === 0}
+              onClick={() => exportToExcel({
+                filename: `products-${new Date().toISOString().slice(0, 10)}`,
+                sheetName: lang === "zh" ? "商品" : "Products",
+                columns: [
+                  { header: t.products.thProduct, key: "name", width: 30 },
+                  { header: t.products.thCategory, key: "category", width: 16 },
+                  { header: t.products.thPrice, key: "price", width: 14 },
+                  { header: t.products.thStock, key: "stock", width: 12 },
+                  { header: t.products.thStatus, key: "status", width: 16 },
+                ],
+                rows: visibleProducts.map((p) => ({
+                  name: p.name, category: p.category, price: `${Number(p.price).toFixed(2)} ${p.currencyCode}`,
+                  stock: p.stockQuantity, status: t.statusProduct[p.status] || p.status,
+                })),
+              })}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 13px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: visibleProducts.length === 0 ? "default" : "pointer", opacity: visibleProducts.length === 0 ? 0.5 : 1, fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}
+            >
+              <Download size={13} /> {t.products.export}
+            </button>
+          </div>
         </div>
       )}
       {successMessage && (
@@ -1985,14 +2013,41 @@ function OrdersPage({ onOpen }) {
   return (
     <div>
       <TopBar title={t.orders.title} subtitle={t.orders.subtitle} />
-      <div style={{ padding: "16px 24px 0", display: "flex", gap: 6 }}>
-        {t.orders.filters.map((f, i) => (
-          <button key={f} onClick={() => setFilterIdx(i)} style={{
-            padding: "7px 13px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
-            fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif",
-            border: `1px solid ${filterIdx === i ? C.ink : C.line}`, background: filterIdx === i ? C.ink : "#fff", color: filterIdx === i ? "#fff" : C.ink,
-          }}>{f}</button>
-        ))}
+      <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 6 }}>
+          {t.orders.filters.map((f, i) => (
+            <button key={f} onClick={() => setFilterIdx(i)} style={{
+              padding: "7px 13px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+              fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif",
+              border: `1px solid ${filterIdx === i ? C.ink : C.line}`, background: filterIdx === i ? C.ink : "#fff", color: filterIdx === i ? "#fff" : C.ink,
+            }}>{f}</button>
+          ))}
+        </div>
+        {/* Real export (new) -- closes a real gap: this portal had no
+            export capability anywhere before this, unlike the admin
+            dashboard, which already has it on every list page. */}
+        <button
+          disabled={filtered.length === 0}
+          onClick={() => exportToExcel({
+            filename: `orders-${new Date().toISOString().slice(0, 10)}`,
+            sheetName: lang === "zh" ? "订单" : "Orders",
+            columns: [
+              { header: t.orders.thId, key: "orderId", width: 16 },
+              { header: t.orders.thItems, key: "items", width: 40 },
+              { header: t.orders.thAmount, key: "amount", width: 12 },
+              { header: t.orders.thStatus, key: "status", width: 16 },
+            ],
+            rows: filtered.map((o) => ({
+              orderId: o.orderId,
+              items: o.items.map((i) => i.name).join(lang === "zh" ? "，" : ", "),
+              amount: o.items.reduce((sum, i) => sum + Number(i.unitPrice) * i.quantity, 0).toFixed(2),
+              status: t.statusOrder[o.status] || o.status,
+            })),
+          })}
+          style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 13px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: filtered.length === 0 ? "default" : "pointer", opacity: filtered.length === 0 ? 0.5 : 1, fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}
+        >
+          <Download size={13} /> {t.orders.export}
+        </button>
       </div>
       <div style={{ padding: 24 }}>
         {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", fontSize: 13, color: C.muted }}>{lang === "zh" ? "加载中…" : "Loading…"}</div></Card>}
