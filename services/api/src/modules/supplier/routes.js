@@ -57,6 +57,15 @@ router.get('/', requireAuth, requireRole('admin'), requirePageAccess('suppliers'
   }
 });
 
+// GET /supplier/:id (admin) -- real gap closed, but see this route's
+// ACTUAL registration further down this file (right after GET /me) for
+// why it can't live here: this exact spot, before GET /me, would let
+// a bare :id route incorrectly intercept every real GET /supplier/me
+// request too (both are single-segment paths under this mount point;
+// Express matches by registration order, not specificity) -- a real,
+// severe bug that would have broken every supplier's own profile
+// fetch. Caught before ever running this, not after.
+
 // PATCH /supplier/:id/verify  { status: 'verified' | 'rejected' }
 router.patch('/:id/verify', requireAuth, requireRole('admin'), requirePageAccess('suppliers'), async (req, res, next) => {
   try {
@@ -169,6 +178,53 @@ router.get('/me', requireAuth, requireRole('supplier'), async (req, res, next) =
     const { rows } = await db.query('SELECT * FROM suppliers WHERE id = $1', [req.user.supplierId]);
     if (rows.length === 0) return res.status(404).json({ error: 'Supplier not found' });
     res.json(toSupplierDto({ ...rows[0], listing_count: 0 }));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /supplier/:id (admin) -- real gap closed: there was no way to
+// view a single specific supplier's real profile + real product
+// listings at all before this; the global search's supplier results
+// could only ever navigate to the whole Suppliers list page, never a
+// specific one. Deliberately scoped to profile + real products for
+// this pass -- orders/payouts-by-supplier would be a real, separate,
+// larger addition (aggregating across other modules' own tables),
+// not a quick addition alongside this.
+//
+// REGISTERED HERE, DELIBERATELY, NOT RIGHT AFTER THE LIST ENDPOINT
+// ABOVE: a bare :id route is a wildcard that matches ANY single path
+// segment -- placed before GET /me (also a single segment), it would
+// silently intercept every real supplier's own GET /supplier/me
+// request too, rejecting it with the wrong role check. Confirmed and
+// fixed before ever testing this, not after. Every OTHER :id-based
+// route in this file (verify, analytics, payout-method) is safe
+// regardless of position, since they all have additional path
+// segments that a bare /me alone doesn't share.
+router.get('/:id', requireAuth, requireRole('admin'), requirePageAccess('suppliers'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query(`
+      SELECT s.*, COUNT(p.id) AS listing_count
+      FROM suppliers s
+      LEFT JOIN products p ON p.supplier_id = s.id
+      WHERE s.id = $1
+      GROUP BY s.id
+    `, [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Supplier not found' });
+
+    const { rows: productRows } = await db.query(
+      `SELECT id, name, category, price, currency_code, stock_quantity, status, created_at
+       FROM products WHERE supplier_id = $1 ORDER BY created_at DESC`,
+      [req.params.id]
+    );
+
+    res.json({
+      ...toSupplierDto(rows[0]),
+      products: productRows.map((p) => ({
+        id: p.id, name: p.name, category: p.category, price: Number(p.price), currencyCode: p.currency_code,
+        stockQuantity: p.stock_quantity, status: p.status, createdAt: p.created_at,
+      })),
+    });
   } catch (err) {
     next(err);
   }

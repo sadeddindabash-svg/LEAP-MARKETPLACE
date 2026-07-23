@@ -6,8 +6,14 @@ const ADMIN_USER = { id: 'admin_dev_seed', email: 'admin@leap.dev', name: 'Dev A
 
 const MOCK_SEARCH_RESULTS = {
   orders: [{ id: 'LP-200999', label: 'LP-200999', sublabel: 'USD 37.88 · to ship' }],
-  suppliers: [],
+  suppliers: [{ id: 's1', label: 'Guangzhou AutoParts Co.', sublabel: 'verified' }],
   tickets: [],
+};
+
+const MOCK_SUPPLIER_DETAIL = {
+  id: 's1', name: 'Guangzhou AutoParts Co.', country: 'China', contactEmail: 'wei@gzauto.cn',
+  verificationStatus: 'verified', listingCount: 1, createdAt: '2026-01-01T00:00:00.000Z',
+  products: [{ id: 'p1', name: 'Front Brake Disc', category: 'brake', price: 39.99, currencyCode: 'USD', stockQuantity: 20, status: 'active', createdAt: '2026-01-02T00:00:00.000Z' }],
 };
 
 const MOCK_ORDER_DETAIL = {
@@ -28,6 +34,7 @@ function mockFetchRouter() {
     // is not a function, the exact same pre-existing flakiness found
     // earlier this session, unrelated to search itself.
     if (u.endsWith('/supplier')) return Promise.resolve({ ok: true, json: async () => [] });
+    if (u.endsWith('/supplier/s1')) return Promise.resolve({ ok: true, json: async () => MOCK_SUPPLIER_DETAIL });
     if (u.endsWith('/order/LP-200999')) return Promise.resolve({ ok: true, json: async () => MOCK_ORDER_DETAIL });
     if (u.endsWith('/overview')) return Promise.resolve({ ok: true, json: async () => ({ totalOrders: 1, activeSuppliers: 1, pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, openTickets: 0, ordersByDay: [], unitsByCategory: [], topSuppliers: [] }) });
     return Promise.resolve({ ok: true, json: async () => ({}) });
@@ -81,5 +88,29 @@ describe('Global search — real search across orders/suppliers/tickets (mocked 
     await new Promise((r) => setTimeout(r, 400)); // real debounce window
     const searchCalls = fetchSpy.mock.calls.filter(([url]) => String(url).includes('/admin/search'));
     expect(searchCalls.length).toBe(0);
+  });
+
+  // REAL BUG FOUND AND FIXED HERE (this session, batch 19): a supplier
+  // search result used to only navigate to the whole Suppliers list
+  // page, since there was no per-supplier detail view to deep-link
+  // into at all -- confirmed directly, not assumed, while revisiting
+  // this exact spot. This test would have been impossible to write
+  // meaningfully against the OLD behavior (there was no real detail
+  // content to assert on after clicking).
+  it('CRITICAL: clicking a real supplier result deep-links directly into that specific supplier\'s real detail page', async () => {
+    globalThis.fetch = mockFetchRouter();
+    render(<LeapAdminApp />);
+    await loginAsAdmin();
+
+    const searchInput = screen.getByPlaceholderText(/search orders, suppliers, tickets/i);
+    fireEvent.change(searchInput, { target: { value: 'Guangzhou' } });
+
+    await waitFor(() => expect(screen.getByText('Guangzhou AutoParts Co.')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Guangzhou AutoParts Co.'));
+
+    // Real navigation actually happened -- the supplier detail page's
+    // own real product list now renders, not just the search dropdown
+    // item (which shows the same supplier name text too).
+    await waitFor(() => expect(screen.getByText('Front Brake Disc')).toBeInTheDocument());
   });
 });

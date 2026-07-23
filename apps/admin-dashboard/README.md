@@ -1389,6 +1389,48 @@ add a new mocked component test that logs in, give it a valid
 `/overview` mock too, even if the test itself is about something else
 entirely.
 
+## Real supplier detail view (new) — corrects a wrong claim from an earlier pass
+
+**An earlier pass (documenting the global search feature) claimed a
+supplier search result couldn't deep-link to a specific supplier
+because "that page's own drill-down is local component state, not
+lifted to the shell like orders/tickets/cases." That reasoning was
+wrong** — confirmed by actually reading `SuppliersPage` rather than
+trusting the earlier note: it had no per-supplier detail view at all.
+The `openSupplier` state that earlier note was thinking of belongs to
+`SupplierMessagesPage`, a completely different, unrelated feature
+(messaging threads with a supplier, not viewing their account).
+
+- **New `GET /supplier/:id`** (admin-only) — real profile + real
+  product listings for one specific supplier. Deliberately scoped to
+  profile + products for this pass; orders/payouts-by-supplier would
+  be a real, separate, larger addition (aggregating across other
+  modules' own tables).
+- **A real, serious Express routing bug caught and fixed before ever
+  testing this**: the new bare `:id` route was first placed right
+  after the supplier list endpoint — which would have let it silently
+  intercept every real `GET /supplier/me` request too (both are
+  single-segment paths; Express matches by registration order, not
+  specificity), breaking every supplier's own profile fetch. Moved to
+  the correct position, after `GET /me`.
+- **`openSupplier` lifted to the shell** (the fix the earlier note
+  should have described), wired into `NavigationContext` alongside
+  order/ticket/case. `GlobalSearch`'s supplier results now genuinely
+  deep-link to the specific supplier. `SuppliersPage` rows are now
+  clickable too (with `stopPropagation` on the Approve/Reject buttons
+  so they don't trigger navigation).
+
+**Verified against the real running backend**: confirmed
+`GET /supplier/me` still works correctly for a real supplier (the
+exact collision the routing bug would have caused), confirmed the new
+endpoint returns a real profile + all 110 real products for a real
+supplier, confirmed a non-admin supplier is rejected (403) viewing
+another supplier, confirmed a nonexistent id 404s. Real component test:
+clicking a real supplier search result now shows that supplier's real
+product list, not just the search dropdown closing. Full regression:
+supplier-portal 77/77, SuppliersFlow 3/3, GlobalSearch 3/3 — all
+passing.
+
 ## Real audit log filters (new)
 
 **A real, confirmed gap**: the audit log always fetched the same fixed
@@ -1430,12 +1472,15 @@ not even a real `<input>` — zero functionality at all.
   `setOpenCase`/`setPage` without this — same reasoning as the earlier
   `CurrentUserContext` fix.
 - **`GlobalSearch`** (new component) — real debounced (300ms) search,
-  a real dropdown, clicking a result actually navigates: an order or
-  ticket deep-links directly into its detail page; a supplier
-  navigates to the Suppliers page (an honest scope boundary — that
-  page's own drill-down into a specific supplier is local component
-  state, not lifted to the shell like orders/tickets/cases are, so a
-  direct deep-link into one specific supplier isn't wired up yet).
+  a real dropdown, clicking a result actually navigates: an order,
+  ticket, ~~or supplier~~ deep-links directly into its detail page.
+  ~~a supplier navigates to the Suppliers page (an honest scope
+  boundary — that page's own drill-down into a specific supplier is
+  local component state, not lifted to the shell like orders/tickets/
+  cases are, so a direct deep-link into one specific supplier isn't
+  wired up yet).~~ **Correction**: that reasoning was wrong — see "Real
+  supplier detail view" below for the actual fix and why the original
+  claim didn't hold up once checked.
 
 **Verified end-to-end against the real running backend**: matched a
 real supplier by name, matched multiple real orders by ID prefix

@@ -75,6 +75,13 @@ export function fetchSuppliers(token) {
   return authedGet("/supplier", token);
 }
 
+// Real supplier detail view (new) -- closes a real gap: there was no
+// way to view a single specific supplier's real profile + real
+// product listings at all before this.
+export function fetchSupplierById(token, supplierId) {
+  return authedGet(`/supplier/${supplierId}`, token);
+}
+
 export function fetchModerationQueue(token) {
   return authedGet("/catalog/moderation-queue", token);
 }

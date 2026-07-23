@@ -2218,6 +2218,31 @@ with the real remaining count named, confirmed the same for `PATCH`
 existing cart-persistence regression (unaffected, since normal-sized
 cart operations stay well under real stock levels).
 
+## Real supplier detail view for admin (new)
+
+**`GET /supplier/:id`** (admin-only) — real profile + real product
+listings for one specific supplier. Deliberately scoped to profile +
+products; orders/payouts-by-supplier would be a real, separate, larger
+addition aggregating across other modules' own tables.
+
+**A real, serious Express routing bug caught and fixed before ever
+testing this**: this route was first placed right after the supplier
+list endpoint (`GET /`) — a bare `:id` wildcard there would have
+silently intercepted every real `GET /supplier/me` request too (both
+are single-segment paths under this mount point; Express matches by
+registration order, not specificity), breaking every supplier's own
+profile fetch. Moved to its correct position, registered after
+`GET /me`, where no collision is possible.
+
+**Verified against the real running backend**: confirmed
+`GET /supplier/me` still works correctly for a real supplier (the
+exact collision this bug would have caused), confirmed the new
+endpoint returns a real profile + all 110 real products for a real
+supplier, confirmed a non-admin supplier is rejected (403) attempting
+to view a different supplier, confirmed a nonexistent id 404s. Full
+regression: supplier-portal's own suite (which exercises `GET
+/supplier/me` and every `/me/*` route constantly) — 77/77 passing.
+
 ## Real bulk price update for suppliers (new)
 
 **`PATCH /supplier/me/products/bulk-price-update`**
