@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fetchCategories, fetchProducts, fetchProductById, fetchCart, addCartItem, fetchMyOrders, fetchOrderById, fetchWishlist, checkWishlisted, addToWishlist, removeFromWishlist, submitReview, fetchMyReferral } from './api';
+import { fetchCategories, fetchProducts, fetchProductById, fetchCart, addCartItem, fetchMyOrders, fetchOrderById, fetchWishlist, checkWishlisted, addToWishlist, removeFromWishlist, submitReview, fetchMyReferral, fetchNotifications, fetchUnreadNotificationCount, markNotificationRead, markAllNotificationsRead, resolveNotificationLink } from './api';
 
 const BACKEND_URL = 'http://localhost:4000';
 
@@ -275,5 +275,91 @@ describe.runIf(backendUp)('web-storefront API client against a REAL running back
 
     const referralAfter = await fetchMyReferral(referrerToken);
     expect(referralAfter.totalReferred).toBe(1);
+  });
+});
+
+// Real notifications (new)
+describe.runIf(backendUp)('notifications against a REAL running backend', () => {
+  it('CRITICAL: a real support-ticket reply from admin creates a real notification the buyer can see', async () => {
+    const suffix = Date.now();
+    const signupRes = await fetch(`${BACKEND_URL}/auth/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `storefront-notif-test-${suffix}@example.com`, password: 'test_password_123' }),
+    });
+    const { token: buyerToken } = await signupRes.json();
+
+    const beforeCount = await fetchUnreadNotificationCount(buyerToken);
+    expect(beforeCount).toBe(0);
+
+    const ticketRes = await fetch(`${BACKEND_URL}/support/tickets`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${buyerToken}` },
+      body: JSON.stringify({ subject: 'Test ticket', message: 'Real test message' }),
+    });
+    const ticket = await ticketRes.json();
+
+    const { token: adminToken } = await (await fetch(`${BACKEND_URL}/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'admin@leap.dev', password: 'admin_dev_password_123' }),
+    })).json();
+
+    await fetch(`${BACKEND_URL}/support/tickets/${ticket.id}/messages`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ message: 'Real admin reply' }),
+    });
+
+    const afterCount = await fetchUnreadNotificationCount(buyerToken);
+    expect(afterCount).toBe(1);
+
+    const notifications = await fetchNotifications(buyerToken);
+    expect(notifications.length).toBe(1);
+    expect(notifications[0].isRead).toBe(false);
+    expect(notifications[0].linkType).toBe('ticket');
+    // Real, honest gap: this storefront has no support-ticket page, so
+    // resolveNotificationLink must return null here, not a link to a
+    // page that doesn't exist.
+    expect(resolveNotificationLink(notifications[0])).toBeNull();
+
+    await markNotificationRead(buyerToken, notifications[0].id);
+    const afterMarkRead = await fetchUnreadNotificationCount(buyerToken);
+    expect(afterMarkRead).toBe(0);
+  });
+
+  it('markAllNotificationsRead genuinely marks every real unread notification as read', async () => {
+    const suffix = Date.now();
+    const signupRes = await fetch(`${BACKEND_URL}/auth/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `storefront-notif-markall-test-${suffix}@example.com`, password: 'test_password_123' }),
+    });
+    const { token: buyerToken } = await signupRes.json();
+
+    const { token: adminToken } = await (await fetch(`${BACKEND_URL}/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'admin@leap.dev', password: 'admin_dev_password_123' }),
+    })).json();
+
+    // Two real tickets, two real replies -- two real notifications.
+    for (let i = 0; i < 2; i++) {
+      const ticketRes = await fetch(`${BACKEND_URL}/support/tickets`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${buyerToken}` },
+        body: JSON.stringify({ subject: `Test ticket ${i}`, message: 'Real test message' }),
+      });
+      const ticket = await ticketRes.json();
+      await fetch(`${BACKEND_URL}/support/tickets/${ticket.id}/messages`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+        body: JSON.stringify({ message: 'Real admin reply' }),
+      });
+    }
+
+    expect(await fetchUnreadNotificationCount(buyerToken)).toBe(2);
+    await markAllNotificationsRead(buyerToken);
+    expect(await fetchUnreadNotificationCount(buyerToken)).toBe(0);
+    const notifications = await fetchNotifications(buyerToken);
+    expect(notifications.every((n) => n.isRead)).toBe(true);
+  });
+
+  it('resolveNotificationLink correctly maps order and product link types to real pages', () => {
+    expect(resolveNotificationLink({ id: 1, type: 'order_status', title: '', body: '', linkType: 'order', linkId: 'LP-123', isRead: false, createdAt: '' })).toBe('/orders/LP-123');
+    expect(resolveNotificationLink({ id: 2, type: 'price_drop', title: '', body: '', linkType: 'product', linkId: 'p1', isRead: false, createdAt: '' })).toBe('/products/p1');
+    expect(resolveNotificationLink({ id: 3, type: 'saved_search_match', title: '', body: '', linkType: 'saved_search', linkId: '5', isRead: false, createdAt: '' })).toBe('/saved-searches');
   });
 });

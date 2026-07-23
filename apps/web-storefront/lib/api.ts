@@ -490,3 +490,71 @@ export async function fetchMyReferral(token: string): Promise<ReferralInfo> {
 }
 
 
+
+// ---------------- Real notifications (client-side calls, new) ----------------
+// Same reasoning as orders/wishlist/referrals above -- real logged-in
+// account, browser-only. Reuses the SAME GET/PATCH /notifications/me*
+// endpoints the mobile app already uses (migration 019) -- created by
+// real order-status changes, return-status changes, support-ticket
+// replies, price-drop alerts, and saved-search matches (see
+// services/api/src/modules/notifications/routes.js's own header
+// comment for the 4 real trigger points).
+
+export interface Notification {
+  id: number;
+  type: string;
+  title: string;
+  body: string;
+  linkType: string | null;
+  linkId: string | null;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export async function fetchNotifications(token: string): Promise<Notification[]> {
+  const res = await fetch(`${API_BASE_URL}/notifications/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Failed to load notifications (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function fetchUnreadNotificationCount(token: string): Promise<number> {
+  const res = await fetch(`${API_BASE_URL}/notifications/me/unread-count`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return 0;
+  const body = await res.json();
+  return body.count;
+}
+
+export async function markNotificationRead(token: string, id: number): Promise<void> {
+  await fetch(`${API_BASE_URL}/notifications/me/${id}/read`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function markAllNotificationsRead(token: string): Promise<void> {
+  await fetch(`${API_BASE_URL}/notifications/me/read-all`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+// Real deep-link resolution for a notification's real linkType/linkId
+// -- 'ticket' deliberately has no real page here (this storefront has
+// no support-ticket UI at all, unlike the mobile app), so it's an
+// honest null rather than a link to a page that doesn't exist.
+export function resolveNotificationLink(n: Notification): string | null {
+  if (!n.linkType || !n.linkId) return null;
+  switch (n.linkType) {
+    case "order": return `/orders/${n.linkId}`;
+    case "product": return `/products/${n.linkId}`;
+    case "saved_search": return "/saved-searches";
+    default: return null;
+  }
+}

@@ -5,6 +5,7 @@ import { CartProvider } from "@/components/CartProvider";
 import { AuthProvider } from "@/components/AuthProvider";
 import CartIcon from "@/components/CartIcon";
 import AccountLink from "@/components/AccountLink";
+import NotificationBell from "@/components/NotificationBell";
 import "./globals.css";
 
 // Real brand fonts, carried over exactly from the established system
@@ -62,6 +63,7 @@ export default function RootLayout({
                   Search
                 </Link>
                 <AccountLink />
+                <NotificationBell />
                 <CartIcon />
               </nav>
             </div>

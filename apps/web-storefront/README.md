@@ -384,6 +384,39 @@ the signup page itself makes), and confirmed the referrer's real
 `totalReferred` count genuinely incremented to `1` afterward. Full
 suite: 18/18 passing.
 
+## Real notifications (new) — the last remaining account feature
+
+Reuses the SAME `GET`/`PATCH /notifications/me*` endpoints the mobile
+app already uses (migration 019) — real notifications triggered by
+real order-status changes, return-status changes, support-ticket
+replies, price-drop alerts, and saved-search matches.
+
+- **`components/NotificationBell.tsx`** — an unread-count badge in the
+  header, mirroring `CartIcon`'s exact plain-text style (no icon
+  library used anywhere in this app). Deliberately *polls* every 30s —
+  unlike the cart, which only reacts to real local state changes the
+  user causes in this same browser session, a notification arrives
+  from a real SERVER-side event the user isn't directly causing here.
+  Same reasoning as `apps/mobile/lib/features/orders/
+  tracking_screen.dart`'s real auto-refresh fix earlier this session.
+- **`/notifications`** — full list, mark-one-read (on click) and
+  mark-all-read, with real deep links resolved from each
+  notification's real `linkType`/`linkId`.
+- **An honest, deliberate gap in the link resolution, not an
+  oversight**: a `ticket`-type notification correctly resolves to
+  `null` rather than a broken link — this storefront has no
+  support-ticket UI at all (unlike the mobile app), so linking
+  anywhere would point at a page that doesn't exist.
+
+**Verified end-to-end against the real running backend**: created a
+real support ticket, had a real admin account reply to it (the actual
+trigger, not a fabricated notification row), confirmed the buyer's
+real unread count went from `0` to `1`, confirmed the notification's
+real `linkType` is `'ticket'` and correctly resolves to no link,
+confirmed marking it read brings the count back to `0`, and confirmed
+`markAllNotificationsRead` genuinely clears multiple real unread
+notifications at once. Full suite: 21/21 passing.
+
 ## Next steps to make this real
 
 1. **Verify the real Google Fonts fetch** once deployed somewhere
