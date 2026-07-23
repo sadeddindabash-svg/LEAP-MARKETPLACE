@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { AddToCartButton } from "@/components/AddToCartButton";
+import { WishlistButton } from "@/components/WishlistButton";
 import {
   fetchProductById,
   fetchProductReviews,
@@ -124,6 +125,7 @@ export default async function ProductPage({ params }: PageProps) {
 
           <div className="mt-8">
             <AddToCartButton productId={product.id} inStock={product.stockQuantity > 0} />
+            <WishlistButton productId={product.id} />
           </div>
         </div>
       </div>

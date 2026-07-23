@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fetchCategories, fetchProducts, fetchProductById, fetchCart, addCartItem, fetchMyOrders, fetchOrderById } from './api';
+import { fetchCategories, fetchProducts, fetchProductById, fetchCart, addCartItem, fetchMyOrders, fetchOrderById, fetchWishlist, checkWishlisted, addToWishlist, removeFromWishlist } from './api';
 
 const BACKEND_URL = 'http://localhost:4000';
 
@@ -143,5 +143,45 @@ describe.runIf(backendUp)('web-storefront API client against a REAL running back
     const { token: intruderToken } = await otherSignup.json();
 
     await expect(fetchOrderById(intruderToken, placedOrder.id)).rejects.toThrow();
+  });
+
+  // Real wishlist (new)
+  it('CRITICAL: adding a real product to the wishlist makes it show up in the real list, and checkWishlisted reflects it', async () => {
+    const suffix = Date.now();
+    const signupRes = await fetch(`${BACKEND_URL}/auth/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `storefront-wishlist-test-${suffix}@example.com`, password: 'test_password_123' }),
+    });
+    const { token } = await signupRes.json();
+    const products = await fetchProducts();
+    const productId = products[0].id;
+
+    expect(await checkWishlisted(token, productId)).toBe(false);
+
+    await addToWishlist(token, productId);
+    expect(await checkWishlisted(token, productId)).toBe(true);
+
+    const wishlist = await fetchWishlist(token);
+    expect(wishlist.some((p) => p.id === productId)).toBe(true);
+
+    await removeFromWishlist(token, productId);
+    expect(await checkWishlisted(token, productId)).toBe(false);
+    const wishlistAfterRemove = await fetchWishlist(token);
+    expect(wishlistAfterRemove.some((p) => p.id === productId)).toBe(false);
+  });
+
+  it('adding the same product to the wishlist twice is idempotent, not an error', async () => {
+    const suffix = Date.now();
+    const signupRes = await fetch(`${BACKEND_URL}/auth/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `storefront-wishlist-dup-test-${suffix}@example.com`, password: 'test_password_123' }),
+    });
+    const { token } = await signupRes.json();
+    const products = await fetchProducts();
+
+    await addToWishlist(token, products[0].id);
+    await addToWishlist(token, products[0].id); // second time -- should not throw
+    const wishlist = await fetchWishlist(token);
+    expect(wishlist.filter((p) => p.id === products[0].id).length).toBe(1);
   });
 });

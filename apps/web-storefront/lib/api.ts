@@ -363,3 +363,54 @@ export async function fetchOrderById(token: string, orderId: string): Promise<Or
   return res.json();
 }
 
+// ---------------- Real wishlist (client-side calls, new) ----------------
+// Same reasoning as saved searches/orders above -- real logged-in
+// account, browser-only. Reuses ProductSummary since the backend's
+// GET /wishlist/me genuinely returns the same product DTO shape as
+// GET /catalog/products (see services/api/src/modules/wishlist/routes.js,
+// which reuses the catalog module's own DTO-building helpers directly
+// rather than a separate wishlist-specific shape).
+
+export async function fetchWishlist(token: string): Promise<ProductSummary[]> {
+  const res = await fetch(`${API_BASE_URL}/wishlist/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Failed to load wishlist (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function checkWishlisted(token: string, productId: string): Promise<boolean> {
+  const res = await fetch(`${API_BASE_URL}/wishlist/me/${productId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return false;
+  const body = await res.json();
+  return body.wishlisted;
+}
+
+export async function addToWishlist(token: string, productId: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/wishlist/me/${productId}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Failed to add to wishlist (${res.status})`);
+  }
+}
+
+export async function removeFromWishlist(token: string, productId: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/wishlist/me/${productId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Failed to remove from wishlist (${res.status})`);
+  }
+}
+
+

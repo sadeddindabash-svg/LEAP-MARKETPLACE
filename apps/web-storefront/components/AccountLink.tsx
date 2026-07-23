@@ -25,6 +25,9 @@ export default function AccountLink() {
       <Link href="/orders" className="text-muted hover:text-ink">
         Orders
       </Link>
+      <Link href="/wishlist" className="text-muted hover:text-ink">
+        Wishlist
+      </Link>
       <Link href="/saved-searches" className="text-muted hover:text-ink">
         {user.name || user.email}
       </Link>

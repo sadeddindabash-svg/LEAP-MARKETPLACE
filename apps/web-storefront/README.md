@@ -301,6 +301,33 @@ someone else's order detail (a real 404, matching the backend's own
 ownership check, not just relying on the frontend to behave). Full
 suite: 11/11 passing.
 
+## Real wishlist (new)
+
+**`components/WishlistButton.tsx`** — a real heart-toggle on the
+product detail page, reusing the same real `GET/POST/DELETE
+/wishlist/me/:productId` endpoints the mobile app already uses.
+Requires a real logged-in account (unlike the cart, which works for
+guests) — prompts to log in rather than silently doing nothing when
+signed out.
+
+**`/wishlist`** — a real management page, same login-gated pattern as
+`/orders` and `/saved-searches`.
+
+**Reuses `ProductSummary`, not a new type** — the backend's
+`GET /wishlist/me` genuinely returns the same product DTO shape as
+`GET /catalog/products` (it reuses the catalog module's own DTO-
+building helpers directly — see
+`services/api/src/modules/wishlist/routes.js`), so there was no real
+reason to define a separate wishlist-item shape here.
+
+**Verified end-to-end against the real running backend**: confirmed
+`checkWishlisted` correctly starts `false`, confirmed adding a real
+product flips it to `true` and makes it appear in the real list,
+confirmed removing it correctly reverses both, and confirmed adding
+the SAME product twice is genuinely idempotent (no duplicate entry,
+no error) — matching the backend's own `ON CONFLICT DO NOTHING`
+design. Full suite: 13/13 passing.
+
 ## Next steps to make this real
 
 1. **Verify the real Google Fonts fetch** once deployed somewhere
