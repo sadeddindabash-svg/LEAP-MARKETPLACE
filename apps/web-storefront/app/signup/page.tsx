@@ -1,15 +1,22 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/components/AuthProvider";
 
-export default function SignupPage() {
+// Real referral code auto-fill (new) -- requires the same real
+// <Suspense> boundary around useSearchParams() as
+// app/checkout/confirmation/page.tsx already established (a real
+// production build fails outright without one, not just a warning;
+// see that file's own comment for the full finding).
+function SignupForm() {
   const { signup } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [referralCode, setReferralCode] = useState(searchParams.get("ref") || "");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -18,7 +25,7 @@ export default function SignupPage() {
     setError(null);
     setIsSubmitting(true);
     try {
-      await signup(email, password);
+      await signup(email, password, referralCode.trim() || undefined);
       router.push("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign up failed");
@@ -53,6 +60,16 @@ export default function SignupPage() {
           />
           <p className="mt-1 text-xs text-muted">At least 8 characters.</p>
         </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Referral code (optional)</label>
+          <input
+            type="text"
+            value={referralCode}
+            onChange={(e) => setReferralCode(e.target.value)}
+            placeholder="e.g. ABCD1234"
+            className="w-full rounded-md border border-line px-3 py-2 text-sm font-plate uppercase"
+          />
+        </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
         <button
           type="submit"
@@ -69,5 +86,13 @@ export default function SignupPage() {
         </Link>
       </p>
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={<div className="mx-auto max-w-sm px-6 py-16 text-muted">Loading…</div>}>
+      <SignupForm />
+    </Suspense>
   );
 }

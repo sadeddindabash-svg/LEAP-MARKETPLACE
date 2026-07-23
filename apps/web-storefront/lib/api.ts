@@ -413,4 +413,80 @@ export async function removeFromWishlist(token: string, productId: string): Prom
   }
 }
 
+// ---------------- Real review submission (client-side calls, new) ----------------
+// Reading reviews (fetchProductReviews above) already existed and is
+// server-rendered for real SEO value. WRITING one is the missing
+// half -- real logged-in account, no SEO value in the act of
+// submitting, so this is a browser-only Client Component concern,
+// same reasoning as cart/wishlist/orders above.
+
+export interface SubmittedReview {
+  id: number;
+  productId: string;
+  rating: number;
+  comment: string | null;
+  status: string;
+  isVerifiedPurchase: boolean;
+  photos: string[];
+}
+
+export async function submitReview(
+  token: string,
+  params: { productId: string; rating: number; comment?: string; photos?: string[] }
+): Promise<SubmittedReview> {
+  const res = await fetch(`${API_BASE_URL}/reviews`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(params),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Failed to submit review (${res.status})`);
+  return body;
+}
+
+// Real photo upload for a review, reusing the SAME generic backend
+// endpoint the mobile app's review photos and every other real photo
+// upload in this project already use (services/api/src/modules/
+// uploads/routes.js) -- validates real dimensions/type there, not
+// re-implemented here. Plain File here (not XFile like mobile), since
+// this runs against a real <input type="file"> in a browser.
+export async function uploadReviewPhoto(token: string, file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append("image", file);
+  const res = await fetch(`${API_BASE_URL}/uploads/product-image`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Failed to upload photo (${res.status})`);
+  return body.url;
+}
+
+// ---------------- Real referrals (client-side calls, new) ----------------
+// Same reasoning as orders/wishlist/saved-searches above -- real
+// logged-in account, browser-only. Reuses the SAME GET /referrals/me
+// endpoint the mobile app already uses (see
+// services/api/src/modules/referrals/routes.js) -- a buyer's own code
+// is created on first request if they don't have one yet.
+
+export interface ReferralInfo {
+  code: string;
+  totalReferred: number;
+  rewardsEarned: number;
+  maxRewards: number;
+  capReached: boolean;
+}
+
+export async function fetchMyReferral(token: string): Promise<ReferralInfo> {
+  const res = await fetch(`${API_BASE_URL}/referrals/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Failed to load referral info (${res.status})`);
+  }
+  return res.json();
+}
+
 

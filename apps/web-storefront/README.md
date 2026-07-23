@@ -328,6 +328,62 @@ the SAME product twice is genuinely idempotent (no duplicate entry,
 no error) — matching the backend's own `ON CONFLICT DO NOTHING`
 design. Full suite: 13/13 passing.
 
+## Real review submission (new) — the missing half of reviews
+
+**Reading reviews already existed** (server-rendered, real SEO value
+on the product page). **Writing one didn't** — closed that gap.
+
+- **`components/ReviewForm.tsx`** — a real star-rating picker, comment
+  field, and up to 3 photos (reusing the same generic
+  `/uploads/product-image` upload endpoint every other real photo
+  upload in this project uses). Same "Your review is awaiting review"
+  wording as `apps/mobile/lib/widgets/reviews_section.dart`, for
+  consistency across platforms — every submission goes through real
+  admin moderation before appearing publicly.
+- **A real, honest handling of the verified-purchase gate**: if
+  `require_verified_purchase_for_reviews` is toggled on and this buyer
+  hasn't actually received the product, the backend's real 403 message
+  is shown as-is, not swallowed into a generic error.
+- `lib/api.ts`: new `submitReview`/`uploadReviewPhoto`.
+
+**Verified end-to-end against the real running backend**: confirmed a
+real submitted review comes back with real `pending` status, confirmed
+the backend genuinely rejects a review with no rating, and confirmed
+the verified-purchase flag correctly reflects the real underlying
+state in BOTH directions — an order that never actually reached
+`delivered` correctly does NOT grant verified status (deliberate
+business logic, not a bug I found and then had to work around). Full
+suite: 16/16 passing.
+
+## Real referrals (new)
+
+**A genuinely untouched gap, not previously flagged anywhere in this
+README** — closed with the same `GET /referrals/me` endpoint the
+mobile app already uses (a buyer's code is created on first request if
+they don't have one yet, so there's no separate "generate a code"
+action needed).
+
+- **`/referrals`** — a buyer's own real code, a real copy-to-clipboard
+  shareable link (`{SITE_URL}/signup?ref=CODE`), and real stats
+  (friends referred, rewards earned out of the real cap).
+- **`app/signup/page.tsx`** — a new optional referral-code field,
+  auto-filled from a real `?ref=CODE` URL param when someone actually
+  clicks a shared link (still manually editable for a code told to
+  someone verbally). Required wrapping the form in a real `<Suspense>`
+  boundary around `useSearchParams()` — the SAME hard requirement
+  `app/checkout/confirmation/page.tsx` already discovered (a real
+  production build fails outright without one, not just a warning).
+- **`AuthProvider.signup()`** now accepts an optional `referralCode`,
+  passed straight through to the real backend.
+
+**Verified end-to-end against the real running backend** — the full
+real loop, not just the API contract in isolation: signed up a real
+referrer, confirmed their `totalReferred` starts at `0`, signed up a
+SECOND real buyer using the referrer's real code (the exact same call
+the signup page itself makes), and confirmed the referrer's real
+`totalReferred` count genuinely incremented to `1` afterward. Full
+suite: 18/18 passing.
+
 ## Next steps to make this real
 
 1. **Verify the real Google Fonts fetch** once deployed somewhere

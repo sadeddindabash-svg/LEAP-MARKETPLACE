@@ -31,7 +31,7 @@ interface AuthContextValue {
   user: AuthUser | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string) => Promise<void>;
+  signup: (email: string, password: string, referralCode?: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -83,11 +83,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(body.user);
   }, []);
 
-  const signup = useCallback(async (email: string, password: string) => {
+  const signup = useCallback(async (email: string, password: string, referralCode?: string) => {
     const res = await fetch(`${API_BASE_URL}/auth/signup`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, ...(referralCode ? { referralCode } : {}) }),
     });
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || "Sign up failed");

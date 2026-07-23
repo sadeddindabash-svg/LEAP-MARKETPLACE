@@ -28,6 +28,9 @@ export default function AccountLink() {
       <Link href="/wishlist" className="text-muted hover:text-ink">
         Wishlist
       </Link>
+      <Link href="/referrals" className="text-muted hover:text-ink">
+        Referrals
+      </Link>
       <Link href="/saved-searches" className="text-muted hover:text-ink">
         {user.name || user.email}
       </Link>

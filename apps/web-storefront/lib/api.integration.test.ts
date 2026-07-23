@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fetchCategories, fetchProducts, fetchProductById, fetchCart, addCartItem, fetchMyOrders, fetchOrderById, fetchWishlist, checkWishlisted, addToWishlist, removeFromWishlist } from './api';
+import { fetchCategories, fetchProducts, fetchProductById, fetchCart, addCartItem, fetchMyOrders, fetchOrderById, fetchWishlist, checkWishlisted, addToWishlist, removeFromWishlist, submitReview, fetchMyReferral } from './api';
 
 const BACKEND_URL = 'http://localhost:4000';
 
@@ -183,5 +183,97 @@ describe.runIf(backendUp)('web-storefront API client against a REAL running back
     await addToWishlist(token, products[0].id); // second time -- should not throw
     const wishlist = await fetchWishlist(token);
     expect(wishlist.filter((p) => p.id === products[0].id).length).toBe(1);
+  });
+
+  // Real review submission (new) -- the missing half: reading reviews
+  // was already server-rendered SEO content, this is the write side.
+  it('CRITICAL: a real submitted review comes back with real pending status, awaiting moderation', async () => {
+    const suffix = Date.now();
+    const signupRes = await fetch(`${BACKEND_URL}/auth/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `storefront-review-test-${suffix}@example.com`, password: 'test_password_123' }),
+    });
+    const { token } = await signupRes.json();
+    const products = await fetchProducts();
+
+    const result = await submitReview(token, { productId: products[0].id, rating: 5, comment: 'Real integration test review' });
+    expect(result.status).toBe('pending');
+    expect(result.rating).toBe(5);
+    expect(result.comment).toBe('Real integration test review');
+  });
+
+  it('rejects a review with no rating', async () => {
+    const suffix = Date.now();
+    const signupRes = await fetch(`${BACKEND_URL}/auth/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `storefront-review-norating-test-${suffix}@example.com`, password: 'test_password_123' }),
+    });
+    const { token } = await signupRes.json();
+    const products = await fetchProducts();
+
+    // @ts-expect-error -- deliberately omitting the required rating field to confirm the backend genuinely rejects it
+    await expect(submitReview(token, { productId: products[0].id })).rejects.toThrow();
+  });
+
+  it('a review from a buyer with only a placed (not yet delivered) order is correctly NOT marked verified', async () => {
+    // hasVerifiedPurchase requires the shipment to have actually reached
+    // hub_shipments.status = 'delivered' -- a placed-but-not-yet-shipped
+    // order correctly does not count. This is deliberate business logic
+    // (see services/api/src/modules/reviews/routes.js's own function),
+    // not a gap -- confirming the honest negative case here.
+    const suffix = Date.now();
+    const signupRes = await fetch(`${BACKEND_URL}/auth/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `storefront-unverified-review-test-${suffix}@example.com`, password: 'test_password_123' }),
+    });
+    const { token, user } = await signupRes.json();
+    const products = await fetchProducts();
+
+    await fetch(`${BACKEND_URL}/order`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: [{ productId: products[0].id, quantity: 1 }], userId: user.id,
+        address: { recipientName: 'Test Buyer', phone: '555-0100', country: 'USA', city: 'Springfield', streetAddress: '123 Test St' },
+      }),
+    });
+
+    const result = await submitReview(token, { productId: products[0].id, rating: 4 });
+    expect(result.isVerifiedPurchase).toBe(false);
+  });
+
+  // Real referrals (new)
+  it('a new buyer gets a real referral code on first request', async () => {
+    const suffix = Date.now();
+    const signupRes = await fetch(`${BACKEND_URL}/auth/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `storefront-referral-test-${suffix}@example.com`, password: 'test_password_123' }),
+    });
+    const { token } = await signupRes.json();
+
+    const referral = await fetchMyReferral(token);
+    expect(typeof referral.code).toBe('string');
+    expect(referral.code.length).toBeGreaterThan(0);
+    expect(referral.totalReferred).toBe(0);
+  });
+
+  it('CRITICAL: a real referred signup actually increments the referrer\'s real totalReferred count', async () => {
+    const suffix = Date.now();
+    const referrerSignup = await fetch(`${BACKEND_URL}/auth/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `storefront-referrer-test-${suffix}@example.com`, password: 'test_password_123' }),
+    });
+    const { token: referrerToken } = await referrerSignup.json();
+    const referralBefore = await fetchMyReferral(referrerToken);
+    expect(referralBefore.totalReferred).toBe(0);
+
+    // Real referred signup -- the exact same call app/signup/page.tsx
+    // makes when a real ?ref=CODE link was used.
+    await fetch(`${BACKEND_URL}/auth/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `storefront-referee-test-${suffix}@example.com`, password: 'test_password_123', referralCode: referralBefore.code }),
+    });
+
+    const referralAfter = await fetchMyReferral(referrerToken);
+    expect(referralAfter.totalReferred).toBe(1);
   });
 });
