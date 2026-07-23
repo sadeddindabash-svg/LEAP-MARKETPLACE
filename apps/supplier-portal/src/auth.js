@@ -125,6 +125,13 @@ export function updateProduct(token, productId, updates) {
   return authedMutate("PATCH", `/supplier/me/products/${productId}`, token, updates);
 }
 
+// Real bulk price update (new) -- closes a real gap: there was no way
+// to adjust multiple real products' prices at once before this, only
+// one at a time via EditProductModal above.
+export function bulkUpdateProductPrices(token, productIds, adjustmentType, adjustmentValue) {
+  return authedMutate("PATCH", "/supplier/me/products/bulk-price-update", token, { productIds, adjustmentType, adjustmentValue });
+}
+
 export function fetchMyOrders(token) {
   return authedGet("/supplier/me/orders", token);
 }

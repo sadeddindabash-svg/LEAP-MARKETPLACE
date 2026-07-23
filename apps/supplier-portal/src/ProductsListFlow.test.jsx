@@ -87,3 +87,51 @@ describe('Products page — real per-product low-stock threshold (mocked fetch, 
     expect(screen.getByText('Really Low')).toBeInTheDocument();
   });
 });
+
+describe('Products page — real bulk price update (mocked fetch, real component tree)', () => {
+  it('CRITICAL: selecting products and applying a bulk percent increase sends the real request and refreshes with real updated prices', async () => {
+    let bulkUpdateCalled = false;
+    const router = vi.fn((url, options) => {
+      const u = String(url);
+      if (u.includes('/auth/login')) return Promise.resolve({ ok: true, json: async () => ({ token: 'fake.jwt.token', user: SUPPLIER_USER }) });
+      if (u.includes('/auth/me')) return Promise.resolve({ ok: true, json: async () => SUPPLIER_USER });
+      if (u.endsWith('/supplier/me')) return Promise.resolve({ ok: true, json: async () => SUPPLIER_PROFILE });
+      if (u.endsWith('/supplier/me/products/bulk-price-update')) {
+        bulkUpdateCalled = true;
+        const body = JSON.parse(options.body);
+        expect(body.adjustmentType).toBe('percent');
+        expect(body.adjustmentValue).toBe(10);
+        expect(body.productIds.sort()).toEqual(['p1', 'p2'].sort());
+        return Promise.resolve({ ok: true, json: async () => PRODUCTS.filter((p) => body.productIds.includes(p.id)).map((p) => ({ ...p, price: p.price * 1.1 })) });
+      }
+      if (u.endsWith('/supplier/me/products')) return Promise.resolve({ ok: true, json: async () => PRODUCTS });
+      if (u.endsWith('/supplier/me/overview')) {
+        return Promise.resolve({ ok: true, json: async () => ({ totalOrders: 0, pendingOrders: 0, totalListings: 3, pendingReturns: 0, ordersByDay: [], topProducts: [], recentOrders: [] }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    globalThis.fetch = router;
+    render(<LeapSupplierPortalApp />);
+    await loginAsSupplier();
+
+    fireEvent.click(screen.getByText(/商品管理|Products/));
+    await waitFor(() => expect(screen.getByText('Missed Low Stock')).toBeInTheDocument());
+
+    // Real selection -- check the two boxes for p1 (Missed Low Stock)
+    // and p2 (False Alarm), leave p3 unselected.
+    const checkboxes = screen.getAllByRole('checkbox');
+    fireEvent.click(checkboxes[1]); // header checkbox is index 0
+    fireEvent.click(checkboxes[2]);
+
+    await waitFor(() => expect(screen.getByText(/已选择 2|2 selected/)).toBeInTheDocument());
+    fireEvent.click(screen.getByText(/批量调价|Bulk price update/));
+
+    await waitFor(() => screen.getByText(/批量调整价格|Bulk price adjustment/));
+    const input = screen.getByRole('spinbutton');
+    fireEvent.change(input, { target: { value: '10' } });
+    fireEvent.click(screen.getByText(/^应用$|^Apply$/));
+
+    await waitFor(() => expect(bulkUpdateCalled).toBe(true));
+    await waitFor(() => expect(screen.getByText(/成功更新 2 个商品|Successfully updated pricing for 2/)).toBeInTheDocument());
+  });
+});

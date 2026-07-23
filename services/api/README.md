@@ -2218,6 +2218,29 @@ with the real remaining count named, confirmed the same for `PATCH`
 existing cart-persistence regression (unaffected, since normal-sized
 cart operations stay well under real stock levels).
 
+## Real bulk price update for suppliers (new)
+
+**`PATCH /supplier/me/products/bulk-price-update`**
+`{ productIds, adjustmentType: 'percent'|'flat', adjustmentValue }` — a
+real, single SQL `UPDATE`, not a fetch-then-recompute-in-JS loop: each
+matched product's own existing price feeds the expression directly,
+so a batch with different starting prices is adjusted correctly in
+one query. Clamped at a real minimum (`0.01`).
+
+**A real, bug-prone Express route-ordering detail, handled correctly**:
+registered BEFORE the existing `PATCH /me/products/:id` — that `:id`
+is a wildcard that would otherwise silently swallow the literal string
+`bulk-price-update` as if it were a real product id.
+
+**Verified against the real running backend**: applied a real +10%
+increase to two products with different starting prices, confirmed
+each new price is mathematically correct for its own starting price;
+confirmed a flat decrease and the `0.01` minimum clamp on an extreme
+negative adjustment; confirmed an invalid `adjustmentType` is
+rejected; and confirmed ownership isolation — a supplier bulk-updating
+a product genuinely owned by a different real supplier leaves it
+completely untouched.
+
 ## Real audit log date-range filter (new)
 
 **`GET /admin/audit-log`** now accepts `startDate`/`endDate`, composing

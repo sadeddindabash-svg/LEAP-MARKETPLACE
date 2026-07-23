@@ -584,6 +584,52 @@ router.patch('/me/products/:id/complete', requireAuth, requireRole('supplier'), 
 // via the WHERE clause (supplier_id = $N), not just a lookup-then-check —
 // an UPDATE that matches zero rows because it belongs to someone else
 // looks identical to "not found", which is the correct thing to leak here.
+// PATCH /supplier/me/products/bulk-price-update
+// { productIds: string[], adjustmentType: 'percent'|'flat', adjustmentValue: number }
+//
+// REAL BUG-PRONE ORDERING, HANDLED CORRECTLY: this route is deliberately
+// registered BEFORE the PATCH /me/products/:id route below -- Express
+// matches routes in registration order, and :id is a wildcard that
+// would otherwise swallow the literal string "bulk-price-update" as if
+// it were a real product id, silently routing every bulk request to
+// the wrong (single-product) handler instead.
+//
+// A real, single SQL UPDATE, not a fetch-then-recompute-in-JS loop --
+// each matched product's OWN existing price feeds the expression
+// directly, so a batch with different starting prices is adjusted
+// correctly in one query, not stale data from before the request
+// started. Clamped at a real minimum (0.01) so a large enough negative
+// adjustment can't produce a zero or negative price.
+router.patch('/me/products/bulk-price-update', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    const { productIds, adjustmentType, adjustmentValue } = req.body || {};
+    if (!Array.isArray(productIds) || productIds.length === 0) {
+      return res.status(400).json({ error: 'productIds is required and must be non-empty' });
+    }
+    if (!['percent', 'flat'].includes(adjustmentType)) {
+      return res.status(400).json({ error: "adjustmentType must be 'percent' or 'flat'" });
+    }
+    if (typeof adjustmentValue !== 'number' || Number.isNaN(adjustmentValue)) {
+      return res.status(400).json({ error: 'adjustmentValue must be a real number' });
+    }
+
+    const priceExpr = adjustmentType === 'percent'
+      ? `GREATEST(price * (1 + $1 / 100.0), 0.01)`
+      : `GREATEST(price + $1, 0.01)`;
+
+    const { rows } = await db.query(
+      `UPDATE products SET price = ${priceExpr}
+       WHERE id = ANY($2::text[]) AND supplier_id = $3
+       RETURNING *`,
+      [adjustmentValue, productIds, req.user.supplierId]
+    );
+    const dtos = await Promise.all(rows.map((r) => attachImagesAndFitment(toProductDto(r))));
+    res.json(dtos);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.patch('/me/products/:id', requireAuth, requireRole('supplier'), async (req, res, next) => {
   try {
     const { price, stockQuantity, lowStockThreshold } = req.body || {};

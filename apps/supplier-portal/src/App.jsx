@@ -15,7 +15,7 @@ import LoginPage from "./LoginPage";
 import ExcelJS from "exceljs";
 import {
   getStoredToken, saveToken, clearToken, getCurrentUser, SessionExpiredError,
-  fetchMySupplierProfile, fetchMyProducts, createProduct, updateProduct,
+  fetchMySupplierProfile, fetchMyProducts, createProduct, updateProduct, bulkUpdateProductPrices,
   fetchMyOrders, updateSubOrder, fetchMyReturnCases, fetchMyReturnCaseById, replyToReturnCase,
   fetchMyOverview,
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
@@ -77,6 +77,12 @@ const STRINGS = {
       bulkUpload: "批量上传", addProduct: "手动添加商品",
       thProduct: "商品", thCategory: "分类", thPrice: "价格", thStock: "库存", thFitment: "适配车型", thStatus: "状态",
       filterAll: "全部", filterLowStock: (n) => `库存预警 (${n})`,
+      bulkPriceSelected: (n) => `已选择 ${n} 个商品`, bulkPriceUpdate: "批量调价",
+      bulkPriceTitle: "批量调整价格", bulkPricePercent: "百分比", bulkPriceFlat: "固定金额",
+      bulkPricePercentHint: "例如：输入 10 表示涨价 10%，输入 -10 表示降价 10%",
+      bulkPriceFlatHint: "例如：输入 5 表示每件加 $5，输入 -5 表示每件减 $5",
+      bulkPriceApply: "应用", bulkPriceApplying: "应用中…", bulkPriceCancel: "取消",
+      bulkPriceSuccess: (n) => `已成功更新 ${n} 个商品的价格`,
       addForm: {
         title: "手动添加商品", nameLabel: "商品名称（中文）", namePlaceholder: "例如：RIDEX 前刹车盘（通风型 300mm）",
         categoryLabel: "商品分类", categories: ["刹车系统", "发动机", "电气系统", "滤清器", "悬挂系统", "照明系统"],
@@ -163,6 +169,12 @@ const STRINGS = {
       bulkUpload: "Bulk upload", addProduct: "Add product",
       thProduct: "Product", thCategory: "Category", thPrice: "Price", thStock: "Stock", thFitment: "Fitment", thStatus: "Status",
       filterAll: "All", filterLowStock: (n) => `Low stock (${n})`,
+      bulkPriceSelected: (n) => `${n} selected`, bulkPriceUpdate: "Bulk price update",
+      bulkPriceTitle: "Bulk price adjustment", bulkPricePercent: "Percentage", bulkPriceFlat: "Flat amount",
+      bulkPricePercentHint: "e.g. enter 10 for a 10% increase, -10 for a 10% decrease",
+      bulkPriceFlatHint: "e.g. enter 5 to add $5 per item, -5 to subtract $5 per item",
+      bulkPriceApply: "Apply", bulkPriceApplying: "Applying…", bulkPriceCancel: "Cancel",
+      bulkPriceSuccess: (n) => `Successfully updated pricing for ${n} product(s)`,
       addForm: {
         title: "Add product", nameLabel: "Product name (Chinese)", namePlaceholder: "e.g. RIDEX Front Brake Disc, Vented 300mm",
         categoryLabel: "Category", categories: ["Brake System", "Engine", "Electrical", "Filters", "Suspension", "Lighting"],
@@ -1535,14 +1547,12 @@ function ProductsPage() {
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
   const [editingProduct, setEditingProduct] = useState(null);
-  // Real stock filter (new) -- closes a real gap: the Overview page's
-  // own low-stock card (see AnalyticsPage/OverviewPage above) caps at
-  // 8 real items with no way to see the rest. This filter shows every
-  // real low-stock product, using each product's own real,
-  // configurable lowStockThreshold (migration 037) -- the same real
-  // value the table's per-row color highlighting now correctly uses
-  // too (see the fix just above this component).
   const [stockFilter, setStockFilter] = useState("all");
+  // Real bulk price update (new) -- closes a real gap: there was no
+  // way to adjust multiple real products' prices at once before this.
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [showBulkPriceModal, setShowBulkPriceModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState(null);
   const { t, lang } = useLang();
   const { onSessionExpired } = useSupplier();
 
@@ -1580,19 +1590,37 @@ function ProductsPage() {
         </button>
       </div>
       {loadState === "ready" && (
-        <div style={{ padding: "14px 24px 0", display: "flex", gap: 6 }}>
-          {["all", "lowStock"].map((f) => (
-            <button
-              key={f}
-              onClick={() => setStockFilter(f)}
-              style={{
-                padding: "7px 13px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
-                border: `1px solid ${stockFilter === f ? C.ink : C.line}`, background: stockFilter === f ? C.ink : "#fff",
-                color: stockFilter === f ? "#fff" : (f === "lowStock" && lowStockProducts.length > 0 ? C.amber : C.ink),
-                fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif",
-              }}
-            >{f === "all" ? t.products.filterAll : t.products.filterLowStock(lowStockProducts.length)}</button>
-          ))}
+        <div style={{ padding: "14px 24px 0", display: "flex", gap: 6, alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", gap: 6 }}>
+            {["all", "lowStock"].map((f) => (
+              <button
+                key={f}
+                onClick={() => setStockFilter(f)}
+                style={{
+                  padding: "7px 13px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+                  border: `1px solid ${stockFilter === f ? C.ink : C.line}`, background: stockFilter === f ? C.ink : "#fff",
+                  color: stockFilter === f ? "#fff" : (f === "lowStock" && lowStockProducts.length > 0 ? C.amber : C.ink),
+                  fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif",
+                }}
+              >{f === "all" ? t.products.filterAll : t.products.filterLowStock(lowStockProducts.length)}</button>
+            ))}
+          </div>
+          {selectedIds.size > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 12.5, color: C.muted, fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}>
+                {t.products.bulkPriceSelected(selectedIds.size)}
+              </span>
+              <button
+                onClick={() => setShowBulkPriceModal(true)}
+                style={{ padding: "7px 13px", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}
+              >{t.products.bulkPriceUpdate}</button>
+            </div>
+          )}
+        </div>
+      )}
+      {successMessage && (
+        <div style={{ margin: "14px 24px 0", padding: "10px 14px", borderRadius: 8, background: C.gaugeBg, color: C.gauge, fontSize: 12.5, fontWeight: 700 }}>
+          {successMessage}
         </div>
       )}
       <div style={{ padding: 24 }}>
@@ -1606,13 +1634,43 @@ function ProductsPage() {
                 there's no icon/category-image field, so showing either
                 would be fake data with nothing real behind it. */}
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead><tr><Th>{t.products.thProduct}</Th><Th>{t.products.thCategory}</Th><Th align="right">{t.products.thPrice}</Th><Th align="right">{t.products.thStock}</Th><Th>{t.products.thStatus}</Th><Th></Th></tr></thead>
+              <thead>
+                <tr>
+                  <Th>
+                    <input
+                      type="checkbox"
+                      checked={visibleProducts.length > 0 && visibleProducts.every((p) => selectedIds.has(p.id))}
+                      onChange={(e) => {
+                        setSelectedIds((prev) => {
+                          const next = new Set(prev);
+                          visibleProducts.forEach((p) => (e.target.checked ? next.add(p.id) : next.delete(p.id)));
+                          return next;
+                        });
+                      }}
+                    />
+                  </Th>
+                  <Th>{t.products.thProduct}</Th><Th>{t.products.thCategory}</Th><Th align="right">{t.products.thPrice}</Th><Th align="right">{t.products.thStock}</Th><Th>{t.products.thStatus}</Th><Th></Th>
+                </tr>
+              </thead>
               <tbody>
                 {visibleProducts.length === 0 && (
-                  <tr><td colSpan={6} style={{ textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>{lang === "zh" ? "暂无商品" : "No products yet."}</td></tr>
+                  <tr><td colSpan={7} style={{ textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>{lang === "zh" ? "暂无商品" : "No products yet."}</td></tr>
                 )}
                 {visibleProducts.map(p => (
                   <tr key={p.id}>
+                    <Td>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(p.id)}
+                        onChange={(e) => {
+                          setSelectedIds((prev) => {
+                            const next = new Set(prev);
+                            if (e.target.checked) next.add(p.id); else next.delete(p.id);
+                            return next;
+                          });
+                        }}
+                      />
+                    </Td>
                     <Td style={{ fontWeight: 700 }}>{p.name}</Td>
                     <Td style={{ color: C.muted }}>{p.category}</Td>
                     <Td align="right" style={{ fontWeight: 700 }}>${Number(p.price).toFixed(2)} {p.currencyCode}</Td>
@@ -1647,6 +1705,21 @@ function ProductsPage() {
           product={editingProduct}
           onClose={() => setEditingProduct(null)}
           onSaved={() => { setEditingProduct(null); load(); }}
+        />
+      )}
+      {showBulkPriceModal && (
+        <BulkPriceModal
+          selectedCount={selectedIds.size}
+          onClose={() => setShowBulkPriceModal(false)}
+          onApplied={(count) => {
+            setShowBulkPriceModal(false);
+            setSelectedIds(new Set());
+            setSuccessMessage(t.products.bulkPriceSuccess(count));
+            setTimeout(() => setSuccessMessage(null), 4000);
+            load();
+          }}
+          productIds={[...selectedIds]}
+          onSessionExpired={onSessionExpired}
         />
       )}
     </div>
@@ -1726,6 +1799,84 @@ function EditProductModal({ product, onClose, onSaved }) {
           </button>
           <button onClick={handleSave} disabled={isSaving} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
             {isSaving ? "…" : (lang === "zh" ? "保存" : "Save")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Real bulk price update modal (new) -- closes a real gap: there was
+// no way to adjust multiple real products' prices at once before
+// this, only one at a time via EditProductModal above. A real, single
+// backend call (PATCH /supplier/me/products/bulk-price-update),
+// applied server-side per real product's own existing price -- not a
+// fetch-then-recompute-in-JS loop.
+function BulkPriceModal({ selectedCount, productIds, onClose, onApplied, onSessionExpired }) {
+  const { t, lang } = useLang();
+  const [adjustmentType, setAdjustmentType] = useState("percent");
+  const [value, setValue] = useState("");
+  const [isApplying, setIsApplying] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleApply = async () => {
+    const num = parseFloat(value);
+    if (!Number.isFinite(num)) {
+      setError(lang === "zh" ? "请输入有效数字" : "Enter a valid number.");
+      return;
+    }
+    setIsApplying(true);
+    setError(null);
+    try {
+      const updated = await bulkUpdateProductPrices(getStoredToken(), productIds, adjustmentType, num);
+      onApplied(updated.length);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setError(err.message);
+    } finally {
+      setIsApplying(false);
+    }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
+      <div style={{ background: "#fff", borderRadius: 12, padding: 24, width: 380, maxWidth: "90vw" }}>
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{t.products.bulkPriceTitle}</div>
+        <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>{t.products.bulkPriceSelected(selectedCount)}</div>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+          {["percent", "flat"].map((type) => (
+            <button
+              key={type}
+              onClick={() => setAdjustmentType(type)}
+              style={{
+                flex: 1, padding: "8px 0", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+                border: `1px solid ${adjustmentType === type ? C.ink : C.line}`, background: adjustmentType === type ? C.ink : "#fff",
+                color: adjustmentType === type ? "#fff" : C.ink,
+              }}
+            >{type === "percent" ? t.products.bulkPricePercent : t.products.bulkPriceFlat}</button>
+          ))}
+        </div>
+
+        <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>
+          {adjustmentType === "percent" ? (lang === "zh" ? "百分比 (%)" : "Percentage (%)") : (lang === "zh" ? "金额 ($)" : "Amount ($)")}
+        </label>
+        <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>
+          {adjustmentType === "percent" ? t.products.bulkPricePercentHint : t.products.bulkPriceFlatHint}
+        </div>
+        <input
+          type="number" step="0.01" value={value} onChange={(e) => setValue(e.target.value)}
+          style={{ width: "100%", padding: "8px 11px", borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13, marginBottom: 12, boxSizing: "border-box" }}
+        />
+
+        {error && <div style={{ fontSize: 12, color: C.red, marginBottom: 12 }}>{error}</div>}
+
+        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+          <button onClick={onClose} disabled={isApplying} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            {t.products.bulkPriceCancel}
+          </button>
+          <button onClick={handleApply} disabled={isApplying || !value} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+            {isApplying ? t.products.bulkPriceApplying : t.products.bulkPriceApply}
           </button>
         </div>
       </div>

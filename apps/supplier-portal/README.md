@@ -562,6 +562,43 @@ The full existing admin-dashboard test suite (93 tests) was also re-run
 against the updated backend to confirm nothing broke there — still
 93/93 passing.
 
+## Real bulk price update (new)
+
+**A real, confirmed gap**: there was no way to adjust multiple real
+products' prices at once — only one at a time via `EditProductModal`.
+
+- **Checkbox selection** on the Products table (select-all in the
+  header, per-row checkboxes) — a "Bulk price update" button appears
+  once 1+ products are selected.
+- **New `PATCH /supplier/me/products/bulk-price-update`**
+  `{ productIds, adjustmentType: 'percent'|'flat', adjustmentValue }`
+  — a real, single SQL `UPDATE`, not a fetch-then-recompute-in-JS
+  loop: each matched product's OWN existing price feeds the
+  expression directly (`price * (1 + value/100)` or `price + value`),
+  so a batch of products with different starting prices is adjusted
+  correctly in one query. Clamped at a real minimum (`0.01`) so a
+  large enough negative adjustment can't produce a zero or negative
+  price.
+- **A real, bug-prone Express route-ordering detail, handled
+  correctly**: this new route is registered BEFORE the existing
+  `PATCH /me/products/:id` — that `:id` is a wildcard that would
+  otherwise silently swallow the literal string `bulk-price-update`
+  as if it were a real product id, routing every bulk request to the
+  wrong handler.
+
+**Verified against the real running backend**: applied a real +10%
+increase to two real products with different starting prices and
+confirmed each new price is mathematically correct for ITS OWN
+starting price; applied a real flat decrease and confirmed the same;
+confirmed an extreme negative adjustment clamps at `0.01` rather than
+going negative; confirmed an invalid `adjustmentType` is rejected; and
+— critically — confirmed ownership isolation: a supplier attempting to
+bulk-update a product genuinely owned by a DIFFERENT real supplier
+leaves that product completely untouched, verified by checking its
+price directly before and after. Real component test (checkbox
+selection → modal → real request → real success message): passing.
+Full suite: 77/77 passing.
+
 ## Real per-product low-stock threshold, everywhere (fixed)
 
 **A real, confirmed gap, found while scoping "does this portal have a
