@@ -477,6 +477,25 @@ rejected rather than leaking the case, and confirmed the existing
 logged-in buyer flow is completely unaffected. Full suite: 25/25
 passing.
 
+## Real out-of-stock indicator on the wishlist page (new)
+
+**A real, confirmed gap, found while following up on the new
+back-in-stock alerts feature (`services/api/README.md`)**: the
+wishlist page had no stock-status display at all — a buyer couldn't
+tell which saved items they were genuinely waiting on without clicking
+into each one. No backend change needed: `fetchWishlist`'s response
+already included `stockQuantity` the whole time (same real DTO builder
+the main catalog listing uses), this was purely a missing display.
+
+**Confirmed NOT a gap on mobile**: the mobile wishlist screen reuses
+the same shared `ProductCard` widget the home feed uses, which already
+shows real in-stock/out-of-stock status — checked directly before
+assuming any mobile work was needed.
+
+**Verified**: confirmed the real backend genuinely returns
+`stockQuantity: 0` for a real product set to zero stock via the
+supplier portal. Zero TypeScript errors. Full suite: 35/35 passing.
+
 ## Real pagination on /search (new)
 
 **A real, confirmed gap**: `GET /catalog/products` had no pagination

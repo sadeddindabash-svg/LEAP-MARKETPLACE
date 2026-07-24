@@ -82,6 +82,17 @@ export default function WishlistPage() {
               <Link href={`/products/${p.id}`} className="flex-1 min-w-0">
                 <p className="font-semibold text-sm truncate">{p.name}</p>
                 <p className="text-xs text-muted mt-1">{p.currencyCode} {p.price.toFixed(2)}</p>
+                {/* Real out-of-stock indicator (new) -- now that a real
+                    back-in-stock notification exists (see
+                    services/api/README.md's own section on this), a
+                    buyer benefits from seeing at a glance which
+                    wishlisted items they're genuinely waiting on,
+                    rather than discovering it only by clicking in. */}
+                {p.stockQuantity === 0 && (
+                  <p className="text-xs font-semibold text-amber-700 mt-1">
+                    Out of stock — we'll notify you when it's back
+                  </p>
+                )}
               </Link>
               <button
                 onClick={() => handleRemove(p.id)}
