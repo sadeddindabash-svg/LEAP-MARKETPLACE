@@ -284,6 +284,7 @@ const CATEGORY_COLORS = [C.signal, C.torque, C.gauge, C.amber, "#9AA1AC", "#6E76
 // shape as the supplier portal's own equivalent section, which shows
 // this same data forced to that supplier's own account.
 function SupplierAnalyticsPicker({ onSessionExpired }) {
+  const nav = useContext(NavigationContext);
   const [suppliers, setSuppliers] = useState([]);
   const [selectedId, setSelectedId] = useState("");
   const [analytics, setAnalytics] = useState(null);
@@ -404,6 +405,20 @@ function SupplierAnalyticsPicker({ onSessionExpired }) {
                     <span style={{ fontWeight: 700, color: p.stockQuantity === 0 ? C.red : C.amber }}>{p.stockQuantity} / {p.lowStockThreshold}</span>
                   </div>
                 ))}
+                {/* Real "View all" link (new) -- closes a real gap: this
+                    card previously capped at 6 with no way to see the
+                    rest for a supplier with more low-stock items than
+                    that, and no way to act on what's shown (no link
+                    anywhere). Reuses the real supplier detail page
+                    (batch 19) already built for exactly this. */}
+                {analytics.lowStockProducts.length > 6 && (
+                  <button
+                    onClick={() => nav?.onOpenSupplier(selectedId)}
+                    style={{ ...body, background: "none", border: "none", padding: "8px 0 0", fontSize: 12, fontWeight: 700, color: C.signal, cursor: "pointer" }}
+                  >
+                    View all {analytics.lowStockProducts.length} →
+                  </button>
+                )}
               </div>
             )}
           </div>

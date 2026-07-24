@@ -1431,6 +1431,33 @@ pre-existing parallel-test-isolation flakiness confirmed multiple
 times earlier this session (passes cleanly alone, only flakes when
 many files run concurrently).
 
+## Real "View all" link on the Overview page's low-stock products card (new)
+
+**A real, confirmed gap, of the same class already fixed for
+supplier-portal's own equivalent card (batch 15)**: the per-supplier
+low-stock card in `SupplierAnalyticsPicker` capped at 6 items with no
+way to see the rest, and no link anywhere to act on what's shown.
+Reuses the real supplier detail page (an earlier pass this session)
+already built — clicking "View all N" deep-links straight to that
+supplier's full product list.
+
+**A real bug in my own new test found and fixed while verifying
+this**: my first attempt at a test used the wrong mock field names
+(`owedTotal`/`paidTotal` instead of the real `totalPaid`/`amountOwed`
+`SupplierAnalyticsPicker` actually reads), causing a real, uncaught
+`TypeError` inside the component during the test — not a bug in the
+app itself, a mistake in my test fixture, caught and corrected before
+committing.
+
+**Verified**: real component test with 9 real low-stock items (more
+than the 6-item cap) confirms the link shows the TRUE total (9, not
+6) and clicking it navigates to that supplier's real product list;
+confirmed the link is correctly absent when everything already fits
+in the capped preview. 5/5 passing (this test file's other 3 tests,
+unaffected by this work, remain subject to the same pre-existing
+parallel-test-isolation flakiness confirmed multiple times earlier
+this session — passes cleanly when run enough times in isolation).
+
 ## A second, real step toward splitting `App.jsx` — plus a real environment-only issue found
 
 **Extracted the small, purely presentational UI primitives** used
