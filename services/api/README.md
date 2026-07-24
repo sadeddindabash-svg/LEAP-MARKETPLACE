@@ -2298,6 +2298,31 @@ by name, matched multiple real orders by ID prefix (correctly capped
 at 5), confirmed a too-short query returns empty without erroring, and
 confirmed an unauthenticated request is rejected (401).
 
+## Real back-in-stock alerts (new, migration 045)
+
+**A real, confirmed gap**: nothing notified a buyer when a wishlisted,
+out-of-stock product came back. Mirrors migration 038's price-drop
+alert pattern (same real `wishlist_items` table, same
+`createNotification` + email mechanism) — but deliberately NOT a
+periodic sweep like that one needs: stock only ever changes at one
+real, controllable point (a supplier's own
+`PATCH /supplier/me/products/:id`), so this hooks in directly there
+(see `services/api/src/modules/restockAlerts/notify.js`) instead of
+polling on a timer.
+
+**Confirmed scope**: only a genuine `0 -> positive` transition counts
+— raising stock from 3 to 10 was never actually unavailable to a
+buyer, so it must never fire for that case. Captures the real stock
+level *before* the update so this can be detected correctly, and never
+blocks or fails the real product update itself (best-effort, same as
+every other notification trigger in this codebase).
+
+**Verified against the real running backend**: set a real product to
+0, wishlisted it as a real new buyer, confirmed zero notifications
+beforehand, restocked it, confirmed exactly one real notification with
+the correct type/title/body, and confirmed a further raise (already
+positive to higher) does NOT create a duplicate.
+
 ## Real pagination on GET /catalog/products (new)
 
 **A real, confirmed gap, already flagged in this endpoint's own code

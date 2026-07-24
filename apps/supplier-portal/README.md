@@ -583,6 +583,33 @@ Both real column sets follow this app's own real bilingual convention
 `ExcelJS` instance, not just checking no error was thrown) — 3/3
 passing. Full regression: 80/80 passing across all 15 test files.
 
+## Real back-in-stock alerts (new)
+
+**A real, confirmed gap**: nothing notified a buyer when a wishlisted,
+out-of-stock product came back — genuinely confirmed possible this
+very session, when real cumulative testing ran a couple of real
+products down to 0 stock.
+
+Mirrors the established price-drop alert pattern (same real
+`wishlist_items` table, same notification + email mechanism) — but
+**deliberately NOT a periodic sweep** like that one needs: stock,
+unlike a live-computed buyer price, only ever changes at one real,
+controllable point (a supplier's own
+`PATCH /supplier/me/products/:id`), so this hooks in directly there
+instead of polling on a timer.
+
+**Confirmed scope**: only a genuine `0 -> positive` transition counts
+as "back in stock" — raising stock from 3 to 10 is not a restock from
+a buyer's perspective (it was never actually unavailable).
+
+**Verified end-to-end against the real running backend**: set a real
+product to 0 stock, wishlisted it as a real new buyer, confirmed zero
+notifications beforehand, restocked it, confirmed exactly one real
+notification with the correct type/title/body referencing the real
+product name, and confirmed a further raise (already positive to
+higher) does NOT create a duplicate. Real integration test: 2/2
+passing. Full regression: 82/82 passing across all 16 test files.
+
 ## Real bulk price update (new)
 
 **A real, confirmed gap**: there was no way to adjust multiple real

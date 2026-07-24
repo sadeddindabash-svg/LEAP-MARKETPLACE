@@ -7,6 +7,7 @@ const { logAdminAction } = require('../audit/helpers');
 const { shippingNotificationEmail } = require('../email/templates');
 const { validateFitment, tryMatchCategoryAndPart, tryMatchPosition, tryMatchDimensions, validateCompleteFields } = require('./productValidation');
 const { getSupplierAnalytics } = require('../supplierAnalytics/queries');
+const { notifyRestock } = require('../restockAlerts/notify');
 
 /**
  * Supplier module — SUP-001–003 (onboarding/verification) from the
@@ -695,6 +696,17 @@ router.patch('/me/products/:id', requireAuth, requireRole('supplier'), async (re
     if (lowStockThreshold !== undefined && (!Number.isInteger(lowStockThreshold) || lowStockThreshold < 0)) {
       return res.status(400).json({ error: 'lowStockThreshold must be a whole number of 0 or more' });
     }
+
+    // Real back-in-stock detection (new, migration 045) -- captures
+    // the real stock level BEFORE this update so a genuine 0 ->
+    // positive transition can be detected after it. Only relevant
+    // when stockQuantity is actually part of this request.
+    let previousStock = null;
+    if (stockQuantity !== undefined) {
+      const { rows: beforeRows } = await db.query('SELECT stock_quantity FROM products WHERE id = $1 AND supplier_id = $2', [req.params.id, req.user.supplierId]);
+      if (beforeRows.length > 0) previousStock = beforeRows[0].stock_quantity;
+    }
+
     const { rows } = await db.query(
       `UPDATE products SET
          price = COALESCE($1, price),
@@ -705,6 +717,14 @@ router.patch('/me/products/:id', requireAuth, requireRole('supplier'), async (re
       [price ?? null, stockQuantity ?? null, lowStockThreshold ?? null, req.params.id, req.user.supplierId]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
+
+    // Real, best-effort -- a genuine 0 -> positive transition, and
+    // only that (raising 3 to 10 was never actually unavailable to a
+    // buyer). Never blocks or fails the real product update itself.
+    if (previousStock === 0 && rows[0].stock_quantity > 0) {
+      notifyRestock(rows[0]).catch((err) => console.error('[back-in-stock] Real notify failed (non-fatal):', err.message));
+    }
+
     res.json(await attachImagesAndFitment(toProductDto(rows[0])));
   } catch (err) {
     next(err);
