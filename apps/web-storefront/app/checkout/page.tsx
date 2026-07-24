@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCart } from "@/components/CartProvider";
 import { useAuth, getAuthToken } from "@/components/AuthProvider";
 import { placeOrder } from "@/lib/order-api";
-import { fetchMyAddresses, createAddress, SavedAddress } from "@/lib/api";
+import { fetchMyAddresses, createAddress, SavedAddress, validatePromoCode } from "@/lib/api";
 
 // REAL BUG FOUND AND FIXED HERE: this page used to always place a
 // guest order (placeGuestOrder, always sending guestEmail) regardless
@@ -29,6 +29,12 @@ export default function CheckoutPage() {
   const [country, setCountry] = useState("");
   const [city, setCity] = useState("");
   const [streetAddress, setStreetAddress] = useState("");
+
+  // Real promo code support (new)
+  const [promoCodeInput, setPromoCodeInput] = useState("");
+  const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null);
+  const [promoCodeError, setPromoCodeError] = useState<string | null>(null);
+  const [isValidatingPromoCode, setIsValidatingPromoCode] = useState(false);
 
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [addressesLoaded, setAddressesLoaded] = useState(false);
@@ -57,6 +63,32 @@ export default function CheckoutPage() {
       .catch(() => setAddressesLoaded(true));
   }, [authLoading, user]);
 
+  const handleApplyPromoCode = async () => {
+    if (!promoCodeInput.trim()) return;
+    setIsValidatingPromoCode(true);
+    setPromoCodeError(null);
+    try {
+      const token = getAuthToken();
+      const result = await validatePromoCode(promoCodeInput.trim(), token || undefined);
+      if (result.valid) {
+        setAppliedPromoCode(promoCodeInput.trim());
+      } else {
+        setAppliedPromoCode(null);
+        setPromoCodeError(result.reason);
+      }
+    } catch (err) {
+      setPromoCodeError(err instanceof Error ? err.message : "Could not check this code right now.");
+    } finally {
+      setIsValidatingPromoCode(false);
+    }
+  };
+
+  const handleRemovePromoCode = () => {
+    setAppliedPromoCode(null);
+    setPromoCodeInput("");
+    setPromoCodeError(null);
+  };
+
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!cart || cart.items.length === 0) return;
@@ -69,7 +101,7 @@ export default function CheckoutPage() {
 
       if (user) {
         if (selectedAddressId && selectedAddressId !== "new") {
-          const order = await placeOrder(items, { userId: user.id }, { addressId: selectedAddressId });
+          const order = await placeOrder(items, { userId: user.id }, { addressId: selectedAddressId }, appliedPromoCode || undefined);
           document.cookie = "leap_cart_id=; path=/; max-age=0";
           router.push(`/checkout/confirmation?orderId=${order.id}`);
           return;
@@ -80,7 +112,7 @@ export default function CheckoutPage() {
           return;
         }
         const address = { recipientName, phone, country, city, streetAddress };
-        const order = await placeOrder(items, { userId: user.id }, { address });
+        const order = await placeOrder(items, { userId: user.id }, { address }, appliedPromoCode || undefined);
         // Real, optional save-for-next-time -- a separate real call,
         // deliberately best-effort: a failure here shouldn't block an
         // order that already succeeded.
@@ -101,7 +133,7 @@ export default function CheckoutPage() {
         setIsPlacing(false);
         return;
       }
-      const order = await placeOrder(items, { guestEmail }, { address: { recipientName, phone, country, city, streetAddress } });
+      const order = await placeOrder(items, { guestEmail }, { address: { recipientName, phone, country, city, streetAddress } }, appliedPromoCode || undefined);
       document.cookie = "leap_cart_id=; path=/; max-age=0";
       router.push(`/checkout/confirmation?orderId=${order.id}`);
     } catch (err) {
@@ -230,6 +262,44 @@ export default function CheckoutPage() {
               )}
             </div>
           )}
+        </div>
+
+        {/* Real promo code support (new) -- closes a real gap: the
+            backend has always fully supported this (real server-side
+            validation, real discount calculation, never a
+            client-supplied amount), checkout just never had anywhere
+            to enter one. Deliberately just an "is this code real right
+            now" check here, not a discount preview -- the actual
+            discount only ever comes from the real order-placement
+            response itself (this page's own `total`, computed
+            server-side). */}
+        <div>
+          {!appliedPromoCode ? (
+            <div className="flex gap-2">
+              <input
+                placeholder="Promo code"
+                value={promoCodeInput}
+                onChange={(e) => setPromoCodeInput(e.target.value)}
+                className="flex-1 rounded-md border border-line px-4 py-2 text-sm"
+              />
+              <button
+                type="button"
+                onClick={handleApplyPromoCode}
+                disabled={isValidatingPromoCode || !promoCodeInput.trim()}
+                className="rounded-md border border-line px-5 py-2 text-sm font-semibold hover:border-ink transition-colors disabled:opacity-60"
+              >
+                {isValidatingPromoCode ? "Checking…" : "Apply"}
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between rounded-md bg-chalk px-4 py-2">
+              <span className="text-sm font-semibold text-signal">"{appliedPromoCode}" applied</span>
+              <button type="button" onClick={handleRemovePromoCode} className="text-xs font-semibold text-muted hover:text-ink">
+                Remove
+              </button>
+            </div>
+          )}
+          {promoCodeError && <p className="mt-2 text-sm text-red-600">{promoCodeError}</p>}
         </div>
 
         <div className="border-t border-line pt-6 flex items-center justify-between">

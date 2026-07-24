@@ -266,16 +266,47 @@ export interface PlaceOrderResult {
 export async function placeOrder(
   items: Array<{ productId: string; quantity: number }>,
   auth: { userId?: string; guestEmail?: string },
-  addressInput: { addressId: string } | { address: PlaceOrderAddress }
+  addressInput: { addressId: string } | { address: PlaceOrderAddress },
+  // Real promo code support (new) -- closes a real, confirmed gap: the
+  // backend has always fully supported a real promoCode on order
+  // placement (real server-side validation, real discount calculation
+  // -- see services/api/src/modules/promotions/helpers.js -- never a
+  // client-supplied discount amount), but this storefront's checkout
+  // never had anywhere to enter one. Optional so every existing caller
+  // (and every existing test) is completely unaffected.
+  promoCode?: string
 ): Promise<PlaceOrderResult> {
   const res = await fetch(`${API_BASE_URL}/order`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ items, ...auth, ...addressInput }),
+    body: JSON.stringify({ items, ...auth, ...addressInput, ...(promoCode ? { promoCode } : {}) }),
   });
   const body = await res.json();
   if (!res.ok) throw new Error(body.error || `Failed to place order (${res.status})`);
   return body as PlaceOrderResult;
+}
+
+// Real, immediate promo-code validation (new) -- calls the backend's
+// own real POST /promo-codes/validate (optionalAuth -- works for a
+// guest too), giving a buyer immediate feedback on whether a code is
+// real and currently usable, WITHOUT computing or trusting any
+// discount amount client-side. The actual, authoritative discount only
+// ever comes from the real order-placement response itself
+// (placeOrder's own real `total`) -- this is deliberately just a
+// "is this code even real right now" check, not a discount preview,
+// since replicating the backend's own discount math (which handles
+// shipping-portion logic for free_shipping-type codes) client-side
+// would risk it silently drifting out of sync with the real backend
+// logic over time.
+export async function validatePromoCode(code: string, token?: string): Promise<{ valid: true } | { valid: false; reason: string }> {
+  const res = await fetch(`${API_BASE_URL}/promo-codes/validate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ code }),
+  });
+  const body = await res.json();
+  if (!res.ok) return { valid: false, reason: body.reason || body.error || "This code isn't valid." };
+  return { valid: true };
 }
 
 // ---------------- Real buyer address book (client-side calls, new) ----------------

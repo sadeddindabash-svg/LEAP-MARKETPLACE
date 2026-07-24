@@ -477,6 +477,40 @@ rejected rather than leaking the case, and confirmed the existing
 logged-in buyer flow is completely unaffected. Full suite: 25/25
 passing.
 
+## Real promo code support at checkout (new)
+
+**A real, confirmed gap**: the backend has always fully supported a
+real promo code on order placement (real server-side validation, real
+discount calculation via `services/api/src/modules/promotions/
+helpers.js` — never a client-supplied discount amount), but checkout
+never had anywhere to enter one.
+
+- **New `validatePromoCode()`** — calls the backend's own real
+  `POST /promo-codes/validate` (`optionalAuth` — works for a guest
+  too), giving immediate feedback on whether a code is real and
+  currently usable. Deliberately just an "is this code even real right
+  now" check, not a discount preview — the actual, authoritative
+  discount only ever comes from the real order-placement response
+  itself. Replicating the backend's own discount math client-side
+  (which handles shipping-portion logic for `free_shipping`-type
+  codes) would risk silently drifting out of sync with the real logic
+  over time.
+- **`placeOrder()` extended** with an optional 4th `promoCode`
+  parameter — every existing caller (and every existing test)
+  completely unaffected.
+- Checkout UI: a real Apply/Remove flow with real inline error
+  messages (expired, doesn't exist, already used up — whatever the
+  backend's own real reason actually says).
+
+**Verified against the real running backend**: created a real promo
+code as admin, confirmed a guest (no login at all) can validate it
+successfully, confirmed a nonexistent code is genuinely rejected with
+a real reason, and — critically — placed two real orders for the same
+real product (one with the code, one without) and confirmed the
+difference in their real, server-computed totals is exactly the real
+discount amount, not a client-side guess. Zero TypeScript errors. Full
+suite: 38/38 passing.
+
 ## Real out-of-stock indicator on the wishlist page (new)
 
 **A real, confirmed gap, found while following up on the new

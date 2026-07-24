@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fetchCategories, fetchProducts, fetchProductById, fetchCart, addCartItem, fetchMyOrders, fetchOrderById, fetchWishlist, checkWishlisted, addToWishlist, removeFromWishlist, submitReview, fetchMyReferral, fetchNotifications, fetchUnreadNotificationCount, markNotificationRead, markAllNotificationsRead, resolveNotificationLink, fetchMyReturnCases, fetchReturnCase, sendReturnCaseMessage, placeOrder, fetchMyAddresses, createAddress, fetchVehicleBrands, fetchModelsForBrand, fetchGenerationsForModel, createSupportTicket, fetchMyTickets, fetchSupportTicket, sendSupportTicketMessage } from './api';
+import { fetchCategories, fetchProducts, fetchProductById, fetchCart, addCartItem, fetchMyOrders, fetchOrderById, fetchWishlist, checkWishlisted, addToWishlist, removeFromWishlist, submitReview, fetchMyReferral, fetchNotifications, fetchUnreadNotificationCount, markNotificationRead, markAllNotificationsRead, resolveNotificationLink, fetchMyReturnCases, fetchReturnCase, sendReturnCaseMessage, placeOrder, fetchMyAddresses, createAddress, fetchVehicleBrands, fetchModelsForBrand, fetchGenerationsForModel, createSupportTicket, fetchMyTickets, fetchSupportTicket, sendSupportTicketMessage, validatePromoCode } from './api';
 
 const BACKEND_URL = 'http://localhost:4000';
 
@@ -655,5 +655,50 @@ describe.runIf(backendUp)('support tickets (guest + logged-in access) against a 
 
     const fetched = await fetchSupportTicket(created.id, { token });
     expect(fetched.id).toBe(created.id);
+  });
+});
+
+// Real promo code support at checkout (new) -- closes a real,
+// confirmed gap: the backend has always fully supported this, but
+// checkout never had anywhere to enter one.
+describe.runIf(backendUp)('promo codes at checkout against a REAL running backend', () => {
+  it('CRITICAL: a real, valid code validates successfully and genuinely discounts the real order total placed with it', async () => {
+    const adminLoginRes = await fetch(`${BACKEND_URL}/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'admin@leap.dev', password: 'admin_dev_password_123' }),
+    });
+    const { token: adminToken } = await adminLoginRes.json();
+
+    const code = `CHECKOUTTEST${Date.now()}`;
+    await fetch(`${BACKEND_URL}/promo-codes`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ code, type: 'flat', value: 10 }),
+    });
+
+    const validation = await validatePromoCode(code);
+    expect(validation.valid).toBe(true);
+
+    const product = await pickInStockProduct();
+    const guestEmail = `promo-checkout-test-${Date.now()}@example.com`;
+
+    const orderWithout = await placeOrder([{ productId: product.id, quantity: 1 }], { guestEmail: `${guestEmail}-a` }, { address: { recipientName: 'Test', phone: '555-0000', country: 'USA', city: 'Test City', streetAddress: '1 Test St' } });
+    const orderWith = await placeOrder([{ productId: product.id, quantity: 1 }], { guestEmail: `${guestEmail}-b` }, { address: { recipientName: 'Test', phone: '555-0000', country: 'USA', city: 'Test City', streetAddress: '1 Test St' } }, code);
+
+    // Real, exact $10 discount -- not a client-side computed guess.
+    expect(Number((orderWithout.total - orderWith.total).toFixed(2))).toBe(10);
+  });
+
+  it('a nonexistent code is genuinely rejected with a real reason, not silently ignored', async () => {
+    const validation = await validatePromoCode('THIS-CODE-DOES-NOT-EXIST-12345');
+    expect(validation.valid).toBe(false);
+    if (!validation.valid) expect(validation.reason).toBeTruthy();
+  });
+
+  it('placing a real order with an invalid code fails with a real, specific error rather than silently placing at full price', async () => {
+    const product = await pickInStockProduct();
+    const guestEmail = `promo-invalid-checkout-test-${Date.now()}@example.com`;
+    await expect(
+      placeOrder([{ productId: product.id, quantity: 1 }], { guestEmail }, { address: { recipientName: 'Test', phone: '555-0000', country: 'USA', city: 'Test City', streetAddress: '1 Test St' } }, 'NOT-A-REAL-CODE-98765')
+    ).rejects.toThrow();
   });
 });
