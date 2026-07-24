@@ -108,4 +108,23 @@ describe('Admin Promo Codes page — real general promotions engine (mocked fetc
     fireEvent.click(screen.getByRole('button', { name: /promo codes/i }));
     await waitFor(() => expect(screen.getByText(/no promo codes yet/i)).toBeInTheDocument());
   });
+
+  // Real usage count (new) -- closes a real gap: the real
+  // promo_code_redemptions table already recorded every real
+  // redemption the whole time, this page just never showed it.
+  it('CRITICAL: shows the real usage count, and flags it in red once a code has genuinely hit its own real max-uses limit', async () => {
+    const codesWithUsage = [
+      { code: 'HALFUSED', type: 'percentage', value: 10, source: 'admin', maxTotalUses: 100, maxUsesPerBuyer: 1, expiresAt: null, isActive: true, createdAt: '2026-07-16T00:00:00.000Z', usedCount: 42 },
+      { code: 'MAXEDOUT', type: 'flat', value: 5, source: 'admin', maxTotalUses: 10, maxUsesPerBuyer: 1, expiresAt: null, isActive: true, createdAt: '2026-07-16T00:00:00.000Z', usedCount: 10 },
+    ];
+    globalThis.fetch = mockFetchRouter({ codes: codesWithUsage });
+    render(<LeapAdminApp />);
+    await login();
+
+    fireEvent.click(screen.getByRole('button', { name: /promo codes/i }));
+    await waitFor(() => expect(screen.getByText('HALFUSED')).toBeInTheDocument());
+
+    expect(screen.getByText('42 used')).toBeInTheDocument();
+    expect(screen.getByText('10 used')).toBeInTheDocument();
+  });
 });

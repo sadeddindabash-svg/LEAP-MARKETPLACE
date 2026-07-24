@@ -1628,6 +1628,35 @@ Full regression across Overview/Suppliers/Hubs/Returns: 18/19 passing
 flakiness confirmed multiple times earlier this session — passes
 cleanly in complete isolation, unrelated to this feature).
 
+## Real promo code usage counts (new)
+
+**A real, confirmed gap**: the real `promo_code_redemptions` table
+(migration 020) already recorded every real redemption the whole
+time — an admin just had no way to see it, on either the list or
+the export.
+
+- **`GET /promo-codes`**: real `usedCount` per code, computed via a
+  real `LEFT JOIN` against `promo_code_redemptions`. Only counts a
+  genuine redemption (a real order actually placed with the code),
+  not a mere validation check.
+- **A real bug caught and fixed before it shipped**: `PATCH
+  /promo-codes/:code` (e.g., toggling a code active/inactive) would
+  have silently shown `usedCount: 0` in its own response for a code
+  that's genuinely already been used many times, since that query has
+  no visibility into the redemptions table on its own — fixed with a
+  real follow-up count query.
+- Frontend: real usage shown inline (`"42 used"`), turning red once a
+  code has genuinely hit its own real `maxTotalUses` limit, amber
+  when approaching it (80%+). Added to the existing Excel export too.
+
+**Verified against the real running backend**: created a real code,
+confirmed `usedCount: 0` immediately after creation, placed 2 real
+orders with it, confirmed `usedCount: 2` afterward, and confirmed the
+`PATCH` response also reflects the real, accurate count rather than
+the misleading 0 it would have shown before this fix. Real component
+test: 6/6 passing (1 new). Full regression: 26/26 passing across all
+3 promo-code-related test files.
+
 ## Real Excel export, closing every remaining gap (Tickets, Promo Codes, Flagged Shipments)
 
 **A real, confirmed gap, checked before assuming it was complete**:

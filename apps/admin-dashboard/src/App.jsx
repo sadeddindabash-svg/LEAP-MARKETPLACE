@@ -2775,6 +2775,7 @@ function PromoCodesPage({ onSessionExpired }) {
               { header: "Source", key: "source", width: 12 },
               { header: "Type", key: "type", width: 14 },
               { header: "Value", key: "value", width: 12 },
+              { header: "Used", key: "usedCount", width: 10 },
               { header: "Active", key: "isActive", width: 10 },
               { header: "Max total uses", key: "maxTotalUses", width: 14 },
               { header: "Max per buyer", key: "maxUsesPerBuyer", width: 14 },
@@ -2784,6 +2785,7 @@ function PromoCodesPage({ onSessionExpired }) {
             rows: codes.map((c) => ({
               code: c.code, source: c.source === "referral" ? "Referral" : "Admin",
               type: c.type, value: c.type === "free_shipping" ? "—" : c.value,
+              usedCount: c.usedCount,
               isActive: c.isActive ? "Yes" : "No",
               maxTotalUses: c.maxTotalUses ?? "Unlimited", maxUsesPerBuyer: c.maxUsesPerBuyer,
               startsAt: c.startsAt ? new Date(c.startsAt).toLocaleDateString() : "—",
@@ -2853,6 +2855,16 @@ function PromoCodesPage({ onSessionExpired }) {
                     {c.type === "percentage" && `${c.value}% off`}
                     {c.type === "flat" && `$${c.value} off`}
                     {c.type === "free_shipping" && "Free shipping"}
+                    {" · "}
+                    {/* Real usage count (new) -- closes a real gap: the
+                        real promo_code_redemptions table already
+                        recorded every real redemption the whole time,
+                        this page just never showed it. Real color
+                        warning when a code is genuinely close to (or
+                        at) its own real max-uses limit. */}
+                    <span style={{ fontWeight: c.maxTotalUses && c.usedCount >= c.maxTotalUses ? 700 : 400, color: c.maxTotalUses && c.usedCount >= c.maxTotalUses ? C.red : (c.maxTotalUses && c.usedCount / c.maxTotalUses >= 0.8 ? C.amber : C.muted) }}>
+                      {c.usedCount} used
+                    </span>
                     {" · "}Max {c.maxTotalUses ?? "∞"} uses total, {c.maxUsesPerBuyer} per buyer
                     {c.startsAt && ` · Starts ${new Date(c.startsAt).toLocaleDateString()}`}
                     {c.expiresAt && ` · Expires ${new Date(c.expiresAt).toLocaleDateString()}`}

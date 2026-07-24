@@ -2298,6 +2298,27 @@ by name, matched multiple real orders by ID prefix (correctly capped
 at 5), confirmed a too-short query returns empty without erroring, and
 confirmed an unauthenticated request is rejected (401).
 
+## Real promo code usage counts (new)
+
+**A real, confirmed gap**: the real `promo_code_redemptions` table
+(migration 020) already recorded every real redemption the whole
+time — nothing surfaced it. `GET /promo-codes` now returns a real
+`usedCount` per code via a `LEFT JOIN` against that table (only
+counting a genuine redemption tied to a real placed order, not a mere
+validation check).
+
+**A real bug caught and fixed before it shipped**: `PATCH
+/promo-codes/:code` would have silently returned `usedCount: 0` for a
+code that's genuinely already been used many times, since that
+query's own `UPDATE ... RETURNING` has no visibility into the
+redemptions table — fixed with a real follow-up count query in the
+same handler.
+
+**Verified against the real running backend**: created a real code,
+confirmed `usedCount: 0` right after creation, placed 2 real orders
+with it, confirmed `usedCount: 2` afterward, and confirmed the
+`PATCH` response also reflects the real, accurate count.
+
 ## Real back-in-stock alerts (new, migration 045)
 
 **A real, confirmed gap**: nothing notified a buyer when a wishlisted,

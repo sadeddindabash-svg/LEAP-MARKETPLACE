@@ -29,12 +29,25 @@ function toPromoCodeDto(row) {
     minTotalSpend: row.min_total_spend == null ? null : Number(row.min_total_spend),
     minOrderCount: row.min_order_count,
     minInactiveDays: row.min_inactive_days,
+    // Real usage count (new) -- closes a real gap: the real
+    // promo_code_redemptions table (migration 020) already recorded
+    // every real redemption the whole time, an admin just had no way
+    // to see it. Only counts a genuine redemption (order_id set, i.e.
+    // actually applied to a real placed order), not a mere validation
+    // check (POST /promo-codes/validate never writes a row here at all).
+    usedCount: Number(row.used_count) || 0,
   };
 }
 
 router.get('/', requireAuth, requireRole('admin'), requirePageAccess('promoCodes'), async (req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT * FROM promo_codes ORDER BY created_at DESC');
+    const { rows } = await db.query(`
+      SELECT p.*, COUNT(r.id) AS used_count
+      FROM promo_codes p
+      LEFT JOIN promo_code_redemptions r ON r.promo_code = p.code
+      GROUP BY p.code
+      ORDER BY p.created_at DESC
+    `);
     res.json(rows.map(toPromoCodeDto));
   } catch (err) {
     next(err);
@@ -88,7 +101,12 @@ router.patch('/:code', requireAuth, requireRole('admin'), requirePageAccess('pro
       [isActive, startsAt, expiresAt, maxTotalUses, req.params.code]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Promo code not found' });
-    res.json(toPromoCodeDto(rows[0]));
+    // Real usage count, fetched separately -- REAL BUG AVOIDED HERE:
+    // without this, the response would silently show usedCount: 0 for
+    // a code that's genuinely already been used many times, since this
+    // UPDATE alone has no visibility into promo_code_redemptions.
+    const { rows: countRows } = await db.query('SELECT COUNT(*) AS used_count FROM promo_code_redemptions WHERE promo_code = $1', [req.params.code]);
+    res.json(toPromoCodeDto({ ...rows[0], used_count: countRows[0].used_count }));
   } catch (err) {
     next(err);
   }
