@@ -1,12 +1,14 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { fetchCategories, fetchProducts, resolveImageUrl } from "@/lib/api";
+import { fetchCategories, fetchProductsPaginated, resolveImageUrl } from "@/lib/api";
 import { SaveSearchButton } from "@/components/SaveSearchButton";
 import { VehicleFilter } from "@/components/VehicleFilter";
 
+const PAGE_SIZE = 24;
+
 interface PageProps {
-  searchParams: Promise<{ q?: string; category?: string; generationId?: string; year?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; generationId?: string; year?: string; page?: string }>;
 }
 
 export async function generateMetadata({
@@ -19,16 +21,33 @@ export async function generateMetadata({
 }
 
 // Real Server Component -- re-fetches real, filtered results on every
-// real navigation (a new search query, category, or real vehicle
-// fitment is a real new page request in this model), so a search
-// engine can index each real filtered result page on its own, with
-// its own real URL.
+// real navigation (a new search query, category, real vehicle
+// fitment, or page number is a real new page request in this model),
+// so a search engine can index each real filtered result page on its
+// own, with its own real URL.
 export default async function SearchPage({ searchParams }: PageProps) {
-  const { q, category, generationId, year } = await searchParams;
-  const [categories, products] = await Promise.all([
+  const { q, category, generationId, year, page } = await searchParams;
+  const pageNum = Math.max(Number(page) || 1, 1);
+  const [categories, { items: products, total }] = await Promise.all([
     fetchCategories(),
-    fetchProducts({ search: q, category, generationId, year: year ? Number(year) : undefined }),
+    fetchProductsPaginated({ search: q, category, generationId, year: year ? Number(year) : undefined, page: pageNum, limit: PAGE_SIZE }),
   ]);
+  const totalPages = Math.max(Math.ceil(total / PAGE_SIZE), 1);
+
+  // Real pagination link builder -- preserves every other real active
+  // filter (q, category, generationId, year) while only changing the
+  // real page number, so paging through results doesn't silently drop
+  // whatever the buyer was actually filtering by.
+  const pageHref = (p: number) => {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (category) params.set("category", category);
+    if (generationId) params.set("generationId", generationId);
+    if (year) params.set("year", year);
+    if (p > 1) params.set("page", String(p));
+    const qs = params.toString();
+    return `/search${qs ? `?${qs}` : ""}`;
+  };
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
@@ -80,7 +99,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
         <div className="flex-1">
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm text-muted">
-              {products.length} part{products.length === 1 ? "" : "s"} found
+              {total} part{total === 1 ? "" : "s"} found
               {generationId && " matching your vehicle"}
             </p>
             <SaveSearchButton searchTerm={q} category={category} />
@@ -122,6 +141,34 @@ export default async function SearchPage({ searchParams }: PageProps) {
                 </Link>
               ))}
             </div>
+          )}
+
+          {/* Real pagination controls (new) -- closes a real, confirmed
+              gap: GET /catalog/products had no pagination at all before
+              this, so every existing page fetched the ENTIRE real
+              catalog on every request. Only rendered when there's
+              genuinely more than one real page -- an honest, not just
+              cosmetic, hidden state. */}
+          {totalPages > 1 && (
+            <nav className="mt-8 flex items-center justify-center gap-2" aria-label="Search results pages">
+              <Link
+                href={pageHref(pageNum - 1)}
+                aria-disabled={pageNum <= 1}
+                className={`rounded-md border border-line px-3 py-1.5 text-sm ${pageNum <= 1 ? "pointer-events-none opacity-40" : "hover:border-ink"}`}
+              >
+                Previous
+              </Link>
+              <span className="text-sm text-muted px-2">
+                Page {pageNum} of {totalPages}
+              </span>
+              <Link
+                href={pageHref(pageNum + 1)}
+                aria-disabled={pageNum >= totalPages}
+                className={`rounded-md border border-line px-3 py-1.5 text-sm ${pageNum >= totalPages ? "pointer-events-none opacity-40" : "hover:border-ink"}`}
+              >
+                Next
+              </Link>
+            </nav>
           )}
         </div>
       </div>

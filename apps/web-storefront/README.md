@@ -477,6 +477,43 @@ rejected rather than leaking the case, and confirmed the existing
 logged-in buyer flow is completely unaffected. Full suite: 25/25
 passing.
 
+## Real pagination on /search (new)
+
+**A real, confirmed gap**: `GET /catalog/products` had no pagination
+at all — every visit to `/search` fetched the ENTIRE real catalog on
+every request (119 real products and growing).
+
+- **New `fetchProductsPaginated()`** — a separate function from the
+  existing `fetchProducts()` (which every other caller, like the home
+  page and wishlist, keeps using completely unaffected). Reads the
+  real total count from the backend's new `X-Total-Count` response
+  header.
+- **`/search`** now shows the real total count (not just the current
+  page's count), and real Previous/Next pagination controls — only
+  rendered when there's genuinely more than one real page. Preserves
+  every other active filter (search term, category, vehicle fitment)
+  while paging, so paging through results doesn't silently drop
+  whatever the buyer was actually filtering by.
+
+**Verified end-to-end against the real running backend AND the real
+rendered page**: confirmed unbounded behavior elsewhere (home page,
+wishlist) is completely unaffected, confirmed the real rendered
+`/search` page (via the actual dev server) shows genuinely different
+real products on page 1 vs. page 2 (not the same page repeated),
+confirmed the real total count and page controls render correctly.
+Full suite: 35/35 passing.
+
+**Also fixed, while chasing down a recurring failure this surfaced,
+not a new regression**: several existing order-placement tests
+grabbed `products[0]` unconditionally and assumed effectively
+unlimited stock — across many hours of real, cumulative test runs
+against this same persistent database, a few specific products' real
+stock genuinely ran down to 0 (batch 11's own real stock-validation
+feature correctly rejecting the order, not a bug in that feature).
+Added a shared `pickInStockProduct()` helper and fixed all 7 affected
+tests at the actual root cause, rather than reseeding the database
+again each time this recurs.
+
 ## Real vehicle-fitment filter for search (new)
 
 **A real, confirmed gap**: this storefront had zero vehicle-based

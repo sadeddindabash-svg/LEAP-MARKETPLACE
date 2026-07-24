@@ -2298,6 +2298,45 @@ by name, matched multiple real orders by ID prefix (correctly capped
 at 5), confirmed a too-short query returns empty without erroring, and
 confirmed an unauthenticated request is rejected (401).
 
+## Real pagination on GET /catalog/products (new)
+
+**A real, confirmed gap, already flagged in this endpoint's own code
+comments**: no pagination at all — growing to 100+ real products this
+session alone meant every existing caller (mobile, web-storefront,
+admin dashboard) fetched the ENTIRE catalog on every single request.
+
+**Deliberately opt-in and 100% backward compatible**: `page`/`limit`
+are new, optional query params. When neither is provided, behavior is
+byte-for-byte identical to before — a bare, unbounded array. Only a
+caller that explicitly asks for a page gets one.
+
+**Applied as a final slice, not SQL `LIMIT`/`OFFSET`** — deliberately,
+since buyer-facing price isn't a raw column (it's computed via the
+pricing engine) and the existing price filter/sort already happens in
+application code after fetching every matching row. Paginating at the
+SQL level would paginate BEFORE that filtering, producing genuinely
+wrong pages. The real total count (after filtering, before slicing) is
+exposed via an `X-Total-Count` response header rather than changing
+the response body's shape, preserving that same backward
+compatibility.
+
+**A real bug caught and fixed before it ever shipped**: by default,
+the `cors` package hides ALL custom response headers from browser
+JavaScript, even though they're genuinely sent over the wire — a
+well-known but easy-to-miss gotcha. `X-Total-Count` would have
+silently been unreadable via `response.headers.get(...)` in a real
+browser, while working perfectly fine in curl or a Node-based test
+(neither enforces this browser-only restriction). Fixed by adding
+`exposedHeaders: ['X-Total-Count']` to the CORS config.
+
+**Verified against the real running backend**: confirmed unbounded
+behavior is completely unchanged with no params (119 real products),
+confirmed page 1 and page 2 return genuinely different real products,
+confirmed the limit caps at a sane maximum (100) even if a much larger
+one is requested, confirmed an invalid/negative page correctly
+defaults to page 1, and confirmed the header is both present and
+genuinely exposed to browser JS (not just sent over the wire).
+
 ## Guest support ticket tracking (real gap closed, same pattern as returns)
 
 **The exact same real gap as returns, closed the exact same way**:

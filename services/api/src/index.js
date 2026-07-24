@@ -47,7 +47,16 @@ const pricingRoutes = require('./modules/pricing/routes');
 assertRequiredEnvInProduction();
 
 const app = express();
-app.use(cors());
+// REAL BUG FOUND AND FIXED HERE, before it ever shipped: by default,
+// the cors package does NOT expose ANY custom response header to
+// browser JavaScript, even though it's genuinely sent over the wire --
+// a well-known CORS gotcha. X-Total-Count (added for real pagination on
+// GET /catalog/products) would have silently been invisible to
+// `response.headers.get('X-Total-Count')` in a real browser, while
+// working fine in curl or a Node-based test (neither enforces this
+// browser-only restriction) -- exactly the kind of gap that's easy to
+// miss without specifically checking for it.
+app.use(cors({ exposedHeaders: ['X-Total-Count'] }));
 // The `verify` callback captures the exact real raw bytes of every
 // request body into req.rawBody, alongside express.json()'s normal
 // parsed req.body -- needed for real webhook signature verification

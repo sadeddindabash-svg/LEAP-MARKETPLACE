@@ -14,6 +14,23 @@ async function isBackendUp(): Promise<boolean> {
 
 const backendUp = await isBackendUp();
 
+// REAL BUG FOUND AND FIXED HERE (recurring across several batches this
+// session): several order-placement tests grabbed `products[0]`
+// unconditionally and assumed effectively unlimited stock. Across many
+// hours of real, cumulative test runs against this SAME persistent
+// database, a handful of specific products' real stock genuinely ran
+// down to 0 -- batch 11's own real stock-validation feature correctly
+// rejecting the order at that point, not a bug in that feature. Fixed
+// at the actual root cause (here) for the specific tests that place
+// real orders, rather than reseeding the database again each time this
+// recurs.
+async function pickInStockProduct(minQuantity = 5) {
+  const products = await fetchProducts();
+  const found = products.find((p) => p.stockQuantity >= minQuantity);
+  if (!found) throw new Error(`No real product with at least ${minQuantity} in stock -- reseed the database.`);
+  return found;
+}
+
 // The FIRST real test this app has ever had, against ANY backend
 // endpoint -- this app previously had zero test files and no test
 // script at all, unlike every other app in this monorepo. Starting
@@ -60,11 +77,11 @@ describe.runIf(backendUp)('web-storefront API client against a REAL running back
 
   it('a real cart genuinely persists an added item across two separate fetches', async () => {
     const cartId = `test-cart-${Date.now()}`;
-    const products = await fetchProducts();
-    await addCartItem(cartId, products[0].id, 2);
+    const product = await pickInStockProduct();
+    await addCartItem(cartId, product.id, 2);
     const cart = await fetchCart(cartId);
     expect(cart.items.length).toBe(1);
-    expect(cart.items[0].productId).toBe(products[0].id);
+    expect(cart.items[0].productId).toBe(product.id);
     expect(cart.items[0].quantity).toBe(2);
   });
 
@@ -95,11 +112,11 @@ describe.runIf(backendUp)('web-storefront API client against a REAL running back
     });
     const { token, user } = await signupRes.json();
 
-    const products = await fetchProducts();
+    const product = await pickInStockProduct();
     await fetch(`${BACKEND_URL}/order`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        items: [{ productId: products[0].id, quantity: 1 }], userId: user.id,
+        items: [{ productId: product.id, quantity: 1 }], userId: user.id,
         address: { recipientName: 'Test Buyer', phone: '555-0100', country: 'USA', city: 'Springfield', streetAddress: '123 Test St' },
       }),
     });
@@ -118,11 +135,11 @@ describe.runIf(backendUp)('web-storefront API client against a REAL running back
     });
     const { token, user } = await signupRes.json();
 
-    const products = await fetchProducts();
+    const product = await pickInStockProduct();
     const orderRes = await fetch(`${BACKEND_URL}/order`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        items: [{ productId: products[0].id, quantity: 2 }], userId: user.id,
+        items: [{ productId: product.id, quantity: 2 }], userId: user.id,
         address: { recipientName: 'Test Buyer', phone: '555-0100', country: 'USA', city: 'Springfield', streetAddress: '123 Test St' },
       }),
     });
@@ -143,11 +160,11 @@ describe.runIf(backendUp)('web-storefront API client against a REAL running back
     });
     const { user: owner } = await ownerSignup.json();
 
-    const products = await fetchProducts();
+    const product = await pickInStockProduct();
     const orderRes = await fetch(`${BACKEND_URL}/order`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        items: [{ productId: products[0].id, quantity: 1 }], userId: owner.id,
+        items: [{ productId: product.id, quantity: 1 }], userId: owner.id,
         address: { recipientName: 'Owner', phone: '555-0100', country: 'USA', city: 'Springfield', streetAddress: '123 Test St' },
       }),
     });
@@ -244,17 +261,17 @@ describe.runIf(backendUp)('web-storefront API client against a REAL running back
       body: JSON.stringify({ email: `storefront-unverified-review-test-${suffix}@example.com`, password: 'test_password_123' }),
     });
     const { token, user } = await signupRes.json();
-    const products = await fetchProducts();
+    const product = await pickInStockProduct();
 
     await fetch(`${BACKEND_URL}/order`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        items: [{ productId: products[0].id, quantity: 1 }], userId: user.id,
+        items: [{ productId: product.id, quantity: 1 }], userId: user.id,
         address: { recipientName: 'Test Buyer', phone: '555-0100', country: 'USA', city: 'Springfield', streetAddress: '123 Test St' },
       }),
     });
 
-    const result = await submitReview(token, { productId: products[0].id, rating: 4 });
+    const result = await submitReview(token, { productId: product.id, rating: 4 });
     expect(result.isVerifiedPurchase).toBe(false);
   });
 
@@ -386,12 +403,12 @@ describe.runIf(backendUp)('returns (guest + logged-in access) against a REAL run
   it('CRITICAL: a guest who files a return can check on it later with the real matching email, with no login at all', async () => {
     const suffix = Date.now();
     const guestEmail = `storefront-guest-return-${suffix}@example.com`;
-    const products = await fetchProducts();
+    const product = await pickInStockProduct();
 
     const orderRes = await fetch(`${BACKEND_URL}/order`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        items: [{ productId: products[0].id, quantity: 1 }], guestEmail,
+        items: [{ productId: product.id, quantity: 1 }], guestEmail,
         address: { recipientName: 'Guest Buyer', phone: '555-0100', country: 'USA', city: 'Springfield', streetAddress: '123 Test St' },
       }),
     });
@@ -418,12 +435,12 @@ describe.runIf(backendUp)('returns (guest + logged-in access) against a REAL run
   it('a guest supplying the WRONG email cannot access someone else\'s return case', async () => {
     const suffix = Date.now();
     const guestEmail = `storefront-guest-wrong-email-${suffix}@example.com`;
-    const products = await fetchProducts();
+    const product = await pickInStockProduct();
 
     const orderRes = await fetch(`${BACKEND_URL}/order`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        items: [{ productId: products[0].id, quantity: 1 }], guestEmail,
+        items: [{ productId: product.id, quantity: 1 }], guestEmail,
         address: { recipientName: 'Guest Buyer', phone: '555-0100', country: 'USA', city: 'Springfield', streetAddress: '123 Test St' },
       }),
     });
@@ -446,12 +463,12 @@ describe.runIf(backendUp)('returns (guest + logged-in access) against a REAL run
       body: JSON.stringify({ email: `storefront-buyer-return-${suffix}@example.com`, password: 'test_password_123' }),
     });
     const { token, user } = await signupRes.json();
-    const products = await fetchProducts();
+    const product = await pickInStockProduct();
 
     const orderRes = await fetch(`${BACKEND_URL}/order`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        items: [{ productId: products[0].id, quantity: 1 }], userId: user.id,
+        items: [{ productId: product.id, quantity: 1 }], userId: user.id,
         address: { recipientName: 'Test Buyer', phone: '555-0100', country: 'USA', city: 'Springfield', streetAddress: '123 Test St' },
       }),
     });
@@ -481,10 +498,10 @@ describe.runIf(backendUp)('checkout (account-aware, real saved addresses) agains
       body: JSON.stringify({ email: `storefront-checkout-test-${suffix}@example.com`, password: 'test_password_123' }),
     });
     const { token, user } = await signupRes.json();
-    const products = await fetchProducts();
+    const product = await pickInStockProduct();
 
     const order = await placeOrder(
-      [{ productId: products[0].id, quantity: 1 }],
+      [{ productId: product.id, quantity: 1 }],
       { userId: user.id },
       { address: { recipientName: 'Test Buyer', phone: '555-0100', country: 'USA', city: 'Springfield', streetAddress: '123 Test St' } }
     );
@@ -510,9 +527,9 @@ describe.runIf(backendUp)('checkout (account-aware, real saved addresses) agains
     });
     expect(savedAddress.isDefault).toBe(true); // the buyer's first real address is real-default by definition
 
-    const products = await fetchProducts();
+    const product = await pickInStockProduct();
     const order = await placeOrder(
-      [{ productId: products[0].id, quantity: 1 }],
+      [{ productId: product.id, quantity: 1 }],
       { userId: user.id },
       { addressId: savedAddress.id }
     );
@@ -525,10 +542,10 @@ describe.runIf(backendUp)('checkout (account-aware, real saved addresses) agains
   it('a real guest checkout still works exactly as before this fix (no regression)', async () => {
     const suffix = Date.now();
     const guestEmail = `storefront-guest-checkout-test-${suffix}@example.com`;
-    const products = await fetchProducts();
+    const product = await pickInStockProduct();
 
     const order = await placeOrder(
-      [{ productId: products[0].id, quantity: 1 }],
+      [{ productId: product.id, quantity: 1 }],
       { guestEmail },
       { address: { recipientName: 'Guest Buyer', phone: '555-0300', country: 'USA', city: 'Gotham', streetAddress: '789 Guest Ave' } }
     );

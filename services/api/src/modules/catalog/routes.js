@@ -197,7 +197,7 @@ function buildProductMatchQuery({ category, part, vehicleId, search, generationI
 
 router.get('/products', async (req, res, next) => {
   try {
-    const { category, part, vehicleId, search, sort, lang, generationId, year, minPrice, maxPrice } = req.query;
+    const { category, part, vehicleId, search, sort, lang, generationId, year, minPrice, maxPrice, page, limit } = req.query;
     const { sql: baseSql, params } = buildProductMatchQuery({ category, part, vehicleId, search, generationId, year });
     let sql = baseSql;
 
@@ -219,17 +219,14 @@ router.get('/products', async (req, res, next) => {
       return dto;
     }));
 
-    // Real price range filter + price sort (new) -- deliberately applied
+    // Real price range filter + price sort -- deliberately applied
     // HERE, in application code, after attachBuyerPrice runs, not as SQL
     // WHERE/ORDER BY clauses. Buyer-facing price is NOT a raw column: a
     // CNY-priced product's real buyer price is computed via the pricing
     // engine's currency conversion + fee calculation (see
     // attachBuyerPrice above), so `p.price` in the database is often the
     // supplier's own CNY cost, not what a buyer actually sees or should
-    // be filtered/sorted by. This endpoint has no pagination today (see
-    // this file's own header/README notes), so filtering and sorting in
-    // JS after the fact is correct at this catalog's current scale --
-    // revisit if real pagination is ever added.
+    // be filtered/sorted by.
     if (minPrice !== undefined) {
       const min = Number(minPrice);
       dtos = dtos.filter((d) => d.price >= min);
@@ -240,6 +237,31 @@ router.get('/products', async (req, res, next) => {
     }
     if (sort === 'price_asc') dtos.sort((a, b) => a.price - b.price);
     else if (sort === 'price_desc') dtos.sort((a, b) => b.price - a.price);
+
+    // Real pagination (new), deliberately opt-in and fully backward
+    // compatible: this endpoint previously had none at all (see the
+    // real gap this closes -- growing to 100+ real products this
+    // session alone made every existing caller fetch the ENTIRE
+    // catalog on every request). Applied as a FINAL slice, after the
+    // price filter/sort above -- pagination at the SQL level would
+    // paginate BEFORE that filtering, since buyer price isn't a raw
+    // column, giving genuinely wrong pages (e.g. page 1 could show
+    // fewer than the real page size if some of that page's raw rows
+    // get filtered out afterward). The real total count (after
+    // filtering, before slicing) is exposed via a response header
+    // rather than changing the response body's shape -- every
+    // existing caller (mobile, web-storefront's own non-paginated
+    // calls, admin dashboard) still gets back a bare array exactly as
+    // before when it doesn't ask for a page; only a caller that
+    // explicitly passes page/limit gets a real, correctly-sliced page.
+    const totalCount = dtos.length;
+    res.set('X-Total-Count', String(totalCount));
+    if (page !== undefined || limit !== undefined) {
+      const limitNum = Math.min(Math.max(Number(limit) || 24, 1), 100);
+      const pageNum = Math.max(Number(page) || 1, 1);
+      const start = (pageNum - 1) * limitNum;
+      dtos = dtos.slice(start, start + limitNum);
+    }
 
     res.json(dtos);
   } catch (err) {

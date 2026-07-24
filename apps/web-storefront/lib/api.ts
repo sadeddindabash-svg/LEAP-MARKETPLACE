@@ -117,6 +117,41 @@ export async function fetchProducts(params: {
   return data ?? [];
 }
 
+// Real pagination (new) -- a separate function from fetchProducts
+// above, deliberately: that one keeps returning a bare array for every
+// existing caller (home page, wishlist, etc.), completely unaffected.
+// This one is for /search specifically, which needs the real total
+// count too (to build real page-number controls) -- exposed by the
+// backend via a real X-Total-Count response header rather than a
+// different body shape (see services/api/README.md's own note on
+// this), so this needs its own real fetch to read response headers,
+// which apiGet's shared helper above doesn't expose.
+export async function fetchProductsPaginated(params: {
+  category?: string;
+  search?: string;
+  sort?: string;
+  generationId?: string;
+  year?: number;
+  page?: number;
+  limit?: number;
+} = {}): Promise<{ items: ProductSummary[]; total: number }> {
+  const query = new URLSearchParams();
+  if (params.category) query.set("category", params.category);
+  if (params.search) query.set("search", params.search);
+  if (params.sort) query.set("sort", params.sort);
+  if (params.generationId) query.set("generationId", params.generationId);
+  if (params.year) query.set("year", String(params.year));
+  query.set("page", String(params.page || 1));
+  query.set("limit", String(params.limit || 24));
+  const res = await fetch(`${API_BASE_URL}/catalog/products?${query.toString()}`, {
+    next: { revalidate: REVALIDATE_SECONDS },
+  });
+  if (!res.ok) return { items: [], total: 0 };
+  const items = (await res.json()) as ProductSummary[];
+  const total = Number(res.headers.get("X-Total-Count") || items.length);
+  return { items, total };
+}
+
 export async function fetchProductById(id: string): Promise<ProductDetail | null> {
   return apiGet<ProductDetail>(`/catalog/products/${id}`);
 }
