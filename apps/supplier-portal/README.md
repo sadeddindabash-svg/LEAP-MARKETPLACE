@@ -682,6 +682,19 @@ behavior (a false negative, a false positive, and a case where both
 happened to already agree) — 2/2 passing. Full regression: 76/76
 passing.
 
+## A second, real step toward splitting `App.jsx` (new)
+
+**Extracted the small, purely presentational UI primitives** used
+across almost every page — `PlateChip`, `Badge`, `KpiCard`, `Card`,
+`Th`, `Td`, plus the `STATUS_COLOR` map `Badge` depends on — into a
+new `src/components/ui.jsx`, matching this file's own documented
+target structure (`src/pages/` and `src/components/`) exactly, and
+the identical extraction already done for `apps/admin-dashboard` this
+session. No behavior change.
+
+**Verified**: full regression pass, 82/82 passing across all 16 test
+files, unchanged from before this extraction.
+
 ## Real first step toward splitting `App.jsx` (new)
 
 **A real, safe, incremental step** toward this file's own long-standing
