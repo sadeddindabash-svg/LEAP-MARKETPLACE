@@ -224,7 +224,7 @@ async function fitmentMutate(method, path, token, body) {
   return data;
 }
 
-export const createBrand = (token, name) => fitmentMutate("POST", "/fitment/brands", token, { name });
+export const createBrand = (token, name, nameAr, photoUrl) => fitmentMutate("POST", "/fitment/brands", token, { name, nameAr, photoUrl });
 export const deleteBrand = (token, id) => fitmentMutate("DELETE", `/fitment/brands/${id}`, token);
 export const createModel = (token, brandId, name) => fitmentMutate("POST", `/fitment/brands/${brandId}/models`, token, { name });
 export const deleteModel = (token, id) => fitmentMutate("DELETE", `/fitment/models/${id}`, token);
@@ -310,16 +310,35 @@ export async function fetchCategories() {
   return response.json();
 }
 
-export async function createCategory(token, id, nameEn, nameAr, sortOrder) {
+export async function createCategory(token, id, nameEn, nameAr, photoUrl, sortOrder) {
   const response = await fetch(`${API_BASE_URL}/catalog/categories`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ id, nameEn, nameAr, sortOrder }),
+    body: JSON.stringify({ id, nameEn, nameAr, photoUrl, sortOrder }),
   });
   if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
   return data;
+}
+
+// Real image upload (new) -- reuses the same shared, general-purpose
+// POST /uploads/product-image endpoint suppliers/hub staff/buyers
+// already use (now also admin, migration 046's own comment on the
+// backend side), since the actual work (validate, save, return a URL)
+// is identical regardless of what the photo is evidence of.
+export async function uploadImage(token, file) {
+  const formData = new FormData();
+  formData.append("image", file);
+  const response = await fetch(`${API_BASE_URL}/uploads/product-image`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Upload failed (${response.status})`);
+  return data; // { url, width, height, storage }
 }
 
 export async function deleteCategory(token, id) {

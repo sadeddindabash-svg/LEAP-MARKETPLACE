@@ -20,9 +20,12 @@ function mockFetchRouter({ categories = MOCK_CATEGORIES, parts = MOCK_PARTS } = 
     }
     if (method === 'POST' && u.endsWith('/catalog/categories')) {
       const b = JSON.parse(options.body);
-      const newCat = { id: b.id, nameEn: b.nameEn, nameAr: b.nameAr, sortOrder: b.sortOrder };
+      const newCat = { id: b.id, nameEn: b.nameEn, nameAr: b.nameAr, photoUrl: b.photoUrl, sortOrder: b.sortOrder };
       cats = [...cats, newCat];
       return Promise.resolve({ ok: true, status: 201, json: async () => newCat });
+    }
+    if (method === 'POST' && u.endsWith('/uploads/product-image')) {
+      return Promise.resolve({ ok: true, status: 201, json: async () => ({ url: '/uploads/fake-category-photo.jpg', width: 1000, height: 1000, storage: 'local' }) });
     }
     if (u.endsWith('/catalog/categories')) return Promise.resolve({ ok: true, json: async () => cats });
     if (method === 'POST' && u.match(/\/catalog\/categories\/.+\/parts$/)) {
@@ -58,7 +61,7 @@ describe('Categories page — real category/part reference management (mocked fe
     await waitFor(() => expect(screen.getByText('Brake System')).toBeInTheDocument());
   });
 
-  it('adding a new category calls the real create endpoint and shows it immediately', async () => {
+  it('adding a new category calls the real create endpoint (with its now-required Arabic name and photo) and shows it immediately', async () => {
     globalThis.fetch = mockFetchRouter();
     render(<LeapAdminApp />);
     await loginAndGoToCategories();
@@ -66,6 +69,12 @@ describe('Categories page — real category/part reference management (mocked fe
     await waitFor(() => screen.getByPlaceholderText(/id \(e\.g\./i));
     fireEvent.change(screen.getByPlaceholderText(/id \(e\.g\./i), { target: { value: 'tires' } });
     fireEvent.change(screen.getByPlaceholderText(/^english name$/i), { target: { value: 'Tires' } });
+    fireEvent.change(screen.getByPlaceholderText(/arabic name/i), { target: { value: 'إطارات' } });
+
+    const file = new File(['fake-image-content'], 'category.jpg', { type: 'image/jpeg' });
+    const fileInput = document.querySelector('input[type="file"]');
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
     fireEvent.click(screen.getByRole('button', { name: /add category/i }));
 
     await waitFor(() => expect(screen.getByText('Tires')).toBeInTheDocument());

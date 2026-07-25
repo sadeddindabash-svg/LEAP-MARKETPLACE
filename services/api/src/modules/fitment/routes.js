@@ -50,7 +50,10 @@ router.get('/vehicles', async (req, res, next) => {
 router.get('/brands', async (req, res, next) => {
   try {
     const { rows } = await db.query('SELECT * FROM vehicle_brands ORDER BY name');
-    res.json(rows.map((r) => ({ id: r.id, name: r.name })));
+    // nameAr/photoUrl (new, migration 046) -- may be null for a brand
+    // created before this requirement existed; a real, honest gap for
+    // old data, not hidden.
+    res.json(rows.map((r) => ({ id: r.id, name: r.name, nameAr: r.name_ar, photoUrl: r.photo_url })));
   } catch (err) {
     next(err);
   }
@@ -122,11 +125,18 @@ function isUniqueViolation(err) {
 // POST /fitment/brands  { name }
 router.post('/brands', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
-    const { name } = req.body || {};
+    const { name, nameAr, photoUrl } = req.body || {};
     if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' });
+    // Required going forward (new, migration 046) -- an explicit real
+    // requirement, not just an optional nicety like categories' own
+    // Arabic name still is. DB column stays nullable so this doesn't
+    // retroactively break brands created before this requirement
+    // existed.
+    if (!nameAr || !nameAr.trim()) return res.status(400).json({ error: 'nameAr is required' });
+    if (!photoUrl || !photoUrl.trim()) return res.status(400).json({ error: 'photoUrl is required' });
     const id = `brand_${Date.now()}`;
-    await db.query('INSERT INTO vehicle_brands (id, name) VALUES ($1, $2)', [id, name.trim()]);
-    res.status(201).json({ id, name: name.trim() });
+    await db.query('INSERT INTO vehicle_brands (id, name, name_ar, photo_url) VALUES ($1, $2, $3, $4)', [id, name.trim(), nameAr.trim(), photoUrl.trim()]);
+    res.status(201).json({ id, name: name.trim(), nameAr: nameAr.trim(), photoUrl: photoUrl.trim() });
   } catch (err) {
     if (isUniqueViolation(err)) return res.status(409).json({ error: `A brand named "${req.body.name}" already exists` });
     next(err);

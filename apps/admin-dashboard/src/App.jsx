@@ -9,7 +9,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchHubLocations, createHubLocation, deleteHubLocation, assignHubToSubOrder,
   fetchFeeComponents, createFeeComponent, updateFeeComponent, deleteFeeComponent, moveFeeComponent, fetchFxRate, updateFxRate, fetchFxRateMode, updateFxRateMode, previewPricing,
   fetchFlaggedShipments,
-  fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart,
+  fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart, uploadImage,
   fetchSupplierMessagesInbox, fetchSupplierMessageThread, sendSupplierMessage,
   fetchPromoCodes, createPromoCode, updatePromoCode, deletePromoCode,
   fetchAdminUsers, createAdminUser, updateAdminPermissions, deleteAdminUser,
@@ -27,7 +27,7 @@ import {
   Search, Bell, ChevronDown, ChevronUp, ChevronRight, TrendingUp, TrendingDown, Truck, Plus,
   CheckCircle2, XCircle, Clock, AlertTriangle, MoreHorizontal, ArrowUpRight,
   Filter as FilterIcon, Download, Check, X, MessageSquare, Star, Globe, Users,
-  CreditCard, ExternalLink, ChevronLeft, RotateCcw, Warehouse, Calculator, Layers, Send, Tag
+  CreditCard, ExternalLink, ChevronLeft, RotateCcw, Warehouse, Calculator, Layers, Send, Tag, ImagePlus
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -1473,6 +1473,14 @@ function VehicleDataPage({ onSessionExpired }) {
   const [newYearStart, setNewYearStart] = useState("");
   const [newYearEnd, setNewYearEnd] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Real, required bilingual name + photo for a new brand (new) --
+  // only relevant at the top-level "Brands" view; Model/Generation/
+  // Engine/Transmission still use the simpler shared newName/addRow
+  // below, unchanged.
+  const [newBrandNameAr, setNewBrandNameAr] = useState("");
+  const [newBrandPhotoFile, setNewBrandPhotoFile] = useState(null);
+  const [newBrandPhotoPreview, setNewBrandPhotoPreview] = useState(null);
+  const [isUploadingBrandPhoto, setIsUploadingBrandPhoto] = useState(false);
 
   const loadBrands = () => {
     setLoadState("loading");
@@ -1505,13 +1513,25 @@ function VehicleDataPage({ onSessionExpired }) {
   const handleAdd = async (kind) => {
     if (!newName.trim()) { setErrorMessage("Name is required."); return; }
     if (kind === "generation" && !newYearStart) { setErrorMessage("Start year is required."); return; }
+    if (kind === "brand") {
+      if (!newBrandNameAr.trim()) { setErrorMessage("Arabic name is required."); return; }
+      if (!newBrandPhotoFile) { setErrorMessage("A photo is required."); return; }
+    }
     setIsSubmitting(true);
     setErrorMessage(null);
     try {
       const token = getStoredToken();
       if (kind === "brand") {
-        await createBrand(token, newName.trim());
+        // Real, required photo upload (new) -- happens first so a real
+        // upload failure (bad file, network) is caught before the
+        // brand itself is created, rather than creating a brand with
+        // no photo and no way to add one after the fact from this form.
+        setIsUploadingBrandPhoto(true);
+        const uploadResult = await uploadImage(token, newBrandPhotoFile);
+        setIsUploadingBrandPhoto(false);
+        await createBrand(token, newName.trim(), newBrandNameAr.trim(), uploadResult.url);
         loadBrands();
+        setNewBrandNameAr(""); setNewBrandPhotoFile(null); setNewBrandPhotoPreview(null);
       } else if (kind === "model") {
         await createModel(token, selectedBrand.id, newName.trim());
         openBrand(selectedBrand);
@@ -1531,6 +1551,7 @@ function VehicleDataPage({ onSessionExpired }) {
       setErrorMessage(err.message);
     } finally {
       setIsSubmitting(false);
+      setIsUploadingBrandPhoto(false);
     }
   };
 
@@ -1565,6 +1586,13 @@ function VehicleDataPage({ onSessionExpired }) {
       </>}
     </div>
   );
+
+  const handleBrandPhotoSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setNewBrandPhotoFile(file);
+    setNewBrandPhotoPreview(URL.createObjectURL(file));
+  };
 
   const addRow = (kind, placeholder, showYears) => (
     <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
@@ -1610,9 +1638,43 @@ function VehicleDataPage({ onSessionExpired }) {
 
             {!selectedBrand && (
               <>
-                {addRow("brand", "New brand name (e.g. Nissan)", false)}
+                {/* Real, dedicated Add Brand form (new) -- required
+                    bilingual name (English/Arabic) and a required
+                    photo, unlike the simpler shared addRow() used
+                    below for Model/Generation/Engine/Transmission. */}
+                <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+                  <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="English name (e.g. Nissan)" style={{ ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+                  <input value={newBrandNameAr} onChange={(e) => setNewBrandNameAr(e.target.value)} placeholder="Arabic name (required)" dir="rtl" style={{ ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+                  <label style={{ ...body, display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", color: newBrandPhotoFile ? C.gauge : C.muted }}>
+                    <ImagePlus size={14} />
+                    {newBrandPhotoFile ? "Photo selected" : "Choose photo (required)"}
+                    <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleBrandPhotoSelect} style={{ display: "none" }} />
+                  </label>
+                  {newBrandPhotoPreview && <img src={newBrandPhotoPreview} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
+                  <button disabled={isSubmitting} onClick={() => handleAdd("brand")} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
+                    <Check size={13} /> {isUploadingBrandPhoto ? "Uploading…" : "Add"}
+                  </button>
+                </div>
                 {brands.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No brands yet.</div>}
-                {brands.map((b) => listRow(b.name, null, () => openBrand(b), () => handleDelete("brand", b.id)))}
+                {brands.map((b) => (
+                  <div key={b.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderBottom: `1px solid ${C.line}` }}>
+                    <div onClick={() => openBrand(b)} style={{ cursor: "pointer", flex: 1, display: "flex", alignItems: "center", gap: 10 }}>
+                      {b.photoUrl ? (
+                        <img src={b.photoUrl.startsWith("http") ? b.photoUrl : `${API_BASE_URL}${b.photoUrl}`} alt="" style={{ width: 28, height: 28, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
+                      ) : (
+                        <div style={{ width: 28, height: 28, borderRadius: 6, background: C.canvas, flexShrink: 0 }} />
+                      )}
+                      <div>
+                        <span style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>{b.name}</span>
+                        {b.nameAr && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }} dir="rtl">{b.nameAr}</span>}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <ChevronRight size={14} color={C.muted} onClick={() => openBrand(b)} style={{ cursor: "pointer" }} />
+                      <button onClick={() => handleDelete("brand", b.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={14} color={C.red} /></button>
+                    </div>
+                  </div>
+                ))}
               </>
             )}
 
@@ -2330,6 +2392,9 @@ function CategoriesPage({ onSessionExpired }) {
   const [newCatId, setNewCatId] = useState("");
   const [newCatNameEn, setNewCatNameEn] = useState("");
   const [newCatNameAr, setNewCatNameAr] = useState("");
+  const [newCatPhotoFile, setNewCatPhotoFile] = useState(null);
+  const [newCatPhotoPreview, setNewCatPhotoPreview] = useState(null);
+  const [isUploadingCatPhoto, setIsUploadingCatPhoto] = useState(false);
   const [isSubmittingCat, setIsSubmittingCat] = useState(false);
 
   const loadCategories = () => {
@@ -2343,18 +2408,36 @@ function CategoriesPage({ onSessionExpired }) {
       setErrorMessage("A real id (e.g. \"tires\") and an English name are required.");
       return;
     }
+    // Both now required (new) -- nameAr was optional before this.
+    if (!newCatNameAr.trim()) { setErrorMessage("An Arabic name is required."); return; }
+    if (!newCatPhotoFile) { setErrorMessage("A photo is required."); return; }
     setIsSubmittingCat(true);
     setErrorMessage(null);
     try {
-      await createCategory(getStoredToken(), newCatId.trim(), newCatNameEn.trim(), newCatNameAr.trim() || undefined, categories.length * 10 + 10);
-      setNewCatId(""); setNewCatNameEn(""); setNewCatNameAr("");
+      const token = getStoredToken();
+      // Real, required photo upload (new) -- happens first so a real
+      // upload failure is caught before the category itself is
+      // created, same reasoning as the Add Brand form above.
+      setIsUploadingCatPhoto(true);
+      const uploadResult = await uploadImage(token, newCatPhotoFile);
+      setIsUploadingCatPhoto(false);
+      await createCategory(token, newCatId.trim(), newCatNameEn.trim(), newCatNameAr.trim(), uploadResult.url, categories.length * 10 + 10);
+      setNewCatId(""); setNewCatNameEn(""); setNewCatNameAr(""); setNewCatPhotoFile(null); setNewCatPhotoPreview(null);
       loadCategories();
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
       setErrorMessage(err.message);
     } finally {
       setIsSubmittingCat(false);
+      setIsUploadingCatPhoto(false);
     }
+  };
+
+  const handleCatPhotoSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setNewCatPhotoFile(file);
+    setNewCatPhotoPreview(URL.createObjectURL(file));
   };
 
   const handleDeleteCategory = async (id) => {
@@ -2385,12 +2468,18 @@ function CategoriesPage({ onSessionExpired }) {
           <div style={{ padding: 18 }}>
             {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 14 }}>{errorMessage}</div>}
 
-            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
               <input value={newCatId} onChange={(e) => setNewCatId(e.target.value)} placeholder="id (e.g. tires)" style={{ ...body, flex: 1, minWidth: 120, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
               <input value={newCatNameEn} onChange={(e) => setNewCatNameEn(e.target.value)} placeholder="English name" style={{ ...body, flex: 1, minWidth: 140, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
-              <input value={newCatNameAr} onChange={(e) => setNewCatNameAr(e.target.value)} placeholder="Arabic name (optional)" dir="rtl" style={{ ...body, flex: 1, minWidth: 140, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <input value={newCatNameAr} onChange={(e) => setNewCatNameAr(e.target.value)} placeholder="Arabic name (required)" dir="rtl" style={{ ...body, flex: 1, minWidth: 140, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <label style={{ ...body, display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", color: newCatPhotoFile ? C.gauge : C.muted }}>
+                <ImagePlus size={14} />
+                {newCatPhotoFile ? "Photo selected" : "Choose photo (required)"}
+                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleCatPhotoSelect} style={{ display: "none" }} />
+              </label>
+              {newCatPhotoPreview && <img src={newCatPhotoPreview} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
               <button disabled={isSubmittingCat} onClick={handleAddCategory} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmittingCat ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSubmittingCat ? "default" : "pointer" }}>
-                <Check size={13} /> Add category
+                <Check size={13} /> {isUploadingCatPhoto ? "Uploading…" : "Add category"}
               </button>
             </div>
 
@@ -2398,9 +2487,16 @@ function CategoriesPage({ onSessionExpired }) {
             {loadState === "ready" && categories.map((c, i) => (
               <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 4px", borderBottom: i < categories.length - 1 ? `1px solid ${C.line}` : "none", cursor: "pointer" }}
                 onClick={() => setOpenCategory(c)}>
-                <div>
-                  <div style={{ ...body, fontSize: 13.5, fontWeight: 700, color: C.ink }}>{c.nameEn}</div>
-                  {c.nameAr && <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2 }} dir="rtl">{c.nameAr}</div>}
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  {c.photoUrl ? (
+                    <img src={c.photoUrl.startsWith("http") ? c.photoUrl : `${API_BASE_URL}${c.photoUrl}`} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
+                  ) : (
+                    <div style={{ width: 32, height: 32, borderRadius: 6, background: C.canvas, flexShrink: 0 }} />
+                  )}
+                  <div>
+                    <div style={{ ...body, fontSize: 13.5, fontWeight: 700, color: C.ink }}>{c.nameEn}</div>
+                    {c.nameAr && <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2 }} dir="rtl">{c.nameAr}</div>}
+                  </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <span style={{ ...body, fontSize: 11.5, color: C.muted }}>{c.id}</span>

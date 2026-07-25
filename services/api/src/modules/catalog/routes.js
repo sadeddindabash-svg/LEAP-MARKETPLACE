@@ -492,7 +492,7 @@ router.post('/products/bulk-moderate', requireAuth, requireRole('admin'), requir
 // ============================================================
 
 function toCategoryDto(row) {
-  return { id: row.id, nameEn: row.name_en, nameAr: row.name_ar, sortOrder: row.sort_order, commissionPercent: Number(row.commission_percent) };
+  return { id: row.id, nameEn: row.name_en, nameAr: row.name_ar, photoUrl: row.photo_url, sortOrder: row.sort_order, commissionPercent: Number(row.commission_percent) };
 }
 function toPartDto(row) {
   return { id: row.id, categoryId: row.category_id, nameEn: row.name_en, nameAr: row.name_ar, sortOrder: row.sort_order };
@@ -532,11 +532,17 @@ router.patch('/categories/:id/commission', requireAuth, requireRole('admin'), re
 
 router.post('/categories', requireAuth, requireRole('admin'), requirePageAccess('categories'), async (req, res, next) => {
   try {
-    const { id, nameEn, nameAr, sortOrder } = req.body || {};
+    const { id, nameEn, nameAr, photoUrl, sortOrder } = req.body || {};
     if (!id || !nameEn) return res.status(400).json({ error: 'id and nameEn are required' });
+    // nameAr and photoUrl are now BOTH required (new) -- an explicit
+    // real requirement; nameAr was optional before this. DB columns
+    // stay nullable so this doesn't retroactively break categories
+    // created before this requirement existed.
+    if (!nameAr || !nameAr.trim()) return res.status(400).json({ error: 'nameAr is required' });
+    if (!photoUrl || !photoUrl.trim()) return res.status(400).json({ error: 'photoUrl is required' });
     await db.query(
-      'INSERT INTO product_categories (id, name_en, name_ar, sort_order) VALUES ($1, $2, $3, $4)',
-      [id, nameEn, nameAr || null, sortOrder ?? 0]
+      'INSERT INTO product_categories (id, name_en, name_ar, photo_url, sort_order) VALUES ($1, $2, $3, $4, $5)',
+      [id, nameEn, nameAr.trim(), photoUrl.trim(), sortOrder ?? 0]
     );
     const { rows } = await db.query('SELECT * FROM product_categories WHERE id = $1', [id]);
     res.status(201).json(toCategoryDto(rows[0]));

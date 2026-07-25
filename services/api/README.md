@@ -2298,6 +2298,29 @@ by name, matched multiple real orders by ID prefix (correctly capped
 at 5), confirmed a too-short query returns empty without erroring, and
 confirmed an unauthenticated request is rejected (401).
 
+## Real bilingual name + photo, required for brands and categories (new, migration 046)
+
+**An explicit, requested requirement**: `POST /fitment/brands` now
+requires `name` (English) + `nameAr` + `photoUrl`. `POST /catalog/
+categories` now requires `nameAr` (was optional before) + `photoUrl`
+(new). DB columns (`vehicle_brands.name_ar`/`photo_url`,
+`product_categories.photo_url`) are nullable — existing rows created
+before this requirement existed aren't retroactively broken; the
+requirement is enforced at the API layer on creation, not a DB
+constraint.
+
+`POST /uploads/product-image` now also allows the `admin` role (was
+supplier/hub_staff/buyer only) — the actual upload logic (validate
+dimensions/type, save, return a URL) is unchanged and identical
+regardless of what the photo is evidence of.
+
+**Verified against the real running backend**: confirmed brand/
+category creation is rejected when missing the Arabic name or the
+photo, and succeeds with all required fields present; confirmed an
+admin can upload a real image via the shared endpoint; confirmed
+suppliers can still upload their own product photos exactly as before
+(adding a role is purely additive).
+
 ## Real promo code usage counts (new)
 
 **A real, confirmed gap**: the real `promo_code_redemptions` table

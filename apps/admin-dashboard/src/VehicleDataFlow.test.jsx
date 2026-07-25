@@ -21,9 +21,12 @@ function mockFetchRouter() {
     }
     if (method === 'POST' && u.endsWith('/fitment/brands')) {
       const body = JSON.parse(options.body);
-      const newBrand = { id: 'brand_new', name: body.name };
+      const newBrand = { id: 'brand_new', name: body.name, nameAr: body.nameAr, photoUrl: body.photoUrl };
       brands = [...brands, newBrand];
       return Promise.resolve({ ok: true, status: 201, json: async () => newBrand });
+    }
+    if (method === 'POST' && u.endsWith('/uploads/product-image')) {
+      return Promise.resolve({ ok: true, status: 201, json: async () => ({ url: '/uploads/fake-brand-photo.jpg', width: 1000, height: 1000, storage: 'local' }) });
     }
     if (u.endsWith('/fitment/brands')) return Promise.resolve({ ok: true, json: async () => brands });
     if (u.match(/\/fitment\/brands\/brand_bmw\/models$/)) return Promise.resolve({ ok: true, json: async () => modelsByBrand.brand_bmw });
@@ -79,13 +82,19 @@ describe('Vehicle Data page — real fitment cascade management (mocked fetch, r
     await waitFor(() => expect(screen.queryByText('1 Series')).not.toBeInTheDocument());
   });
 
-  it('adding a new brand calls the real create endpoint and shows it in the list', async () => {
+  it('adding a new brand calls the real create endpoint (with its now-required Arabic name and photo) and shows it in the list', async () => {
     globalThis.fetch = mockFetchRouter();
     render(<LeapAdminApp />);
     await loginAndGoToVehicleData();
 
-    await waitFor(() => screen.getByPlaceholderText(/new brand name/i));
-    fireEvent.change(screen.getByPlaceholderText(/new brand name/i), { target: { value: 'Nissan' } });
+    await waitFor(() => screen.getByPlaceholderText(/english name/i));
+    fireEvent.change(screen.getByPlaceholderText(/english name/i), { target: { value: 'Nissan' } });
+    fireEvent.change(screen.getByPlaceholderText(/arabic name/i), { target: { value: 'نيسان' } });
+
+    const file = new File(['fake-image-content'], 'brand.jpg', { type: 'image/jpeg' });
+    const fileInput = document.querySelector('input[type="file"]');
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
     fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
 
     await waitFor(() => expect(screen.getByText('Nissan')).toBeInTheDocument());

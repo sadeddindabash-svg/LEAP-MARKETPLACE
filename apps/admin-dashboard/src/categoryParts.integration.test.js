@@ -105,7 +105,7 @@ describe.runIf(backendUp)('category + parts reference system against a REAL runn
     const uniqueId = `test_cat_${Date.now()}`;
     const createRes = await fetch(`${BACKEND_URL}/catalog/categories`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-      body: JSON.stringify({ id: uniqueId, nameEn: 'Test Category', nameAr: 'فئة اختبار' }),
+      body: JSON.stringify({ id: uniqueId, nameEn: 'Test Category', nameAr: 'فئة اختبار', photoUrl: '/uploads/fake-test-photo.jpg' }),
     });
     expect(createRes.status).toBe(201);
 
@@ -143,7 +143,7 @@ describe.runIf(backendUp)('category + parts reference system against a REAL runn
     const uniqueId = `test_cat_parts_${Date.now()}`;
     await fetch(`${BACKEND_URL}/catalog/categories`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-      body: JSON.stringify({ id: uniqueId, nameEn: 'Test Category With Parts' }),
+      body: JSON.stringify({ id: uniqueId, nameEn: 'Test Category With Parts', nameAr: 'فئة تحتوي على أجزاء', photoUrl: '/uploads/fake-test-photo-2.jpg' }),
     });
     await fetch(`${BACKEND_URL}/catalog/categories/${uniqueId}/parts`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },

@@ -46,12 +46,13 @@ const upload = multer({
 });
 
 // POST /uploads/product-image  (multipart/form-data, field name "image")
-// Also used by hub staff for shipment-inspection evidence photos, and
-// by buyers for real review photos (migration 031) — not just supplier
-// product photos. The actual work here (validate dimensions/type,
-// save, return a URL) is identical regardless of which real-world
-// thing the photo is evidence of.
-router.post('/product-image', requireAuth, requireRole('supplier', 'hub_staff', 'buyer'), (req, res, next) => {
+// Also used by hub staff for shipment-inspection evidence photos, by
+// buyers for real review photos (migration 031), and by admins for
+// real vehicle-brand and product-category photos (migration 046) --
+// not just supplier product photos. The actual work here (validate
+// dimensions/type, save, return a URL) is identical regardless of
+// which real-world thing the photo is evidence of.
+router.post('/product-image', requireAuth, requireRole('supplier', 'hub_staff', 'buyer', 'admin'), (req, res, next) => {
   upload.single('image')(req, res, async (err) => {
     if (err) return res.status(400).json({ error: err.message });
     if (!req.file) return res.status(400).json({ error: 'No image file provided (expected field name "image")' });

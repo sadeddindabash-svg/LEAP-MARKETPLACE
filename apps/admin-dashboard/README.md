@@ -1628,6 +1628,40 @@ Full regression across Overview/Suppliers/Hubs/Returns: 18/19 passing
 flakiness confirmed multiple times earlier this session — passes
 cleanly in complete isolation, unrelated to this feature).
 
+## Real bilingual name + photo, required for brands and categories (new)
+
+**An explicit, requested requirement**: adding a vehicle brand now
+requires an English name, a required Arabic name, and a required
+photo; adding a product category now requires the same (its English/
+Arabic names already existed — Arabic was optional before this, now
+required — the photo is new).
+
+- **Add Brand form** (Vehicle Data page): English name input, required
+  Arabic name input (RTL), required photo picker with a live preview,
+  wired to the real shared upload endpoint. The Brands list now shows
+  each brand's real photo thumbnail.
+- **Add Category form**: same treatment — a required photo picker
+  added alongside the existing English/Arabic name fields, which are
+  both required. The Categories list shows each category's real photo
+  thumbnail.
+- **The shared image-upload endpoint** (`POST /uploads/product-image`)
+  now also allows the `admin` role — it previously only allowed
+  supplier/hub_staff/buyer. The actual upload logic is unchanged and
+  identical regardless of what the photo is evidence of.
+- DB columns are nullable (existing brands/categories created before
+  this requirement existed aren't retroactively broken) — the
+  requirement is enforced at the API layer on creation, not a DB
+  constraint.
+
+**Verified against the real running backend**: confirmed a brand
+creation is rejected when missing the Arabic name, rejected when
+missing the photo, and succeeds with all three; confirmed the same
+for categories; confirmed an admin can now upload a real image via the
+shared endpoint, and confirmed suppliers can still upload their own
+product photos exactly as before (adding a role is purely additive).
+Real component tests updated to reflect the new requirement (filling
+in Arabic name and simulating a real file selection) — all passing.
+
 ## Real promo code usage counts (new)
 
 **A real, confirmed gap**: the real `promo_code_redemptions` table
