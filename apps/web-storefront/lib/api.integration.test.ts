@@ -24,10 +24,19 @@ const backendUp = await isBackendUp();
 // at the actual root cause (here) for the specific tests that place
 // real orders, rather than reseeding the database again each time this
 // recurs.
-async function pickInStockProduct(minQuantity = 5) {
+// REAL BUG FOUND AND FIXED HERE (same class as the earlier stock-
+// fragility fix): a real product with sufficient stock but a genuinely
+// low price (e.g. $6.90) could be picked for a test expecting an exact
+// $10 flat-discount difference -- the backend correctly caps a flat
+// discount at the order's own subtotal (a real order can't go
+// negative), so the test's own exact-equality assertion would fail
+// through no fault of the discount logic itself. minPrice is optional
+// so every other existing call site (which doesn't care about price)
+// is unaffected.
+async function pickInStockProduct(minQuantity = 5, minPrice = 0) {
   const products = await fetchProducts();
-  const found = products.find((p) => p.stockQuantity >= minQuantity);
-  if (!found) throw new Error(`No real product with at least ${minQuantity} in stock -- reseed the database.`);
+  const found = products.find((p) => p.stockQuantity >= minQuantity && p.price >= minPrice);
+  if (!found) throw new Error(`No real product with at least ${minQuantity} in stock and price >= ${minPrice} -- reseed the database.`);
   return found;
 }
 
@@ -678,7 +687,7 @@ describe.runIf(backendUp)('promo codes at checkout against a REAL running backen
     const validation = await validatePromoCode(code);
     expect(validation.valid).toBe(true);
 
-    const product = await pickInStockProduct();
+    const product = await pickInStockProduct(5, 20);
     const guestEmail = `promo-checkout-test-${Date.now()}@example.com`;
 
     const orderWithout = await placeOrder([{ productId: product.id, quantity: 1 }], { guestEmail: `${guestEmail}-a` }, { address: { recipientName: 'Test', phone: '555-0000', country: 'USA', city: 'Test City', streetAddress: '1 Test St' } });

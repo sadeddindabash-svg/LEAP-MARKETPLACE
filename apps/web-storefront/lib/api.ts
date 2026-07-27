@@ -45,6 +45,10 @@ export interface ProductCategory {
   id: string;
   nameEn: string;
   nameAr: string;
+  // Real category photo (new) -- the backend has supported this since
+  // migration 046 (categories now require a real photo on creation),
+  // but nothing on this storefront ever fetched or displayed it.
+  photoUrl: string | null;
   sortOrder: number;
   commissionPercent: number;
 }

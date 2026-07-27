@@ -45,9 +45,27 @@ export default async function HomePage() {
               <Link
                 key={c.id}
                 href={`/search?category=${encodeURIComponent(c.id)}`}
-                className="rounded-lg border border-line bg-white px-4 py-5 text-center hover:border-ink transition-colors"
+                className="rounded-lg border border-line bg-white overflow-hidden text-center hover:border-ink transition-colors"
               >
-                <span className="font-medium text-sm">{c.nameEn}</span>
+                {/* Real category photo (new) -- the backend has
+                    required a real photo on every category since
+                    migration 046, but this page never fetched or
+                    displayed it, showing a plain text button instead. */}
+                <div className="aspect-square bg-chalk relative overflow-hidden">
+                  {c.photoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- see this file's own comment above on why next/image isn't used yet
+                    <img
+                      src={resolveImageUrl(c.photoUrl)}
+                      alt={c.nameEn}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-muted text-xs">
+                      No photo
+                    </div>
+                  )}
+                </div>
+                <span className="block px-3 py-3 font-medium text-sm">{c.nameEn}</span>
               </Link>
             ))}
           </div>

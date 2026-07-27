@@ -511,6 +511,35 @@ difference in their real, server-computed totals is exactly the real
 discount amount, not a client-side guess. Zero TypeScript errors. Full
 suite: 38/38 passing.
 
+## Real category photos on the home page (new)
+
+**A real, confirmed gap, found by following up on the recent brand/
+category work**: the backend has required a real photo on every
+category since migration 046, but the home page's "Shop by category"
+section never fetched or displayed it — plain text buttons only.
+
+- **`ProductCategory` interface** extended with `photoUrl`.
+- Each category card now shows its real photo (via the same
+  `resolveImageUrl` helper product images already use), with an
+  honest "No photo" fallback for a category that doesn't have one
+  (e.g., one created before this requirement existed).
+
+**Verified against the real running backend AND the real rendered
+page**: confirmed real category photo URLs genuinely appear in the
+actual rendered HTML (via the real dev server, not just the API
+response in isolation), and confirmed the "No photo" fallback
+correctly renders for categories without one.
+
+**Also fixed, found while doing this work, unrelated to it**: a real
+test-fragility bug in the promo code test from batch 36 —
+`pickInStockProduct()` could pick a real product priced under a flat
+$10 discount (a real $6.90 product exists), and the backend correctly
+caps a flat discount at the order's own subtotal (an order can't go
+negative) — not a bug in the discount logic, just an exact-equality
+test assertion that wasn't robust to which product got picked.
+`pickInStockProduct()` now takes an optional `minPrice`, used by that
+one test. Zero TypeScript errors. Full suite: 38/38 passing.
+
 ## Real out-of-stock indicator on the wishlist page (new)
 
 **A real, confirmed gap, found while following up on the new
