@@ -1628,27 +1628,34 @@ Full regression across Overview/Suppliers/Hubs/Returns: 18/19 passing
 flakiness confirmed multiple times earlier this session — passes
 cleanly in complete isolation, unrelated to this feature).
 
-## Real audit coverage for catalog/fitment management and product-listing moderation (new)
+## Real audit coverage for catalog/fitment, product moderation, promo codes, and fee components (new)
 
 **A real, significant gap, found by checking this feature's own stated
-scope against what it actually covers**: the audit log's own
-description already claimed "review moderation" as covered — but that
-turned out to mean buyer REVIEW moderation (`reviews.js`), a different,
-real system. PRODUCT LISTING moderation (approve/reject a supplier's
-new product before it goes live) was completely unlogged, and so was
-essentially all vehicle reference-data management — creating or
-deleting a brand, model, generation, engine, transmission, category, or
-part.
+scope against what it actually covers** — this turned into two
+passes. First pass: the audit log's own description already claimed
+"review moderation" as covered, but that turned out to mean buyer
+REVIEW moderation (`reviews.js`), a different, real system. PRODUCT
+LISTING moderation (approve/reject a supplier's new product before it
+goes live) was completely unlogged, and so was essentially all vehicle
+reference-data management. Second pass (re-checking the remaining
+claimed categories systematically, one by one): "promo codes" only
+covered CREATION, not activating/deactivating or deleting one; "pricing/
+settings changes" was missing fee-component management entirely —
+create, update, delete, and reorder — arguably more consequential than
+the FX rate changes that were already logged, since fee components
+directly determine the platform's real commission on every sale.
 
-- **10 new real action types**: `brand_created`/`brand_deleted`,
-  `model_created`/`model_deleted`, `generation_created`/
+- **10 catalog/fitment/moderation action types**: `brand_created`/
+  `brand_deleted`, `model_created`/`model_deleted`, `generation_created`/
   `generation_deleted`, `engine_created`/`engine_deleted`,
   `transmission_created`/`transmission_deleted`, `category_created`/
-  `category_deleted`, `part_created`/`part_deleted`,
-  `product_approved`/`product_rejected`, and a single summary entry
-  per batch for `product_bulk_moderated` (not one row per item in a
-  batch of up to 100 — a summary is what's actually useful to review
-  later).
+  `category_deleted`, `part_created`/`part_deleted`, `product_approved`/
+  `product_rejected`, and a single summary entry per batch for
+  `product_bulk_moderated` (not one row per item in a batch of up to
+  100).
+- **6 promo code / fee component action types**: `promo_code_updated`,
+  `promo_code_deleted`, `fee_component_created`, `fee_component_updated`,
+  `fee_component_deleted`, `fee_component_reordered`.
 - All added to the existing audit-log filter dropdown.
 - No new migration needed — `admin_audit_log.action` is a free-text
   column with no `CHECK` constraint.
@@ -1657,8 +1664,12 @@ part.
 and confirmed it's logged with its real name; created and deleted a
 real category and confirmed both are logged; approved/rejected a real
 pending product listing and confirmed it's logged, distinctly from
-review moderation. Real integration tests: 10/10 passing (3 new). Full
-regression across every affected page's own test suite: 29/29 passing.
+review moderation; deactivated a real promo code and confirmed it's
+logged distinctly from its own creation; created, updated, and deleted
+a real fee component and confirmed all three are logged. Real
+integration tests: 12/12 passing (5 new). Full regression across every
+affected page's own test suite (promo codes, pricing, promotions,
+audit log): 60/60 passing.
 
 ## Real bilingual name + photo, required for brands and categories (new)
 

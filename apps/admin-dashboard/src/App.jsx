@@ -4221,6 +4221,11 @@ const AUDIT_ACTION_TYPES = [
   'transmission_created', 'transmission_deleted',
   'category_created', 'category_deleted', 'part_created', 'part_deleted',
   'product_approved', 'product_rejected', 'product_bulk_moderated',
+  // Real promo code and fee component actions (new) -- only creation
+  // was logged for either before this, not editing (activating/
+  // deactivating a code, changing a fee's real value) or deleting.
+  'promo_code_updated', 'promo_code_deleted',
+  'fee_component_created', 'fee_component_updated', 'fee_component_deleted', 'fee_component_reordered',
 ];
 
 function AuditLogSection({ currentUser, onSessionExpired }) {

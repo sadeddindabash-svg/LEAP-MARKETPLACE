@@ -187,4 +187,48 @@ describe.runIf(backendUp)('real admin audit log against a REAL running backend',
     expect(entry).toBeTruthy();
     expect(entry.targetType).toBe('product');
   });
+
+  // Real promo code and fee component audit coverage (new) -- closes a
+  // real gap: only CREATING either was logged before this, not editing
+  // (activating/deactivating a code, changing a fee's real value) or
+  // deleting -- arguably more consequential than creation for both.
+  it('CRITICAL: deactivating a real promo code is logged, distinctly from creating it', async () => {
+    const { token } = await login('admin@leap.dev', 'admin_dev_password_123');
+    const code = `AuditPromoUpdateTest${Date.now()}`;
+    await fetch(`${BACKEND_URL}/promo-codes`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ code, type: 'flat', value: 5 }),
+    });
+    await fetch(`${BACKEND_URL}/promo-codes/${code}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ isActive: false }),
+    });
+
+    const log = await fetch(`${BACKEND_URL}/admin/audit-log?action=promo_code_updated`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+    const entry = log.find((e) => e.targetId === code);
+    expect(entry).toBeTruthy();
+    expect(entry.details.isActive).toBe(false);
+  });
+
+  it('CRITICAL: creating, updating, and deleting a real fee component are all logged', async () => {
+    const { token } = await login('admin@leap.dev', 'admin_dev_password_123');
+    const created = await fetch(`${BACKEND_URL}/pricing/fee-components`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name: `AuditFeeTest${Date.now()}`, type: 'percentage', value: 3 }),
+    }).then((r) => r.json());
+
+    const createdLog = await fetch(`${BACKEND_URL}/admin/audit-log?action=fee_component_created`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+    expect(createdLog.find((e) => e.targetId === created.id)).toBeTruthy();
+
+    await fetch(`${BACKEND_URL}/pricing/fee-components/${created.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ value: 4 }),
+    });
+    const updatedLog = await fetch(`${BACKEND_URL}/admin/audit-log?action=fee_component_updated`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+    expect(updatedLog.find((e) => e.targetId === created.id)).toBeTruthy();
+
+    await fetch(`${BACKEND_URL}/pricing/fee-components/${created.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    const deletedLog = await fetch(`${BACKEND_URL}/admin/audit-log?action=fee_component_deleted`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+    expect(deletedLog.find((e) => e.targetId === created.id)).toBeTruthy();
+  });
 });

@@ -54,6 +54,7 @@ router.post('/fee-components', requireAuth, requireRole('admin'), requirePageAcc
       [id, name, type, value, sortOrder ?? 0]
     );
     const { rows } = await db.query('SELECT * FROM pricing_fee_components WHERE id = $1', [id]);
+    await logAdminAction(req, 'fee_component_created', 'fee_component', id, { name, type, value });
     res.status(201).json(toFeeComponentDto(rows[0]));
   } catch (err) {
     next(err);
@@ -74,6 +75,11 @@ router.patch('/fee-components/:id', requireAuth, requireRole('admin'), requirePa
       [name ?? null, type ?? null, value ?? null, sortOrder ?? null, isActive ?? null, req.params.id]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Fee component not found' });
+    // Real audit coverage (new) -- a real, genuinely consequential
+    // change: fee components directly determine the platform's real
+    // commission on every real sale, arguably more consequential than
+    // the FX rate changes already logged here.
+    await logAdminAction(req, 'fee_component_updated', 'fee_component', req.params.id, { name, type, value, isActive });
     res.json(toFeeComponentDto(rows[0]));
   } catch (err) {
     next(err);
@@ -82,8 +88,10 @@ router.patch('/fee-components/:id', requireAuth, requireRole('admin'), requirePa
 
 router.delete('/fee-components/:id', requireAuth, requireRole('admin'), requirePageAccess('pricing'), async (req, res, next) => {
   try {
+    const { rows } = await db.query('SELECT name FROM pricing_fee_components WHERE id = $1', [req.params.id]);
     const { rowCount } = await db.query('DELETE FROM pricing_fee_components WHERE id = $1', [req.params.id]);
     if (rowCount === 0) return res.status(404).json({ error: 'Fee component not found' });
+    await logAdminAction(req, 'fee_component_deleted', 'fee_component', req.params.id, { name: rows[0]?.name });
     res.status(204).end();
   } catch (err) {
     next(err);
@@ -133,6 +141,7 @@ router.post('/fee-components/:id/move', requireAuth, requireRole('admin'), requi
     await client.query('UPDATE pricing_fee_components SET sort_order = $1, updated_at = now() WHERE id = $2', [neighbor.sort_order, current.id]);
     await client.query('UPDATE pricing_fee_components SET sort_order = $1, updated_at = now() WHERE id = $2', [current.sort_order, neighbor.id]);
     await client.query('COMMIT');
+    await logAdminAction(req, 'fee_component_reordered', 'fee_component', current.id, { name: current.name, direction, swappedWith: neighbor.name });
 
     const { rows } = await db.query('SELECT * FROM pricing_fee_components ORDER BY sort_order ASC');
     res.json(rows.map(toFeeComponentDto));

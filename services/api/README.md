@@ -2298,27 +2298,30 @@ by name, matched multiple real orders by ID prefix (correctly capped
 at 5), confirmed a too-short query returns empty without erroring, and
 confirmed an unauthenticated request is rejected (401).
 
-## Real audit coverage for catalog/fitment management and product-listing moderation (new)
+## Real audit coverage for catalog/fitment, product moderation, promo codes, and fee components (new)
 
-**A real, significant gap**: product-listing moderation (`PATCH
-/catalog/products/:id/moderate`, `POST /catalog/products/bulk-
-moderate`) and essentially all vehicle reference-data management
-(brand/model/generation/engine/transmission/category/part create and
-delete) were completely unlogged — despite the audit log's own
-description already claiming "review moderation" as covered (that
-turned out to mean buyer review moderation, `reviews.js`, a different
-real system).
+**A real, significant gap, found in two passes of checking the audit
+log's own stated scope against what it actually covers.** First pass:
+product-listing moderation and all vehicle reference-data management
+were completely unlogged, despite the audit log claiming "review
+moderation" (a different, real system — buyer reviews) was covered.
+Second pass: "promo codes" only covered creation, not activating/
+deactivating or deleting one; "pricing/settings changes" was missing
+fee-component management entirely (create/update/delete/reorder) —
+arguably more consequential than the FX rate changes already logged,
+since fee components directly determine the platform's real commission
+on every sale.
 
-10 new real action types added — see `apps/admin-dashboard/README.md`'s
-own section on this for the full list. Bulk moderation logs a single
-summary entry per batch (approved/rejected/total counts), not one row
-per item. No migration needed — `admin_audit_log.action` has no
-`CHECK` constraint.
+16 new real action types total — see `apps/admin-dashboard/README.md`'s
+own section on this for the full list. No migration needed —
+`admin_audit_log.action` has no `CHECK` constraint.
 
 **Verified against the real running backend**: created a real brand,
-confirmed it's logged with its real name; created and deleted a real
-category, confirmed both logged; approved/rejected a real pending
-product, confirmed it's logged distinctly from review moderation.
+confirmed logged with its real name; created/deleted a real category,
+confirmed both logged; approved/rejected a real pending product,
+confirmed logged distinctly from review moderation; deactivated a real
+promo code, confirmed logged distinctly from creation; created/
+updated/deleted a real fee component, confirmed all three logged.
 
 ## Real bilingual name + photo, required for brands and categories (new, migration 046)
 

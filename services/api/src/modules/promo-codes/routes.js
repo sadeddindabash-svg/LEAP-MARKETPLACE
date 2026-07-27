@@ -101,6 +101,11 @@ router.patch('/:code', requireAuth, requireRole('admin'), requirePageAccess('pro
       [isActive, startsAt, expiresAt, maxTotalUses, req.params.code]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Promo code not found' });
+    // Real audit coverage (new) -- closes a real gap: only creation was
+    // logged before this, not the real, genuinely sensitive act of
+    // activating/deactivating a code or changing its real usage caps
+    // or dates.
+    await logAdminAction(req, 'promo_code_updated', 'promo_code', req.params.code, { isActive, startsAt, expiresAt, maxTotalUses });
     // Real usage count, fetched separately -- REAL BUG AVOIDED HERE:
     // without this, the response would silently show usedCount: 0 for
     // a code that's genuinely already been used many times, since this
@@ -120,6 +125,7 @@ router.delete('/:code', requireAuth, requireRole('admin'), requirePageAccess('pr
     }
     const { rowCount } = await db.query('DELETE FROM promo_codes WHERE code = $1', [req.params.code]);
     if (rowCount === 0) return res.status(404).json({ error: 'Promo code not found' });
+    await logAdminAction(req, 'promo_code_deleted', 'promo_code', req.params.code);
     res.status(204).end();
   } catch (err) {
     next(err);
