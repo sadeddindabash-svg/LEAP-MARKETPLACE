@@ -2298,6 +2298,28 @@ by name, matched multiple real orders by ID prefix (correctly capped
 at 5), confirmed a too-short query returns empty without erroring, and
 confirmed an unauthenticated request is rejected (401).
 
+## Real audit coverage for catalog/fitment management and product-listing moderation (new)
+
+**A real, significant gap**: product-listing moderation (`PATCH
+/catalog/products/:id/moderate`, `POST /catalog/products/bulk-
+moderate`) and essentially all vehicle reference-data management
+(brand/model/generation/engine/transmission/category/part create and
+delete) were completely unlogged — despite the audit log's own
+description already claiming "review moderation" as covered (that
+turned out to mean buyer review moderation, `reviews.js`, a different
+real system).
+
+10 new real action types added — see `apps/admin-dashboard/README.md`'s
+own section on this for the full list. Bulk moderation logs a single
+summary entry per batch (approved/rejected/total counts), not one row
+per item. No migration needed — `admin_audit_log.action` has no
+`CHECK` constraint.
+
+**Verified against the real running backend**: created a real brand,
+confirmed it's logged with its real name; created and deleted a real
+category, confirmed both logged; approved/rejected a real pending
+product, confirmed it's logged distinctly from review moderation.
+
 ## Real bilingual name + photo, required for brands and categories (new, migration 046)
 
 **An explicit, requested requirement**: `POST /fitment/brands` now

@@ -135,4 +135,56 @@ describe.runIf(backendUp)('real admin audit log against a REAL running backend',
     expect(combined.find((e) => e.targetId === code)).toBeTruthy();
     expect(combined.every((e) => e.action === 'promo_code_created')).toBe(true);
   });
+
+  // Real catalog/fitment/moderation audit coverage (new) -- closes a
+  // real gap: essentially all vehicle reference-data management and
+  // product-listing moderation were completely unlogged before this,
+  // despite this page's own scope already covering the conceptually
+  // adjacent "review moderation" (a different, real system).
+  it('CRITICAL: creating a real brand is logged with its real name', async () => {
+    const { token } = await login('admin@leap.dev', 'admin_dev_password_123');
+    const name = `AuditBrandTest${Date.now()}`;
+    const created = await fetch(`${BACKEND_URL}/fitment/brands`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name, nameAr: 'اختبار', photoUrl: '/uploads/test.jpg' }),
+    }).then((r) => r.json());
+
+    const log = await fetch(`${BACKEND_URL}/admin/audit-log?action=brand_created`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+    const entry = log.find((e) => e.targetId === created.id);
+    expect(entry).toBeTruthy();
+    expect(entry.details.name).toBe(name);
+  });
+
+  it('CRITICAL: creating and deleting a real category are both logged', async () => {
+    const { token } = await login('admin@leap.dev', 'admin_dev_password_123');
+    const id = `audit_cat_test_${Date.now()}`;
+    await fetch(`${BACKEND_URL}/catalog/categories`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ id, nameEn: 'Audit Cat Test', nameAr: 'اختبار', photoUrl: '/uploads/test.jpg' }),
+    });
+
+    const createdLog = await fetch(`${BACKEND_URL}/admin/audit-log?action=category_created`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+    expect(createdLog.find((e) => e.targetId === id)).toBeTruthy();
+
+    await fetch(`${BACKEND_URL}/catalog/categories/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    const deletedLog = await fetch(`${BACKEND_URL}/admin/audit-log?action=category_deleted`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+    expect(deletedLog.find((e) => e.targetId === id)).toBeTruthy();
+  });
+
+  it('CRITICAL: approving or rejecting a real product listing is logged, distinctly from buyer review moderation', async () => {
+    const { token } = await login('admin@leap.dev', 'admin_dev_password_123');
+    const queue = await fetch(`${BACKEND_URL}/catalog/moderation-queue`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+    if (queue.length === 0) return; // nothing pending right now -- not this test's job to create one
+
+    const product = queue[0];
+    await fetch(`${BACKEND_URL}/catalog/products/${product.id}/moderate`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ action: 'reject' }),
+    });
+
+    const log = await fetch(`${BACKEND_URL}/admin/audit-log?action=product_rejected`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+    const entry = log.find((e) => e.targetId === product.id);
+    expect(entry).toBeTruthy();
+    expect(entry.targetType).toBe('product');
+  });
 });

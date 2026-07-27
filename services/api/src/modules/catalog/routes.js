@@ -412,6 +412,7 @@ router.patch('/products/:id/moderate', requireAuth, requireRole('admin'), requir
       ]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
+    await logAdminAction(req, action === 'approve' ? 'product_approved' : 'product_rejected', 'product', req.params.id, { name: rows[0].name });
     res.json(rows[0]);
   } catch (err) {
     next(err);
@@ -474,6 +475,15 @@ router.post('/products/bulk-moderate', requireAuth, requireRole('admin'), requir
         results.push({ productId, success: false, error: 'Internal error processing this item' });
       }
     }
+
+    // Real, single summary entry for the whole batch (new) -- not one
+    // per item, which could mean up to MAX_BULK_ITEMS (100) rows for a
+    // single real admin action; a summary is what's actually useful to
+    // review later, matching the audit module's own "practical subset"
+    // scoping philosophy.
+    const approvedCount = results.filter((r) => r.success && items.find((i) => i.productId === r.productId)?.action === 'approve').length;
+    const rejectedCount = results.filter((r) => r.success && items.find((i) => i.productId === r.productId)?.action === 'reject').length;
+    await logAdminAction(req, 'product_bulk_moderated', 'product', null, { approvedCount, rejectedCount, totalItems: items.length });
 
     res.json({ results });
   } catch (err) {
@@ -545,6 +555,7 @@ router.post('/categories', requireAuth, requireRole('admin'), requirePageAccess(
       [id, nameEn, nameAr.trim(), photoUrl.trim(), sortOrder ?? 0]
     );
     const { rows } = await db.query('SELECT * FROM product_categories WHERE id = $1', [id]);
+    await logAdminAction(req, 'category_created', 'category', id, { nameEn });
     res.status(201).json(toCategoryDto(rows[0]));
   } catch (err) {
     if (err.code === '23505') return res.status(400).json({ error: `A category with id "${req.body?.id}" already exists` });
@@ -573,8 +584,10 @@ router.delete('/categories/:id', requireAuth, requireRole('admin'), requirePageA
     if (partsUsingIt.length > 0) {
       return res.status(409).json({ error: 'Cannot delete this category — it still has parts. Delete those first.' });
     }
+    const { rows: categoryRow } = await db.query('SELECT name_en FROM product_categories WHERE id = $1', [req.params.id]);
     const { rowCount } = await db.query('DELETE FROM product_categories WHERE id = $1', [req.params.id]);
     if (rowCount === 0) return res.status(404).json({ error: 'Category not found' });
+    await logAdminAction(req, 'category_deleted', 'category', req.params.id, { nameEn: categoryRow[0]?.name_en });
     res.status(204).end();
   } catch (err) {
     next(err);
@@ -602,6 +615,7 @@ router.post('/categories/:id/parts', requireAuth, requireRole('admin'), requireP
       [partId, req.params.id, nameEn, nameAr || null, sortOrder ?? 0]
     );
     const { rows } = await db.query('SELECT * FROM category_parts WHERE id = $1', [partId]);
+    await logAdminAction(req, 'part_created', 'part', partId, { nameEn, categoryId: req.params.id });
     res.status(201).json(toPartDto(rows[0]));
   } catch (err) {
     next(err);
@@ -622,6 +636,7 @@ router.delete('/parts/:id', requireAuth, requireRole('admin'), requirePageAccess
       return res.status(409).json({ error: 'Cannot delete this part — real products still reference it' });
     }
     await db.query('DELETE FROM category_parts WHERE id = $1', [req.params.id]);
+    await logAdminAction(req, 'part_deleted', 'part', req.params.id, { nameEn: partRows[0].name_en });
     res.status(204).end();
   } catch (err) {
     next(err);

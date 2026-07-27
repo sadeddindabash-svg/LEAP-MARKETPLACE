@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
+const { logAdminAction } = require('../audit/helpers');
 
 /**
  * Fitment module — Year/Make/Model/Trim reference data (Phase 1, BUY-010).
@@ -136,6 +137,7 @@ router.post('/brands', requireAuth, requireRole('admin'), requirePageAccess('veh
     if (!photoUrl || !photoUrl.trim()) return res.status(400).json({ error: 'photoUrl is required' });
     const id = `brand_${Date.now()}`;
     await db.query('INSERT INTO vehicle_brands (id, name, name_ar, photo_url) VALUES ($1, $2, $3, $4)', [id, name.trim(), nameAr.trim(), photoUrl.trim()]);
+    await logAdminAction(req, 'brand_created', 'brand', id, { name: name.trim() });
     res.status(201).json({ id, name: name.trim(), nameAr: nameAr.trim(), photoUrl: photoUrl.trim() });
   } catch (err) {
     if (isUniqueViolation(err)) return res.status(409).json({ error: `A brand named "${req.body.name}" already exists` });
@@ -146,8 +148,10 @@ router.post('/brands', requireAuth, requireRole('admin'), requirePageAccess('veh
 // DELETE /fitment/brands/:id
 router.delete('/brands/:id', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
+    const { rows } = await db.query('SELECT name FROM vehicle_brands WHERE id = $1', [req.params.id]);
     const { rowCount } = await db.query('DELETE FROM vehicle_brands WHERE id = $1', [req.params.id]);
     if (rowCount === 0) return res.status(404).json({ error: 'Brand not found' });
+    await logAdminAction(req, 'brand_deleted', 'brand', req.params.id, { name: rows[0]?.name });
     res.status(204).end();
   } catch (err) {
     if (isForeignKeyViolation(err)) {
@@ -166,6 +170,7 @@ router.post('/brands/:brandId/models', requireAuth, requireRole('admin'), requir
     if (brandCheck.rows.length === 0) return res.status(404).json({ error: 'Brand not found' });
     const id = `model_${Date.now()}`;
     await db.query('INSERT INTO vehicle_models (id, brand_id, name) VALUES ($1, $2, $3)', [id, req.params.brandId, name.trim()]);
+    await logAdminAction(req, 'model_created', 'model', id, { name: name.trim(), brandId: req.params.brandId });
     res.status(201).json({ id, brandId: req.params.brandId, name: name.trim() });
   } catch (err) {
     next(err);
@@ -175,8 +180,10 @@ router.post('/brands/:brandId/models', requireAuth, requireRole('admin'), requir
 // DELETE /fitment/models/:id
 router.delete('/models/:id', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
+    const { rows } = await db.query('SELECT name FROM vehicle_models WHERE id = $1', [req.params.id]);
     const { rowCount } = await db.query('DELETE FROM vehicle_models WHERE id = $1', [req.params.id]);
     if (rowCount === 0) return res.status(404).json({ error: 'Model not found' });
+    await logAdminAction(req, 'model_deleted', 'model', req.params.id, { name: rows[0]?.name });
     res.status(204).end();
   } catch (err) {
     if (isForeignKeyViolation(err)) {
@@ -199,6 +206,7 @@ router.post('/models/:modelId/generations', requireAuth, requireRole('admin'), r
       'INSERT INTO vehicle_generations (id, model_id, name, year_start, year_end) VALUES ($1, $2, $3, $4, $5)',
       [id, req.params.modelId, name.trim(), yearStart, yearEnd || null]
     );
+    await logAdminAction(req, 'generation_created', 'generation', id, { name: name.trim(), modelId: req.params.modelId, yearStart, yearEnd: yearEnd || null });
     res.status(201).json({ id, modelId: req.params.modelId, name: name.trim(), yearStart, yearEnd: yearEnd || null });
   } catch (err) {
     next(err);
@@ -208,8 +216,10 @@ router.post('/models/:modelId/generations', requireAuth, requireRole('admin'), r
 // DELETE /fitment/generations/:id
 router.delete('/generations/:id', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
+    const { rows } = await db.query('SELECT name FROM vehicle_generations WHERE id = $1', [req.params.id]);
     const { rowCount } = await db.query('DELETE FROM vehicle_generations WHERE id = $1', [req.params.id]);
     if (rowCount === 0) return res.status(404).json({ error: 'Generation not found' });
+    await logAdminAction(req, 'generation_deleted', 'generation', req.params.id, { name: rows[0]?.name });
     res.status(204).end();
   } catch (err) {
     if (isForeignKeyViolation(err)) {
@@ -228,6 +238,7 @@ router.post('/generations/:generationId/engines', requireAuth, requireRole('admi
     if (genCheck.rows.length === 0) return res.status(404).json({ error: 'Generation not found' });
     const id = `eng_${Date.now()}`;
     await db.query('INSERT INTO vehicle_engines (id, generation_id, name) VALUES ($1, $2, $3)', [id, req.params.generationId, name.trim()]);
+    await logAdminAction(req, 'engine_created', 'engine', id, { name: name.trim(), generationId: req.params.generationId });
     res.status(201).json({ id, generationId: req.params.generationId, name: name.trim() });
   } catch (err) {
     next(err);
@@ -237,8 +248,10 @@ router.post('/generations/:generationId/engines', requireAuth, requireRole('admi
 // DELETE /fitment/engines/:id
 router.delete('/engines/:id', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
+    const { rows } = await db.query('SELECT name FROM vehicle_engines WHERE id = $1', [req.params.id]);
     const { rowCount } = await db.query('DELETE FROM vehicle_engines WHERE id = $1', [req.params.id]);
     if (rowCount === 0) return res.status(404).json({ error: 'Engine not found' });
+    await logAdminAction(req, 'engine_deleted', 'engine', req.params.id, { name: rows[0]?.name });
     res.status(204).end();
   } catch (err) {
     if (isForeignKeyViolation(err)) {
@@ -257,6 +270,7 @@ router.post('/generations/:generationId/transmissions', requireAuth, requireRole
     if (genCheck.rows.length === 0) return res.status(404).json({ error: 'Generation not found' });
     const id = `trans_${Date.now()}`;
     await db.query('INSERT INTO vehicle_transmissions (id, generation_id, name) VALUES ($1, $2, $3)', [id, req.params.generationId, name.trim()]);
+    await logAdminAction(req, 'transmission_created', 'transmission', id, { name: name.trim(), generationId: req.params.generationId });
     res.status(201).json({ id, generationId: req.params.generationId, name: name.trim() });
   } catch (err) {
     next(err);
@@ -266,8 +280,10 @@ router.post('/generations/:generationId/transmissions', requireAuth, requireRole
 // DELETE /fitment/transmissions/:id
 router.delete('/transmissions/:id', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
+    const { rows } = await db.query('SELECT name FROM vehicle_transmissions WHERE id = $1', [req.params.id]);
     const { rowCount } = await db.query('DELETE FROM vehicle_transmissions WHERE id = $1', [req.params.id]);
     if (rowCount === 0) return res.status(404).json({ error: 'Transmission not found' });
+    await logAdminAction(req, 'transmission_deleted', 'transmission', req.params.id, { name: rows[0]?.name });
     res.status(204).end();
   } catch (err) {
     if (isForeignKeyViolation(err)) {

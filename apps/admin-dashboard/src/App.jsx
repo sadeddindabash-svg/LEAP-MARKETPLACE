@@ -4211,6 +4211,16 @@ const AUDIT_ACTION_TYPES = [
   'payout_recorded', 'promo_code_created', 'require_verified_purchase_toggled',
   'return_window_changed', 'review_approve', 'review_dismiss_flags', 'review_reject',
   'supplier_verification',
+  // Real catalog/fitment reference-data and product-listing moderation
+  // actions (new) -- confirmed genuinely missing from the audit trail
+  // entirely before this, despite this page's own scope already
+  // covering the conceptually adjacent "review moderation" (a
+  // different, real system -- buyer reviews, not product listings).
+  'brand_created', 'brand_deleted', 'model_created', 'model_deleted',
+  'generation_created', 'generation_deleted', 'engine_created', 'engine_deleted',
+  'transmission_created', 'transmission_deleted',
+  'category_created', 'category_deleted', 'part_created', 'part_deleted',
+  'product_approved', 'product_rejected', 'product_bulk_moderated',
 ];
 
 function AuditLogSection({ currentUser, onSessionExpired }) {
