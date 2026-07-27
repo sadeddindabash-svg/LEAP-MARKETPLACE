@@ -2298,6 +2298,24 @@ by name, matched multiple real orders by ID prefix (correctly capped
 at 5), confirmed a too-short query returns empty without erroring, and
 confirmed an unauthenticated request is rejected (401).
 
+## Stale scope comment corrected: notifications actually have 9 real trigger points, not 4
+
+**A real, stale documentation gap, found by applying the same "check
+the claim against reality" pattern that surfaced the audit log gaps
+above.** `notifications/helpers.js` and `notifications/routes.js` both
+still said "the 4 real trigger points" (accurate when migration 019
+first shipped) — but 5 more real trigger points have been added since,
+each with its own migration extending the real `notifications_type`
+`CHECK` constraint (020 `referral_reward`, 037 `low_stock`, 038
+`price_drop`, 039 `saved_search_match`, 045 `back_in_stock`), without
+ever correcting the original "4" comment. No functional bug — the DB
+constraint itself was correctly kept up to date every time; this was
+purely misleading documentation for anyone reading the code today.
+
+`notifications/helpers.js`'s header comment now lists the real,
+current, complete set of all 9 trigger points, confirmed by checking
+every actual `createNotification` call site directly, not assumed.
+
 ## Real audit coverage for catalog/fitment, product moderation, promo codes, and fee components (new)
 
 **A real, significant gap, found in two passes of checking the audit

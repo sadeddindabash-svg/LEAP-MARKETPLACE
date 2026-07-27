@@ -1,10 +1,47 @@
 const db = require('../../../db/pool');
 
 /**
- * Real notification creation (migration 019). Called from the 4 real
- * trigger points this project confirmed — see that migration's header
- * comment for the full list. A single shared helper rather than each
- * trigger site writing its own INSERT, so the shape stays consistent.
+ * Real notification creation (migration 019).
+ *
+ * REAL, STALE COMMENT FOUND AND FIXED HERE: this used to say "the 4
+ * real trigger points this project confirmed" (referring to migration
+ * 019's own original header comment) -- genuinely accurate when
+ * written, but 5 more real trigger points have been added since
+ * (each with its own migration extending the real `notifications_type
+ * ` CHECK constraint: 020, 037, 038, 039, 045), making that comment
+ * stale without ever being corrected. The real, current, complete
+ * list of every genuine trigger point, confirmed by checking every
+ * actual `createNotification` call site directly, not assumed:
+ *   1. A real sub-order status change to 'shipped' or 'delivered'
+ *      (services/api/src/modules/supplier/routes.js, hub/routes.js)
+ *      -> 'order_status', notifies the real buyer.
+ *   2. A real return case status change
+ *      (services/api/src/modules/returns/routes.js) -> 'return_status'.
+ *   3. An admin's real reply to a buyer's support ticket
+ *      (services/api/src/modules/support/routes.js) -> 'ticket_reply'
+ *      (skipped for a guest ticket -- no real account to attach an
+ *      in-app notification to).
+ *   4. An admin's real reply to a supplier message
+ *      (services/api/src/modules/supplier-messages/routes.js) ->
+ *      'supplier_message', notifies the real supplier's linked user.
+ *   5. A referral's first real qualifying order
+ *      (services/api/src/modules/promotions/helpers.js) ->
+ *      'referral_reward', notifies the real referrer.
+ *   6. A real product crossing its own real low-stock threshold on
+ *      order placement (services/api/src/modules/order/routes.js) ->
+ *      'low_stock', notifies the real supplier.
+ *   7. A real wishlisted product's real price dropping (the periodic
+ *      sweep in services/api/src/modules/priceDropAlerts/check.js) ->
+ *      'price_drop', notifies every real buyer who wishlisted it.
+ *   8. A real saved search matching new real results (the periodic
+ *      sweep in services/api/src/modules/savedSearches/check.js) ->
+ *      'saved_search_match'.
+ *   9. A real wishlisted, out-of-stock product genuinely restocking
+ *      (services/api/src/modules/restockAlerts/notify.js) ->
+ *      'back_in_stock'.
+ *
+ * A single shared helper rather than each trigger site writing its own
+ * INSERT, so the shape stays consistent.
  *
  * Accepts an optional `client` (a pg client already inside a real
  * transaction, e.g. the sub-order status update) so notification

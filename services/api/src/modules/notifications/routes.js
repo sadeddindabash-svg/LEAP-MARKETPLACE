@@ -3,12 +3,14 @@ const db = require('../../../db/pool');
 const { requireAuth } = require('../auth/middleware');
 
 /**
- * Real notifications (migration 019). Triggered by real order changes
- * and message/ticket replies — see the 4 real trigger points listed in
- * that migration's header comment. This module is just the buyer/
- * supplier-facing read side (list, unread count, mark read); creation
- * happens via helpers.js's createNotification(), called from the real
- * modules where those events actually occur.
+ * Real notifications (migration 019, extended by 020/037/038/039/045).
+ * This module is just the buyer/supplier-facing read side (list,
+ * unread count, mark read); creation happens via helpers.js's
+ * createNotification(), called from the real modules where those
+ * events actually occur — see that file's own header comment for the
+ * real, current, complete list of every trigger point (this used to
+ * say "the 4 real trigger points," a stale count left uncorrected as
+ * 5 more were added over time).
  */
 const router = express.Router();
 
