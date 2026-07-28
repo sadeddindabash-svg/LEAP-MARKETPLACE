@@ -340,6 +340,17 @@ sub-order, so it's only ever started from that order's detail page,
 which itself requires knowing the order (guest checkout confirmation
 provides this), not a guest-accessible blank form.
 
+## Real "clear" button on the search field (new)
+
+**A real, common gap**: no way to clear the search field except
+manually selecting and deleting the text. Added a real "×" button
+(`suffixIcon`), shown only when there's real text to clear, reusing
+the exact same reset logic `_onChanged('')` already performs for an
+emptied field — not a duplicate implementation. A small, additional
+`setState(() {})` was added to `_onChanged` itself so the button's own
+visibility updates live as the buyer types each character, independent
+of the existing debounced search timer (no change to that logic).
+
 ## Real cart item-count badge on the bottom nav (new)
 
 **A real, confirmed gap**: the bottom nav had no badges at all — a

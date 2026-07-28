@@ -43,6 +43,11 @@ class _SearchScreenState extends State<SearchScreen> {
 
   void _onChanged(String query) {
     _debounce?.cancel();
+    // Real, lightweight rebuild (new) -- so the search field's own real
+    // clear ("×") button shows/hides immediately as the buyer types,
+    // independent of the debounced search below. No change to the
+    // actual search-triggering logic itself.
+    setState(() {});
     // A vehicle filter or a sort/price filter alone is a real, meaningful
     // search ("show me everything under $50") -- only bail out early
     // when there's truly nothing to search by: no text, no filters.
@@ -142,6 +147,20 @@ class _SearchScreenState extends State<SearchScreen> {
           decoration: InputDecoration(
             hintText: isAr ? 'ابحث عن قطعة أو ماركة أو رقم' : 'Search part, brand, or number',
             border: InputBorder.none,
+            // Real "clear" button (new) -- closes a real, common gap:
+            // no way to clear the search field except manually
+            // selecting and deleting the text. Reuses the exact same
+            // reset _onChanged('') already does for an emptied field,
+            // rather than duplicating that logic here.
+            suffixIcon: hasQuery
+                ? IconButton(
+                    icon: const Icon(Icons.clear, size: 18),
+                    onPressed: () {
+                      _controller.clear();
+                      _onChanged('');
+                    },
+                  )
+                : null,
           ),
         ),
         actions: [
