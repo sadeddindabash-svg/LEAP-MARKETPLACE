@@ -340,7 +340,7 @@ sub-order, so it's only ever started from that order's detail page,
 which itself requires knowing the order (guest checkout confirmation
 provides this), not a guest-accessible blank form.
 
-## Real "Undo" on cart item removal, and two real bugs fixed (new)
+## Real "Undo" on cart item removal, and three real bugs fixed (new)
 
 **First bug, found while looking for a good place to add undo**: the
 cart's remove ("×") button was the exact same fire-and-forget class of
@@ -350,28 +350,39 @@ handling. A real removal failure (network error) would silently do
 nothing with no visible feedback at all. Just missed when that earlier
 fix was made.
 
-**Second bug, found only after a real device test reported the new
-Undo snackbar never actually appeared**: removing an item successfully
-triggers a real rebuild of the cart list WITHOUT that row — so by the
-time execution resumes after `await cart.removeItem(...)`, that row's
-own `BuildContext` (`_CartItemRow` is its own per-row `StatelessWidget`)
+**Second bug, found after a real device test reported the new Undo
+snackbar never appeared**: removing an item successfully triggers a
+real rebuild of the cart list WITHOUT that row — so by the time
+execution resumes after `await cart.removeItem(...)`, that row's own
+`BuildContext` (`_CartItemRow` is its own per-row `StatelessWidget`)
 has already been disposed as part of that same rebuild.
 `context.mounted` correctly reported `false` at that point, so an
 `if (context.mounted)` guard was silently skipping the snackbar every
-time — not failing loudly, which is why it looked like nothing was
-wrong until it was actually tried on a device. Fixed by capturing the
-real `ScaffoldMessenger` instance (an ancestor further up the tree,
-which survives this row's own removal) and every real translated
-string (`tr()` also does a real `InheritedWidget` lookup via this
-row's own context) **before** the async removal, never re-resolving
-either from this row's own context afterward.
+time. Fixed by capturing the real `ScaffoldMessenger` instance before
+the async removal, rather than re-resolving it from a context that
+might already be gone.
 
-**Checked for the same bug pattern elsewhere** (a list item deleting
-itself, then trying to show feedback via its own context) —
+**Third bug, found only via a real Chrome DevTools console error after
+the second fix still didn't work**: `tr(context, ...)` was used inside
+this same async event handler — `tr()` internally calls
+`context.watch<LanguageState>()`, a REACTIVE read meant for use inside
+a real `build()` method so a widget rebuilds when the language
+changes. Provider explicitly throws an assertion error if `.watch()`
+is called from inside an event handler (like this `onPressed`
+callback), regardless of whether the context is fresh or stale — a
+real, structural mismatch that had nothing to do with the second fix
+at all. The real, correct fix: `trRead()`, which uses `context.read()`
+(a one-time, non-reactive read) — the exact same pattern this file's
+own `_addToCart` above already used correctly for its own snackbar.
+Checked every other screen touched this session for the same `tr()`-
+in-an-event-handler mistake — none found; every other real usage is
+genuinely inside a real `build()` method.
+
+**Checked for the second bug's pattern elsewhere** (a list item
+deleting itself, then trying to show feedback via its own context) —
 `saved_searches_screen.dart` and `addresses_screen.dart` both manage
 their delete actions at the *screen* level, not via a per-row widget
-like `_CartItemRow`, so their own `context` isn't affected by removing
-one item from an internal list. Confirmed safe, not assumed.
+like `_CartItemRow`, so confirmed safe, not assumed.
 
 Also adds a real "Undo" action: a real Undo snackbar appears after a
 successful removal, restoring the **exact real quantity** that was
@@ -380,9 +391,10 @@ removed via the real cart's own `addItem` — not a guessed default of 1.
 **Verified against the real running backend**: added 3 of a real
 in-stock product, removed it, confirmed the cart genuinely empties,
 then re-added 3 (simulating the real Undo action) and confirmed the
-quantity matches exactly what was removed. The context-disposal bug
-itself could only be confirmed by an actual device test — exactly
-what surfaced it.
+quantity matches exactly what was removed. Both the second and third
+bugs could only be found via real device/browser testing — exactly
+what surfaced them, after two rounds of a real person actually trying
+this on a real machine and reporting back precisely what they saw.
 
 ## Real stock validation in the cart (new)
 

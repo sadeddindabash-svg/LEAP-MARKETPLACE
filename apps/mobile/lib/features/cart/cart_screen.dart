@@ -164,12 +164,26 @@ class _CartItemRow extends StatelessWidget {
   // Also adds a real "Undo" action -- restores the exact real quantity
   // that was removed via the real cart's own addItem, not a guessed
   // default of 1.
+  // REAL BUG FOUND AND FIXED HERE (a THIRD one, found only via a real
+  // device console error after the second fix still didn't work): used
+  // `tr(context, ...)` here, which internally calls
+  // `context.watch<LanguageState>()` -- a REACTIVE read, meant for use
+  // inside a real build() method so a widget rebuilds when the
+  // language changes. Provider explicitly forbids calling `.watch()`
+  // from inside an event handler (like this async onPressed callback)
+  // regardless of whether the context is fresh or stale -- a real,
+  // structural mismatch that had nothing to do with the earlier
+  // context-disposal fix. The real, correct fix: `trRead()`, which uses
+  // `context.read()` (a one-time, non-reactive read) -- the exact same
+  // pattern this file's own `_addToCart` above already uses correctly
+  // for its own snackbar. This should have been used here from the
+  // start.
   Future<void> _removeItem(BuildContext context, CartState cart) async {
     final removedQuantity = item.quantity;
     final removedName = item.name;
     final messenger = ScaffoldMessenger.of(context);
-    final removedLabel = tr(context, 'cart_removed_from_cart');
-    final undoLabel = tr(context, 'undo');
+    final removedLabel = trRead(context, 'cart_removed_from_cart');
+    final undoLabel = trRead(context, 'undo');
     try {
       await cart.removeItem(item.productId);
     } on ApiException catch (e) {
