@@ -48,8 +48,10 @@ class _ChatScreenState extends State<ChatScreen> {
     return ApiClient().fetchMyTickets(auth.token!);
   }
 
-  void _refresh() {
-    setState(() => _ticketsFuture = _load());
+  Future<void> _refresh() async {
+    final future = _load();
+    setState(() => _ticketsFuture = future);
+    await future;
   }
 
   void _trackTicket() {
@@ -104,39 +106,59 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           Expanded(
-            child: FutureBuilder<List<dynamic>>(
-              future: _ticketsFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return Center(child: Text('${tr(context, 'could_not_load_tickets')} ${snapshot.error}', style: const TextStyle(color: LeapColors.muted)));
-                }
-                final tickets = snapshot.data ?? [];
-                if (tickets.isEmpty) {
-                  return Center(child: Text(tr(context, 'no_tickets_yet'), style: const TextStyle(color: LeapColors.muted)));
-                }
-                return ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: tickets.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (context, i) {
-                    final t = tickets[i] as Map<String, dynamic>;
-                    return Card(
-                      child: ListTile(
-                        title: Text(t['subject'] as String, maxLines: 1, overflow: TextOverflow.ellipsis),
-                        subtitle: Text(trStatus(context, t['status'] as String), style: const TextStyle(fontSize: 12)),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () async {
-                          await context.push('/support/${t['id']}');
-                          _refresh();
-                        },
-                      ),
+            child: RefreshIndicator(
+              onRefresh: _refresh,
+              child: FutureBuilder<List<dynamic>>(
+                future: _ticketsFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 80),
+                          child: Center(child: Text('${tr(context, 'could_not_load_tickets')} ${snapshot.error}', style: const TextStyle(color: LeapColors.muted))),
+                        ),
+                      ],
                     );
-                  },
-                );
-              },
+                  }
+                  final tickets = snapshot.data ?? [];
+                  if (tickets.isEmpty) {
+                    return ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 80),
+                          child: Center(child: Text(tr(context, 'no_tickets_yet'), style: const TextStyle(color: LeapColors.muted))),
+                        ),
+                      ],
+                    );
+                  }
+                  return ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(16),
+                    itemCount: tickets.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, i) {
+                      final t = tickets[i] as Map<String, dynamic>;
+                      return Card(
+                        child: ListTile(
+                          title: Text(t['subject'] as String, maxLines: 1, overflow: TextOverflow.ellipsis),
+                          subtitle: Text(trStatus(context, t['status'] as String), style: const TextStyle(fontSize: 12)),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () async {
+                            await context.push('/support/${t['id']}');
+                            _refresh();
+                          },
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
             ),
           ),
         ],

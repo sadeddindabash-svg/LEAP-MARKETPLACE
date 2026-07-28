@@ -60,6 +60,19 @@ class _OrdersScreenState extends State<OrdersScreen> {
     setState(() => _selectedTab = tabKey);
   }
 
+  /// Real pull-to-refresh (new) -- bypasses _ensureLoaded's own cache
+  /// key (which deliberately avoids refetching on every rebuild), since
+  /// a real pull-to-refresh gesture is an explicit request for fresh
+  /// data regardless of whether the tab/login state actually changed.
+  Future<void> _handleRefresh() async {
+    final auth = context.read<AuthState>();
+    setState(() {
+      _loadedForKey = null;
+    });
+    _ensureLoaded(auth.isLoggedIn, auth.token);
+    await _ordersFuture;
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
@@ -124,56 +137,76 @@ class _OrdersScreenState extends State<OrdersScreen> {
           ),
           const Divider(height: 1),
           Expanded(
-            child: FutureBuilder<List<dynamic>>(
-              future: _ordersFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return Center(child: Text('${tr(context, 'could_not_load_orders')} ${snapshot.error}', style: const TextStyle(color: LeapColors.muted)));
-                }
-                final orders = snapshot.data ?? [];
-                if (orders.isEmpty) {
-                  return Center(child: Text(tr(context, 'no_orders_yet'), style: const TextStyle(color: LeapColors.muted)));
-                }
-                return ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: orders.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (context, i) {
-                    final o = orders[i] as Map<String, dynamic>;
-                    // displayStatus is the REAL, computed status (see the
-                    // backend order module) -- the raw `status` field is
-                    // frozen at 'to_ship' forever and never reflects
-                    // actual real progress, so it is deliberately NOT
-                    // used for display here.
-                    final displayStatus = (o['displayStatus'] as String?) ?? (o['status'] as String);
-                    return Card(
-                      child: InkWell(
-                        onTap: () => context.push('/orders/${o['id']}'),
-                        child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                PlateChip(text: o['id'] as String, small: true),
-                                Text(trStatus(context, displayStatus).toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: LeapColors.torque)),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text('\$${(o['total'] as num).toStringAsFixed(2)} ${o['currencyCode']}'),
-                          ],
+            child: RefreshIndicator(
+              onRefresh: _handleRefresh,
+              child: FutureBuilder<List<dynamic>>(
+                future: _ordersFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 80),
+                          child: Center(child: Text('${tr(context, 'could_not_load_orders')} ${snapshot.error}', style: const TextStyle(color: LeapColors.muted))),
                         ),
-                      ),
-                      ),
+                      ],
                     );
-                  },
-                );
-              },
+                  }
+                  final orders = snapshot.data ?? [];
+                  if (orders.isEmpty) {
+                    return ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 80),
+                          child: Center(child: Text(tr(context, 'no_orders_yet'), style: const TextStyle(color: LeapColors.muted))),
+                        ),
+                      ],
+                    );
+                  }
+                  return ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(16),
+                    itemCount: orders.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (context, i) {
+                      final o = orders[i] as Map<String, dynamic>;
+                      // displayStatus is the REAL, computed status (see the
+                      // backend order module) -- the raw `status` field is
+                      // frozen at 'to_ship' forever and never reflects
+                      // actual real progress, so it is deliberately NOT
+                      // used for display here.
+                      final displayStatus = (o['displayStatus'] as String?) ?? (o['status'] as String);
+                      return Card(
+                        child: InkWell(
+                          onTap: () => context.push('/orders/${o['id']}'),
+                          child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  PlateChip(text: o['id'] as String, small: true),
+                                  Text(trStatus(context, displayStatus).toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: LeapColors.torque)),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text('\$${(o['total'] as num).toStringAsFixed(2)} ${o['currencyCode']}'),
+                            ],
+                          ),
+                        ),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
             ),
           ),
         ],

@@ -29,10 +29,12 @@ class _WishlistScreenState extends State<WishlistScreen> {
     _wishlistFuture = ApiClient().fetchWishlist(token, lang: language);
   }
 
-  void _reload() {
+  Future<void> _reload() async {
     final token = context.read<AuthState>().token;
     if (token == null) return;
-    setState(() => _wishlistFuture = ApiClient().fetchWishlist(token, lang: context.read<LanguageState>().language));
+    final future = ApiClient().fetchWishlist(token, lang: context.read<LanguageState>().language);
+    setState(() => _wishlistFuture = future);
+    await future;
   }
 
   @override
@@ -43,42 +45,57 @@ class _WishlistScreenState extends State<WishlistScreen> {
 
     return Scaffold(
       appBar: AppBar(title: Text(tr(context, 'wishlist'))),
-      body: FutureBuilder<List<Product>>(
-        future: _wishlistFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('${tr(context, 'could_not_load_products')} ${snapshot.error}', style: const TextStyle(color: LeapColors.muted)));
-          }
-          final products = snapshot.data ?? [];
-          if (products.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(tr(context, 'no_wishlist_items_yet'), textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted)),
-              ),
-            );
-          }
-          return GridView.builder(
-            padding: const EdgeInsets.all(16),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              childAspectRatio: 0.62,
-            ),
-            itemCount: products.length,
-            itemBuilder: (context, i) {
-              final p = products[i];
-              return ProductCard(
-                product: p,
-                onTap: () => context.push('/product/${p.id}').then((_) => _reload()),
+      body: RefreshIndicator(
+        onRefresh: _reload,
+        child: FutureBuilder<List<Product>>(
+          future: _wishlistFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 80),
+                    child: Center(child: Text('${tr(context, 'could_not_load_products')} ${snapshot.error}', style: const TextStyle(color: LeapColors.muted))),
+                  ),
+                ],
               );
-            },
-          );
-        },
+            }
+            final products = snapshot.data ?? [];
+            if (products.isEmpty) {
+              return ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(tr(context, 'no_wishlist_items_yet'), textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted)),
+                  ),
+                ],
+              );
+            }
+            return GridView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                childAspectRatio: 0.62,
+              ),
+              itemCount: products.length,
+              itemBuilder: (context, i) {
+                final p = products[i];
+                return ProductCard(
+                  product: p,
+                  onTap: () => context.push('/product/${p.id}').then((_) => _reload()),
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }

@@ -94,6 +94,30 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  /// Real pull-to-refresh (new) -- resets every real future on this
+  /// screen (categories, garage, recently viewed, and the main feed
+  /// via the same cache-bypass _setFilter already uses when the filter
+  /// changes), rather than just one of them. The feed itself
+  /// deliberately isn't awaited directly here -- it depends on the
+  /// garage future resolving first (see the nested FutureBuilder
+  /// below), the same real dependency chain this screen already had
+  /// before pull-to-refresh existed, not something new introduced here.
+  Future<void> _handleRefresh() async {
+    final auth = context.read<AuthState>();
+    setState(() {
+      _categoriesFuture = ApiClient().fetchCategories();
+      if (auth.isLoggedIn) {
+        _garageFuture = ApiClient().fetchMyGarage(auth.token!);
+        _recentlyViewedFuture = ApiClient().fetchRecentlyViewed(auth.token!);
+      }
+      _loadedForFeedKey = null;
+    });
+    final waits = <Future>[_categoriesFuture];
+    if (_garageFuture != null) waits.add(_garageFuture!);
+    if (_recentlyViewedFuture != null) waits.add(_recentlyViewedFuture!);
+    await Future.wait(waits);
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
@@ -104,10 +128,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Row(
+        child: RefreshIndicator(
+          onRefresh: _handleRefresh,
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text('LEAP', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 26, color: LeapColors.ink)),
@@ -275,6 +301,7 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
           ],
+          ),
         ),
       ),
     );

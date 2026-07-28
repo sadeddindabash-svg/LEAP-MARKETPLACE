@@ -163,6 +163,72 @@ screen at all, only the list.
   checked every field the screen reads (`supplierName`, `trackingNumber`,
   `items`, `subOrderId`, etc.) actually exists in the real response.
 
+## Real "reorder" from a past order (new)
+
+**A real, confirmed gap**: no way to quickly re-add every item from a
+past order back into the cart — a buyer had to find and re-add each
+product manually. Adds every real item from every real supplier
+sub-order back into the real cart **one at a time**, not a single bulk
+call, so a genuine per-item failure (out of stock since the original
+order, or the product no longer active) doesn't block the rest —
+reports an honest summary ("3 items added. Could not add: X").
+
+**Verified against the real running backend** (this sandbox has no
+Flutter SDK — verified as thoroughly as possible without one, the same
+approach as every other mobile change this session): confirmed the
+real order-detail response shape matches exactly what the reorder code
+reads (`productId`, `name`, `quantity`), confirmed the real add-to-cart
+success path, and confirmed a real out-of-stock rejection (400)
+correctly propagates as a catchable exception through every real layer
+(`ApiClient` → `CartState` → the reorder handler) — traced by hand, not
+assumed.
+
+## Real pull-to-refresh across every key list screen (new)
+
+**A real, confirmed gap, found by auditing every list-style screen**:
+zero of them had pull-to-refresh — Orders, Wishlist, Notifications,
+Home, Support, and Returns. Fixed all 6. Every screen's empty/error
+state is now also genuinely scrollable (`AlwaysScrollableScrollPhysics`)
+so the gesture still works even when there's nothing to show, not just
+when a list is already populated.
+
+Home screen's refresh resets all 4 of its own real futures (categories,
+garage, recently-viewed, feed) — the feed itself isn't awaited directly
+since it depends on the garage future resolving first (the same real
+dependency chain this screen already had before pull-to-refresh
+existed via its nested `FutureBuilder`s, not something new introduced
+here).
+
+**A real mistake made and caught while building this**: mid-edit on
+two of these screens (`notifications_screen.dart`,
+`returns_screen.dart`), a `RefreshIndicator` wrapper was added without
+its own matching closing parenthesis — caught immediately by this
+project's own established bracket-balance verification step (run after
+every edit, not just at the end), not left for a later `flutter run` to
+discover.
+
+## Real notification tap-handling for all 6 link types, not just 2 (fixed)
+
+**A real, significant bug found while adding pull-to-refresh to the
+notifications screen, unrelated to that work**: tapping a
+back-in-stock, price-drop, saved-search-match, or referral-reward
+notification silently did nothing beyond marking it read — the
+tap-handler only recognized `order` and `ticket`, but the real backend
+has 6 distinct real `linkType` values (confirmed by checking every
+actual `createNotification` call site directly, not assumed — see
+`services/api/src/modules/notifications/helpers.js`'s own header
+comment for the full list). Now correctly navigates for `product`
+(→ the real product page), `saved_search` (→ `/saved-searches`), and
+`promo_code` (→ `/referrals`) too. `supplier_message` is deliberately
+left as a graceful fallback — it's meant for a supplier's own linked
+account in the web supplier portal, not a typical buyer's mobile
+session, so no dedicated screen exists for it here.
+
+This same file's own header comment also still said "the 4 real
+trigger points" — fixed to reference the real, current, complete count
+of 9 (see the backend README's own note on this same stale comment,
+found and fixed on the backend side the same session).
+
 ## Guest support ticket tracking (new) — mirrors the same fix already proven for returns and web-storefront
 
 **A real, confirmed gap**: `createTicket` already supported filing a

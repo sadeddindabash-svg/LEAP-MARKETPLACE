@@ -9,6 +9,7 @@ import '../../core/auth_state.dart';
 import '../../core/config/app_config.dart';
 import '../../services/api_client.dart';
 import '../../widgets/plate_chip.dart';
+import '../../core/cart_state.dart';
 
 /// BUY-052/053: order detail, showing the real per-supplier split (the
 /// buyer placed one order, but it's fulfilled by potentially multiple
@@ -29,6 +30,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Map<String, dynamic>? _order;
   String? _errorMessage;
   bool _isLoading = true;
+  bool _isReordering = false;
 
   @override
   void initState() {
@@ -194,6 +196,70 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     }
   }
 
+  /// Real "reorder" (new) -- adds every real item from every real
+  /// supplier sub-order back into the real cart, one item at a time
+  /// rather than a single bulk call, so a genuine per-item failure
+  /// (out of stock since this order, or the product no longer exists/
+  /// isn't active) doesn't silently block every other item too. Uses
+  /// the real cart's own real stock validation (already enforced by
+  /// CartState.addItem) rather than re-checking stock here -- the
+  /// backend is the one real source of truth for what's actually
+  /// available right now.
+  Future<void> _reorder() async {
+    if (_order == null) return;
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final subOrders = (_order!['supplierSubOrders'] as List).cast<Map<String, dynamic>>();
+    final allItems = <Map<String, dynamic>>[];
+    for (final so in subOrders) {
+      allItems.addAll((so['items'] as List).cast<Map<String, dynamic>>());
+    }
+    if (allItems.isEmpty) return;
+
+    setState(() => _isReordering = true);
+    final cart = context.read<CartState>();
+    var addedCount = 0;
+    final failedNames = <String>[];
+    for (final item in allItems) {
+      try {
+        await cart.addItem(item['productId'] as String, item['quantity'] as int);
+        addedCount++;
+      } catch (_) {
+        // Real, honest per-item failure -- most likely a real
+        // out-of-stock rejection from the real cart's own stock
+        // validation, or the product no longer existing/being active.
+        // Continue with the rest of the real items regardless.
+        failedNames.add(item['name'] as String? ?? item['productId'] as String);
+      }
+    }
+    if (!mounted) return;
+    setState(() => _isReordering = false);
+
+    if (addedCount > 0 && failedNames.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(isAr ? 'تمت إضافة $addedCount عنصرًا إلى سلتك.' : '$addedCount item${addedCount == 1 ? '' : 's'} added to your cart.'),
+          action: SnackBarAction(label: isAr ? 'عرض السلة' : 'View cart', onPressed: () => context.push('/cart')),
+        ),
+      );
+    } else if (addedCount > 0 && failedNames.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isAr
+                ? 'تمت إضافة $addedCount عنصرًا. تعذر إضافة: ${failedNames.join('، ')}'
+                : '$addedCount item${addedCount == 1 ? '' : 's'} added. Could not add: ${failedNames.join(', ')}',
+          ),
+          duration: const Duration(seconds: 6),
+          action: SnackBarAction(label: isAr ? 'عرض السلة' : 'View cart', onPressed: () => context.push('/cart')),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(isAr ? 'تعذرت إضافة أي عنصر من هذا الطلب.' : 'Could not add any item from this order right now.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -232,6 +298,19 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             onPressed: () => context.push('/orders/${widget.orderId}/tracking'),
             icon: const Icon(Icons.local_shipping_outlined, size: 18),
             label: Text(Localizations.localeOf(context).languageCode == 'ar' ? 'تتبع الطلب' : 'Track your package'),
+          ),
+          const SizedBox(height: 10),
+          FilledButton.icon(
+            onPressed: _isReordering ? null : _reorder,
+            icon: _isReordering
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.replay, size: 18),
+            label: Text(
+              _isReordering
+                  ? (Localizations.localeOf(context).languageCode == 'ar' ? 'جارٍ الإضافة…' : 'Adding…')
+                  : (Localizations.localeOf(context).languageCode == 'ar' ? 'إعادة الطلب' : 'Reorder'),
+            ),
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
           ),
           if (_isCancellable()) ...[
             const SizedBox(height: 20),

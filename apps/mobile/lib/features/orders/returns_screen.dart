@@ -52,8 +52,10 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
     return ApiClient().fetchMyReturnCases(auth.token!);
   }
 
-  void _refresh() {
-    setState(() => _casesFuture = _load());
+  Future<void> _refresh() async {
+    final future = _load();
+    setState(() => _casesFuture = future);
+    await future;
   }
 
   void _trackReturn() {
@@ -94,42 +96,62 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
 
     return Scaffold(
       appBar: AppBar(title: Text(tr(context, 'my_returns'))),
-      body: FutureBuilder<List<dynamic>>(
-        future: _casesFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('${tr(context, 'could_not_load_returns')} ${snapshot.error}', style: const TextStyle(color: LeapColors.muted)));
-          }
-          final cases = snapshot.data ?? [];
-          if (cases.isEmpty) {
-            return Center(child: Text(tr(context, 'no_returns_yet'), style: const TextStyle(color: LeapColors.muted)));
-          }
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: cases.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (context, i) {
-              final c = cases[i] as Map<String, dynamic>;
-              return Card(
-                child: ListTile(
-                  title: Text(c['reason'] as String, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  subtitle: Text(
-                    '${tr(context, 'return_case_order_label')} ${c['orderId']}',
-                    style: const TextStyle(fontSize: 12),
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        child: FutureBuilder<List<dynamic>>(
+          future: _casesFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 80),
+                    child: Center(child: Text('${tr(context, 'could_not_load_returns')} ${snapshot.error}', style: const TextStyle(color: LeapColors.muted))),
                   ),
-                  trailing: _StatusPill(status: c['status'] as String),
-                  onTap: () async {
-                    await context.push('/returns/${c['id']}');
-                    _refresh();
-                  },
-                ),
+                ],
               );
-            },
+            }
+            final cases = snapshot.data ?? [];
+            if (cases.isEmpty) {
+              return ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 80),
+                    child: Center(child: Text(tr(context, 'no_returns_yet'), style: const TextStyle(color: LeapColors.muted))),
+                  ),
+                ],
+              );
+            }
+            return ListView.separated(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16),
+              itemCount: cases.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (context, i) {
+                final c = cases[i] as Map<String, dynamic>;
+                return Card(
+                  child: ListTile(
+                    title: Text(c['reason'] as String, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    subtitle: Text(
+                      '${tr(context, 'return_case_order_label')} ${c['orderId']}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    trailing: _StatusPill(status: c['status'] as String),
+                    onTap: () async {
+                      await context.push('/returns/${c['id']}');
+                      _refresh();
+                    },
+                  ),
+                );
+              },
           );
         },
+      ),
       ),
     );
   }
