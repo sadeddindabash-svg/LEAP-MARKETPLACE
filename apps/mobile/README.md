@@ -340,6 +340,15 @@ sub-order, so it's only ever started from that order's detail page,
 which itself requires knowing the order (guest checkout confirmation
 provides this), not a guest-accessible blank form.
 
+## Real placeholder/error handling for return-evidence photo previews (fixed)
+
+**A small, genuine inconsistency found while auditing every image
+display in the app**: the return-request evidence-photo preview
+thumbnails (`order_detail_screen.dart`) used `CachedNetworkImage`
+without any `placeholder`/`errorWidget` — the only place in the whole
+app missing both, while every other real image display already has
+them. Fixed to match.
+
 ## Real stock-limit check on the product page's own quantity selector (fixed)
 
 **A real, genuine inconsistency found while auditing quantity

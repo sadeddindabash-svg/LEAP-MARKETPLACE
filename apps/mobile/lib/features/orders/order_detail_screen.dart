@@ -608,7 +608,24 @@ class _ReturnRequestSheetState extends State<_ReturnRequestSheet> {
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: CachedNetworkImage(imageUrl: '${AppConfig.apiBaseUrl}${_uploadedPhotoUrls[i]}', width: 64, height: 64, fit: BoxFit.cover),
+                        child: CachedNetworkImage(
+                          imageUrl: '${AppConfig.apiBaseUrl}${_uploadedPhotoUrls[i]}',
+                          width: 64,
+                          height: 64,
+                          fit: BoxFit.cover,
+                          // Real placeholder/error handling (new) --
+                          // closes a real, small inconsistency: every
+                          // other real image display in this app
+                          // already has both; this one (return-
+                          // evidence photo previews) didn't.
+                          placeholder: (context, url) => Container(width: 64, height: 64, color: LeapColors.chalk),
+                          errorWidget: (context, url, error) => Container(
+                            width: 64,
+                            height: 64,
+                            color: LeapColors.chalk,
+                            child: const Icon(Icons.broken_image_outlined, size: 20, color: LeapColors.muted),
+                          ),
+                        ),
                       ),
                       Positioned(
                         top: -6, right: -6,
