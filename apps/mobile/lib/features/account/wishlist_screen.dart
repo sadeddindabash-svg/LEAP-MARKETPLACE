@@ -71,7 +71,16 @@ class _WishlistScreenState extends State<WishlistScreen> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.all(24),
-                    child: Text(tr(context, 'no_wishlist_items_yet'), textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted)),
+                    child: Column(
+                      children: [
+                        Text(tr(context, 'no_wishlist_items_yet'), textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted)),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: () => context.go('/home'),
+                          child: Text(tr(context, 'browse_products')),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               );

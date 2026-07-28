@@ -77,6 +77,15 @@ class CartScreen extends StatelessWidget {
               const SizedBox(height: 12),
               Text(tr(context, 'basket_empty'),
                   textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted)),
+              const SizedBox(height: 20),
+              // Real "Browse products" CTA (new) -- closes a real gap:
+              // this empty state's own copy already said "Browse
+              // categories to add..." but there was no actual button to
+              // do that with.
+              ElevatedButton(
+                onPressed: () => context.go('/home'),
+                child: Text(tr(context, 'browse_products')),
+              ),
             ],
           ),
         ),

@@ -340,6 +340,23 @@ sub-order, so it's only ever started from that order's detail page,
 which itself requires knowing the order (guest checkout confirmation
 provides this), not a guest-accessible blank form.
 
+## Real "Browse products" call-to-action on empty states (new)
+
+**A real, confirmed gap**: the cart's own empty-state copy already said
+"Browse categories to add fitment-confirmed parts" — but there was no
+actual button to do that with, just text. Same gap on the Wishlist and
+Orders screens' own empty states. Added a real `ElevatedButton`
+navigating to `/home` (the real home tab, via `context.go()` — matching
+the exact same navigation the bottom nav bar itself already uses to
+switch tabs, not a stacked push) to all three.
+
+Deliberately simple and low-risk given the three real bugs found and
+fixed just before this in the same file (`cart_screen.dart`) — every
+`tr(context, ...)` call added here is a button's own static label,
+evaluated during a real `build()` call, the exact safe pattern
+confirmed earlier in this same session; no new async logic, no new
+state, nothing else that could reproduce that same class of bug.
+
 ## Real "Undo" on cart item removal, and three real bugs fixed (new)
 
 **A fourth instance of the third bug, found via a proactive sweep of

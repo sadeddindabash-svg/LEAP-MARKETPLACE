@@ -163,7 +163,19 @@ class _OrdersScreenState extends State<OrdersScreen> {
                       children: [
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 80),
-                          child: Center(child: Text(tr(context, 'no_orders_yet'), style: const TextStyle(color: LeapColors.muted))),
+                          child: Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(tr(context, 'no_orders_yet'), style: const TextStyle(color: LeapColors.muted)),
+                                const SizedBox(height: 16),
+                                ElevatedButton(
+                                  onPressed: () => context.go('/home'),
+                                  child: Text(tr(context, 'browse_products')),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ],
                     );
