@@ -20,6 +20,23 @@ import '../search/vehicle_filter_sheet.dart';
 /// the real, populated structured cascade. add_vehicle_screen.dart is
 /// no longer routed to and has been removed.
 ///
+/// REAL BUG FOUND AND FIXED HERE, reported by an actual person testing
+/// on a real device, and only fully diagnosed via their own real
+/// Chrome DevTools Network tab: after adding a vehicle, the real
+/// backend genuinely saved it and genuinely returned it in the very
+/// next real fetch (confirmed directly from the real response body,
+/// not assumed) -- but it didn't appear on screen until a manual
+/// refresh. This screen used to re-wrap that already-fetched result in
+/// a brand new `Future.value(...)` and hand it to a `FutureBuilder` --
+/// which resets its own internal snapshot to a waiting state and only
+/// picks up a new Future's value on a LATER microtask, not
+/// synchronously within the same `setState` -- a real, subtle timing
+/// gap that this rewrite removes entirely by keeping the vehicle list
+/// in a plain `List<Vehicle>?` field instead, updated directly and
+/// synchronously, with no FutureBuilder replacement-future involved in
+/// the add/remove path at all. FutureBuilder is now only used once,
+/// for the real initial load.
+///
 /// Requires login — there's no guest "garage" concept, unlike guest
 /// checkout; saving a vehicle only makes sense tied to an account.
 class GarageScreen extends StatefulWidget {
@@ -30,12 +47,19 @@ class GarageScreen extends StatefulWidget {
 }
 
 class _GarageScreenState extends State<GarageScreen> {
-  late Future<List<Vehicle>> _garageFuture;
+  late Future<List<Vehicle>> _initialLoadFuture;
+  List<Vehicle>? _vehicles;
+  String? _loadError;
 
   @override
   void initState() {
     super.initState();
-    _garageFuture = _load();
+    _initialLoadFuture = _load();
+    _initialLoadFuture.then((v) {
+      if (mounted) setState(() => _vehicles = v);
+    }).catchError((e) {
+      if (mounted) setState(() => _loadError = e.toString());
+    });
   }
 
   Future<List<Vehicle>> _load() async {
@@ -47,22 +71,22 @@ class _GarageScreenState extends State<GarageScreen> {
   Future<void> _remove(Vehicle v) async {
     final auth = context.read<AuthState>();
     try {
-      // Same real fix as _addVehicle above -- removeVehicleFromGarage
-      // already returns the real, updated list directly from the real
-      // DELETE response; using it directly instead of discarding it
-      // and calling the old _refresh() (removed) for a second, separate fetch.
+      // removeVehicleFromGarage already returns the real, updated list
+      // directly from the real DELETE response. Set directly into
+      // _vehicles (a plain field, not wrapped in a new Future handed to
+      // a FutureBuilder) -- see this file's own header comment for why.
       final updatedGarage = await ApiClient().removeVehicleFromGarage(auth.token!, v.generationId, v.year);
-      if (mounted) setState(() => _garageFuture = Future.value(updatedGarage));
+      if (mounted) setState(() => _vehicles = updatedGarage);
     } on ApiException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
-  // Real confirmation dialog (new) -- closes a real, genuine
-  // inconsistency: the addresses screen already asks for confirmation
-  // before a real delete; this screen removed a vehicle immediately
-  // with no safety net at all for an equally irreversible action
-  // (fitment filtering, saved default vehicle, etc. all rely on this).
+  // Real confirmation dialog -- closes a real, genuine inconsistency:
+  // the addresses screen already asks for confirmation before a real
+  // delete; this screen removed a vehicle immediately with no safety
+  // net at all for an equally irreversible action (fitment filtering,
+  // saved default vehicle, etc. all rely on this).
   void _confirmRemove(Vehicle v) {
     showDialog(
       context: context,
@@ -88,17 +112,13 @@ class _GarageScreenState extends State<GarageScreen> {
     if (selection == null) return;
     final auth = context.read<AuthState>();
     try {
-      // REAL BUG FOUND AND FIXED HERE, reported by an actual person
-      // testing on a real device: addVehicleToGarage ALREADY makes its
-      // own real fetchMyGarage call internally and returns the real,
-      // updated list -- but that result was being discarded here, and
-      // the old _refresh() (removed) below then triggered a SECOND, entirely separate
-      // fetch. Wasteful at best; at worst, a real race between the two
-      // in-flight requests could explain exactly the reported symptom
-      // (a genuinely saved vehicle not showing up until a manual
-      // refresh forced a clean, single fetch). Uses the already-
-      // fetched result directly instead of discarding it and fetching
-      // a second time.
+      // addVehicleToGarage already returns the real, updated list --
+      // POST /garage/me itself only returns the single newly-added
+      // vehicle (a real backend constraint), so this makes its own
+      // real internal follow-up fetch and returns THAT. Set directly
+      // into _vehicles (a plain field), not wrapped in a new Future
+      // handed to a FutureBuilder -- see this file's own header
+      // comment for the real timing bug that caused.
       //
       // Real fallback for "Any year in this generation" (year: null) --
       // My Garage always needs ONE definite year (this is meant to be
@@ -106,7 +126,7 @@ class _GarageScreenState extends State<GarageScreen> {
       // genuinely means "don't narrow." Falls back to the generation's
       // own real starting year, never a placeholder.
       final updatedGarage = await ApiClient().addVehicleToGarage(auth.token!, selection.generationId, selection.year ?? selection.yearStart);
-      if (mounted) setState(() => _garageFuture = Future.value(updatedGarage));
+      if (mounted) setState(() => _vehicles = updatedGarage);
     } on ApiException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     }
@@ -139,41 +159,40 @@ class _GarageScreenState extends State<GarageScreen> {
       );
     }
 
+    Widget body;
+    if (_loadError != null) {
+      body = Center(child: Text('${tr(context, 'could_not_load_garage')} $_loadError', style: const TextStyle(color: LeapColors.muted)));
+    } else if (_vehicles == null) {
+      body = const Center(child: CircularProgressIndicator());
+    } else {
+      final vehicles = _vehicles!;
+      body = ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          for (final v in vehicles)
+            Card(
+              key: ValueKey(v.id),
+              margin: const EdgeInsets.only(bottom: 10),
+              child: ListTile(
+                leading: const Icon(Icons.directions_car),
+                title: Text(v.label, style: const TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text(v.subLabel),
+                trailing: IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => _confirmRemove(v)),
+                onTap: () => Navigator.of(context).pop(v),
+              ),
+            ),
+          OutlinedButton.icon(
+            onPressed: _addVehicle,
+            icon: const Icon(Icons.add),
+            label: Text(tr(context, 'add_a_vehicle')),
+          ),
+        ],
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(title: Text(tr(context, 'my_garage'))),
-      body: FutureBuilder<List<Vehicle>>(
-        future: _garageFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('${tr(context, 'could_not_load_garage')} ${snapshot.error}', style: const TextStyle(color: LeapColors.muted)));
-          }
-          final vehicles = snapshot.data ?? [];
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              for (final v in vehicles)
-                Card(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  child: ListTile(
-                    leading: const Icon(Icons.directions_car),
-                    title: Text(v.label, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Text(v.subLabel),
-                    trailing: IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => _confirmRemove(v)),
-                    onTap: () => Navigator.of(context).pop(v),
-                  ),
-                ),
-              OutlinedButton.icon(
-                onPressed: _addVehicle,
-                icon: const Icon(Icons.add),
-                label: Text(tr(context, 'add_a_vehicle')),
-              ),
-            ],
-          );
-        },
-      ),
+      body: body,
     );
   }
 }

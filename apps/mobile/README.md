@@ -340,6 +340,50 @@ sub-order, so it's only ever started from that order's detail page,
 which itself requires knowing the order (guest checkout confirmation
 provides this), not a guest-accessible blank form.
 
+## Real bug fixed: a genuinely saved vehicle didn't appear without a manual refresh (My Garage)
+
+**A real bug, reported by an actual person testing on a real device,
+that took several rounds of elimination to properly diagnose** — each
+ruled-out theory confirmed directly, not assumed, before moving to the
+next:
+
+1. **Server-side HTTP caching** — real, and fixed (see
+   `services/api/README.md`'s own note on this), but confirmed NOT the
+   cause of this specific report once isolated.
+2. **A Flutter web service worker** — confirmed none was registered at
+   all, via the real person's own Chrome DevTools Application panel.
+3. **A redundant double-fetch** — `addVehicleToGarage`/
+   `removeVehicleFromGarage` already made their own real internal
+   follow-up fetch, but the result was discarded and fetched again
+   separately. Real, worth fixing, but confirmed NOT the actual cause
+   once the network log showed only a single, correct fetch happening
+   either way.
+4. **The real root cause**, found only by directly inspecting the real
+   person's own Chrome DevTools Network tab response body: the real
+   backend genuinely saved the vehicle and genuinely returned it in
+   the very next real fetch (confirmed byte-for-byte from the actual
+   response JSON) — but the screen still showed the OLD list. This
+   screen used to re-wrap that already-fetched result in a brand new
+   `Future.value(...)` and hand it to a `FutureBuilder` — which resets
+   its own internal snapshot to a waiting state and only picks up a
+   new Future's value on a later microtask, not synchronously within
+   the same `setState` call. A real, subtle Flutter timing gap, not a
+   data or network problem at all.
+
+**Fixed by removing `FutureBuilder` from the add/remove path
+entirely**: the vehicle list is now kept in a plain `List<Vehicle>?`
+field, updated directly and synchronously after a real add/remove.
+`FutureBuilder` is only used once now, for the real initial load.
+Also added an explicit `ValueKey(v.id)` to each real vehicle card,
+removing any remaining ambiguity in how Flutter's list reconciliation
+matches items across rebuilds.
+
+**A genuinely difficult bug to track down** — real appreciation to the
+person who tested this: confirming each ruled-out theory with their
+own DevTools (DevTools Application panel for the service worker,
+Network tab response body for the final root cause) is what made it
+possible to find the real cause rather than guessing indefinitely.
+
 ## Real bug fixed: adding/removing a garage vehicle discarded the already-fetched fresh list, then fetched it again separately
 
 **A real bug, reported by an actual person testing on a real device**:
