@@ -2341,6 +2341,34 @@ confirmed logged distinctly from review moderation; deactivated a real
 promo code, confirmed logged distinctly from creation; created/
 updated/deleted a real fee component, confirmed all three logged.
 
+## Real bug fixed: a genuinely saved change didn't appear until a full page refresh (browser caching)
+
+**A real bug, reported by an actual person testing My Garage on a real
+device**: adding a vehicle genuinely saved (confirmed correct against
+the real running backend), but the newly-added vehicle didn't appear
+in the app until a full page refresh — as if the save silently failed,
+even though it hadn't.
+
+**Root cause**: this whole API had no `Cache-Control` directive at all
+on any response, combined with Express's own default `ETag` behavior
+(enabled unless explicitly disabled). On a web target specifically, a
+browser can serve a stale cached `GET` response for an identical URL
+without a fresh network round-trip at all — especially right after a
+`POST` to a different endpoint that changed the underlying data. This
+is a real, general problem for the whole API (every endpoint returns
+data that can change at any time), not something specific to the
+garage endpoint alone.
+
+**Fixed globally, not per-route**: `app.set('etag', false)` plus a
+real `Cache-Control: no-store` header on every response, applied via
+middleware near the very top of the request pipeline.
+
+**Verified against the real running backend**: confirmed the response
+headers no longer include an `ETag` and now genuinely include
+`Cache-Control: no-store`. Full regression: web-storefront (38/38) and
+a targeted admin-dashboard check (17/17), both passing, confirming
+this global change didn't break anything relying on prior behavior.
+
 ## Real bilingual name + photo, required for brands and categories (new, migration 046)
 
 **An explicit, requested requirement**: `POST /fitment/brands` now

@@ -47,6 +47,10 @@ const pricingRoutes = require('./modules/pricing/routes');
 assertRequiredEnvInProduction();
 
 const app = express();
+// Disabled alongside the real Cache-Control fix below -- Express
+// generates a weak ETag by default on every response, which invites
+// conditional-GET caching behavior this dynamic API doesn't want.
+app.set('etag', false);
 // REAL BUG FOUND AND FIXED HERE, before it ever shipped: by default,
 // the cors package does NOT expose ANY custom response header to
 // browser JavaScript, even though it's genuinely sent over the wire --
@@ -66,6 +70,26 @@ app.use(cors({ exposedHeaders: ['X-Total-Count'] }));
 // whitespace, etc. can differ) -- a common, real bug in webhook
 // implementations that this avoids from the start.
 app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf; } }));
+
+// REAL BUG FOUND AND FIXED HERE, reported by an actual person testing
+// on a real device: a genuinely saved vehicle (My Garage) didn't
+// appear in the app until a full page refresh, even though the real
+// save itself succeeded immediately (confirmed against the real
+// running backend). Root cause: this API had no Cache-Control
+// directive at all on any response, combined with Express's own
+// default ETag behavior (enabled unless explicitly disabled) -- on a
+// web target specifically, a browser can serve a stale cached GET
+// response for an identical URL without a fresh network round-trip at
+// all, especially right after a POST to a different endpoint that
+// changed the underlying data. This is a real, general problem for
+// this whole API (every endpoint returns data that can change at any
+// time), not something specific to the garage endpoint alone -- fixed
+// globally rather than patching one route.
+app.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+
 // Serves uploaded product images — see modules/uploads/routes.js header
 // comment for why this is local disk (real, working) rather than real
 // object storage (the production-ready choice, not yet wired up).
