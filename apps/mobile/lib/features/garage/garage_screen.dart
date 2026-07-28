@@ -56,6 +56,27 @@ class _GarageScreenState extends State<GarageScreen> {
     }
   }
 
+  // Real confirmation dialog (new) -- closes a real, genuine
+  // inconsistency: the addresses screen already asks for confirmation
+  // before a real delete; this screen removed a vehicle immediately
+  // with no safety net at all for an equally irreversible action
+  // (fitment filtering, saved default vehicle, etc. all rely on this).
+  void _confirmRemove(Vehicle v) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        content: Text(tr(context, 'remove_vehicle_confirm')),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: Text(tr(context, 'cancel'))),
+          TextButton(
+            onPressed: () { Navigator.of(dialogContext).pop(); _remove(v); },
+            child: Text(tr(context, 'delete'), style: const TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _addVehicle() async {
     final selection = await showModalBottomSheet<VehicleFilterSelection>(
       context: context,
@@ -126,7 +147,7 @@ class _GarageScreenState extends State<GarageScreen> {
                     leading: const Icon(Icons.directions_car),
                     title: Text(v.label, style: const TextStyle(fontWeight: FontWeight.w700)),
                     subtitle: Text(v.subLabel),
-                    trailing: IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => _remove(v)),
+                    trailing: IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => _confirmRemove(v)),
                     onTap: () => Navigator.of(context).pop(v),
                   ),
                 ),

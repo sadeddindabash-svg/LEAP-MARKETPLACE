@@ -340,6 +340,20 @@ sub-order, so it's only ever started from that order's detail page,
 which itself requires knowing the order (guest checkout confirmation
 provides this), not a guest-accessible blank form.
 
+## Real confirmation dialogs for saved-search and vehicle removal (fixed)
+
+**A real, genuine inconsistency found while auditing destructive
+actions app-wide**: the addresses screen already asks for confirmation
+before a real delete — but saved-search deletion and My Garage vehicle
+removal both deleted/removed immediately with no safety net at all,
+for equally irreversible real actions (a removed vehicle also affects
+real fitment filtering and any real saved-default vehicle). Added the
+exact same confirmation dialog pattern to both, matching each file's
+own existing bilingual-text convention (`saved_searches_screen.dart`
+uses inline ternaries throughout; `garage_screen.dart` uses the real
+`tr()` translation dictionary) rather than introducing a third,
+inconsistent style.
+
 ## Real placeholder/error handling for return-evidence photo previews (fixed)
 
 **A small, genuine inconsistency found while auditing every image

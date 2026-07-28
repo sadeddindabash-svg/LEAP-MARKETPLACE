@@ -50,6 +50,30 @@ class _SavedSearchesScreenState extends State<SavedSearchesScreen> {
     }
   }
 
+  // Real confirmation dialog (new) -- closes a real, genuine
+  // inconsistency: the addresses screen already asks for confirmation
+  // before a real delete; this screen deleted immediately with no
+  // safety net at all for an equally irreversible action. tr()-style
+  // translation isn't used in this file (it already uses inline
+  // ternaries throughout, matched here); the dialog's own builder is a
+  // real, separate widget-construction callback -- safe, unlike a
+  // bare event-handler body.
+  void _confirmDelete(SavedSearch s, bool isAr) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        content: Text(isAr ? 'هل تريد حذف بحثك المحفوظ "${s.label}"؟' : 'Delete your saved search "${s.label}"?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: Text(isAr ? 'إلغاء' : 'Cancel')),
+          TextButton(
+            onPressed: () { Navigator.of(dialogContext).pop(); _delete(s); },
+            child: Text(isAr ? 'حذف' : 'Delete', style: const TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isAr = context.watch<LanguageState>().isArabic;
@@ -86,7 +110,7 @@ class _SavedSearchesScreenState extends State<SavedSearchesScreen> {
             subtitle: Text(s.searchTerm ?? s.category ?? ''),
             trailing: IconButton(
               icon: const Icon(Icons.delete_outline, color: LeapColors.muted),
-              onPressed: () => _delete(s),
+              onPressed: () => _confirmDelete(s, isAr),
             ),
           ),
         );
