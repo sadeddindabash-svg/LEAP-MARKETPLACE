@@ -125,6 +125,12 @@ class RootShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final location = GoRouterState.of(context).uri.toString();
+    // Real cart item-count badge (new) -- closes a real, common gap:
+    // the bottom nav had no badges at all. context.watch is genuinely
+    // safe here -- this is a real build() method (StatelessWidget's
+    // own build, not an event-handler callback), the exact distinction
+    // that mattered for the earlier real bugs found in this session.
+    final cartItemCount = context.watch<CartState>().itemCount;
     return Scaffold(
       body: child,
       bottomNavigationBar: BottomNavigationBar(
@@ -133,7 +139,15 @@ class RootShell extends StatelessWidget {
         items: [
           BottomNavigationBarItem(icon: const Icon(Icons.home_outlined), label: tr(context, 'nav_home')),
           BottomNavigationBarItem(icon: const Icon(Icons.grid_view_outlined), label: tr(context, 'nav_shop')),
-          BottomNavigationBarItem(icon: const Icon(Icons.shopping_cart_outlined), label: tr(context, 'nav_cart')),
+          BottomNavigationBarItem(
+            icon: cartItemCount > 0
+                ? Badge(
+                    label: Text(cartItemCount > 99 ? '99+' : '$cartItemCount'),
+                    child: const Icon(Icons.shopping_cart_outlined),
+                  )
+                : const Icon(Icons.shopping_cart_outlined),
+            label: tr(context, 'nav_cart'),
+          ),
           BottomNavigationBarItem(icon: const Icon(Icons.inventory_2_outlined), label: tr(context, 'nav_orders')),
           BottomNavigationBarItem(icon: const Icon(Icons.person_outline), label: tr(context, 'nav_account')),
         ],

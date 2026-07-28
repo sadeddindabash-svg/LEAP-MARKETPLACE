@@ -340,6 +340,23 @@ sub-order, so it's only ever started from that order's detail page,
 which itself requires knowing the order (guest checkout confirmation
 provides this), not a guest-accessible blank form.
 
+## Real cart item-count badge on the bottom nav (new)
+
+**A real, confirmed gap**: the bottom nav had no badges at all — a
+buyer with items in their cart had no visual cue from anywhere else in
+the app. Added a real `Badge` on the Cart tab's icon, showing the real
+total quantity across every item (`CartState.itemCount`, already a
+real computed getter — no new state needed), capped at a real "99+"
+display for very large carts.
+
+`context.watch<CartState>()` is used directly in `RootShell`'s own
+`build()` method — genuinely safe (the exact distinction that mattered
+for the real bugs found earlier this session: this is a real build()
+call, not an event-handler callback). Since `RootShell` is the
+persistent shell wrapping every tab (not rebuilt per-tab-switch), the
+badge updates live regardless of which tab a buyer is currently
+viewing, not just when they're looking at the cart itself.
+
 ## Real "Browse products" call-to-action on empty states (new)
 
 **A real, confirmed gap**: the cart's own empty-state copy already said
