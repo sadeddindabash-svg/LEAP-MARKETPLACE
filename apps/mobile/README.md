@@ -342,6 +342,29 @@ provides this), not a guest-accessible blank form.
 
 ## Real "Undo" on cart item removal, and three real bugs fixed (new)
 
+**A fourth instance of the third bug, found via a proactive sweep of
+the whole app after the cart bug was confirmed fixed on a real
+device**: `addresses_screen.dart`'s "add address" FAB called
+`tr(context, 'address_limit_reached')` from inside its own `onPressed`
+callback when a buyer is at the real 3-address limit. Genuinely
+important correction to the original diagnosis: this callback is
+**purely synchronous** — no `async`/`await` at all — proving the real
+rule is broader than "only async callbacks are unsafe." `tr()`'s
+underlying `context.watch()` is only safe while Provider's own
+`context.owner!.debugBuilding` is true, i.e. genuinely during an
+active `build()` call — which no event-handler callback runs during,
+sync or async. Fixed with `trRead()`, the same real fix as the cart.
+
+**Swept the entire app for the same shape** (a `tr(context, ...)` call
+whose result feeds a `SnackBar`/dialog/imperative action from inside a
+callback body, not a widget's own static label built during `render`)
+— confirmed roughly a hundred other real `tr(context, ...)` usages
+across every screen are genuinely safe: in every other case, the call
+builds a button's own label/title (`child: Text(tr(context, ...))`),
+a separate widget property evaluated during the very same real
+`build()` call that also sets up `onPressed` — structurally different
+from a call sitting inside the callback's own function body.
+
 **First bug, found while looking for a good place to add undo**: the
 cart's remove ("×") button was the exact same fire-and-forget class of
 bug this file's own comment already documented fixing for the +/-

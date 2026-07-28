@@ -143,8 +143,20 @@ class _AddressesScreenState extends State<AddressesScreen> {
                       },
                     ),
       floatingActionButton: FloatingActionButton.extended(
+        // REAL BUG FOUND AND FIXED HERE (same class as the cart's own
+        // real bug, found via a real device console error there): this
+        // called tr(context, ...) from inside an onPressed callback --
+        // Provider's own context.watch() (which tr() uses internally)
+        // is only safe DURING an active build() call, regardless of
+        // whether the callback itself is sync or async. This one is
+        // purely synchronous (no async/await at all), proving the real
+        // rule is broader than "only async callbacks are unsafe" --
+        // any event-handler callback is unsafe, since none of them run
+        // during an active build. Fixed with trRead() (context.read(),
+        // a one-time non-reactive read), matching the same real fix
+        // already made for the cart.
         onPressed: atLimit
-            ? () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr(context, 'address_limit_reached'))))
+            ? () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(trRead(context, 'address_limit_reached'))))
             : () => context.push('/addresses/add').then((_) => _load()),
         backgroundColor: atLimit ? LeapColors.muted : LeapColors.signal,
         icon: const Icon(Icons.add),
