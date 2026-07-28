@@ -139,6 +139,8 @@ class AppStrings {
     'checkout': {'en': 'Checkout', 'ar': 'إتمام الشراء'},
     'basket_empty': {'en': 'Your basket is empty. Browse categories to add fitment-confirmed parts.', 'ar': 'سلتك فارغة. تصفح الفئات لإضافة قطع مؤكدة التوافق.'},
     'cart_at_stock_limit': {'en': "You've reached the available stock", 'ar': 'لقد وصلت إلى الحد الأقصى من المخزون المتاح'},
+    'cart_removed_from_cart': {'en': 'removed from cart', 'ar': 'تمت إزالته من السلة'},
+    'undo': {'en': 'Undo', 'ar': 'تراجع'},
     'cart_only': {'en': 'Only', 'ar': 'فقط'},
     'cart_left_in_stock': {'en': 'left in stock', 'ar': 'متبقٍ في المخزون'},
     'ships_from': {'en': 'Ships from', 'ar': 'يُشحن من'},

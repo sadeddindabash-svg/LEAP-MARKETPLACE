@@ -141,6 +141,48 @@ class _CartItemRow extends StatelessWidget {
     }
   }
 
+  // REAL BUG FOUND AND FIXED HERE: this remove button was ALSO a
+  // fire-and-forget call (`() => cart.removeItem(...)`, never awaited
+  // or wrapped in a try/catch) -- the exact same bug class already
+  // documented as fixed for the +/- stepper right above in this same
+  // file, just missed here. A real removal failure (network error)
+  // would silently do nothing with no visible feedback at all.
+  //
+  // Also adds a real "Undo" action (new) -- restores the exact real
+  // quantity that was removed via the real cart's own addItem, not a
+  // guessed default of 1.
+  Future<void> _removeItem(BuildContext context, CartState cart) async {
+    final removedQuantity = item.quantity;
+    final removedName = item.name;
+    try {
+      await cart.removeItem(item.productId);
+    } on ApiException catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+      return;
+    }
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$removedName ${tr(context, 'cart_removed_from_cart')}'),
+          action: SnackBarAction(
+            label: tr(context, 'undo'),
+            onPressed: () async {
+              try {
+                await cart.addItem(item.productId, removedQuantity);
+              } on ApiException catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+                }
+              }
+            },
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cart = context.read<CartState>();
@@ -214,7 +256,7 @@ class _CartItemRow extends StatelessWidget {
             ),
           ),
           IconButton(
-            onPressed: () => cart.removeItem(item.productId),
+            onPressed: () => _removeItem(context, cart),
             icon: const Icon(Icons.close, size: 16, color: LeapColors.muted),
           ),
         ],
