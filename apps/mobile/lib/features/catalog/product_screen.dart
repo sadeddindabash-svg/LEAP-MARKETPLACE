@@ -250,7 +250,18 @@ class _ProductDetailBody extends StatelessWidget {
                     children: [
                       IconButton(onPressed: () => onQtyChanged(qty > 1 ? qty - 1 : 1), icon: const Icon(Icons.remove, size: 16)),
                       Text('$qty', style: const TextStyle(fontWeight: FontWeight.w700)),
-                      IconButton(onPressed: () => onQtyChanged(qty + 1), icon: const Icon(Icons.add, size: 16)),
+                      // REAL BUG FOUND AND FIXED HERE: this "+" had no
+                      // real stock-limit check at all -- a buyer could
+                      // pick a quantity far beyond what's actually
+                      // available, only to have the real cart correctly
+                      // reject it later with a confusing error. Mirrors
+                      // the exact same real stock-limit pattern the
+                      // cart screen's own stepper already uses
+                      // (item.quantity >= item.stockQuantity).
+                      IconButton(
+                        onPressed: qty >= product.stockQuantity ? null : () => onQtyChanged(qty + 1),
+                        icon: const Icon(Icons.add, size: 16),
+                      ),
                     ],
                   ),
                 ),

@@ -340,6 +340,19 @@ sub-order, so it's only ever started from that order's detail page,
 which itself requires knowing the order (guest checkout confirmation
 provides this), not a guest-accessible blank form.
 
+## Real stock-limit check on the product page's own quantity selector (fixed)
+
+**A real, genuine inconsistency found while auditing quantity
+selectors app-wide**: the product detail page's own "+" button had no
+real stock-limit check at all — a buyer could pick a quantity far
+beyond what's actually available (the "Add to cart" button itself was
+already correctly disabled at zero stock, but the stepper leading up
+to it wasn't), only to have the real cart correctly reject it later
+with a confusing error. The cart screen's own stepper already
+correctly enforces this (`item.quantity >= item.stockQuantity`) — this
+mirrors that exact same, already-proven pattern
+(`qty >= product.stockQuantity`).
+
 ## Real "clear" button on the search field (new)
 
 **A real, common gap**: no way to clear the search field except
