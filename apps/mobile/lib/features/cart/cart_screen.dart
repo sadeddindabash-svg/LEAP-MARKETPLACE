@@ -141,46 +141,56 @@ class _CartItemRow extends StatelessWidget {
     }
   }
 
-  // REAL BUG FOUND AND FIXED HERE: this remove button was ALSO a
-  // fire-and-forget call (`() => cart.removeItem(...)`, never awaited
-  // or wrapped in a try/catch) -- the exact same bug class already
-  // documented as fixed for the +/- stepper right above in this same
-  // file, just missed here. A real removal failure (network error)
-  // would silently do nothing with no visible feedback at all.
+  // REAL BUG FOUND AND FIXED HERE (two, actually): this remove button
+  // was a fire-and-forget call (`() => cart.removeItem(...)`, never
+  // awaited or wrapped in a try/catch) -- the exact same bug class
+  // already documented as fixed for the +/- stepper right above in
+  // this same file, just missed here. A real removal failure (network
+  // error) would silently do nothing with no visible feedback at all.
   //
-  // Also adds a real "Undo" action (new) -- restores the exact real
-  // quantity that was removed via the real cart's own addItem, not a
-  // guessed default of 1.
+  // Second, found only after the first fix shipped and the real Undo
+  // snackbar still never appeared: removing the item successfully
+  // triggers a real rebuild of the cart list WITHOUT this row -- so by
+  // the time execution resumes after `await cart.removeItem(...)`,
+  // THIS row's own BuildContext has already been disposed as part of
+  // that same rebuild. `context.mounted` correctly reported false at
+  // that point, so an `if (context.mounted)` guard was silently
+  // skipping the snackbar every time, not failing loudly. Fixed by
+  // capturing the real ScaffoldMessenger instance -- and every real
+  // translated string, since `tr()` also does a real InheritedWidget
+  // lookup via this row's own context -- BEFORE the async removal,
+  // never re-resolving anything from this row's own context afterward.
+  //
+  // Also adds a real "Undo" action -- restores the exact real quantity
+  // that was removed via the real cart's own addItem, not a guessed
+  // default of 1.
   Future<void> _removeItem(BuildContext context, CartState cart) async {
     final removedQuantity = item.quantity;
     final removedName = item.name;
+    final messenger = ScaffoldMessenger.of(context);
+    final removedLabel = tr(context, 'cart_removed_from_cart');
+    final undoLabel = tr(context, 'undo');
     try {
       await cart.removeItem(item.productId);
     } on ApiException catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-      }
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
       return;
     }
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$removedName ${tr(context, 'cart_removed_from_cart')}'),
-          action: SnackBarAction(
-            label: tr(context, 'undo'),
-            onPressed: () async {
-              try {
-                await cart.addItem(item.productId, removedQuantity);
-              } on ApiException catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-                }
-              }
-            },
-          ),
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('$removedName $removedLabel'),
+        action: SnackBarAction(
+          label: undoLabel,
+          onPressed: () async {
+            try {
+              await cart.addItem(item.productId, removedQuantity);
+            } on ApiException catch (e) {
+              messenger.showSnackBar(SnackBar(content: Text(e.message)));
+            }
+          },
         ),
-      );
-    }
+      ),
+    );
   }
 
   @override
