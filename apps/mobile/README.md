@@ -340,6 +340,40 @@ sub-order, so it's only ever started from that order's detail page,
 which itself requires knowing the order (guest checkout confirmation
 provides this), not a guest-accessible blank form.
 
+## Real bug fixed: adding/removing a garage vehicle discarded the already-fetched fresh list, then fetched it again separately
+
+**A real bug, reported by an actual person testing on a real device**:
+a genuinely saved vehicle didn't reliably show up in My Garage without
+a manual refresh. Root cause, found by re-reading `api_client.dart`'s
+own real response handling carefully: `addVehicleToGarage` and
+`removeVehicleFromGarage` both already make their own real follow-up
+fetch internally to return the real, freshly updated list (`POST
+/garage/me` itself only returns the single newly-added vehicle, not
+the whole list — the real backend genuinely required this) — but
+`_addVehicle()`/`_remove()` discarded that already-fetched result and
+called `_refresh()`, which triggered a **second, entirely separate**
+fetch of the same data on top of it.
+
+**Fixed** by using the already-fetched, fresh result directly instead
+of discarding it and fetching a second time — eliminating both the
+redundant network call and any possible race between the two
+near-simultaneous fetches. The now-unused `_refresh()` helper was
+removed.
+
+**Verified against the real running backend**: confirmed `POST
+/garage/me` returns a single vehicle object (not a list, explaining why
+an internal follow-up fetch is genuinely needed at all), and confirmed
+that follow-up fetch correctly returns the real, fresh list including
+the newly-added vehicle.
+
+**Two other real, unrelated causes ruled out along the way, before
+finding this one** — both confirmed, not assumed: server-side HTTP
+caching (fixed separately, see `services/api/README.md`'s own note on
+this — a real, general bug affecting the whole API, but not the actual
+cause of this specific report once isolated) and a Flutter web service
+worker (confirmed none was registered at all, via the real person's
+own Chrome DevTools Application panel).
+
 ## Real confirmation dialogs for saved-search and vehicle removal (fixed)
 
 **A real, genuine inconsistency found while auditing destructive

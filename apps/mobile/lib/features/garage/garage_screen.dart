@@ -44,13 +44,15 @@ class _GarageScreenState extends State<GarageScreen> {
     return ApiClient().fetchMyGarage(auth.token!);
   }
 
-  void _refresh() => setState(() => _garageFuture = _load());
-
   Future<void> _remove(Vehicle v) async {
     final auth = context.read<AuthState>();
     try {
-      await ApiClient().removeVehicleFromGarage(auth.token!, v.generationId, v.year);
-      _refresh();
+      // Same real fix as _addVehicle above -- removeVehicleFromGarage
+      // already returns the real, updated list directly from the real
+      // DELETE response; using it directly instead of discarding it
+      // and calling the old _refresh() (removed) for a second, separate fetch.
+      final updatedGarage = await ApiClient().removeVehicleFromGarage(auth.token!, v.generationId, v.year);
+      if (mounted) setState(() => _garageFuture = Future.value(updatedGarage));
     } on ApiException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     }
@@ -86,13 +88,25 @@ class _GarageScreenState extends State<GarageScreen> {
     if (selection == null) return;
     final auth = context.read<AuthState>();
     try {
+      // REAL BUG FOUND AND FIXED HERE, reported by an actual person
+      // testing on a real device: addVehicleToGarage ALREADY makes its
+      // own real fetchMyGarage call internally and returns the real,
+      // updated list -- but that result was being discarded here, and
+      // the old _refresh() (removed) below then triggered a SECOND, entirely separate
+      // fetch. Wasteful at best; at worst, a real race between the two
+      // in-flight requests could explain exactly the reported symptom
+      // (a genuinely saved vehicle not showing up until a manual
+      // refresh forced a clean, single fetch). Uses the already-
+      // fetched result directly instead of discarding it and fetching
+      // a second time.
+      //
       // Real fallback for "Any year in this generation" (year: null) --
       // My Garage always needs ONE definite year (this is meant to be
       // the buyer's own exact car), unlike search where "any year"
       // genuinely means "don't narrow." Falls back to the generation's
       // own real starting year, never a placeholder.
-      await ApiClient().addVehicleToGarage(auth.token!, selection.generationId, selection.year ?? selection.yearStart);
-      _refresh();
+      final updatedGarage = await ApiClient().addVehicleToGarage(auth.token!, selection.generationId, selection.year ?? selection.yearStart);
+      if (mounted) setState(() => _garageFuture = Future.value(updatedGarage));
     } on ApiException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     }
