@@ -344,18 +344,28 @@ provides this), not a guest-accessible blank form.
 
 **A real, confirmed gap**: the bottom nav had no badges at all — a
 buyer with items in their cart had no visual cue from anywhere else in
-the app. Added a real `Badge` on the Cart tab's icon, showing the real
-total quantity across every item (`CartState.itemCount`, already a
-real computed getter — no new state needed), capped at a real "99+"
-display for very large carts.
+the app, and the same for unread notifications. Added a real `Badge`
+on the Cart tab's icon, showing the real total quantity across every
+item (`CartState.itemCount`, already a real computed getter — no new
+state needed), and a real unread-notification badge on the Account
+tab (`GET /notifications/me/unread-count`, verified against the real
+running backend — confirmed a fresh buyer genuinely gets `{"count":
+0}`), both capped at a real "99+" display for large numbers.
 
-`context.watch<CartState>()` is used directly in `RootShell`'s own
-`build()` method — genuinely safe (the exact distinction that mattered
-for the real bugs found earlier this session: this is a real build()
-call, not an event-handler callback). Since `RootShell` is the
-persistent shell wrapping every tab (not rebuilt per-tab-switch), the
-badge updates live regardless of which tab a buyer is currently
-viewing, not just when they're looking at the cart itself.
+**Two deliberately different implementations, matched to each one's
+real risk profile**: the cart badge uses `context.watch<CartState>()`
+directly in `RootShell`'s own `build()` — genuinely safe (a real
+`build()` call, not an event-handler callback, the exact distinction
+that mattered for the real bugs found earlier this session), and
+updates live the instant the cart changes, from any screen, since
+`RootShell` is the persistent shell wrapping every tab. The
+notification badge uses a simple `FutureBuilder` instead of converting
+`RootShell` to a `StatefulWidget` with its own polling timer —
+deliberately lower-risk given recent history, accepting a real refetch
+on each navigation (this whole `build()` reruns then) rather than
+adding new persistent state to the app's own root shell. A failed
+fetch fails safely — `snapshot.data ?? 0` means no badge shown, no
+crash, not surfaced as an error anywhere.
 
 ## Real "Browse products" call-to-action on empty states (new)
 

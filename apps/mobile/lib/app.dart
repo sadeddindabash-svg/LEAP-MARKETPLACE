@@ -6,6 +6,7 @@ import 'core/auth_state.dart';
 import 'core/cart_state.dart';
 import 'core/language_state.dart';
 import 'core/app_strings.dart';
+import 'services/api_client.dart';
 import 'features/home/home_screen.dart';
 import 'features/search/search_screen.dart';
 import 'features/garage/garage_screen.dart';
@@ -131,6 +132,7 @@ class RootShell extends StatelessWidget {
     // own build, not an event-handler callback), the exact distinction
     // that mattered for the earlier real bugs found in this session.
     final cartItemCount = context.watch<CartState>().itemCount;
+    final auth = context.watch<AuthState>();
     return Scaffold(
       body: child,
       bottomNavigationBar: BottomNavigationBar(
@@ -149,7 +151,30 @@ class RootShell extends StatelessWidget {
             label: tr(context, 'nav_cart'),
           ),
           BottomNavigationBarItem(icon: const Icon(Icons.inventory_2_outlined), label: tr(context, 'nav_orders')),
-          BottomNavigationBarItem(icon: const Icon(Icons.person_outline), label: tr(context, 'nav_account')),
+          BottomNavigationBarItem(
+            // Real unread-notification badge (new) -- deliberately a
+            // simple FutureBuilder, refetched on each real navigation
+            // (this whole build() reruns then), rather than converting
+            // RootShell to a StatefulWidget with its own polling timer
+            // -- lower risk given recent history, accepting some
+            // redundant real network calls in exchange for not adding
+            // new persistent state to the app's own root shell.
+            icon: !auth.isLoggedIn
+                ? const Icon(Icons.person_outline)
+                : FutureBuilder<int>(
+                    future: ApiClient().fetchUnreadNotificationCount(auth.token!),
+                    builder: (context, snapshot) {
+                      final count = snapshot.data ?? 0;
+                      return count > 0
+                          ? Badge(
+                              label: Text(count > 99 ? '99+' : '$count'),
+                              child: const Icon(Icons.person_outline),
+                            )
+                          : const Icon(Icons.person_outline);
+                    },
+                  ),
+            label: tr(context, 'nav_account'),
+          ),
         ],
       ),
     );
