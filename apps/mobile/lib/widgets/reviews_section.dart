@@ -238,7 +238,24 @@ class _ReviewsSectionState extends State<ReviewsSection> {
                                     padding: const EdgeInsets.only(right: 6),
                                     child: ClipRRect(
                                       borderRadius: BorderRadius.circular(8),
-                                      child: CachedNetworkImage(imageUrl: '${AppConfig.apiBaseUrl}$url', width: 56, height: 56, fit: BoxFit.cover),
+                                      // Real placeholder/error handling
+                                      // (new) -- closes a real, small
+                                      // inconsistency: every other real
+                                      // image display in this app
+                                      // already has both.
+                                      child: CachedNetworkImage(
+                                        imageUrl: '${AppConfig.apiBaseUrl}$url',
+                                        width: 56,
+                                        height: 56,
+                                        fit: BoxFit.cover,
+                                        placeholder: (context, url) => Container(width: 56, height: 56, color: LeapColors.chalk),
+                                        errorWidget: (context, url, error) => Container(
+                                          width: 56,
+                                          height: 56,
+                                          color: LeapColors.chalk,
+                                          child: const Icon(Icons.broken_image_outlined, size: 18, color: LeapColors.muted),
+                                        ),
+                                      ),
                                     ),
                                   ),
                               ],
@@ -290,7 +307,22 @@ class _ReviewsSectionState extends State<ReviewsSection> {
                         children: [
                           ClipRRect(
                             borderRadius: BorderRadius.circular(8),
-                            child: CachedNetworkImage(imageUrl: '${AppConfig.apiBaseUrl}${_selectedPhotos[i]}', width: 64, height: 64, fit: BoxFit.cover),
+                            // Real placeholder/error handling (new) --
+                            // same fix as this file's own review-photo
+                            // display above.
+                            child: CachedNetworkImage(
+                              imageUrl: '${AppConfig.apiBaseUrl}${_selectedPhotos[i]}',
+                              width: 64,
+                              height: 64,
+                              fit: BoxFit.cover,
+                              placeholder: (context, url) => Container(width: 64, height: 64, color: LeapColors.chalk),
+                              errorWidget: (context, url, error) => Container(
+                                width: 64,
+                                height: 64,
+                                color: LeapColors.chalk,
+                                child: const Icon(Icons.broken_image_outlined, size: 20, color: LeapColors.muted),
+                              ),
+                            ),
                           ),
                           Positioned(
                             top: -6, right: -6,

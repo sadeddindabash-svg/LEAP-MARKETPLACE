@@ -508,6 +508,23 @@ uses inline ternaries throughout; `garage_screen.dart` uses the real
 `tr()` translation dictionary) rather than introducing a third,
 inconsistent style.
 
+## Real placeholder/error handling for every image display in the app (fixed, extended)
+
+**Extended this fix with a full, precise sweep of the whole app** —
+found 3 more real instances beyond the original one: both real review-
+photo displays in `reviews_section.dart` (a submitted review's own
+photos, and the picker's own selected-photos preview while writing
+one), and the return case detail screen's own evidence-photo display
+(`return_case_detail_screen.dart`) — a real, separate screen from the
+return-request FORM this was originally fixed on, showing the SAME
+photos again once a case exists.
+
+**Verified with a precise, parenthesis-matching sweep** (not a
+line-by-line text search, which can miss or false-positive on
+multi-line calls) — confirmed every real `CachedNetworkImage` call
+across the entire app now has both `placeholder` and `errorWidget`,
+with zero remaining gaps.
+
 ## Real placeholder/error handling for return-evidence photo previews (fixed)
 
 **A small, genuine inconsistency found while auditing every image

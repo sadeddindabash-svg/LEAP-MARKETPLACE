@@ -173,7 +173,22 @@ class _ReturnCaseDetailScreenState extends State<ReturnCaseDetailScreen> {
                         separatorBuilder: (_, __) => const SizedBox(width: 8),
                         itemBuilder: (context, j) => ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: CachedNetworkImage(imageUrl: '${AppConfig.apiBaseUrl}${photos[j]}', width: 72, height: 72, fit: BoxFit.cover),
+                          // Real placeholder/error handling (new) --
+                          // same fix as order_detail_screen.dart's own
+                          // return-evidence photo preview.
+                          child: CachedNetworkImage(
+                            imageUrl: '${AppConfig.apiBaseUrl}${photos[j]}',
+                            width: 72,
+                            height: 72,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => Container(width: 72, height: 72, color: LeapColors.chalk),
+                            errorWidget: (context, url, error) => Container(
+                              width: 72,
+                              height: 72,
+                              color: LeapColors.chalk,
+                              child: const Icon(Icons.broken_image_outlined, size: 20, color: LeapColors.muted),
+                            ),
+                          ),
                         ),
                       ),
                     ),
