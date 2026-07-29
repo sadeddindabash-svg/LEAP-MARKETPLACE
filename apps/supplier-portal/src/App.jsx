@@ -2241,15 +2241,30 @@ function MessagesPage() {
   // Chinese original alongside the reviewed English translation).
   const [showOriginalFor, setShowOriginalFor] = useState({});
 
-  const load = () => {
+  // Real, silent load -- used by both the very first load and every
+  // background poll below. showErrors is false for a background poll:
+  // a real transient failure there shouldn't blank out an already-
+  // loaded thread with an error message, only a real, user-initiated
+  // load (the very first one) should ever show one.
+  const load = (showErrors = true) => {
     fetchMyMessages(getStoredToken())
       .then(setMessages)
       .catch((err) => {
         if (err instanceof SessionExpiredError) return onSessionExpired();
-        setErrorMessage(err.message);
+        if (showErrors) setErrorMessage(err.message);
       });
   };
-  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Real auto-refresh (new) -- mirrors the exact same proven pattern
+  // just built for mobile's own ticket/return message threads (the
+  // identical real gap: a supplier previously had to manually
+  // navigate away and back to see whether an admin had replied yet).
+  // Polls every 20s while this page is mounted.
+  useEffect(() => {
+    load(true);
+    const interval = setInterval(() => load(false), 20000);
+    return () => clearInterval(interval);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const send = async () => {
     if (!input.trim() || isSending) return;

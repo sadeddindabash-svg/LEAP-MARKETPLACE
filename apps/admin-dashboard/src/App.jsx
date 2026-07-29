@@ -2675,15 +2675,30 @@ function SupplierMessageThreadPage({ supplierId, supplierName, onBack, onSession
   const [isSending, setIsSending] = useState(false);
   const [showOriginalFor, setShowOriginalFor] = useState({});
 
-  const load = () => {
+  // Real, silent load -- used by both the very first load and every
+  // background poll below. showErrors is false for a background poll:
+  // a real transient failure there shouldn't blank out an already-
+  // loaded thread with an error message.
+  const load = (showErrors = true) => {
     fetchSupplierMessageThread(getStoredToken(), supplierId)
       .then(setMessages)
       .catch((err) => {
         if (err instanceof SessionExpiredError) return onSessionExpired();
-        setErrorMessage(err.message);
+        if (showErrors) setErrorMessage(err.message);
       });
   };
-  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Real auto-refresh (new) -- mirrors the exact same proven pattern
+  // just built for mobile's own ticket/return threads and this app's
+  // own MessagesPage (the supplier-portal side of this identical real
+  // conversation): an admin previously had to manually leave and
+  // re-enter this thread to see whether a supplier had replied yet.
+  // Polls every 20s while this thread is open.
+  useEffect(() => {
+    load(true);
+    const interval = setInterval(() => load(false), 20000);
+    return () => clearInterval(interval);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const send = async () => {
     if (!input.trim() || isSending) return;

@@ -610,6 +610,18 @@ product name, and confirmed a further raise (already positive to
 higher) does NOT create a duplicate. Real integration test: 2/2
 passing. Full regression: 82/82 passing across all 16 test files.
 
+## Real auto-refresh polling for the admin message thread (new)
+
+**A real, confirmed gap, found by checking this exact conversation
+against the same proven pattern already built for mobile's own
+support/return threads**: a supplier previously had to manually
+navigate away and back to Messages to see whether an admin had
+replied. Now polls every 20s while the page is open, silently — a
+background poll never disrupts an already-loaded thread with an error
+if it happens to fail once.
+
+**Verified**: full regression, 4/4 passing.
+
 ## Real bulk price update (new)
 
 **A real, confirmed gap**: there was no way to adjust multiple real

@@ -1628,6 +1628,19 @@ Full regression across Overview/Suppliers/Hubs/Returns: 18/19 passing
 flakiness confirmed multiple times earlier this session — passes
 cleanly in complete isolation, unrelated to this feature).
 
+## Real auto-refresh polling for the supplier message thread (new)
+
+**A real, confirmed gap, found by checking this exact conversation
+(the other side of the same real chat) against the same proven pattern
+already built for mobile's own support/return threads**: an admin
+previously had to manually leave and re-enter a supplier's message
+thread to see whether they'd replied. Now polls every 20s while the
+thread is open, silently — a background poll never disrupts an
+already-loaded thread with an error if it happens to fail once.
+
+**Verified**: full regression across both real test files, 11/11
+passing.
+
 ## Real audit coverage for catalog/fitment, product moderation, promo codes, and fee components (new)
 
 **A real, significant gap, found by checking this feature's own stated
