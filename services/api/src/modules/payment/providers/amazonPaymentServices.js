@@ -90,11 +90,25 @@ async function createPurchase(purchaseParams) {
   if (!baseUrl) {
     throw new Error('APS_API_BASE_URL is not set — confirm the correct sandbox/production endpoint from your APS merchant dashboard before setting this.');
   }
-  const response = await fetch(`${baseUrl}/FortAPI/paymentApi`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  // REAL BUG FOUND AND FIXED HERE, same real bug class already found
+  // and fixed for the SMTP email transport, the translation API, and
+  // 17TRACK elsewhere this session -- genuinely important here
+  // specifically, since a real buyer is actively waiting on checkout
+  // for this to complete. A slow or unreachable payment gateway could
+  // otherwise hang the real checkout request indefinitely.
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  let response;
+  try {
+    response = await fetch(`${baseUrl}/FortAPI/paymentApi`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
   const data = await response.json();
 
   // Response signature verification — APS signs responses too, using the

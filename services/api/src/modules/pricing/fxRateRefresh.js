@@ -39,7 +39,21 @@ function parseFrankfurterResponse(body, toCurrency) {
 async function refreshLiveFxRate(currencyPair) {
   const [fromCurrency, toCurrency] = currencyPair.split('_');
   try {
-    const response = await fetch(`${FRANKFURTER_BASE_URL}/latest?from=${fromCurrency}&to=${toCurrency}`);
+    // REAL BUG FOUND AND FIXED HERE, same real bug class already found
+    // and fixed for the SMTP email transport, the translation API,
+    // 17TRACK, and the payment gateway elsewhere this session --
+    // genuinely important here too, since this is called directly from
+    // a real, blocking admin-facing endpoint (PATCH /pricing/fx-rate-
+    // mode). A slow or unreachable Frankfurter could otherwise hang
+    // that real admin action indefinitely.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    let response;
+    try {
+      response = await fetch(`${FRANKFURTER_BASE_URL}/latest?from=${fromCurrency}&to=${toCurrency}`, { signal: controller.signal });
+    } finally {
+      clearTimeout(timeoutId);
+    }
     if (!response.ok) {
       throw new Error(`Frankfurter responded with ${response.status}`);
     }

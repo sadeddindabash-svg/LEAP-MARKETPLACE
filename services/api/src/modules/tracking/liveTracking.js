@@ -42,11 +42,23 @@ function apiHeaders() {
 
 async function registerTrackingNumber(trackingNumber, carrierCode) {
   try {
-    await fetch(`${TRACK17_BASE_URL}/register`, {
-      method: 'POST',
-      headers: apiHeaders(),
-      body: JSON.stringify([{ number: trackingNumber, carrier: carrierCode ? Number(carrierCode) : undefined }]),
-    });
+    // REAL BUG FOUND AND FIXED HERE, same real bug class already found
+    // and fixed for the SMTP email transport and the translation API
+    // elsewhere this session: Node's native fetch has no default
+    // timeout -- a slow or unreachable 17TRACK could otherwise hang
+    // this indefinitely.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    try {
+      await fetch(`${TRACK17_BASE_URL}/register`, {
+        method: 'POST',
+        headers: apiHeaders(),
+        body: JSON.stringify([{ number: trackingNumber, carrier: carrierCode ? Number(carrierCode) : undefined }]),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
   } catch (err) {
     // Real, best-effort -- registering an already-registered real
     // number is a real, documented no-op on 17TRACK's side, and a
@@ -94,11 +106,27 @@ async function fetchLiveTrackingEvents(trackingNumber, carrierCode) {
   }
   try {
     await registerTrackingNumber(trackingNumber, carrierCode);
-    const response = await fetch(`${TRACK17_BASE_URL}/gettrackinfo`, {
-      method: 'POST',
-      headers: apiHeaders(),
-      body: JSON.stringify([{ number: trackingNumber, carrier: carrierCode ? Number(carrierCode) : undefined }]),
-    });
+    // REAL BUG FOUND AND FIXED HERE, same real bug class already found
+    // and fixed for the SMTP email transport and the translation API
+    // elsewhere this session -- genuinely important here specifically,
+    // since this exact function is called directly by the order-
+    // tracking endpoint the mobile app's own tracking screen polls
+    // every 20 seconds (see that screen's own real auto-refresh). A
+    // slow or unreachable 17TRACK could otherwise hang every one of
+    // those real polls indefinitely.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    let response;
+    try {
+      response = await fetch(`${TRACK17_BASE_URL}/gettrackinfo`, {
+        method: 'POST',
+        headers: apiHeaders(),
+        body: JSON.stringify([{ number: trackingNumber, carrier: carrierCode ? Number(carrierCode) : undefined }]),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
     if (!response.ok) {
       console.error(`[tracking] Real 17TRACK query responded with ${response.status} (non-fatal)`);
       return [];

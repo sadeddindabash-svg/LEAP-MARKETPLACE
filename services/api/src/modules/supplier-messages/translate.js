@@ -44,11 +44,30 @@ async function translateText(text, from, to) {
     const url = new URL(GOOGLE_TRANSLATE_URL);
     url.searchParams.set('key', process.env.GOOGLE_TRANSLATE_API_KEY);
 
-    const response = await fetch(url.toString(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ q: text, source: from, target: to, format: 'text' }),
-    });
+    // REAL BUG FOUND AND FIXED HERE, same real bug class already found
+    // and fixed for the SMTP email transport elsewhere this session:
+    // Node's native fetch has no default timeout at all -- a slow or
+    // unreachable translation API could hang this call indefinitely.
+    // This is awaited BEFORE a real message is even stored (see
+    // sendMessage in routes.js), so a hang here would hang the entire
+    // real send-message request the same way a hanging email send used
+    // to hang other endpoints. Dormant in any environment with no real
+    // GOOGLE_TRANSLATE_API_KEY configured (the isConfigured() check
+    // above returns early before ever reaching this fetch at all), but
+    // a real, latent risk the moment one ever is.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    let response;
+    try {
+      response = await fetch(url.toString(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ q: text, source: from, target: to, format: 'text' }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
     const data = await response.json();
 
     if (data.error) {

@@ -2341,6 +2341,44 @@ confirmed logged distinctly from review moderation; deactivated a real
 promo code, confirmed logged distinctly from creation; created/
 updated/deleted a real fee component, confirmed all three logged.
 
+## Real, significant bug fixed: a real transactional email with no timeout could hang the entire API response (5 endpoints), plus a proactive sweep of every other external network call
+
+**Proactively swept the entire backend for the same real bug class**
+after fixing the SMTP case above, rather than assuming it was the only
+one: found and fixed the exact same "no timeout on an external network
+call" gap on **4 more real integrations**, each one genuinely capable
+of hanging a real, user-facing request the same way:
+
+- **Google Cloud Translation** (`supplier-messages/translate.js`) —
+  called directly by the supplier↔admin message-send handler, awaited
+  **before the message is even stored**. Currently dormant in any
+  environment with no real `GOOGLE_TRANSLATE_API_KEY` configured (the
+  existing `isConfigured()` check returns early before ever reaching
+  this fetch), but a real, latent risk the moment one ever is —
+  especially now that this same messaging feature has real, active
+  polling relying on send/receive working smoothly.
+- **17TRACK live carrier tracking** (`tracking/liveTracking.js`, both
+  its `register` and `gettrackinfo` calls) — genuinely important here
+  specifically, since `buildTrackingTimeline` (which calls this) is
+  hit directly by the exact endpoint the mobile app's own tracking
+  screen polls every 20 seconds.
+- **Amazon Payment Services** (`payment/providers/
+  amazonPaymentServices.js`) — a real buyer is actively waiting on
+  checkout for this to complete.
+- **Frankfurter FX rates** (`pricing/fxRateRefresh.js`) — called
+  directly from a real, blocking admin-facing endpoint (`PATCH
+  /pricing/fx-rate-mode`).
+
+Each now has a real `AbortController`-based timeout (10s, or 15s for
+the payment gateway specifically) — Node's native `fetch` has no
+default timeout at all, the same real gap that caused the original
+SMTP bug.
+
+**Verified**: full regression across pricing (14/14), supplier
+messages (11/11 across both real test files), and live tracking (4/4)
+— all passing, confirming none of these real integrations' existing,
+correct behavior changed, only their worst-case failure mode.
+
 ## Real, significant bug fixed: a real transactional email with no timeout could hang the entire API response (5 endpoints)
 
 **Found via an actual person's own real report**: confirming delivery
