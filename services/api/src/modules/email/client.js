@@ -50,6 +50,18 @@ function getTransporter() {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASSWORD,
     },
+    // REAL BUG FOUND AND FIXED HERE, reported by an actual person: no
+    // timeout was configured at all -- a slow or unreachable SMTP
+    // server could hang a real email send indefinitely. This alone
+    // couldn't have blocked a real API response (that's a separate,
+    // real bug already fixed at each call site -- see e.g.
+    // hub/routes.js's own confirm-delivery handler), but a real,
+    // genuine safety net regardless: nothing in this codebase should
+    // ever be able to hang forever waiting on an external network
+    // call with no bound on it.
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
   });
   return cachedTransporter;
 }

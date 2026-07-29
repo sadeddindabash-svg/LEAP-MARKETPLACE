@@ -2341,6 +2341,63 @@ confirmed logged distinctly from review moderation; deactivated a real
 promo code, confirmed logged distinctly from creation; created/
 updated/deleted a real fee component, confirmed all three logged.
 
+## Real, significant bug fixed: a real transactional email with no timeout could hang the entire API response (5 endpoints)
+
+**Found via an actual person's own real report**: confirming delivery
+in the hub portal left the button stuck "Confirming..." forever in
+one tab, while the status genuinely updated correctly when checked
+from a different tab/session — meaning the real backend work had
+already succeeded, but the response itself never reached the client.
+Confirmed directly via their own Chrome DevTools Network tab: the
+request stayed "Pending" indefinitely, with no console error at all
+(nothing ever threw — it just hung).
+
+**Root cause**: `getTransporter()` (`email/client.js`) created its
+SMTP transport with **no timeout configured at all** — a slow or
+unreachable SMTP server could hang a real email send indefinitely. On
+5 different endpoints across the codebase, this email send was
+`await`ed **before** the response was sent, even though every one of
+them was already correctly documented as "best-effort" and "should
+never block the real [action] that already succeeded" — the actual
+code just didn't match that stated intent. A hanging email meant a
+hanging response, full stop, regardless of how well the action itself
+had already succeeded and committed.
+
+**This is very likely the actual root cause of an earlier, separate
+report** of web-storefront/mobile checkout appearing slow or stuck,
+at the time attributed to a generic "network issue" — `order/routes.js`
+had the exact same bug, on the single most commonly hit endpoint in
+the whole app.
+
+**Fixed on all 5 real endpoints found** (a full, precise sweep of
+every `sendTransactionalEmail` call site in the codebase, not just
+the one reported): `hub/routes.js`'s confirm-delivery handler,
+`order/routes.js`'s order-placement handler, `supplier/routes.js`'s
+mark-as-shipped handler, `payouts/routes.js`'s record-payout handler,
+and `webhooks/routes.js`'s carrier-delivery-confirmation handler. In
+each request-handler case, the response now happens immediately after
+the real database work commits, with every real best-effort follow-up
+(notifications, referral checks, confirmation emails) genuinely
+running as a fire-and-forget background task afterward — none of them
+can ever delay or block the response again. The webhook case (which
+processes multiple items in a loop, not a single request/response)
+was fixed by making its own per-item email fire-and-forget instead,
+so one slow email can't delay processing the rest of that same
+webhook payload or its response back to the carrier's own system.
+
+**Also added a real, genuine defense-in-depth fix**: the SMTP
+transport itself now has real `connectionTimeout`/`greetingTimeout`/
+`socketTimeout` values (10s each) — nothing in this codebase should
+ever be able to hang forever waiting on an external network call with
+no bound on it, regardless of whether every current and future call
+site correctly treats it as fire-and-forget.
+
+**Verified against the real running backend**: timed the order-
+placement endpoint and the hub confirm-delivery endpoint directly —
+both now respond in ~0.1–0.15 seconds. Full regression: web-storefront
+(38/38), hub-portal (16/16), admin-dashboard's payout tests (13/13),
+and supplier-portal (82/82), all passing.
+
 ## Real bug fixed: a genuinely saved change didn't appear until a full page refresh (browser caching)
 
 **A real bug, reported by an actual person testing My Garage on a real

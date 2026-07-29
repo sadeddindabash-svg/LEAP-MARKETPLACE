@@ -857,32 +857,33 @@ router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), asy
 
     await client.query('COMMIT');
 
-    // Real shipping notification email (new) -- deliberately AFTER the
-    // commit, as a real, best-effort follow-up: a real SMTP network
-    // call has no business holding the transaction open, and an email
-    // hiccup should never roll back a real status update that already
-    // succeeded. Handles both a real logged-in buyer and a real guest
-    // order (guest_email), unlike the in-app notification above which
-    // only ever applies to a real logged-in buyer.
-    if (status === 'shipped') {
-      try {
-        const { rows: orderRows } = await db.query('SELECT buyer_id, guest_email FROM orders WHERE id = $1', [rows[0].order_id]);
-        let recipientEmail = orderRows[0]?.guest_email || null;
-        let recipientName = null;
-        if (orderRows[0]?.buyer_id) {
-          const { rows: userRows } = await db.query('SELECT email, name FROM users WHERE id = $1', [orderRows[0].buyer_id]);
-          if (userRows.length > 0) { recipientEmail = userRows[0].email; recipientName = userRows[0].name; }
-        }
-        if (recipientEmail) {
-          const { html, text } = shippingNotificationEmail({ recipientName, orderId: rows[0].order_id, trackingNumber: rows[0].tracking_number });
-          await sendTransactionalEmail({ to: recipientEmail, subject: `Your order has shipped — ${rows[0].order_id}`, html, text, fallbackLogLabel: 'order-shipped' });
-        }
-      } catch (err) {
-        console.error('Order shipped email failed (non-fatal):', err.message);
-      }
-    }
-
+    // REAL BUG FOUND AND FIXED HERE (same real bug already found and
+    // fixed on hub/routes.js's own confirm-delivery handler, found by
+    // an actual person reporting a stuck "Pending" request): res.json
+    // now happens FIRST -- a real, best-effort email send must never
+    // be able to block the real, already-successful response if an
+    // SMTP server is ever slow or unreachable.
     res.json({ subOrderId: rows[0].id, orderId: rows[0].order_id, status: rows[0].status, trackingNumber: rows[0].tracking_number });
+
+    if (status === 'shipped') {
+      (async () => {
+        try {
+          const { rows: orderRows } = await db.query('SELECT buyer_id, guest_email FROM orders WHERE id = $1', [rows[0].order_id]);
+          let recipientEmail = orderRows[0]?.guest_email || null;
+          let recipientName = null;
+          if (orderRows[0]?.buyer_id) {
+            const { rows: userRows } = await db.query('SELECT email, name FROM users WHERE id = $1', [orderRows[0].buyer_id]);
+            if (userRows.length > 0) { recipientEmail = userRows[0].email; recipientName = userRows[0].name; }
+          }
+          if (recipientEmail) {
+            const { html, text } = shippingNotificationEmail({ recipientName, orderId: rows[0].order_id, trackingNumber: rows[0].tracking_number });
+            await sendTransactionalEmail({ to: recipientEmail, subject: `Your order has shipped — ${rows[0].order_id}`, html, text, fallbackLogLabel: 'order-shipped' });
+          }
+        } catch (err) {
+          console.error('Order shipped email failed (non-fatal):', err.message);
+        }
+      })();
+    }
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);

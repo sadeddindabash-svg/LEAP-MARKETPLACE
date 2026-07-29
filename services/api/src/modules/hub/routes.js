@@ -239,11 +239,23 @@ router.get('/flagged', requireAuth, requireRole('admin'), requirePageAccess('fla
       // terminal), so this is the specific note/photos an admin needs
       // to actually understand what's wrong, not just that something is.
       const flagEvent = events.find((e) => e.step === 'flagged') || events[events.length - 1];
+      // Real, auto-created return case (new) -- see the flagging
+      // handler's own comment. Looked up by sub_order_id rather than a
+      // new stored link/column: a sub-order's hub_shipment is unique
+      // (migration 011), and this flag always creates exactly one case
+      // for it, so the most recent matching case IS the one this flag
+      // created. Falls back to null for any flag from before this
+      // feature existed, which genuinely has no linked case.
+      const { rows: caseRows } = await db.query(
+        `SELECT id FROM return_cases WHERE sub_order_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [r.sub_order_id]
+      );
       return {
         id: r.id, subOrderId: r.sub_order_id, orderId: r.order_id,
         supplierName: r.supplier_name, hubName: r.hub_name,
         flaggedAt: r.updated_at, flagNote: flagEvent?.notes || null,
         flagPhotos: flagEvent?.photos || [],
+        returnCaseId: caseRows[0]?.id || null,
       };
     }));
     res.json(shipments);
@@ -381,6 +393,37 @@ router.post('/me/shipments/:id/events', requireAuth, requireRole('hub_staff'), a
     }
     await client.query('UPDATE hub_shipments SET status = $1, updated_at = now() WHERE id = $2', [step, shipment.id]);
 
+    // Real, automatic return-case creation on a real flag (new) --
+    // closes a gap this project's own README explicitly flagged as not
+    // yet wired: "flag a quality issue" previously only made the
+    // shipment visible to admin via GET /hub/flagged, with no real
+    // dispute case actually opened -- an admin had to notice the flag
+    // and manually start one elsewhere. Now genuinely automatic, in the
+    // SAME transaction as the flag itself (atomic -- either both
+    // happen, or neither does). No new migration/column needed to link
+    // them: GET /hub/flagged below finds the matching case by joining
+    // on sub_order_id, since a sub-order's hub_shipment is unique
+    // (migration 011) and this flag always creates the case for it.
+    if (step === 'flagged') {
+      const { rows: subOrderRows } = await client.query(
+        `SELECT so.order_id, o.buyer_id, o.guest_email
+         FROM supplier_sub_orders so JOIN orders o ON o.id = so.order_id
+         WHERE so.id = $1`,
+        [shipment.sub_order_id]
+      );
+      const { order_id: orderId, buyer_id: buyerId, guest_email: guestEmail } = subOrderRows[0];
+      const { rows: seqRows } = await client.query("SELECT nextval('return_case_id_seq') AS n");
+      const caseId = `RC-${seqRows[0].n}`;
+      await client.query(
+        `INSERT INTO return_cases (id, order_id, sub_order_id, buyer_id, guest_email, reason) VALUES ($1, $2, $3, $4, $5, $6)`,
+        [caseId, orderId, shipment.sub_order_id, buyerId, buyerId ? null : guestEmail, 'Quality issue flagged during hub inspection']
+      );
+      await client.query(
+        `INSERT INTO return_case_buyer_messages (case_id, sender_role, message) VALUES ($1, 'admin', $2)`,
+        [caseId, `Our inspection hub flagged an issue with this shipment before it was sent to you: ${notes || 'no additional details provided'}. We're reviewing it and will follow up here.`]
+      );
+    }
+
     await client.query('COMMIT');
     const { rows: updated } = await db.query('SELECT * FROM hub_shipments WHERE id = $1', [shipment.id]);
     res.status(201).json({ id: updated[0].id, status: updated[0].status, updatedAt: updated[0].updated_at });
@@ -452,26 +495,36 @@ router.patch('/me/shipments/:id/confirm-delivery', requireAuth, requireRole('hub
 
     await client.query('COMMIT');
 
-    // Real delivery notification email (new) -- deliberately AFTER the
-    // commit, as a real, best-effort follow-up -- same reasoning as
-    // every other real transactional email trigger.
-    try {
-      const { rows: orderRows2 } = await db.query('SELECT buyer_id, guest_email FROM orders WHERE id = $1', [orderId]);
-      let recipientEmail = orderRows2[0]?.guest_email || null;
-      let recipientName = null;
-      if (orderRows2[0]?.buyer_id) {
-        const { rows: userRows } = await db.query('SELECT email, name FROM users WHERE id = $1', [orderRows2[0].buyer_id]);
-        if (userRows.length > 0) { recipientEmail = userRows[0].email; recipientName = userRows[0].name; }
-      }
-      if (recipientEmail) {
-        const { html, text } = deliveryNotificationEmail({ recipientName, orderId });
-        await sendTransactionalEmail({ to: recipientEmail, subject: `Your order has been delivered — ${orderId}`, html, text, fallbackLogLabel: 'order-delivered-hub-manual' });
-      }
-    } catch (err) {
-      console.error('Hub-confirmed delivery email failed (non-fatal):', err.message);
-    }
-
+    // REAL BUG FOUND AND FIXED HERE, reported by an actual person: the
+    // real response used to be sent AFTER attempting this email, with
+    // no timeout configured on the SMTP transport at all (see
+    // email/client.js) -- a slow or unreachable SMTP server could hang
+    // this await forever, meaning the client's request stayed
+    // "Pending" indefinitely even though the actual, critical status
+    // update above had already succeeded and committed. A real,
+    // best-effort side effect (this comment's own original words) must
+    // never be able to block the real, already-successful response --
+    // res.json now happens FIRST, and the email send genuinely runs
+    // fire-and-forget afterward (not awaited by the response at all).
     res.json({ id: rows[0].id, status: rows[0].status, deliveredAt: rows[0].delivered_at, deliveryConfirmedBy: rows[0].delivery_confirmed_by });
+
+    (async () => {
+      try {
+        const { rows: orderRows2 } = await db.query('SELECT buyer_id, guest_email FROM orders WHERE id = $1', [orderId]);
+        let recipientEmail = orderRows2[0]?.guest_email || null;
+        let recipientName = null;
+        if (orderRows2[0]?.buyer_id) {
+          const { rows: userRows } = await db.query('SELECT email, name FROM users WHERE id = $1', [orderRows2[0].buyer_id]);
+          if (userRows.length > 0) { recipientEmail = userRows[0].email; recipientName = userRows[0].name; }
+        }
+        if (recipientEmail) {
+          const { html, text } = deliveryNotificationEmail({ recipientName, orderId });
+          await sendTransactionalEmail({ to: recipientEmail, subject: `Your order has been delivered — ${orderId}`, html, text, fallbackLogLabel: 'order-delivered-hub-manual' });
+        }
+      } catch (err) {
+        console.error('Hub-confirmed delivery email failed (non-fatal):', err.message);
+      }
+    })();
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);

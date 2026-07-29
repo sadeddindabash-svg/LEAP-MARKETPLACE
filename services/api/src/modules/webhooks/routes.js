@@ -112,21 +112,33 @@ router.post('/17track', async (req, res, next) => {
           // as the hub's own manual delivery path -- a real carrier
           // confirmation deserves the exact same real notification a
           // manual confirmation would trigger.
-          try {
-            const { rows: orderRows } = await db.query('SELECT buyer_id, guest_email FROM orders WHERE id = $1', [orderId]);
-            let recipientEmail = orderRows[0]?.guest_email || null;
-            let recipientName = null;
-            if (orderRows[0]?.buyer_id) {
-              const { rows: userRows } = await db.query('SELECT email, name FROM users WHERE id = $1', [orderRows[0].buyer_id]);
-              if (userRows.length > 0) { recipientEmail = userRows[0].email; recipientName = userRows[0].name; }
+          //
+          // REAL BUG FOUND AND FIXED HERE (same real bug already found
+          // and fixed on hub/routes.js's own confirm-delivery handler
+          // and order/routes.js's own order-placement handler):
+          // deliberately NOT awaited here -- this loop can process
+          // several real webhook items, and a slow/unreachable SMTP
+          // server on ONE of them shouldn't delay processing the rest,
+          // or delay the real response back to the carrier's own
+          // webhook system (which may itself retry on a timeout,
+          // risking duplicate processing).
+          (async () => {
+            try {
+              const { rows: orderRows } = await db.query('SELECT buyer_id, guest_email FROM orders WHERE id = $1', [orderId]);
+              let recipientEmail = orderRows[0]?.guest_email || null;
+              let recipientName = null;
+              if (orderRows[0]?.buyer_id) {
+                const { rows: userRows } = await db.query('SELECT email, name FROM users WHERE id = $1', [orderRows[0].buyer_id]);
+                if (userRows.length > 0) { recipientEmail = userRows[0].email; recipientName = userRows[0].name; }
+              }
+              if (recipientEmail) {
+                const { html, text } = deliveryNotificationEmail({ recipientName, orderId });
+                await sendTransactionalEmail({ to: recipientEmail, subject: `Your order has been delivered — ${orderId}`, html, text, fallbackLogLabel: 'order-delivered-carrier' });
+              }
+            } catch (emailErr) {
+              console.error('Carrier-confirmed delivery email failed (non-fatal):', emailErr.message);
             }
-            if (recipientEmail) {
-              const { html, text } = deliveryNotificationEmail({ recipientName, orderId });
-              await sendTransactionalEmail({ to: recipientEmail, subject: `Your order has been delivered — ${orderId}`, html, text, fallbackLogLabel: 'order-delivered-carrier' });
-            }
-          } catch (emailErr) {
-            console.error('Carrier-confirmed delivery email failed (non-fatal):', emailErr.message);
-          }
+          })();
         }
       } catch (err) {
         results.push({ trackingNumber, success: false, error: 'Internal error updating this hub shipment' });

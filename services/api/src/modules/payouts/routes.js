@@ -141,21 +141,12 @@ router.post('/', requireAuth, requireRole('admin'), requirePageAccess('payouts')
     await client.query('COMMIT');
     await logAdminAction(req, 'payout_recorded', 'payout', payoutId, { supplierId, amount: Number(totalAmount.toFixed(2)), subOrderCount: eligibleRows.length });
 
-    // Real payout confirmation email (new) -- best-effort, after commit,
-    // same reasoning as every other real transactional email trigger:
-    // a real SMTP call has no business inside the real payout
-    // transaction, and an email hiccup should never affect a payout
-    // that's already genuinely recorded.
-    try {
-      const { rows: userRows } = await db.query('SELECT email, name FROM users WHERE supplier_id = $1 AND role = $2', [supplierId, 'supplier']);
-      if (userRows.length > 0) {
-        const { html, text } = payoutConfirmationEmail({ recipientName: userRows[0].name, amount: totalAmount, currencyCode: payoutRows[0].currency_code, subOrderCount: eligibleRows.length });
-        await sendTransactionalEmail({ to: userRows[0].email, subject: 'Payout recorded', html, text, fallbackLogLabel: 'payout-confirmation' });
-      }
-    } catch (err) {
-      console.error('Payout confirmation email failed (non-fatal):', err.message);
-    }
-
+    // REAL BUG FOUND AND FIXED HERE (same real bug already found and
+    // fixed on hub/routes.js, order/routes.js, and supplier/routes.js
+    // in this same pass): res.json now happens FIRST -- a real,
+    // best-effort email must never be able to block the real,
+    // already-recorded payout's own response if an SMTP server is ever
+    // slow or unreachable.
     res.status(201).json({
       id: payoutId,
       supplierId,
@@ -165,6 +156,18 @@ router.post('/', requireAuth, requireRole('admin'), requirePageAccess('payouts')
       subOrderCount: eligibleRows.length,
       createdAt: payoutRows[0].created_at,
     });
+
+    (async () => {
+      try {
+        const { rows: userRows } = await db.query('SELECT email, name FROM users WHERE supplier_id = $1 AND role = $2', [supplierId, 'supplier']);
+        if (userRows.length > 0) {
+          const { html, text } = payoutConfirmationEmail({ recipientName: userRows[0].name, amount: totalAmount, currencyCode: payoutRows[0].currency_code, subOrderCount: eligibleRows.length });
+          await sendTransactionalEmail({ to: userRows[0].email, subject: 'Payout recorded', html, text, fallbackLogLabel: 'payout-confirmation' });
+        }
+      } catch (err) {
+        console.error('Payout confirmation email failed (non-fatal):', err.message);
+      }
+    })();
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);

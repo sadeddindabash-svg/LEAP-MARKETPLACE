@@ -234,77 +234,23 @@ router.post('/', async (req, res, next) => {
 
     await client.query('COMMIT');
 
-    // Real, best-effort low-stock notification (migration 037) --
-    // same after-commit pattern as every other real trigger here: a
-    // genuine failure notifying a supplier should never roll back or
-    // block the real order that already succeeded.
-    for (const alert of lowStockAlerts) {
-      try {
-        const { rows: supplierUserRows } = await db.query('SELECT id FROM users WHERE supplier_id = $1 AND role = $2', [alert.supplierId, 'supplier']);
-        if (supplierUserRows.length > 0) {
-          await createNotification({
-            userId: supplierUserRows[0].id,
-            type: 'low_stock',
-            title: 'Low stock alert',
-            body: `${alert.name} is down to ${alert.newStock} unit${alert.newStock === 1 ? '' : 's'} (your alert threshold: ${alert.threshold}).`,
-            linkType: 'product',
-            linkId: alert.productId,
-          });
-          const { rows: supplierRows } = await db.query('SELECT email, name FROM users WHERE id = $1', [supplierUserRows[0].id]);
-          if (supplierRows.length > 0 && supplierRows[0].email) {
-            await sendTransactionalEmail({
-              to: supplierRows[0].email,
-              subject: `Low stock: ${alert.name}`,
-              html: wrapEmailBody({
-                heading: 'Low stock alert',
-                bodyHtml: `Hi${supplierRows[0].name ? ` ${supplierRows[0].name}` : ''},<br><br><strong>${alert.name}</strong> is down to <strong>${alert.newStock}</strong> unit${alert.newStock === 1 ? '' : 's'} — at or below your alert threshold of ${alert.threshold}.<br><br>Update your stock levels in the supplier portal to keep this listing accurate.`,
-              }),
-              fallbackLogLabel: 'low-stock',
-            });
-          }
-        }
-      } catch (err) {
-        console.error('[low-stock] Real notification failed (non-fatal):', err.message);
-      }
-    }
-
-    // Real referral reward check — deliberately AFTER the commit, as a
-    // best-effort follow-up rather than part of the order's own
-    // transaction: if granting a reward has some unexpected problem, it
-    // should never roll back or block the real order that already
-    // succeeded.
-    try {
-      await checkAndGrantReferralReward(userId || null);
-    } catch (err) {
-      // Logged, not fatal — the order itself is real and already committed.
-      console.error('checkAndGrantReferralReward failed (non-fatal):', err.message);
-    }
-
-    // Real order confirmation email (new) -- same best-effort, after-
-    // commit pattern as the referral check above: never blocks or rolls
-    // back the real order that already succeeded. Real product names
-    // fetched fresh here since the earlier SELECT never needed them.
-    try {
-      let recipientEmail = guestEmail || null;
-      let recipientName = null;
-      if (userId) {
-        const { rows: userRows } = await db.query('SELECT email, name FROM users WHERE id = $1', [userId]);
-        if (userRows.length > 0) {
-          recipientEmail = userRows[0].email;
-          recipientName = userRows[0].name;
-        }
-      }
-      if (recipientEmail) {
-        const { rows: nameRows } = await db.query('SELECT id, name FROM products WHERE id = ANY($1::text[])', [productIds]);
-        const nameById = Object.fromEntries(nameRows.map((r) => [r.id, r.name]));
-        const emailItems = items.map((i) => ({ name: nameById[i.productId] || i.productId, quantity: i.quantity, price: buyerUnitPrices[i.productId] }));
-        const { html, text } = orderConfirmationEmail({ recipientName, orderId, items: emailItems, total, currencyCode });
-        await sendTransactionalEmail({ to: recipientEmail, subject: `Order confirmed — ${orderId}`, html, text, fallbackLogLabel: 'order-confirmation' });
-      }
-    } catch (err) {
-      console.error('Order confirmation email failed (non-fatal):', err.message);
-    }
-
+    // REAL BUG FOUND AND FIXED HERE, very likely the actual root cause
+    // of an earlier real report of checkout being slow/appearing stuck
+    // ("keeps loading") that was, at the time, attributed to a generic
+    // network issue -- found for certain only once the SAME real
+    // pattern was confirmed hanging a different endpoint
+    // (hub/routes.js's own confirm-delivery handler) via an actual
+    // person's own real Network tab showing a request stuck
+    // "Pending" forever. The real order itself is already fully
+    // committed at this point -- every real best-effort follow-up
+    // below (low-stock alerts, referral reward, confirmation email)
+    // used to run BEFORE the response was sent, meaning a slow or
+    // unreachable SMTP server (no timeout was configured on the
+    // transport itself until this same pass either) could hang the
+    // real order-placement response indefinitely, even though the
+    // order had already genuinely succeeded. Response now happens
+    // FIRST; everything below runs as a genuine, real fire-and-forget
+    // background task that can never delay or block it.
     res.status(201).json({
       id: orderId,
       userId: userId || null,
@@ -318,6 +264,79 @@ router.post('/', async (req, res, next) => {
       currencyCode,
       supplierSubOrders,
     });
+
+    (async () => {
+      // Real, best-effort low-stock notification (migration 037) --
+      // same after-commit pattern as every other real trigger here: a
+      // genuine failure notifying a supplier should never roll back or
+      // block the real order that already succeeded.
+      for (const alert of lowStockAlerts) {
+        try {
+          const { rows: supplierUserRows } = await db.query('SELECT id FROM users WHERE supplier_id = $1 AND role = $2', [alert.supplierId, 'supplier']);
+          if (supplierUserRows.length > 0) {
+            await createNotification({
+              userId: supplierUserRows[0].id,
+              type: 'low_stock',
+              title: 'Low stock alert',
+              body: `${alert.name} is down to ${alert.newStock} unit${alert.newStock === 1 ? '' : 's'} (your alert threshold: ${alert.threshold}).`,
+              linkType: 'product',
+              linkId: alert.productId,
+            });
+            const { rows: supplierRows } = await db.query('SELECT email, name FROM users WHERE id = $1', [supplierUserRows[0].id]);
+            if (supplierRows.length > 0 && supplierRows[0].email) {
+              await sendTransactionalEmail({
+                to: supplierRows[0].email,
+                subject: `Low stock: ${alert.name}`,
+                html: wrapEmailBody({
+                  heading: 'Low stock alert',
+                  bodyHtml: `Hi${supplierRows[0].name ? ` ${supplierRows[0].name}` : ''},<br><br><strong>${alert.name}</strong> is down to <strong>${alert.newStock}</strong> unit${alert.newStock === 1 ? '' : 's'} — at or below your alert threshold of ${alert.threshold}.<br><br>Update your stock levels in the supplier portal to keep this listing accurate.`,
+                }),
+                fallbackLogLabel: 'low-stock',
+              });
+            }
+          }
+        } catch (err) {
+          console.error('[low-stock] Real notification failed (non-fatal):', err.message);
+        }
+      }
+
+      // Real referral reward check — deliberately AFTER the commit, as a
+      // best-effort follow-up rather than part of the order's own
+      // transaction: if granting a reward has some unexpected problem, it
+      // should never roll back or block the real order that already
+      // succeeded.
+      try {
+        await checkAndGrantReferralReward(userId || null);
+      } catch (err) {
+        // Logged, not fatal — the order itself is real and already committed.
+        console.error('checkAndGrantReferralReward failed (non-fatal):', err.message);
+      }
+
+      // Real order confirmation email (new) -- same best-effort, after-
+      // commit pattern as the referral check above: never blocks or rolls
+      // back the real order that already succeeded. Real product names
+      // fetched fresh here since the earlier SELECT never needed them.
+      try {
+        let recipientEmail = guestEmail || null;
+        let recipientName = null;
+        if (userId) {
+          const { rows: userRows } = await db.query('SELECT email, name FROM users WHERE id = $1', [userId]);
+          if (userRows.length > 0) {
+            recipientEmail = userRows[0].email;
+            recipientName = userRows[0].name;
+          }
+        }
+        if (recipientEmail) {
+          const { rows: nameRows } = await db.query('SELECT id, name FROM products WHERE id = ANY($1::text[])', [productIds]);
+          const nameById = Object.fromEntries(nameRows.map((r) => [r.id, r.name]));
+          const emailItems = items.map((i) => ({ name: nameById[i.productId] || i.productId, quantity: i.quantity, price: buyerUnitPrices[i.productId] }));
+          const { html, text } = orderConfirmationEmail({ recipientName, orderId, items: emailItems, total, currencyCode });
+          await sendTransactionalEmail({ to: recipientEmail, subject: `Order confirmed — ${orderId}`, html, text, fallbackLogLabel: 'order-confirmation' });
+        }
+      } catch (err) {
+        console.error('Order confirmation email failed (non-fatal):', err.message);
+      }
+    })();
   } catch (err) {
     await client.query('ROLLBACK');
     if (err.status) return res.status(err.status).json({ error: err.message });
