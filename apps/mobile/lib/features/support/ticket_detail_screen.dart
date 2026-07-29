@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -20,6 +21,13 @@ import '../../services/api_client.dart';
 /// new "Track a ticket" entry (guestEmail passed in directly, already
 /// known) or a shared link with ?guestEmail= in the URL; if neither is
 /// present, shows a real inline email prompt rather than getting stuck.
+///
+/// Real auto-refresh (new) -- mirrors the exact same proven pattern
+/// already built for tracking_screen.dart: a buyer previously had to
+/// manually leave and re-enter this screen (or use pull-to-refresh) to
+/// see whether an admin had replied yet. Polls every 20s while this
+/// screen is on-screen. Silent -- a background poll never flashes the
+/// full-screen loading spinner, only the very first load does.
 class TicketDetailScreen extends StatefulWidget {
   final String ticketId;
   final String? guestEmail;
@@ -36,48 +44,61 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   bool _isSending = false;
   bool _needsEmail = false;
   String? _activeGuestEmail;
+  Timer? _pollTimer;
   final _replyController = TextEditingController();
   final _emailController = TextEditingController();
+
+  static const _pollInterval = Duration(seconds: 20);
 
   @override
   void initState() {
     super.initState();
     _activeGuestEmail = widget.guestEmail;
-    _load();
+    _load(showSpinner: true);
+    _pollTimer = Timer.periodic(_pollInterval, (_) => _load(showSpinner: false));
   }
 
   @override
   void dispose() {
+    _pollTimer?.cancel();
     _replyController.dispose();
     _emailController.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({required bool showSpinner}) async {
     final auth = context.read<AuthState>();
     if (!auth.isLoggedIn && _activeGuestEmail == null) {
-      setState(() { _needsEmail = true; _isLoading = false; });
+      if (mounted) setState(() { _needsEmail = true; _isLoading = false; });
       return;
     }
-    setState(() { _isLoading = true; _needsEmail = false; });
+    if (showSpinner && mounted) setState(() { _isLoading = true; _needsEmail = false; });
     try {
       final ticket = await ApiClient().fetchTicketDetail(widget.ticketId, token: auth.token, guestEmail: _activeGuestEmail);
-      setState(() {
-        _ticket = ticket;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _ticket = ticket;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      setState(() {
-        _errorMessage = trRead(context, 'could_not_load_ticket');
-        _isLoading = false;
-      });
+      // A silent background poll failing shouldn't blank out an
+      // already-loaded thread with an error message -- only a real,
+      // user-initiated load (the very first one, or after submitting
+      // an email) should ever show one.
+      if (showSpinner && mounted) {
+        setState(() {
+          _errorMessage = trRead(context, 'could_not_load_ticket');
+          _isLoading = false;
+        });
+      }
     }
   }
 
   void _submitEmail() {
     if (_emailController.text.trim().isEmpty) return;
     setState(() => _activeGuestEmail = _emailController.text.trim());
-    _load();
+    _load(showSpinner: true);
   }
 
   Future<void> _sendReply() async {
@@ -87,7 +108,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     try {
       await ApiClient().sendTicketMessage(widget.ticketId, _replyController.text.trim(), token: auth.token, guestEmail: _activeGuestEmail);
       _replyController.clear();
-      await _load();
+      await _load(showSpinner: false);
     } on ApiException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     } finally {

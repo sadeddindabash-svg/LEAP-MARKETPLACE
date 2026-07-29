@@ -340,6 +340,24 @@ sub-order, so it's only ever started from that order's detail page,
 which itself requires knowing the order (guest checkout confirmation
 provides this), not a guest-accessible blank form.
 
+## Real auto-refresh polling for support ticket and return case threads (new)
+
+**A real, confirmed gap, found by checking every "waiting for a reply"
+screen against the already-proven pattern**: `tracking_screen.dart`
+already polls every 20s so a buyer sees shipment progress without
+manually leaving and re-entering the screen — but
+`ticket_detail_screen.dart` and `return_case_detail_screen.dart` (both
+genuinely the same kind of screen: waiting for an admin's reply) had
+no polling at all, only the pull-to-refresh gesture added earlier this
+session.
+
+Applied the exact same proven pattern to both: polls every 20s while
+the screen is on-screen, silently — a background poll never flashes
+the full-screen loading spinner or blanks out an already-loaded thread
+with an error if it happens to fail once; only the very first load (or
+a real, user-initiated action like submitting a guest email) shows
+the loading/error states.
+
 ## Real native share for the referral code, not just copy-to-clipboard (new)
 
 **A real, confirmed gap**: only copy-to-clipboard existed for sharing
