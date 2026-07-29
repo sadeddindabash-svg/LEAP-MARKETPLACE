@@ -340,6 +340,23 @@ sub-order, so it's only ever started from that order's detail page,
 which itself requires knowing the order (guest checkout confirmation
 provides this), not a guest-accessible blank form.
 
+## Real itemized order breakdown at checkout (new)
+
+**A real, confirmed gap**: before placing a real order — an
+irreversible, payment-adjacent action — a buyer only ever saw an
+aggregate item count and total ("3 item(s) · Subtotal: $87.50"), never
+which real products or how many of each they were actually about to
+buy. Added a real itemized list (`N × Product Name — $line total`) for
+every real cart item, right above the existing subtotal/discount
+summary.
+
+**Deliberately checked against the same real bug class found and fixed
+earlier this session**: this simply renders `cart.items` (via
+`context.watch<CartState>()`, already established at the top of this
+screen's own `build()`) directly in a real `build()` context — not a
+`Future.value()`/`FutureBuilder` replacement pattern, so the same
+timing gap that caused the My Garage bug doesn't apply here at all.
+
 ## Real bug fixed: a genuinely saved vehicle didn't appear without a manual refresh (My Garage)
 
 **A real bug, reported by an actual person testing on a real device,
