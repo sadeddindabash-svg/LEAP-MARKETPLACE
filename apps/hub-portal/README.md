@@ -48,6 +48,21 @@ successfully" only to display an empty, meaningless queue.
 receipt / In progress / Shipped / Flagged) — no fabricated counts, all
 computed from the real fetched list.
 
+### Real auto-refresh polling (new)
+
+**A real, confirmed gap**: nothing refreshed this queue automatically
+— more than one hub worker can be assigned to and working the same
+real queue at once, so one worker's own view could silently go stale
+the moment a different worker processes an item (changes its real
+status), previously requiring a manual page reload to notice. Polls
+every 20s while this queue screen is open, silently — a background
+poll never flashes "Loading..." over an already-rendered queue (which
+would be disruptive while a worker is actively scanning items), only
+the very first load shows it.
+
+**Verified**: full regression, 16/16 passing across both real test
+files.
+
 ## The inspection workflow
 
 Real, ordered, cannot-be-skipped steps, matching the backend's own

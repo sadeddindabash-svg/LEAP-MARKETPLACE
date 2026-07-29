@@ -198,17 +198,34 @@ function QueueScreen({ onOpenShipment }) {
   // shipments), so no new backend endpoint is needed for this.
   const [searchQuery, setSearchQuery] = useState("");
 
-  const load = () => {
-    setLoadState("loading");
+  // Real, silent load -- used by both the very first load and every
+  // background poll below. showSpinner is false for a background
+  // poll: flashing "Loading..." over an already-rendered queue every
+  // 20s while a hub worker is actively scanning items would be a
+  // genuinely disruptive UX, not a helpful one.
+  const load = (showSpinner = true) => {
+    if (showSpinner) setLoadState("loading");
     fetchMyShipments(getStoredToken())
       .then((data) => { setShipments(data); setLoadState("ready"); })
       .catch((err) => {
         if (err instanceof SessionExpiredError) return onSessionExpired();
-        setErrorMessage(err.message);
-        setLoadState("error");
+        // A silent background poll failing shouldn't blank out an
+        // already-rendered queue with a full error state.
+        if (showSpinner) { setErrorMessage(err.message); setLoadState("error"); }
       });
   };
-  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Real auto-refresh (new) -- closes a real gap: more than one hub
+  // worker can be assigned to and working the same real queue at
+  // once, so one worker's own view could silently go stale the moment
+  // a different worker processes an item (changes its real status) --
+  // previously required a manual page reload to notice. Polls every
+  // 20s while this queue screen is open.
+  useEffect(() => {
+    load(true);
+    const interval = setInterval(() => load(false), 20000);
+    return () => clearInterval(interval);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = shipments.filter((s) => {
     if (filter === "all") { /* no status filter */ }
