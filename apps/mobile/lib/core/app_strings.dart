@@ -107,6 +107,11 @@ class AppStrings {
     'rewards_earned': {'en': 'Rewards earned', 'ar': 'المكافآت المكتسبة'},
     'referral_cap_reached': {'en': "You've reached the maximum number of referral rewards.", 'ar': 'لقد وصلت إلى الحد الأقصى لمكافآت الإحالة.'},
     'copy_code': {'en': 'Copy code', 'ar': 'نسخ الرمز'},
+    'share': {'en': 'Share', 'ar': 'مشاركة'},
+    'referral_share_text': {
+      'en': 'Use my code to get a discount on your first order at Leap: {url}',
+      'ar': 'استخدم رمزي للحصول على خصم على طلبك الأول في Leap: {url}',
+    },
     'code_copied': {'en': 'Code copied!', 'ar': 'تم نسخ الرمز!'},
     'referral_code_optional': {'en': 'Referral code (optional)', 'ar': 'رمز الإحالة (اختياري)'},
     'out_of_stock': {'en': 'Out of stock', 'ar': 'غير متوفر'},

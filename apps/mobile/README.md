@@ -340,6 +340,24 @@ sub-order, so it's only ever started from that order's detail page,
 which itself requires knowing the order (guest checkout confirmation
 provides this), not a guest-accessible blank form.
 
+## Real native share for the referral code, not just copy-to-clipboard (new)
+
+**A real, confirmed gap**: only copy-to-clipboard existed for sharing
+a referral code — no native share sheet at all, despite `share_plus`
+already being a real dependency (already used for sharing a product).
+
+Builds a genuinely useful real link, not just the bare code —
+confirmed by reading `app/signup/page.tsx` directly, not assumed:
+web-storefront's own real signup page already supports a real `?ref=`
+query param that pre-fills the referral code field. A referred person
+who opens the shared link lands straight on signup with the code
+already filled in, rather than having to type it themselves.
+
+Restructured the surrounding layout (code on its own row, both buttons
+grouped in a `Wrap` below) rather than squeezing a second button into
+the existing single `spaceBetween` row — avoids any real overflow risk
+on narrow screens now that there are two real buttons, not one.
+
 ## Real "Add a vehicle" CTA on the home feed's "My Car" empty state (new)
 
 **A real, small gap**: the "My Car" filter's empty state (no saved

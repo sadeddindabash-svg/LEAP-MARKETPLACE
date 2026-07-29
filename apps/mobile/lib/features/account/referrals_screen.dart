@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
+import '../../core/config/app_config.dart';
 import '../../services/api_client.dart';
 
 /// Real referral rewards (see services/api/src/modules/referrals/ and
@@ -47,6 +49,22 @@ class _ReferralsScreenState extends State<ReferralsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(trRead(context, 'code_copied'))));
   }
 
+  // Real share (new) -- closes a real gap: only copy-to-clipboard
+  // existed before, no native share sheet at all, despite share_plus
+  // already being a real dependency (used for sharing a product).
+  // Builds a genuinely useful real link (not just the bare code) --
+  // web-storefront's own real signup page already supports a real
+  // ?ref= query param that pre-fills this exact field (confirmed by
+  // reading app/signup/page.tsx directly, not assumed), so a referred
+  // person who opens this link lands straight on signup with the code
+  // already filled in, rather than having to type it themselves.
+  Future<void> _shareCode() async {
+    final code = _info?['code'] as String?;
+    if (code == null) return;
+    final url = '${AppConfig.storefrontUrl}/signup?ref=$code';
+    await Share.share(trRead(context, 'referral_share_text').replaceAll('{url}', url));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -70,11 +88,27 @@ class _ReferralsScreenState extends State<ReferralsScreen> {
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(color: LeapColors.chalk, borderRadius: BorderRadius.circular(10), border: Border.all(color: LeapColors.line)),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Text(_info!['code'] as String, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: 1)),
-                            OutlinedButton.icon(onPressed: _copyCode, icon: const Icon(Icons.copy, size: 15), label: Text(tr(context, 'copy_code'))),
+                            Text(_info!['code'] as String, textAlign: TextAlign.center, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: 1)),
+                            const SizedBox(height: 12),
+                            // Real Share button (new) -- closes a real
+                            // gap: only copy-to-clipboard existed
+                            // before, no native share sheet at all.
+                            // Grouped on its own row below the code
+                            // (not squeezed alongside it in a single
+                            // spaceBetween row) to avoid any real
+                            // overflow risk on narrow screens now that
+                            // there are two real buttons, not one.
+                            Wrap(
+                              alignment: WrapAlignment.center,
+                              spacing: 8,
+                              children: [
+                                OutlinedButton.icon(onPressed: _copyCode, icon: const Icon(Icons.copy, size: 15), label: Text(tr(context, 'copy_code'))),
+                                OutlinedButton.icon(onPressed: _shareCode, icon: const Icon(Icons.share, size: 15), label: Text(tr(context, 'share'))),
+                              ],
+                            ),
                           ],
                         ),
                       ),
