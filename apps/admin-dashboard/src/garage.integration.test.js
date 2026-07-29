@@ -206,3 +206,88 @@ describe.runIf(backendUp)('garage (saved vehicles) against a REAL running backen
     expect(res.status).toBe(400);
   });
 });
+
+// Real default-vehicle feature (new, migration 047) -- closes a real
+// gap: a buyer with more than one saved vehicle had no way to say
+// which one should drive automatic fitment filtering (the home feed).
+describe.runIf(backendUp)('My Garage default vehicle against a REAL running backend', () => {
+  it('CRITICAL: the very first saved vehicle automatically becomes the real default', async () => {
+    const token = await signupBuyer();
+    const res = await fetch(`${BACKEND_URL}/garage/me`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ generationId: 'gen_bmw_1_series_f20', year: 2018 }),
+    });
+    const body = await res.json();
+    expect(body.isDefault).toBe(true);
+  });
+
+  it('CRITICAL: a second saved vehicle does NOT automatically become the real default', async () => {
+    const token = await signupBuyer();
+    await fetch(`${BACKEND_URL}/garage/me`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ generationId: 'gen_bmw_1_series_f20', year: 2018 }),
+    });
+    const res = await fetch(`${BACKEND_URL}/garage/me`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ generationId: 'gen_toyota_camry_xv70', year: 2019 }),
+    });
+    const body = await res.json();
+    expect(body.isDefault).toBe(false);
+  });
+
+  it('CRITICAL: explicitly setting a real vehicle as default unsets the previous one, exactly one default at a time', async () => {
+    const token = await signupBuyer();
+    await fetch(`${BACKEND_URL}/garage/me`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ generationId: 'gen_bmw_1_series_f20', year: 2018 }),
+    });
+    await fetch(`${BACKEND_URL}/garage/me`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ generationId: 'gen_toyota_camry_xv70', year: 2019 }),
+    });
+
+    const res = await fetch(`${BACKEND_URL}/garage/me/gen_toyota_camry_xv70/2019/default`, {
+      method: 'PATCH', headers: { Authorization: `Bearer ${token}` },
+    });
+    const list = await res.json();
+    const bmw = list.find((v) => v.generationId === 'gen_bmw_1_series_f20');
+    const toyota = list.find((v) => v.generationId === 'gen_toyota_camry_xv70');
+    expect(toyota.isDefault).toBe(true);
+    expect(bmw.isDefault).toBe(false);
+  });
+
+  it('CRITICAL: deleting the current default auto-promotes a real remaining vehicle to the new default', async () => {
+    const token = await signupBuyer();
+    await fetch(`${BACKEND_URL}/garage/me`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ generationId: 'gen_bmw_1_series_f20', year: 2018 }),
+    });
+    await fetch(`${BACKEND_URL}/garage/me`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ generationId: 'gen_toyota_camry_xv70', year: 2019 }),
+    });
+
+    // BMW was the first saved, so it's the real current default.
+    const res = await fetch(`${BACKEND_URL}/garage/me/gen_bmw_1_series_f20/2018`, {
+      method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+    });
+    const remaining = await res.json();
+    expect(remaining.length).toBe(1);
+    expect(remaining[0].isDefault).toBe(true);
+  });
+
+  it('setting a real vehicle that does not belong to this buyer as default is rejected', async () => {
+    const tokenA = await signupBuyer();
+    const tokenB = await signupBuyer();
+    await fetch(`${BACKEND_URL}/garage/me`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenA}` },
+      body: JSON.stringify({ generationId: 'gen_bmw_1_series_f20', year: 2018 }),
+    });
+
+    const res = await fetch(`${BACKEND_URL}/garage/me/gen_bmw_1_series_f20/2018/default`, {
+      method: 'PATCH', headers: { Authorization: `Bearer ${tokenB}` },
+    });
+    expect(res.status).toBe(404);
+  });
+});

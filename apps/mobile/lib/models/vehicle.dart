@@ -18,6 +18,10 @@ class Vehicle {
   final String generation;
   final int yearStart;
   final int? yearEnd; // null means still in production
+  // Real default-vehicle flag (new, migration 047) -- which single
+  // saved vehicle drives automatic fitment filtering (the home feed)
+  // when a buyer has more than one saved.
+  final bool isDefault;
 
   const Vehicle({
     required this.generationId,
@@ -27,6 +31,7 @@ class Vehicle {
     required this.generation,
     required this.yearStart,
     this.yearEnd,
+    this.isDefault = false,
   });
 
   // Kept as a synthetic id (not a real column) purely for Flutter
@@ -46,6 +51,7 @@ class Vehicle {
         generation: json['generation'] as String,
         yearStart: json['yearStart'] as int,
         yearEnd: json['yearEnd'] as int?,
+        isDefault: json['isDefault'] as bool? ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -56,5 +62,6 @@ class Vehicle {
         'generation': generation,
         'yearStart': yearStart,
         'yearEnd': yearEnd,
+        'isDefault': isDefault,
       };
 }

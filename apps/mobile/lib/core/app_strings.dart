@@ -207,6 +207,8 @@ class AppStrings {
     'set_as_default': {'en': 'Set as default', 'ar': 'تعيين كافتراضي'},
     'delete_address_confirm': {'en': 'Delete this address?', 'ar': 'حذف هذا العنوان؟'},
     'remove_vehicle_confirm': {'en': 'Remove this vehicle from your garage?', 'ar': 'إزالة هذه المركبة من مرآبك؟'},
+    'default_vehicle_label': {'en': 'Default', 'ar': 'الافتراضية'},
+    'set_as_default_vehicle': {'en': 'Set as default vehicle', 'ar': 'تعيين كمركبة افتراضية'},
     'label_field': {'en': 'Label (e.g. Home, Work)', 'ar': 'التسمية (مثال: المنزل، العمل)'},
     'recipient_name_field': {'en': 'Recipient name', 'ar': 'اسم المستلم'},
     'phone_field': {'en': 'Phone', 'ar': 'الهاتف'},

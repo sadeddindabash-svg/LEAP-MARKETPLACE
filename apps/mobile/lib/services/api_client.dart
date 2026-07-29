@@ -213,6 +213,16 @@ class ApiClient {
     return list.map((v) => Vehicle.fromJson(v as Map<String, dynamic>)).toList();
   }
 
+  /// Real "set as default" (new, migration 047) -- already returns the
+  /// real, updated full list directly (mirrors add/removeVehicleFromGarage
+  /// above), so a caller can use it directly rather than fetching again.
+  Future<List<Vehicle>> setDefaultVehicle(String token, String generationId, int year) async {
+    final response = await _client.patch(Uri.parse('$baseUrl/garage/me/$generationId/$year/default'), headers: {'Authorization': 'Bearer $token'});
+    if (response.statusCode != 200) throw ApiException('Failed to set default vehicle (${response.statusCode})');
+    final list = jsonDecode(response.body) as List;
+    return list.map((v) => Vehicle.fromJson(v as Map<String, dynamic>)).toList();
+  }
+
   // ---------------- Password reset ----------------
   // NOTE: no real email is sent yet (no email provider is connected in
   // this backend) — the reset link is logged to the SERVER's console as

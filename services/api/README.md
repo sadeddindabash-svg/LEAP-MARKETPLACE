@@ -2369,6 +2369,29 @@ headers no longer include an `ETag` and now genuinely include
 a targeted admin-dashboard check (17/17), both passing, confirming
 this global change didn't break anything relying on prior behavior.
 
+## Real "default vehicle" for My Garage (new, migration 047)
+
+**A real, confirmed gap**: a buyer with more than one saved vehicle had
+no way to say which one should drive automatic fitment filtering — the
+mobile home feed silently used whichever vehicle happened to be first
+in an arbitrary list order. Confirmed by reading `garage/routes.js`
+directly, not assumed: the currently-used table is
+`user_saved_generations` (migration 044), not `user_saved_vehicles`
+(migration 008, already confirmed dead).
+
+A buyer's very first saved vehicle automatically becomes their real
+default. New `PATCH /garage/me/:generationId/:year/default` sets a
+specific vehicle as default, unsetting any other in a single real
+transaction. Deleting the current default auto-promotes a real
+remaining vehicle rather than leaving the buyer with none.
+
+**Verified against the real running backend**: confirmed the first
+saved vehicle auto-becomes default and a second one doesn't; confirmed
+explicitly switching the default correctly unsets the previous one;
+confirmed deleting the current default auto-promotes a remaining
+vehicle; confirmed a buyer can't set another buyer's vehicle as their
+own default. Real integration tests: 18/18 passing (5 new).
+
 ## Real bilingual name + photo, required for brands and categories (new, migration 046)
 
 **An explicit, requested requirement**: `POST /fitment/brands` now

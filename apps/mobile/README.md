@@ -340,6 +340,41 @@ sub-order, so it's only ever started from that order's detail page,
 which itself requires knowing the order (guest checkout confirmation
 provides this), not a guest-accessible blank form.
 
+## Real "default vehicle" for My Garage (new, migration 047)
+
+**A real, confirmed gap**: a buyer with more than one saved vehicle had
+no way to say which one should drive automatic fitment filtering (the
+home feed's "shop for my car") — it silently used whichever vehicle
+happened to be first in an arbitrary list order.
+
+- **Backend**: a buyer's very first saved vehicle automatically
+  becomes their real default (no meaningful choice with only one). A
+  new `PATCH /garage/me/:generationId/:year/default` sets a specific
+  vehicle as default, unsetting any other in the same real transaction
+  — exactly one default at a time, never zero or two even if a request
+  fails partway through. Deleting the current default auto-promotes a
+  real remaining vehicle, rather than silently leaving the buyer with
+  none.
+- **Mobile**: a real star icon per saved vehicle (filled/highlighted
+  for the current default, outlined otherwise) — tap any other one to
+  make it the new default. The home feed now prefers the real default
+  vehicle over just the first one in the list, falling back to the
+  first only if somehow none is marked default.
+
+**Deliberately reused the exact same safe, direct-state-update pattern
+already proven for add/remove** (see this file's own header comment
+and the entry below on the real `FutureBuilder` timing bug) — no
+`Future.value()`/`FutureBuilder` replacement trick anywhere in this
+new code either.
+
+**Verified against the real running backend**: confirmed the first
+saved vehicle auto-becomes default and a second one doesn't; confirmed
+explicitly setting a different vehicle as default correctly unsets the
+previous one; confirmed deleting the current default auto-promotes a
+real remaining vehicle; confirmed a buyer can't set another buyer's
+vehicle as their own default (404). Real integration tests: 18/18
+passing (5 new).
+
 ## Real navigation straight to the new order after checkout (new)
 
 **A small, real improvement**: after successfully placing a real

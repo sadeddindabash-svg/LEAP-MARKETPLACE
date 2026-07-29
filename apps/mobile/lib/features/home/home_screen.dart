@@ -251,7 +251,16 @@ class _HomeScreenState extends State<HomeScreen> {
             FutureBuilder<List<Vehicle>>(
               future: _garageFuture,
               builder: (context, garageSnapshot) {
-                final firstVehicle = (garageSnapshot.data?.isNotEmpty ?? false) ? garageSnapshot.data!.first : null;
+                // Real fix (new) -- used to just take whichever vehicle
+                // happened to be first in an arbitrary list order.
+                // Prefers the real default vehicle now (migration 047),
+                // falling back to the first one only if somehow none is
+                // marked default (a defensive fallback, not the
+                // intended real path).
+                final garage = garageSnapshot.data;
+                final firstVehicle = (garage?.isNotEmpty ?? false)
+                    ? garage!.firstWhere((v) => v.isDefault, orElse: () => garage.first)
+                    : null;
                 if (_feedFilter == 'my_car' && auth.isLoggedIn && garageSnapshot.connectionState == ConnectionState.waiting) {
                   return const Padding(padding: EdgeInsets.symmetric(vertical: 24), child: Center(child: CircularProgressIndicator()));
                 }

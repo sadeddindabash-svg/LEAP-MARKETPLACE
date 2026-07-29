@@ -82,6 +82,19 @@ class _GarageScreenState extends State<GarageScreen> {
     }
   }
 
+  Future<void> _setDefault(Vehicle v) async {
+    final auth = context.read<AuthState>();
+    try {
+      // Same safe, direct pattern as add/_remove above -- see this
+      // file's own header comment for why a Future.value()/
+      // FutureBuilder replacement was never used here.
+      final updatedGarage = await ApiClient().setDefaultVehicle(auth.token!, v.generationId, v.year);
+      if (mounted) setState(() => _vehicles = updatedGarage);
+    } on ApiException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
   // Real confirmation dialog -- closes a real, genuine inconsistency:
   // the addresses screen already asks for confirmation before a real
   // delete; this screen removed a vehicle immediately with no safety
@@ -174,10 +187,26 @@ class _GarageScreenState extends State<GarageScreen> {
               key: ValueKey(v.id),
               margin: const EdgeInsets.only(bottom: 10),
               child: ListTile(
-                leading: const Icon(Icons.directions_car),
+                leading: Icon(Icons.directions_car, color: v.isDefault ? LeapColors.signal : null),
                 title: Text(v.label, style: const TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Text(v.subLabel),
-                trailing: IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => _confirmRemove(v)),
+                subtitle: Text(v.isDefault ? '${v.subLabel} · ${tr(context, 'default_vehicle_label')}' : v.subLabel),
+                // Real "set as default" star (new) -- closes a real
+                // gap: a buyer with more than one saved vehicle had no
+                // way to say which one should drive automatic fitment
+                // filtering (the home feed) -- it silently used
+                // whichever vehicle happened to be first in an
+                // arbitrary list order.
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: Icon(v.isDefault ? Icons.star : Icons.star_border, size: 20, color: v.isDefault ? LeapColors.signal : LeapColors.muted),
+                      tooltip: tr(context, 'set_as_default_vehicle'),
+                      onPressed: v.isDefault ? null : () => _setDefault(v),
+                    ),
+                    IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => _confirmRemove(v)),
+                  ],
+                ),
                 onTap: () => Navigator.of(context).pop(v),
               ),
             ),
