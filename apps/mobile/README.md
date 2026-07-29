@@ -340,6 +340,14 @@ sub-order, so it's only ever started from that order's detail page,
 which itself requires knowing the order (guest checkout confirmation
 provides this), not a guest-accessible blank form.
 
+## Real "Add a vehicle" CTA on the home feed's "My Car" empty state (new)
+
+**A real, small gap**: the "My Car" filter's empty state (no saved
+vehicle yet) showed only text explaining what to do — no actual button
+to do it with. Added a real button navigating straight to My Garage,
+matching the same "Browse products" CTA pattern already added to the
+cart/wishlist/orders empty states earlier this session.
+
 ## Real "default vehicle" for My Garage (new, migration 047)
 
 **A real, confirmed gap**: a buyer with more than one saved vehicle had

@@ -268,7 +268,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (_feedFilter == 'my_car' && firstVehicle == null) {
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    child: Text(tr(context, 'add_a_vehicle_for_my_car_filter'), style: const TextStyle(color: LeapColors.muted), textAlign: TextAlign.center),
+                    child: Column(
+                      children: [
+                        Text(tr(context, 'add_a_vehicle_for_my_car_filter'), style: const TextStyle(color: LeapColors.muted), textAlign: TextAlign.center),
+                        const SizedBox(height: 12),
+                        // Real CTA (new) -- closes a real gap: just
+                        // text before, no way to act on it from here.
+                        OutlinedButton.icon(
+                          onPressed: () => context.push('/garage'),
+                          icon: const Icon(Icons.add, size: 18),
+                          label: Text(tr(context, 'add_a_vehicle')),
+                        ),
+                      ],
+                    ),
                   );
                 }
                 return FutureBuilder<List<Product>>(
