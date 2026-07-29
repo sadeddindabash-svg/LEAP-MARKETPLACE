@@ -263,7 +263,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         // its own button finishes. Skip this navigation entirely when
         // signup was chosen -- the push to '/signup' is the real, final
         // destination in that case, not a stop on the way to '/orders'.
-        if (mounted && !choseToCreateAccount) context.go('/orders');
+        // Real improvement (new) -- goes straight to the new order's
+        // own real detail page (tracking, itemized breakdown, etc.)
+        // rather than the general orders list, so a buyer doesn't have
+        // to find and tap their own just-placed order themselves.
+        if (mounted && !choseToCreateAccount) context.go('/orders/${result['id']}');
       }
     } on ApiException catch (e) {
       setState(() => _errorMessage = e.message);

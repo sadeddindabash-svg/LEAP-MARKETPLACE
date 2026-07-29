@@ -340,6 +340,22 @@ sub-order, so it's only ever started from that order's detail page,
 which itself requires knowing the order (guest checkout confirmation
 provides this), not a guest-accessible blank form.
 
+## Real navigation straight to the new order after checkout (new)
+
+**A small, real improvement**: after successfully placing a real
+order, the app navigated to the general orders list — a buyer had to
+find and tap their own just-placed order themselves to see its real
+tracking info. Now goes straight to that order's own real detail
+page (`/orders/${result['id']}`) instead. A small, additive,
+one-line change — the carefully-tuned surrounding logic (guest address
+suggestion, guest-to-account prompt, and the real dialog-racing fix
+already documented right above this) is completely untouched.
+
+**Verified against the real running backend**: placed a real order and
+immediately fetched its own detail right after — no timing or
+replication lag at all, confirming a buyer landing there right after
+checkout will always see their real order correctly.
+
 ## Real itemized order breakdown at checkout (new)
 
 **A real, confirmed gap**: before placing a real order — an
