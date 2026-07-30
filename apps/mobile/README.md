@@ -384,6 +384,18 @@ to do it with. Added a real button navigating straight to My Garage,
 matching the same "Browse products" CTA pattern already added to the
 cart/wishlist/orders empty states earlier this session.
 
+## Real pull-to-refresh on My Garage (new)
+
+**A real, confirmed gap**: this screen had no way to manually refresh
+at all, unlike every other list screen in the app (fixed earlier this
+session). Straightforward and low-risk to add now, given this
+screen's own state is already a plain field (not a `FutureBuilder`
+replacement pattern) since the real `FutureBuilder` timing bug was
+fixed here earlier — reuses the exact same real `_load()` already used
+for the initial fetch. Loading/error states remain genuinely
+scrollable so the gesture still works even when there's nothing (or
+an error) to show.
+
 ## Real "default vehicle" for My Garage (new, migration 047)
 
 **A real, confirmed gap**: a buyer with more than one saved vehicle had

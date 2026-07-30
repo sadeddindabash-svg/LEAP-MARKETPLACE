@@ -145,6 +145,20 @@ class _GarageScreenState extends State<GarageScreen> {
     }
   }
 
+  // Real pull-to-refresh (new) -- closes a real gap: this screen had
+  // no way to manually refresh at all before, matching the same real
+  // gesture already added to every other list screen in the app
+  // earlier this session. Reuses the exact same real _load() already
+  // used for the initial fetch.
+  Future<void> _handleRefresh() async {
+    try {
+      final vehicles = await _load();
+      if (mounted) setState(() { _vehicles = vehicles; _loadError = null; });
+    } catch (e) {
+      if (mounted) setState(() => _loadError = e.toString());
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
@@ -174,12 +188,26 @@ class _GarageScreenState extends State<GarageScreen> {
 
     Widget body;
     if (_loadError != null) {
-      body = Center(child: Text('${tr(context, 'could_not_load_garage')} $_loadError', style: const TextStyle(color: LeapColors.muted)));
+      body = RefreshIndicator(
+        onRefresh: _handleRefresh,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 80),
+              child: Center(child: Text('${tr(context, 'could_not_load_garage')} $_loadError', style: const TextStyle(color: LeapColors.muted))),
+            ),
+          ],
+        ),
+      );
     } else if (_vehicles == null) {
       body = const Center(child: CircularProgressIndicator());
     } else {
       final vehicles = _vehicles!;
-      body = ListView(
+      body = RefreshIndicator(
+        onRefresh: _handleRefresh,
+        child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         children: [
           for (final v in vehicles)
@@ -216,6 +244,7 @@ class _GarageScreenState extends State<GarageScreen> {
             label: Text(tr(context, 'add_a_vehicle')),
           ),
         ],
+        ),
       );
     }
 
