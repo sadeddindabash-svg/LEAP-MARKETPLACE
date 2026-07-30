@@ -384,6 +384,55 @@ to do it with. Added a real button navigating straight to My Garage,
 matching the same "Browse products" CTA pattern already added to the
 cart/wishlist/orders empty states earlier this session.
 
+## Real design refresh — gold accent, Manrope font, pill buttons (confirmed directly against real reference screenshots)
+
+**A real, deliberate brand alignment**: updated the app's color, font,
+and button shape to match `leapautoparts.com`'s own real visual
+identity, confirmed directly from real screenshots of the live site,
+not guessed. Each individual decision was confirmed one at a time via
+real, rendered mockups before any code was written:
+
+- **Color**: `LeapColors.signal` (the app's one real accent color,
+  already centralized and reused everywhere — buttons, badges, icons,
+  the cart badge) changed from the original orange-red to the real
+  site's own gold (`#F2A71B`). A real, deliberate light background was
+  kept (confirmed directly — not the site's own full black theme).
+- **Contrast fix, found while checking every real usage of the
+  changed color, not assumed safe**: the new gold is lighter than the
+  old orange-red, so white text that read fine before would not read
+  well against it now. Added a new `LeapColors.onSignal` (a dark
+  brown-black), matching the real site's own real contrast pattern
+  (its gold buttons/pills use dark text, not white) — applied to the
+  button theme and the one hand-built badge found using hardcoded
+  white text (`account_screen.dart`'s unread-notification count).
+  Checked every other real usage of `LeapColors.signal` in the whole
+  app (icons, text, the Flutter `Badge` widget's own separate `error`-
+  based styling) and confirmed none of the others had the same issue.
+- **Font**: Manrope, chosen from a real, rendered side-by-side
+  comparison of 5 real font options. Added via the standard
+  `google_fonts` package (fetches and caches the real font at runtime)
+  rather than manually bundling `.ttf` files, since this sandbox has
+  no way to fetch actual font files from Google Fonts directly.
+- **Buttons**: fully pill-shaped everywhere, via Flutter's own
+  `StadiumBorder` (correctly adapts to any real button height, unlike
+  a fixed large corner-radius value) — applied to both the primary
+  (gold) and secondary (outlined) button themes for shape consistency.
+- **Icons**: deliberately left unchanged — confirmed directly that the
+  current outlined Material icon style should stay as-is.
+
+**HONEST LIMITATION**: `google_fonts` is a new package dependency —
+this sandbox has no Flutter SDK to run `flutter pub get` and verify it
+resolves correctly (the same honest caveat as `local_auth` earlier
+this session, though `google_fonts` is a far more widely-used, lower-
+risk package). A real `flutter pub get` + run is the real proof.
+
+**Verified as thoroughly as possible without a real device**: since
+`LeapColors.signal`/`signalDark` are the only two token values changed
+(not renamed), every existing screen that already referenced them
+picks up the new color automatically with no further code changes
+needed — confirmed by re-checking every real usage across the whole
+app directly, not assumed.
+
 ## Real biometric app lock (new) — genuinely needs a real device test
 
 **A real, confirmed gap**: no optional security setting existed to

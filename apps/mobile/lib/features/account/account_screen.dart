@@ -71,7 +71,7 @@ class _AccountScreenState extends State<AccountScreen> {
                       child: Text(
                         _unreadCount > 9 ? '9+' : '$_unreadCount',
                         textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700),
+                        style: const TextStyle(color: LeapColors.onSignal, fontSize: 10, fontWeight: FontWeight.w700),
                       ),
                     ),
                   ),
