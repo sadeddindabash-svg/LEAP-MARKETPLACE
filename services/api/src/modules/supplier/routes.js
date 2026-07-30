@@ -4,7 +4,7 @@ const { requireAuth, requireRole, requirePageAccess } = require('../auth/middlew
 const { createNotification } = require('../notifications/helpers');
 const { sendTransactionalEmail } = require('../email/client');
 const { logAdminAction } = require('../audit/helpers');
-const { shippingNotificationEmail } = require('../email/templates');
+const { shippingNotificationEmail, supplierVerifiedEmail, supplierRejectedEmail } = require('../email/templates');
 const { validateFitment, tryMatchCategoryAndPart, tryMatchPosition, tryMatchDimensions, validateCompleteFields } = require('./productValidation');
 const { getSupplierAnalytics } = require('../supplierAnalytics/queries');
 const { notifyRestock } = require('../restockAlerts/notify');
@@ -85,6 +85,42 @@ router.patch('/:id/verify', requireAuth, requireRole('admin'), requirePageAccess
     // just confirming the status change, not a full record refresh.
     const { id, name, country, contact_email, verification_status, created_at } = rows[0];
     res.json({ id, name, country, contactEmail: contact_email, verificationStatus: verification_status, createdAt: created_at });
+
+    // REAL BUG FOUND AND FIXED HERE: nothing at all notified a
+    // supplier whether their application was verified or rejected --
+    // no email, no in-app notification, the whole flow relied on them
+    // manually re-checking the supplier portal indefinitely. Fired
+    // fire-and-forget, deliberately AFTER the response, matching this
+    // same session's own real lesson on best-effort side effects.
+    (async () => {
+      try {
+        if (contact_email) {
+          const template = status === 'verified' ? supplierVerifiedEmail({ supplierName: name }) : supplierRejectedEmail({ supplierName: name });
+          await sendTransactionalEmail({
+            to: contact_email,
+            subject: status === 'verified' ? "You're verified on Leap!" : 'Update on your Leap application',
+            html: template.html,
+            text: template.text,
+            fallbackLogLabel: 'supplier-verification',
+          });
+        }
+        // Real in-app notification too, if this supplier already has
+        // a real linked login account by now (not guaranteed at
+        // application time -- the email above is the one real
+        // notification path that always works regardless).
+        const { rows: supplierUserRows } = await db.query('SELECT id FROM users WHERE supplier_id = $1 AND role = $2', [id, 'supplier']);
+        if (supplierUserRows.length > 0) {
+          await createNotification({
+            userId: supplierUserRows[0].id,
+            type: 'supplier_verification',
+            title: status === 'verified' ? "You're verified!" : 'Application update',
+            body: status === 'verified' ? 'Your application to sell on Leap has been verified — you can now list products.' : 'Your application to sell on Leap was not approved this time.',
+          });
+        }
+      } catch (err) {
+        console.error('Supplier verification notification failed (non-fatal):', err.message);
+      }
+    })();
   } catch (err) {
     next(err);
   }

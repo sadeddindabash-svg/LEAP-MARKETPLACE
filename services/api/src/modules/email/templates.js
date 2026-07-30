@@ -167,4 +167,23 @@ function welcomeEmail({ recipientName }) {
   return { html, text };
 }
 
-module.exports = { passwordResetEmail, orderConfirmationEmail, shippingNotificationEmail, deliveryNotificationEmail, payoutConfirmationEmail, welcomeEmail, wrapEmailBody };
+// Real supplier verification outcome emails (new) -- closes a real,
+// significant gap: nothing at all notified a supplier whether their
+// application was verified or rejected -- no email, no in-app
+// notification, the whole flow relied on them manually re-checking
+// the supplier portal indefinitely.
+function supplierVerifiedEmail({ supplierName }) {
+  const bodyHtml = `Good news — <strong>${supplierName}</strong>'s application to sell on Leap has been verified. You can now list real products and start selling.`;
+  const html = wrapEmailBody({ heading: "You're verified!", bodyHtml, ctaUrl: process.env.SUPPLIER_PORTAL_URL || 'http://localhost:5174', ctaLabel: 'Go to your supplier portal' });
+  const text = `Good news -- ${supplierName}'s application to sell on Leap has been verified. You can now list real products and start selling.`;
+  return { html, text };
+}
+
+function supplierRejectedEmail({ supplierName }) {
+  const bodyHtml = `We reviewed <strong>${supplierName}</strong>'s application to sell on Leap and are unable to approve it at this time. If you believe this is a mistake or would like more detail, please reply to this email.`;
+  const html = wrapEmailBody({ heading: 'Update on your application', bodyHtml });
+  const text = `We reviewed ${supplierName}'s application to sell on Leap and are unable to approve it at this time. If you believe this is a mistake or would like more detail, please reply to this email.`;
+  return { html, text };
+}
+
+module.exports = { passwordResetEmail, orderConfirmationEmail, shippingNotificationEmail, deliveryNotificationEmail, payoutConfirmationEmail, welcomeEmail, supplierVerifiedEmail, supplierRejectedEmail, wrapEmailBody };

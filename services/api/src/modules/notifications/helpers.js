@@ -8,10 +8,13 @@ const db = require('../../../db/pool');
  * 019's own original header comment) -- genuinely accurate when
  * written, but 5 more real trigger points have been added since
  * (each with its own migration extending the real `notifications_type
- * ` CHECK constraint: 020, 037, 038, 039, 045), making that comment
- * stale without ever being corrected. The real, current, complete
- * list of every genuine trigger point, confirmed by checking every
- * actual `createNotification` call site directly, not assumed:
+ * ` CHECK constraint: 020, 037, 038, 039, 045, 048), making that
+ * comment stale without ever being corrected the first time (fixed
+ * once already this session, kept accurate here rather than letting
+ * it go stale again the very next time a trigger point was added).
+ * The real, current, complete list of every genuine trigger point,
+ * confirmed by checking every actual `createNotification` call site
+ * directly, not assumed:
  *   1. A real sub-order status change to 'shipped' or 'delivered'
  *      (services/api/src/modules/supplier/routes.js, hub/routes.js)
  *      -> 'order_status', notifies the real buyer.
@@ -39,6 +42,11 @@ const db = require('../../../db/pool');
  *   9. A real wishlisted, out-of-stock product genuinely restocking
  *      (services/api/src/modules/restockAlerts/notify.js) ->
  *      'back_in_stock'.
+ *   10. An admin verifying or rejecting a real supplier application
+ *       (services/api/src/modules/supplier/routes.js's own
+ *       PATCH /:id/verify) -> 'supplier_verification', only if that
+ *       supplier already has a real linked login account by then (a
+ *       real email is sent regardless -- see that same handler).
  *
  * A single shared helper rather than each trigger site writing its own
  * INSERT, so the shape stays consistent.

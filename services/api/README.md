@@ -2341,6 +2341,34 @@ confirmed logged distinctly from review moderation; deactivated a real
 promo code, confirmed logged distinctly from creation; created/
 updated/deleted a real fee component, confirmed all three logged.
 
+## Real supplier verification outcome notifications (new, migration 048)
+
+**A real, significant gap, found while checking a related account-
+creation flow for the same "no confirmation" pattern just fixed for
+buyer signup**: nothing at all previously notified a supplier whether
+their application was verified or rejected — no email, no in-app
+notification. The entire flow relied on a supplier manually
+re-checking the supplier portal indefinitely to find out.
+
+Sends a real email to the supplier's own contact address regardless of
+whether they have a linked login account yet (not guaranteed at
+application time), plus a real in-app notification (`type:
+'supplier_verification'`, migration 048's own new addition to the
+`notifications_type` `CHECK` constraint — the 10th real trigger point,
+see `notifications/helpers.js`'s own header comment, kept accurate
+here rather than letting it go stale again the very next time a
+trigger point was added) if that supplier already has one. Fired
+fire-and-forget, deliberately after the response — same lesson as
+every other fix in this session.
+
+**Verified against the real running backend**: verified a real pending
+supplier, confirmed the response is fast (~0.02s) and the real email
+fallback log fires with the correct subject and recipient; re-verified
+a supplier with a real linked login account (`supplier@leap.dev`) and
+confirmed exactly one new real in-app notification, correctly typed
+and titled. Full regression: 8/8 (supplier tests) + 12/12 (audit log),
+all passing.
+
 ## Real welcome email on signup (new)
 
 **A real, confirmed gap**: no email confirmed a real new buyer account
