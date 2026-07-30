@@ -2341,6 +2341,25 @@ confirmed logged distinctly from review moderation; deactivated a real
 promo code, confirmed logged distinctly from creation; created/
 updated/deleted a real fee component, confirmed all three logged.
 
+## Real product image on every cart response (new)
+
+**A real, confirmed gap, requested directly**: `GET/POST/PATCH/DELETE
+/cart/:cartId` never returned an image URL at all for any real cart
+item — confirmed by reading `cart/routes.js` directly, not assumed.
+The mobile cart screen showed a generic placeholder icon, and
+checkout's own itemized summary showed the product name as plain
+text, neither with a real photo.
+
+Fixed by adding the real primary product image (the first one by real
+`sort_order` in the separate, one-to-many `product_images` table — the
+same definition used everywhere else in this codebase, e.g.
+`catalog/routes.js`'s identical pattern) to every real cart response.
+
+**Verified against the real running backend**: confirmed a product
+with no real images correctly returns `imageUrl: null`; inserted a
+real test image directly, confirmed it comes back correctly in the
+cart response, then cleaned it up.
+
 ## Real supplier verification outcome notifications (new, migration 048)
 
 **A real, significant gap, found while checking a related account-

@@ -419,6 +419,32 @@ real remaining vehicle; confirmed a buyer can't set another buyer's
 vehicle as their own default (404). Real integration tests: 18/18
 passing (5 new).
 
+## Real product photos in the cart and at checkout (new)
+
+**A real, confirmed gap, requested directly**: the cart screen's own
+item rows showed a plain, generic placeholder icon — never the real
+product photo — and checkout's own itemized breakdown (added earlier
+this session) showed only the product's name as plain text, no image
+at all.
+
+**Root cause, found on the backend**: `GET/POST/PATCH/DELETE
+/cart/:cartId` never returned an image URL at all — confirmed by
+reading `cart/routes.js` directly, not assumed. Fixed by adding the
+real primary product image (the first one by real `sort_order`, the
+same definition used everywhere else in this codebase) to every real
+cart response.
+
+Both the cart screen and checkout's itemized summary now show the real
+thumbnail, with the exact same placeholder/error handling already
+established everywhere else in the app — a broken image shows a clean
+icon, not a blank box or a crash.
+
+**Verified against the real running backend**: confirmed a product
+with no real images correctly returns `imageUrl: null` (a genuine data
+state, not a bug); inserted a real test image directly, confirmed it
+comes back correctly in the cart response, then cleaned it up. Full
+regression: web-storefront (38/38), unaffected by the new field.
+
 ## Real email format validation for guest checkout and signup (new)
 
 **A real, confirmed gap on both screens**: only presence (non-empty)

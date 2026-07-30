@@ -8,6 +8,10 @@ class CartItem {
   final double price;
   final String currencyCode;
   final String? supplierName;
+  // Real primary product image (new) -- closes a real gap: no image
+  // at all was available for a cart item before, only its name as
+  // plain text.
+  final String? imageUrl;
   // Real, live stock quantity (new) -- lets the UI warn/clamp a buyer
   // before checkout, rather than the only real guard being order
   // placement's own atomic stock check. See services/api/src/modules/
@@ -23,6 +27,7 @@ class CartItem {
     required this.currencyCode,
     required this.stockQuantity,
     this.supplierName,
+    this.imageUrl,
   });
 
   double get lineTotal => price * quantity;
@@ -35,5 +40,6 @@ class CartItem {
         currencyCode: json['currencyCode'] as String? ?? 'USD',
         stockQuantity: json['stockQuantity'] as int? ?? 0,
         supplierName: json['supplierName'] as String?,
+        imageUrl: json['imageUrl'] as String?,
       );
 }

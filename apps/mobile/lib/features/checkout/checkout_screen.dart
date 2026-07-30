@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:geolocator/geolocator.dart';
@@ -509,6 +510,33 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Row(
                       children: [
+                        // Real product thumbnail (new) -- closes a
+                        // real gap: only the product's name was shown
+                        // as plain text before, no real photo at all.
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: item.imageUrl != null
+                              ? CachedNetworkImage(
+                                  imageUrl: ApiClient.resolveMediaUrl(item.imageUrl!),
+                                  width: 36,
+                                  height: 36,
+                                  fit: BoxFit.cover,
+                                  placeholder: (context, url) => Container(width: 36, height: 36, color: LeapColors.chalk),
+                                  errorWidget: (context, url, error) => Container(
+                                    width: 36,
+                                    height: 36,
+                                    color: LeapColors.chalk,
+                                    child: const Icon(Icons.broken_image_outlined, size: 14, color: LeapColors.muted),
+                                  ),
+                                )
+                              : Container(
+                                  width: 36,
+                                  height: 36,
+                                  color: LeapColors.chalk,
+                                  child: const Icon(Icons.inventory_2_outlined, size: 14, color: LeapColors.muted),
+                                ),
+                        ),
+                        const SizedBox(width: 10),
                         Expanded(
                           child: Text(
                             '${item.quantity} × ${item.name}',

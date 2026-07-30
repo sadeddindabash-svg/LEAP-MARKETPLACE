@@ -55,12 +55,22 @@ async function getFullCart(cartId) {
       price = result.buyerPriceUsd;
       currencyCode = 'USD';
     }
+    // Real primary product image (new) -- closes a real gap: no image
+    // at all was returned for a cart item before, so neither the cart
+    // screen nor checkout's own itemized summary could show one, only
+    // the product's name as plain text. Images live in their own
+    // real, one-to-many product_images table (see catalog/routes.js's
+    // own identical pattern) -- the first one by real sort_order is
+    // the real primary image, same definition used everywhere else in
+    // this codebase.
+    const { rows: imageRows } = await db.query('SELECT url FROM product_images WHERE product_id = $1 ORDER BY sort_order LIMIT 1', [r.product_id]);
     return {
       productId: r.product_id,
       quantity: r.quantity,
       name: r.name,
       price,
       currencyCode,
+      imageUrl: imageRows[0]?.url || null,
       // Real stock quantity (new) -- lets the client warn/clamp a
       // buyer BEFORE they hit checkout, rather than the only real
       // guard being order placement's atomic stock_quantity >= $1

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
@@ -234,11 +235,31 @@ class _CartItemRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(color: LeapColors.chalk, borderRadius: BorderRadius.circular(8)),
-            child: const Icon(Icons.album_outlined, color: LeapColors.ink),
+          // Real product thumbnail (new) -- closes a real gap: this
+          // was a plain, generic placeholder icon before, never the
+          // real product photo.
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: item.imageUrl != null
+                ? CachedNetworkImage(
+                    imageUrl: ApiClient.resolveMediaUrl(item.imageUrl!),
+                    width: 48,
+                    height: 48,
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) => Container(width: 48, height: 48, color: LeapColors.chalk),
+                    errorWidget: (context, url, error) => Container(
+                      width: 48,
+                      height: 48,
+                      color: LeapColors.chalk,
+                      child: const Icon(Icons.broken_image_outlined, size: 18, color: LeapColors.muted),
+                    ),
+                  )
+                : Container(
+                    width: 48,
+                    height: 48,
+                    color: LeapColors.chalk,
+                    child: const Icon(Icons.album_outlined, color: LeapColors.ink),
+                  ),
           ),
           const SizedBox(width: 10),
           Expanded(
