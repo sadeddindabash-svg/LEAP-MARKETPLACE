@@ -175,6 +175,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       setState(() => _errorMessage = trRead(context, 'please_enter_email_order'));
       return;
     }
+    // Real email FORMAT validation (new) -- closes a real gap: only
+    // presence was checked before, not format. A guest who typed
+    // something that isn't a real email would never receive their
+    // order confirmation, tracking updates, or the real welcome email
+    // this session's own backend work added. Uses the exact same
+    // regex the backend's own isValidEmail already uses
+    // (auth/routes.js), for consistency between what the app accepts
+    // and what the server would too.
+    if (!auth.isLoggedIn && !RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(_guestEmailController.text.trim())) {
+      setState(() => _errorMessage = trRead(context, 'please_enter_valid_email'));
+      return;
+    }
 
     // Real address validation (migration 030) -- a real logged-in
     // buyer must have picked a saved address or filled in a new one;

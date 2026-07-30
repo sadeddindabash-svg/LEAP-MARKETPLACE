@@ -160,6 +160,7 @@ class AppStrings {
     'order_summary': {'en': 'Order summary', 'ar': 'ملخص الطلب'},
     'place_order': {'en': 'Place order', 'ar': 'إتمام الطلب'},
     'please_enter_email_order': {'en': 'Please enter an email for your order confirmation.', 'ar': 'يرجى إدخال بريد إلكتروني لتأكيد طلبك.'},
+    'please_enter_valid_email': {'en': "That doesn't look like a valid email address.", 'ar': 'هذا لا يبدو كعنوان بريد إلكتروني صالح.'},
     'please_complete_address': {'en': 'Please fill in every field of your delivery address.', 'ar': 'يرجى تعبئة جميع حقول عنوان التسليم.'},
     'please_select_address': {'en': 'Please select a delivery address.', 'ar': 'يرجى اختيار عنوان التسليم.'},
     'order_placed_success': {'en': 'placed successfully', 'ar': 'تم الطلب بنجاح'},
