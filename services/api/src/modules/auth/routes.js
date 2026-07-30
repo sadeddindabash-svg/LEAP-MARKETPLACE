@@ -253,4 +253,53 @@ router.post('/reset-password', async (req, res, next) => {
   }
 });
 
+// PATCH /me/email { newEmail, currentPassword } — real, confirmed gap
+// closed: no self-service way to change your account email existed
+// at all before this, only display-only in every real client.
+// Requires the real current password (same real security bar as
+// changing a password itself) — a stolen, still-logged-in session
+// alone shouldn't be enough to take over an account's own email.
+// Issues a fresh real JWT, since email is a real token claim
+// (signToken) -- the OLD token would keep showing the OLD email
+// until it naturally expired otherwise.
+router.patch('/me/email', requireAuth, async (req, res, next) => {
+  try {
+    const { newEmail, currentPassword } = req.body || {};
+    if (!isValidEmail(newEmail)) {
+      return res.status(400).json({ error: 'A valid newEmail is required' });
+    }
+    if (!currentPassword) {
+      return res.status(400).json({ error: 'currentPassword is required' });
+    }
+
+    const { rows } = await db.query('SELECT * FROM users WHERE id = $1', [req.user.sub]);
+    if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    const user = rows[0];
+
+    const passwordMatches = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!passwordMatches) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+
+    if (newEmail.toLowerCase() === user.email.toLowerCase()) {
+      return res.status(400).json({ error: 'That is already your current email' });
+    }
+
+    const { rows: existingRows } = await db.query('SELECT id FROM users WHERE email = $1 AND id != $2', [newEmail, req.user.sub]);
+    if (existingRows.length > 0) {
+      return res.status(409).json({ error: 'That email is already in use by another account' });
+    }
+
+    await db.query('UPDATE users SET email = $1 WHERE id = $2', [newEmail, req.user.sub]);
+
+    const updatedUser = { id: user.id, email: newEmail, role: user.role, supplier_id: user.supplier_id, hub_id: user.hub_id };
+    res.json({
+      token: signToken(updatedUser),
+      user: { id: user.id, email: newEmail, name: user.name, role: user.role },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

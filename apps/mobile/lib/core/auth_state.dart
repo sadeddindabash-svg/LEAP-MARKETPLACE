@@ -53,6 +53,17 @@ class AuthState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Real, reusable session update (new) -- for a real account-update
+  /// flow (e.g. changing your email) that already gets a fresh real
+  /// token+user directly back from the real backend, rather than
+  /// re-authenticating via login() with credentials it doesn't have.
+  Future<void> updateSession(String token, Map<String, dynamic> user) async {
+    _token = token;
+    _user = user;
+    await _secureStorage.write(key: _tokenKey, value: _token);
+    notifyListeners();
+  }
+
   // Returns the real number of guest orders just linked to this new
   // account (migration 029) -- 0 means none, which is the normal case
   // for someone who never checked out as a guest under this email.

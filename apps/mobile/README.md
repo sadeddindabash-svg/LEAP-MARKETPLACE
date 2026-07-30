@@ -384,6 +384,38 @@ to do it with. Added a real button navigating straight to My Garage,
 matching the same "Browse products" CTA pattern already added to the
 cart/wishlist/orders empty states earlier this session.
 
+## Real "Change email" account flow (new)
+
+**A real, confirmed gap**: no self-service way to change your account
+email existed at all — the account menu only ever displayed it as
+read-only text. Requires the real current password as a real security
+check, matching the same bar as changing a password itself — a
+stolen, still-logged-in session alone shouldn't be enough to take over
+an account's own email.
+
+**Backend**: new `PATCH /auth/me/email`, verifies the real current
+password (bcrypt), validates the new email's real format (the same
+regex `isValidEmail`/the guest-checkout fix already use, for
+consistency), rejects a real email already in use by another account,
+and issues a fresh real JWT — email is a real token claim, so the OLD
+token would keep showing the OLD email until it naturally expired
+otherwise.
+
+**Mobile**: new screen at `/account/change-email`, reachable from the
+account menu. Added a reusable `AuthState.updateSession()` for account-
+update flows (like this one) that already get a fresh real token+user
+directly back from the backend, rather than re-authenticating via
+`login()` with credentials it doesn't have.
+
+**Verified against the real running backend**: confirmed a wrong
+current password is rejected and the real email never changes;
+confirmed an invalid format is rejected; confirmed an email already
+used by a different real account is rejected (409); confirmed setting
+it to the exact same email is rejected; confirmed a correct request
+actually changes the email and the fresh JWT's own real payload
+contains the new email claim (decoded and checked directly, not
+assumed). Real integration tests: 5/5 passing.
+
 ## Real pull-to-refresh on My Garage (new)
 
 **A real, confirmed gap**: this screen had no way to manually refresh

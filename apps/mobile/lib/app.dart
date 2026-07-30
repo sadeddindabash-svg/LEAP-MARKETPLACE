@@ -27,6 +27,7 @@ import 'features/saved_searches/saved_searches_screen.dart';
 import 'features/account/notifications_screen.dart';
 import 'features/account/referrals_screen.dart';
 import 'features/account/address_form_screen.dart';
+import 'features/account/change_email_screen.dart';
 import 'features/support/chat_screen.dart';
 import 'features/support/new_ticket_screen.dart';
 import 'features/support/ticket_detail_screen.dart';
@@ -56,6 +57,7 @@ final GoRouter appRouter = GoRouter(
     GoRoute(path: '/notifications', builder: (context, state) => const NotificationsScreen()),
     GoRoute(path: '/referrals', builder: (context, state) => const ReferralsScreen()),
     GoRoute(path: '/addresses/add', builder: (context, state) => const AddressFormScreen()),
+    GoRoute(path: '/account/change-email', builder: (context, state) => const ChangeEmailScreen()),
     GoRoute(
       path: '/addresses/edit',
       builder: (context, state) => AddressFormScreen(existing: state.extra as Map<String, dynamic>?),

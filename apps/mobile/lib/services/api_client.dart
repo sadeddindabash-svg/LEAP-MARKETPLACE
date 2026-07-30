@@ -282,6 +282,20 @@ class ApiClient {
     return _decodeAuthResponse(response);
   }
 
+  /// Real "change email" (new) -- closes a real gap: no self-service
+  /// way to change your account email existed at all before this,
+  /// only display-only. Returns a real, fresh token+user (email is a
+  /// real JWT claim) -- the caller (AuthState.updateSession) stores it
+  /// the same way a real login does.
+  Future<Map<String, dynamic>> changeEmail(String token, String newEmail, String currentPassword) async {
+    final response = await _client.patch(
+      Uri.parse('$baseUrl/auth/me/email'),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      body: jsonEncode({'newEmail': newEmail, 'currentPassword': currentPassword}),
+    );
+    return _decodeAuthResponse(response);
+  }
+
   Future<Map<String, dynamic>> getCurrentUser(String token) async {
     final response = await _client.get(
       Uri.parse('$baseUrl/auth/me'),
