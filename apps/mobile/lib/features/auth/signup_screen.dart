@@ -35,6 +35,17 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   Future<void> _submit() async {
+    // Real email FORMAT validation (new) -- same real gap and same
+    // exact fix already proven for guest checkout, arguably even more
+    // important here: an unreachable email on a permanent account
+    // means no way to ever receive a password reset, order
+    // confirmations, or the real welcome email this session's own
+    // backend work added. Uses the exact same regex the backend's own
+    // isValidEmail already uses (auth/routes.js).
+    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(_emailController.text.trim())) {
+      setState(() => _errorMessage = trRead(context, 'please_enter_valid_email'));
+      return;
+    }
     if (_passwordController.text.length < 8) {
       setState(() => _errorMessage = trRead(context, 'password_too_short'));
       return;

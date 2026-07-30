@@ -419,20 +419,25 @@ real remaining vehicle; confirmed a buyer can't set another buyer's
 vehicle as their own default (404). Real integration tests: 18/18
 passing (5 new).
 
-## Real email format validation for guest checkout (new)
+## Real email format validation for guest checkout and signup (new)
 
-**A real, confirmed gap**: only presence (non-empty) was checked
-before, not format. A guest who typed something that isn't a real
-email would never receive their order confirmation, tracking updates,
-or the real welcome email this session's own backend work added —
-their email address would silently be unreachable garbage from the
-moment they placed the order. Uses the exact same regex the backend's
-own `isValidEmail` already uses (`auth/routes.js`), for consistency
-between what the app accepts and what the server would too.
+**A real, confirmed gap on both screens**: only presence (non-empty)
+was checked before, not format. On checkout, a guest who typed
+something that isn't a real email would never receive their order
+confirmation, tracking updates, or the real welcome email this
+session's own backend work added. On signup — arguably even more
+important — an unreachable email on a **permanent account** means no
+way to ever receive a password reset, order confirmations, or that
+same welcome email. Both use the exact same regex the backend's own
+`isValidEmail` already uses (`auth/routes.js`), for consistency.
 Deliberately universal (email format is a real global standard,
 unlike phone number formats, which vary too much across this app's
-real 40 launch markets to safely validate client-side without risking
-rejecting valid international numbers).
+real 40 launch markets to safely validate client-side).
+
+**Verified end-to-end by an actual person testing on a real device**:
+confirmed a deliberately invalid email is correctly caught with a
+clear message, and confirmed a real, valid email places the order
+successfully with no change in behavior from before this fix.
 
 ## Real navigation straight to the new order after checkout (new)
 
