@@ -384,6 +384,24 @@ to do it with. Added a real button navigating straight to My Garage,
 matching the same "Browse products" CTA pattern already added to the
 cart/wishlist/orders empty states earlier this session.
 
+## Real skeleton loading states (new)
+
+**A real, common gap**: every loading state in the app was a plain
+spinner, never a content-shaped placeholder. Added a new, reusable
+`lib/widgets/skeleton.dart` — a real, simple, repeating opacity pulse
+built with only Flutter's own `AnimationController`, deliberately not
+a new `shimmer` package dependency (no new pub dependency to verify or
+install, no risk of a version mismatch on a machine this session can't
+directly test on).
+
+Two real, reusable shapes: `ProductGridSkeleton` (matches the real
+2-column product grid layout) and `ListSkeleton` (matches a real
+title/subtitle/badge list row). Applied to the three highest-traffic
+loading states in the app: the home feed's own product grid, the
+orders list, and search results — each one's plain spinner replaced
+with the shape-matched skeleton, so the loading state doesn't visually
+jump when the real content replaces it.
+
 ## Real "Change email" account flow (new)
 
 **A real, confirmed gap**: no self-service way to change your account

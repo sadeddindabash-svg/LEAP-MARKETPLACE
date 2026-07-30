@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
+import '../../widgets/skeleton.dart';
 import '../../core/language_state.dart';
 import '../../core/auth_state.dart';
 import '../../models/product.dart';
@@ -259,7 +260,7 @@ class _SearchScreenState extends State<SearchScreen> {
       );
     }
     if (_isSearching) {
-      return const Center(child: CircularProgressIndicator());
+      return const ProductGridSkeleton();
     }
     if (_error != null) {
       return Center(child: Text(_error!, style: const TextStyle(color: LeapColors.muted)));

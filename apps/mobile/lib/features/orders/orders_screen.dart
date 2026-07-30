@@ -6,6 +6,7 @@ import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../services/api_client.dart';
 import '../../widgets/plate_chip.dart';
+import '../../widgets/skeleton.dart';
 
 /// BUY-050–052: order history. Requires login (GET /order is auth-scoped
 /// server-side — see services/api/src/modules/order/routes.js) since guest
@@ -143,7 +144,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                 future: _ordersFuture,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
+                    return const ListSkeleton();
                   }
                   if (snapshot.hasError) {
                     return ListView(

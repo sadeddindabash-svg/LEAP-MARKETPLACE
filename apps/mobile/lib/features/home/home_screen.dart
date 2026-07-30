@@ -11,6 +11,7 @@ import '../../models/vehicle.dart';
 import '../../services/api_client.dart';
 import '../../widgets/plate_chip.dart';
 import '../../widgets/product_card.dart';
+import '../../widgets/skeleton.dart';
 
 /// Real, admin-managed icon per known category id — a NEW category an
 /// admin adds via the admin dashboard's Categories page (see
@@ -287,7 +288,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   future: _feedFuture,
                   builder: (context, feedSnapshot) {
                     if (feedSnapshot.connectionState == ConnectionState.waiting) {
-                      return const Padding(padding: EdgeInsets.symmetric(vertical: 24), child: Center(child: CircularProgressIndicator()));
+                      return const ProductGridSkeleton();
                     }
                     if (feedSnapshot.hasError) {
                       return Padding(
