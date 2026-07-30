@@ -384,6 +384,55 @@ to do it with. Added a real button navigating straight to My Garage,
 matching the same "Browse products" CTA pattern already added to the
 cart/wishlist/orders empty states earlier this session.
 
+## Real biometric app lock (new) — genuinely needs a real device test
+
+**A real, confirmed gap**: no optional security setting existed to
+lock the app behind Face ID/fingerprint before showing real account/
+order info — meaningful for a real production app handling real PII.
+
+**HONEST, IMPORTANT LIMITATION, confirmed directly before building
+this**: `local_auth` has no real web platform support at all — there
+is no Face ID/fingerprint API exposed to a browser the way there is on
+a real Android/iOS device. This means **this feature cannot be tested
+at all in this session's own Chrome-based testing setup**, the same
+one every other mobile change this session has been verified through.
+Built and reasoned through as carefully as possible without a real
+device to run it on, but a real device test is the only real proof
+here — more so than any other mobile change this session.
+
+**What was built**:
+- New `core/app_lock_state.dart` — checks real device support
+  (`isDeviceSupported()`, which correctly covers both real biometrics
+  AND a real device passcode/PIN as a fallback, not just biometrics
+  alone), persists the on/off setting in the same real secure storage
+  `AuthState` already uses, and re-locks automatically on every real
+  app backgrounding (not just checking on resume, so a buyer can't
+  glimpse the still-unlocked app in a real app-switcher preview).
+- New `widgets/app_lock_gate.dart` — wraps the entire real app;
+  shows a real lock screen requiring authentication whenever the
+  setting is on.
+- New toggle in Account settings — **only ever rendered when real
+  device support is confirmed** — no dead toggle on web or a real
+  device with no enrolled biometrics and no device passcode set
+  either. Turning it ON requires a real, successful authentication
+  first, so enabling it can't silently lock a buyer out of their own
+  account if their device's setup doesn't actually work.
+- Real platform configuration added on both native platforms (a real
+  device test needs these, not just the Dart code): `android/app/
+  src/main/AndroidManifest.xml` (the `USE_BIOMETRIC` permission) and
+  `ios/Runner/Info.plist` (`NSFaceIDUsageDescription`).
+
+**A real, pre-existing, unrelated bug found and fixed while in the
+Android manifest**: `android:usesCleartextTraffic="true"` was
+previously orphaned outside the `<application>` tag entirely — a
+stray closing angle bracket after `android:icon` closed the tag one
+attribute too early, genuinely invalid XML. Confirmed both the
+original file was invalid and the fixed version is genuinely valid
+XML by parsing both with Python's own XML parser directly, not just
+eyeballing it — this also caught a mistake in my own first attempt at
+the fix (an XML comment containing `--`, which is itself forbidden by
+the XML spec).
+
 ## Real first-run onboarding walkthrough (new)
 
 **A real, confirmed gap**: nothing pointed a brand-new user at My

@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../core/language_state.dart';
+import '../../core/app_lock_state.dart';
 import '../../services/api_client.dart';
 
 class AccountScreen extends StatefulWidget {
@@ -98,6 +99,7 @@ class _AccountScreenState extends State<AccountScreen> {
               )),
           const Divider(height: 1),
           const _LanguageSection(),
+          if (auth.isLoggedIn) const _AppLockSection(),
           if (auth.isLoggedIn)
             ListTile(
               leading: const Icon(Icons.logout, color: LeapColors.muted),
@@ -205,6 +207,61 @@ class _LanguageSection extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Real biometric app lock toggle (new) -- closes a real gap: no
+// optional security setting existed to lock the app behind Face ID/
+// fingerprint before showing real account/order info. Only ever
+// rendered at all when AppLockState.isSupported is genuinely true --
+// no dead toggle shown on a real platform (like web) or a real device
+// with no enrolled biometrics AND no device passcode set, where it
+// couldn't do anything anyway.
+class _AppLockSection extends StatelessWidget {
+  const _AppLockSection();
+
+  Future<void> _handleToggle(BuildContext context, bool wantsEnabled) async {
+    final lockState = context.read<AppLockState>();
+    if (wantsEnabled) {
+      // Real, required authentication check before turning this ON --
+      // see AppLockState.enable()'s own header comment for why.
+      final success = await lockState.enable();
+      if (!success && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(trRead(context, 'app_lock_enable_failed'))),
+        );
+      }
+    } else {
+      await lockState.disable();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lockState = context.watch<AppLockState>();
+    if (!lockState.isReady || !lockState.isSupported) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(tr(context, 'app_lock_title'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                const SizedBox(height: 2),
+                Text(tr(context, 'app_lock_subtitle'), style: const TextStyle(fontSize: 11.5, color: LeapColors.muted)),
+              ],
+            ),
+          ),
+          Switch(
+            value: lockState.isEnabled,
+            onChanged: (value) => _handleToggle(context, value),
           ),
         ],
       ),

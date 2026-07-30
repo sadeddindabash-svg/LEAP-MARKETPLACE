@@ -66,5 +66,8 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- Real permission description for biometric app lock (new), required by local_auth on iOS for Face ID authentication. -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>Leap uses Face ID to unlock the app when App Lock is turned on in Settings.</string>
 </dict>
 </plist>

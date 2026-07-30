@@ -5,6 +5,8 @@ import 'core/theme.dart';
 import 'core/auth_state.dart';
 import 'core/cart_state.dart';
 import 'core/language_state.dart';
+import 'core/app_lock_state.dart';
+import 'widgets/app_lock_gate.dart';
 import 'core/app_strings.dart';
 import 'services/api_client.dart';
 import 'features/home/home_screen.dart';
@@ -193,6 +195,7 @@ class LeapApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthState()),
         ChangeNotifierProvider(create: (_) => CartState()),
         ChangeNotifierProvider(create: (_) => LanguageState()),
+        ChangeNotifierProvider(create: (_) => AppLockState()),
       ],
       child: Consumer<LanguageState>(
         builder: (context, languageState, _) {
@@ -210,7 +213,10 @@ class LeapApp extends StatelessWidget {
             // Arabic — that's a real, separate follow-up, not hidden here.
             builder: (context, child) => Directionality(
               textDirection: languageState.isArabic ? TextDirection.rtl : TextDirection.ltr,
-              child: child ?? const SizedBox.shrink(),
+              // Real biometric app lock gate (new) -- see
+              // core/app_lock_state.dart's own header comment for the
+              // honest web-platform limitation.
+              child: AppLockGate(child: child ?? const SizedBox.shrink()),
             ),
           );
         },

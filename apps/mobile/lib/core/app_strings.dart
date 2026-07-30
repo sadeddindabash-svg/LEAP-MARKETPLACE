@@ -248,6 +248,9 @@ class AppStrings {
     'guest_browsing': {'en': "You're browsing as a guest", 'ar': 'أنت تتصفح كضيف'},
     'guest_prompt': {'en': 'Log in to save vehicles, see order history across devices, and check out faster.', 'ar': 'سجّل الدخول لحفظ مركباتك، ورؤية سجل الطلبات عبر الأجهزة، وإتمام الشراء بشكل أسرع.'},
     'language': {'en': 'Language', 'ar': 'اللغة'},
+    'app_lock_title': {'en': 'App lock', 'ar': 'قفل التطبيق'},
+    'app_lock_subtitle': {'en': 'Require Face ID, fingerprint, or your device passcode to open the app', 'ar': 'يتطلب بصمة الوجه أو الإصبع أو رمز مرور جهازك لفتح التطبيق'},
+    'app_lock_enable_failed': {'en': "Couldn't verify your identity. App lock was not enabled.", 'ar': 'تعذر التحقق من هويتك. لم يتم تفعيل قفل التطبيق.'},
 
     // ---- Support ----
     'login_to_message': {'en': "Log in to message the Leap team about an order.\n(You're always talking to the Platform — never the supplier directly.)", 'ar': 'سجّل الدخول لمراسلة فريق Leap بخصوص طلب.\n(أنت تتحدث دائمًا مع المنصة — وليس مع المورد مباشرة.)'},
