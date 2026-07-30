@@ -13,7 +13,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchSupplierMessagesInbox, fetchSupplierMessageThread, sendSupplierMessage,
   fetchPromoCodes, createPromoCode, updatePromoCode, deletePromoCode,
   fetchAdminUsers, createAdminUser, updateAdminPermissions, deleteAdminUser,
-  fetchPayoutsOwed, fetchPayoutHistory, recordPayout, fetchSupplierPayoutMethod, fetchReturnWindow, updateReturnWindow, updateCategoryCommission,
+  fetchPayoutsOwed, fetchPayoutHistory, recordPayout, fetchSupplierPayoutMethod, fetchReturnWindow, updateReturnWindow, updateCategoryCommission, sendTestEmail,
   fetchPendingReviews, moderateReview, fetchRequireVerifiedPurchase, updateRequireVerifiedPurchase,
   fetchAuditLog,
   fetchSupplierAnalytics,
@@ -4241,6 +4241,10 @@ const AUDIT_ACTION_TYPES = [
   // deactivating a code, changing a fee's real value) or deleting.
   'promo_code_updated', 'promo_code_deleted',
   'fee_component_created', 'fee_component_updated', 'fee_component_deleted', 'fee_component_reordered',
+  // Real "send test email" action (new) -- lets an admin verify SMTP
+  // configuration works, tracked in the audit trail like every other
+  // real settings action here.
+  'test_email_sent',
 ];
 
 function AuditLogSection({ currentUser, onSessionExpired }) {
@@ -4370,6 +4374,50 @@ function AuditLogSection({ currentUser, onSessionExpired }) {
   );
 }
 
+// Real "send test email" section (new) -- closes a real gap: an
+// admin configuring real SMTP credentials had no way to verify email
+// delivery actually works without waiting for a real customer event
+// to trigger a real transactional email first.
+function EmailTestSection() {
+  const [isSending, setIsSending] = useState(false);
+  const [result, setResult] = useState(null); // { success: bool, message: string }
+
+  const handleSend = async () => {
+    setIsSending(true);
+    setResult(null);
+    try {
+      const data = await sendTestEmail(getStoredToken());
+      setResult({ success: true, message: `Sent to ${data.recipientEmail}.` });
+    } catch (err) {
+      setResult({ success: false, message: err.message });
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  return (
+    <Card title="Email delivery" style={{ flex: 1 }}>
+      <div style={{ padding: 20 }}>
+        <div style={{ ...body, fontSize: 12.5, color: C.muted, marginBottom: 14 }}>
+          Sends a real test email to your own account's email address — the fastest way to confirm real SMTP credentials are actually working, without waiting for a real order or shipment to trigger one.
+        </div>
+        <button
+          onClick={handleSend}
+          disabled={isSending}
+          style={{ ...body, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: isSending ? "#F3F4F6" : "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSending ? "default" : "pointer" }}
+        >
+          {isSending ? "Sending…" : "Send test email"}
+        </button>
+        {result && (
+          <div style={{ ...body, fontSize: 12, marginTop: 12, padding: 10, borderRadius: 8, color: result.success ? C.gauge : C.red, background: result.success ? C.gaugeBg : C.redBg }}>
+            {result.message}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function SettingsPage({ currentUser, onSessionExpired }) {
   return (
     <div>
@@ -4378,6 +4426,7 @@ function SettingsPage({ currentUser, onSessionExpired }) {
         <TeamPermissionsSection currentUser={currentUser} onSessionExpired={onSessionExpired} />
         <CommissionRulesSection onSessionExpired={onSessionExpired} />
         <ReturnWindowSection onSessionExpired={onSessionExpired} />
+        <EmailTestSection />
         <AuditLogSection currentUser={currentUser} onSessionExpired={onSessionExpired} />
       </div>
     </div>

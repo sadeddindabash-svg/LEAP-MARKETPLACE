@@ -1641,6 +1641,28 @@ already-loaded thread with an error if it happens to fail once.
 **Verified**: full regression across both real test files, 11/11
 passing.
 
+## Real "Send test email" in Settings (new)
+
+**A real, confirmed gap**: an admin configuring real SMTP credentials
+had no way to verify email delivery actually works without waiting for
+a real customer event (an order, a shipment, a payout) to trigger a
+real transactional email first — especially relevant given a real,
+significant SMTP-hang bug was found and fixed elsewhere this same
+session.
+
+Sends a real test email to the admin's own account email.
+Deliberately uses `sendEmail` directly (which throws on failure), not
+`sendTransactionalEmail` (which always swallows errors and falls back
+to a console log) — an admin explicitly asking "does this work?" needs
+the real, honest answer, not a silent fallback. Tracked in the audit
+trail (`test_email_sent`) like every other real settings action here.
+
+**Verified against the real running backend**: confirmed the
+"not configured" case returns a clear, real error immediately;
+confirmed a real failure against a genuinely unreachable SMTP host
+returns a clear, honest error message with the real underlying cause,
+quickly (not hanging). Real component tests: 2/2 passing.
+
 ## Real audit coverage for catalog/fitment, product moderation, promo codes, and fee components (new)
 
 **A real, significant gap, found by checking this feature's own stated

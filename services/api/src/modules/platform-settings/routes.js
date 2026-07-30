@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole } = require('../auth/middleware');
 const { logAdminAction } = require('../audit/helpers');
+const { isEmailConfigured, sendEmail } = require('../email/client');
 
 /**
  * Real, generic admin-configurable platform settings (migration 024).
@@ -72,6 +73,41 @@ router.patch('/require-verified-purchase-for-reviews', requireAuth, requireRole(
     res.json({ requireVerifiedPurchase });
   } catch (err) {
     next(err);
+  }
+});
+
+// POST /settings/test-email — real gap closed here: an admin
+// configuring real SMTP credentials had no way to verify email
+// delivery actually works without waiting for a real customer event
+// (an order, a shipment, a payout) to trigger a real transactional
+// email first. Sends a real test email to the admin's OWN account
+// email — deliberately uses sendEmail directly (which throws on
+// failure), not sendTransactionalEmail (which always swallows errors
+// and falls back to a console log) — an admin explicitly asking "does
+// this work?" needs the real, honest answer, not a silent fallback.
+router.post('/test-email', requireAuth, requireRole('admin'), async (req, res, next) => {
+  try {
+    if (!isEmailConfigured()) {
+      return res.status(400).json({ error: 'No real SMTP credentials are configured (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM_EMAIL) — set these environment variables first.' });
+    }
+    const { rows } = await db.query('SELECT email FROM users WHERE id = $1', [req.user.sub]);
+    if (rows.length === 0 || !rows[0].email) {
+      return res.status(400).json({ error: 'Could not find a real email address on your own admin account.' });
+    }
+    const recipientEmail = rows[0].email;
+    await sendEmail({
+      to: recipientEmail,
+      subject: 'Leap — test email',
+      html: `<p>This is a real test email from your Leap platform's admin settings.</p><p>If you're reading this, your real SMTP configuration is working correctly.</p>`,
+      text: `This is a real test email from your Leap platform's admin settings.\n\nIf you're reading this, your real SMTP configuration is working correctly.`,
+    });
+    await logAdminAction(req, 'test_email_sent', 'platform_setting', 'smtp', { recipientEmail });
+    res.json({ sent: true, recipientEmail });
+  } catch (err) {
+    // A real, honest failure reason -- not swallowed, this is exactly
+    // what an admin explicitly testing SMTP needs to see (bad
+    // credentials, wrong host/port, connection timeout, etc.).
+    res.status(502).json({ error: `Real SMTP delivery failed: ${err.message}` });
   }
 });
 

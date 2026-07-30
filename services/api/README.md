@@ -2341,6 +2341,21 @@ confirmed logged distinctly from review moderation; deactivated a real
 promo code, confirmed logged distinctly from creation; created/
 updated/deleted a real fee component, confirmed all three logged.
 
+## Real "send test email" endpoint (new)
+
+**A real, confirmed gap**: no way for an admin to verify real SMTP
+configuration works without waiting for a real customer event to
+trigger a real transactional email first. `POST /platform-settings/
+test-email` sends a real test email to the admin's own account email,
+deliberately using `sendEmail` directly (throws on failure) rather
+than `sendTransactionalEmail` (always swallows errors) — an explicit
+test needs the real, honest answer.
+
+**Verified against the real running backend**: confirmed the "not
+configured" case returns a clear error immediately; confirmed a real
+failure against a genuinely unreachable SMTP host returns a clear,
+honest error with the real underlying cause, quickly.
+
 ## Real, significant bug fixed: a real transactional email with no timeout could hang the entire API response (5 endpoints), plus a proactive sweep of every other external network call
 
 **Proactively swept the entire backend for the same real bug class**
