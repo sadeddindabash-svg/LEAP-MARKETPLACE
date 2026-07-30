@@ -2341,6 +2341,22 @@ confirmed logged distinctly from review moderation; deactivated a real
 promo code, confirmed logged distinctly from creation; created/
 updated/deleted a real fee component, confirmed all three logged.
 
+## Real supplier names on the order list (new)
+
+**A real, confirmed gap, requested directly**: `GET /order` (the
+order list) never returned supplier names at all, confirmed by reading
+`order/routes.js` directly — a buyer had to open an order's own detail
+page just to see who fulfilled it.
+
+Fixed with one real batch query for every fetched order's distinct
+supplier names (`supplier_sub_orders` joined to `suppliers`), rather
+than a separate query per order — avoiding a real N+1 problem on a
+buyer with a long real order history.
+
+**Verified against the real running backend**: placed a real order and
+confirmed the list response includes the correct real supplier name.
+Full regression: web-storefront (38/38).
+
 ## Real product image on every cart response (new)
 
 **A real, confirmed gap, requested directly**: `GET/POST/PATCH/DELETE

@@ -509,6 +509,28 @@ router.get('/', requireAuth, requirePageAccessIfAdmin('orders'), async (req, res
       ? await db.query('SELECT * FROM orders ORDER BY placed_at DESC')
       : await db.query('SELECT * FROM orders WHERE buyer_id = $1 ORDER BY placed_at DESC', [req.user.sub]);
 
+    // Real supplier names on the list view (new) -- closes a real
+    // gap: no supplier info was available at all here before, only
+    // after opening an order's own detail page. One real batch query
+    // for every fetched order's real distinct supplier names, rather
+    // than a separate query per order (which would be a real N+1
+    // problem on a buyer with a long real order history).
+    const orderIds = rows.map((o) => o.id);
+    const supplierNamesByOrder = {};
+    if (orderIds.length > 0) {
+      const { rows: supplierRows } = await db.query(
+        `SELECT DISTINCT sso.order_id, s.name
+         FROM supplier_sub_orders sso
+         JOIN suppliers s ON s.id = sso.supplier_id
+         WHERE sso.order_id = ANY($1::text[])`,
+        [orderIds]
+      );
+      for (const row of supplierRows) {
+        if (!supplierNamesByOrder[row.order_id]) supplierNamesByOrder[row.order_id] = [];
+        supplierNamesByOrder[row.order_id].push(row.name);
+      }
+    }
+
     const withDisplayStatus = await Promise.all(rows.map(async (o) => ({
       id: o.id,
       userId: o.buyer_id,
@@ -518,6 +540,7 @@ router.get('/', requireAuth, requirePageAccessIfAdmin('orders'), async (req, res
       total: Number(o.total),
       currencyCode: o.currency_code,
       placedAt: o.placed_at,
+      supplierNames: supplierNamesByOrder[o.id] || [],
     })));
 
     // Real filter, applied AFTER computing the real derived status --

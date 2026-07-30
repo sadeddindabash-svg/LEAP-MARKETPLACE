@@ -193,6 +193,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
                       // actual real progress, so it is deliberately NOT
                       // used for display here.
                       final displayStatus = (o['displayStatus'] as String?) ?? (o['status'] as String);
+                      // Real supplier names (new) -- closes a real gap:
+                      // no supplier info was shown at all on this list
+                      // before, only after opening an order's own
+                      // detail page. Joined with commas since a single
+                      // real order can be fulfilled by more than one
+                      // real supplier.
+                      final supplierNames = (o['supplierNames'] as List?)?.cast<String>() ?? [];
                       return Card(
                         child: InkWell(
                           onTap: () => context.push('/orders/${o['id']}'),
@@ -208,6 +215,15 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                   Text(trStatus(context, displayStatus).toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: LeapColors.torque)),
                                 ],
                               ),
+                              if (supplierNames.isNotEmpty) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  supplierNames.join(', '),
+                                  style: const TextStyle(fontSize: 11.5, color: LeapColors.muted),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
                               const SizedBox(height: 8),
                               Text('\$${(o['total'] as num).toStringAsFixed(2)} ${o['currencyCode']}'),
                             ],

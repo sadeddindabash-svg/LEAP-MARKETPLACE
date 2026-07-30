@@ -419,6 +419,24 @@ real remaining vehicle; confirmed a buyer can't set another buyer's
 vehicle as their own default (404). Real integration tests: 18/18
 passing (5 new).
 
+## Real supplier names on the orders list (new)
+
+**A real, confirmed gap, requested directly**: no supplier info was
+shown at all on the orders list — a buyer had to open an order's own
+detail page just to see who fulfilled it. Root cause, found on the
+backend: `GET /order` never returned supplier names, confirmed by
+reading `order/routes.js` directly.
+
+Fixed with one real batch query for every fetched order's distinct
+supplier names, rather than a separate query per order (which would be
+a real N+1 problem on a buyer with a long real order history). Shown
+on each order card, joined with commas since a single real order can
+be fulfilled by more than one real supplier.
+
+**Verified against the real running backend**: placed a real order and
+confirmed the list response includes the correct real supplier name.
+Full regression: web-storefront (38/38), unaffected by the new field.
+
 ## Real product photos in the cart and at checkout (new)
 
 **A real, confirmed gap, requested directly**: the cart screen's own
