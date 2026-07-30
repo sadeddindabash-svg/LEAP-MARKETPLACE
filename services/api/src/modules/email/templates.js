@@ -156,4 +156,15 @@ function payoutConfirmationEmail({ recipientName, amount, currencyCode, subOrder
   return { html, text };
 }
 
-module.exports = { passwordResetEmail, orderConfirmationEmail, shippingNotificationEmail, deliveryNotificationEmail, payoutConfirmationEmail, wrapEmailBody };
+// Real welcome email (new) -- closes a real gap: no email confirmed a
+// real new buyer account was actually created, unlike every other
+// real account/order milestone in this codebase.
+function welcomeEmail({ recipientName }) {
+  const greeting = recipientName ? `Hi ${recipientName},` : 'Hi,';
+  const bodyHtml = `${greeting}<br/><br/>Welcome to Leap! Your account is ready — start browsing real, fitment-confirmed parts for your exact vehicle.`;
+  const html = wrapEmailBody({ heading: 'Welcome to Leap', bodyHtml, ctaUrl: process.env.STOREFRONT_URL || 'http://localhost:3001', ctaLabel: 'Start shopping' });
+  const text = `${greeting}\n\nWelcome to Leap! Your account is ready — start browsing real, fitment-confirmed parts for your exact vehicle.`;
+  return { html, text };
+}
+
+module.exports = { passwordResetEmail, orderConfirmationEmail, shippingNotificationEmail, deliveryNotificationEmail, payoutConfirmationEmail, welcomeEmail, wrapEmailBody };

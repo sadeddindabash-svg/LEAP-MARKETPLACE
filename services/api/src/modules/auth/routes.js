@@ -4,8 +4,8 @@ const bcrypt = require('bcryptjs');
 const db = require('../../../db/pool');
 const { signToken, requireAuth } = require('./middleware');
 const { recordReferral } = require('../promotions/helpers');
-const { isEmailConfigured, sendEmail } = require('../email/client');
-const { passwordResetEmail } = require('../email/templates');
+const { isEmailConfigured, sendEmail, sendTransactionalEmail } = require('../email/client');
+const { passwordResetEmail, welcomeEmail } = require('../email/templates');
 
 /**
  * Auth module — BUY-001–003. Real password hashing (bcrypt, 10 salt
@@ -74,6 +74,19 @@ router.post('/signup', async (req, res, next) => {
 
     const user = { id: userId, email, role: 'buyer' };
     res.status(201).json({ token: signToken(user), user: { id: userId, email, name: name || null, role: 'buyer' }, linkedOrderCount });
+
+    // Real welcome email (new) -- deliberately fire-and-forget, sent
+    // AFTER the response, matching the exact real lesson from this
+    // same session's own real bug: a real best-effort email must never
+    // be able to delay or block the real signup response itself.
+    (async () => {
+      try {
+        const { html, text } = welcomeEmail({ recipientName: name || null });
+        await sendTransactionalEmail({ to: email, subject: 'Welcome to Leap', html, text, fallbackLogLabel: 'welcome' });
+      } catch (err) {
+        console.error('Welcome email failed (non-fatal):', err.message);
+      }
+    })();
   } catch (err) {
     next(err);
   }

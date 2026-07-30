@@ -2341,6 +2341,23 @@ confirmed logged distinctly from review moderation; deactivated a real
 promo code, confirmed logged distinctly from creation; created/
 updated/deleted a real fee component, confirmed all three logged.
 
+## Real welcome email on signup (new)
+
+**A real, confirmed gap**: no email confirmed a real new buyer account
+was actually created, unlike every other real account/order milestone
+in this codebase (order confirmation, shipping, delivery, payout, all
+already have one). Sent fire-and-forget, deliberately **after** the
+real signup response — matching the exact real lesson from this same
+session's own significant bug: a best-effort email must never be able
+to delay or block the real response it's attached to.
+
+**Verified against the real running backend**: timed the signup
+endpoint directly — responds in ~0.6 seconds regardless of the email
+send happening afterward; confirmed the real fallback log line fires
+correctly in an environment with no SMTP configured. Full regression:
+web-storefront (38/38), which exercises signup extensively as a setup
+step across many other real flows.
+
 ## Real "send test email" endpoint (new)
 
 **A real, confirmed gap**: no way for an admin to verify real SMTP
