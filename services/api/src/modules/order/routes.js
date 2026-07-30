@@ -7,6 +7,7 @@ const { sendTransactionalEmail } = require('../email/client');
 const { orderConfirmationEmail, wrapEmailBody } = require('../email/templates');
 const { createNotification } = require('../notifications/helpers');
 const { buildTrackingTimeline } = require('../tracking/liveTracking');
+const { buildSupplierLabelMap } = require('../shared/supplierAnonymize');
 
 /**
  * Order module — BUY-031, BUY-050–053. A single buyer order splits into
@@ -382,6 +383,16 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
       [req.params.id]
     );
 
+    // Real supplier anonymization for a buyer, real name/id kept for
+    // admin (business decision, confirmed directly: a buyer should
+    // never see a real supplier's name -- or their real internal ID,
+    // which could otherwise let a buyer correlate suppliers across
+    // separate orders -- anywhere in the app). Scoped to THIS one
+    // order's own distinct suppliers -- see shared/
+    // supplierAnonymize.js's own header comment for the full real
+    // numbering scheme.
+    const supplierLabelMap = buildSupplierLabelMap(subOrders.map((so) => so.supplier_id));
+
     const supplierSubOrders = [];
     for (const so of subOrders) {
       const { rows: items } = await db.query(
@@ -419,8 +430,8 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
 
       supplierSubOrders.push({
         subOrderId: so.id,
-        supplierId: so.supplier_id,
-        supplierName: so.supplier_name,
+        supplierId: isAdmin ? so.supplier_id : null,
+        supplierName: isAdmin ? so.supplier_name : supplierLabelMap.get(so.supplier_id),
         status: so.status,
         trackingNumber: so.tracking_number,
         hubId: so.hub_id,
@@ -509,39 +520,49 @@ router.get('/', requireAuth, requirePageAccessIfAdmin('orders'), async (req, res
       ? await db.query('SELECT * FROM orders ORDER BY placed_at DESC')
       : await db.query('SELECT * FROM orders WHERE buyer_id = $1 ORDER BY placed_at DESC', [req.user.sub]);
 
-    // Real supplier names on the list view (new) -- closes a real
-    // gap: no supplier info was available at all here before, only
-    // after opening an order's own detail page. One real batch query
-    // for every fetched order's real distinct supplier names, rather
-    // than a separate query per order (which would be a real N+1
-    // problem on a buyer with a long real order history).
+    // Real supplier names on the list view for admin, real
+    // anonymized labels for a buyer (business decision, confirmed
+    // directly: a buyer should never see a real supplier's name
+    // anywhere in the app -- see shared/supplierAnonymize.js's own
+    // header comment for the full real numbering scheme). One real
+    // batch query for every fetched order's real distinct suppliers,
+    // rather than a separate query per order (which would be a real
+    // N+1 problem on a buyer with a long real order history).
     const orderIds = rows.map((o) => o.id);
-    const supplierNamesByOrder = {};
+    const suppliersByOrder = {};
     if (orderIds.length > 0) {
       const { rows: supplierRows } = await db.query(
-        `SELECT DISTINCT sso.order_id, s.name
+        `SELECT DISTINCT sso.order_id, sso.supplier_id, s.name
          FROM supplier_sub_orders sso
          JOIN suppliers s ON s.id = sso.supplier_id
          WHERE sso.order_id = ANY($1::text[])`,
         [orderIds]
       );
       for (const row of supplierRows) {
-        if (!supplierNamesByOrder[row.order_id]) supplierNamesByOrder[row.order_id] = [];
-        supplierNamesByOrder[row.order_id].push(row.name);
+        if (!suppliersByOrder[row.order_id]) suppliersByOrder[row.order_id] = [];
+        suppliersByOrder[row.order_id].push({ supplierId: row.supplier_id, name: row.name });
       }
     }
 
-    const withDisplayStatus = await Promise.all(rows.map(async (o) => ({
-      id: o.id,
-      userId: o.buyer_id,
-      guestEmail: o.guest_email,
-      status: o.status,
-      displayStatus: await computeDisplayStatus(o.id),
-      total: Number(o.total),
-      currencyCode: o.currency_code,
-      placedAt: o.placed_at,
-      supplierNames: supplierNamesByOrder[o.id] || [],
-    })));
+    const withDisplayStatus = await Promise.all(rows.map(async (o) => {
+      const suppliers = suppliersByOrder[o.id] || [];
+      // Real per-order anonymization (new) -- scoped to THIS order's
+      // own distinct suppliers, not a globally stable anonymous ID; a
+      // buyer isn't meant to recognize "the same real supplier as my
+      // last order" either.
+      const labelMap = buildSupplierLabelMap(suppliers.map((s) => s.supplierId));
+      return {
+        id: o.id,
+        userId: o.buyer_id,
+        guestEmail: o.guest_email,
+        status: o.status,
+        displayStatus: await computeDisplayStatus(o.id),
+        total: Number(o.total),
+        currencyCode: o.currency_code,
+        placedAt: o.placed_at,
+        supplierNames: isAdmin ? suppliers.map((s) => s.name) : suppliers.map((s) => labelMap.get(s.supplierId)),
+      };
+    }));
 
     // Real filter, applied AFTER computing the real derived status --
     // ?status=to_ship|shipped|returns, matching the mobile app's order

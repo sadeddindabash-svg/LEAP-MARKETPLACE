@@ -419,6 +419,17 @@ real remaining vehicle; confirmed a buyer can't set another buyer's
 vehicle as their own default (404). Real integration tests: 18/18
 passing (5 new).
 
+## Real supplier info on the orders list — later anonymized (business decision)
+
+**Update, same session**: shortly after this was built (see the
+original entry below), a real business decision was made and
+confirmed directly: a buyer should never see a real supplier's name
+anywhere in the app. The backend (`services/api/README.md`'s own note
+on this) now returns an anonymized label (`"Supplier"` for a single
+supplier, `"Supplier 1"`/`"Supplier 2"` for more than one) instead of
+the real name — this screen needed **no code changes at all**, since
+it already just displays whatever string the backend sends.
+
 ## Real supplier names on the orders list (new)
 
 **A real, confirmed gap, requested directly**: no supplier info was

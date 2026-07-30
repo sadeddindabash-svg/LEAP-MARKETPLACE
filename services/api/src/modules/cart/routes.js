@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../../../db/pool');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
+const { buildSupplierLabelMap } = require('../shared/supplierAnonymize');
 
 /**
  * Cart module — BUY-030–032. Cart holds items from multiple suppliers; the
@@ -24,13 +25,20 @@ async function ensureCartExists(cartId) {
 
 async function getFullCart(cartId) {
   const { rows } = await db.query(
-    `SELECT ci.product_id, ci.quantity, p.name, p.price, p.currency_code, p.weight_kg, p.length_cm, p.width_cm, p.height_cm, p.stock_quantity, s.name AS supplier_name
+    `SELECT ci.product_id, ci.quantity, p.name, p.price, p.currency_code, p.weight_kg, p.length_cm, p.width_cm, p.height_cm, p.stock_quantity, p.supplier_id
      FROM cart_items ci
      JOIN products p ON p.id = ci.product_id
-     LEFT JOIN suppliers s ON s.id = p.supplier_id
      WHERE ci.cart_id = $1`,
     [cartId]
   );
+  // Real supplier anonymization (new, business decision confirmed
+  // directly): a buyer should never see a real supplier's name
+  // anywhere in the app. Built once here, across every real item in
+  // this cart, so the SAME real supplier gets the SAME anonymized
+  // label consistently across every item in this one real response
+  // (see shared/supplierAnonymize.js's own header comment for the
+  // full real numbering scheme).
+  const supplierLabelMap = buildSupplierLabelMap(rows.map((r) => r.supplier_id));
   // Same real, live pricing calculation as the catalog module (see
   // services/api/src/modules/pricing/engine.js) — the cart shows the
   // real current buyer price, not the supplier's RMB cost, and reflects
@@ -78,7 +86,7 @@ async function getFullCart(cartId) {
       // guard was already correct and race-safe; this is a real,
       // separate UX improvement, not a data-integrity fix.
       stockQuantity: r.stock_quantity,
-      supplierName: r.supplier_name,
+      supplierName: supplierLabelMap.get(r.supplier_id),
     };
   }));
   return { cartId, items };

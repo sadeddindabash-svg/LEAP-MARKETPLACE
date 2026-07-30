@@ -2341,6 +2341,54 @@ confirmed logged distinctly from review moderation; deactivated a real
 promo code, confirmed logged distinctly from creation; created/
 updated/deleted a real fee component, confirmed all three logged.
 
+## Real supplier anonymization for buyers (business decision, confirmed directly) — reverses the previous entry
+
+**A real, deliberate business decision, confirmed directly after this
+same session added real supplier names to the orders list**: a buyer
+should never see a real supplier's name (or their real internal ID)
+anywhere in the app. Internal views (admin dashboard, supplier portal,
+hub portal) are completely unaffected — this only ever changes what a
+real buyer or guest sees, never the underlying real data or what an
+admin/supplier/hub user sees of their own information.
+
+**New shared helper** (`shared/supplierAnonymize.js`): given the real,
+distinct supplier IDs involved in one real context (one order, one
+cart), returns a real label for each — just `"Supplier"` if there's
+only one real supplier involved (a single-supplier product, cart, or
+order), or `"Supplier 1"`, `"Supplier 2"`, etc. if there's more than
+one, numbered by a stable sort of the real supplier IDs so the same
+supplier is always the same number across every real view of the SAME
+order (the orders list and that order's own detail page agree with
+each other). Deliberately scoped to the one real order/cart being
+anonymized right now, not a globally stable anonymous ID — a buyer
+isn't meant to recognize "the same real supplier as my last order"
+either.
+
+**Applied to**:
+- `cart/routes.js` — every real cart response (always buyer-facing,
+  no admin path exists here, so this is unconditional).
+- `order/routes.js` — both the order list and order detail, gated on
+  `req.user.role === 'admin'`: a real admin still sees the real
+  supplier name and real internal ID exactly as before; a real buyer
+  or guest sees the anonymized label, and `supplierId` itself is
+  `null` for them (not just the name — the real internal ID could
+  otherwise let a buyer correlate suppliers across separate orders).
+
+**Verified against the real running backend**: confirmed a single-
+supplier cart shows plain `"Supplier"`; confirmed a real two-supplier
+cart shows `"Supplier 1"`/`"Supplier 2"`, consistently ordered;
+confirmed a real order with two suppliers shows the same anonymized
+labels on both the list and detail views as a buyer, while the exact
+same real order shows the real supplier names and real IDs when
+fetched as an admin. Full regression: web-storefront (38/38) and all 6
+of admin-dashboard's real order test files (35/35) — confirming the
+admin-facing view genuinely never changed.
+
+**Checked every other real surface for the same real data before
+assuming this needed to touch it too**: product pages, search results,
+reviews, and returns were confirmed to not actually expose a real
+supplier name anywhere currently — nothing to change there.
+
 ## Real supplier names on the order list (new)
 
 **A real, confirmed gap, requested directly**: `GET /order` (the
