@@ -12,6 +12,7 @@ import '../../services/api_client.dart';
 import '../../widgets/plate_chip.dart';
 import '../../widgets/product_card.dart';
 import '../../widgets/skeleton.dart';
+import '../../widgets/onboarding_overlay.dart';
 
 /// Real, admin-managed icon per known category id — a NEW category an
 /// admin adds via the admin dashboard's Categories page (see
@@ -60,6 +61,12 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _categoriesFuture = ApiClient().fetchCategories();
+    // Real, first-run onboarding walkthrough (new) -- shown once,
+    // after the very first frame so a real BuildContext is safely
+    // available to show a dialog with.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) OnboardingOverlay.showIfFirstRun(context);
+    });
   }
 
   void _ensureGarageLoaded(AuthState auth) {

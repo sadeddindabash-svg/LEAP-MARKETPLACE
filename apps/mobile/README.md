@@ -384,6 +384,21 @@ to do it with. Added a real button navigating straight to My Garage,
 matching the same "Browse products" CTA pattern already added to the
 cart/wishlist/orders empty states earlier this session.
 
+## Real first-run onboarding walkthrough (new)
+
+**A real, confirmed gap**: nothing pointed a brand-new user at My
+Garage or vehicle-fitment search — this app's own real differentiator
+versus every other generic parts-shopping app. Added a real, 3-slide
+dialog shown once on the very first launch (My Garage → fitment
+search → start shopping), with a real "Skip" option and page-dot
+progress indicator.
+
+Shown from the home screen's own `initState`, via a post-frame
+callback so a real `BuildContext` is safely available to show a
+dialog with. Tracked with a simple flag in the same real secure
+storage `AuthState` already uses for the auth token — deliberately
+not a new `shared_preferences` dependency just for one boolean.
+
 ## Real skeleton loading states (new)
 
 **A real, common gap**: every loading state in the app was a plain
