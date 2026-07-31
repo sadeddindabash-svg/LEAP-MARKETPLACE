@@ -81,8 +81,8 @@ class AppStrings {
     'no_parts_in_category': {'en': 'No parts in this category yet.', 'ar': 'لا توجد قطع في هذه الفئة بعد.'},
 
     // ---- Home feed filter + product card (new) ----
-    'filter_newest': {'en': 'Newest', 'ar': 'الأحدث'},
-    'filter_my_car': {'en': 'My car', 'ar': 'سيارتي'},
+    'filter_newest': {'en': 'All products', 'ar': 'كل المنتجات'},
+    'filter_my_car': {'en': 'My Car', 'ar': 'سيارتي'},
     'in_stock': {'en': 'In stock', 'ar': 'متوفر'},
     'confirmed_fit': {'en': 'CONFIRMED FIT', 'ar': 'توافق مؤكد'},
     'no_reviews_yet': {'en': 'No reviews yet', 'ar': 'لا توجد تقييمات بعد'},

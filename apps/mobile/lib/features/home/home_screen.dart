@@ -189,6 +189,28 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(height: 16),
+            // Real quick-shortcut chips (new) -- matches the real
+            // Stitch reference design directly. Deliberately
+            // visual-only for now (confirmed directly) -- not yet
+            // wired to any real filter/sort, a real follow-up step.
+            SizedBox(
+              height: 40,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  _QuickShortcutChip(label: isAr ? 'عروض' : 'Deals', selected: true),
+                  const SizedBox(width: 8),
+                  _QuickShortcutChip(label: isAr ? 'أداء' : 'Performance', selected: false),
+                  const SizedBox(width: 8),
+                  _QuickShortcutChip(label: isAr ? 'صيانة' : 'Maintenance', selected: false),
+                  const SizedBox(width: 8),
+                  _QuickShortcutChip(label: isAr ? 'داخلي' : 'Interior', selected: false),
+                  const SizedBox(width: 8),
+                  _QuickShortcutChip(label: isAr ? 'أدوات' : 'Tools', selected: false),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
             // 2. Shopping for -- real garage data
             _ShoppingForCard(garageFuture: _garageFuture, isLoggedIn: auth.isLoggedIn),
             const SizedBox(height: 20),
@@ -476,6 +498,32 @@ class _FilterChip extends StatelessWidget {
           // light for white text to read well against.
           style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: selected ? palette.onSignal : palette.ink),
         ),
+      ),
+    );
+  }
+}
+
+// Real quick-shortcut chip (new) -- deliberately visual-only for now
+// (confirmed directly), matching the real Stitch reference design's
+// own gold-filled (selected) / outlined (unselected) pattern.
+class _QuickShortcutChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  const _QuickShortcutChip({required this.label, required this.selected});
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = LeapPalette.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+      decoration: BoxDecoration(
+        color: selected ? palette.signal : Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: selected ? palette.signal : palette.line),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: selected ? palette.onSignal : palette.ink),
       ),
     );
   }

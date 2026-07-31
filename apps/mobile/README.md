@@ -472,6 +472,32 @@ actually parsing every touched XML file with Python's own XML parser
 directly after each edit, not just eyeballing it — confirmed all 4
 native XML/storyboard files are genuinely valid before finalizing.
 
+## Real follow-up fixes after comparing a real screenshot against the Stitch reference directly
+
+**Confirmed directly, not guessed**: a real screenshot of the running
+app was compared side-by-side against the real Stitch reference
+screenshot, surfacing two genuine gaps missed in the first pass:
+
+- **Filter label text mismatch**: the reference shows "All products" /
+  "My Car", the app was still showing "Newest" / "My car" — a real
+  wording difference, fixed directly.
+- **Missing quick-shortcut chips** (Deals/Performance/Maintenance/
+  Interior/Tools): added, deliberately visual-only for now (confirmed
+  directly) — not yet wired to any real filter or sort. Real wiring is
+  a genuine, separate follow-up step, not done here.
+
+**One real difference deliberately NOT "fixed," explained instead**:
+the reference mockup shows 4 example categories (Engine, Brakes,
+Electrical, Wheels); the real running app correctly shows all 9 real
+categories that actually exist in this project's own real backend
+(Brake System, Engine, Electrical, Filters, Suspension, Lighting,
+Body, Rearview Mirror, Bumper). This is real, correct data — the
+mockup only ever showed a handful of illustrative examples, not the
+real category count, so trimming real categories to match a static
+mockup would mean hiding real, working parts of the catalog. Flagged
+here explicitly rather than silently "fixing" this by hiding real
+data.
+
 ## Real Home screen redesign, matched directly against a real, working Stitch export
 
 **A real, working Stitch export was provided** (unlike an earlier
