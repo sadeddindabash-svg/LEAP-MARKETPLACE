@@ -384,6 +384,24 @@ to do it with. Added a real button navigating straight to My Garage,
 matching the same "Browse products" CTA pattern already added to the
 cart/wishlist/orders empty states earlier this session.
 
+## Real checkout step progress indicator (new)
+
+**A real, confirmed gap, requested directly**: no way existed for a
+buyer to see how far through checkout they are. Checkout is one real
+scrollable form, not separate wizard pages, so "current step" is
+tracked by real scroll position (which of the 3 real section headers
+— Delivery address, Payment method, Order summary — is closest to the
+top of the viewport), via `GlobalKey`s attached to each real section,
+not a guessed or hardcoded step number.
+
+New, reusable `widgets/step_progress_indicator.dart` — a real
+"circles connected by a line" progress bar, deliberately generic (a
+real list of labels, not hardcoded to checkout specifically) in case
+another real multi-section flow wants the same pattern later. Fixed at
+the top of the screen (doesn't scroll away with the form), so a buyer
+can always see their real progress regardless of how far they've
+scrolled.
+
 ## Real "you saved $X" confirmation at checkout (new)
 
 **A real, confirmed gap**: only a generic "Applied!" message existed

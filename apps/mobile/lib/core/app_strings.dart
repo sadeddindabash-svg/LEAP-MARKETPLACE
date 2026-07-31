@@ -158,6 +158,7 @@ class AppStrings {
     'email_for_confirmation': {'en': 'Email for order confirmation', 'ar': 'البريد الإلكتروني لتأكيد الطلب'},
     'have_account_login_instead': {'en': 'Have an account? Log in instead', 'ar': 'لديك حساب؟ سجّل الدخول بدلاً من ذلك'},
     'payment_method': {'en': 'Payment method', 'ar': 'طريقة الدفع'},
+    'delivery_address': {'en': 'Delivery address', 'ar': 'عنوان التوصيل'},
     'order_summary': {'en': 'Order summary', 'ar': 'ملخص الطلب'},
     'place_order': {'en': 'Place order', 'ar': 'إتمام الطلب'},
     'please_enter_email_order': {'en': 'Please enter an email for your order confirmation.', 'ar': 'يرجى إدخال بريد إلكتروني لتأكيد طلبك.'},

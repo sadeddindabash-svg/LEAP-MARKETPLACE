@@ -9,6 +9,7 @@ import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../core/cart_state.dart';
 import '../../services/api_client.dart';
+import '../../widgets/step_progress_indicator.dart';
 
 /// BUY-034: guided checkout flow. Guest checkout is enabled by default per
 /// the product decision in the Charter — buyers are prompted to create an
@@ -39,6 +40,41 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String _selectedPayment = 'card';
   bool _isPlacingOrder = false;
   String? _errorMessage;
+
+  // Real checkout step progress (new) -- closes a real gap: no
+  // indicator existed showing a buyer how far through checkout they
+  // are. This screen is one real scrollable form, not separate wizard
+  // pages, so "current step" is tracked by real scroll position
+  // (which of the 3 real section headers is closest to the top of the
+  // viewport) via GlobalKeys attached to each real section below --
+  // the most honest signal for a single-page form, not a guessed or
+  // hardcoded step.
+  final _scrollController = ScrollController();
+  final _addressSectionKey = GlobalKey();
+  final _paymentSectionKey = GlobalKey();
+  final _summarySectionKey = GlobalKey();
+  int _currentStep = 0;
+
+  void _updateCurrentStepFromScroll() {
+    final keys = [_addressSectionKey, _paymentSectionKey, _summarySectionKey];
+    var newStep = 0;
+    for (var i = 0; i < keys.length; i++) {
+      final box = keys[i].currentContext?.findRenderObject() as RenderBox?;
+      if (box == null) continue;
+      // A real section is "reached" once its own top has scrolled to
+      // (or past) roughly the top quarter of the real viewport --
+      // matches how a buyer would naturally describe "I'm looking at
+      // the payment section now" rather than requiring it to be
+      // exactly pinned to the very top pixel.
+      final position = box.localToGlobal(Offset.zero).dy;
+      if (position <= MediaQuery.of(context).size.height * 0.35) {
+        newStep = i;
+      }
+    }
+    if (newStep != _currentStep && mounted) {
+      setState(() => _currentStep = newStep);
+    }
+  }
 
   // Real shipping address state (migration 030) -- a real logged-in
   // buyer must pick a real saved address or add a new one right here;
@@ -78,6 +114,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     // Real saved addresses, fetched once on load -- only meaningful
     // for a real logged-in buyer (migration 030).
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadSavedAddresses());
+    _scrollController.addListener(_updateCurrentStepFromScroll);
   }
 
   Future<void> _loadSavedAddresses() async {
@@ -106,6 +143,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _guestEmailController.dispose();
     _promoCodeController.dispose();
     _newAddrRecipientController.dispose();
@@ -410,7 +448,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Delivery address', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+          KeyedSubtree(key: _addressSectionKey, child: const Text('Delivery address', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
           const SizedBox(height: 8),
           if (_savedAddresses.isNotEmpty && !_isAddingNewAddress) ...[
             for (final a in _savedAddresses)
@@ -457,9 +495,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     return Scaffold(
       appBar: AppBar(title: Text(tr(context, 'checkout'))),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      body: Column(
         children: [
+          // Real checkout step progress (new) -- fixed at the top,
+          // doesn't scroll away with the form, so a buyer can always
+          // see how far through checkout they are.
+          StepProgressIndicator(
+            labels: [tr(context, 'delivery_address'), tr(context, 'payment_method'), tr(context, 'order_summary')],
+            currentStep: _currentStep,
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: ListView(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(16),
+              children: [
           if (auth.isLoggedIn)
             Container(
               padding: const EdgeInsets.all(12),
@@ -498,7 +548,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             _buildAddressPicker(),
           ],
           const SizedBox(height: 12),
-          Text(tr(context, 'payment_method'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+          KeyedSubtree(key: _paymentSectionKey, child: Text(tr(context, 'payment_method'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
           const SizedBox(height: 8),
           ..._paymentMethods.map((m) => RadioListTile<String>(
                 contentPadding: EdgeInsets.zero,
@@ -508,7 +558,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 title: Row(children: [Icon(m.icon, size: 18), const SizedBox(width: 10), Text(m.label)]),
               )),
           const SizedBox(height: 12),
-          Text(tr(context, 'order_summary'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+          KeyedSubtree(key: _summarySectionKey, child: Text(tr(context, 'order_summary'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
           const SizedBox(height: 8),
           // Real itemized breakdown (new) -- closes a real gap: before
           // this, a buyer reviewing checkout (an irreversible,
@@ -628,6 +678,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             const SizedBox(height: 12),
             Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 12.5)),
           ],
+              ],
+            ),
+          ),
         ],
       ),
       bottomNavigationBar: Padding(
