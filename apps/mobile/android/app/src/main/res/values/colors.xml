@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Real brand color resource (new), the same real gold (#F2A71B)
+     confirmed for LeapColors.signal in the Flutter app itself, reused
+     here for the real native splash screen background, shown by the
+     OS before Flutter even starts. -->
+<resources>
+    <color name="leap_gold">#FFF2A71B</color>
+</resources>

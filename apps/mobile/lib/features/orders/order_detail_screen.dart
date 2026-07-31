@@ -9,6 +9,7 @@ import '../../core/auth_state.dart';
 import '../../core/config/app_config.dart';
 import '../../services/api_client.dart';
 import '../../widgets/plate_chip.dart';
+import '../../widgets/order_status_timeline.dart';
 import '../../core/cart_state.dart';
 
 /// BUY-052/053: order detail, showing the real per-supplier split (the
@@ -348,9 +349,11 @@ class _SupplierSubOrderCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(supplierName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                Text(trStatus(context, subOrder['status'] as String).toUpperCase(), style: const TextStyle(fontSize: 10.5, color: LeapColors.muted, fontWeight: FontWeight.w700)),
               ],
             ),
+            const SizedBox(height: 10),
+            OrderStatusTimeline(status: subOrder['status'] as String),
+            const SizedBox(height: 4),
             if (trackingNumber != null) ...[
               const SizedBox(height: 4),
               Text('${tr(context, 'tracking_label')} $trackingNumber', style: const TextStyle(fontSize: 11.5, color: LeapColors.muted)),

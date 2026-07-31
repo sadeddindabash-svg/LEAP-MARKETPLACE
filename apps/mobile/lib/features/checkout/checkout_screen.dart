@@ -124,11 +124,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final token = context.read<AuthState>().token;
       final result = await ApiClient().validatePromoCode(token, code);
       if (result['valid'] == true) {
+        final details = result['promoCode'] as Map<String, dynamic>;
         setState(() {
           _appliedPromoCode = code;
-          _appliedPromoDetails = result['promoCode'] as Map<String, dynamic>;
-          _promoMessage = trRead(context, 'promo_applied');
+          _appliedPromoDetails = details;
         });
+        // Real, specific "you saved $X" confirmation (new) -- closes a
+        // real gap: only a generic "Promo applied" message existed
+        // before, even though the exact real amount is already
+        // computable. Correctly avoids guessing an amount for
+        // free_shipping, matching the same honest boundary
+        // _previewDiscount already respects (that real amount depends
+        // on server-side shipping calculation).
+        final type = details['type'] as String?;
+        if (mounted && type != 'free_shipping') {
+          final cart = context.read<CartState>();
+          final saved = _previewDiscount(cart.total);
+          setState(() => _promoMessage = '${trRead(context, 'you_saved')} \$${saved.toStringAsFixed(2)}!');
+        } else if (mounted) {
+          setState(() => _promoMessage = trRead(context, 'promo_applied'));
+        }
       } else {
         setState(() {
           _appliedPromoCode = null;

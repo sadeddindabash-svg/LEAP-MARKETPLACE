@@ -384,6 +384,76 @@ to do it with. Added a real button navigating straight to My Garage,
 matching the same "Browse products" CTA pattern already added to the
 cart/wishlist/orders empty states earlier this session.
 
+## Real "you saved $X" confirmation at checkout (new)
+
+**A real, confirmed gap**: only a generic "Applied!" message existed
+when a promo code was successfully applied, even though the exact
+real dollar amount saved was already computable. Correctly avoids
+guessing an amount for `free_shipping` codes, matching the same honest
+boundary `_previewDiscount` already respects (that real amount depends
+on server-side shipping calculation).
+
+## Real visual order status timeline (new)
+
+**A real, confirmed gap**: only a plain text badge existed to show a
+sub-order's own real progress (pending/preparing/shipped/delivered) —
+no visual sense of how far along a shipment actually is. New, reusable
+`widgets/order_status_timeline.dart` matches the real, exact status
+values the backend actually uses (migration 001's own `CHECK`
+constraint on `supplier_sub_orders.status`) — not a guessed or
+approximated set of stages. A real dispute is deliberately shown as a
+separate warning banner, not a stage on the linear timeline at all,
+since it doesn't represent "further along" than any other stage.
+
+## Real recently-searched terms (new)
+
+**A real, confirmed gap**: only "recently viewed products" existed,
+not recently searched terms. New `core/recent_searches.dart` — purely
+local/on-device (no backend endpoint needed), using the same real
+secure storage several other features this session already use for
+simple, non-sensitive local values. Deduplicates (a re-searched term
+moves to the front rather than appearing twice), capped at 8, with a
+real "Clear" action.
+
+## Referral counter — confirmed already built, no work needed
+
+**Checked before building anything**: a request for "a live counter
+showing how many friends have used your code" turned out to already
+exist and work correctly — a real "X people referred" / "X/Y rewards
+earned" display, already fetching and showing exactly this live data.
+Reported honestly rather than rebuilding something redundant.
+
+## Real branded splash screen (new)
+
+**A real, confirmed gap**: the app used Flutter's own unbranded
+defaults everywhere — a plain white native splash on Android/iOS, and
+the default Flutter blue (`#0175C2`) in the web manifest, with the
+literal placeholder title "leap_mobile" and description "A new
+Flutter project."
+
+- **Android**: real gold background (`@color/leap_gold`) plus the
+  app's own real launcher icon centered on top, replacing the plain
+  white `layer-list` in both `drawable/` and `drawable-v21/`
+  `launch_background.xml`.
+- **iOS**: real gold background color on the existing
+  `LaunchScreen.storyboard` (the existing image reference was left
+  untouched — no way to generate a new image asset directly in this
+  sandbox).
+- **Web** (the one platform directly visible in this session's own
+  Chrome-based testing): real gold `background_color`/`theme_color` in
+  `manifest.json`, a real branded title/description, and an immediate
+  gold `<body>` background shown the instant the page loads — before
+  `flutter_bootstrap.js` has even started, not just after Flutter
+  itself renders.
+
+**Two real mistakes made and caught while building this** (the exact
+same mistake, three times in a row): an XML comment containing `--`
+(forbidden by the XML spec) broke `colors.xml`, then the same mistake
+broke `drawable-v21/launch_background.xml` too. Caught both by
+actually parsing every touched XML file with Python's own XML parser
+directly after each edit, not just eyeballing it — confirmed all 4
+native XML/storyboard files are genuinely valid before finalizing.
+
 ## Real design refresh — gold accent, Manrope font, pill buttons (confirmed directly against real reference screenshots)
 
 **A real, deliberate brand alignment**: updated the app's color, font,

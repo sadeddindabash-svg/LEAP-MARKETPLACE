@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
+import '../../core/recent_searches.dart';
 import '../../widgets/skeleton.dart';
 import '../../core/language_state.dart';
 import '../../core/auth_state.dart';
@@ -34,6 +35,16 @@ class _SearchScreenState extends State<SearchScreen> {
   VehicleFilterSelection? _vehicleFilter;
   // Real sort/price-range filter (new) -- see sort_and_price_sheet.dart.
   SortAndPriceSelection? _sortAndPrice;
+  // Real recently-searched terms (new) -- see core/recent_searches.dart.
+  List<String> _recentSearches = [];
+
+  @override
+  void initState() {
+    super.initState();
+    RecentSearches.load().then((terms) {
+      if (mounted) setState(() => _recentSearches = terms);
+    });
+  }
 
   @override
   void dispose() {
@@ -113,6 +124,14 @@ class _SearchScreenState extends State<SearchScreen> {
   Future<void> _runSearch(String query) async {
     if (query.isEmpty && _vehicleFilter == null && (_sortAndPrice == null || _sortAndPrice!.isEmpty)) return;
     _lastQuery = query;
+    // Real save to recent searches (new) -- only for a genuine real
+    // text term, not a vehicle/sort-only search with no actual typed
+    // query (there's no "term" to remember in that case).
+    if (query.isNotEmpty) {
+      RecentSearches.add(query).then((terms) {
+        if (mounted) setState(() => _recentSearches = terms);
+      });
+    }
     setState(() { _isSearching = true; _error = null; });
     try {
       final language = context.read<LanguageState>().language;
@@ -255,8 +274,50 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Widget _buildBody(bool isAr) {
     if (_controller.text.trim().isEmpty && _vehicleFilter == null && (_sortAndPrice == null || _sortAndPrice!.isEmpty)) {
-      return Center(
-        child: Text(isAr ? 'ابدأ الكتابة للبحث' : 'Start typing to search', style: const TextStyle(color: LeapColors.muted)),
+      return ListView(
+        padding: const EdgeInsets.all(20),
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          const SizedBox(height: 40),
+          Center(
+            child: Text(isAr ? 'ابدأ الكتابة للبحث' : 'Start typing to search', style: const TextStyle(color: LeapColors.muted)),
+          ),
+          if (_recentSearches.isNotEmpty) ...[
+            const SizedBox(height: 28),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  isAr ? 'عمليات بحث سابقة' : 'Recent searches',
+                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: LeapColors.muted),
+                ),
+                GestureDetector(
+                  onTap: () {
+                    RecentSearches.clear();
+                    setState(() => _recentSearches = []);
+                  },
+                  child: Text(isAr ? 'مسح' : 'Clear', style: const TextStyle(fontSize: 12, color: LeapColors.signalDark)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final term in _recentSearches)
+                  ActionChip(
+                    label: Text(term, style: const TextStyle(fontSize: 12.5)),
+                    onPressed: () {
+                      _controller.text = term;
+                      _debounce?.cancel();
+                      _runSearch(term);
+                    },
+                  ),
+              ],
+            ),
+          ],
+        ],
       );
     }
     if (_isSearching) {

@@ -1,11 +1,11 @@
 {
-    "name": "leap_mobile",
-    "short_name": "leap_mobile",
+    "name": "LEAP Auto Parts",
+    "short_name": "LEAP",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#F2A71B",
+    "theme_color": "#F2A71B",
+    "description": "Real, fitment-confirmed auto parts for your exact vehicle.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -1,12 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Modify this file to customize your launch splash screen -->
+<!-- Real branded splash screen (new), the real gold brand color plus
+     the app's own real launcher icon centered on top, shown by the OS
+     before Flutter even starts, replacing the default plain white
+     background. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@android:color/white" />
-
-    <!-- You can insert your own image assets here -->
-    <!-- <item>
+    <item android:drawable="@color/leap_gold" />
+    <item>
         <bitmap
             android:gravity="center"
-            android:src="@mipmap/launch_image" />
-    </item> -->
+            android:src="@mipmap/launcher_icon" />
+    </item>
 </layer-list>

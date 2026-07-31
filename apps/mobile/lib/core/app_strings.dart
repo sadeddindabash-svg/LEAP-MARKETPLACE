@@ -96,6 +96,7 @@ class AppStrings {
     'apply': {'en': 'Apply', 'ar': 'تطبيق'},
     'remove': {'en': 'Remove', 'ar': 'إزالة'},
     'promo_applied': {'en': 'Applied!', 'ar': 'تم التطبيق!'},
+    'you_saved': {'en': 'You saved', 'ar': 'وفّرت'},
     'subtotal': {'en': 'Subtotal', 'ar': 'المجموع الفرعي'},
     'discount': {'en': 'Discount', 'ar': 'الخصم'},
 
