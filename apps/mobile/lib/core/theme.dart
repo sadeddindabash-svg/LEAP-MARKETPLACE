@@ -29,24 +29,90 @@ class LeapColors {
 }
 
 /// Real dark theme color tokens (new), confirmed directly against the
-/// real Google Stitch "Precision" reference mockup's own dark
-/// palette. A deliberately distinct metallic gold (#D4AF37) is used
-/// for the dark background specifically -- the light theme's own
-/// gold (#F2A71B) was tuned against a white background and doesn't
-/// read the same way against a dark one.
+/// real "Precision Performance" design spec (DESIGN.md, exported
+/// directly from Google Stitch) -- exact hex values taken from that
+/// spec's own real color list, not approximated from the screenshot.
 class LeapColorsDark {
   LeapColorsDark._();
 
-  static const background = Color(0xFF131313);
-  static const surface = Color(0xFF1C1B1B);
-  static const surfaceHigh = Color(0xFF2A2A2A);
+  static const background = Color(0xFF131313); // surface / surface-dim
+  static const surface = Color(0xFF1C1B1B); // surface-container-low
+  static const surfaceHigh = Color(0xFF2A2A2A); // surface-container-high
   static const onSurface = Color(0xFFE5E2E1);
-  static const line = Color(0xFF4D4635);
-  static const signal = Color(0xFFD4AF37); // metallic gold, tuned for the dark background specifically
-  static const onSignal = Color(0xFF3C2F00);
-  static const torque = Color(0xFF7A9CFF);
-  static const gauge = Color(0xFF34C77E);
-  static const muted = Color(0xFFA8A29A);
+  static const line = Color(0xFF4D4635); // outline-variant
+  static const signal = Color(0xFFF2CA50); // real primary, per the real spec (D4AF37 is actually primary-container there, not primary)
+  static const signalContainer = Color(0xFFD4AF37); // metallic-gold / primary-container, used for secondary gold accents
+  static const onSignal = Color(0xFF3C2F00); // on-primary
+  static const torque = Color(0xFFCECECE); // tertiary
+  static const gauge = Color(0xFF28A745); // success-green
+  static const muted = Color(0xFFD0C5AF); // on-surface-variant
+}
+
+/// Real, unified, context-aware palette (new) -- the real mechanism
+/// individual screens use to become genuinely theme-aware, migrating
+/// away from referencing LeapColors.* directly (which never adapts to
+/// dark mode). Call LeapPalette.of(context) once per build method,
+/// then use its own instance fields in place of the old static
+/// LeapColors.* references -- same field names, so migrating a screen
+/// is a mechanical find-and-replace, not a rewrite.
+class LeapPalette {
+  final Color ink;
+  final Color chalk;
+  final Color card;
+  final Color line;
+  final Color signal;
+  final Color signalDark;
+  final Color onSignal;
+  final Color torque;
+  final Color gauge;
+  final Color amber;
+  final Color muted;
+
+  const LeapPalette({
+    required this.ink,
+    required this.chalk,
+    required this.card,
+    required this.line,
+    required this.signal,
+    required this.signalDark,
+    required this.onSignal,
+    required this.torque,
+    required this.gauge,
+    required this.amber,
+    required this.muted,
+  });
+
+  static const light = LeapPalette(
+    ink: LeapColors.ink,
+    chalk: LeapColors.chalk,
+    card: Colors.white,
+    line: LeapColors.line,
+    signal: LeapColors.signal,
+    signalDark: LeapColors.signalDark,
+    onSignal: LeapColors.onSignal,
+    torque: LeapColors.torque,
+    gauge: LeapColors.gauge,
+    amber: LeapColors.amber,
+    muted: LeapColors.muted,
+  );
+
+  static const dark = LeapPalette(
+    ink: LeapColorsDark.onSurface,
+    chalk: LeapColorsDark.background,
+    card: LeapColorsDark.surface,
+    line: LeapColorsDark.line,
+    signal: LeapColorsDark.signal,
+    signalDark: LeapColorsDark.signalContainer,
+    onSignal: LeapColorsDark.onSignal,
+    torque: LeapColorsDark.torque,
+    gauge: LeapColorsDark.gauge,
+    amber: LeapColorsDark.signalContainer,
+    muted: LeapColorsDark.muted,
+  );
+
+  static LeapPalette of(BuildContext context) {
+    return Theme.of(context).brightness == Brightness.dark ? dark : light;
+  }
 }
 
 class LeapTheme {

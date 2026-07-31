@@ -131,6 +131,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final auth = context.watch<AuthState>();
     final language = context.watch<LanguageState>().language;
     final isAr = context.watch<LanguageState>().isArabic;
+    final palette = LeapPalette.of(context);
     _ensureGarageLoaded(auth);
     _ensureRecentlyViewedLoaded(auth);
 
@@ -147,10 +148,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('LEAP', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 26, color: LeapColors.ink, height: 1.0)),
+                    Text('LEAP', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 26, color: palette.ink, height: 1.0)),
                     Text(
                       isAr ? 'لقطع السيارات' : 'AUTO PARTS',
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 10, color: LeapColors.muted, letterSpacing: 1.2),
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 10, color: palette.muted, letterSpacing: 1.2),
                     ),
                   ],
                 ),
@@ -219,7 +220,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (snapshot.hasError) {
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    child: Text('${tr(context, 'could_not_load_products')}\n${snapshot.error}', style: const TextStyle(color: LeapColors.muted), textAlign: TextAlign.center),
+                    child: Text('${tr(context, 'could_not_load_products')}\n${snapshot.error}', style: TextStyle(color: palette.muted), textAlign: TextAlign.center),
                   );
                 }
                 final categories = snapshot.data ?? [];
@@ -239,11 +240,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             width: 52,
                             height: 52,
                             decoration: BoxDecoration(
-                              color: LeapColors.chalk,
+                              color: palette.chalk,
                               borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: LeapColors.line),
+                              border: Border.all(color: palette.line),
                             ),
-                            child: Icon(_iconForCategory(c.id), color: LeapColors.ink),
+                            child: Icon(_iconForCategory(c.id), color: palette.ink),
                           ),
                           const SizedBox(height: 6),
                           Text(label, style: const TextStyle(fontSize: 10), textAlign: TextAlign.center),
@@ -287,7 +288,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     child: Column(
                       children: [
-                        Text(tr(context, 'add_a_vehicle_for_my_car_filter'), style: const TextStyle(color: LeapColors.muted), textAlign: TextAlign.center),
+                        Text(tr(context, 'add_a_vehicle_for_my_car_filter'), style: TextStyle(color: palette.muted), textAlign: TextAlign.center),
                         const SizedBox(height: 12),
                         // Real CTA (new) -- closes a real gap: just
                         // text before, no way to act on it from here.
@@ -309,14 +310,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     if (feedSnapshot.hasError) {
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 16),
-                        child: Text('${tr(context, 'could_not_load_products')}\n${feedSnapshot.error}', style: const TextStyle(color: LeapColors.muted), textAlign: TextAlign.center),
+                        child: Text('${tr(context, 'could_not_load_products')}\n${feedSnapshot.error}', style: TextStyle(color: palette.muted), textAlign: TextAlign.center),
                       );
                     }
                     final products = feedSnapshot.data ?? [];
                     if (products.isEmpty) {
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 16),
-                        child: Text(tr(context, 'no_products_yet'), style: const TextStyle(color: LeapColors.muted), textAlign: TextAlign.center),
+                        child: Text(tr(context, 'no_products_yet'), style: TextStyle(color: palette.muted), textAlign: TextAlign.center),
                       );
                     }
                     return GridView.builder(
@@ -353,11 +354,12 @@ class _ShoppingForCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = LeapPalette.of(context);
     if (!isLoggedIn || garageFuture == null) {
       return Card(
         child: ListTile(
           leading: const Icon(Icons.directions_car_outlined),
-          title: Text(tr(context, 'shopping_for'), style: const TextStyle(fontSize: 11, color: LeapColors.muted)),
+          title: Text(tr(context, 'shopping_for'), style: TextStyle(fontSize: 11, color: palette.muted)),
           subtitle: Text(tr(context, 'add_a_vehicle')),
           trailing: const Icon(Icons.chevron_right),
           onTap: () => context.push('/garage'),
@@ -372,7 +374,7 @@ class _ShoppingForCard extends StatelessWidget {
         return Card(
           child: ListTile(
             leading: const Icon(Icons.directions_car_outlined),
-            title: Text(tr(context, 'shopping_for'), style: const TextStyle(fontSize: 11, color: LeapColors.muted)),
+            title: Text(tr(context, 'shopping_for'), style: TextStyle(fontSize: 11, color: palette.muted)),
             subtitle: vehicle != null
                 ? PlateChip(text: '${vehicle.label} · ${vehicle.subLabel}', small: true)
                 : Text(tr(context, 'add_a_vehicle')),
@@ -393,19 +395,25 @@ class _FilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = LeapPalette.of(context);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
         decoration: BoxDecoration(
-          color: selected ? LeapColors.signal : LeapColors.chalk,
+          color: selected ? palette.signal : palette.chalk,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: selected ? LeapColors.signal : LeapColors.line),
+          border: Border.all(color: selected ? palette.signal : palette.line),
         ),
         child: Text(
           label,
-          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: selected ? Colors.white : LeapColors.ink),
+          // REAL BUG FOUND AND FIXED HERE while migrating this widget
+          // to be theme-aware: selected text used hardcoded white,
+          // the same real white-on-gold contrast issue already found
+          // and fixed elsewhere earlier this session -- gold is too
+          // light for white text to read well against.
+          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: selected ? palette.onSignal : palette.ink),
         ),
       ),
     );
