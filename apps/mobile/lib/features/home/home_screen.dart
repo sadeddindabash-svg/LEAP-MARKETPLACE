@@ -136,32 +136,48 @@ class _HomeScreenState extends State<HomeScreen> {
     _ensureRecentlyViewedLoaded(auth);
 
     return Scaffold(
+      // Real, fixed app bar (new) -- matches the real Stitch reference
+      // design directly (a docked/fixed header, not scrolling away
+      // with the rest of the page). Also more idiomatic Flutter than
+      // the previous in-ListView Row.
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        titleSpacing: 16,
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.directions_car, color: palette.signal),
+                const SizedBox(width: 8),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text('LEAP', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20, color: palette.ink, height: 1.0)),
+                    Text(
+                      isAr ? 'لقطع السيارات' : 'AUTO PARTS',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 9, color: palette.muted, letterSpacing: 1.2),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            Row(
+              children: [
+                IconButton(icon: Icon(Icons.search, color: palette.signal), onPressed: () => context.push('/search')),
+                IconButton(icon: Icon(Icons.chat_bubble_outline, color: palette.signal), onPressed: () => context.push('/support')),
+              ],
+            ),
+          ],
+        ),
+      ),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _handleRefresh,
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('LEAP', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 26, color: palette.ink, height: 1.0)),
-                    Text(
-                      isAr ? 'لقطع السيارات' : 'AUTO PARTS',
-                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 10, color: palette.muted, letterSpacing: 1.2),
-                    ),
-                  ],
-                ),
-                IconButton(
-                  icon: const Icon(Icons.chat_bubble_outline),
-                  onPressed: () => context.push('/support'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
             // 1. Search bar
             TextField(
               readOnly: true,
@@ -241,10 +257,10 @@ class _HomeScreenState extends State<HomeScreen> {
                             height: 52,
                             decoration: BoxDecoration(
                               color: palette.chalk,
-                              borderRadius: BorderRadius.circular(14),
+                              shape: BoxShape.circle,
                               border: Border.all(color: palette.line),
                             ),
-                            child: Icon(_iconForCategory(c.id), color: palette.ink),
+                            child: Icon(_iconForCategory(c.id), color: palette.signal),
                           ),
                           const SizedBox(height: 6),
                           Text(label, style: const TextStyle(fontSize: 10), textAlign: TextAlign.center),
@@ -301,12 +317,47 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   );
                 }
-                return FutureBuilder<List<Product>>(
-                  future: _feedFuture,
-                  builder: (context, feedSnapshot) {
-                    if (feedSnapshot.connectionState == ConnectionState.waiting) {
-                      return const ProductGridSkeleton();
-                    }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Real "Active Vehicle" banner (new) -- matches the
+                    // real Stitch reference design directly. Only ever
+                    // shown when the My Car filter is genuinely active
+                    // AND a real vehicle is selected -- never a
+                    // decorative placeholder.
+                    if (_feedFilter == 'my_car' && firstVehicle != null)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: palette.chalk,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border(left: BorderSide(color: palette.signal, width: 4)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  isAr ? 'المركبة النشطة' : 'ACTIVE VEHICLE',
+                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: palette.signalDark, letterSpacing: 1),
+                                ),
+                                const SizedBox(height: 2),
+                                Text('${firstVehicle.label} · ${firstVehicle.subLabel}', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: palette.ink)),
+                              ],
+                            ),
+                            Icon(Icons.check_circle, color: palette.signal),
+                          ],
+                        ),
+                      ),
+                    FutureBuilder<List<Product>>(
+                      future: _feedFuture,
+                      builder: (context, feedSnapshot) {
+                        if (feedSnapshot.connectionState == ConnectionState.waiting) {
+                          return const ProductGridSkeleton();
+                        }
                     if (feedSnapshot.hasError) {
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 16),
@@ -332,10 +383,20 @@ class _HomeScreenState extends State<HomeScreen> {
                       itemCount: products.length,
                       itemBuilder: (context, i) {
                         final p = products[i];
-                        return ProductCard(product: p, onTap: () => context.push('/product/${p.id}'));
+                        return ProductCard(
+                          product: p,
+                          onTap: () => context.push('/product/${p.id}'),
+                          // Real "confirmed fit" badge (new) -- only
+                          // ever shown for genuine My Car results,
+                          // which are already always fitment-filtered
+                          // server-side (see _ensureFeedLoaded).
+                          showConfirmedFitBadge: _feedFilter == 'my_car',
+                        );
                       },
                     );
                   },
+                    ),
+                  ],
                 );
               },
             ),

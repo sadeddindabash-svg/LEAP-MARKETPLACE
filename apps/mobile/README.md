@@ -472,6 +472,47 @@ actually parsing every touched XML file with Python's own XML parser
 directly after each edit, not just eyeballing it — confirmed all 4
 native XML/storyboard files are genuinely valid before finalizing.
 
+## Real Home screen redesign, matched directly against a real, working Stitch export
+
+**A real, working Stitch export was provided** (unlike an earlier
+attempt that turned out to contain only unfilled `{{DATA:SCREEN:...}}`
+placeholder tags — confirmed empty and flagged before building
+anything from it). This one contained genuine HTML/Tailwind code plus
+a real screenshot, read and matched directly.
+
+**Implemented to match**:
+- Circular category tiles (previously rounded-rectangle).
+- A real "Active Vehicle" banner — gold left border, vehicle name,
+  checkmark — shown only when the My Car filter is genuinely active
+  AND a real vehicle is selected, never a decorative placeholder.
+- A real "CONFIRMED FIT" badge on product cards, shown only for
+  genuine My Car results (which are already always fitment-filtered
+  server-side — the badge never claims something the data doesn't
+  back up).
+- Product images given a fixed white background regardless of theme,
+  matching the real design spec's own explicit guidance ("product
+  images should be centered on a light-gray or white background... to
+  pop against the dark UI").
+- The header converted to a real, fixed `AppBar` (previously scrolled
+  away with the rest of the page).
+
+**Two real, deliberate deviations from the reference, not oversights**:
+- The reference's "quick category shortcut" chips (Deals, Performance,
+  Maintenance, etc.) were **not** added — they don't map to any real
+  backend-driven category or filter, and adding decorative chips with
+  no real function would be introducing fake functionality.
+- The reference's bottom nav order (Home, Search, Garage, Orders,
+  Account) was **not** adopted — the app's existing 5-tab structure
+  (Home, Categories, Cart, Orders, Account) was kept, since changing
+  navigation structure is a bigger, separate decision than a visual
+  redesign and wasn't explicitly requested.
+
+**A third contrast bug found and fixed while migrating `ProductCard`**:
+the add-to-cart icon/spinner used hardcoded white on the gold
+background — the same real class of issue already found and fixed
+twice elsewhere this session. `ProductCard` is also now fully
+migrated to the theme-aware `LeapPalette`.
+
 ## Real dark mode support — foundation built + Home screen fully migrated (confirmed directly against the real Google Stitch export, including its own DESIGN.md specs)
 
 **Update, same session**: the user provided the actual, complete

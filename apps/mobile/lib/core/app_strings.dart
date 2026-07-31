@@ -84,6 +84,7 @@ class AppStrings {
     'filter_newest': {'en': 'Newest', 'ar': 'الأحدث'},
     'filter_my_car': {'en': 'My car', 'ar': 'سيارتي'},
     'in_stock': {'en': 'In stock', 'ar': 'متوفر'},
+    'confirmed_fit': {'en': 'CONFIRMED FIT', 'ar': 'توافق مؤكد'},
     'no_reviews_yet': {'en': 'No reviews yet', 'ar': 'لا توجد تقييمات بعد'},
 
     // ---- Notifications (new) ----

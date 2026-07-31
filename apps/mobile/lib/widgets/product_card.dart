@@ -18,7 +18,15 @@ import '../services/api_client.dart';
 class ProductCard extends StatefulWidget {
   final Product product;
   final VoidCallback onTap;
-  const ProductCard({super.key, required this.product, required this.onTap});
+  // Real "confirmed fit" badge (new) -- shown only when this card is
+  // genuinely being displayed as a fitment-confirmed result (the
+  // real "My Car" filter on Home), never as a decorative default --
+  // matches the real Google Stitch reference design's own badge,
+  // confirmed directly against real backend behavior: My Car results
+  // are already always fitment-filtered server-side, so this badge
+  // never claims something the data doesn't back up.
+  final bool showConfirmedFitBadge;
+  const ProductCard({super.key, required this.product, required this.onTap, this.showConfirmedFitBadge = false});
 
   @override
   State<ProductCard> createState() => _ProductCardState();
@@ -81,6 +89,7 @@ class _ProductCardState extends State<ProductCard> {
   @override
   Widget build(BuildContext context) {
     final p = widget.product;
+    final palette = LeapPalette.of(context);
     final inStock = p.stockQuantity > 0;
     final isLoggedIn = context.watch<AuthState>().isLoggedIn;
     return Card(
@@ -94,26 +103,50 @@ class _ProductCardState extends State<ProductCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              AspectRatio(
-                aspectRatio: 1,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: p.images.isNotEmpty
-                      ? CachedNetworkImage(
-                          imageUrl: ApiClient.resolveMediaUrl(p.images.first),
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          placeholder: (context, url) => Container(color: LeapColors.chalk),
-                          errorWidget: (context, url, error) => Container(
-                            color: LeapColors.chalk,
-                            child: const Icon(Icons.broken_image_outlined, color: LeapColors.muted),
-                          ),
-                        )
-                      : Container(
-                          color: LeapColors.chalk,
-                          child: const Icon(Icons.album_outlined, size: 32, color: LeapColors.muted),
+              Stack(
+                children: [
+                  AspectRatio(
+                    aspectRatio: 1,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      // Real, fixed white background (new) -- matches
+                      // the real design spec directly: real product
+                      // photos should sit on a light/white background
+                      // to pop against a dark UI, regardless of the
+                      // active theme -- deliberately NOT palette.chalk
+                      // here, since that would go dark in dark mode.
+                      child: Container(
+                        color: Colors.white,
+                        child: p.images.isNotEmpty
+                            ? CachedNetworkImage(
+                                imageUrl: ApiClient.resolveMediaUrl(p.images.first),
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                placeholder: (context, url) => Container(color: const Color(0xFFF5F6F8)),
+                                errorWidget: (context, url, error) => const Icon(Icons.broken_image_outlined, color: LeapColors.muted),
+                              )
+                            : const Icon(Icons.album_outlined, size: 32, color: LeapColors.muted),
+                      ),
+                    ),
+                  ),
+                  if (widget.showConfirmedFitBadge)
+                    Positioned(
+                      top: 6,
+                      left: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                        decoration: BoxDecoration(color: palette.gauge, borderRadius: BorderRadius.circular(4)),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.verified, size: 10, color: Colors.white),
+                            const SizedBox(width: 3),
+                            Text(tr(context, 'confirmed_fit'), style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w800, color: Colors.white)),
+                          ],
                         ),
-                ),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(height: 6),
               Text(
@@ -129,7 +162,7 @@ class _ProductCardState extends State<ProductCard> {
                   const SizedBox(width: 3),
                   Text(
                     p.reviewCount > 0 ? '${p.rating.toStringAsFixed(1)} (${p.reviewCount})' : tr(context, 'no_reviews_yet'),
-                    style: const TextStyle(fontSize: 10.5, color: LeapColors.muted),
+                    style: TextStyle(fontSize: 10.5, color: palette.muted),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
@@ -137,7 +170,7 @@ class _ProductCardState extends State<ProductCard> {
               const SizedBox(height: 3),
               Text(
                 inStock ? tr(context, 'in_stock') : tr(context, 'out_of_stock'),
-                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: inStock ? LeapColors.gauge : Colors.red),
+                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: inStock ? palette.gauge : Colors.red),
               ),
               const SizedBox(height: 6),
               Row(
@@ -146,7 +179,7 @@ class _ProductCardState extends State<ProductCard> {
                   Flexible(
                     child: Text(
                       '\$${p.price.toStringAsFixed(2)}',
-                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: palette.ink),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -162,14 +195,14 @@ class _ProductCardState extends State<ProductCard> {
                             height: 28,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              border: Border.all(color: LeapColors.line),
+                              border: Border.all(color: palette.line),
                             ),
                             child: _isTogglingWishlist
                                 ? const Padding(padding: EdgeInsets.all(6), child: CircularProgressIndicator(strokeWidth: 2))
                                 : Icon(
                                     _isWishlisted == true ? Icons.favorite : Icons.favorite_border,
                                     size: 15,
-                                    color: _isWishlisted == true ? LeapColors.signal : LeapColors.muted,
+                                    color: _isWishlisted == true ? palette.signal : palette.muted,
                                   ),
                           ),
                         ),
@@ -183,11 +216,18 @@ class _ProductCardState extends State<ProductCard> {
                           height: 28,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: inStock ? LeapColors.signal : LeapColors.line,
+                            color: inStock ? palette.signal : palette.line,
                           ),
                           child: _isAdding
-                              ? const Padding(padding: EdgeInsets.all(6), child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                              : Icon(Icons.add_shopping_cart, size: 14, color: inStock ? Colors.white : LeapColors.muted),
+                              // REAL BUG FOUND AND FIXED HERE while
+                              // migrating this widget: white spinner/
+                              // icon on gold is the same real
+                              // white-on-gold contrast issue already
+                              // found and fixed elsewhere this
+                              // session -- gold is too light for white
+                              // to read well against.
+                              ? Padding(padding: const EdgeInsets.all(6), child: CircularProgressIndicator(strokeWidth: 2, color: palette.onSignal))
+                              : Icon(Icons.add_shopping_cart, size: 14, color: inStock ? palette.onSignal : palette.muted),
                         ),
                       ),
                     ],
