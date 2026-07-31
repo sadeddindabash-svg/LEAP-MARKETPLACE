@@ -144,7 +144,16 @@ class _HomeScreenState extends State<HomeScreen> {
               Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('LEAP', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 26, color: LeapColors.ink)),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('LEAP', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 26, color: LeapColors.ink, height: 1.0)),
+                    Text(
+                      isAr ? 'لقطع السيارات' : 'AUTO PARTS',
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 10, color: LeapColors.muted, letterSpacing: 1.2),
+                    ),
+                  ],
+                ),
                 IconButton(
                   icon: const Icon(Icons.chat_bubble_outline),
                   onPressed: () => context.push('/support'),

@@ -6,6 +6,7 @@ import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../core/language_state.dart';
 import '../../core/app_lock_state.dart';
+import '../../core/theme_state.dart';
 import '../../services/api_client.dart';
 
 class AccountScreen extends StatefulWidget {
@@ -99,6 +100,7 @@ class _AccountScreenState extends State<AccountScreen> {
               )),
           const Divider(height: 1),
           const _LanguageSection(),
+          const _ThemeSection(),
           if (auth.isLoggedIn) const _AppLockSection(),
           if (auth.isLoggedIn)
             ListTile(
@@ -204,6 +206,56 @@ class _LanguageSection extends StatelessWidget {
                   label: 'العربية',
                   selected: languageState.isArabic,
                   onTap: () => context.read<LanguageState>().setLanguage('ar'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Real dark mode toggle (new) -- closes a real, confirmed gap, the
+// single most commonly-requested item from this session's own
+// suggestions list. Reuses _LanguageOption for visual consistency
+// with the language toggle right above it.
+class _ThemeSection extends StatelessWidget {
+  const _ThemeSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final themeState = context.watch<ThemeState>();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(tr(context, 'appearance'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: LeapColors.muted)),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _LanguageOption(
+                  label: tr(context, 'light_mode'),
+                  selected: themeState.mode == ThemeMode.light,
+                  onTap: () => context.read<ThemeState>().setMode(ThemeMode.light),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _LanguageOption(
+                  label: tr(context, 'dark_mode'),
+                  selected: themeState.mode == ThemeMode.dark,
+                  onTap: () => context.read<ThemeState>().setMode(ThemeMode.dark),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _LanguageOption(
+                  label: tr(context, 'system_default'),
+                  selected: themeState.mode == ThemeMode.system,
+                  onTap: () => context.read<ThemeState>().setMode(ThemeMode.system),
                 ),
               ),
             ],

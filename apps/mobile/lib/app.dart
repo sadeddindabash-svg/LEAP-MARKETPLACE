@@ -6,6 +6,7 @@ import 'core/auth_state.dart';
 import 'core/cart_state.dart';
 import 'core/language_state.dart';
 import 'core/app_lock_state.dart';
+import 'core/theme_state.dart';
 import 'widgets/app_lock_gate.dart';
 import 'core/app_strings.dart';
 import 'services/api_client.dart';
@@ -196,13 +197,16 @@ class LeapApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => CartState()),
         ChangeNotifierProvider(create: (_) => LanguageState()),
         ChangeNotifierProvider(create: (_) => AppLockState()),
+        ChangeNotifierProvider(create: (_) => ThemeState()),
       ],
-      child: Consumer<LanguageState>(
-        builder: (context, languageState, _) {
+      child: Consumer2<LanguageState, ThemeState>(
+        builder: (context, languageState, themeState, _) {
           return MaterialApp.router(
-            title: 'Leap',
+            title: 'LEAP Auto Parts',
             debugShowCheckedModeBanner: false,
             theme: LeapTheme.light(),
+            darkTheme: LeapTheme.dark(),
+            themeMode: themeState.mode,
             routerConfig: appRouter,
             // Real RTL layout when Arabic is selected — Flutter's standard
             // Material widgets mirror automatically under Directionality.rtl

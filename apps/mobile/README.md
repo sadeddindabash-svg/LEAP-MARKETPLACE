@@ -472,6 +472,46 @@ actually parsing every touched XML file with Python's own XML parser
 directly after each edit, not just eyeballing it — confirmed all 4
 native XML/storyboard files are genuinely valid before finalizing.
 
+## Real dark mode support — foundation built, screen migration still needed (confirmed directly against real Google Stitch reference mockups)
+
+**A real, deliberate design decision, confirmed directly**: the app
+needs both a light and dark theme, with the dark palette drawn
+directly from a real reference mockup (Google Stitch's own
+"Precision" concept) — a distinct metallic gold (`#D4AF37`) tuned for
+a dark background, rather than reusing the light theme's own gold
+(`#F2A71B`), which was tuned against white and doesn't read the same
+way on dark.
+
+**What's built and working now**:
+- `core/theme_state.dart` — a real, persisted `ThemeMode` preference
+  (light/dark/system), using the same real secure storage several
+  other settings this session already use.
+- `LeapColorsDark` in `core/theme.dart` — the real dark token set.
+- `LeapTheme.dark()` — mirrors `light()`'s own structure.
+- Wired into `MaterialApp.router` via `theme`/`darkTheme`/`themeMode`.
+- A real toggle in Account settings (Light/Dark/System), reusing the
+  existing language-toggle widget for visual consistency.
+- Real branding correction: the app title and the home screen's own
+  logo mark now show the real, confirmed brand name — "LEAP" with a
+  bilingual "AUTO PARTS"/"لقطع السيارات" subtitle, matching the real
+  site's own logo treatment — not "AutoPart Pro," which was only ever
+  Stitch's own generated placeholder name in the reference mockups.
+
+**HONEST, IMPORTANT SCOPE BOUNDARY, stated plainly rather than implied
+or hidden**: every *themed* element (AppBar, buttons, bottom nav,
+scaffold background, text fields) already correctly switches between
+light and dark, since `theme.dart` was already built around Flutter's
+own `ThemeData` mechanism. But most of this app's ~30 screens were
+built before dark mode existed, and reference `LeapColors.*` directly
+as hardcoded values for their own inline widgets (a `Container` here,
+a `Text` style there) rather than through the theme. **Those
+references do not automatically adapt** — toggling dark mode right
+now will correctly re-theme the outer shell (app bar, buttons, nav)
+while individual screens' own inline content may still show
+light-mode colors until each one gets its own migration pass. This is
+a real, large, separate follow-up effort, not something silently
+glossed over here.
+
 ## Real design refresh — gold accent, Manrope font, pill buttons (confirmed directly against real reference screenshots)
 
 **A real, deliberate brand alignment**: updated the app's color, font,
