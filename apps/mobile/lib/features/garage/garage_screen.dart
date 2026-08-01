@@ -171,12 +171,12 @@ class _GarageScreenState extends State<GarageScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.directions_car_outlined, size: 40, color: LeapColors.muted),
+              Icon(Icons.directions_car_outlined, size: 40, color: LeapPalette.of(context).muted),
               const SizedBox(height: 12),
               Text(
                 tr(context, 'garage_login_prompt'),
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: LeapColors.muted, fontSize: 13),
+                style: TextStyle(color: LeapPalette.of(context).muted, fontSize: 13),
               ),
               const SizedBox(height: 16),
               ElevatedButton(onPressed: () => context.push('/login'), child: Text(tr(context, 'log_in'))),
@@ -195,7 +195,7 @@ class _GarageScreenState extends State<GarageScreen> {
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 80),
-              child: Center(child: Text('${tr(context, 'could_not_load_garage')} $_loadError', style: const TextStyle(color: LeapColors.muted))),
+              child: Center(child: Text('${tr(context, 'could_not_load_garage')} $_loadError', style: TextStyle(color: LeapPalette.of(context).muted))),
             ),
           ],
         ),
@@ -204,6 +204,7 @@ class _GarageScreenState extends State<GarageScreen> {
       body = const Center(child: CircularProgressIndicator());
     } else {
       final vehicles = _vehicles!;
+      final palette = LeapPalette.of(context);
       body = RefreshIndicator(
         onRefresh: _handleRefresh,
         child: ListView(
@@ -211,31 +212,86 @@ class _GarageScreenState extends State<GarageScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           for (final v in vehicles)
-            Card(
+            Container(
               key: ValueKey(v.id),
-              margin: const EdgeInsets.only(bottom: 10),
-              child: ListTile(
-                leading: Icon(Icons.directions_car, color: v.isDefault ? LeapColors.signal : null),
-                title: Text(v.label, style: const TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Text(v.isDefault ? '${v.subLabel} · ${tr(context, 'default_vehicle_label')}' : v.subLabel),
-                // Real "set as default" star (new) -- closes a real
-                // gap: a buyer with more than one saved vehicle had no
-                // way to say which one should drive automatic fitment
-                // filtering (the home feed) -- it silently used
-                // whichever vehicle happened to be first in an
-                // arbitrary list order.
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: Icon(v.isDefault ? Icons.star : Icons.star_border, size: 20, color: v.isDefault ? LeapColors.signal : LeapColors.muted),
-                      tooltip: tr(context, 'set_as_default_vehicle'),
-                      onPressed: v.isDefault ? null : () => _setDefault(v),
-                    ),
-                    IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => _confirmRemove(v)),
-                  ],
-                ),
-                onTap: () => Navigator.of(context).pop(v),
+              margin: const EdgeInsets.only(bottom: 14),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: palette.card,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: v.isDefault ? palette.signal : palette.line),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Real placeholder hero area (new), matching the
+                  // real Stitch reference's own larger, more prominent
+                  // card style -- deliberately an icon, not a fake
+                  // stock car photo: the real Vehicle model has no
+                  // photo field at all, and showing a real photo of
+                  // the WRONG car (or a generic unrelated stock image)
+                  // would be actively misleading, not a real
+                  // improvement.
+                  Stack(
+                    children: [
+                      Container(
+                        height: 120,
+                        width: double.infinity,
+                        decoration: BoxDecoration(color: palette.chalk, borderRadius: BorderRadius.circular(10)),
+                        child: Icon(Icons.directions_car, size: 56, color: palette.muted),
+                      ),
+                      if (v.isDefault)
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: Icon(Icons.star, color: palette.signal, size: 22),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Icon(Icons.badge_outlined, size: 14, color: palette.muted),
+                      const SizedBox(width: 6),
+                      Text(
+                        (v.isDefault ? tr(context, 'default_vehicle_label') : tr(context, 'saved_vehicle_label')).toUpperCase(),
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: palette.muted, letterSpacing: 1),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(v.label, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: palette.ink)),
+                  const SizedBox(height: 2),
+                  Text(v.subLabel, style: TextStyle(fontSize: 12.5, color: palette.muted)),
+                  const SizedBox(height: 14),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(v),
+                        child: Text(tr(context, 'view_compatible_parts')),
+                      ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Real "set as default" star (new) -- closes a
+                          // real gap: a buyer with more than one saved
+                          // vehicle had no way to say which one should
+                          // drive automatic fitment filtering (the home
+                          // feed) -- it silently used whichever vehicle
+                          // happened to be first in an arbitrary list
+                          // order.
+                          IconButton(
+                            icon: Icon(v.isDefault ? Icons.star : Icons.star_border, size: 20, color: v.isDefault ? palette.signal : palette.muted),
+                            tooltip: tr(context, 'set_as_default_vehicle'),
+                            onPressed: v.isDefault ? null : () => _setDefault(v),
+                          ),
+                          IconButton(icon: Icon(Icons.close, size: 18, color: palette.muted), onPressed: () => _confirmRemove(v)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           OutlinedButton.icon(

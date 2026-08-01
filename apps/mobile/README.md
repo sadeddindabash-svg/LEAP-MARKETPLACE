@@ -472,6 +472,31 @@ actually parsing every touched XML file with Python's own XML parser
 directly after each edit, not just eyeballing it — confirmed all 4
 native XML/storyboard files are genuinely valid before finalizing.
 
+## Real My Garage redesign, matched directly against the real Stitch reference (6 of 28)
+
+**My Garage, done**: fully migrated to the theme-aware `LeapPalette`,
+larger bento-style vehicle cards matching the reference's own more
+prominent layout, "DEFAULT VEHICLE" / "SAVED VEHICLE" eyebrow labels,
+and a star badge overlay on the default vehicle's own hero area.
+
+**One real, deliberate deviation from the reference, not an
+oversight**: the reference shows a real car photo for each vehicle
+card. This app's real `Vehicle` model has no photo field at all — a
+buyer's saved vehicle is a structured Brand/Model/Generation/Year
+selection, not an uploaded image. Showing a real photo would mean
+either a real image database of every real car model (which doesn't
+exist) or a generic/wrong stock photo, which would be actively
+misleading, not a real improvement. Used a real placeholder icon area
+instead.
+
+**A pre-existing, unused code path confirmed safe to change while
+redesigning**: tapping a vehicle card used to call `Navigator.pop(v)`
+— checked every real place this screen is navigated to
+(`context.push('/garage')`, a plain push with no return-value
+capture anywhere) and confirmed this return value was never actually
+consumed. Moved this same action to the new "View compatible parts"
+button instead, without silently guessing it was safe.
+
 ## Real Orders (list + detail) redesign, matched directly against the real Stitch reference (5 of 28) — completes the core shopping journey priority
 
 **Orders list, done**: fully migrated to the theme-aware `LeapPalette`,
