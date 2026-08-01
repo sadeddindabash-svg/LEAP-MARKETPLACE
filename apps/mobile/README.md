@@ -472,6 +472,23 @@ actually parsing every touched XML file with Python's own XML parser
 directly after each edit, not just eyeballing it — confirmed all 4
 native XML/storyboard files are genuinely valid before finalizing.
 
+## Real Search Results screen redesign, matched directly against the real Stitch reference (3 of 28)
+
+**A real, significant gap closed, not just a visual redesign**: search
+results were previously shown as a plain single-column list of
+generic `ListTile`s with a placeholder album icon — no real product
+photo, no stock badge, no working add-to-cart or wishlist button
+anywhere. Replaced with the same real `ProductCard` grid already built
+for Home — instantly gaining real product photography, a real
+"Confirmed Fit" badge (shown when a real vehicle filter is active,
+since those results are already fitment-filtered server-side), real
+stock status, and working add-to-cart/wishlist actions that simply
+didn't exist on this screen before.
+
+Also fully migrated to the theme-aware `LeapPalette` (confirmed zero
+remaining `LeapColors.*` references), and added a small history icon
+to recent-search chips matching the reference.
+
 ## Real Product Detail screen redesign, matched directly against the real Stitch reference (2 of 28)
 
 **Product Detail, done**: fully migrated to the theme-aware

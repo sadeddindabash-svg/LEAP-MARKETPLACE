@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/recent_searches.dart';
 import '../../widgets/skeleton.dart';
+import '../../widgets/product_card.dart';
 import '../../core/language_state.dart';
 import '../../core/auth_state.dart';
 import '../../models/product.dart';
@@ -185,12 +186,12 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
         actions: [
           IconButton(
-            icon: Icon(Icons.directions_car_filled_outlined, color: _vehicleFilter != null ? LeapColors.signal : null),
+            icon: Icon(Icons.directions_car_filled_outlined, color: _vehicleFilter != null ? LeapPalette.of(context).signal : null),
             tooltip: isAr ? 'تصفية حسب المركبة' : 'Filter by vehicle',
             onPressed: _pickVehicleFilter,
           ),
           IconButton(
-            icon: Icon(Icons.tune, color: (_sortAndPrice != null && !_sortAndPrice!.isEmpty) ? LeapColors.signal : null),
+            icon: Icon(Icons.tune, color: (_sortAndPrice != null && !_sortAndPrice!.isEmpty) ? LeapPalette.of(context).signal : null),
             tooltip: isAr ? 'الترتيب والسعر' : 'Sort & price',
             onPressed: _pickSortAndPrice,
           ),
@@ -280,7 +281,7 @@ class _SearchScreenState extends State<SearchScreen> {
         children: [
           const SizedBox(height: 40),
           Center(
-            child: Text(isAr ? 'ابدأ الكتابة للبحث' : 'Start typing to search', style: const TextStyle(color: LeapColors.muted)),
+            child: Text(isAr ? 'ابدأ الكتابة للبحث' : 'Start typing to search', style: TextStyle(color: LeapPalette.of(context).muted)),
           ),
           if (_recentSearches.isNotEmpty) ...[
             const SizedBox(height: 28),
@@ -289,14 +290,14 @@ class _SearchScreenState extends State<SearchScreen> {
               children: [
                 Text(
                   isAr ? 'عمليات بحث سابقة' : 'Recent searches',
-                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: LeapColors.muted),
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: LeapPalette.of(context).muted),
                 ),
                 GestureDetector(
                   onTap: () {
                     RecentSearches.clear();
                     setState(() => _recentSearches = []);
                   },
-                  child: Text(isAr ? 'مسح' : 'Clear', style: const TextStyle(fontSize: 12, color: LeapColors.signalDark)),
+                  child: Text(isAr ? 'مسح' : 'Clear', style: TextStyle(fontSize: 12, color: LeapPalette.of(context).signalDark)),
                 ),
               ],
             ),
@@ -307,6 +308,7 @@ class _SearchScreenState extends State<SearchScreen> {
               children: [
                 for (final term in _recentSearches)
                   ActionChip(
+                    avatar: const Icon(Icons.history, size: 16),
                     label: Text(term, style: const TextStyle(fontSize: 12.5)),
                     onPressed: () {
                       _controller.text = term;
@@ -324,29 +326,33 @@ class _SearchScreenState extends State<SearchScreen> {
       return const ProductGridSkeleton();
     }
     if (_error != null) {
-      return Center(child: Text(_error!, style: const TextStyle(color: LeapColors.muted)));
+      return Center(child: Text(_error!, style: TextStyle(color: LeapPalette.of(context).muted)));
     }
     if (_results != null && _results!.isEmpty) {
       return Center(
-        child: Text(isAr ? 'لا توجد نتائج' : 'No results found', style: const TextStyle(color: LeapColors.muted)),
+        child: Text(isAr ? 'لا توجد نتائج' : 'No results found', style: TextStyle(color: LeapPalette.of(context).muted)),
       );
     }
     if (_results == null) return const SizedBox.shrink();
 
-    return ListView.separated(
+    return GridView.builder(
       padding: const EdgeInsets.all(16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 10,
+        crossAxisSpacing: 10,
+        childAspectRatio: 0.62,
+      ),
       itemCount: _results!.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (context, i) {
         final p = _results![i];
-        return Card(
-          child: ListTile(
-            leading: const Icon(Icons.album_outlined, color: LeapColors.ink),
-            title: Text(p.name, maxLines: 2, overflow: TextOverflow.ellipsis),
-            subtitle: Text('${p.category} · \$${p.price.toStringAsFixed(2)} ${p.currencyCode}'),
-            onTap: () => context.push('/product/${p.id}'),
-          ),
-        );
+        // Real "confirmed fit" badge (new) -- shown only when a real
+        // vehicle filter is genuinely active, matching the exact same
+        // real rule already established on Home's own "My Car" filter
+        // (these results are already fitment-filtered server-side
+        // whenever a real vehicle filter is applied -- see
+        // ApiClient().searchProducts's own generationId param above).
+        return ProductCard(product: p, onTap: () => context.push('/product/${p.id}'), showConfirmedFitBadge: _vehicleFilter != null);
       },
     );
   }
