@@ -472,6 +472,35 @@ actually parsing every touched XML file with Python's own XML parser
 directly after each edit, not just eyeballing it — confirmed all 4
 native XML/storyboard files are genuinely valid before finalizing.
 
+## Real Product Detail screen redesign, matched directly against the real Stitch reference (2 of 28)
+
+**Product Detail, done**: fully migrated to the theme-aware
+`LeapPalette` (confirmed zero remaining `LeapColors.*` references),
+pill-shaped gallery indicators (a wider active pill, not a circle),
+and a restyled technical specifications card.
+
+**A real, confirmed gap closed while redesigning**: this screen never
+showed the product's own real fitment-confirmation data
+(`fitsVehicleIds`) anywhere, despite that being the whole platform's
+core value proposition. Added a real "Confirmed Fit" badge overlaid
+on the gallery — fetches the buyer's real garage, finds their real
+default vehicle, and checks it directly against this real product's
+own real fitment list. Only ever shown when that real match genuinely
+exists, never a decorative default.
+
+**Two real, deliberate deviations from the reference, not oversights**:
+- The reference shows a fabricated "$1,450.00 ~~$1,680.00~~" sale
+  price and a "Supplier RATING 4.9/5.0 · LEAD TIME 2-4 Days" bento
+  box — neither a discount/original-price field nor a per-supplier
+  rating/lead-time stat exists anywhere in this app's real data model,
+  so neither was added; showing them would mean fabricating numbers.
+- The reference's "Technical Specifications" table uses fictional
+  example values ("Pre-preg 3K Carbon Fiber," "Reflect-A-Gold
+  Integrated"). This app's own real spec table already used genuine
+  product fields (Part, Brand, Model, Year, OEM Number, Dimensions,
+  Weight) — kept those real fields, restyled to match the reference's
+  card treatment, rather than replacing real data with invented rows.
+
 ## Real Cart screen redesign, matched directly against the real Stitch reference (part of the full 28-screen redesign effort)
 
 **Part of a larger, real, prioritized effort**: a complete 28-screen

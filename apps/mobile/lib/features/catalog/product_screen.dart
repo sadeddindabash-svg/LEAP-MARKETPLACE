@@ -8,6 +8,7 @@ import '../../core/cart_state.dart';
 import '../../core/config/app_config.dart';
 import '../../core/language_state.dart';
 import '../../models/product.dart';
+import '../../models/vehicle.dart';
 import '../../services/api_client.dart';
 import '../../widgets/reviews_section.dart';
 
@@ -40,6 +41,14 @@ class _ProductScreenState extends State<ProductScreen> {
   int _qty = 1;
   bool _isAdding = false;
   String? _loadedForLanguage;
+  // Real fitment confirmation (new) -- closes a real gap: the
+  // product's own real fitsVehicleIds data was never shown anywhere on
+  // this screen before. Fetches the buyer's real garage once, finds
+  // their real default vehicle (if any), and checks it directly
+  // against this real product's own real fitment list -- only ever
+  // shown as confirmed when that real match genuinely exists, never a
+  // decorative default.
+  Vehicle? _defaultVehicle;
 
   void _ensureLoaded(String language) {
     if (_loadedForLanguage != language) {
@@ -53,6 +62,11 @@ class _ProductScreenState extends State<ProductScreen> {
       final token = context.read<AuthState>().token;
       if (token != null) {
         ApiClient().recordProductView(token, widget.productId).catchError((_) {});
+        ApiClient().fetchMyGarage(token).then((vehicles) {
+          if (mounted && vehicles.isNotEmpty) {
+            setState(() => _defaultVehicle = vehicles.firstWhere((v) => v.isDefault, orElse: () => vehicles.first));
+          }
+        }).catchError((_) {});
       }
     }
   }
@@ -127,7 +141,7 @@ class _ProductScreenState extends State<ProductScreen> {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text('Could not load this product.\n${snapshot.error}', textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted)),
+                child: Text('Could not load this product.\n${snapshot.error}', textAlign: TextAlign.center, style: TextStyle(color: LeapPalette.of(context).muted)),
               ),
             );
           }
@@ -137,6 +151,7 @@ class _ProductScreenState extends State<ProductScreen> {
             language: language,
             qty: _qty,
             isAdding: _isAdding,
+            defaultVehicle: _defaultVehicle,
             onQtyChanged: (q) => setState(() => _qty = q),
             onAddToCart: () => _addToCart(product),
           );
@@ -151,6 +166,7 @@ class _ProductDetailBody extends StatelessWidget {
   final String language;
   final int qty;
   final bool isAdding;
+  final Vehicle? defaultVehicle;
   final ValueChanged<int> onQtyChanged;
   final VoidCallback onAddToCart;
 
@@ -159,6 +175,7 @@ class _ProductDetailBody extends StatelessWidget {
     required this.language,
     required this.qty,
     required this.isAdding,
+    required this.defaultVehicle,
     required this.onQtyChanged,
     required this.onAddToCart,
   });
@@ -180,55 +197,105 @@ class _ProductDetailBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = LeapPalette.of(context);
+    // Real fitment confirmation check (new) -- only ever true when a
+    // real default vehicle exists AND this real product's own real
+    // fitsVehicleIds genuinely includes it.
+    final isConfirmedFit = defaultVehicle != null && product.fitsVehicleIds.contains(defaultVehicle!.generationId);
+
     return Stack(
       children: [
         ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
           children: [
-            _PhotoGallery(images: product.images),
+            Stack(
+              children: [
+                _PhotoGallery(images: product.images),
+                if (isConfirmedFit)
+                  Positioned(
+                    top: 10,
+                    left: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(color: palette.gauge, borderRadius: BorderRadius.circular(20)),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.check_circle, size: 14, color: Colors.white),
+                          const SizedBox(width: 4),
+                          Text(tr(context, 'confirmed_fit'), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5)),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(height: 16),
-            Text(product.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+            Text(product.name, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: palette.ink)),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: const Color(0xFFE4F5EC), borderRadius: BorderRadius.circular(10)),
+              decoration: BoxDecoration(color: palette.gauge.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
               child: Row(
                 children: [
-                  const Icon(Icons.check_circle, color: LeapColors.gauge, size: 18),
+                  Icon(Icons.check_circle, color: palette.gauge, size: 18),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       product.stockQuantity > 0
                           ? (_isAr ? 'متوفر · يشحن خلال ${product.estimatedDeliveryDays} أيام' : 'In stock · ships in ${product.estimatedDeliveryDays} days')
                           : (_isAr ? 'غير متوفر حاليًا' : 'Currently out of stock'),
-                      style: const TextStyle(color: LeapColors.gauge),
+                      style: TextStyle(color: palette.gauge),
                     ),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 20),
-            Text('\$${product.price.toStringAsFixed(2)} ${product.currencyCode}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 26)),
+            Text('\$${product.price.toStringAsFixed(2)} ${product.currencyCode}', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 26, color: palette.signal)),
             const SizedBox(height: 24),
             Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(border: Border.all(color: LeapColors.line), borderRadius: BorderRadius.circular(10)),
+              decoration: BoxDecoration(
+                color: palette.card,
+                border: Border.all(color: palette.line),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              clipBehavior: Clip.antiAlias,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _SpecRow(label: _lPartName, value: product.part ?? _lNotSpecified),
-                  _SpecRow(label: _lBrand, value: product.brand ?? _lNotSpecified),
-                  _SpecRow(label: _lModel, value: product.model ?? _lNotSpecified),
-                  _SpecRow(label: _lYear, value: product.year?.toString() ?? _lNotSpecified),
-                  _SpecRow(label: _lPartNo, value: product.oemNumber ?? _lNotSpecified),
-                  _SpecRow(label: _lDescription, value: (product.description?.isNotEmpty ?? false) ? product.description! : _lNotSpecified),
-                  _SpecRow(
-                    label: _lDimensions,
-                    value: (product.lengthCm != null && product.widthCm != null && product.heightCm != null)
-                        ? '${product.lengthCm} × ${product.widthCm} × ${product.heightCm} cm'
-                        : _lNotSpecified,
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    color: palette.chalk,
+                    child: Row(
+                      children: [
+                        Icon(Icons.settings_suggest_outlined, size: 16, color: palette.signal),
+                        const SizedBox(width: 8),
+                        Text(_isAr ? 'المواصفات الفنية' : 'Technical Specifications', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: palette.ink)),
+                      ],
+                    ),
                   ),
-                  _SpecRow(label: _lWeight, value: product.weightKg != null ? '${product.weightKg} kg' : _lNotSpecified, isLast: true),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: Column(
+                      children: [
+                        _SpecRow(label: _lPartName, value: product.part ?? _lNotSpecified),
+                        _SpecRow(label: _lBrand, value: product.brand ?? _lNotSpecified),
+                        _SpecRow(label: _lModel, value: product.model ?? _lNotSpecified),
+                        _SpecRow(label: _lYear, value: product.year?.toString() ?? _lNotSpecified),
+                        _SpecRow(label: _lPartNo, value: product.oemNumber ?? _lNotSpecified),
+                        _SpecRow(label: _lDescription, value: (product.description?.isNotEmpty ?? false) ? product.description! : _lNotSpecified),
+                        _SpecRow(
+                          label: _lDimensions,
+                          value: (product.lengthCm != null && product.widthCm != null && product.heightCm != null)
+                              ? '${product.lengthCm} × ${product.widthCm} × ${product.heightCm} cm'
+                              : _lNotSpecified,
+                        ),
+                        _SpecRow(label: _lWeight, value: product.weightKg != null ? '${product.weightKg} kg' : _lNotSpecified, isLast: true),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -241,40 +308,37 @@ class _ProductDetailBody extends StatelessWidget {
           bottom: 0,
           child: Container(
             padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: LeapColors.line))),
-            child: Row(
-              children: [
-                DecoratedBox(
-                  decoration: BoxDecoration(border: Border.all(color: LeapColors.line), borderRadius: BorderRadius.circular(8)),
-                  child: Row(
-                    children: [
-                      IconButton(onPressed: () => onQtyChanged(qty > 1 ? qty - 1 : 1), icon: const Icon(Icons.remove, size: 16)),
-                      Text('$qty', style: const TextStyle(fontWeight: FontWeight.w700)),
-                      // REAL BUG FOUND AND FIXED HERE: this "+" had no
-                      // real stock-limit check at all -- a buyer could
-                      // pick a quantity far beyond what's actually
-                      // available, only to have the real cart correctly
-                      // reject it later with a confusing error. Mirrors
-                      // the exact same real stock-limit pattern the
-                      // cart screen's own stepper already uses
-                      // (item.quantity >= item.stockQuantity).
-                      IconButton(
-                        onPressed: qty >= product.stockQuantity ? null : () => onQtyChanged(qty + 1),
-                        icon: const Icon(Icons.add, size: 16),
-                      ),
-                    ],
+            decoration: BoxDecoration(color: palette.card, border: Border(top: BorderSide(color: palette.line))),
+            child: SafeArea(
+              top: false,
+              child: Row(
+                children: [
+                  // Real pill-shaped quantity stepper (new), matching
+                  // the same style already used on Cart.
+                  Container(
+                    decoration: BoxDecoration(color: palette.chalk, borderRadius: BorderRadius.circular(999), border: Border.all(color: palette.line)),
+                    child: Row(
+                      children: [
+                        IconButton(onPressed: () => onQtyChanged(qty > 1 ? qty - 1 : 1), icon: Icon(Icons.remove, size: 16, color: palette.ink)),
+                        Text('$qty', style: TextStyle(fontWeight: FontWeight.w700, color: palette.ink)),
+                        IconButton(
+                          onPressed: qty >= product.stockQuantity ? null : () => onQtyChanged(qty + 1),
+                          icon: Icon(Icons.add, size: 16, color: qty >= product.stockQuantity ? palette.muted : palette.ink),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: (product.stockQuantity > 0 && !isAdding) ? onAddToCart : null,
-                    child: isAdding
-                        ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : Text('${_isAr ? "أضف إلى السلة" : "Add to cart"} · \$${(product.price * qty).toStringAsFixed(2)}'),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: (product.stockQuantity > 0 && !isAdding) ? onAddToCart : null,
+                      child: isAdding
+                          ? SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: palette.onSignal))
+                          : Text('${_isAr ? "أضف إلى السلة" : "Add to cart"} · \$${(product.price * qty).toStringAsFixed(2)}'),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -291,19 +355,20 @@ class _SpecRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = LeapPalette.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10),
       decoration: BoxDecoration(
-        border: isLast ? null : const Border(bottom: BorderSide(color: LeapColors.line)),
+        border: isLast ? null : Border(bottom: BorderSide(color: palette.line)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
             width: 110,
-            child: Text('$label:', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: LeapColors.muted)),
+            child: Text('$label:', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: palette.muted)),
           ),
-          Expanded(child: Text(value, style: const TextStyle(fontSize: 13))),
+          Expanded(child: Text(value, style: TextStyle(fontSize: 13, color: palette.ink))),
         ],
       ),
     );
@@ -330,11 +395,12 @@ class _PhotoGalleryState extends State<_PhotoGallery> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = LeapPalette.of(context);
     if (widget.images.isEmpty) {
       return Container(
         height: 220,
-        decoration: BoxDecoration(color: LeapColors.chalk, borderRadius: BorderRadius.circular(12)),
-        child: const Center(child: Icon(Icons.album_outlined, size: 64, color: LeapColors.ink)),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+        child: Center(child: Icon(Icons.album_outlined, size: 64, color: palette.ink)),
       );
     }
     return Column(
@@ -350,10 +416,10 @@ class _PhotoGalleryState extends State<_PhotoGallery> {
               itemBuilder: (context, i) => CachedNetworkImage(
                 imageUrl: ApiClient.resolveMediaUrl(widget.images[i]),
                 fit: BoxFit.cover,
-                placeholder: (context, url) => Container(color: LeapColors.chalk),
+                placeholder: (context, url) => Container(color: Colors.white),
                 errorWidget: (context, url, error) => Container(
-                  color: LeapColors.chalk,
-                  child: const Center(child: Icon(Icons.broken_image_outlined, size: 40, color: LeapColors.muted)),
+                  color: Colors.white,
+                  child: Center(child: Icon(Icons.broken_image_outlined, size: 40, color: palette.muted)),
                 ),
               ),
             ),
@@ -361,17 +427,21 @@ class _PhotoGalleryState extends State<_PhotoGallery> {
         ),
         if (widget.images.length > 1) ...[
           const SizedBox(height: 8),
+          // Real pill-shaped gallery indicators (new), matching the
+          // real Stitch reference exactly (a wider active pill, not a
+          // circle).
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(
               widget.images.length,
-              (i) => Container(
+              (i) => AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
                 margin: const EdgeInsets.symmetric(horizontal: 3),
-                width: 6,
-                height: 6,
+                width: i == _index ? 20 : 6,
+                height: 5,
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: i == _index ? LeapColors.signal : LeapColors.line,
+                  borderRadius: BorderRadius.circular(3),
+                  color: i == _index ? palette.signal : palette.line,
                 ),
               ),
             ),
