@@ -401,6 +401,16 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
          WHERE oli.sub_order_id = $1`,
         [so.id]
       );
+      // Real primary product image per item (new) -- closes a real
+      // gap: no image field existed here at all before, only plain
+      // name/quantity/price data. Reuses the exact same real
+      // primary-image definition (first by real sort_order) already
+      // established for cart's own identical gap earlier this
+      // session -- see cart/routes.js's own comment for why.
+      const itemsWithImages = await Promise.all(items.map(async (i) => {
+        const { rows: imageRows } = await db.query('SELECT url FROM product_images WHERE product_id = $1 ORDER BY sort_order LIMIT 1', [i.product_id]);
+        return { productId: i.product_id, name: i.name, quantity: i.quantity, unitPrice: Number(i.unit_price), imageUrl: imageRows[0]?.url || null };
+      }));
 
       // The hub's leg of the journey, if this sub-order has reached the
       // "shipped to hub" point yet — see migration 011's header comment
@@ -437,7 +447,7 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
         hubId: so.hub_id,
         hubName: so.hub_name,
         hubShipment,
-        items: items.map((i) => ({ productId: i.product_id, name: i.name, quantity: i.quantity, unitPrice: Number(i.unit_price) })),
+        items: itemsWithImages,
       });
     }
 

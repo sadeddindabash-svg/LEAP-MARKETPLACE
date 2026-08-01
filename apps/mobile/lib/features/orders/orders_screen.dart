@@ -87,12 +87,12 @@ class _OrdersScreenState extends State<OrdersScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.inventory_2_outlined, size: 40, color: LeapColors.muted),
+              Icon(Icons.inventory_2_outlined, size: 40, color: LeapPalette.of(context).muted),
               const SizedBox(height: 12),
               Text(
                 tr(context, 'login_to_see_orders'),
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: LeapColors.muted, fontSize: 13),
+                style: TextStyle(color: LeapPalette.of(context).muted, fontSize: 13),
               ),
               const SizedBox(height: 16),
               ElevatedButton(onPressed: () => context.push('/login'), child: Text(tr(context, 'log_in'))),
@@ -114,6 +114,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
               children: kOrderTabs.map((t) {
                 final selected = _selectedTab == t.key;
                 final label = tr(context, t.labelKey);
+                final palette = LeapPalette.of(context);
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: InkWell(
@@ -122,13 +123,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       decoration: BoxDecoration(
-                        color: selected ? LeapColors.signal : LeapColors.chalk,
+                        color: selected ? palette.signal : palette.chalk,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: selected ? LeapColors.signal : LeapColors.line),
+                        border: Border.all(color: selected ? palette.signal : palette.line),
                       ),
                       child: Text(
                         label,
-                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: selected ? Colors.white : LeapColors.ink),
+                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: selected ? palette.onSignal : palette.ink),
                       ),
                     ),
                   ),
@@ -136,13 +137,14 @@ class _OrdersScreenState extends State<OrdersScreen> {
               }).toList(),
             ),
           ),
-          const Divider(height: 1),
+          Divider(height: 1, color: LeapPalette.of(context).line),
           Expanded(
             child: RefreshIndicator(
               onRefresh: _handleRefresh,
               child: FutureBuilder<List<dynamic>>(
                 future: _ordersFuture,
                 builder: (context, snapshot) {
+                  final palette = LeapPalette.of(context);
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const ListSkeleton();
                   }
@@ -152,7 +154,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                       children: [
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 80),
-                          child: Center(child: Text('${tr(context, 'could_not_load_orders')} ${snapshot.error}', style: const TextStyle(color: LeapColors.muted))),
+                          child: Center(child: Text('${tr(context, 'could_not_load_orders')} ${snapshot.error}', style: TextStyle(color: palette.muted))),
                         ),
                       ],
                     );
@@ -168,7 +170,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text(tr(context, 'no_orders_yet'), style: const TextStyle(color: LeapColors.muted)),
+                                Text(tr(context, 'no_orders_yet'), style: TextStyle(color: palette.muted)),
                                 const SizedBox(height: 16),
                                 ElevatedButton(
                                   onPressed: () => context.go('/home'),
@@ -181,13 +183,47 @@ class _OrdersScreenState extends State<OrdersScreen> {
                       ],
                     );
                   }
+                  // Real, honestly-computed stat (new) -- matches the
+                  // real Stitch reference's own "stats bento" concept,
+                  // but only for the one stat genuinely computable from
+                  // real, already-loaded order data. The reference's
+                  // other two stats ("Pending Reviews", "Lifetime
+                  // Parts") are deliberately NOT shown here -- neither
+                  // a review-eligibility count nor a lifetime item
+                  // count is available from this real data without
+                  // fabricating a number.
+                  final activeShipments = orders.where((o) {
+                    final status = ((o as Map<String, dynamic>)['displayStatus'] as String?) ?? (o['status'] as String);
+                    return status == 'shipped' || status == 'to_ship' || status == 'processing';
+                  }).length;
                   return ListView.separated(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.all(16),
-                    itemCount: orders.length,
+                    itemCount: orders.length + (_selectedTab == 'all' ? 1 : 0),
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemBuilder: (context, i) {
-                      final o = orders[i] as Map<String, dynamic>;
+                      if (_selectedTab == 'all' && i == 0) {
+                        return Container(
+                          padding: const EdgeInsets.all(16),
+                          margin: const EdgeInsets.only(bottom: 4),
+                          decoration: BoxDecoration(color: palette.card, border: Border.all(color: palette.line), borderRadius: BorderRadius.circular(12)),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(tr(context, 'active_shipments').toUpperCase(), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: palette.signalDark, letterSpacing: 0.5)),
+                                  const SizedBox(height: 4),
+                                  Text('$activeShipments', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: palette.ink)),
+                                ],
+                              ),
+                              Icon(Icons.local_shipping_outlined, color: palette.signal, size: 28),
+                            ],
+                          ),
+                        );
+                      }
+                      final o = orders[i - (_selectedTab == 'all' ? 1 : 0)] as Map<String, dynamic>;
                       // displayStatus is the REAL, computed status (see the
                       // backend order module) -- the raw `status` field is
                       // frozen at 'to_ship' forever and never reflects
@@ -201,11 +237,18 @@ class _OrdersScreenState extends State<OrdersScreen> {
                       // real order can be fulfilled by more than one
                       // real supplier.
                       final supplierNames = (o['supplierNames'] as List?)?.cast<String>() ?? [];
+                      // Real color-coded status badge (new), matching
+                      // the real Stitch reference's own color language
+                      // (delivered = green, everything else = the
+                      // brand accent) -- reuses the exact same real
+                      // displayStatus values already computed above,
+                      // not a new or guessed status set.
+                      final badgeColor = displayStatus == 'delivered' ? palette.gauge : palette.signal;
                       return Card(
                         child: InkWell(
                           onTap: () => context.push('/orders/${o['id']}'),
                           child: Padding(
-                          padding: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.all(14),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -213,20 +256,24 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
                                   PlateChip(text: o['id'] as String, small: true),
-                                  Text(trStatus(context, displayStatus).toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: LeapColors.torque)),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(color: badgeColor.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(20)),
+                                    child: Text(trStatus(context, displayStatus).toUpperCase(), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: badgeColor)),
+                                  ),
                                 ],
                               ),
                               if (supplierNames.isNotEmpty) ...[
-                                const SizedBox(height: 6),
+                                const SizedBox(height: 8),
                                 Text(
                                   supplierNames.join(', '),
-                                  style: const TextStyle(fontSize: 11.5, color: LeapColors.muted),
+                                  style: TextStyle(fontSize: 11.5, color: palette.muted),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ],
-                              const SizedBox(height: 8),
-                              Text('\$${(o['total'] as num).toStringAsFixed(2)} ${o['currencyCode']}'),
+                              const SizedBox(height: 10),
+                              Text('\$${(o['total'] as num).toStringAsFixed(2)} ${o['currencyCode']}', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: palette.signal)),
                             ],
                           ),
                         ),

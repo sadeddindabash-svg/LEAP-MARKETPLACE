@@ -2469,6 +2469,20 @@ correctly in an environment with no SMTP configured. Full regression:
 web-storefront (38/38), which exercises signup extensively as a setup
 step across many other real flows.
 
+## Real product image on order detail's line items (new)
+
+**A real, confirmed gap, found while redesigning the mobile order
+detail screen to match a real Stitch reference**: `GET /order/:id`'s
+own line items never included a product image at all — only name/
+quantity/price as plain data. Added a real `imageUrl` field, reusing
+the exact same primary-image definition already established for
+cart's own identical gap earlier this session (the first image by
+real `sort_order`).
+
+**Verified against the real running backend**: placed a real order and
+confirmed the response includes the real field. Full regression:
+web-storefront (38/38), including the order-detail-specific test.
+
 ## Real "send test email" endpoint (new)
 
 **A real, confirmed gap**: no way for an admin to verify real SMTP

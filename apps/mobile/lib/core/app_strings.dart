@@ -181,6 +181,7 @@ class AppStrings {
     'login_to_see_orders': {'en': "Log in to see your order history.\n(Guest checkout orders are confirmed by email, but aren't listed here unless you have an account.)", 'ar': 'سجّل الدخول لرؤية سجل طلباتك.\n(يتم تأكيد طلبات الضيف عبر البريد الإلكتروني، لكنها لا تظهر هنا إلا إذا كان لديك حساب.)'},
     'could_not_load_orders': {'en': 'Could not load orders:', 'ar': 'تعذر تحميل الطلبات:'},
     'no_orders_yet': {'en': 'No orders yet.', 'ar': 'لا توجد طلبات بعد.'},
+    'active_shipments': {'en': 'Active Shipments', 'ar': 'الشحنات النشطة'},
 
     // ---- Order detail ----
     'order': {'en': 'Order', 'ar': 'الطلب'},

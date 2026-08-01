@@ -472,6 +472,38 @@ actually parsing every touched XML file with Python's own XML parser
 directly after each edit, not just eyeballing it — confirmed all 4
 native XML/storyboard files are genuinely valid before finalizing.
 
+## Real Orders (list + detail) redesign, matched directly against the real Stitch reference (5 of 28) — completes the core shopping journey priority
+
+**Orders list, done**: fully migrated to the theme-aware `LeapPalette`,
+color-coded status badges (delivered = green, everything else = the
+brand accent, reusing the exact real `displayStatus` values already
+computed server-side).
+
+**A real, honestly-computed stat added, two others deliberately
+skipped**: the reference shows a 3-stat bento grid ("Active
+Shipments," "Pending Reviews," "Lifetime Parts"). Added only "Active
+Shipments" — genuinely computable by counting the real, already-loaded
+orders whose real status is shipped/to_ship/processing. The other two
+were **not** added: neither a review-eligibility count nor a lifetime
+item count is available from this screen's real data without
+fabricating a number.
+
+**Order detail, done**: fully migrated to the theme-aware
+`LeapPalette`.
+
+**A real, confirmed gap closed on the backend**: order line items
+never included a product image at all — only name/quantity/price as
+plain text. Added a real `imageUrl` field to `GET /order/:id`'s own
+response (reusing the exact same primary-image definition already
+established for cart's own identical gap earlier this session), and
+added real product thumbnails to each item row on this screen.
+Verified against the real running backend and confirmed no regression
+(web-storefront 38/38, including the order-detail-specific test).
+
+**This completes the priority-ordered core shopping journey** (Cart →
+Product → Search → Checkout → Orders), 5 of 28 screens fully
+redesigned. 23 screens remain for a future pass.
+
 ## Real Checkout screen redesign, matched directly against the real Stitch reference (4 of 28)
 
 **Checkout, done**: fully migrated to the theme-aware `LeapPalette`

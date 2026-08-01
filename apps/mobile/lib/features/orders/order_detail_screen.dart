@@ -101,12 +101,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       decoration: BoxDecoration(color: const Color(0xFFFDF1EB), borderRadius: BorderRadius.circular(10)),
       child: Row(
         children: [
-          const Icon(Icons.location_off_outlined, size: 18, color: LeapColors.signal),
+          Icon(Icons.location_off_outlined, size: 18, color: LeapPalette.of(context).signal),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               isAr ? 'الطلب معلّق حتى تؤكد عنوان التسليم.' : 'Order pending — add your delivery address to continue.',
-              style: const TextStyle(fontSize: 12.5, color: LeapColors.ink),
+              style: TextStyle(fontSize: 12.5, color: LeapPalette.of(context).ink),
             ),
           ),
           TextButton(
@@ -121,11 +121,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Widget _buildConfirmedAddress(Map<String, dynamic> address) {
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(border: Border.all(color: LeapColors.line), borderRadius: BorderRadius.circular(10)),
+      decoration: BoxDecoration(border: Border.all(color: LeapPalette.of(context).line), borderRadius: BorderRadius.circular(10)),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.location_on_outlined, size: 18, color: LeapColors.muted),
+          Icon(Icons.location_on_outlined, size: 18, color: LeapPalette.of(context).muted),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -267,7 +267,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       return Scaffold(appBar: AppBar(title: Text(tr(context, 'order'))), body: const Center(child: CircularProgressIndicator()));
     }
     if (_errorMessage != null || _order == null) {
-      return Scaffold(appBar: AppBar(title: Text(tr(context, 'order'))), body: Center(child: Text(_errorMessage ?? tr(context, 'not_found'), style: const TextStyle(color: LeapColors.muted))));
+      return Scaffold(appBar: AppBar(title: Text(tr(context, 'order'))), body: Center(child: Text(_errorMessage ?? tr(context, 'not_found'), style: TextStyle(color: LeapPalette.of(context).muted))));
     }
 
     final subOrders = (_order!['supplierSubOrders'] as List).cast<Map<String, dynamic>>();
@@ -280,7 +280,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               PlateChip(text: _order!['id'] as String),
-              Text(trStatus(context, (_order!['displayStatus'] as String?) ?? (_order!['status'] as String)).toUpperCase(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: LeapColors.torque)),
+              Text(trStatus(context, (_order!['displayStatus'] as String?) ?? (_order!['status'] as String)).toUpperCase(), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: LeapPalette.of(context).torque)),
             ],
           ),
           const SizedBox(height: 6),
@@ -356,13 +356,34 @@ class _SupplierSubOrderCard extends StatelessWidget {
             const SizedBox(height: 4),
             if (trackingNumber != null) ...[
               const SizedBox(height: 4),
-              Text('${tr(context, 'tracking_label')} $trackingNumber', style: const TextStyle(fontSize: 11.5, color: LeapColors.muted)),
+              Text('${tr(context, 'tracking_label')} $trackingNumber', style: TextStyle(fontSize: 11.5, color: LeapPalette.of(context).muted)),
             ],
             const SizedBox(height: 8),
             for (final item in items)
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text('${item['name']} × ${item['quantity']}', style: const TextStyle(fontSize: 12.5)),
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    // Real product thumbnail (new) -- closes a real
+                    // gap: items were shown as plain text only before,
+                    // no real photo at all.
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: item['imageUrl'] != null
+                          ? CachedNetworkImage(
+                              imageUrl: ApiClient.resolveMediaUrl(item['imageUrl'] as String),
+                              width: 40,
+                              height: 40,
+                              fit: BoxFit.cover,
+                              placeholder: (context, url) => Container(width: 40, height: 40, color: Colors.white),
+                              errorWidget: (context, url, error) => Container(width: 40, height: 40, color: Colors.white, child: Icon(Icons.broken_image_outlined, size: 14, color: LeapPalette.of(context).muted)),
+                            )
+                          : Container(width: 40, height: 40, color: Colors.white, child: Icon(Icons.inventory_2_outlined, size: 14, color: LeapPalette.of(context).muted)),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text('${item['name']} × ${item['quantity']}', style: const TextStyle(fontSize: 12.5))),
+                  ],
+                ),
               ),
             const SizedBox(height: 8),
             Align(
@@ -588,7 +609,7 @@ class _ReturnRequestSheetState extends State<_ReturnRequestSheet> {
           const SizedBox(height: 4),
           Text(
             tr(context, 'return_goes_to_leap'),
-            style: const TextStyle(fontSize: 12, color: LeapColors.muted),
+            style: TextStyle(fontSize: 12, color: LeapPalette.of(context).muted),
           ),
           const SizedBox(height: 16),
           TextField(controller: _reasonController, decoration: InputDecoration(labelText: tr(context, 'reason_label'))),
@@ -599,7 +620,7 @@ class _ReturnRequestSheetState extends State<_ReturnRequestSheet> {
             decoration: InputDecoration(labelText: tr(context, 'details_label'), alignLabelWithHint: true),
           ),
           const SizedBox(height: 12),
-          Text(tr(context, 'attach_photos_optional'), style: const TextStyle(fontSize: 12, color: LeapColors.muted)),
+          Text(tr(context, 'attach_photos_optional'), style: TextStyle(fontSize: 12, color: LeapPalette.of(context).muted)),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -621,19 +642,19 @@ class _ReturnRequestSheetState extends State<_ReturnRequestSheet> {
                           // other real image display in this app
                           // already has both; this one (return-
                           // evidence photo previews) didn't.
-                          placeholder: (context, url) => Container(width: 64, height: 64, color: LeapColors.chalk),
+                          placeholder: (context, url) => Container(width: 64, height: 64, color: Colors.white),
                           errorWidget: (context, url, error) => Container(
                             width: 64,
                             height: 64,
-                            color: LeapColors.chalk,
-                            child: const Icon(Icons.broken_image_outlined, size: 20, color: LeapColors.muted),
+                            color: Colors.white,
+                            child: Icon(Icons.broken_image_outlined, size: 20, color: LeapPalette.of(context).muted),
                           ),
                         ),
                       ),
                       Positioned(
                         top: -6, right: -6,
                         child: IconButton(
-                          icon: const Icon(Icons.cancel, size: 18, color: LeapColors.muted),
+                          icon: Icon(Icons.cancel, size: 18, color: LeapPalette.of(context).muted),
                           onPressed: () => _removePhoto(i),
                         ),
                       ),
@@ -645,11 +666,11 @@ class _ReturnRequestSheetState extends State<_ReturnRequestSheet> {
                   onTap: _isUploadingPhoto ? null : _pickAndUploadPhoto,
                   child: Container(
                     width: 64, height: 64,
-                    decoration: BoxDecoration(border: Border.all(color: LeapColors.line), borderRadius: BorderRadius.circular(8)),
+                    decoration: BoxDecoration(border: Border.all(color: LeapPalette.of(context).line), borderRadius: BorderRadius.circular(8)),
                     child: Center(
                       child: _isUploadingPhoto
                           ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.add_a_photo_outlined, color: LeapColors.muted, size: 22),
+                          : Icon(Icons.add_a_photo_outlined, color: LeapPalette.of(context).muted, size: 22),
                     ),
                   ),
                 ),
