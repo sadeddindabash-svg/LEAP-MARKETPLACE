@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
@@ -78,7 +79,7 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
       appBar: AppBar(title: Text(tr(context, 'shop_by_category'))),
       body: _categories == null
           ? (_error != null
-              ? Center(child: Text(_error!, style: const TextStyle(color: LeapColors.muted)))
+              ? Center(child: Text(_error!, style: TextStyle(color: LeapPalette.of(context).muted)))
               : const Center(child: CircularProgressIndicator()))
           : Row(
               children: [
@@ -86,28 +87,54 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
                 SizedBox(
                   width: 96,
                   child: Container(
-                    color: LeapColors.chalk,
+                    color: LeapPalette.of(context).chalk,
                     child: ListView.builder(
                       itemCount: _categories!.length,
                       itemBuilder: (context, i) {
                         final c = _categories![i];
                         final selected = c.id == _selectedCategoryId;
+                        final palette = LeapPalette.of(context);
                         return InkWell(
                           onTap: () => _selectCategory(c.id),
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
                             decoration: BoxDecoration(
-                              color: selected ? Colors.white : Colors.transparent,
-                              border: Border(left: BorderSide(color: selected ? LeapColors.signal : Colors.transparent, width: 3)),
+                              color: selected ? palette.card : Colors.transparent,
+                              border: Border(left: BorderSide(color: selected ? palette.signal : Colors.transparent, width: 3)),
                             ),
-                            child: Text(
-                              c.displayName(isAr),
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                                color: selected ? LeapColors.signal : LeapColors.ink,
-                              ),
+                            child: Column(
+                              children: [
+                                // Real category photo (new) -- closes a
+                                // real gap: the backend's own real,
+                                // admin-uploaded photoUrl field existed
+                                // already, the app just never showed it.
+                                // Falls back to a plain icon when a real
+                                // category genuinely has no photo
+                                // uploaded yet (most don't, currently).
+                                Container(
+                                  width: 44,
+                                  height: 44,
+                                  margin: const EdgeInsets.only(bottom: 6),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Colors.white,
+                                    border: Border.all(color: selected ? palette.signal : palette.line),
+                                  ),
+                                  clipBehavior: Clip.antiAlias,
+                                  child: c.photoUrl != null
+                                      ? CachedNetworkImage(imageUrl: ApiClient.resolveMediaUrl(c.photoUrl!), fit: BoxFit.cover, errorWidget: (context, url, error) => Icon(Icons.category_outlined, size: 18, color: palette.muted))
+                                      : Icon(Icons.category_outlined, size: 18, color: selected ? palette.signal : palette.muted),
+                                ),
+                                Text(
+                                  c.displayName(isAr),
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                                    color: selected ? palette.signal : palette.ink,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         );
@@ -115,12 +142,13 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
                     ),
                   ),
                 ),
-                const VerticalDivider(width: 1),
+                VerticalDivider(width: 1, color: LeapPalette.of(context).line),
                 // Real parts within the selected category.
                 Expanded(
                   child: FutureBuilder<List<ProductCategory>>(
                     future: _partsFuture,
                     builder: (context, snapshot) {
+                      final palette = LeapPalette.of(context);
                       if (snapshot.connectionState == ConnectionState.waiting) {
                         return const Center(child: CircularProgressIndicator());
                       }
@@ -128,7 +156,7 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
                         return Center(
                           child: Padding(
                             padding: const EdgeInsets.all(16),
-                            child: Text('${tr(context, 'could_not_load_products')}\n${snapshot.error}', textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted)),
+                            child: Text('${tr(context, 'could_not_load_products')}\n${snapshot.error}', textAlign: TextAlign.center, style: TextStyle(color: palette.muted)),
                           ),
                         );
                       }
@@ -137,7 +165,7 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
                         return Center(
                           child: Padding(
                             padding: const EdgeInsets.all(16),
-                            child: Text(tr(context, 'no_parts_in_category'), textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted)),
+                            child: Text(tr(context, 'no_parts_in_category'), textAlign: TextAlign.center, style: TextStyle(color: palette.muted)),
                           ),
                         );
                       }
@@ -149,10 +177,11 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
                           final part = parts[i];
                           final partLabel = part.displayName(isAr);
                           final categoryLabel = (selectedCategory != null && selectedCategory.id.isNotEmpty) ? selectedCategory.displayName(isAr) : '';
-                          return Card(
+                          return Container(
+                            decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(10), border: Border.all(color: palette.line)),
                             child: ListTile(
-                              title: Text(partLabel),
-                              trailing: const Icon(Icons.chevron_right),
+                              title: Text(partLabel, style: TextStyle(color: palette.ink)),
+                              trailing: Icon(Icons.chevron_right, color: palette.muted),
                               onTap: () => context.push(
                                 '/category/$_selectedCategoryId',
                                 extra: {'categoryName': categoryLabel, 'part': part.nameEn},

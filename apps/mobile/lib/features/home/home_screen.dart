@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
@@ -282,7 +283,16 @@ class _HomeScreenState extends State<HomeScreen> {
                               shape: BoxShape.circle,
                               border: Border.all(color: palette.line),
                             ),
-                            child: Icon(_iconForCategory(c.id), color: palette.signal),
+                            clipBehavior: Clip.antiAlias,
+                            // Real category photo (new) -- closes a
+                            // real gap: the backend's own real,
+                            // admin-uploaded photoUrl field existed
+                            // already, this screen just never showed
+                            // it. Falls back to the existing icon when
+                            // a real category genuinely has none yet.
+                            child: c.photoUrl != null
+                                ? CachedNetworkImage(imageUrl: ApiClient.resolveMediaUrl(c.photoUrl!), fit: BoxFit.cover, errorWidget: (context, url, error) => Icon(_iconForCategory(c.id), color: palette.signal))
+                                : Icon(_iconForCategory(c.id), color: palette.signal),
                           ),
                           const SizedBox(height: 6),
                           Text(label, style: const TextStyle(fontSize: 10), textAlign: TextAlign.center),

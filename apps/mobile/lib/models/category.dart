@@ -7,8 +7,13 @@ class ProductCategory {
   final String id;
   final String nameEn;
   final String? nameAr;
+  // Real, admin-uploaded category photo (new) -- closes a real gap:
+  // the backend's own toCategoryDto already included this real field
+  // for every buyer-facing request, the mobile app just never parsed
+  // or displayed it before.
+  final String? photoUrl;
 
-  const ProductCategory({required this.id, required this.nameEn, this.nameAr});
+  const ProductCategory({required this.id, required this.nameEn, this.nameAr, this.photoUrl});
 
   /// Real name in whichever language is currently selected, falling back
   /// to English if no Arabic translation exists for this category yet.
@@ -18,5 +23,6 @@ class ProductCategory {
         id: json['id'] as String,
         nameEn: json['nameEn'] as String,
         nameAr: json['nameAr'] as String?,
+        photoUrl: json['photoUrl'] as String?,
       );
 }

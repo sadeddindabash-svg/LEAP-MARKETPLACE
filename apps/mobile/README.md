@@ -472,6 +472,35 @@ actually parsing every touched XML file with Python's own XML parser
 directly after each edit, not just eyeballing it — confirmed all 4
 native XML/storyboard files are genuinely valid before finalizing.
 
+## Real Shop by Category redesign, matched directly against the real Stitch reference (7 of 28)
+
+**A real, structural difference confirmed before touching anything**:
+the real Stitch reference shows a simple circular category grid, but
+this app's actual screen is genuinely more advanced — a sidebar of
+every category with a real, separate parts-drill-down list, tapping a
+part filtering the catalog to that exact part. Preserved this real,
+working navigation structure exactly (this is real, more functional
+behavior than the reference's simple grid, and replacing it would be
+a real regression, not a redesign) — migrated the visual styling
+(theme-aware `LeapPalette`, refined spacing/borders) to match the
+reference's aesthetic instead.
+
+**A real, confirmed gap closed, found while comparing against the
+reference**: the backend's own `toCategoryDto` already included a
+real, admin-uploaded `photoUrl` field for every category — the mobile
+app's own `ProductCategory` model just never parsed or displayed it.
+Added the field, and added real photo display (with a graceful icon
+fallback) to both this screen's sidebar and Home's own category tiles,
+closing the same real gap in both places consistently.
+
+**Verified directly against the real seed data**: most real,
+production-relevant categories (Engine, Electrical, Filters,
+Suspension, Lighting, Brake System) genuinely have no photo uploaded
+yet — a real, confirmed data gap on the admin side, not a code bug —
+only a few test categories have real test image paths. The graceful
+icon fallback is not a hidden failure state, it's the honest, expected
+behavior for a category with no photo.
+
 ## Real My Garage redesign, matched directly against the real Stitch reference (6 of 28)
 
 **My Garage, done**: fully migrated to the theme-aware `LeapPalette`,
