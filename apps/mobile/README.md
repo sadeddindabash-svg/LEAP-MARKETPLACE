@@ -472,6 +472,33 @@ actually parsing every touched XML file with Python's own XML parser
 directly after each edit, not just eyeballing it — confirmed all 4
 native XML/storyboard files are genuinely valid before finalizing.
 
+## Real Cart screen redesign, matched directly against the real Stitch reference (part of the full 28-screen redesign effort)
+
+**Part of a larger, real, prioritized effort**: a complete 28-screen
+Stitch export was provided along with a detailed redesign brief.
+Given the real size of that work, screens are being redesigned
+incrementally, prioritized by the core shopping journey first (Cart →
+Product → Search → Checkout → Orders), confirmed directly.
+
+**Cart, done**: fully migrated to the theme-aware `LeapPalette`
+(confirmed zero remaining `LeapColors.*` references), larger product
+photography (72px, scaled down from the reference's 96-128px desktop
+size to fit a real phone screen), a real pill-shaped quantity stepper,
+and a real "Order summary" card showing the real subtotal.
+
+**Two real, deliberate deviations from the reference, not oversights**:
+- The reference groups items under a real supplier name ("Supplier:
+  ALPHA-71") — this app's own confirmed business rule is that a buyer
+  never sees a real supplier's identity anywhere, so this still uses
+  the existing, already-anonymized `cart.itemsBySupplier` grouping,
+  not real names.
+- The reference's "Precision Shipping" / "Estimated Tax" line items
+  and "Save Quote" button were **not** added — neither is real data
+  or functionality that exists in this app (shipping/tax are only
+  ever computed at real checkout time, not in the cart itself), so
+  adding them here would mean fabricating figures or a button that
+  doesn't do anything.
+
 ## Real follow-up fixes after comparing a real screenshot against the Stitch reference directly
 
 **Confirmed directly, not guessed**: a real screenshot of the running

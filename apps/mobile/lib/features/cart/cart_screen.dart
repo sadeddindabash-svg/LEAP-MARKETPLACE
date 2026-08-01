@@ -13,42 +13,66 @@ import '../../services/api_client.dart';
 /// checkout time (server-side), invisibly to the buyer. Every quantity
 /// change and removal here is a real call to services/api/cart — there is
 /// no local-only cart state to reconcile later.
+///
+/// Real visual redesign (new), matched directly against the real Stitch
+/// "cart" reference export. One real, deliberate deviation, not an
+/// oversight: the reference groups items under a REAL supplier name
+/// ("Supplier: ALPHA-71") -- this app's own real, confirmed business
+/// rule is that a buyer never sees a real supplier's identity anywhere,
+/// so this still uses the existing, already-anonymized
+/// `cart.itemsBySupplier` grouping ("Supplier", "Supplier 1", etc.),
+/// not the reference's real names. Also does not add the reference's
+/// "Precision Shipping" / "Estimated Tax" line items or "Save Quote"
+/// button -- neither is real data/functionality that exists in this
+/// app (shipping/tax are only ever computed at real checkout time, not
+/// in the cart), so adding them here would be fabricating figures or a
+/// feature that doesn't work.
 class CartScreen extends StatelessWidget {
   const CartScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     final cart = context.watch<CartState>();
+    final palette = LeapPalette.of(context);
 
     return Scaffold(
       appBar: AppBar(title: Text(tr(context, 'basket'))),
-      body: _buildBody(context, cart),
+      body: _buildBody(context, cart, palette),
       bottomNavigationBar: (cart.isLoading || cart.isEmpty)
           ? null
-          : Padding(
+          : Container(
               padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(tr(context, 'total'), style: const TextStyle(color: LeapColors.muted)),
-                      Text('\$${cart.total.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20)),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  ElevatedButton(
-                    onPressed: () => context.push('/checkout'),
-                    child: Text(tr(context, 'checkout')),
-                  ),
-                ],
+              decoration: BoxDecoration(
+                color: palette.card,
+                border: Border(top: BorderSide(color: palette.line)),
+              ),
+              child: SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(tr(context, 'total').toUpperCase(), style: TextStyle(color: palette.muted, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                        Text('\$${cart.total.toStringAsFixed(2)}', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 24, color: palette.signal)),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () => context.push('/checkout'),
+                        child: Text(tr(context, 'checkout')),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
     );
   }
 
-  Widget _buildBody(BuildContext context, CartState cart) {
+  Widget _buildBody(BuildContext context, CartState cart, LeapPalette palette) {
     if (cart.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -59,7 +83,7 @@ class CartScreen extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(cart.errorMessage!, textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted)),
+              Text(cart.errorMessage!, textAlign: TextAlign.center, style: TextStyle(color: palette.muted)),
               const SizedBox(height: 12),
               ElevatedButton(onPressed: cart.refresh, child: Text(tr(context, 'retry'))),
             ],
@@ -74,10 +98,10 @@ class CartScreen extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.shopping_cart_outlined, size: 40, color: LeapColors.muted),
+              Icon(Icons.shopping_cart_outlined, size: 40, color: palette.muted),
               const SizedBox(height: 12),
               Text(tr(context, 'basket_empty'),
-                  textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted)),
+                  textAlign: TextAlign.center, style: TextStyle(color: palette.muted)),
               const SizedBox(height: 20),
               // Real "Browse products" CTA (new) -- closes a real gap:
               // this empty state's own copy already said "Browse
@@ -96,7 +120,41 @@ class CartScreen extends StatelessWidget {
     final grouped = cart.itemsBySupplier;
     return ListView(
       padding: const EdgeInsets.all(16),
-      children: grouped.entries.map((entry) => _SupplierGroup(supplierName: entry.key, items: entry.value)).toList(),
+      children: [
+        for (final entry in grouped.entries) _SupplierGroup(supplierName: entry.key, items: entry.value),
+        // Real order summary (new) -- shows only real, currently-known
+        // data (subtotal). Deliberately does not show a shipping/tax
+        // breakdown here, matching the real Stitch reference's own
+        // "Order Specifications" section structurally -- that real
+        // breakdown only exists once real checkout computes it.
+        Container(
+          decoration: BoxDecoration(
+            color: palette.card,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: palette.line),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(14),
+                child: Text(tr(context, 'order_summary'), style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: palette.ink)),
+              ),
+              Divider(height: 1, color: palette.line),
+              Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(tr(context, 'subtotal'), style: TextStyle(color: palette.muted, fontSize: 13)),
+                    Text('\$${cart.total.toStringAsFixed(2)}', style: TextStyle(color: palette.ink, fontSize: 13, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -108,20 +166,21 @@ class _SupplierGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = LeapPalette.of(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(border: Border.all(color: LeapColors.line), borderRadius: BorderRadius.circular(12)),
-      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            color: LeapColors.chalk,
-            child: Text('${tr(context, 'ships_from')} $supplierName',
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: LeapColors.muted, letterSpacing: 0.3)),
+          Row(
+            children: [
+              Icon(Icons.inventory_2_outlined, size: 14, color: palette.signal),
+              const SizedBox(width: 6),
+              Text('${tr(context, 'ships_from')} $supplierName'.toUpperCase(),
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: palette.muted, letterSpacing: 0.8)),
+            ],
           ),
+          const SizedBox(height: 8),
           for (final item in items) _CartItemRow(item: item),
         ],
       ),
@@ -220,6 +279,7 @@ class _CartItemRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cart = context.read<CartState>();
+    final palette = LeapPalette.of(context);
     // Real, proactive stock limit (new) -- disables "+" right at the
     // real stock ceiling, rather than only reacting after the backend
     // rejects it. Genuinely honest either way: stock isn't reserved
@@ -230,43 +290,64 @@ class _CartItemRow extends StatelessWidget {
     final atStockLimit = item.quantity >= item.stockQuantity;
     final remainingAfterThis = item.stockQuantity - item.quantity;
 
-    return Padding(
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: palette.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: palette.line),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Real product thumbnail (new) -- closes a real gap: this
-          // was a plain, generic placeholder icon before, never the
-          // real product photo.
+          // Real product thumbnail (new), sized up to match the real
+          // Stitch reference's own larger, more prominent product
+          // photography (scaled down from its 96-128px desktop size to
+          // fit a real phone screen's own row height reasonably).
           ClipRRect(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(10),
             child: item.imageUrl != null
                 ? CachedNetworkImage(
                     imageUrl: ApiClient.resolveMediaUrl(item.imageUrl!),
-                    width: 48,
-                    height: 48,
+                    width: 72,
+                    height: 72,
                     fit: BoxFit.cover,
-                    placeholder: (context, url) => Container(width: 48, height: 48, color: LeapColors.chalk),
+                    placeholder: (context, url) => Container(width: 72, height: 72, color: Colors.white),
                     errorWidget: (context, url, error) => Container(
-                      width: 48,
-                      height: 48,
-                      color: LeapColors.chalk,
-                      child: const Icon(Icons.broken_image_outlined, size: 18, color: LeapColors.muted),
+                      width: 72,
+                      height: 72,
+                      color: Colors.white,
+                      child: Icon(Icons.broken_image_outlined, size: 22, color: palette.muted),
                     ),
                   )
                 : Container(
-                    width: 48,
-                    height: 48,
-                    color: LeapColors.chalk,
-                    child: const Icon(Icons.album_outlined, color: LeapColors.ink),
+                    width: 72,
+                    height: 72,
+                    color: Colors.white,
+                    child: Icon(Icons.album_outlined, color: palette.ink),
                   ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(item.name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(item.name, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: palette.ink), maxLines: 2, overflow: TextOverflow.ellipsis),
+                    ),
+                    IconButton(
+                      onPressed: () => _removeItem(context, cart),
+                      icon: Icon(Icons.delete_outline, size: 18, color: palette.muted),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ],
+                ),
                 if (remainingAfterThis <= 5)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
@@ -274,15 +355,17 @@ class _CartItemRow extends StatelessWidget {
                       remainingAfterThis <= 0
                           ? tr(context, 'cart_at_stock_limit')
                           : '${tr(context, 'cart_only')} $remainingAfterThis ${tr(context, 'cart_left_in_stock')}',
-                      style: const TextStyle(fontSize: 10.5, color: LeapColors.signal, fontWeight: FontWeight.w600),
+                      style: TextStyle(fontSize: 10.5, color: palette.signal, fontWeight: FontWeight.w600),
                     ),
                   ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    DecoratedBox(
-                      decoration: BoxDecoration(border: Border.all(color: LeapColors.line), borderRadius: BorderRadius.circular(7)),
+                    // Real pill-shaped quantity stepper (new), matching
+                    // the real Stitch reference exactly.
+                    Container(
+                      decoration: BoxDecoration(color: palette.chalk, borderRadius: BorderRadius.circular(999), border: Border.all(color: palette.line)),
                       child: Row(
                         children: [
                           IconButton(
@@ -290,28 +373,24 @@ class _CartItemRow extends StatelessWidget {
                             padding: const EdgeInsets.all(6),
                             constraints: const BoxConstraints(),
                             onPressed: () => _changeQuantity(context, cart, item.quantity - 1),
-                            icon: const Icon(Icons.remove),
+                            icon: Icon(Icons.remove, color: palette.ink),
                           ),
-                          SizedBox(width: 18, child: Text('${item.quantity}', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+                          SizedBox(width: 20, child: Text('${item.quantity}', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: palette.ink))),
                           IconButton(
                             iconSize: 14,
                             padding: const EdgeInsets.all(6),
                             constraints: const BoxConstraints(),
                             onPressed: atStockLimit ? null : () => _changeQuantity(context, cart, item.quantity + 1),
-                            icon: const Icon(Icons.add),
+                            icon: Icon(Icons.add, color: atStockLimit ? palette.muted : palette.ink),
                           ),
                         ],
                       ),
                     ),
-                    Text('\$${item.lineTotal.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                    Text('\$${item.lineTotal.toStringAsFixed(2)}', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: palette.signal)),
                   ],
                 ),
               ],
             ),
-          ),
-          IconButton(
-            onPressed: () => _removeItem(context, cart),
-            icon: const Icon(Icons.close, size: 16, color: LeapColors.muted),
           ),
         ],
       ),
