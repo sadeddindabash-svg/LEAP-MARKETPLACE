@@ -444,7 +444,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(border: Border.all(color: LeapColors.line), borderRadius: BorderRadius.circular(10)),
+      decoration: BoxDecoration(border: Border.all(color: LeapPalette.of(context).line), borderRadius: BorderRadius.circular(10)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -513,10 +513,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           if (auth.isLoggedIn)
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: LeapColors.chalk, borderRadius: BorderRadius.circular(10)),
+              decoration: BoxDecoration(color: LeapPalette.of(context).chalk, borderRadius: BorderRadius.circular(10)),
               child: Row(
                 children: [
-                  const Icon(Icons.check_circle, size: 18, color: LeapColors.gauge),
+                  Icon(Icons.check_circle, size: 18, color: LeapPalette.of(context).gauge),
                   const SizedBox(width: 8),
                   Expanded(child: Text('${tr(context, 'ordering_as')} ${auth.user!['email']}', style: const TextStyle(fontSize: 12.5))),
                 ],
@@ -525,10 +525,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           else if (AppConfig.guestCheckoutEnabled) ...[
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: LeapColors.chalk, borderRadius: BorderRadius.circular(10)),
+              decoration: BoxDecoration(color: LeapPalette.of(context).chalk, borderRadius: BorderRadius.circular(10)),
               child: Text(
                 tr(context, 'guest_checkout_note'),
-                style: const TextStyle(fontSize: 12.5, color: LeapColors.muted),
+                style: TextStyle(fontSize: 12.5, color: LeapPalette.of(context).muted),
               ),
             ),
             const SizedBox(height: 12),
@@ -550,12 +550,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           const SizedBox(height: 12),
           KeyedSubtree(key: _paymentSectionKey, child: Text(tr(context, 'payment_method'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
           const SizedBox(height: 8),
-          ..._paymentMethods.map((m) => RadioListTile<String>(
-                contentPadding: EdgeInsets.zero,
-                value: m.id,
-                groupValue: _selectedPayment,
-                onChanged: (v) => setState(() => _selectedPayment = v!),
-                title: Row(children: [Icon(m.icon, size: 18), const SizedBox(width: 10), Text(m.label)]),
+          ..._paymentMethods.map((m) => Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(
+                  border: Border.all(color: _selectedPayment == m.id ? LeapPalette.of(context).signal : LeapPalette.of(context).line),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: RadioListTile<String>(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                  value: m.id,
+                  groupValue: _selectedPayment,
+                  onChanged: (v) => setState(() => _selectedPayment = v!),
+                  title: Row(children: [Icon(m.icon, size: 18), const SizedBox(width: 10), Text(m.label)]),
+                ),
               )),
           const SizedBox(height: 12),
           KeyedSubtree(key: _summarySectionKey, child: Text(tr(context, 'order_summary'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
@@ -567,7 +574,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           // they were actually about to buy.
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(border: Border.all(color: LeapColors.line), borderRadius: BorderRadius.circular(10)),
+            decoration: BoxDecoration(border: Border.all(color: LeapPalette.of(context).line), borderRadius: BorderRadius.circular(10)),
             child: Column(
               children: [
                 for (final item in cart.items)
@@ -583,22 +590,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           child: item.imageUrl != null
                               ? CachedNetworkImage(
                                   imageUrl: ApiClient.resolveMediaUrl(item.imageUrl!),
-                                  width: 36,
-                                  height: 36,
+                                  width: 56,
+                                  height: 56,
                                   fit: BoxFit.cover,
-                                  placeholder: (context, url) => Container(width: 36, height: 36, color: LeapColors.chalk),
+                                  placeholder: (context, url) => Container(width: 56, height: 56, color: Colors.white),
                                   errorWidget: (context, url, error) => Container(
                                     width: 36,
                                     height: 36,
-                                    color: LeapColors.chalk,
-                                    child: const Icon(Icons.broken_image_outlined, size: 14, color: LeapColors.muted),
+                                    color: Colors.white,
+                                    child: Icon(Icons.broken_image_outlined, size: 14, color: LeapPalette.of(context).muted),
                                   ),
                                 )
                               : Container(
-                                  width: 36,
-                                  height: 36,
-                                  color: LeapColors.chalk,
-                                  child: const Icon(Icons.inventory_2_outlined, size: 14, color: LeapColors.muted),
+                                  width: 56,
+                                  height: 56,
+                                  color: Colors.white,
+                                  child: Icon(Icons.inventory_2_outlined, size: 14, color: LeapPalette.of(context).muted),
                                 ),
                         ),
                         const SizedBox(width: 10),
@@ -645,19 +652,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             const SizedBox(height: 6),
             Text(
               _promoMessage!,
-              style: TextStyle(fontSize: 12, color: _appliedPromoCode != null ? LeapColors.gauge : Colors.red),
+              style: TextStyle(fontSize: 12, color: _appliedPromoCode != null ? LeapPalette.of(context).gauge : Colors.red),
             ),
           ],
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(border: Border.all(color: LeapColors.line), borderRadius: BorderRadius.circular(10)),
+            decoration: BoxDecoration(border: Border.all(color: LeapPalette.of(context).line), borderRadius: BorderRadius.circular(10)),
             child: Column(
               children: [
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('${cart.itemCount} item(s) · ${tr(context, 'subtotal')}', style: const TextStyle(color: LeapColors.muted, fontSize: 12.5)),
+                    Text('${cart.itemCount} item(s) · ${tr(context, 'subtotal')}', style: TextStyle(color: LeapPalette.of(context).muted, fontSize: 12.5)),
                     Text('\$${cart.total.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w700)),
                   ],
                 ),
@@ -666,8 +673,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('${tr(context, 'discount')} ($_appliedPromoCode)', style: const TextStyle(color: LeapColors.gauge, fontSize: 12.5)),
-                      Text('-\$${_previewDiscount(cart.total).toStringAsFixed(2)}', style: const TextStyle(color: LeapColors.gauge, fontWeight: FontWeight.w700)),
+                      Text('${tr(context, 'discount')} ($_appliedPromoCode)', style: TextStyle(color: LeapPalette.of(context).gauge, fontSize: 12.5)),
+                      Text('-\$${_previewDiscount(cart.total).toStringAsFixed(2)}', style: TextStyle(color: LeapPalette.of(context).gauge, fontWeight: FontWeight.w700)),
                     ],
                   ),
                 ],
@@ -792,7 +799,7 @@ class _AddressConfirmationSheetState extends State<_AddressConfirmationSheet> {
               widget.wasSuggested
                   ? 'We found this from your location — check it over and adjust anything before confirming.'
                   : 'We couldn\'t detect your location. Fill this in so we know where to ship your order.',
-              style: const TextStyle(fontSize: 12.5, color: LeapColors.muted),
+              style: TextStyle(fontSize: 12.5, color: LeapPalette.of(context).muted),
             ),
             const SizedBox(height: 16),
             TextField(controller: _recipientController, decoration: const InputDecoration(labelText: 'Recipient name')),

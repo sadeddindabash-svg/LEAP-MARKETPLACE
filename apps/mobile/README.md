@@ -472,6 +472,31 @@ actually parsing every touched XML file with Python's own XML parser
 directly after each edit, not just eyeballing it — confirmed all 4
 native XML/storyboard files are genuinely valid before finalizing.
 
+## Real Checkout screen redesign, matched directly against the real Stitch reference (4 of 28)
+
+**Checkout, done**: fully migrated to the theme-aware `LeapPalette`
+(confirmed zero remaining `LeapColors.*` references), payment method
+options restyled as bordered, highlighted cards matching the
+reference (kept the existing, already-functional `RadioListTile`
+selection logic — restyling only the visual container around it,
+not the underlying working behavior), and larger item thumbnails in
+the itemized summary (56px, up from 36px).
+
+**Two real, deliberate deviations from the reference, not oversights**:
+- The reference shows fabricated stored payment cards ("•••• •••• ••••
+  8842 | Mastercard Platinum") — this app's own real payment method
+  selection is already, honestly, presentational only (flagged
+  directly in this file's own header comment: it doesn't yet connect
+  to a real payment charge), so no fake stored-card data was added.
+- The reference shows "Shipping (Priority) / Tax (Estimated)" line
+  items and a fake "LEAP Rewards" loyalty-points card — neither
+  separate shipping/tax fields nor a loyalty-points system exist in
+  this app's real data model, so neither was added. The real,
+  already-working promo code field (which the reference doesn't even
+  show) was kept exactly as it was — removing a genuinely working
+  feature to visually match a static mockup would be a real regression,
+  not a redesign.
+
 ## Real Search Results screen redesign, matched directly against the real Stitch reference (3 of 28)
 
 **A real, significant gap closed, not just a visual redesign**: search
