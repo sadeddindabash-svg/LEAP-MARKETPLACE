@@ -472,6 +472,26 @@ actually parsing every touched XML file with Python's own XML parser
 directly after each edit, not just eyeballing it — confirmed all 4
 native XML/storyboard files are genuinely valid before finalizing.
 
+## Real Wishlist redesign, matched directly against the real Stitch reference (8 of 28)
+
+**Wishlist, done, mostly already covered**: this screen already reused
+the same real `ProductCard` widget fully migrated to the theme-aware
+palette earlier (during the Home/Search redesigns) — white product
+image backgrounds, real stock status, working wishlist/add-to-cart
+buttons. Finished migrating this screen's own remaining empty/error
+states.
+
+**Two real, deliberate omissions, not oversights**:
+- The reference shows a distinct "Back in Stock!" gold badge, separate
+  from a plain "In Stock" one. This would require knowing whether an
+  item was recently restocked specifically, not just whether it's
+  currently in stock — no such "recently restocked" flag exists on a
+  product, so `ProductCard`'s existing, honest in-stock/out-of-stock
+  distinction was kept as-is rather than fabricating a "recently"
+  state that can't actually be determined.
+- The reference's "Share List" button was not added — no
+  wishlist-sharing feature exists anywhere in the real backend.
+
 ## Real Shop by Category redesign, matched directly against the real Stitch reference (7 of 28)
 
 **A real, structural difference confirmed before touching anything**:

@@ -59,7 +59,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 80),
-                    child: Center(child: Text('${tr(context, 'could_not_load_products')} ${snapshot.error}', style: const TextStyle(color: LeapColors.muted))),
+                    child: Center(child: Text('${tr(context, 'could_not_load_products')} ${snapshot.error}', style: TextStyle(color: LeapPalette.of(context).muted))),
                   ),
                 ],
               );
@@ -73,7 +73,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                     padding: const EdgeInsets.all(24),
                     child: Column(
                       children: [
-                        Text(tr(context, 'no_wishlist_items_yet'), textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted)),
+                        Text(tr(context, 'no_wishlist_items_yet'), textAlign: TextAlign.center, style: TextStyle(color: LeapPalette.of(context).muted)),
                         const SizedBox(height: 16),
                         ElevatedButton(
                           onPressed: () => context.go('/home'),
