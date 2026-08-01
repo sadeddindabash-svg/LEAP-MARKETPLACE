@@ -83,17 +83,34 @@ class _SavedSearchesScreenState extends State<SavedSearchesScreen> {
     );
   }
 
+  // Real relative-time formatting for the real lastCheckedAt field
+  // (new) -- matches the real Stitch reference's own "Last checked: Xh
+  // ago" concept, using genuine data that already existed rather than
+  // a fabricated one.
+  String _relativeTime(DateTime? dt, bool isAr) {
+    if (dt == null) return isAr ? 'لم يُفحص بعد' : 'Not checked yet';
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1) return isAr ? 'الآن' : 'just now';
+    if (diff.inHours < 1) return isAr ? 'منذ ${diff.inMinutes} د' : '${diff.inMinutes}m ago';
+    if (diff.inDays < 1) return isAr ? 'منذ ${diff.inHours} س' : '${diff.inHours}h ago';
+    return isAr ? 'منذ ${diff.inDays} يوم' : '${diff.inDays}d ago';
+  }
+
   Widget _buildBody(bool isAr) {
+    final palette = LeapPalette.of(context);
     if (_isLoading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) return Center(child: Text(_error!, style: const TextStyle(color: LeapColors.muted)));
+    if (_error != null) return Center(child: Text(_error!, style: TextStyle(color: palette.muted)));
     final searches = _searches ?? [];
     if (searches.isEmpty) {
       return Center(
-        child: Text(
-          isAr ? 'لا توجد عمليات بحث محفوظة بعد. احفظ بحثًا من شاشة البحث لتلقي إشعارات بالنتائج الجديدة.'
-               : 'No saved searches yet. Save one from the search screen to get notified of new matches.',
-          textAlign: TextAlign.center,
-          style: const TextStyle(color: LeapColors.muted),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            isAr ? 'لا توجد عمليات بحث محفوظة بعد. احفظ بحثًا من شاشة البحث لتلقي إشعارات بالنتائج الجديدة.'
+                 : 'No saved searches yet. Save one from the search screen to get notified of new matches.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: palette.muted),
+          ),
         ),
       );
     }
@@ -103,15 +120,45 @@ class _SavedSearchesScreenState extends State<SavedSearchesScreen> {
       separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (context, i) {
         final s = searches[i];
-        return Card(
-          child: ListTile(
-            leading: const Icon(Icons.bookmark_outlined, color: LeapColors.ink),
-            title: Text(s.label, style: const TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: Text(s.searchTerm ?? s.category ?? ''),
-            trailing: IconButton(
-              icon: const Icon(Icons.delete_outline, color: LeapColors.muted),
-              onPressed: () => _confirmDelete(s, isAr),
-            ),
+        return Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(12), border: Border.all(color: palette.line)),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(color: palette.chalk, borderRadius: BorderRadius.circular(10)),
+                child: Icon(Icons.bookmark_outlined, color: palette.signal),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(s.label, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: palette.ink)),
+                    const SizedBox(height: 3),
+                    Text(s.searchTerm ?? s.category ?? '', style: TextStyle(fontSize: 12, color: palette.muted)),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${isAr ? 'آخر فحص:' : 'Last checked:'} ${_relativeTime(s.lastCheckedAt, isAr)}',
+                      style: TextStyle(fontSize: 10.5, color: palette.muted, fontStyle: FontStyle.italic),
+                    ),
+                  ],
+                ),
+              ),
+              // Real, static "notifications on" indicator (new) --
+              // deliberately not a toggle: the whole point of a real
+              // saved search is the real periodic backend check that
+              // notifies on a new match, always active for every real
+              // saved search, not a per-search on/off preference that
+              // doesn't exist in the real data model.
+              Icon(Icons.notifications_active, color: palette.signal, size: 20),
+              IconButton(
+                icon: Icon(Icons.delete_outline, color: palette.muted),
+                onPressed: () => _confirmDelete(s, isAr),
+              ),
+            ],
           ),
         );
       },

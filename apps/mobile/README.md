@@ -472,6 +472,27 @@ actually parsing every touched XML file with Python's own XML parser
 directly after each edit, not just eyeballing it — confirmed all 4
 native XML/storyboard files are genuinely valid before finalizing.
 
+## Real Saved Searches redesign, matched directly against the real Stitch reference (10 of 28)
+
+**Saved Searches, done**: fully migrated to the theme-aware
+`LeapPalette`, restyled as bordered cards with an icon box, matching
+the reference's own layout.
+
+**A real, genuinely-computed addition, not fabricated**: added a
+"Last checked: Xh ago" relative-time display, matching the reference's
+own concept — using the real `lastCheckedAt` field the backend
+already tracked (each saved search's own real periodic check
+timestamp), which the screen simply never displayed before.
+
+**Two real, deliberate omissions, not oversights**: the reference
+shows "Instant Alerts / Weekly Digest / Price Drops" per-search
+notification-preference checkboxes and a fake "Premium Sourcing /
+Upgrade Now" card — neither a granular per-search notification
+preference nor any premium/paid tier exists anywhere in the real
+backend. Kept the existing, real, always-on notification behavior
+(shown as a static bell icon, not a toggle that would imply a
+preference that can't actually be changed).
+
 ## Real Category (per-category product list) redesign, matched directly against the real Stitch reference (9 of 28)
 
 **Category, done, mostly already covered**: this screen also already
