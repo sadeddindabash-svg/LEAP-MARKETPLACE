@@ -53,7 +53,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text('${tr(context, 'could_not_load_products')}\n${snapshot.error}', textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted)),
+                child: Text('${tr(context, 'could_not_load_products')}\n${snapshot.error}', textAlign: TextAlign.center, style: TextStyle(color: LeapPalette.of(context).muted)),
               ),
             );
           }
@@ -62,7 +62,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text(tr(context, 'no_products_in_category'), textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted)),
+                child: Text(tr(context, 'no_products_in_category'), textAlign: TextAlign.center, style: TextStyle(color: LeapPalette.of(context).muted)),
               ),
             );
           }

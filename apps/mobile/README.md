@@ -472,6 +472,15 @@ actually parsing every touched XML file with Python's own XML parser
 directly after each edit, not just eyeballing it — confirmed all 4
 native XML/storyboard files are genuinely valid before finalizing.
 
+## Real Category (per-category product list) redesign, matched directly against the real Stitch reference (9 of 28)
+
+**Category, done, mostly already covered**: this screen also already
+reused the same real `ProductCard` widget fully migrated to the
+theme-aware palette earlier. Finished migrating this screen's own
+remaining error/empty states. No new gap found — the reference
+doesn't show anything (like a fitment/vehicle filter) beyond what this
+screen and `ProductCard` already correctly provide.
+
 ## Real Wishlist redesign, matched directly against the real Stitch reference (8 of 28)
 
 **Wishlist, done, mostly already covered**: this screen already reused
