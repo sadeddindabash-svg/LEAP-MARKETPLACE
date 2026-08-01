@@ -6,9 +6,14 @@ import '../../services/api_client.dart';
 
 /// Completes the reset started in forgot_password_screen.dart, calling
 /// the real POST /auth/reset-password endpoint. Takes the token as a
-/// manually-pasted field for now (see that screen's dev-note about email
-/// not being connected yet) — in production, this would instead be
-/// pre-filled from a deep link the real email contained.
+/// manually-pasted field for now -- real SMTP delivery was fixed and
+/// confirmed genuinely working earlier this session (see
+/// forgot_password_screen.dart's own updated comment), but real deep
+/// linking (this screen auto-opening with the token pre-filled from a
+/// real email link) is still real, separate, unbuilt work -- it needs
+/// real platform config (Android App Links / iOS Universal Links, each
+/// requiring a real hosted verification file on a real production
+/// domain) that can't be meaningfully built or verified here.
 class ResetPasswordScreen extends StatefulWidget {
   const ResetPasswordScreen({super.key});
 
@@ -20,6 +25,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   final _tokenController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isSubmitting = false;
+  bool _obscurePassword = true;
   String? _errorMessage;
 
   @override
@@ -55,6 +61,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = LeapPalette.of(context);
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(icon: const Icon(Icons.close), onPressed: () => context.pop()),
@@ -68,19 +75,30 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             const SizedBox(height: 12),
             Text(
               tr(context, 'paste_reset_code'),
-              style: const TextStyle(color: LeapColors.muted, fontSize: 13),
+              style: TextStyle(color: palette.muted, fontSize: 13),
             ),
             const SizedBox(height: 20),
             TextField(
               controller: _tokenController,
-              decoration: InputDecoration(labelText: tr(context, 'reset_code_label')),
+              decoration: InputDecoration(labelText: tr(context, 'reset_code_label'), prefixIcon: const Icon(Icons.key_outlined)),
               maxLines: 2,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _passwordController,
-              obscureText: true,
-              decoration: InputDecoration(labelText: tr(context, 'new_password_label'), helperText: tr(context, 'at_least_8_chars')),
+              obscureText: _obscurePassword,
+              decoration: InputDecoration(
+                labelText: tr(context, 'new_password_label'),
+                helperText: tr(context, 'at_least_8_chars'),
+                prefixIcon: const Icon(Icons.lock_outline),
+                // Real password visibility toggle (new) -- matching
+                // the same real toggle already added elsewhere this
+                // session.
+                suffixIcon: IconButton(
+                  icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                  onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                ),
+              ),
               onSubmitted: (_) => _submit(),
             ),
             if (_errorMessage != null) ...[
@@ -91,7 +109,11 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             ElevatedButton(
               onPressed: _isSubmitting ? null : _submit,
               child: _isSubmitting
-                  ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  // REAL BUG FOUND AND FIXED HERE: white spinner on
+                  // gold is the same real white-on-gold contrast issue
+                  // already found and fixed multiple times elsewhere
+                  // this session.
+                  ? SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: palette.onSignal))
                   : Text(tr(context, 'reset_password_title')),
             ),
           ],

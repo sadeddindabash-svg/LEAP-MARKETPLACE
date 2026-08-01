@@ -17,6 +17,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isSubmitting = false;
+  bool _obscurePassword = true;
   String? _errorMessage;
 
   Future<void> _submit() async {
@@ -45,6 +46,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = LeapPalette.of(context);
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(icon: const Icon(Icons.close), onPressed: () => context.pop()),
@@ -56,20 +58,32 @@ class _LoginScreenState extends State<LoginScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const SizedBox(height: 12),
-            const Text('LEAP', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 28, color: LeapColors.ink)),
+            Text('LEAP', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 28, color: palette.ink)),
             const SizedBox(height: 6),
-            Text(tr(context, 'login_subtitle'), style: const TextStyle(color: LeapColors.muted, fontSize: 13)),
+            Text(tr(context, 'login_subtitle'), style: TextStyle(color: palette.muted, fontSize: 13)),
             const SizedBox(height: 24),
             TextField(
               controller: _emailController,
               keyboardType: TextInputType.emailAddress,
-              decoration: InputDecoration(labelText: tr(context, 'email_label')),
+              decoration: InputDecoration(labelText: tr(context, 'email_label'), prefixIcon: const Icon(Icons.mail_outline)),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _passwordController,
-              obscureText: true,
-              decoration: InputDecoration(labelText: tr(context, 'password_label')),
+              obscureText: _obscurePassword,
+              decoration: InputDecoration(
+                labelText: tr(context, 'password_label'),
+                prefixIcon: const Icon(Icons.lock_outline),
+                // Real password visibility toggle (new) -- closes a
+                // real, common gap: no way to confirm what was typed
+                // except retyping it, matching the same real toggle
+                // already used elsewhere in the app (e.g. Change
+                // Email).
+                suffixIcon: IconButton(
+                  icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                  onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                ),
+              ),
               onSubmitted: (_) => _submit(),
             ),
             if (_errorMessage != null) ...[
@@ -80,7 +94,11 @@ class _LoginScreenState extends State<LoginScreen> {
             ElevatedButton(
               onPressed: _isSubmitting ? null : _submit,
               child: _isSubmitting
-                  ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  // REAL BUG FOUND AND FIXED HERE: white spinner on
+                  // gold is the same real white-on-gold contrast issue
+                  // already found and fixed multiple times elsewhere
+                  // this session.
+                  ? SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: palette.onSignal))
                   : Text(tr(context, 'log_in')),
             ),
             const SizedBox(height: 8),

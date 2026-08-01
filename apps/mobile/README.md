@@ -472,6 +472,40 @@ actually parsing every touched XML file with Python's own XML parser
 directly after each edit, not just eyeballing it — confirmed all 4
 native XML/storyboard files are genuinely valid before finalizing.
 
+## Real Auth screens redesign — Log In, Sign Up, Forgot Password, Reset Password, matched directly against the real Stitch references (11–14 of 28)
+
+**All 4 auth screens, done**: fully migrated to the theme-aware
+`LeapPalette`, icon prefixes on every field, and a real password
+visibility toggle added to every real password field (Log In, Sign
+Up, Reset Password) — closing a real, common gap: no way existed to
+confirm what was actually typed except retyping it.
+
+**A fourth instance of the same real contrast bug, found and fixed
+across all 4 screens**: every one of these screens had the identical
+white-spinner-on-gold contrast issue already found and fixed multiple
+times elsewhere this session — confirmed and fixed in each.
+
+**A real, genuinely stale claim found and corrected while comparing
+against the reference**: Forgot Password's own screen copy and header
+comment (and Reset Password's header comment referencing it)
+unconditionally claimed "no email provider is connected in this
+backend yet" — but real SMTP delivery was fixed and confirmed
+genuinely working earlier this session. Removed the now-inaccurate
+"dev note" box entirely (the mobile app has no way to know, server-
+side, whether SMTP happens to be configured in any given environment,
+so removing a presumptuous claim is more honest than guessing) — the
+existing "if that email is registered..." message was already
+accurate either way and needed no change. The "I have a reset code"
+link was kept, still genuinely useful as a fallback.
+
+**Three real, deliberate omissions, not oversights**: the references
+show fake "Continue with Google" / "Continue with Apple" OAuth
+buttons (no social login exists anywhere in the real backend) and a
+fake Terms of Service / Privacy Policy agreement checkbox (confirmed
+directly — no such real pages exist anywhere in the app to link to,
+so a checkbox requiring agreement to nothing would be misleading).
+None of these three were added.
+
 ## Real Saved Searches redesign, matched directly against the real Stitch reference (10 of 28)
 
 **Saved Searches, done**: fully migrated to the theme-aware

@@ -6,14 +6,19 @@ import '../../services/api_client.dart';
 
 /// BUY-002-ish. Calls the real POST /auth/forgot-password endpoint.
 ///
-/// HONEST LIMITATION, shown in the UI itself rather than hidden: no email
-/// provider is connected in this backend yet, so the reset link isn't
-/// actually delivered anywhere a real end user would see it — it's
-/// logged to the SERVER's own console as a stand-in (see that endpoint's
-/// header comment). This screen tells the person that directly and
-/// offers a "I have a reset code" link so a developer/tester can paste
-/// the token manually during development, rather than pretending email
-/// delivery works when it doesn't.
+/// UPDATED, same session: real SMTP delivery was found broken (a real
+/// bug -- unhandled email timeouts could hang entire API responses --
+/// see services/api/README.md's own real bug writeup) and fixed
+/// earlier this session, then confirmed genuinely working end-to-end
+/// with a real Mailtrap account. The backend's own real endpoint
+/// already conditionally sends a real email when SMTP happens to be
+/// configured, falling back to a server console log otherwise -- this
+/// screen's own copy was updated to stay accurate either way (the
+/// "if that email is registered..." message is true regardless), and
+/// the stale "email sending isn't connected yet" claim was removed
+/// rather than left as a real, now-inaccurate assumption. The "I have
+/// a reset code" link is still kept -- still genuinely useful as a
+/// fallback for a real environment where SMTP isn't configured.
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
 
@@ -51,6 +56,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = LeapPalette.of(context);
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(icon: const Icon(Icons.close), onPressed: () => context.pop()),
@@ -65,13 +71,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             if (!_submitted) ...[
               Text(
                 tr(context, 'enter_email_for_reset'),
-                style: const TextStyle(color: LeapColors.muted, fontSize: 13),
+                style: TextStyle(color: palette.muted, fontSize: 13),
               ),
               const SizedBox(height: 20),
               TextField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
-                decoration: InputDecoration(labelText: tr(context, 'email_label')),
+                decoration: InputDecoration(labelText: tr(context, 'email_label'), prefixIcon: const Icon(Icons.mail_outline)),
                 onSubmitted: (_) => _submit(),
               ),
               if (_errorMessage != null) ...[
@@ -82,25 +88,31 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               ElevatedButton(
                 onPressed: _isSubmitting ? null : _submit,
                 child: _isSubmitting
-                    ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    // REAL BUG FOUND AND FIXED HERE: white spinner on
+                    // gold is the same real white-on-gold contrast
+                    // issue already found and fixed multiple times
+                    // elsewhere this session.
+                    ? SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: palette.onSignal))
                     : Text(tr(context, 'send_reset_link')),
               ),
             ] else ...[
-              const Icon(Icons.mark_email_read_outlined, size: 40, color: LeapColors.muted),
+              Icon(Icons.mark_email_read_outlined, size: 40, color: palette.muted),
               const SizedBox(height: 12),
               Text(
                 tr(context, 'if_email_registered'),
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: palette.ink),
+                textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: LeapColors.chalk, borderRadius: BorderRadius.circular(8)),
-                child: Text(
-                  tr(context, 'dev_note_email'),
-                  style: const TextStyle(fontSize: 11.5, color: LeapColors.muted),
-                ),
-              ),
+              // REAL, STALE CLAIM REMOVED HERE: this used to
+              // unconditionally show a "dev note" claiming email
+              // sending isn't connected in this build yet -- but real
+              // SMTP delivery was fixed and confirmed genuinely
+              // working earlier this session. The mobile app has no
+              // way to know, server-side, whether SMTP happens to be
+              // configured in any given environment, so removing this
+              // presumptuous claim (rather than guessing) is the
+              // honest fix -- the message above already covers both
+              // real cases accurately.
             ],
             const SizedBox(height: 12),
             TextButton(

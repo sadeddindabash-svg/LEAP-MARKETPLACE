@@ -24,6 +24,7 @@ class _SignupScreenState extends State<SignupScreen> {
   final _passwordController = TextEditingController();
   final _referralCodeController = TextEditingController();
   bool _isSubmitting = false;
+  bool _obscurePassword = true;
   String? _errorMessage;
 
   @override
@@ -109,6 +110,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = LeapPalette.of(context);
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(icon: const Icon(Icons.close), onPressed: () => context.pop()),
@@ -120,29 +122,40 @@ class _SignupScreenState extends State<SignupScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const SizedBox(height: 12),
-            const Text('LEAP', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 28, color: LeapColors.ink)),
+            Text('LEAP', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 28, color: palette.ink)),
             const SizedBox(height: 6),
-            Text(tr(context, 'signup_subtitle'), style: const TextStyle(color: LeapColors.muted, fontSize: 13)),
+            Text(tr(context, 'signup_subtitle'), style: TextStyle(color: palette.muted, fontSize: 13)),
             const SizedBox(height: 24),
-            TextField(controller: _nameController, decoration: InputDecoration(labelText: tr(context, 'name_optional'))),
+            TextField(controller: _nameController, decoration: InputDecoration(labelText: tr(context, 'name_optional'), prefixIcon: const Icon(Icons.person_outline))),
             const SizedBox(height: 12),
             TextField(
               controller: _emailController,
               keyboardType: TextInputType.emailAddress,
-              decoration: InputDecoration(labelText: tr(context, 'email_label')),
+              decoration: InputDecoration(labelText: tr(context, 'email_label'), prefixIcon: const Icon(Icons.mail_outline)),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _passwordController,
-              obscureText: true,
-              decoration: InputDecoration(labelText: tr(context, 'password_label'), helperText: tr(context, 'at_least_8_chars')),
+              obscureText: _obscurePassword,
+              decoration: InputDecoration(
+                labelText: tr(context, 'password_label'),
+                helperText: tr(context, 'at_least_8_chars'),
+                prefixIcon: const Icon(Icons.lock_outline),
+                // Real password visibility toggle (new) -- closes a
+                // real, common gap: no way to confirm what was typed
+                // except retyping it.
+                suffixIcon: IconButton(
+                  icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                  onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                ),
+              ),
               onSubmitted: (_) => _submit(),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _referralCodeController,
               textCapitalization: TextCapitalization.characters,
-              decoration: InputDecoration(labelText: tr(context, 'referral_code_optional')),
+              decoration: InputDecoration(labelText: tr(context, 'referral_code_optional'), prefixIcon: const Icon(Icons.card_giftcard_outlined)),
             ),
             if (_errorMessage != null) ...[
               const SizedBox(height: 12),
@@ -152,7 +165,11 @@ class _SignupScreenState extends State<SignupScreen> {
             ElevatedButton(
               onPressed: _isSubmitting ? null : _submit,
               child: _isSubmitting
-                  ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  // REAL BUG FOUND AND FIXED HERE: white spinner on
+                  // gold is the same real white-on-gold contrast issue
+                  // already found and fixed multiple times elsewhere
+                  // this session.
+                  ? SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: palette.onSignal))
                   : Text(tr(context, 'create_account')),
             ),
             const SizedBox(height: 12),
