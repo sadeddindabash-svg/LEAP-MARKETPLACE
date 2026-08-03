@@ -111,7 +111,10 @@ final GoRouter appRouter = GoRouter(
       return SignupScreen(prefillEmail: extra?['prefillEmail'] as String?);
     }),
     GoRoute(path: '/forgot-password', builder: (context, state) => const ForgotPasswordScreen()),
-    GoRoute(path: '/reset-password', builder: (context, state) => const ResetPasswordScreen()),
+    GoRoute(
+      path: '/reset-password',
+      builder: (context, state) => ResetPasswordScreen(initialToken: state.uri.queryParameters['token']),
+    ),
   ],
 );
 

@@ -782,6 +782,53 @@ exists, never a decorative default.
   Weight) — kept those real fields, restyled to match the reference's
   card treatment, rather than replacing real data with invented rows.
 
+## Improvement #2 of 20: real deep-linking readiness for password reset — app-side built, real domain/signing setup still required
+
+**Honest scope, stated upfront**: deep linking needs two real halves.
+The **app-side half** (what the app does when it receives a link) is
+built and testable right now. The **platform-side half** (making the
+OS actually hand the link to this app instead of a browser) requires
+a real production domain, a real hosted verification file there, and
+this app's real signing certificate — none of which exist in this
+sandbox, and none of which can be faked convincingly enough to test.
+
+**App-side, done and testable now**:
+- `/reset-password` now accepts a real `?token=` query parameter
+  (`lib/app.dart`), pre-filling and auto-focusing the password field
+  directly (`reset_password_screen.dart`) instead of always requiring
+  a manual paste.
+- Test this today by visiting `http://localhost:XXXX/#/reset-password?token=abc123`
+  directly in Chrome while `flutter run -d chrome` is active — the
+  token field should already be filled in.
+
+**Platform-side scaffolding added, clearly marked as incomplete**:
+- Android: a real App Links `<intent-filter android:autoVerify="true">`
+  added to `AndroidManifest.xml`, pointing at `leapautoparts.com` — a
+  **real placeholder**, not your actual domain. Verification will
+  genuinely fail until (1) that's replaced with your real production
+  domain, and (2) a real `/.well-known/assetlinks.json` file is hosted
+  there containing this app's own real release-signing certificate's
+  SHA-256 fingerprint.
+- iOS: a real `Runner.entitlements` file created with the
+  `com.apple.developer.associated-domains` capability, same
+  placeholder domain. This file exists but is **not yet wired into
+  the Xcode project** — deliberately not done by blindly text-editing
+  `project.pbxproj` (a fragile, easy-to-corrupt format outside a real
+  Xcode session). To finish this: open the project in Xcode → Runner
+  target → Signing & Capabilities → add "Associated Domains" → it
+  will pick up this entitlements file, or you can add the domain
+  directly there. Also requires a real
+  `/.well-known/apple-app-site-association` file hosted at your real
+  domain with your real Apple Team ID.
+- The backend's own `resetUrl` (in `auth/routes.js`) still points to
+  `http://localhost:5173` (the web storefront's dev URL) —
+  deliberately **not changed** here, since pointing it at a domain
+  that isn't real yet would make web-based password reset stop
+  working today in exchange for a mobile deep link that still
+  wouldn't work either. Once a real production domain exists, this
+  should be updated to match, alongside both placeholder domains
+  above.
+
 ## Real fix (improvement #1 of 20): order status can now genuinely reach "delivered"
 
 **The real backend gap flagged in the previous fix, now actually

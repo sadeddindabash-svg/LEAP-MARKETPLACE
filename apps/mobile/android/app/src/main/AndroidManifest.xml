@@ -35,6 +35,30 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!--
+              Real App Links intent-filter for password-reset deep
+              linking (new), app-side half only. android:autoVerify
+              makes Android attempt real domain verification, but that
+              verification will genuinely fail until two more real,
+              external things exist, neither of which can be set up
+              from here:
+                1. leapautoparts.com below is a REAL PLACEHOLDER, it
+                   must be replaced with your actual real production
+                   domain.
+                2. A real /.well-known/assetlinks.json file must be
+                   hosted at that real domain, containing this app's
+                   own real release-signing certificate's SHA-256
+                   fingerprint (see Android's own App Links docs).
+              Until both exist, this intent-filter is harmless but
+              inactive, tapping such a link will open a browser, not
+              this app, exactly as it does today.
+            -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="leapautoparts.com" android:pathPrefix="/reset-password"/>
+            </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

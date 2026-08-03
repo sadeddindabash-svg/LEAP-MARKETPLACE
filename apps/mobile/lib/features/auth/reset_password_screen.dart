@@ -15,7 +15,14 @@ import '../../services/api_client.dart';
 /// requiring a real hosted verification file on a real production
 /// domain) that can't be meaningfully built or verified here.
 class ResetPasswordScreen extends StatefulWidget {
-  const ResetPasswordScreen({super.key});
+  // Real deep-link readiness (new) -- when a real link provides the
+  // token directly (e.g. tapping a real reset link once real Android
+  // App Links / iOS Universal Links are configured -- see this
+  // file's own header comment for what real, external setup that
+  // still requires), it's pre-filled here rather than requiring the
+  // person to copy-paste it manually.
+  final String? initialToken;
+  const ResetPasswordScreen({super.key, this.initialToken});
 
   @override
   State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
@@ -24,14 +31,28 @@ class ResetPasswordScreen extends StatefulWidget {
 class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   final _tokenController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _passwordFocusNode = FocusNode();
   bool _isSubmitting = false;
   bool _obscurePassword = true;
   String? _errorMessage;
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.initialToken != null && widget.initialToken!.isNotEmpty) {
+      _tokenController.text = widget.initialToken!;
+      // Real UX improvement (new): when the token arrived pre-filled
+      // from a real link, skip straight to the password field instead
+      // of leaving focus on the (already-filled) token field.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _passwordFocusNode.requestFocus());
+    }
+  }
+
+  @override
   void dispose() {
     _tokenController.dispose();
     _passwordController.dispose();
+    _passwordFocusNode.dispose();
     super.dispose();
   }
 
@@ -86,6 +107,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             const SizedBox(height: 12),
             TextField(
               controller: _passwordController,
+              focusNode: _passwordFocusNode,
               obscureText: _obscurePassword,
               decoration: InputDecoration(
                 labelText: tr(context, 'new_password_label'),
