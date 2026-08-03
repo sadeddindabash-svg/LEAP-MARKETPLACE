@@ -472,6 +472,24 @@ actually parsing every touched XML file with Python's own XML parser
 directly after each edit, not just eyeballing it — confirmed all 4
 native XML/storyboard files are genuinely valid before finalizing.
 
+## Real Change Email, Referrals, Notifications redesign, matched directly against the real Stitch references (21–23 of 28)
+
+**Change Email, done**: fully migrated to the theme-aware
+`LeapPalette`, icon prefixes added, and the same white-spinner-on-gold
+contrast bug found and fixed again here.
+
+**Referrals, done**: restyled the stat cards as bento-style cards with
+an icon box and left gold accent bar, matching the reference. Kept
+the existing real referral count/reward count exactly as they were —
+the reference shows a fabricated "$450.00 rewards earned" dollar
+figure, but this app's own real reward tracking is a count (X of Y
+max rewards), not a dollar total, and no confirmed real incentive
+terms exist to safely display a specific dollar amount instead.
+
+**Notifications, done**: restyled as cards with a left accent bar
+(gold for unread, neutral for read) instead of a plain divided list,
+migrated to the theme-aware palette.
+
 ## Real Onboarding redesign, matched directly against the real Stitch reference (20 of 28)
 
 **Onboarding, done**: fully migrated to the theme-aware `LeapPalette`,

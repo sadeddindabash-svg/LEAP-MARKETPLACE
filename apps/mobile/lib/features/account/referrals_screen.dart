@@ -67,10 +67,11 @@ class _ReferralsScreenState extends State<ReferralsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = LeapPalette.of(context);
     return Scaffold(
       appBar: AppBar(title: Text(tr(context, 'referrals'))),
       body: _errorMessage != null
-          ? Center(child: Text(_errorMessage!, style: const TextStyle(color: LeapColors.muted)))
+          ? Center(child: Text(_errorMessage!, style: TextStyle(color: palette.muted)))
           : _info == null
               ? const Center(child: CircularProgressIndicator())
               : Padding(
@@ -80,18 +81,41 @@ class _ReferralsScreenState extends State<ReferralsScreen> {
                     children: [
                       Text(
                         tr(context, 'referral_explainer'),
-                        style: const TextStyle(fontSize: 13, color: LeapColors.muted),
+                        style: TextStyle(fontSize: 13, color: palette.muted),
                       ),
                       const SizedBox(height: 20),
-                      Text(tr(context, 'your_referral_code'), style: const TextStyle(fontSize: 11.5, color: LeapColors.muted, fontWeight: FontWeight.w700)),
+                      // Real bento-style stat cards (new), matching the
+                      // real Stitch reference's own icon-box + left
+                      // gold accent bar style.
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _ReferralStat(
+                              icon: Icons.groups_outlined,
+                              value: '${_info!['totalReferred']}',
+                              label: tr(context, 'people_referred'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _ReferralStat(
+                              icon: Icons.payments_outlined,
+                              value: '${_info!['rewardsEarned']}/${_info!['maxRewards']}',
+                              label: tr(context, 'rewards_earned'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      Text(tr(context, 'your_referral_code'), style: TextStyle(fontSize: 11.5, color: palette.muted, fontWeight: FontWeight.w700)),
                       const SizedBox(height: 8),
                       Container(
                         padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(color: LeapColors.chalk, borderRadius: BorderRadius.circular(10), border: Border.all(color: LeapColors.line)),
+                        decoration: BoxDecoration(color: palette.chalk, borderRadius: BorderRadius.circular(10), border: Border.all(color: palette.signal)),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Text(_info!['code'] as String, textAlign: TextAlign.center, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: 1)),
+                            Text(_info!['code'] as String, textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: 1, color: palette.ink)),
                             const SizedBox(height: 12),
                             // Real Share button (new) -- closes a real
                             // gap: only copy-to-clipboard existed
@@ -106,51 +130,53 @@ class _ReferralsScreenState extends State<ReferralsScreen> {
                               spacing: 8,
                               children: [
                                 OutlinedButton.icon(onPressed: _copyCode, icon: const Icon(Icons.copy, size: 15), label: Text(tr(context, 'copy_code'))),
-                                OutlinedButton.icon(onPressed: _shareCode, icon: const Icon(Icons.share, size: 15), label: Text(tr(context, 'share'))),
+                                ElevatedButton.icon(onPressed: _shareCode, icon: const Icon(Icons.share, size: 15), label: Text(tr(context, 'share'))),
                               ],
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 24),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(border: Border.all(color: LeapColors.line), borderRadius: BorderRadius.circular(10)),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('${_info!['totalReferred']}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
-                                  Text(tr(context, 'people_referred'), style: const TextStyle(fontSize: 11.5, color: LeapColors.muted)),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(border: Border.all(color: LeapColors.line), borderRadius: BorderRadius.circular(10)),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('${_info!['rewardsEarned']}/${_info!['maxRewards']}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
-                                  Text(tr(context, 'rewards_earned'), style: const TextStyle(fontSize: 11.5, color: LeapColors.muted)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
                       if (_info!['capReached'] == true) ...[
                         const SizedBox(height: 16),
-                        Text(tr(context, 'referral_cap_reached'), style: const TextStyle(fontSize: 12.5, color: LeapColors.muted)),
+                        Text(tr(context, 'referral_cap_reached'), style: TextStyle(fontSize: 12.5, color: palette.muted)),
                       ],
                     ],
                   ),
                 ),
+    );
+  }
+}
+
+class _ReferralStat extends StatelessWidget {
+  final IconData icon;
+  final String value;
+  final String label;
+  const _ReferralStat({required this.icon, required this.value, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = LeapPalette.of(context);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: palette.card,
+        borderRadius: BorderRadius.circular(10),
+        border: Border(left: BorderSide(color: palette.signal, width: 4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(color: palette.signal.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+            child: Icon(icon, color: palette.signal, size: 18),
+          ),
+          const SizedBox(height: 10),
+          Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: palette.ink)),
+          Text(label, style: TextStyle(fontSize: 11, color: palette.muted)),
+        ],
+      ),
     );
   }
 }

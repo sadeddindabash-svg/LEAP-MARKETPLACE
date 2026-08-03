@@ -109,7 +109,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 80),
-                    child: Center(child: Text(_errorMessage!, style: const TextStyle(color: LeapColors.muted))),
+                    child: Center(child: Text(_errorMessage!, style: TextStyle(color: LeapPalette.of(context).muted))),
                   ),
                 ],
               )
@@ -121,32 +121,42 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         children: [
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 80),
-                            child: Center(child: Text(tr(context, 'no_notifications_yet'), style: const TextStyle(color: LeapColors.muted))),
+                            child: Center(child: Text(tr(context, 'no_notifications_yet'), style: TextStyle(color: LeapPalette.of(context).muted))),
                           ),
                         ],
                       )
                     : ListView.separated(
                         physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(16),
                         itemCount: _notifications!.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (context, i) {
                           final n = _notifications![i] as Map<String, dynamic>;
                           final isRead = n['isRead'] as bool;
-                          return ListTile(
-                            leading: Icon(
-                              isRead ? Icons.notifications_none : Icons.notifications,
-                              color: isRead ? LeapColors.muted : LeapColors.signal,
+                          final palette = LeapPalette.of(context);
+                          return Container(
+                            decoration: BoxDecoration(
+                              color: palette.card,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border(left: BorderSide(color: isRead ? palette.line : palette.signal, width: 4)),
                             ),
-                            title: Text(
-                              n['title'] as String,
-                              style: TextStyle(fontWeight: isRead ? FontWeight.w500 : FontWeight.w700, fontSize: 13.5),
+                            clipBehavior: Clip.antiAlias,
+                            child: ListTile(
+                              leading: Icon(
+                                isRead ? Icons.notifications_none : Icons.notifications,
+                                color: isRead ? palette.muted : palette.signal,
+                              ),
+                              title: Text(
+                                n['title'] as String,
+                                style: TextStyle(fontWeight: isRead ? FontWeight.w500 : FontWeight.w700, fontSize: 13.5, color: palette.ink),
+                              ),
+                              subtitle: Text(n['body'] as String, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: palette.muted)),
+                              trailing: Text(
+                                _formatRelativeTime(DateTime.parse(n['createdAt'] as String)),
+                                style: TextStyle(fontSize: 10.5, color: palette.muted),
+                              ),
+                              onTap: () => _openNotification(n),
                             ),
-                            subtitle: Text(n['body'] as String, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5)),
-                            trailing: Text(
-                              _formatRelativeTime(DateTime.parse(n['createdAt'] as String)),
-                              style: const TextStyle(fontSize: 10.5, color: LeapColors.muted),
-                            ),
-                            onTap: () => _openNotification(n),
                           );
                         },
                       ),

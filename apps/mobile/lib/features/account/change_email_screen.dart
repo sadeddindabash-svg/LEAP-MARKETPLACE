@@ -70,6 +70,7 @@ class _ChangeEmailScreenState extends State<ChangeEmailScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
     final currentEmail = auth.user?['email'] as String? ?? '';
+    final palette = LeapPalette.of(context);
 
     return Scaffold(
       appBar: AppBar(title: Text(tr(context, 'change_email'))),
@@ -78,13 +79,13 @@ class _ChangeEmailScreenState extends State<ChangeEmailScreen> {
         children: [
           Text(
             '${tr(context, 'current_email_label')} $currentEmail',
-            style: const TextStyle(color: LeapColors.muted, fontSize: 13),
+            style: TextStyle(color: palette.muted, fontSize: 13),
           ),
           const SizedBox(height: 20),
           TextField(
             controller: _newEmailController,
             keyboardType: TextInputType.emailAddress,
-            decoration: InputDecoration(labelText: tr(context, 'new_email_label'), border: const OutlineInputBorder()),
+            decoration: InputDecoration(labelText: tr(context, 'new_email_label'), border: const OutlineInputBorder(), prefixIcon: const Icon(Icons.mail_outline)),
           ),
           const SizedBox(height: 14),
           TextField(
@@ -93,6 +94,7 @@ class _ChangeEmailScreenState extends State<ChangeEmailScreen> {
             decoration: InputDecoration(
               labelText: tr(context, 'current_password_label'),
               border: const OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.lock_outline),
               suffixIcon: IconButton(
                 icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
                 onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
@@ -101,14 +103,18 @@ class _ChangeEmailScreenState extends State<ChangeEmailScreen> {
           ),
           if (_errorMessage != null) ...[
             const SizedBox(height: 12),
-            Text(_errorMessage!, style: const TextStyle(color: LeapColors.signal, fontSize: 12.5)),
+            Text(_errorMessage!, style: TextStyle(color: palette.signal, fontSize: 12.5)),
           ],
           const SizedBox(height: 20),
           ElevatedButton(
             onPressed: _isSubmitting ? null : _submit,
             style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
             child: _isSubmitting
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                // REAL BUG FOUND AND FIXED HERE: white spinner on gold
+                // is the same real white-on-gold contrast issue
+                // already found and fixed multiple times elsewhere
+                // this session.
+                ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: palette.onSignal))
                 : Text(tr(context, 'save_changes')),
           ),
         ],
