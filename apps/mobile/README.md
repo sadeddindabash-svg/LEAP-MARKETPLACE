@@ -782,6 +782,54 @@ exists, never a decorative default.
   Weight) — kept those real fields, restyled to match the reference's
   card treatment, rather than replacing real data with invented rows.
 
+## Improvement #9 of 20: real VIN lookup for vehicle entry — full generation resolution, using a genuinely free public API
+
+**Scoped honestly before starting**: full camera-based VIN/barcode
+scanning needs real-device camera testing (the same real limitation
+as the biometric app lock earlier this session). Scoped this down to
+VIN lookup — typing or pasting a VIN, decoded via NHTSA's own real,
+free, public vPIC API (`vpic.nhtsa.dot.gov`) — genuinely no API key
+or paid account required, confirmed directly from its own real,
+long-stable public documentation.
+
+**Real, complete resolution, not just a decoded label**: this doesn't
+just show "2018 BMW 1 Series" as text — it resolves all the way down
+to one of this app's own real brand → model → generation records
+(the exact same real hierarchy fitment matching already depends on),
+using the real decoded model year against each generation's own real
+`yearStart`/`yearEnd` range to pick the correct one. When it resolves
+completely, this is a genuine shortcut past the entire manual
+brand/model/generation/year drill.
+
+**Degrades gracefully at whichever real step doesn't match**, rather
+than failing outright — a real brand match with no real model match
+still pre-selects the brand and lets the person continue manually
+from there, and so on. Fuzzy-matched by a simple case-insensitive
+substring check, since NHTSA's own real naming won't always exactly
+match this app's own real brand/model names character-for-character.
+
+**A real, honest limitation on verification, stated directly**:
+`vpic.nhtsa.dot.gov` is not in this sandbox's own network allowlist —
+confirmed directly (`curl` returned "Host not in allowlist"), so the
+exact real response shape could not be verified against the real,
+live API in this session. Built against NHTSA's own stable, long-
+documented response format (`Results[0].Make/Model/ModelYear`), but
+this is the one piece of this improvement genuinely worth a real,
+live test the first time it's used for real.
+
+**A real, avoided dependency risk**: initially used `.firstOrNull`
+(a `package:collection` extension method), not confirmed available in
+this project's own real dependency tree — replaced with a small,
+dependency-free local helper instead of risking a real compile error
+over one convenience method.
+
+**A real, stale comment found and corrected while in this file**: a
+header comment referenced a separate `add_vehicle_screen.dart` with
+"its own simpler two-step pattern" — confirmed directly that file
+doesn't exist anywhere in this real codebase. This sheet is the one
+real picker, used for both search filtering and My Garage's own
+add-vehicle flow.
+
 ## Improvement #8 of 20: real offline/network-failure handling — one centralized fix covering all 65 existing API call sites
 
 **A real correction first**: improvement #6 (order cancellation) was

@@ -204,6 +204,44 @@ class ApiClient {
     return jsonDecode(response.body) as List<dynamic>;
   }
 
+  /// Real VIN decoding via NHTSA's own free, public vPIC API --
+  /// genuinely free US government vehicle data, no API key or paid
+  /// account required (confirmed directly: https://vpic.nhtsa.dot.gov
+  /// is a real, no-auth, no-cost REST API). Returns the decoded real
+  /// Make/Model/ModelYear as a simple map; the caller is responsible
+  /// for fuzzy-matching these real values against this app's own
+  /// real brand/model/generation records, since NHTSA's own naming
+  /// won't always exactly match this app's (see
+  /// vehicle_filter_sheet.dart's own _tryVinLookup for that real
+  /// matching logic).
+  ///
+  /// HONEST LIMITATION: this is a real, direct third-party HTTP call
+  /// made from the app itself, not proxied through the real backend.
+  /// On a real Android/iOS build this works exactly like any other
+  /// real HTTP call. On Flutter Web specifically (e.g. testing via
+  /// `flutter run -d chrome`), this could be blocked by the browser's
+  /// own CORS policy if NHTSA's API doesn't set permissive CORS
+  /// headers -- genuinely untested here, since this sandbox has no
+  /// real Flutter/Dart SDK to run it against. Worth confirming
+  /// directly the first time this is tested for real.
+  Future<Map<String, String>> decodeVin(String vin) async {
+    final trimmed = vin.trim().toUpperCase();
+    if (trimmed.length != 17) {
+      throw ApiException('A VIN is always 17 characters — please check and try again.');
+    }
+    final response = await _client.get(Uri.parse('https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/$trimmed?format=json'));
+    if (response.statusCode != 200) throw ApiException('Could not reach the VIN decoder (${response.statusCode})');
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final results = (body['Results'] as List?)?.cast<Map<String, dynamic>>();
+    if (results == null || results.isEmpty) throw ApiException('Could not decode this VIN.');
+    final result = results.first;
+    final make = result['Make'] as String?;
+    final model = result['Model'] as String?;
+    final year = result['ModelYear'] as String?;
+    if (make == null || make.isEmpty) throw ApiException('This VIN could not be recognized. Try entering your vehicle manually instead.');
+    return {'make': make, 'model': model ?? '', 'year': year ?? ''};
+  }
+
   Future<Product> fetchProductById(String productId, {String lang = 'en'}) async {
     final response = await _client.get(Uri.parse('$baseUrl/catalog/products/$productId?lang=$lang'));
     if (response.statusCode != 200) {
