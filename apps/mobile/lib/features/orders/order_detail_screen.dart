@@ -295,11 +295,20 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           const SizedBox(height: 8),
           for (final so in subOrders) _SupplierSubOrderCard(subOrder: so, onRequestReturn: _openReturnRequest),
           const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: () => context.push('/orders/${widget.orderId}/tracking'),
-            icon: const Icon(Icons.local_shipping_outlined, size: 18),
-            label: Text(Localizations.localeOf(context).languageCode == 'ar' ? 'تتبع الطلب' : 'Track your package'),
-          ),
+          // Real fix (confirmed directly): don't show "Track your
+          // package" once every real sub-order has genuinely been
+          // delivered -- there's nothing left to actively track.
+          // Checks each real sub-order's own status directly, not the
+          // order-level displayStatus, which can never actually equal
+          // 'delivered' (see computeDisplayStatus's own real logic --
+          // a separate, real backend gap, not something this fix
+          // should paper over).
+          if (subOrders.isNotEmpty && !subOrders.every((so) => so['status'] == 'delivered'))
+            OutlinedButton.icon(
+              onPressed: () => context.push('/orders/${widget.orderId}/tracking'),
+              icon: const Icon(Icons.local_shipping_outlined, size: 18),
+              label: Text(Localizations.localeOf(context).languageCode == 'ar' ? 'تتبع الطلب' : 'Track your package'),
+            ),
           const SizedBox(height: 10),
           FilledButton.icon(
             onPressed: _isReordering ? null : _reorder,

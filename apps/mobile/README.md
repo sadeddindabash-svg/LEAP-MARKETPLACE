@@ -782,6 +782,27 @@ exists, never a decorative default.
   Weight) — kept those real fields, restyled to match the reference's
   card treatment, rather than replacing real data with invented rows.
 
+## Real fix: hide "Track your package" once every real sub-order is delivered
+
+**Confirmed directly, requested**: order detail no longer shows the
+"Track your package" button once every real sub-order in that order
+has genuinely been delivered — nothing left to actively track at that
+point.
+
+**A real, separate backend gap surfaced while implementing this**: the
+order-level `displayStatus` field (computed by
+`computeDisplayStatus`) can **never** actually return `'delivered'` —
+it only ever returns `'returns'`, `'shipped'`, or `'to_ship'`, even
+once every sub-order is truly delivered (it just stays `'shipped'`
+forever after that point). This fix deliberately checks each real
+sub-order's own individual `status` field directly instead of relying
+on that order-level field, rather than papering over the gap by
+building on top of an already-incomplete status. The order-level gap
+itself is flagged here, not fixed — fixing it would touch the order
+list's own status filter and every other place that reads
+`displayStatus`, a separate, larger change outside what was asked for
+here.
+
 ## Real Account screen redesign, matched directly against the real Stitch reference (24 of 28) — completes the full 28-screen redesign effort
 
 **Account, done, the last screen of this effort**: fully migrated to
