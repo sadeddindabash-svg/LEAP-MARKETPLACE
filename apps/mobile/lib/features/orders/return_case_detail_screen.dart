@@ -135,7 +135,7 @@ class _ReturnCaseDetailScreenState extends State<ReturnCaseDetailScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(tr(context, 'enter_email_to_view_return'), textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted, fontSize: 13)),
+              Text(tr(context, 'enter_email_to_view_return'), textAlign: TextAlign.center, style: TextStyle(color: LeapPalette.of(context).muted, fontSize: 13)),
               const SizedBox(height: 16),
               TextField(controller: _emailController, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: tr(context, 'email_label'))),
               const SizedBox(height: 12),
@@ -146,7 +146,7 @@ class _ReturnCaseDetailScreenState extends State<ReturnCaseDetailScreen> {
       );
     }
     if (_errorMessage != null || _returnCase == null) {
-      return Scaffold(appBar: AppBar(title: Text(tr(context, 'my_returns'))), body: Center(child: Text(_errorMessage ?? tr(context, 'not_found'), style: const TextStyle(color: LeapColors.muted))));
+      return Scaffold(appBar: AppBar(title: Text(tr(context, 'my_returns'))), body: Center(child: Text(_errorMessage ?? tr(context, 'not_found'), style: TextStyle(color: LeapPalette.of(context).muted))));
     }
 
     final messages = (_returnCase!['messages'] as List).cast<Map<String, dynamic>>();
@@ -164,12 +164,12 @@ class _ReturnCaseDetailScreenState extends State<ReturnCaseDetailScreen> {
                 Expanded(
                   child: Text(
                     '${tr(context, 'return_case_order_label')} ${_returnCase!['orderId']}',
-                    style: const TextStyle(color: LeapColors.torque, fontSize: 12),
+                    style: TextStyle(color: LeapPalette.of(context).torque, fontSize: 12),
                   ),
                 ),
                 Text(
                   trStatus(context, _returnCase!['status'] as String).toUpperCase(),
-                  style: const TextStyle(color: LeapColors.torque, fontSize: 12, fontWeight: FontWeight.w700),
+                  style: TextStyle(color: LeapPalette.of(context).torque, fontSize: 12, fontWeight: FontWeight.w700),
                 ),
               ],
             ),
@@ -202,12 +202,12 @@ class _ReturnCaseDetailScreenState extends State<ReturnCaseDetailScreen> {
                             width: 72,
                             height: 72,
                             fit: BoxFit.cover,
-                            placeholder: (context, url) => Container(width: 72, height: 72, color: LeapColors.chalk),
+                            placeholder: (context, url) => Container(width: 72, height: 72, color: Colors.white),
                             errorWidget: (context, url, error) => Container(
                               width: 72,
                               height: 72,
-                              color: LeapColors.chalk,
-                              child: const Icon(Icons.broken_image_outlined, size: 20, color: LeapColors.muted),
+                              color: Colors.white,
+                              child: Icon(Icons.broken_image_outlined, size: 20, color: LeapPalette.of(context).muted),
                             ),
                           ),
                         ),
@@ -224,12 +224,12 @@ class _ReturnCaseDetailScreenState extends State<ReturnCaseDetailScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
                     decoration: BoxDecoration(
-                      color: isAdmin ? LeapColors.chalk : LeapColors.ink,
+                      color: isAdmin ? LeapPalette.of(context).chalk : LeapPalette.of(context).signal,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
                       m['message'] as String,
-                      style: TextStyle(color: isAdmin ? LeapColors.ink : Colors.white, fontSize: 13),
+                      style: TextStyle(color: isAdmin ? LeapPalette.of(context).ink : LeapPalette.of(context).onSignal, fontSize: 13),
                     ),
                   ),
                 );

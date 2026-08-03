@@ -472,6 +472,25 @@ actually parsing every touched XML file with Python's own XML parser
 directly after each edit, not just eyeballing it — confirmed all 4
 native XML/storyboard files are genuinely valid before finalizing.
 
+## Real Support screens redesign — Leap Support, Ticket Detail, Return Case Detail, matched directly against the real Stitch references (17–19 of 28)
+
+**Leap Support (ticket list), done**: fully migrated to the
+theme-aware `LeapPalette`, restyled ticket cards with an icon box and
+a left accent bar (gold for open, green for resolved).
+
+**Real, honestly-computed stats, one deliberately omitted**: added
+"Total tickets" and "Open requests"/"Resolved" counts, genuinely
+computed from real, already-loaded ticket data. The reference's third
+stat, "AVG RESPONSE: 4h 32m," was **not** added — no response-time
+tracking exists anywhere in the real data without fabricating a
+number.
+
+**Ticket Detail + Return Case Detail, done**: both fully migrated to
+the theme-aware palette, including their real chat-bubble styling
+(buyer's own messages now use the real brand signal color instead of
+a hardcoded dark color, admin's messages use the theme's own card
+background).
+
 ## Real Addresses + Address Form redesign, matched directly against the real Stitch references (15–16 of 28)
 
 **Addresses list, done**: fully migrated to the theme-aware
