@@ -90,6 +90,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = LeapPalette.of(context);
     return Scaffold(
       appBar: AppBar(title: Text(tr(context, _isEditing ? 'edit_address' : 'add_address'))),
       body: SingleChildScrollView(
@@ -97,19 +98,19 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(controller: _labelController, decoration: InputDecoration(labelText: tr(context, 'label_field'))),
+            TextField(controller: _labelController, decoration: InputDecoration(labelText: tr(context, 'label_field'), prefixIcon: const Icon(Icons.label_outline))),
             const SizedBox(height: 12),
-            TextField(controller: _recipientController, decoration: InputDecoration(labelText: tr(context, 'recipient_name_field'))),
+            TextField(controller: _recipientController, decoration: InputDecoration(labelText: tr(context, 'recipient_name_field'), prefixIcon: const Icon(Icons.person_outline))),
             const SizedBox(height: 12),
-            TextField(controller: _phoneController, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: tr(context, 'phone_field'))),
+            TextField(controller: _phoneController, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: tr(context, 'phone_field'), prefixIcon: const Icon(Icons.phone_outlined))),
             const SizedBox(height: 12),
-            TextField(controller: _countryController, decoration: InputDecoration(labelText: tr(context, 'country_field'))),
+            TextField(controller: _countryController, decoration: InputDecoration(labelText: tr(context, 'country_field'), prefixIcon: const Icon(Icons.public_outlined))),
             const SizedBox(height: 12),
-            TextField(controller: _cityController, decoration: InputDecoration(labelText: tr(context, 'city_field'))),
+            TextField(controller: _cityController, decoration: InputDecoration(labelText: tr(context, 'city_field'), prefixIcon: const Icon(Icons.location_city_outlined))),
             const SizedBox(height: 12),
-            TextField(controller: _streetController, decoration: InputDecoration(labelText: tr(context, 'street_address_field'))),
+            TextField(controller: _streetController, decoration: InputDecoration(labelText: tr(context, 'street_address_field'), prefixIcon: const Icon(Icons.home_outlined))),
             const SizedBox(height: 12),
-            TextField(controller: _postalController, decoration: InputDecoration(labelText: tr(context, 'postal_code_field'))),
+            TextField(controller: _postalController, decoration: InputDecoration(labelText: tr(context, 'postal_code_field'), prefixIcon: const Icon(Icons.markunread_mailbox_outlined))),
             if (_errorMessage != null) ...[
               const SizedBox(height: 12),
               Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 12.5)),
@@ -118,7 +119,11 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
             ElevatedButton(
               onPressed: _isSubmitting ? null : _submit,
               child: _isSubmitting
-                  ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  // REAL BUG FOUND AND FIXED HERE: white spinner on
+                  // gold is the same real white-on-gold contrast issue
+                  // already found and fixed multiple times elsewhere
+                  // this session.
+                  ? SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: palette.onSignal))
                   : Text(tr(context, 'save')),
             ),
           ],

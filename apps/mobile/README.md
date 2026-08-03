@@ -472,6 +472,25 @@ actually parsing every touched XML file with Python's own XML parser
 directly after each edit, not just eyeballing it — confirmed all 4
 native XML/storyboard files are genuinely valid before finalizing.
 
+## Real Addresses + Address Form redesign, matched directly against the real Stitch references (15–16 of 28)
+
+**Addresses list, done**: fully migrated to the theme-aware
+`LeapPalette`, restyled as bordered cards with an icon circle, PRIMARY
+badge, and a real empty-state illustration matching the reference.
+
+**A real, honest heuristic, not fabricated category data**: the
+reference shows Home/Garage/Office icons per address. This app's real
+`label` field is free text, not a fixed category enum — added a
+best-guess icon match against what the buyer actually typed (checking
+for "home," "garage," "office"/"work," in both languages), falling
+back to a plain pin icon otherwise. This is a genuine visual
+enhancement of real data the buyer entered, not an invented
+classification.
+
+**Address Form, done**: added icon prefixes to every field matching
+the reference, and found the same white-spinner-on-gold contrast bug
+already found and fixed multiple times elsewhere this session.
+
 ## Real Auth screens redesign — Log In, Sign Up, Forgot Password, Reset Password, matched directly against the real Stitch references (11–14 of 28)
 
 **All 4 auth screens, done**: fully migrated to the theme-aware

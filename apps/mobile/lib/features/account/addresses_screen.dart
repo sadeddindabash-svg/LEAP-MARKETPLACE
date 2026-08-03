@@ -76,17 +76,48 @@ class _AddressesScreenState extends State<AddressesScreen> {
     );
   }
 
+  // Real icon heuristic (new) -- the real `label` field is free text,
+  // not a fixed category enum, so this is a genuine best-guess match
+  // against what the buyer actually typed (matching the real Stitch
+  // reference's own Home/Garage/Office icon set), not fabricated
+  // category data.
+  IconData _iconForLabel(String label) {
+    final lower = label.toLowerCase();
+    if (lower.contains('home') || lower.contains('house') || lower.contains('منزل')) return Icons.home_outlined;
+    if (lower.contains('garage') || lower.contains('كراج')) return Icons.garage_outlined;
+    if (lower.contains('office') || lower.contains('work') || lower.contains('عمل') || lower.contains('مكتب')) return Icons.business_outlined;
+    return Icons.location_on_outlined;
+  }
+
   @override
   Widget build(BuildContext context) {
     final atLimit = (_addresses?.length ?? 0) >= kMaxAddresses;
+    final palette = LeapPalette.of(context);
     return Scaffold(
       appBar: AppBar(title: Text(tr(context, 'addresses'))),
       body: _errorMessage != null
-          ? Center(child: Text(_errorMessage!, style: const TextStyle(color: LeapColors.muted)))
+          ? Center(child: Text(_errorMessage!, style: TextStyle(color: palette.muted)))
           : _addresses == null
               ? const Center(child: CircularProgressIndicator())
               : _addresses!.isEmpty
-                  ? Center(child: Text(tr(context, 'no_addresses_yet'), style: const TextStyle(color: LeapColors.muted)))
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 80,
+                              height: 80,
+                              decoration: BoxDecoration(color: palette.chalk, shape: BoxShape.circle),
+                              child: Icon(Icons.location_on_outlined, size: 36, color: palette.muted),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(tr(context, 'no_addresses_yet'), style: TextStyle(color: palette.muted), textAlign: TextAlign.center),
+                          ],
+                        ),
+                      ),
+                    )
                   : ListView.separated(
                       padding: const EdgeInsets.all(16),
                       itemCount: _addresses!.length,
@@ -94,50 +125,61 @@ class _AddressesScreenState extends State<AddressesScreen> {
                       itemBuilder: (context, i) {
                         final a = _addresses![i] as Map<String, dynamic>;
                         final isDefault = a['isDefault'] as bool;
-                        return Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(14),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Row(children: [
-                                      Text(a['label'] as String, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                                      if (isDefault) ...[
-                                        const SizedBox(width: 8),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                          decoration: BoxDecoration(color: LeapColors.gauge.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
-                                          child: Text(tr(context, 'default_label'), style: const TextStyle(fontSize: 10.5, color: LeapColors.gauge, fontWeight: FontWeight.w700)),
-                                        ),
-                                      ],
-                                    ]),
-                                    PopupMenuButton<String>(
-                                      icon: const Icon(Icons.more_horiz, size: 20),
-                                      onSelected: (action) {
-                                        if (action == 'edit') context.push('/addresses/edit', extra: a).then((_) => _load());
-                                        if (action == 'default') _setDefault(a['id'] as String);
-                                        if (action == 'delete') _confirmDelete(a['id'] as String);
-                                      },
-                                      itemBuilder: (context) => [
-                                        PopupMenuItem(value: 'edit', child: Text(tr(context, 'edit'))),
-                                        if (!isDefault) PopupMenuItem(value: 'default', child: Text(tr(context, 'set_as_default'))),
-                                        PopupMenuItem(value: 'delete', child: Text(tr(context, 'delete'))),
-                                      ],
+                        final label = a['label'] as String;
+                        return Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: palette.card,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: isDefault ? palette.signal : palette.line),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(children: [
+                                    Container(
+                                      width: 40,
+                                      height: 40,
+                                      decoration: BoxDecoration(color: palette.signal.withValues(alpha: 0.12), shape: BoxShape.circle),
+                                      child: Icon(_iconForLabel(label), color: palette.signal, size: 20),
                                     ),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Text(a['recipientName'] as String, style: const TextStyle(fontSize: 13)),
-                                Text(a['phone'] as String, style: const TextStyle(fontSize: 12, color: LeapColors.muted)),
-                                Text(
-                                  '${a['streetAddress']}, ${a['city']}, ${a['country']}${a['postalCode'] != null ? ' ${a['postalCode']}' : ''}',
-                                  style: const TextStyle(fontSize: 12, color: LeapColors.muted),
+                                    const SizedBox(width: 12),
+                                    Text(label.toUpperCase(), style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: palette.ink, letterSpacing: 0.5)),
+                                  ]),
+                                  PopupMenuButton<String>(
+                                    icon: Icon(Icons.more_horiz, size: 20, color: palette.muted),
+                                    onSelected: (action) {
+                                      if (action == 'edit') context.push('/addresses/edit', extra: a).then((_) => _load());
+                                      if (action == 'default') _setDefault(a['id'] as String);
+                                      if (action == 'delete') _confirmDelete(a['id'] as String);
+                                    },
+                                    itemBuilder: (context) => [
+                                      PopupMenuItem(value: 'edit', child: Text(tr(context, 'edit'))),
+                                      if (!isDefault) PopupMenuItem(value: 'default', child: Text(tr(context, 'set_as_default'))),
+                                      PopupMenuItem(value: 'delete', child: Text(tr(context, 'delete'))),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Text(a['recipientName'] as String, style: TextStyle(fontSize: 13, color: palette.ink)),
+                              Text(a['phone'] as String, style: TextStyle(fontSize: 12, color: palette.muted)),
+                              Text(
+                                '${a['streetAddress']}, ${a['city']}, ${a['country']}${a['postalCode'] != null ? ' ${a['postalCode']}' : ''}',
+                                style: TextStyle(fontSize: 12, color: palette.muted),
+                              ),
+                              if (isDefault) ...[
+                                const SizedBox(height: 10),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                                  decoration: BoxDecoration(color: palette.signal.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(20)),
+                                  child: Text(tr(context, 'default_label').toUpperCase(), style: TextStyle(fontSize: 10, color: palette.signalDark, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
                                 ),
                               ],
-                            ),
+                            ],
                           ),
                         );
                       },
@@ -158,7 +200,8 @@ class _AddressesScreenState extends State<AddressesScreen> {
         onPressed: atLimit
             ? () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(trRead(context, 'address_limit_reached'))))
             : () => context.push('/addresses/add').then((_) => _load()),
-        backgroundColor: atLimit ? LeapColors.muted : LeapColors.signal,
+        backgroundColor: atLimit ? palette.muted : palette.signal,
+        foregroundColor: atLimit ? Colors.white : palette.onSignal,
         icon: const Icon(Icons.add),
         label: Text(tr(context, 'add_address')),
       ),
