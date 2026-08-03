@@ -130,6 +130,10 @@ class AppStrings {
 
     // ---- Garage ----
     'my_garage': {'en': 'My Garage', 'ar': 'مركبتي'},
+    'vehicles_stat': {'en': 'Vehicles', 'ar': 'المركبات'},
+    'orders_stat': {'en': 'Orders', 'ar': 'الطلبات'},
+    'wishlist_stat': {'en': 'Wishlist', 'ar': 'المفضلة'},
+    'account_settings_header': {'en': 'Account Settings', 'ar': 'إعدادات الحساب'},
     'garage_login_prompt': {'en': 'Log in to save vehicles and get fitment-confirmed parts.', 'ar': 'سجّل الدخول لحفظ مركباتك والحصول على قطع مؤكدة التوافق.'},
     'could_not_load_garage': {'en': 'Could not load your garage:', 'ar': 'تعذر تحميل مركباتك:'},
     'add_a_vehicle': {'en': 'Add a vehicle', 'ar': 'أضف مركبة'},

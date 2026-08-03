@@ -782,6 +782,58 @@ exists, never a decorative default.
   Weight) — kept those real fields, restyled to match the reference's
   card treatment, rather than replacing real data with invented rows.
 
+## Real Account screen redesign, matched directly against the real Stitch reference (24 of 28) — completes the full 28-screen redesign effort
+
+**Account, done, the last screen of this effort**: fully migrated to
+the theme-aware `LeapPalette`, added an "ACCOUNT SETTINGS" section
+header above the menu list matching the reference, and a gold accent
+ring on the profile avatar. Fixed a deprecated `withOpacity()` call
+found while migrating.
+
+**Real, honestly-computed stats added, one deliberately omitted**:
+added a 3-stat bento grid (Vehicles/Orders/Wishlist), each a genuine
+count fetched fresh from the real backend, shown only once loaded
+(never a placeholder number in the meantime). The reference's fourth
+stat, "Points," was **not** added — no loyalty-points system exists
+anywhere in the real backend (Referrals already tracks a real,
+separate reward count on its own real screen).
+
+**Two other real, deliberate omissions, not oversights**: the
+reference shows a fabricated "Platinum Member" badge and a "View
+Public Profile" button — no membership-tier system and no public
+profile feature exist anywhere in the real backend.
+
+**One real, deliberate design choice, not an inconsistency**: the
+profile header stays intentionally dark in both light and dark mode
+(matching the reference's own dark hero-header treatment) — uses a
+proper named dark color (`LeapColorsDark.background`), not
+`palette.ink` (which is semantically a text color and would have been
+a real mistake to reuse as a background here).
+
+---
+
+# 28 of 28 screens complete
+
+Every screen in the app has now been redesigned to match its real
+Stitch reference, following the same real, consistent standards
+throughout this whole effort:
+- Every screen fully migrated to the theme-aware `LeapPalette` (light
+  and dark mode both genuinely supported, confirmed screen by screen)
+- Every fabricated concept in a reference (fake OAuth, loyalty points,
+  membership tiers, invented dollar figures, non-existent premium
+  tiers) deliberately **not** added, and explicitly documented as a
+  deviation rather than silently skipped
+- Every real, confirmed gap found along the way (missing product
+  images on order detail, a missing fitment-confirmation badge, a
+  stale "email not connected" claim, several white-on-gold contrast
+  bugs, a missing password-visibility toggle, a plain product list on
+  Search with no real photos or working buttons) fixed as it was
+  found, not deferred
+- Every genuinely different piece of real functionality from a
+  reference (Category's sidebar+drill-down navigation, the cart's
+  real supplier anonymization) preserved rather than flattened to
+  match a simpler mockup
+
 ## Real Cart screen redesign, matched directly against the real Stitch reference (part of the full 28-screen redesign effort)
 
 **Part of a larger, real, prioritized effort**: a complete 28-screen

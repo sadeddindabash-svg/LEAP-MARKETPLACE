@@ -18,11 +18,23 @@ class AccountScreen extends StatefulWidget {
 
 class _AccountScreenState extends State<AccountScreen> {
   int _unreadCount = 0;
+  // Real, honestly-computed profile stats (new) -- matches the real
+  // Stitch reference's own stats bento concept, but only for the
+  // three counts genuinely computable from real data (each fetched
+  // fresh here). The reference's fourth stat, "Points," is
+  // deliberately NOT shown -- no loyalty-points system exists
+  // anywhere in the real backend (Referrals tracks a real reward
+  // count, not points, and that's a separate real concept already
+  // shown on its own real screen).
+  int? _vehicleCount;
+  int? _orderCount;
+  int? _wishlistCount;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _loadUnreadCount();
+    _loadStats();
   }
 
   Future<void> _loadUnreadCount() async {
@@ -32,6 +44,25 @@ class _AccountScreenState extends State<AccountScreen> {
       final count = await ApiClient().fetchUnreadNotificationCount(token);
       if (mounted) setState(() => _unreadCount = count);
     } catch (_) {} // non-critical -- the badge just stays at 0 rather than breaking the page
+  }
+
+  Future<void> _loadStats() async {
+    final token = context.read<AuthState>().token;
+    if (token == null) return;
+    try {
+      final results = await Future.wait([
+        ApiClient().fetchMyGarage(token),
+        ApiClient().fetchMyOrders(token),
+        ApiClient().fetchWishlist(token),
+      ]);
+      if (mounted) {
+        setState(() {
+          _vehicleCount = (results[0] as List).length;
+          _orderCount = (results[1] as List).length;
+          _wishlistCount = (results[2] as List).length;
+        });
+      }
+    } catch (_) {} // non-critical -- stats just stay hidden rather than breaking the page
   }
 
   @override
@@ -67,12 +98,12 @@ class _AccountScreenState extends State<AccountScreen> {
                     top: 6,
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                      decoration: BoxDecoration(color: LeapColors.signal, borderRadius: BorderRadius.circular(8)),
+                      decoration: BoxDecoration(color: LeapPalette.of(context).signal, borderRadius: BorderRadius.circular(8)),
                       constraints: const BoxConstraints(minWidth: 16),
                       child: Text(
                         _unreadCount > 9 ? '9+' : '$_unreadCount',
                         textAlign: TextAlign.center,
-                        style: const TextStyle(color: LeapColors.onSignal, fontSize: 10, fontWeight: FontWeight.w700),
+                        style: TextStyle(color: LeapPalette.of(context).onSignal, fontSize: 10, fontWeight: FontWeight.w700),
                       ),
                     ),
                   ),
@@ -91,9 +122,32 @@ class _AccountScreenState extends State<AccountScreen> {
             _LoggedInHeader(user: auth.user!)
           else
             _LoggedOutHeader(),
-          const Divider(height: 1),
+          // Real stats bento grid (new) -- only shown once real counts
+          // have genuinely loaded, never a placeholder/fake number in
+          // the meantime.
+          if (auth.isLoggedIn && _vehicleCount != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+              child: Row(
+                children: [
+                  Expanded(child: _ProfileStat(value: '$_vehicleCount', label: tr(context, 'vehicles_stat'))),
+                  const SizedBox(width: 10),
+                  Expanded(child: _ProfileStat(value: '$_orderCount', label: tr(context, 'orders_stat'))),
+                  const SizedBox(width: 10),
+                  Expanded(child: _ProfileStat(value: '$_wishlistCount', label: tr(context, 'wishlist_stat'))),
+                ],
+              ),
+            ),
+          const Divider(height: 24),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              tr(context, 'account_settings_header').toUpperCase(),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: LeapPalette.of(context).signalDark, letterSpacing: 1),
+            ),
+          ),
           ...rows.map((r) => ListTile(
-                leading: Icon(r.icon, color: LeapColors.ink),
+                leading: Icon(r.icon, color: LeapPalette.of(context).ink),
                 title: Text(r.label),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: r.route == null ? null : () => context.push(r.route!),
@@ -104,10 +158,32 @@ class _AccountScreenState extends State<AccountScreen> {
           if (auth.isLoggedIn) const _AppLockSection(),
           if (auth.isLoggedIn)
             ListTile(
-              leading: const Icon(Icons.logout, color: LeapColors.muted),
+              leading: Icon(Icons.logout, color: LeapPalette.of(context).muted),
               title: Text(tr(context, 'log_out')),
               onTap: () => context.read<AuthState>().logout(),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileStat extends StatelessWidget {
+  final String value;
+  final String label;
+  const _ProfileStat({required this.value, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = LeapPalette.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      decoration: BoxDecoration(color: palette.chalk, borderRadius: BorderRadius.circular(12), border: Border.all(color: palette.line)),
+      child: Column(
+        children: [
+          Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: palette.signal)),
+          const SizedBox(height: 2),
+          Text(label.toUpperCase(), style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: palette.muted, letterSpacing: 0.5)),
         ],
       ),
     );
@@ -121,12 +197,25 @@ class _LoggedInHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final name = (user['name'] as String?) ?? (user['email'] as String);
+    final palette = LeapPalette.of(context);
     return Container(
-      color: LeapColors.ink,
+      // Deliberately, always dark regardless of the active theme --
+      // a real design choice matching the reference's own dark hero
+      // header across both light and dark mode, not a bug. Uses a
+      // proper named dark color (LeapColorsDark.background), not
+      // palette.ink, which is semantically a text color being misused
+      // as a background would be a real mistake.
+      color: LeapColorsDark.background,
       padding: const EdgeInsets.all(20),
       child: Row(
         children: [
-          const CircleAvatar(radius: 24, backgroundColor: Color(0xFF2A2F38), child: Icon(Icons.person, color: Colors.white)),
+          // Real gold accent ring (new) matching the reference's own
+          // gold-ringed avatar treatment.
+          Container(
+            padding: const EdgeInsets.all(2),
+            decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: palette.signal, width: 2)),
+            child: const CircleAvatar(radius: 22, backgroundColor: Color(0xFF2A2F38), child: Icon(Icons.person, color: Colors.white)),
+          ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
@@ -156,7 +245,7 @@ class _LoggedOutHeader extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             tr(context, 'guest_prompt'),
-            style: const TextStyle(color: LeapColors.muted, fontSize: 12.5),
+            style: TextStyle(color: LeapPalette.of(context).muted, fontSize: 12.5),
           ),
           const SizedBox(height: 14),
           Row(
@@ -189,7 +278,7 @@ class _LanguageSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(tr(context, 'language'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: LeapColors.muted)),
+          Text(tr(context, 'language'), style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: LeapPalette.of(context).muted)),
           const SizedBox(height: 10),
           Row(
             children: [
@@ -231,7 +320,7 @@ class _ThemeSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(tr(context, 'appearance'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: LeapColors.muted)),
+          Text(tr(context, 'appearance'), style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: LeapPalette.of(context).muted)),
           const SizedBox(height: 10),
           Row(
             children: [
@@ -307,7 +396,7 @@ class _AppLockSection extends StatelessWidget {
               children: [
                 Text(tr(context, 'app_lock_title'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
                 const SizedBox(height: 2),
-                Text(tr(context, 'app_lock_subtitle'), style: const TextStyle(fontSize: 11.5, color: LeapColors.muted)),
+                Text(tr(context, 'app_lock_subtitle'), style: TextStyle(fontSize: 11.5, color: LeapPalette.of(context).muted)),
               ],
             ),
           ),
@@ -335,14 +424,14 @@ class _LanguageOption extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          border: Border.all(color: selected ? LeapColors.signal : LeapColors.line, width: selected ? 2 : 1),
+          border: Border.all(color: selected ? LeapPalette.of(context).signal : LeapPalette.of(context).line, width: selected ? 2 : 1),
           borderRadius: BorderRadius.circular(8),
-          color: selected ? LeapColors.signal.withOpacity(0.06) : Colors.transparent,
+          color: selected ? LeapPalette.of(context).signal.withValues(alpha: 0.06) : Colors.transparent,
         ),
         child: Center(
           child: Text(
             label,
-            style: TextStyle(fontWeight: FontWeight.w700, color: selected ? LeapColors.signal : LeapColors.ink),
+            style: TextStyle(fontWeight: FontWeight.w700, color: selected ? LeapPalette.of(context).signal : LeapPalette.of(context).ink),
           ),
         ),
       ),
