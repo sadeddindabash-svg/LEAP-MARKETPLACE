@@ -472,6 +472,19 @@ actually parsing every touched XML file with Python's own XML parser
 directly after each edit, not just eyeballing it — confirmed all 4
 native XML/storyboard files are genuinely valid before finalizing.
 
+## Real Onboarding redesign, matched directly against the real Stitch reference (20 of 28)
+
+**Onboarding, done**: fully migrated to the theme-aware `LeapPalette`,
+pill-shaped dot indicators matching the same real pattern already
+used on the product gallery, and a full-width, more prominent CTA
+button matching the reference's own style. The existing dialog-based
+structure (icon + title + body per slide) was kept — a genuine,
+working implementation already close to the reference's own
+information structure, just needing the same visual polish applied
+elsewhere. The reference's fictional cinematic stock photography
+backgrounds were not replicated — this app has no such real image
+assets.
+
 ## Real Support screens redesign — Leap Support, Ticket Detail, Return Case Detail, matched directly against the real Stitch references (17–19 of 28)
 
 **Leap Support (ticket list), done**: fully migrated to the

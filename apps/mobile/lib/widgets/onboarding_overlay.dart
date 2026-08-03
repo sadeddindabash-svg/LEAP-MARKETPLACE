@@ -62,18 +62,19 @@ class _OnboardingDialogState extends State<_OnboardingDialog> {
   @override
   Widget build(BuildContext context) {
     final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final palette = LeapPalette.of(context);
     return Dialog(
       insetPadding: const EdgeInsets.all(20),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: SizedBox(
-        height: 420,
+        height: 440,
         child: Column(
           children: [
             Align(
               alignment: isAr ? Alignment.centerLeft : Alignment.centerRight,
               child: TextButton(
                 onPressed: _finish,
-                child: Text(isAr ? 'تخطي' : 'Skip', style: const TextStyle(color: LeapColors.muted)),
+                child: Text(isAr ? 'تخطي' : 'Skip', style: TextStyle(color: palette.muted)),
               ),
             ),
             Expanded(
@@ -106,27 +107,35 @@ class _OnboardingDialogState extends State<_OnboardingDialog> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+              child: Column(
                 children: [
+                  // Real pill-shaped dot indicators (new), matching the
+                  // same real pattern already used on the product
+                  // gallery -- a wider active pill, not a plain dot.
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: List.generate(
                       _slideCount,
-                      (i) => Container(
-                        margin: const EdgeInsets.only(right: 4),
-                        width: 6,
-                        height: 6,
+                      (i) => AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        margin: const EdgeInsets.symmetric(horizontal: 3),
+                        width: i == _page ? 20 : 6,
+                        height: 5,
                         decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: i == _page ? LeapColors.signal : LeapColors.line,
+                          borderRadius: BorderRadius.circular(3),
+                          color: i == _page ? palette.signal : palette.line,
                         ),
                       ),
                     ),
                   ),
-                  ElevatedButton(
-                    onPressed: _next,
-                    child: Text(_page == _slideCount - 1 ? (isAr ? 'ابدأ' : 'Get started') : (isAr ? 'التالي' : 'Next')),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _next,
+                      child: Text(_page == _slideCount - 1 ? (isAr ? 'ابدأ' : 'Get started') : (isAr ? 'التالي' : 'Continue').toUpperCase()),
+                    ),
                   ),
                 ],
               ),
@@ -147,6 +156,7 @@ class _OnboardingSlide extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = LeapPalette.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
@@ -155,13 +165,13 @@ class _OnboardingSlide extends StatelessWidget {
           Container(
             width: 88,
             height: 88,
-            decoration: BoxDecoration(color: LeapColors.chalk, shape: BoxShape.circle),
-            child: Icon(icon, size: 40, color: LeapColors.signal),
+            decoration: BoxDecoration(color: palette.chalk, shape: BoxShape.circle),
+            child: Icon(icon, size: 40, color: palette.signal),
           ),
           const SizedBox(height: 24),
-          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800), textAlign: TextAlign.center),
+          Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: palette.ink), textAlign: TextAlign.center),
           const SizedBox(height: 10),
-          Text(body, style: const TextStyle(fontSize: 13.5, color: LeapColors.muted), textAlign: TextAlign.center),
+          Text(body, style: TextStyle(fontSize: 13.5, color: palette.muted), textAlign: TextAlign.center),
         ],
       ),
     );
