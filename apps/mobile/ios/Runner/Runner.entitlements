@@ -5,17 +5,20 @@
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<!--
-		Real Universal Links domain for password-reset deep linking
-		(new), app-side half only. leapautoparts.com below is a REAL
+		Real Universal Links domain (new), covers both password-reset
+		and product-sharing deep linking. Associated Domains entries
+		are domain-wide, not path-specific, so no change is needed here
+		beyond the one entry below. leapautoparts.com is a REAL
 		PLACEHOLDER, it must be replaced with your actual real
 		production domain. This alone is not enough for links to
 		actually open the app: a real apple-app-site-association file
 		must also be hosted at
 		https://leapautoparts.com/.well-known/apple-app-site-association
-		containing this app's own real Team ID and bundle identifier
-		(see Apple's own Universal Links docs). Until both exist,
-		tapping such a link will open Safari, not this app, exactly as
-		it does today.
+		containing this app's own real Team ID and bundle identifier,
+		and listing which real paths (/reset-password, /products/*)
+		should open the app versus fall back to Safari (see Apple's
+		own Universal Links docs). Until both exist, tapping such a
+		link will open Safari, not this app, exactly as it does today.
 		-->
 		<string>applinks:leapautoparts.com</string>
 	</array>

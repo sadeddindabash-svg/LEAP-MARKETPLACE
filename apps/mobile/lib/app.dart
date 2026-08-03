@@ -97,6 +97,21 @@ final GoRouter appRouter = GoRouter(
       path: '/product/:id',
       builder: (context, state) => ProductScreen(productId: state.pathParameters['id']!),
     ),
+    // Real alias route (new) -- closes a real, confirmed bug found
+    // while extending deep-link scaffolding to product sharing:
+    // shared product links point to /products/:id (plural, matching
+    // apps/web-storefront's own real URL structure -- see
+    // product_screen.dart's own _shareProduct), but this app's own
+    // internal route was /product/:id (singular). Even with real
+    // domain/signing fully configured for App Links/Universal Links,
+    // a real shared link would have failed to route correctly inside
+    // this app without this. Kept the original path too, since
+    // internal navigation (e.g. from Home, Search, Cart) already
+    // calls context.push('/product/$id') directly.
+    GoRoute(
+      path: '/products/:id',
+      builder: (context, state) => ProductScreen(productId: state.pathParameters['id']!),
+    ),
     GoRoute(path: '/checkout', builder: (context, state) => const CheckoutScreen()),
     GoRoute(path: '/orders/:id', builder: (context, state) => OrderDetailScreen(orderId: state.pathParameters['id']!)),
     GoRoute(path: '/orders/:id/tracking', builder: (context, state) => TrackingScreen(orderId: state.pathParameters['id']!)),

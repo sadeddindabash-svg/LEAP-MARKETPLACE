@@ -58,6 +58,15 @@
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="https" android:host="leapautoparts.com" android:pathPrefix="/reset-password"/>
+                <!--
+                  Real product-sharing deep link (new), same real
+                  domain/signing infrastructure as the reset-password
+                  filter above. Once that real external setup exists
+                  for one path, adding another is free. Matches
+                  apps/web-storefront's own real /products/:id URL
+                  structure directly.
+                -->
+                <data android:scheme="https" android:host="leapautoparts.com" android:pathPrefix="/products"/>
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.

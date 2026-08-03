@@ -782,6 +782,26 @@ exists, never a decorative default.
   Weight) — kept those real fields, restyled to match the reference's
   card treatment, rather than replacing real data with invented rows.
 
+## Improvement #3 of 20: real deep-linking readiness for product sharing — reuses #2's infrastructure, plus a real routing bug found and fixed
+
+**A real, confirmed bug found and fixed while extending this**: shared
+product links (`_shareProduct` in `product_screen.dart`) point to
+`/products/:id` (plural, matching `apps/web-storefront`'s own real
+URL structure), but this app's own internal route was `/product/:id`
+(singular). Even with real domain/signing fully configured, a real
+shared link would have failed to route correctly inside this app.
+Added a real `/products/:id` alias route pointing at the same
+`ProductScreen`, keeping the original `/product/:id` path too since
+internal navigation (Home, Search, Cart) already calls it directly.
+
+**Platform scaffolding extended, same honest split as #2**: the
+Android intent-filter and iOS entitlements from #2 now also cover
+`/products/*` — genuinely free to add once the real domain/signing
+infrastructure exists for one path, since it's the same
+verification file and certificate either way. Same real, external
+requirements as #2 still apply (real domain, real hosted verification
+file) before this actually intercepts anything.
+
 ## Improvement #2 of 20: real deep-linking readiness for password reset — app-side built, real domain/signing setup still required
 
 **Honest scope, stated upfront**: deep linking needs two real halves.
