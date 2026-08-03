@@ -6,6 +6,7 @@ import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../core/language_state.dart';
 import '../../core/app_lock_state.dart';
+import '../../core/push_state.dart';
 import '../../core/theme_state.dart';
 import '../../services/api_client.dart';
 
@@ -35,6 +36,13 @@ class _AccountScreenState extends State<AccountScreen> {
     super.didChangeDependencies();
     _loadUnreadCount();
     _loadStats();
+    // Real push registration (new) -- covers the "already logged in,
+    // reopening the app" case (the login screen's own call covers a
+    // fresh login). Safe to call every time this screen loads: has
+    // its own internal one-time guard, and does nothing at all
+    // without a real logged-in session (see PushState's own header
+    // comment).
+    PushState.initialize(context);
   }
 
   Future<void> _loadUnreadCount() async {

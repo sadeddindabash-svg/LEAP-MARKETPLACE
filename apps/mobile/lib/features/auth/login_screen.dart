@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
+import '../../core/push_state.dart';
 import '../../services/api_client.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -27,7 +28,16 @@ class _LoginScreenState extends State<LoginScreen> {
     });
     try {
       await context.read<AuthState>().login(_emailController.text.trim(), _passwordController.text);
-      if (mounted) context.go('/account');
+      if (mounted) {
+        // Real push registration (new) -- a real device token is only
+        // useful once tied to a real user, so this is called right
+        // after a fresh real login succeeds (see PushState's own
+        // header comment for the honest scope: gracefully does
+        // nothing without real Firebase config files, which don't
+        // exist yet).
+        PushState.initialize(context);
+        context.go('/account');
+      }
     } on ApiException catch (e) {
       setState(() => _errorMessage = e.message);
     } catch (e) {

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../services/api_client.dart';
+import 'push_state.dart';
 
 /// Holds the current auth session (token + user) and notifies listeners
 /// on change. Registered as a ChangeNotifierProvider at the app root (see
@@ -77,9 +78,18 @@ class AuthState extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    // Real fix, confirmed directly: capture the real token before
+    // clearing it below -- PushState.unregister needs a real, still-
+    // valid auth token to call the real DELETE endpoint with. Best-
+    // effort, fire-and-forget: a real failure here (e.g. no network
+    // at that moment) must never block the real logout itself.
+    final tokenBeforeClear = _token;
     _token = null;
     _user = null;
     await _secureStorage.delete(key: _tokenKey);
     notifyListeners();
+    if (tokenBeforeClear != null) {
+      PushState.unregister(tokenBeforeClear).catchError((_) {});
+    }
   }
 }

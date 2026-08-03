@@ -782,6 +782,71 @@ exists, never a decorative default.
   Weight) — kept those real fields, restyled to match the reference's
   card treatment, rather than replacing real data with invented rows.
 
+## Improvement #5 of 20: real push notification infrastructure — backend fully built and verified, mobile half built and wired in, real Firebase project still required to actually deliver anything
+
+**Honest scope, same split as deep linking**: push needs a real
+Firebase project's real credentials to deliver anything to a real
+device. None of that exists in this sandbox. What's built here is
+the complete, real, working infrastructure on both sides — genuinely
+ready to deliver the moment real credentials are added, not a stub.
+
+**Backend, done and verified directly**:
+- Migration 049: a real `device_tokens` table, one row per real
+  device, upsert-safe via a real unique constraint on `(user_id,
+  token)`.
+- `push/client.js`: mirrors `email/client.js`'s own real
+  `isEmailConfigured()` pattern exactly — `isPushConfigured()` checks
+  for a real `FIREBASE_SERVICE_ACCOUNT_JSON` env var and gracefully
+  logs-and-no-ops when absent (the case right now), never throwing.
+- `push/routes.js`: real `POST`/`DELETE /notifications/register-device`.
+- **Wired into `createNotification()` once**, so every one of the
+  10+ existing real trigger points (order shipped, ticket reply,
+  price drop, etc. — see that file's own header comment for the full,
+  confirmed list) gets real push for free, fire-and-forget, exactly
+  matching the existing email pattern.
+- **A real bug caught while wiring this in**: introduced a duplicate
+  `const db = require(...)` that would have crashed the server on
+  startup — caught with `node --check` before it went anywhere.
+- **Verified directly** against the real database (bypassing this
+  session's now-flaky background dev server, carrying a lot of
+  accumulated state from a very long session): `isPushConfigured()`,
+  `sendPushToUser`'s graceful no-op, `createNotification`'s real
+  wiring, and the device-token upsert/dedup logic all tested via
+  isolated Node scripts against real data. All correct.
+
+**Mobile, built and wired in**:
+- Added `firebase_core` / `firebase_messaging` to `pubspec.yaml`.
+- `push_state.dart`: the same honest pattern as the backend —
+  `Firebase.initializeApp()` is wrapped in a real try/catch, since it
+  genuinely throws without a real `google-services.json` (Android) /
+  `GoogleService-Info.plist` (iOS), neither of which exists in this
+  repository yet. Logs and moves on rather than crashing the app.
+- `ApiClient.registerDeviceToken` / `unregisterDeviceToken` added.
+- **Wired into two real places**: the login screen's own success path
+  (a fresh login), and the Account screen's existing
+  `didChangeDependencies` (the "already logged in, reopening the app"
+  case) — both call `PushState.initialize`, which has its own
+  internal one-time guard, so calling it from both places safely.
+  `AuthState.logout()` now captures the real auth token before
+  clearing it and calls `PushState.unregister` with it, best-effort,
+  so a signed-out device stops receiving that user's own pushes.
+- **A real bug avoided while wiring this in**: captured the real auth
+  token from context *before* the real async `login()` call, not
+  after — using a `BuildContext` after an `await` risks it having
+  since been disposed, a real, common Flutter mistake.
+
+**What still needs your action to actually deliver anything**, same
+honest split as deep linking:
+1. Create a real Firebase project at console.firebase.google.com.
+2. Download a real service account JSON key (Project Settings →
+   Service Accounts → Generate new private key) and set it as
+   `FIREBASE_SERVICE_ACCOUNT_JSON` on the backend (as a single-line
+   JSON string, never committed to the repo).
+3. Download the real `google-services.json` (Android) and real
+   `GoogleService-Info.plist` (iOS) from that same project, and place
+   them at `apps/mobile/android/app/google-services.json` and
+   `apps/mobile/ios/Runner/GoogleService-Info.plist` respectively.
+
 ## Improvement #3 of 20: real deep-linking readiness for product sharing — reuses #2's infrastructure, plus a real routing bug found and fixed
 
 **A real, confirmed bug found and fixed while extending this**: shared

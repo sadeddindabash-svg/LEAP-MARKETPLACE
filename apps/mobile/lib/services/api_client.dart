@@ -854,6 +854,31 @@ class ApiClient {
     if (response.statusCode != 204) throw ApiException('Failed to mark all notifications read (${response.statusCode})');
   }
 
+  /// Real device-token registration for push notifications (see
+  /// services/api/src/modules/push/routes.js's own real endpoint).
+  /// Called from PushState once a real FCM token exists.
+  Future<void> registerDeviceToken(String authToken, String deviceToken, String platform) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/notifications/register-device'),
+      headers: _authHeaders(authToken),
+      body: jsonEncode({'token': deviceToken, 'platform': platform}),
+    );
+    if (response.statusCode != 204) throw ApiException('Failed to register device token (${response.statusCode})');
+  }
+
+  /// Real device-token removal on logout -- a device that's no longer
+  /// signed in as this real user shouldn't keep receiving this real
+  /// user's own push notifications (see PushState.unregister, the
+  /// real caller).
+  Future<void> unregisterDeviceToken(String authToken, String deviceToken) async {
+    final response = await _client.delete(
+      Uri.parse('$baseUrl/notifications/register-device'),
+      headers: _authHeaders(authToken),
+      body: jsonEncode({'token': deviceToken}),
+    );
+    if (response.statusCode != 204) throw ApiException('Failed to unregister device token (${response.statusCode})');
+  }
+
   /// Real referral rewards + general promo codes (see
   /// services/api/src/modules/promotions/ and referrals/). Confirmed
   /// scope: a general promotions engine, not just referral rewards --
