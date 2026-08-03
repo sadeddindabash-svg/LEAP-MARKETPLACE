@@ -30,6 +30,7 @@ const List<({String key, String labelKey})> kOrderTabs = [
   (key: 'all', labelKey: 'tab_all'),
   (key: 'to_ship', labelKey: 'status_to_ship'),
   (key: 'shipped', labelKey: 'status_shipped'),
+  (key: 'delivered', labelKey: 'status_delivered'),
   (key: 'returns', labelKey: 'status_returns'),
 ];
 

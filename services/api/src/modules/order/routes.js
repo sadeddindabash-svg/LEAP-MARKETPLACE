@@ -512,8 +512,19 @@ async function computeDisplayStatus(orderId) {
 
   // A real return case in progress is what a buyer cares about most for
   // this order right now, regardless of the underlying shipment status
-  // -- takes priority over shipped/to_ship.
+  // -- takes priority over shipped/to_ship/delivered.
   if (returnCases.length > 0) return 'returns';
+
+  // REAL BUG FOUND AND FIXED HERE (confirmed directly while
+  // implementing a real, related mobile fix that had to work around
+  // this): this function could never actually return 'delivered', even
+  // once every real sub-order genuinely reached that status -- it just
+  // stayed 'shipped' forever after that point. Checked first, since an
+  // order with zero real sub-orders yet (a real edge case -- rows can
+  // be empty right after checkout, before supplier sub-orders are
+  // created) must NOT be treated as "every sub-order delivered" by an
+  // Array.every() on an empty array vacuously returning true.
+  if (subOrders.length > 0 && subOrders.every((so) => so.status === 'delivered')) return 'delivered';
 
   // Multi-supplier orders can have genuinely MIXED real sub-order
   // progress (one shipped, one still preparing) -- if ANY real part has

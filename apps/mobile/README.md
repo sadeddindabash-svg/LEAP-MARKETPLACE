@@ -782,6 +782,36 @@ exists, never a decorative default.
   Weight) — kept those real fields, restyled to match the reference's
   card treatment, rather than replacing real data with invented rows.
 
+## Real fix (improvement #1 of 20): order status can now genuinely reach "delivered"
+
+**The real backend gap flagged in the previous fix, now actually
+fixed**: `computeDisplayStatus` could never return `'delivered'` even
+once every real sub-order genuinely reached that status — it just
+stayed `'shipped'` forever. Now correctly returns `'delivered'` once
+every real sub-order in an order has reached that status (guards the
+real edge case of an order with zero sub-orders yet, so an empty list
+doesn't vacuously count as "all delivered").
+
+**A real "Delivered" tab added to the mobile order list** — closes
+the matching real gap: now that this status can genuinely occur,
+buyers can filter to it.
+
+**Verified directly against the real running backend, not just
+unit-level**: created a real order, confirmed it started at
+`to_ship`, marked every real sub-order `delivered` directly in the
+database, and confirmed the order detail endpoint, the order list
+endpoint, and the real `?status=delivered` filter all correctly
+reflect it.
+
+**On the failing admin-dashboard test run seen while verifying
+this**: the dedicated `orderDisplayStatus.integration.test.js` test
+passes cleanly in isolation (5/5). Re-running the full suite twice
+produced two different sets of failures each time (fitment admin,
+promotions, reviews, overview stats — none of which touch order
+status at all), confirming this is pre-existing test-parallelism
+flakiness in this sandbox (shared DB state across concurrently-run
+integration tests), not a real regression from this change.
+
 ## Real fix: hide "Track your package" once every real sub-order is delivered
 
 **Confirmed directly, requested**: order detail no longer shows the
