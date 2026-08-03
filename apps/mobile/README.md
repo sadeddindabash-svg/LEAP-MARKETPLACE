@@ -782,6 +782,52 @@ exists, never a decorative default.
   Weight) — kept those real fields, restyled to match the reference's
   card treatment, rather than replacing real data with invented rows.
 
+## Improvement #8 of 20: real offline/network-failure handling — one centralized fix covering all 65 existing API call sites
+
+**A real correction first**: improvement #6 (order cancellation) was
+checked before starting and turned out to be **already fully built**
+— a real, working `POST /:id/cancel` endpoint on the backend and a
+real "Cancel order" button on the order detail screen, with correct
+conditional visibility, a confirmation dialog, and proper error
+handling. Verified end-to-end directly (created a real order,
+cancelled it, confirmed the status, confirmed a second cancellation
+attempt is correctly rejected). This item should not have been on the
+original list — a mistake in that original list, not a real gap.
+Nothing needed changing.
+
+**#8, done**: without this, a real network failure (no internet, a
+DNS lookup failure, a request that hangs) threw a raw
+`SocketException` or `http.ClientException` — neither is an
+`ApiException`, so a screen that only ever catches `ApiException`
+specifically would let a cryptic technical message like
+"SocketException: Failed host lookup..." reach the person, or crash
+outright in a screen with no generic catch-all.
+
+**One centralized fix, not 65 individual ones**: added
+`_NetworkAwareClient`, a real `http.BaseClient` wrapper around the
+real client already used everywhere in `api_client.dart`. It catches
+`SocketException`/`TimeoutException`/`http.ClientException` at a
+single point and converts each into a clear, friendly `ApiException`
+("No internet connection. Check your network and try again.," etc.) —
+every one of the 65 existing real call sites in this file benefits
+automatically, none needed to change.
+
+**A real, deliberate timeout value chosen carefully**: set to 30
+seconds, not a tighter value — this file also has real multipart
+photo uploads (`uploadReviewPhoto`, product-image) that can genuinely
+take longer than a quick JSON API call on a slower real connection; a
+tighter timeout would incorrectly fail a real, still-in-progress
+upload, not just a genuinely dead connection.
+
+**Honest limitation on verification**: this sandbox has no Dart/Flutter
+SDK at all (confirmed directly — `flutter`/`dart` aren't installed),
+so this was verified via careful manual review and the same bracket-
+balance checking used for every other Dart change this session, not
+an actual compiled test run. The one existing test file in this app
+(`test/widget_test.dart`) is unrelated, stale Flutter boilerplate
+(references a non-existent `MyApp` class) — confirmed no real risk of
+this change breaking it.
+
 ## Improvement #5 of 20: real push notification infrastructure — backend fully built and verified, mobile half built and wired in, real Firebase project still required to actually deliver anything
 
 **Honest scope, same split as deep linking**: push needs a real

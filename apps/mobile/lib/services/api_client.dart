@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
@@ -10,6 +12,40 @@ import '../models/vehicle.dart';
 import '../models/review.dart';
 import '../models/saved_search.dart';
 
+/// Real, centralized offline/network-failure handling (new). Without
+/// this, a real network failure (no internet, DNS lookup failure, a
+/// request that times out) throws a raw `SocketException` or
+/// `http.ClientException` -- neither is an `ApiException`, so the 65
+/// real call sites below that only ever catch `ApiException`
+/// specifically would either let a cryptic technical message like
+/// "SocketException: Failed host lookup..." reach the screen, or (in
+/// a screen with no generic catch-all) crash outright. Wrapping the
+/// real `http.Client` here, once, converts those real failures into a
+/// clear, friendly `ApiException` at a single point -- every existing
+/// call site benefits automatically, none of them needed to change.
+class _NetworkAwareClient extends http.BaseClient {
+  final http.Client _inner;
+  _NetworkAwareClient(this._inner);
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    try {
+      // 30s, not a tighter value -- this file also has real multipart
+      // photo uploads (uploadReviewPhoto, product-image) that can
+      // genuinely take longer than a quick JSON API call on a slower
+      // real connection; too tight a timeout would fail a real,
+      // still-in-progress upload, not just a genuinely dead connection.
+      return await _inner.send(request).timeout(const Duration(seconds: 30));
+    } on SocketException {
+      throw ApiException('No internet connection. Check your network and try again.');
+    } on TimeoutException {
+      throw ApiException('The request took too long to respond. Check your connection and try again.');
+    } on http.ClientException catch (e) {
+      throw ApiException('Could not reach the server: ${e.message}');
+    }
+  }
+}
+
 /// Thin wrapper around services/api. Kept deliberately simple for the MVP —
 /// swap in a generated client (e.g. from an OpenAPI spec) once the backend
 /// contract stabilizes, rather than hand-maintaining this longer-term.
@@ -19,7 +55,7 @@ class ApiClient {
 
   ApiClient({String? baseUrl, http.Client? client})
       : baseUrl = baseUrl ?? AppConfig.apiBaseUrl,
-        _client = client ?? http.Client();
+        _client = _NetworkAwareClient(client ?? http.Client());
 
   /// REAL BUG FOUND AND FIXED HERE (second real bug in this exact spot,
   /// found right after fixing the first): the backend's upload endpoint
