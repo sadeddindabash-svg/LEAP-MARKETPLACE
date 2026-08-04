@@ -27,17 +27,23 @@ class _LoginScreenState extends State<LoginScreen> {
       _errorMessage = null;
     });
     try {
-      await context.read<AuthState>().login(_emailController.text.trim(), _passwordController.text);
-      if (mounted) {
-        // Real push registration (new) -- a real device token is only
-        // useful once tied to a real user, so this is called right
-        // after a fresh real login succeeds (see PushState's own
-        // header comment for the honest scope: gracefully does
-        // nothing without real Firebase config files, which don't
-        // exist yet).
-        PushState.initialize(context);
-        context.go('/account');
+      final result = await context.read<AuthState>().login(_emailController.text.trim(), _passwordController.text);
+      if (!mounted) return;
+      if (result.requiresTwoFactor) {
+        // Real second factor (new) -- the real password already
+        // checked out; this navigates to the real code-entry step
+        // rather than treating the account as logged in yet.
+        context.push('/login/2fa', extra: result.userId);
+        return;
       }
+      // Real push registration (new) -- a real device token is only
+      // useful once tied to a real user, so this is called right
+      // after a fresh real login succeeds (see PushState's own
+      // header comment for the honest scope: gracefully does
+      // nothing without real Firebase config files, which don't
+      // exist yet).
+      PushState.initialize(context);
+      context.go('/account');
     } on ApiException catch (e) {
       setState(() => _errorMessage = e.message);
     } catch (e) {

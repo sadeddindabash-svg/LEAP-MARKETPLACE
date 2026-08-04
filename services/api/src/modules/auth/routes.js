@@ -100,7 +100,7 @@ router.post('/login', async (req, res, next) => {
       return res.status(400).json({ error: 'email and password are required' });
     }
 
-    const { rows } = await db.query('SELECT id, email, name, role, password_hash, supplier_id, hub_id, is_owner FROM users WHERE email = $1', [email]);
+    const { rows } = await db.query('SELECT id, email, name, role, password_hash, supplier_id, hub_id, is_owner, two_factor_enabled FROM users WHERE email = $1', [email]);
     // Deliberately identical error for "no such user" and "wrong password"
     // — do not reveal which one it was, that leaks whether an email is registered.
     const genericError = { error: 'Invalid email or password' };
@@ -115,6 +115,56 @@ router.post('/login', async (req, res, next) => {
     const passwordMatches = await bcrypt.compare(password, user.password_hash);
     if (!passwordMatches) return res.status(401).json(genericError);
 
+    // Real two-factor check (migration 051) -- when enabled, the real
+    // password check above is only the FIRST real factor. Withholds
+    // the real JWT here and returns a real signal telling the client
+    // to proceed to POST /auth/login/2fa with a real, current
+    // authenticator code as the second real factor, rather than
+    // completing the real session on a password alone.
+    if (user.two_factor_enabled) {
+      return res.json({ requiresTwoFactor: true, userId: user.id });
+    }
+
+    const accessInfo = await getAdminAccessInfo(user.id, user.role, user.is_owner);
+    res.json({
+      token: signToken(user),
+      user: { id: user.id, email: user.email, name: user.name, role: user.role, supplierId: user.supplier_id, hubId: user.hub_id, ...accessInfo },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Real second real factor of login (migration 051) -- completes a
+ * real login that POST /auth/login already flagged as
+ * requiresTwoFactor. Deliberately re-verifies the real userId is
+ * genuinely a real account with 2FA enabled (not just trusting the
+ * real value the client sends back) — a real client-supplied userId
+ * alone, with no matching real password re-check here, must never be
+ * enough on its own to obtain a real session; this endpoint only
+ * exists as the completion of a real login that already proved the
+ * real password moments earlier.
+ */
+router.post('/login/2fa', async (req, res, next) => {
+  try {
+    const { userId, code } = req.body || {};
+    if (!userId || !code) {
+      return res.status(400).json({ error: 'userId and code are required' });
+    }
+    const { rows } = await db.query(
+      'SELECT id, email, name, role, supplier_id, hub_id, is_owner, two_factor_enabled, two_factor_secret FROM users WHERE id = $1',
+      [userId]
+    );
+    if (rows.length === 0 || !rows[0].two_factor_enabled || !rows[0].two_factor_secret) {
+      return res.status(401).json({ error: 'Invalid login attempt' });
+    }
+    const user = rows[0];
+    const { verify } = require('otplib');
+    const result = await verify({ secret: user.two_factor_secret, token: String(code).trim() });
+    if (!result.valid) {
+      return res.status(401).json({ error: 'Incorrect authenticator code. Please try again.' });
+    }
     const accessInfo = await getAdminAccessInfo(user.id, user.role, user.is_owner);
     res.json({
       token: signToken(user),
@@ -140,11 +190,101 @@ async function getAdminAccessInfo(userId, role, isOwnerFlag) {
 
 router.get('/me', requireAuth, async (req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT id, email, name, role, supplier_id, hub_id, is_owner, created_at FROM users WHERE id = $1', [req.user.sub]);
+    const { rows } = await db.query('SELECT id, email, name, role, supplier_id, hub_id, is_owner, created_at, two_factor_enabled FROM users WHERE id = $1', [req.user.sub]);
     if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
-    const { supplier_id, hub_id, is_owner, ...rest } = rows[0];
+    const { supplier_id, hub_id, is_owner, two_factor_enabled, ...rest } = rows[0];
     const accessInfo = await getAdminAccessInfo(rows[0].id, rows[0].role, is_owner);
-    res.json({ ...rest, supplierId: supplier_id, hubId: hub_id, ...accessInfo });
+    res.json({ ...rest, supplierId: supplier_id, hubId: hub_id, twoFactorEnabled: two_factor_enabled, ...accessInfo });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Real 2FA setup, step 1 of 2 (migration 051) -- generates a real new
+ * TOTP secret and stores it as PENDING only (see migration 051's own
+ * header comment for why this is deliberately separate from the real
+ * active secret). Returns a real QR code (as a data URL the mobile
+ * app can render directly) plus the real raw secret as a fallback for
+ * manual entry into an authenticator app that can't scan a QR code.
+ * Regenerating overwrites any previous real pending attempt -- a
+ * person restarting setup shouldn't be stuck with a stale QR code
+ * from an earlier attempt.
+ */
+router.post('/2fa/setup', requireAuth, async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT email FROM users WHERE id = $1', [req.user.sub]);
+    if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
+
+    const { generateSecret, generateURI } = require('otplib');
+    const QRCode = require('qrcode');
+    const secret = generateSecret();
+    const uri = generateURI({ issuer: 'LEAP Auto Parts', label: rows[0].email, secret });
+    const qrCodeDataUrl = await QRCode.toDataURL(uri);
+
+    await db.query('UPDATE users SET two_factor_pending_secret = $1 WHERE id = $2', [secret, req.user.sub]);
+    res.json({ secret, qrCodeDataUrl });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Real 2FA setup, step 2 of 2 (migration 051) -- proves the real
+ * pending secret from step 1 was genuinely scanned/entered correctly
+ * by requiring one real, current, valid code before promoting it to
+ * the real active secret and actually turning 2FA on.
+ */
+router.post('/2fa/confirm', requireAuth, async (req, res, next) => {
+  try {
+    const { code } = req.body || {};
+    if (!code) return res.status(400).json({ error: 'code is required' });
+
+    const { rows } = await db.query('SELECT two_factor_pending_secret FROM users WHERE id = $1', [req.user.sub]);
+    const pendingSecret = rows[0]?.two_factor_pending_secret;
+    if (!pendingSecret) {
+      return res.status(400).json({ error: 'No real 2FA setup is currently in progress. Start setup again.' });
+    }
+
+    const { verify } = require('otplib');
+    const result = await verify({ secret: pendingSecret, token: String(code).trim() });
+    if (!result.valid) {
+      return res.status(400).json({ error: 'Incorrect code. Please check your authenticator app and try again.' });
+    }
+
+    await db.query(
+      'UPDATE users SET two_factor_secret = $1, two_factor_pending_secret = NULL, two_factor_enabled = true WHERE id = $2',
+      [pendingSecret, req.user.sub]
+    );
+    res.json({ twoFactorEnabled: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Real 2FA disable (migration 051) -- requires the real current
+ * password, not just a real active session, since a real logged-in
+ * session alone (e.g. a real unattended, still-unlocked device) is a
+ * meaningfully lower bar than proving the real password again for a
+ * real security-reducing action.
+ */
+router.post('/2fa/disable', requireAuth, async (req, res, next) => {
+  try {
+    const { password } = req.body || {};
+    if (!password) return res.status(400).json({ error: 'password is required' });
+
+    const { rows } = await db.query('SELECT password_hash FROM users WHERE id = $1', [req.user.sub]);
+    if (rows.length === 0 || !rows[0].password_hash) return res.status(401).json({ error: 'Incorrect password' });
+
+    const passwordMatches = await bcrypt.compare(password, rows[0].password_hash);
+    if (!passwordMatches) return res.status(401).json({ error: 'Incorrect password' });
+
+    await db.query(
+      'UPDATE users SET two_factor_secret = NULL, two_factor_pending_secret = NULL, two_factor_enabled = false WHERE id = $1',
+      [req.user.sub]
+    );
+    res.json({ twoFactorEnabled: false });
   } catch (err) {
     next(err);
   }

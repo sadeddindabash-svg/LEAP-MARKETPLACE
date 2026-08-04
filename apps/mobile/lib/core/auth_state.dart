@@ -10,6 +10,18 @@ import 'push_state.dart';
 /// Token is persisted in flutter_secure_storage (Keychain/Keystore-backed),
 /// never in plain SharedPreferences — this is a session credential, not
 /// app preferences.
+/// Real result of a login attempt (new) -- distinguishes a real,
+/// completed login from one that genuinely needs a real second 2FA
+/// step, so the login screen can branch correctly instead of this
+/// blindly assuming every successful response means a real session
+/// was issued.
+class LoginResult {
+  final bool requiresTwoFactor;
+  final String? userId;
+  LoginResult.success() : requiresTwoFactor = false, userId = null;
+  LoginResult.twoFactorRequired(this.userId) : requiresTwoFactor = true;
+}
+
 class AuthState extends ChangeNotifier {
   static const _tokenKey = 'leap_auth_token';
   final _secureStorage = const FlutterSecureStorage();
@@ -46,8 +58,30 @@ class AuthState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> login(String email, String password) async {
+  /// Real 2FA-aware login (updated) -- the backend's own real
+  /// POST /auth/login now returns `{requiresTwoFactor: true, userId}`
+  /// instead of a real token+user when the account has real 2FA
+  /// enabled (migration 051). Returns a real LoginResult so the
+  /// login screen can branch correctly, rather than this method
+  /// blindly assuming token/user always exist and crashing on a real
+  /// 2FA account.
+  Future<LoginResult> login(String email, String password) async {
     final result = await _apiClient.login(email, password);
+    if (result['requiresTwoFactor'] == true) {
+      return LoginResult.twoFactorRequired(result['userId'] as String);
+    }
+    _token = result['token'] as String;
+    _user = result['user'] as Map<String, dynamic>;
+    await _secureStorage.write(key: _tokenKey, value: _token);
+    notifyListeners();
+    return LoginResult.success();
+  }
+
+  /// Real completion of a 2FA login (new) -- called from the login
+  /// screen's own second real step, after login() above already
+  /// returned twoFactorRequired.
+  Future<void> verifyTwoFactorLogin(String userId, String code) async {
+    final result = await _apiClient.verifyTwoFactorLogin(userId, code);
     _token = result['token'] as String;
     _user = result['user'] as Map<String, dynamic>;
     await _secureStorage.write(key: _tokenKey, value: _token);

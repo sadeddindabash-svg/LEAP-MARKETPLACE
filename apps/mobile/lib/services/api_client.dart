@@ -414,6 +414,54 @@ class ApiClient {
     return _decodeAuthResponse(response);
   }
 
+  /// Real completion of a 2FA login (new) -- calls the new real
+  /// POST /auth/login/2fa (see AuthState.verifyTwoFactorLogin, the
+  /// real caller).
+  Future<Map<String, dynamic>> verifyTwoFactorLogin(String userId, String code) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/auth/login/2fa'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'userId': userId, 'code': code}),
+    );
+    return _decodeAuthResponse(response);
+  }
+
+  /// Real 2FA setup, step 1 of 2 (new) -- returns a real, fresh QR
+  /// code (as a data URL) plus the real raw secret as a fallback for
+  /// manual entry.
+  Future<Map<String, dynamic>> setupTwoFactor(String token) async {
+    final response = await _client.post(Uri.parse('$baseUrl/auth/2fa/setup'), headers: _authHeaders(token));
+    if (response.statusCode != 200) throw ApiException('Failed to start 2FA setup (${response.statusCode})');
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Real 2FA setup, step 2 of 2 (new) -- proves the real pending
+  /// secret from step 1 was genuinely scanned/entered correctly.
+  Future<void> confirmTwoFactor(String token, String code) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/auth/2fa/confirm'),
+      headers: _authHeaders(token),
+      body: jsonEncode({'code': code}),
+    );
+    if (response.statusCode != 200) {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      throw ApiException(body['error'] as String? ?? 'Failed to confirm 2FA (${response.statusCode})');
+    }
+  }
+
+  /// Real 2FA disable (new) -- requires the real current password.
+  Future<void> disableTwoFactor(String token, String password) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/auth/2fa/disable'),
+      headers: _authHeaders(token),
+      body: jsonEncode({'password': password}),
+    );
+    if (response.statusCode != 200) {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      throw ApiException(body['error'] as String? ?? 'Failed to disable 2FA (${response.statusCode})');
+    }
+  }
+
   /// Real "change email" (new) -- closes a real gap: no self-service
   /// way to change your account email existed at all before this,
   /// only display-only. Returns a real, fresh token+user (email is a

@@ -32,10 +32,12 @@ import 'features/account/notifications_screen.dart';
 import 'features/account/referrals_screen.dart';
 import 'features/account/address_form_screen.dart';
 import 'features/account/change_email_screen.dart';
+import 'features/account/two_factor_setup_screen.dart';
 import 'features/support/chat_screen.dart';
 import 'features/support/new_ticket_screen.dart';
 import 'features/support/ticket_detail_screen.dart';
 import 'features/auth/login_screen.dart';
+import 'features/auth/login_two_factor_screen.dart';
 import 'features/auth/signup_screen.dart';
 import 'features/auth/forgot_password_screen.dart';
 import 'features/auth/reset_password_screen.dart';
@@ -62,6 +64,7 @@ final GoRouter appRouter = GoRouter(
     GoRoute(path: '/referrals', builder: (context, state) => const ReferralsScreen()),
     GoRoute(path: '/addresses/add', builder: (context, state) => const AddressFormScreen()),
     GoRoute(path: '/account/change-email', builder: (context, state) => const ChangeEmailScreen()),
+    GoRoute(path: '/account/two-factor', builder: (context, state) => const TwoFactorSetupScreen()),
     GoRoute(
       path: '/addresses/edit',
       builder: (context, state) => AddressFormScreen(existing: state.extra as Map<String, dynamic>?),
@@ -122,6 +125,7 @@ final GoRouter appRouter = GoRouter(
     GoRoute(path: '/support/new', builder: (context, state) => const NewTicketScreen()),
     GoRoute(path: '/support/:id', builder: (context, state) => TicketDetailScreen(ticketId: state.pathParameters['id']!, guestEmail: state.uri.queryParameters['guestEmail'])),
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
+    GoRoute(path: '/login/2fa', builder: (context, state) => LoginTwoFactorScreen(userId: state.extra as String)),
     GoRoute(path: '/signup', builder: (context, state) {
       final extra = state.extra as Map<String, dynamic>?;
       return SignupScreen(prefillEmail: extra?['prefillEmail'] as String?);

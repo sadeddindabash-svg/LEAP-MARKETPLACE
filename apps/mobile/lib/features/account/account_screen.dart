@@ -87,6 +87,7 @@ class _AccountScreenState extends State<AccountScreen> {
       (icon: Icons.assignment_return_outlined, label: tr(context, 'my_returns'), route: '/returns'),
       (icon: Icons.chat_bubble_outline, label: tr(context, 'leap_support'), route: '/support'),
       (icon: Icons.alternate_email, label: tr(context, 'change_email'), route: '/account/change-email'),
+      (icon: Icons.shield_outlined, label: 'Two-factor authentication', route: '/account/two-factor'),
     ];
 
     return Scaffold(

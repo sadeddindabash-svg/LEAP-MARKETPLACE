@@ -782,6 +782,47 @@ exists, never a decorative default.
   Weight) — kept those real fields, restyled to match the reference's
   card treatment, rather than replacing real data with invented rows.
 
+## Improvement #19 of 20: two-factor authentication — mostly already built earlier this session but never committed, one real missing screen closed the gap, verified end-to-end
+
+**An important, honest correction, found while checking `git status`
+before packaging this**: the backend 2FA system (migration 051,
+`otplib`/`qrcode` TOTP endpoints, the login flow's own real second-
+factor check) and the mobile app's own login-time verification screen
+(`login_two_factor_screen.dart`) were **already written, sitting
+uncommitted** in the working directory — real, working code, but
+never actually delivered to you as a real git commit. `git log`
+confirms no prior commit ever mentions 2FA. This was very likely
+written earlier in this same, very long session (before an earlier
+context compaction) and simply never got packaged and committed at
+the time. Rather than silently re-presenting only my own new work,
+all of it is committed and delivered together now, since none of it
+has reached you as a real, usable patch until this point.
+
+**The one genuinely new gap found and closed this turn**:
+`account_screen.dart`'s own menu already linked to
+`/account/two-factor` (the setup/management screen), but that route
+was never registered and the screen itself never existed as a file —
+tapping it did nothing. Built `TwoFactorSetupScreen` and registered
+its route.
+
+**Renders the backend's own real, ready-made QR code directly** — a
+complete PNG already base64-encoded as a data URL — decoded and shown
+via `Image.memory`, no separate QR-generation package needed (the
+backend already did that real work). Includes the manual-entry secret
+as a real fallback, and a real disable flow requiring the current
+password, syncing `AuthState` afterward via a real `getCurrentUser` +
+`updateSession` call so the rest of the app sees the current state,
+not a stale cached one.
+
+**Verified directly, the full real lifecycle, against the real
+backend**: signed up a real account, started setup, generated a real,
+valid TOTP code with `pyotp` and confirmed setup with it, confirmed a
+plain-password login now correctly returns `requiresTwoFactor` instead
+of a token, completed login with a fresh real code, confirmed a wrong
+code is correctly rejected (401), disabled 2FA with the real password,
+and confirmed a subsequent login no longer requires the second factor
+at all. Full regression: web-storefront (38/38).
+
 ## Improvement #18 of 20: real force-update mechanism, verified end-to-end against the real backend
 
 **Reuses the existing, generic `platform_settings` key-value store**,
