@@ -113,7 +113,7 @@ class _SignupScreenState extends State<SignupScreen> {
     final palette = LeapPalette.of(context);
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(icon: const Icon(Icons.close), onPressed: () => context.pop()),
+        leading: IconButton(icon: const Icon(Icons.close), tooltip: 'Close', onPressed: () => context.pop()),
         title: Text(tr(context, 'create_account')),
       ),
       body: SingleChildScrollView(
@@ -146,6 +146,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 // except retyping it.
                 suffixIcon: IconButton(
                   icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                  tooltip: _obscurePassword ? 'Show password' : 'Hide password',
                   onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                 ),
               ),

@@ -157,6 +157,7 @@ class _SavedSearchesScreenState extends State<SavedSearchesScreen> {
               Icon(Icons.notifications_active, color: palette.signal, size: 20),
               IconButton(
                 icon: Icon(Icons.delete_outline, color: palette.muted),
+                tooltip: isAr ? 'حذف' : 'Delete',
                 onPressed: () => _confirmDelete(s, isAr),
               ),
             ],

@@ -1,5 +1,3 @@
-import '../../core/app_strings.dart';
-
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
@@ -321,11 +319,12 @@ class _ProductDetailBody extends StatelessWidget {
                     decoration: BoxDecoration(color: palette.chalk, borderRadius: BorderRadius.circular(999), border: Border.all(color: palette.line)),
                     child: Row(
                       children: [
-                        IconButton(onPressed: () => onQtyChanged(qty > 1 ? qty - 1 : 1), icon: Icon(Icons.remove, size: 16, color: palette.ink)),
+                        IconButton(onPressed: () => onQtyChanged(qty > 1 ? qty - 1 : 1), icon: Icon(Icons.remove, size: 16, color: palette.ink), tooltip: 'Decrease quantity'),
                         Text('$qty', style: TextStyle(fontWeight: FontWeight.w700, color: palette.ink)),
                         IconButton(
                           onPressed: qty >= product.stockQuantity ? null : () => onQtyChanged(qty + 1),
                           icon: Icon(Icons.add, size: 16, color: qty >= product.stockQuantity ? palette.muted : palette.ink),
+                          tooltip: 'Increase quantity',
                         ),
                       ],
                     ),

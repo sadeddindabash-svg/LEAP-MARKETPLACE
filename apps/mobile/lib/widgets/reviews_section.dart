@@ -328,6 +328,7 @@ class _ReviewsSectionState extends State<ReviewsSection> {
                             top: -6, right: -6,
                             child: IconButton(
                               icon: const Icon(Icons.cancel, size: 18, color: LeapColors.muted),
+                              tooltip: 'Remove photo',
                               onPressed: () => _removePhoto(i),
                               constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
                               padding: EdgeInsets.zero,

@@ -166,8 +166,8 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             Row(
               children: [
-                IconButton(icon: Icon(Icons.search, color: palette.signal), onPressed: () => context.push('/search')),
-                IconButton(icon: Icon(Icons.chat_bubble_outline, color: palette.signal), onPressed: () => context.push('/support')),
+                IconButton(icon: Icon(Icons.search, color: palette.signal), tooltip: 'Search', onPressed: () => context.push('/search')),
+                IconButton(icon: Icon(Icons.chat_bubble_outline, color: palette.signal), tooltip: 'Support', onPressed: () => context.push('/support')),
               ],
             ),
           ],

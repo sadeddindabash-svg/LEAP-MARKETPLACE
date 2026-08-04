@@ -270,13 +270,13 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
               child: Row(
                 children: [
                   if (_step != _Step.brand)
-                    IconButton(icon: const Icon(Icons.arrow_back), onPressed: _goBack)
+                    IconButton(icon: const Icon(Icons.arrow_back), tooltip: 'Back', onPressed: _goBack)
                   else
                     const SizedBox(width: 48),
                   Expanded(
                     child: Text(_title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                   ),
-                  IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(context).pop()),
+                  IconButton(icon: const Icon(Icons.close), tooltip: 'Close', onPressed: () => Navigator.of(context).pop()),
                 ],
               ),
             ),

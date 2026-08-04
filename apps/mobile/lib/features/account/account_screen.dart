@@ -98,6 +98,7 @@ class _AccountScreenState extends State<AccountScreen> {
               children: [
                 IconButton(
                   icon: const Icon(Icons.notifications_none),
+                  tooltip: 'Notifications',
                   onPressed: () => context.push('/notifications').then((_) => _loadUnreadCount()),
                 ),
                 if (_unreadCount > 0)

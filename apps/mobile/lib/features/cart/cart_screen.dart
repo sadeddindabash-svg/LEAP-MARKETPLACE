@@ -343,6 +343,7 @@ class _CartItemRow extends StatelessWidget {
                     IconButton(
                       onPressed: () => _removeItem(context, cart),
                       icon: Icon(Icons.delete_outline, size: 18, color: palette.muted),
+                      tooltip: 'Remove item',
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
                       visualDensity: VisualDensity.compact,
@@ -375,6 +376,7 @@ class _CartItemRow extends StatelessWidget {
                             constraints: const BoxConstraints(),
                             onPressed: () => _changeQuantity(context, cart, item.quantity - 1),
                             icon: Icon(Icons.remove, color: palette.ink),
+                            tooltip: 'Decrease quantity',
                           ),
                           SizedBox(width: 20, child: Text('${item.quantity}', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: palette.ink))),
                           IconButton(
@@ -383,6 +385,7 @@ class _CartItemRow extends StatelessWidget {
                             constraints: const BoxConstraints(),
                             onPressed: atStockLimit ? null : () => _changeQuantity(context, cart, item.quantity + 1),
                             icon: Icon(Icons.add, color: atStockLimit ? palette.muted : palette.ink),
+                            tooltip: 'Increase quantity',
                           ),
                         ],
                       ),

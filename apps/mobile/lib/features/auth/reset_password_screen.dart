@@ -85,7 +85,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     final palette = LeapPalette.of(context);
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(icon: const Icon(Icons.close), onPressed: () => context.pop()),
+        leading: IconButton(icon: const Icon(Icons.close), tooltip: 'Close', onPressed: () => context.pop()),
         title: Text(tr(context, 'enter_reset_code')),
       ),
       body: SingleChildScrollView(
@@ -118,6 +118,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                 // session.
                 suffixIcon: IconButton(
                   icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                  tooltip: _obscurePassword ? 'Show password' : 'Hide password',
                   onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                 ),
               ),

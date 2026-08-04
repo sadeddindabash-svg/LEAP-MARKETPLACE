@@ -187,6 +187,7 @@ class _SearchScreenState extends State<SearchScreen> {
             suffixIcon: hasQuery
                 ? IconButton(
                     icon: const Icon(Icons.clear, size: 18),
+                    tooltip: isAr ? 'مسح' : 'Clear',
                     onPressed: () {
                       _controller.clear();
                       _onChanged('');

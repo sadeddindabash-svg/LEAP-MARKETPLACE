@@ -746,6 +746,7 @@ class _ReturnRequestSheetState extends State<_ReturnRequestSheet> {
                         top: -6, right: -6,
                         child: IconButton(
                           icon: Icon(Icons.cancel, size: 18, color: LeapPalette.of(context).muted),
+                          tooltip: 'Remove photo',
                           onPressed: () => _removePhoto(i),
                         ),
                       ),

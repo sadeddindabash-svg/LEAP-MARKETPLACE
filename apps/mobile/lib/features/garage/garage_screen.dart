@@ -287,7 +287,7 @@ class _GarageScreenState extends State<GarageScreen> {
                             tooltip: tr(context, 'set_as_default_vehicle'),
                             onPressed: v.isDefault ? null : () => _setDefault(v),
                           ),
-                          IconButton(icon: Icon(Icons.close, size: 18, color: palette.muted), onPressed: () => _confirmRemove(v)),
+                          IconButton(icon: Icon(Icons.close, size: 18, color: palette.muted), tooltip: 'Remove vehicle', onPressed: () => _confirmRemove(v)),
                         ],
                       ),
                     ],
