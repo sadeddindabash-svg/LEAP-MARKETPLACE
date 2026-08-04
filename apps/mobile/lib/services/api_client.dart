@@ -214,6 +214,18 @@ class ApiClient {
     return (jsonDecode(response.body) as List).cast<String>();
   }
 
+  /// Real minimum-supported app version (new) -- calls the new real,
+  /// genuinely public backend endpoint (no auth required, since a
+  /// real guest hasn't logged in yet and the whole point is to catch
+  /// an outdated real app before it gets that far). Returns null when
+  /// no real minimum has ever been configured.
+  Future<String?> fetchMinAppVersion() async {
+    final response = await _client.get(Uri.parse('$baseUrl/platform-settings/min-app-version'));
+    if (response.statusCode != 200) throw ApiException('Failed to load minimum app version (${response.statusCode})');
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return body['minVersion'] as String?;
+  }
+
   /// Real VIN decoding via NHTSA's own free, public vPIC API --
   /// genuinely free US government vehicle data, no API key or paid
   /// account required (confirmed directly: https://vpic.nhtsa.dot.gov

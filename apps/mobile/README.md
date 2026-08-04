@@ -782,6 +782,43 @@ exists, never a decorative default.
   Weight) — kept those real fields, restyled to match the reference's
   card treatment, rather than replacing real data with invented rows.
 
+## Improvement #18 of 20: real force-update mechanism, verified end-to-end against the real backend
+
+**Reuses the existing, generic `platform_settings` key-value store**,
+already established for the return window and review-verification
+settings — no new migration needed. Added a real, genuinely public
+`GET /platform-settings/min-app-version` (no auth — a real guest
+hasn't logged in yet, and the whole point is catching an outdated app
+before it gets that far) and an admin-only `PATCH` to configure it,
+validated as a real semantic version string.
+
+**Verified directly against the real running backend**: confirmed no
+value returns `null` (not an error), confirmed a non-admin PATCH
+correctly 401s, confirmed a valid admin PATCH succeeds and the public
+GET reflects it immediately, confirmed an invalid version string
+correctly 400s. Full regression: web-storefront (38/38).
+
+**Mobile: `ForceUpdateGate`, mirroring `AppLockGate`'s own real gate
+pattern exactly** — wired in at the same level, checked first (an
+outdated app should block before even asking for biometric auth).
+Uses `package_info_plus` to read the real, currently-installed
+version and compares it against the real configured minimum.
+
+**A real, deliberate correctness detail, not a naive string
+comparison**: compares each real numeric segment
+(major.minor.patch) individually rather than comparing version
+strings directly — a plain string comparison would incorrectly treat
+`"1.10.0"` as *less than* `"1.9.0"` (comparing `"1"` vs `"9"`
+character-by-character, the way strings sort). Verified with a
+mirrored test covering that exact case plus five others (equal
+versions, above minimum, short-form versions).
+
+**A real, deliberate fail-open design**: a check failure (no network
+yet, the endpoint briefly unreachable) never blocks anyone — this is
+a safety net for a genuinely outdated app, not something that should
+itself be able to lock a person out over a momentary connectivity
+blip.
+
 ## Improvement #17 of 20: real crash reporting via Firebase Crashlytics — reuses the same Firebase project as push notifications
 
 **Same honest pattern as push notifications, reusing the same real

@@ -111,4 +111,48 @@ router.post('/test-email', requireAuth, requireRole('admin'), async (req, res, n
   }
 });
 
+/**
+ * Real, minimum-required mobile app version (new) -- reuses the same
+ * generic platform_settings key-value store already established for
+ * the return window and review-verification settings above, no new
+ * migration needed.
+ *
+ * CONFIRMED, deliberate design: this real check endpoint is
+ * genuinely PUBLIC (no requireAuth) -- a real guest hasn't logged in
+ * yet, and the whole real point is to catch an outdated real app
+ * before it even gets that far. Returns null (not an error) when no
+ * real minimum has ever been configured, so the mobile app's own
+ * real comparison logic can treat "not configured" and "no update
+ * needed" identically without a special case.
+ */
+router.get('/min-app-version', async (req, res, next) => {
+  try {
+    const { rows } = await db.query("SELECT value FROM platform_settings WHERE key = 'min_app_version'");
+    res.json({ minVersion: rows[0]?.value ?? null });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// CONFIRMED format: a real semantic version string (e.g. "1.4.0"),
+// validated here so an admin can't accidentally save a real typo that
+// would silently break every real client's own comparison logic.
+router.patch('/min-app-version', requireAuth, requireRole('admin'), async (req, res, next) => {
+  try {
+    const { minVersion } = req.body || {};
+    if (typeof minVersion !== 'string' || !/^\d+\.\d+\.\d+$/.test(minVersion.trim())) {
+      return res.status(400).json({ error: 'minVersion must be a real semantic version string, e.g. "1.4.0"' });
+    }
+    await db.query(
+      `INSERT INTO platform_settings (key, value, updated_at) VALUES ('min_app_version', $1, now())
+       ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = now()`,
+      [minVersion.trim()]
+    );
+    await logAdminAction(req, 'min_app_version_changed', 'platform_setting', 'min_app_version', { minVersion: minVersion.trim() });
+    res.json({ minVersion: minVersion.trim() });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

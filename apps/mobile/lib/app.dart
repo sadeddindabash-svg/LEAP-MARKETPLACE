@@ -8,6 +8,7 @@ import 'core/language_state.dart';
 import 'core/app_lock_state.dart';
 import 'core/theme_state.dart';
 import 'widgets/app_lock_gate.dart';
+import 'widgets/force_update_gate.dart';
 import 'core/app_strings.dart';
 import 'services/api_client.dart';
 import 'features/home/home_screen.dart';
@@ -235,10 +236,14 @@ class LeapApp extends StatelessWidget {
             // Arabic — that's a real, separate follow-up, not hidden here.
             builder: (context, child) => Directionality(
               textDirection: languageState.isArabic ? TextDirection.rtl : TextDirection.ltr,
-              // Real biometric app lock gate (new) -- see
-              // core/app_lock_state.dart's own header comment for the
-              // honest web-platform limitation.
-              child: AppLockGate(child: child ?? const SizedBox.shrink()),
+              // Real force-update gate (new) -- checked before the
+              // real biometric app lock below: blocking a genuinely
+              // outdated app should take priority over asking for
+              // biometric auth (see widgets/force_update_gate.dart's
+              // own header comment for the honest scope).
+              child: ForceUpdateGate(
+                child: AppLockGate(child: child ?? const SizedBox.shrink()),
+              ),
             ),
           );
         },

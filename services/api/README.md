@@ -2469,6 +2469,17 @@ correctly in an environment with no SMTP configured. Full regression:
 web-storefront (38/38), which exercises signup extensively as a setup
 step across many other real flows.
 
+## Real minimum-supported app version (new)
+
+Reuses the existing, generic `platform_settings` key-value store, no
+new migration needed. Added a genuinely public
+`GET /platform-settings/min-app-version` (no auth required) and an
+admin-only `PATCH` to configure it, validated as a real semantic
+version string. Verified directly: no-value returns null correctly,
+non-admin PATCH 401s, valid admin PATCH succeeds and is immediately
+reflected, invalid version format 400s. Full regression:
+web-storefront (38/38).
+
 ## Real search query logging + trending searches (new)
 
 **No fabricated data**: added migration 050 (`search_log`), real
