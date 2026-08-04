@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../services/api_client.dart';
+import '../../widgets/skeleton.dart';
 
 /// Real notifications — triggered by real order changes, message/
 /// ticket replies, and several more real trigger points added since
@@ -114,7 +115,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 ],
               )
             : _notifications == null
-                ? const Center(child: CircularProgressIndicator())
+                ? const ListSkeleton()
                 : _notifications!.isEmpty
                     ? ListView(
                         physics: const AlwaysScrollableScrollPhysics(),

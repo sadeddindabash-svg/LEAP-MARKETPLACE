@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../services/api_client.dart';
+import '../../widgets/skeleton.dart';
 
 /// BUY-060/061: buyer support is Platform-only. There is no supplier
 /// contact path here, by explicit business requirement — see the note in
@@ -113,7 +114,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 builder: (context, snapshot) {
                   final palette = LeapPalette.of(context);
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
+                    return const ListSkeleton();
                   }
                   if (snapshot.hasError) {
                     return ListView(

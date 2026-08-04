@@ -7,6 +7,7 @@ import '../../core/app_strings.dart';
 import '../../core/cart_state.dart';
 import '../../models/cart_item.dart';
 import '../../services/api_client.dart';
+import '../../widgets/skeleton.dart';
 
 /// BUY-030–031: cart holds items from multiple suppliers but presents one
 /// unified basket and total; splitting into supplier sub-orders happens at
@@ -74,7 +75,7 @@ class CartScreen extends StatelessWidget {
 
   Widget _buildBody(BuildContext context, CartState cart, LeapPalette palette) {
     if (cart.isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const ListSkeleton();
     }
     if (cart.errorMessage != null) {
       return Center(

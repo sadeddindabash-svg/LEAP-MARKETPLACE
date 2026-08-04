@@ -7,6 +7,7 @@ import '../../core/app_strings.dart';
 import '../../models/product.dart';
 import '../../services/api_client.dart';
 import '../../widgets/product_card.dart';
+import '../../widgets/skeleton.dart';
 
 /// BUY-013: real products for a category, optionally scoped to one
 /// exact real Part (see the new CategoryBrowseScreen — tapping a real
@@ -47,7 +48,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
         future: _productsFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const ProductGridSkeleton();
           }
           if (snapshot.hasError) {
             return Center(

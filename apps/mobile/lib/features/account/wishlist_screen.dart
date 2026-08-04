@@ -8,6 +8,7 @@ import '../../core/language_state.dart';
 import '../../models/product.dart';
 import '../../services/api_client.dart';
 import '../../widgets/product_card.dart';
+import '../../widgets/skeleton.dart';
 
 /// Real wishlist — a buyer's saved products (see
 /// services/api/src/modules/wishlist/routes.js). Reuses the same real
@@ -51,7 +52,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
           future: _wishlistFuture,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
+              return const ProductGridSkeleton();
             }
             if (snapshot.hasError) {
               return ListView(

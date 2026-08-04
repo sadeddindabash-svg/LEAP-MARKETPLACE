@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
@@ -31,19 +32,57 @@ class OrderDetailScreen extends StatefulWidget {
   State<OrderDetailScreen> createState() => _OrderDetailScreenState();
 }
 
-class _OrderDetailScreenState extends State<OrderDetailScreen> {
+class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindingObserver {
   Map<String, dynamic>? _order;
   String? _errorMessage;
   bool _isLoading = true;
   bool _isReordering = false;
+  // Real periodic refresh (new) -- a real, lighter-weight improvement
+  // over a bare one-time load, without needing a new real websocket
+  // server. Polls only while this real screen is genuinely open AND
+  // the real order still has active progress left -- stops itself
+  // once delivered/cancelled/returns (nothing left to meaningfully
+  // change), and pauses while the real app is backgrounded (see
+  // didChangeAppLifecycleState below) to avoid real, wasted network
+  // calls for a screen the person isn't even looking at right now.
+  Timer? _pollTimer;
+  static const _pollInterval = Duration(seconds: 20);
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
   }
 
-  Future<void> _load() async {
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _maybeStartPolling();
+    } else {
+      _pollTimer?.cancel();
+    }
+  }
+
+  /// Real, deliberate stop condition (new) -- a delivered, cancelled,
+  /// or returns-in-progress order has no real, meaningfully-changing
+  /// state left for a real periodic refresh to actually catch, so
+  /// polling stops itself rather than running forever for no reason.
+  void _maybeStartPolling() {
+    _pollTimer?.cancel();
+    final status = (_order?['displayStatus'] as String?) ?? (_order?['status'] as String?);
+    if (status == 'delivered' || status == 'cancelled' || status == 'returns') return;
+    _pollTimer = Timer.periodic(_pollInterval, (_) => _load(silent: true));
+  }
+
+  Future<void> _load({bool silent = false}) async {
     final auth = context.read<AuthState>();
     // Real fix: previously returned early here unconditionally for
     // any non-logged-in visitor -- but a real guest with a real,
@@ -59,13 +98,22 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       });
       return;
     }
-    setState(() => _isLoading = true);
+    // Real, deliberate UX choice: a silent poll never shows the full-
+    // screen loading spinner -- that would be jarring for a real
+    // background refresh the person didn't ask for, unlike the real
+    // first load or an explicit pull-to-refresh.
+    if (!silent) setState(() => _isLoading = true);
     try {
       final order = await ApiClient().fetchOrderDetail(auth.token, widget.orderId, guestEmail: widget.guestEmail);
       setState(() {
         _order = order;
         _isLoading = false;
       });
+      // Real periodic refresh (new) -- (re)evaluate after every real
+      // load, using the just-fetched real status, so polling
+      // genuinely stops itself the moment an order reaches a real
+      // final state, not just once at screen-open time.
+      _maybeStartPolling();
       // Real app-store review prompt (new) -- only after a genuinely
       // positive real moment: this real order has actually reached
       // delivered status. Depends directly on this same session's
@@ -78,10 +126,16 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         ReviewPromptState.maybePromptAfterDelivery(widget.orderId);
       }
     } catch (e) {
-      setState(() {
-        _errorMessage = trRead(context, 'could_not_load_order');
-        _isLoading = false;
-      });
+      // Real, deliberate choice: a silent poll that fails (e.g. a
+      // real, momentary network blip) must never clobber the real,
+      // already-loaded order data on screen with an error -- only a
+      // real first load or explicit refresh should ever show one.
+      if (!silent) {
+        setState(() {
+          _errorMessage = trRead(context, 'could_not_load_order');
+          _isLoading = false;
+        });
+      }
     }
   }
 

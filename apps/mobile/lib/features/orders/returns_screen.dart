@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../services/api_client.dart';
+import '../../widgets/skeleton.dart';
 
 /// BUY-053 (the missing half): the return-request sheet on
 /// order_detail_screen.dart already lets a buyer SUBMIT a return via
@@ -102,7 +103,7 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
           future: _casesFuture,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
+              return const ListSkeleton();
             }
             if (snapshot.hasError) {
               return ListView(

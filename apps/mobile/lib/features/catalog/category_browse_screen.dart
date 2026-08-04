@@ -7,6 +7,7 @@ import '../../core/app_strings.dart';
 import '../../core/language_state.dart';
 import '../../models/category.dart';
 import '../../services/api_client.dart';
+import '../../widgets/skeleton.dart';
 
 /// Confirmed requirement: a sidebar listing every real major category;
 /// the main area shows the real Parts within whichever category is
@@ -80,7 +81,7 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
       body: _categories == null
           ? (_error != null
               ? Center(child: Text(_error!, style: TextStyle(color: LeapPalette.of(context).muted)))
-              : const Center(child: CircularProgressIndicator()))
+              : const ListSkeleton())
           : Row(
               children: [
                 // Real sidebar -- every major category, tappable.
@@ -150,7 +151,7 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
                     builder: (context, snapshot) {
                       final palette = LeapPalette.of(context);
                       if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
+                        return const ListSkeleton();
                       }
                       if (snapshot.hasError) {
                         return Center(

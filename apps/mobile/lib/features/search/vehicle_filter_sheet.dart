@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../services/api_client.dart';
+import '../../widgets/skeleton.dart';
 
 /// What the user picked, once they've drilled all the way down. `year`
 /// is null when the generation spans a single year (nothing to choose)
@@ -335,7 +336,7 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
       future: future,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const ListSkeleton(itemCount: 4);
         }
         if (snapshot.hasError) {
           return Center(child: Text('Could not load: ${snapshot.error}', style: const TextStyle(color: LeapColors.muted)));

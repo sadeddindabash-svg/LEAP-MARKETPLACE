@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../services/api_client.dart';
+import '../../widgets/skeleton.dart';
 
 const int kMaxAddresses = 3;
 
@@ -98,7 +99,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
       body: _errorMessage != null
           ? Center(child: Text(_errorMessage!, style: TextStyle(color: palette.muted)))
           : _addresses == null
-              ? const Center(child: CircularProgressIndicator())
+              ? const ListSkeleton()
               : _addresses!.isEmpty
                   ? Center(
                       child: Padding(

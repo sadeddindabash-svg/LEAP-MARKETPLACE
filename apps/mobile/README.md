@@ -782,6 +782,39 @@ exists, never a decorative default.
   Weight) — kept those real fields, restyled to match the reference's
   card treatment, rather than replacing real data with invented rows.
 
+## Improvement #14 of 20: real periodic refresh on order detail, while it's actually open
+
+**A lighter-weight, genuine improvement, not a new websocket server**:
+added real periodic polling (every 20s) to `order_detail_screen.dart`
+while that real screen is genuinely open, using `WidgetsBindingObserver`
+so polling pauses the moment the real app is backgrounded (no real,
+wasted network calls for a screen nobody's looking at) and resumes on
+return. Stops itself entirely once a real order reaches
+delivered/cancelled/returns — there's nothing left to meaningfully
+change at that point. A silent poll never shows the full-screen
+spinner or clobbers already-displayed data on a real, momentary
+failure — only the real first load or an explicit pull-to-refresh
+ever show a loading state or an error.
+
+## Improvement #15 of 20: skeleton loading audit — 11 of 19 screens fixed, remaining 8 deliberately left as spinners
+
+**Found 19 files** still showing a bare `CircularProgressIndicator()`
+instead of a real skeleton. Fixed the 11 that are genuinely list/grid-
+shaped content, where a real skeleton meaningfully improves perceived
+loading: Wishlist, Addresses, Notifications, Saved Searches, My
+Garage, Cart, My Returns, Category product list, both loading states
+in Shop by Category (sidebar + parts list), the vehicle picker sheet,
+and the support ticket list.
+
+**8 deliberately left as simple spinners, not an oversight**: Product
+Detail, Order Detail, Return Case Detail, Ticket Detail, Tracking, and
+a few small inline loaders (Checkout's address picker, Account's auth
+check, Home's own secondary "recently viewed"/"my car" rows). These
+are real *detail* pages or small inline indicators, not lists — a
+generic list-shaped skeleton wouldn't actually match their real
+content shape, and building a bespoke skeleton per detail page's own
+distinct layout is real, separate, larger work outside this pass.
+
 ## Improvement #13 of 20: guest checkout flow review — found and fixed a real, confirmed gap deeper than expected
 
 **Started as a review, found a real, confirmed gap**: the existing

@@ -5,6 +5,7 @@ import '../../core/language_state.dart';
 import '../../core/auth_state.dart';
 import '../../services/api_client.dart';
 import '../../models/saved_search.dart';
+import '../../widgets/skeleton.dart';
 
 /// Real saved searches management (migration 039) -- list and remove.
 /// Saving itself happens from the search screen's own action; this
@@ -98,7 +99,7 @@ class _SavedSearchesScreenState extends State<SavedSearchesScreen> {
 
   Widget _buildBody(bool isAr) {
     final palette = LeapPalette.of(context);
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_isLoading) return const ListSkeleton();
     if (_error != null) return Center(child: Text(_error!, style: TextStyle(color: palette.muted)));
     final searches = _searches ?? [];
     if (searches.isEmpty) {

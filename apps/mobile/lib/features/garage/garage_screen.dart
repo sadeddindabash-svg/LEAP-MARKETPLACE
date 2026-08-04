@@ -7,6 +7,7 @@ import '../../core/auth_state.dart';
 import '../../models/vehicle.dart';
 import '../../services/api_client.dart';
 import '../search/vehicle_filter_sheet.dart';
+import '../../widgets/skeleton.dart';
 
 /// BUY-004, BUY-010–012: saved vehicles ("My Garage") drive the fitment
 /// filter across the rest of the app.
@@ -201,7 +202,7 @@ class _GarageScreenState extends State<GarageScreen> {
         ),
       );
     } else if (_vehicles == null) {
-      body = const Center(child: CircularProgressIndicator());
+      body = const ListSkeleton();
     } else {
       final vehicles = _vehicles!;
       final palette = LeapPalette.of(context);
