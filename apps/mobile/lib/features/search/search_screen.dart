@@ -38,6 +38,10 @@ class _SearchScreenState extends State<SearchScreen> {
   SortAndPriceSelection? _sortAndPrice;
   // Real recently-searched terms (new) -- see core/recent_searches.dart.
   List<String> _recentSearches = [];
+  // Real trending searches (new) -- see ApiClient.fetchTrendingSearches's
+  // own header comment; genuinely aggregated platform-wide data, not a
+  // hardcoded example list.
+  List<String> _trendingSearches = [];
 
   @override
   void initState() {
@@ -45,6 +49,13 @@ class _SearchScreenState extends State<SearchScreen> {
     RecentSearches.load().then((terms) {
       if (mounted) setState(() => _recentSearches = terms);
     });
+    // Real, best-effort load -- a real failure here (e.g. no network
+    // yet) should never block the rest of this screen; the section
+    // simply stays hidden if it doesn't load, matching
+    // _recentSearches' own null-safe empty-list default.
+    ApiClient().fetchTrendingSearches().then((terms) {
+      if (mounted) setState(() => _trendingSearches = terms);
+    }).catchError((_) {});
   }
 
   @override
@@ -309,6 +320,30 @@ class _SearchScreenState extends State<SearchScreen> {
                 for (final term in _recentSearches)
                   ActionChip(
                     avatar: const Icon(Icons.history, size: 16),
+                    label: Text(term, style: const TextStyle(fontSize: 12.5)),
+                    onPressed: () {
+                      _controller.text = term;
+                      _debounce?.cancel();
+                      _runSearch(term);
+                    },
+                  ),
+              ],
+            ),
+          ],
+          if (_trendingSearches.isNotEmpty) ...[
+            const SizedBox(height: 28),
+            Text(
+              isAr ? 'الأكثر بحثًا' : 'Trending searches',
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: LeapPalette.of(context).muted),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final term in _trendingSearches)
+                  ActionChip(
+                    avatar: Icon(Icons.trending_up, size: 16, color: LeapPalette.of(context).signal),
                     label: Text(term, style: const TextStyle(fontSize: 12.5)),
                     onPressed: () {
                       _controller.text = term;

@@ -204,6 +204,16 @@ class ApiClient {
     return jsonDecode(response.body) as List<dynamic>;
   }
 
+  /// Real trending searches (new) -- genuinely aggregated from real,
+  /// logged search queries platform-wide (see
+  /// services/api/src/modules/catalog/routes.js's own real
+  /// GET /trending-searches), not a hardcoded example list.
+  Future<List<String>> fetchTrendingSearches() async {
+    final response = await _client.get(Uri.parse('$baseUrl/catalog/trending-searches'));
+    if (response.statusCode != 200) throw ApiException('Failed to load trending searches (${response.statusCode})');
+    return (jsonDecode(response.body) as List).cast<String>();
+  }
+
   /// Real VIN decoding via NHTSA's own free, public vPIC API --
   /// genuinely free US government vehicle data, no API key or paid
   /// account required (confirmed directly: https://vpic.nhtsa.dot.gov

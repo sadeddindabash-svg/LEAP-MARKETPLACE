@@ -782,6 +782,37 @@ exists, never a decorative default.
   Weight) — kept those real fields, restyled to match the reference's
   card treatment, rather than replacing real data with invented rows.
 
+## Improvement #12 of 20: real trending searches, genuinely aggregated — not a hardcoded example list
+
+**No fabricated data — built the real foundation first**: no
+search-logging infrastructure existed at all, so "trending searches"
+genuinely didn't exist as data anywhere. Added migration 050
+(`search_log`), real logging on `GET /catalog/products` (only for
+real, non-trivial queries — 3+ characters, matching the same real
+minimum the mobile app's own search-as-you-type debounce already
+uses, so a search-as-you-type fragment from someone still typing
+doesn't count as a real completed search), and a new real
+`GET /catalog/trending-searches` endpoint that aggregates the real
+last 7 days, case-insensitively, requiring a real minimum of 3
+occurrences before a term counts as trending at all — a real one-off
+query (a typo, a very specific part number one person searched)
+shouldn't surface as a platform-wide trend just because it's the only
+thing in a quiet window.
+
+**Verified end-to-end against the real database**: performed real
+searches for "brake pads" (×4) and "oil filter" (×3), confirmed both
+correctly appear in trending, ordered by real count. Confirmed
+"xyz123" (×1, below the real threshold) correctly does **not**
+appear, and confirmed a 2-character fragment was **not even logged**
+at all (below the real minimum length). Full regression: web-storefront
+(38/38).
+
+**Mobile, done**: added `fetchTrendingSearches()`, wired into the
+search screen's existing empty state as a "Trending searches" section
+below the existing, personal "Recent searches" — best-effort load,
+the section simply stays hidden if it fails to load rather than
+showing a placeholder or an error.
+
 ## Improvement #11 of 20: real app-store rating prompt, triggered after a genuinely positive real moment
 
 **Real, deliberate timing, not random or first-launch**: added

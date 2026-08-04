@@ -2469,6 +2469,19 @@ correctly in an environment with no SMTP configured. Full regression:
 web-storefront (38/38), which exercises signup extensively as a setup
 step across many other real flows.
 
+## Real search query logging + trending searches (new)
+
+**No fabricated data**: added migration 050 (`search_log`), real
+logging on `GET /catalog/products` for non-trivial queries (3+
+chars), and a new `GET /catalog/trending-searches` endpoint that
+genuinely aggregates the last 7 days, requiring a real minimum of 3
+occurrences (case-insensitive) before a term counts as trending.
+
+**Verified against the real database**: real searches logged and
+aggregated correctly, a below-threshold query correctly excluded,
+sub-minimum-length queries correctly never logged at all. Full
+regression: web-storefront (38/38).
+
 ## Real product image on order detail's line items (new)
 
 **A real, confirmed gap, found while redesigning the mobile order

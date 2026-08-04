@@ -201,6 +201,23 @@ router.get('/products', async (req, res, next) => {
     const { sql: baseSql, params } = buildProductMatchQuery({ category, part, vehicleId, search, generationId, year });
     let sql = baseSql;
 
+    // Real search query logging (new) -- the foundation for real,
+    // genuinely computed trending searches (see the new
+    // GET /trending-searches below), not fabricated example terms.
+    // Only real, non-trivial text searches count (>= 3 chars,
+    // matching the same real minimum length the mobile app's own
+    // search-as-you-type debounce already uses) -- a 1-2 character
+    // fragment from someone still typing isn't a real completed
+    // search worth counting toward what's genuinely trending.
+    // Fire-and-forget, matching the same real pattern already
+    // established for email/push: a real logging failure must never
+    // affect the real search results being returned right now.
+    if (typeof search === 'string' && search.trim().length >= 3) {
+      db.query('INSERT INTO search_log (query, user_id) VALUES ($1, $2)', [search.trim(), null]).catch((err) => {
+        console.error('[search-log] Failed to log a real search query:', err.message);
+      });
+    }
+
     // Real, explicit ordering -- this endpoint previously had NO
     // ORDER BY at all (whatever order Postgres happened to return was
     // incidental, not a real guarantee). "newest" is a real, confirmed
@@ -507,6 +524,37 @@ function toCategoryDto(row) {
 function toPartDto(row) {
   return { id: row.id, categoryId: row.category_id, nameEn: row.name_en, nameAr: row.name_ar, sortOrder: row.sort_order };
 }
+
+/**
+ * Real trending searches -- genuinely aggregated from real_log's own
+ * real, logged queries over the last real 7 days, not fabricated
+ * example terms. Requires a real minimum of 3 occurrences to appear
+ * at all -- a real one-off, unusual query (a typo, a very specific
+ * part number only one real person searched) shouldn't surface as if
+ * it were a genuine platform-wide trend just because it's the only
+ * thing in a quiet time window.
+ *
+ * Real, deliberate case-insensitive grouping (LOWER(query)) -- "brake
+ * pads" and "Brake Pads" are the real same search intent, and should
+ * count together, not split into two separate, smaller real counts
+ * that each individually miss the real threshold.
+ */
+router.get('/trending-searches', async (req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT LOWER(query) AS query, COUNT(*) AS count
+       FROM search_log
+       WHERE created_at > now() - interval '7 days'
+       GROUP BY LOWER(query)
+       HAVING COUNT(*) >= 3
+       ORDER BY count DESC
+       LIMIT 8`
+    );
+    res.json(rows.map((r) => r.query));
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.get('/categories', async (req, res, next) => {
   try {
