@@ -782,6 +782,43 @@ exists, never a decorative default.
   Weight) — kept those real fields, restyled to match the reference's
   card treatment, rather than replacing real data with invented rows.
 
+## Improvement #17 of 20: real crash reporting via Firebase Crashlytics — reuses the same Firebase project as push notifications
+
+**Same honest pattern as push notifications, reusing the same real
+Firebase project**: added `firebase_crashlytics`, initialized in
+`main.dart` with the exact same real "gracefully do nothing without
+real config" pattern already established for push — wrapped in a real
+try/catch, since `Firebase.initializeApp()` genuinely throws without
+the same real `google-services.json` / `GoogleService-Info.plist`
+files noted for push (neither exists yet). Sets
+`FlutterError.onError` to Crashlytics' own real recorder for real
+Flutter framework errors (build/layout/paint).
+
+**A real, deliberate use of `runZonedGuarded`**: catches real
+uncaught errors in async code that `FlutterError.onError` alone would
+miss (it only ever catches errors during Flutter's own framework
+callbacks, not arbitrary async code elsewhere in the app) — falls
+back to a real `debugPrint` if Crashlytics itself isn't configured,
+so an uncaught error is never silently swallowed either way.
+
+**A real, confirmed bug found and fixed while adding this**:
+`main.dart` now also calls `Firebase.initializeApp()`, but
+`push_state.dart`'s own real `PushState.initialize()` was already
+calling it unconditionally too — a real `[core/duplicate-app]` error
+on the second call, which that function's own try/catch would have
+silently swallowed as "not configured," incorrectly masking whether
+Firebase is genuinely set up once it actually is. Fixed by checking
+`Firebase.apps.isEmpty` before initializing, in both real call sites,
+making initialization correctly idempotent regardless of which one
+runs first.
+
+**Honest note on remaining real setup**: beyond the same real config
+files noted for push notifications, Android's Crashlytics Gradle
+plugin may also need adding to `android/app/build.gradle` once those
+real files are in place — not attempted here, since blindly editing
+Gradle files without being able to run a real Gradle sync to verify
+them is a real risk of a broken, uncheckable build.
+
 ## Improvement #16 of 20: accessibility audit — every icon-only button now has a real screen-reader label
 
 **Found 28 real `IconButton` usages across the app, only 3 files had

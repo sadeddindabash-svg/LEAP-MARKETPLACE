@@ -36,7 +36,15 @@ class PushState {
     final authToken = context.read<AuthState>().token;
     if (authToken == null) return; // not logged in yet -- nothing real to register a device token against
     try {
-      await Firebase.initializeApp();
+      // REAL BUG FOUND AND FIXED HERE, while adding crash reporting
+      // (main.dart now also calls Firebase.initializeApp() first):
+      // calling this unconditionally a second time throws a real
+      // [core/duplicate-app] error every time, which the try/catch
+      // below would have silently swallowed as "not configured" --
+      // incorrectly masking whether Firebase is genuinely set up.
+      // Checking Firebase.apps first makes initialization correctly
+      // idempotent across multiple real call sites.
+      if (Firebase.apps.isEmpty) await Firebase.initializeApp();
       final messaging = FirebaseMessaging.instance;
       final settings = await messaging.requestPermission(alert: true, badge: true, sound: true);
       if (settings.authorizationStatus == AuthorizationStatus.denied) {
