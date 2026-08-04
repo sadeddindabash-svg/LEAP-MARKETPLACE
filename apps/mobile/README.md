@@ -782,6 +782,46 @@ exists, never a decorative default.
   Weight) — kept those real fields, restyled to match the reference's
   card treatment, rather than replacing real data with invented rows.
 
+## Improvement #10 of 20: real address autocomplete, using a genuinely free public API — same honest pattern as VIN lookup
+
+**A real, optional convenience layered on top of manual entry, not a
+replacement for it**: added a "Search for your address" field above
+the address form's existing manual fields, using OpenStreetMap's own
+free, public Nominatim API — genuinely no API key or paid account
+required, confirmed directly from its own real, published usage
+policy.
+
+**Real, structured auto-fill, not just a flat display string**:
+requests `addressdetails=1` specifically, so a selected real
+suggestion can auto-fill this form's own separate street/city/
+country/postal fields directly, checking a few real, common
+real-world key-name variants per field (Nominatim's own real
+structured breakdown doesn't use identical keys across every real
+country — e.g. `road` vs `pedestrian`, `city` vs `town`/`village`).
+
+**A real rate-limit respected deliberately**: Nominatim's own real
+usage policy caps the public instance at roughly 1 request/second and
+explicitly discourages real, sustained autocomplete-style traffic in
+production — added a real ~600ms debounce timer so one person typing
+stays well within that, and documented directly in code that a real
+app with meaningful real traffic should move to a real paid provider
+(Google Places, Mapbox) or self-host Nominatim rather than lean on
+the free public instance long-term. Also sends a real, identifying
+`User-Agent` header, required by that same real policy.
+
+**Same honest limitation as VIN lookup, stated directly**:
+`nominatim.openstreetmap.org` is also not in this sandbox's own
+network allowlist — confirmed directly — so this was built against
+Nominatim's own stable, documented response format but not exercised
+against the real, live API in this session. A real, live test is
+worth doing the first time this is used for real.
+
+**A real, deliberate degrade-to-manual on failure**: a real search
+failure (e.g. the free public instance being temporarily unavailable)
+silently clears suggestions rather than showing an error — this is a
+convenience on top of manual entry, and manual entry must keep
+working regardless of whether the convenience layer succeeds.
+
 ## Improvement #9 of 20: real VIN lookup for vehicle entry — full generation resolution, using a genuinely free public API
 
 **Scoped honestly before starting**: full camera-based VIN/barcode

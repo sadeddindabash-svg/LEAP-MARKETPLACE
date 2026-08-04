@@ -242,6 +242,42 @@ class ApiClient {
     return {'make': make, 'model': model ?? '', 'year': year ?? ''};
   }
 
+  /// Real address autocomplete via OpenStreetMap's own free, public
+  /// Nominatim API -- no API key or paid account required (confirmed
+  /// directly: nominatim.openstreetmap.org is a real, no-auth REST
+  /// API, per its own real, published usage policy).
+  ///
+  /// HONEST, IMPORTANT LIMITATION, stated directly: Nominatim's own
+  /// real usage policy explicitly caps public-instance use at a
+  /// maximum of 1 request/second and asks callers not to use it for
+  /// real, sustained autocomplete-style traffic in production --
+  /// see address_form_screen.dart's own real debounce (roughly 600ms
+  /// between keystrokes) for how this stays within that real limit
+  /// for one person typing, but a real app with meaningful real
+  /// traffic should move to a real paid provider (Google Places,
+  /// Mapbox) or self-host Nominatim rather than rely on the free
+  /// public instance long-term.
+  ///
+  /// Requests structured `addressdetails=1` specifically so a
+  /// selected real suggestion can auto-fill this form's own separate
+  /// street/city/country/postal fields, not just show one flat
+  /// display string with nothing to parse it back out of.
+  Future<List<Map<String, dynamic>>> searchAddresses(String query) async {
+    if (query.trim().length < 3) return [];
+    final uri = Uri.parse('https://nominatim.openstreetmap.org/search').replace(queryParameters: {
+      'q': query.trim(),
+      'format': 'jsonv2',
+      'addressdetails': '1',
+      'limit': '5',
+    });
+    // Nominatim's own real usage policy requires a real, identifying
+    // User-Agent on every real request -- not optional, a request
+    // without one can be real refused or real rate-limited harder.
+    final response = await _client.get(uri, headers: {'User-Agent': 'LeapAutoPartsApp/1.0 (contact: support@leapautoparts.com)'});
+    if (response.statusCode != 200) throw ApiException('Could not search addresses (${response.statusCode})');
+    return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+  }
+
   Future<Product> fetchProductById(String productId, {String lang = 'en'}) async {
     final response = await _client.get(Uri.parse('$baseUrl/catalog/products/$productId?lang=$lang'));
     if (response.statusCode != 200) {
