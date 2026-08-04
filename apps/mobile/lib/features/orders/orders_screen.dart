@@ -45,6 +45,18 @@ class _OrdersScreenState extends State<OrdersScreen> {
   String _selectedTab = 'all';
   Future<List<dynamic>>? _ordersFuture;
   String? _loadedForKey;
+  // Real guest order lookup (new) -- closes a real, confirmed gap: a
+  // guest who places an order and declines the account-creation
+  // prompt (see checkout_screen.dart's own real prompt) had no way
+  // back to that order at all -- the confirmation email only ever
+  // showed the order ID as plain text, never a trackable link, and
+  // this screen only ever offered "log in" with no path for a guest.
+  // Mirrors the exact same real pattern already established for
+  // Returns (returns_screen.dart), reusing the same real backend
+  // guest-email verification (GET /order/:id?guestEmail=...) that
+  // already existed but had no discoverable real entry point here.
+  final _lookupIdController = TextEditingController();
+  final _lookupEmailController = TextEditingController();
 
   void _ensureLoaded(bool isLoggedIn, String? token) {
     final key = '$_selectedTab|$isLoggedIn';
@@ -60,6 +72,18 @@ class _OrdersScreenState extends State<OrdersScreen> {
   void _selectTab(String tabKey) {
     if (_selectedTab == tabKey) return;
     setState(() => _selectedTab = tabKey);
+  }
+
+  @override
+  void dispose() {
+    _lookupIdController.dispose();
+    _lookupEmailController.dispose();
+    super.dispose();
+  }
+
+  void _trackOrder() {
+    if (_lookupIdController.text.trim().isEmpty || _lookupEmailController.text.trim().isEmpty) return;
+    context.push('/orders/${_lookupIdController.text.trim()}?guestEmail=${Uri.encodeQueryComponent(_lookupEmailController.text.trim())}');
   }
 
   /// Real pull-to-refresh (new) -- bypasses _ensureLoaded's own cache
@@ -86,7 +110,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
         body: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Icon(Icons.inventory_2_outlined, size: 40, color: LeapPalette.of(context).muted),
               const SizedBox(height: 12),
@@ -97,6 +121,22 @@ class _OrdersScreenState extends State<OrdersScreen> {
               ),
               const SizedBox(height: 16),
               ElevatedButton(onPressed: () => context.push('/login'), child: Text(tr(context, 'log_in'))),
+              const SizedBox(height: 28),
+              const Divider(),
+              const SizedBox(height: 12),
+              // Real guest order lookup (new) -- see this class's own
+              // header comment for the full real gap this closes,
+              // mirroring the exact same real pattern already
+              // established for Returns.
+              Text(tr(context, 'track_an_order'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+              const SizedBox(height: 8),
+              Text(tr(context, 'track_order_hint'), style: TextStyle(color: LeapPalette.of(context).muted, fontSize: 12.5)),
+              const SizedBox(height: 16),
+              TextField(controller: _lookupIdController, decoration: InputDecoration(labelText: tr(context, 'order_id_label'))),
+              const SizedBox(height: 12),
+              TextField(controller: _lookupEmailController, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: tr(context, 'email_label'))),
+              const SizedBox(height: 12),
+              OutlinedButton(onPressed: _trackOrder, child: Text(tr(context, 'track'))),
             ],
           ),
         ),

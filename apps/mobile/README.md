@@ -782,6 +782,52 @@ exists, never a decorative default.
   Weight) — kept those real fields, restyled to match the reference's
   card treatment, rather than replacing real data with invented rows.
 
+## Improvement #13 of 20: guest checkout flow review — found and fixed a real, confirmed gap deeper than expected
+
+**Started as a review, found a real, confirmed gap**: the existing
+guest checkout flow was already thorough — a real geolocation-based
+address suggestion, a real guest-to-account conversion prompt with a
+previously-fixed race condition, and a real `prefillEmail` handoff to
+signup, all confirmed working correctly on inspection. But: a guest
+who declines the account-creation prompt had **no way back to their
+own order at all**. The confirmation email only ever showed the order
+ID as plain text, never a trackable link, and the orders screen only
+ever offered "log in," with no path for a guest — unlike the
+already-existing, equivalent pattern for Returns.
+
+**The gap ran deeper than the missing UI**: `ApiClient.fetchOrderDetail`
+required a token unconditionally, so a real guest literally couldn't
+call it — even though the backend's own `GET /order/:id` already used
+`optionalAuth` and a real `guestEmail` query-param check specifically
+to support this. `OrderDetailScreen`'s own `_load()` also returned
+early for any non-logged-in visitor with no error message, leaving an
+infinite spinner. The `/orders/:id` route didn't pass a `guestEmail`
+query param through at all, unlike the equivalent `/returns/:id` and
+`/support/:id` routes.
+
+**A related, genuinely pre-existing bug found while fixing this**:
+checkout's own post-order navigation never included `guestEmail`
+either — meaning a guest landing on their own just-placed order's
+detail page right after checkout would *already* have hit that same
+infinite spinner, even before this review started. Fixed the same
+navigation call to include it now.
+
+**All fixed together**: `fetchOrderDetail` now takes an optional
+token and an optional `guestEmail`; `OrderDetailScreen` accepts
+`guestEmail` and `_load()` handles the guest path correctly (with a
+real, immediate error instead of an infinite spinner when neither a
+login nor a guestEmail is available); the route passes it through;
+checkout's own post-order navigation includes it; and `orders_screen.dart`
+now has a real "Track an order" lookup form for guests, mirroring the
+exact same pattern already established for Returns.
+
+**Verified directly against the real running backend**: created a
+real guest order, confirmed no-auth-no-email correctly 404s,
+confirmed the correct guestEmail correctly returns the real order,
+confirmed a wrong guestEmail correctly 404s too. Full regression:
+web-storefront (38/38), including the analogous real test already
+covering this exact pattern for Returns.
+
 ## Improvement #12 of 20: real trending searches, genuinely aggregated — not a hardcoded example list
 
 **No fabricated data — built the real foundation first**: no

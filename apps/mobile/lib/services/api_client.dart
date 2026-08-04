@@ -457,10 +457,19 @@ class ApiClient {
   /// Uses the real logged-in buyer's token — GET /order/:id is
   /// ownership-checked server-side (see services/api/src/modules/order/routes.js;
   /// this endpoint used to be a real security hole, fixed in a later pass).
-  Future<Map<String, dynamic>> fetchOrderDetail(String token, String orderId) async {
+  /// [token] is now optional -- the real backend endpoint uses
+  /// `optionalAuth` and accepts a real guest via `?guestEmail=`
+  /// instead (see that endpoint's own real header comment). Closes a
+  /// real gap: this method previously required a token unconditionally,
+  /// so a real guest-checkout buyer could never actually call it at
+  /// all, even though the backend was already built to allow it.
+  Future<Map<String, dynamic>> fetchOrderDetail(String? token, String orderId, {String? guestEmail}) async {
+    final uri = Uri.parse('$baseUrl/order/$orderId').replace(
+      queryParameters: guestEmail != null ? {'guestEmail': guestEmail} : null,
+    );
     final response = await _client.get(
-      Uri.parse('$baseUrl/order/$orderId'),
-      headers: {'Authorization': 'Bearer $token'},
+      uri,
+      headers: token != null ? {'Authorization': 'Bearer $token'} : {},
     );
     if (response.statusCode != 200) {
       throw ApiException('Failed to load order (${response.statusCode})');

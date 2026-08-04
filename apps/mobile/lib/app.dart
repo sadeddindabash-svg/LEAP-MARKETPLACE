@@ -113,7 +113,7 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => ProductScreen(productId: state.pathParameters['id']!),
     ),
     GoRoute(path: '/checkout', builder: (context, state) => const CheckoutScreen()),
-    GoRoute(path: '/orders/:id', builder: (context, state) => OrderDetailScreen(orderId: state.pathParameters['id']!)),
+    GoRoute(path: '/orders/:id', builder: (context, state) => OrderDetailScreen(orderId: state.pathParameters['id']!, guestEmail: state.uri.queryParameters['guestEmail'])),
     GoRoute(path: '/orders/:id/tracking', builder: (context, state) => TrackingScreen(orderId: state.pathParameters['id']!)),
     GoRoute(path: '/returns', builder: (context, state) => const ReturnsScreen()),
     GoRoute(path: '/returns/:id', builder: (context, state) => ReturnCaseDetailScreen(caseId: state.pathParameters['id']!, guestEmail: state.uri.queryParameters['guestEmail'])),

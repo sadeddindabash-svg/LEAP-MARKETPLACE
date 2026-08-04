@@ -333,7 +333,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         // own real detail page (tracking, itemized breakdown, etc.)
         // rather than the general orders list, so a buyer doesn't have
         // to find and tap their own just-placed order themselves.
-        if (mounted && !choseToCreateAccount) context.go('/orders/${result['id']}');
+        // REAL BUG FOUND AND FIXED HERE, related to this same real
+        // fix: this used to navigate here with no guestEmail at all
+        // for a real guest order -- meaning a real guest landing on
+        // their own just-placed order's detail page would have seen
+        // an infinite loading spinner (this screen's own _load()
+        // returned early for any non-logged-in visitor, with no error
+        // shown), even before order_detail_screen.dart's own guest-
+        // access fix this same session. Appends the real guestEmail
+        // now, matching the exact same real query-param pattern
+        // already used for returns/support tracking links.
+        if (mounted && !choseToCreateAccount) {
+          final guestQuery = auth.isLoggedIn ? '' : '?guestEmail=${Uri.encodeQueryComponent(_guestEmailController.text.trim())}';
+          context.go('/orders/${result['id']}$guestQuery');
+        }
       }
     } on ApiException catch (e) {
       setState(() => _errorMessage = e.message);

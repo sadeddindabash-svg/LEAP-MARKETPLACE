@@ -22,7 +22,10 @@ import '../../core/cart_state.dart';
 /// module's header comment for why that's structural, not just UI).
 class OrderDetailScreen extends StatefulWidget {
   final String orderId;
-  const OrderDetailScreen({super.key, required this.orderId});
+  // Real guest access (new) -- see fetchOrderDetail's own header
+  // comment and this screen's own _load() for the full real fix.
+  final String? guestEmail;
+  const OrderDetailScreen({super.key, required this.orderId, this.guestEmail});
 
   @override
   State<OrderDetailScreen> createState() => _OrderDetailScreenState();
@@ -42,10 +45,23 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   Future<void> _load() async {
     final auth = context.read<AuthState>();
-    if (!auth.isLoggedIn) return;
+    // Real fix: previously returned early here unconditionally for
+    // any non-logged-in visitor -- but a real guest with a real,
+    // matching guestEmail should be able to load their own real
+    // order too (the backend's own real optionalAuth + guestEmail
+    // check already allows this, see fetchOrderDetail's own header
+    // comment). Only bail out entirely when there's neither a real
+    // logged-in session NOR a real guestEmail to try.
+    if (!auth.isLoggedIn && widget.guestEmail == null) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = trRead(context, 'not_found');
+      });
+      return;
+    }
     setState(() => _isLoading = true);
     try {
-      final order = await ApiClient().fetchOrderDetail(auth.token!, widget.orderId);
+      final order = await ApiClient().fetchOrderDetail(auth.token, widget.orderId, guestEmail: widget.guestEmail);
       setState(() {
         _order = order;
         _isLoading = false;
