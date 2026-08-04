@@ -782,6 +782,40 @@ exists, never a decorative default.
   Weight) — kept those real fields, restyled to match the reference's
   card treatment, rather than replacing real data with invented rows.
 
+## Improvement #11 of 20: real app-store rating prompt, triggered after a genuinely positive real moment
+
+**Real, deliberate timing, not random or first-launch**: added
+`ReviewPromptState`, using the standard `in_app_review` package
+(wraps Apple's real `SKStoreReviewController` and Android's real Play
+In-App Review API). Triggered from `order_detail_screen.dart`'s own
+real `_load()`, only when a real order has genuinely reached
+`delivered` status — a real, positive moment the person has actual
+basis to judge the app by, not an arbitrary interruption.
+
+**This depends directly on this session's own earlier fix**: order
+status could never actually reach `'delivered'` before improvement #1
+earlier in this same session — this feature would never have fired
+at all without that fix already in place.
+
+**Honest scope on what this can and can't guarantee, stated
+directly**: both real underlying OS APIs are deliberately throttled
+by the OS itself (e.g. iOS caps how many times the real system dialog
+can appear to the same person within a rolling real time window,
+regardless of how often the app asks) — calling `requestReview()`
+does not guarantee a real prompt appears, and the app has no real way
+to know whether one actually did. This class's own real
+responsibility is narrower and honestly scoped to just that: decide
+when it's a reasonable moment to ask, and track which real orders
+have already triggered an attempt (bounded to the most recent 50) so
+the same delivered order doesn't ask again on every revisit.
+
+**A real, deliberate no-op on any failure**: wrapped in a real
+try/catch — a rating prompt is a nice-to-have layered on top of the
+real order detail page, and a real failure here (e.g. running on a
+platform/OS version the plugin doesn't support, or Flutter Web, where
+this plugin has no real store to talk to) must never affect anything
+else on that real page.
+
 ## Improvement #10 of 20: real address autocomplete, using a genuinely free public API — same honest pattern as VIN lookup
 
 **A real, optional convenience layered on top of manual entry, not a

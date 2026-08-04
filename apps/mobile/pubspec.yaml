@@ -17,6 +17,7 @@ dependencies:
   cached_network_image: ^3.4.1
   firebase_core: ^3.8.0
   firebase_messaging: ^15.1.5
+  in_app_review: ^2.0.9
   # Explicit (was already a transitive dep of `http`) -- needed directly
   # to set a real MediaType/content-type on photo uploads; see
   # api_client.dart's _mediaTypeFor for why that's required on web.

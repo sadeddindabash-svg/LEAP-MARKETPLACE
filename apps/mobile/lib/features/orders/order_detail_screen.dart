@@ -7,6 +7,7 @@ import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../core/config/app_config.dart';
+import '../../core/review_prompt_state.dart';
 import '../../services/api_client.dart';
 import '../../widgets/plate_chip.dart';
 import '../../widgets/order_status_timeline.dart';
@@ -49,6 +50,17 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         _order = order;
         _isLoading = false;
       });
+      // Real app-store review prompt (new) -- only after a genuinely
+      // positive real moment: this real order has actually reached
+      // delivered status. Depends directly on this same session's
+      // own earlier real fix that made displayStatus able to reach
+      // 'delivered' at all -- see ReviewPromptState's own header
+      // comment for the honest scope (this decides when it's
+      // reasonable to ask; the OS itself decides whether a real
+      // prompt actually appears).
+      if ((order['displayStatus'] as String?) == 'delivered') {
+        ReviewPromptState.maybePromptAfterDelivery(widget.orderId);
+      }
     } catch (e) {
       setState(() {
         _errorMessage = trRead(context, 'could_not_load_order');
