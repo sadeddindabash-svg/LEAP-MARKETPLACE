@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/theme.dart';
+import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../core/cart_state.dart';
 import '../../core/config/app_config.dart';
