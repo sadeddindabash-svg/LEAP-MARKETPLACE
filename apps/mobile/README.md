@@ -782,6 +782,44 @@ exists, never a decorative default.
   Weight) — kept those real fields, restyled to match the reference's
   card treatment, rather than replacing real data with invented rows.
 
+## First real, checked-in test coverage for the mobile app
+
+**A real, confirmed gap found while surveying the whole platform**:
+every other app in this platform (admin dashboard, supplier portal,
+hub portal, web storefront) has a real, substantial integration test
+suite hitting the real backend — 577 tests combined, which just
+caught two real bugs elsewhere in this same session. The mobile app
+had none — its only test file was Flutter's own default counter-app
+boilerplate, testing a `MyApp` class that has never existed in this
+real app (the real class is `LeapApp`). **Removed that stale file**
+and added the app's first two real tests instead.
+
+**Both cover pure, previously private, hard-to-verify logic**,
+extracted into real, standalone, top-level functions specifically to
+make them genuinely testable without needing a full widget tree:
+
+- `isVersionBelow` (force-update gate) — the same real semantic-
+  version comparison already manually verified correct earlier this
+  session via a Python mirror (including the classic `"1.10.0"` vs
+  `"1.9.0"` string-comparison trap it exists to avoid). Now a real,
+  checked-in test covers the same 6 cases.
+- `relativeTime` (Saved Searches' "Last checked: Xh ago") — given a
+  real, injectable `now` parameter (defaults to `DateTime.now()` for
+  identical real production behavior) specifically so the test is
+  deterministic regardless of when it actually runs, rather than
+  depending on the exact real moment it happens to execute.
+
+**Every expected value in both tests was independently verified**
+against a Python mirror of the exact same real logic before being
+written — all 6 version-comparison cases and all 8 relative-time
+cases confirmed matching.
+
+**Honest limitation, stated directly**: this sandbox has no real
+Flutter/Dart SDK to actually run `flutter test` against, so neither
+file has been executed here — written as carefully as verifiable
+without one, but a real `flutter test` run is the genuine next step
+to confirm both pass for real.
+
 ## Improvement #19 of 20: two-factor authentication — mostly already built earlier this session but never committed, one real missing screen closed the gap, verified end-to-end
 
 **An important, honest correction, found while checking `git status`

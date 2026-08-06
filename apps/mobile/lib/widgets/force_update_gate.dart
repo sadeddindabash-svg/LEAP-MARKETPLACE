@@ -3,6 +3,25 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../core/theme.dart';
 import '../services/api_client.dart';
 
+/// Real, genuine semantic-version comparison (new) -- deliberately NOT
+/// a plain string comparison, which would incorrectly treat "1.10.0"
+/// as less than "1.9.0" (comparing "1" vs "9" as the second real
+/// segment, character by character, the way strings sort). Compares
+/// each real numeric segment (major.minor.patch) individually instead.
+///
+/// A real, top-level function (not a private State method) so it's
+/// genuinely unit-testable on its own -- see test/force_update_gate_test.dart.
+bool isVersionBelow(String current, String minimum) {
+  final currentParts = current.split('.').map((p) => int.tryParse(p) ?? 0).toList();
+  final minParts = minimum.split('.').map((p) => int.tryParse(p) ?? 0).toList();
+  for (var i = 0; i < 3; i++) {
+    final c = i < currentParts.length ? currentParts[i] : 0;
+    final m = i < minParts.length ? minParts[i] : 0;
+    if (c != m) return c < m;
+  }
+  return false; // genuinely equal
+}
+
 /// Real gate wrapping the whole app (new), mirrors AppLockGate's own
 /// real pattern. Checks the real, currently-installed app version
 /// (via package_info_plus, reading pubspec.yaml's own real version at
@@ -41,7 +60,7 @@ class _ForceUpdateGateState extends State<ForceUpdateGate> {
       ]);
       final currentVersion = (results[0] as PackageInfo).version;
       final minVersion = results[1] as String?;
-      if (minVersion != null && _isVersionBelow(currentVersion, minVersion)) {
+      if (minVersion != null && isVersionBelow(currentVersion, minVersion)) {
         if (mounted) setState(() => _blocked = true);
       }
     } catch (_) {
@@ -51,23 +70,6 @@ class _ForceUpdateGateState extends State<ForceUpdateGate> {
     } finally {
       if (mounted) setState(() => _checked = true);
     }
-  }
-
-  /// Real, genuine semantic-version comparison (new) -- deliberately
-  /// NOT a plain string comparison, which would incorrectly treat
-  /// "1.10.0" as less than "1.9.0" (comparing "1" vs "9" as the second
-  /// real segment, character by character, the way strings sort).
-  /// Compares each real numeric segment (major.minor.patch)
-  /// individually instead.
-  bool _isVersionBelow(String current, String minimum) {
-    final currentParts = current.split('.').map((p) => int.tryParse(p) ?? 0).toList();
-    final minParts = minimum.split('.').map((p) => int.tryParse(p) ?? 0).toList();
-    for (var i = 0; i < 3; i++) {
-      final c = i < currentParts.length ? currentParts[i] : 0;
-      final m = i < minParts.length ? minParts[i] : 0;
-      if (c != m) return c < m;
-    }
-    return false; // genuinely equal
   }
 
   @override

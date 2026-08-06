@@ -7,6 +7,25 @@ import '../../services/api_client.dart';
 import '../../models/saved_search.dart';
 import '../../widgets/skeleton.dart';
 
+/// Real relative-time formatting for the real lastCheckedAt field --
+/// matches the real Stitch reference's own "Last checked: Xh ago"
+/// concept, using genuine data that already existed rather than a
+/// fabricated one.
+///
+/// [now] is injectable (defaults to the real `DateTime.now()` for
+/// identical real production behavior) specifically so this is
+/// genuinely testable without depending on exactly when a real test
+/// happens to run -- see test/relative_time_test.dart.
+String relativeTime(DateTime? dt, bool isAr, {DateTime? now}) {
+  if (dt == null) return isAr ? 'لم يُفحص بعد' : 'Not checked yet';
+  final effectiveNow = now ?? DateTime.now();
+  final diff = effectiveNow.difference(dt);
+  if (diff.inMinutes < 1) return isAr ? 'الآن' : 'just now';
+  if (diff.inHours < 1) return isAr ? 'منذ ${diff.inMinutes} د' : '${diff.inMinutes}m ago';
+  if (diff.inDays < 1) return isAr ? 'منذ ${diff.inHours} س' : '${diff.inHours}h ago';
+  return isAr ? 'منذ ${diff.inDays} يوم' : '${diff.inDays}d ago';
+}
+
 /// Real saved searches management (migration 039) -- list and remove.
 /// Saving itself happens from the search screen's own action; this
 /// screen is purely for reviewing and managing what's already saved.
@@ -88,15 +107,6 @@ class _SavedSearchesScreenState extends State<SavedSearchesScreen> {
   // (new) -- matches the real Stitch reference's own "Last checked: Xh
   // ago" concept, using genuine data that already existed rather than
   // a fabricated one.
-  String _relativeTime(DateTime? dt, bool isAr) {
-    if (dt == null) return isAr ? 'لم يُفحص بعد' : 'Not checked yet';
-    final diff = DateTime.now().difference(dt);
-    if (diff.inMinutes < 1) return isAr ? 'الآن' : 'just now';
-    if (diff.inHours < 1) return isAr ? 'منذ ${diff.inMinutes} د' : '${diff.inMinutes}m ago';
-    if (diff.inDays < 1) return isAr ? 'منذ ${diff.inHours} س' : '${diff.inHours}h ago';
-    return isAr ? 'منذ ${diff.inDays} يوم' : '${diff.inDays}d ago';
-  }
-
   Widget _buildBody(bool isAr) {
     final palette = LeapPalette.of(context);
     if (_isLoading) return const ListSkeleton();
@@ -142,7 +152,7 @@ class _SavedSearchesScreenState extends State<SavedSearchesScreen> {
                     Text(s.searchTerm ?? s.category ?? '', style: TextStyle(fontSize: 12, color: palette.muted)),
                     const SizedBox(height: 4),
                     Text(
-                      '${isAr ? 'آخر فحص:' : 'Last checked:'} ${_relativeTime(s.lastCheckedAt, isAr)}',
+                      '${isAr ? 'آخر فحص:' : 'Last checked:'} ${relativeTime(s.lastCheckedAt, isAr)}',
                       style: TextStyle(fontSize: 10.5, color: palette.muted, fontStyle: FontStyle.italic),
                     ),
                   ],
