@@ -310,6 +310,7 @@ class _CartItemRow extends StatelessWidget {
             borderRadius: BorderRadius.circular(10),
             child: item.imageUrl != null
                 ? CachedNetworkImage(
+                    fadeInDuration: const Duration(milliseconds: 300),
                     imageUrl: ApiClient.resolveMediaUrl(item.imageUrl!),
                     width: 72,
                     height: 72,

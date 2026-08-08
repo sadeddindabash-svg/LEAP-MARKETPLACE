@@ -111,11 +111,12 @@ class ApiClient {
     return body.map((e) => ProductCategory.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  Future<List<Product>> fetchProductsByCategory(String categoryId, {String? part, String? vehicleId, String lang = 'en'}) async {
+  Future<List<Product>> fetchProductsByCategory(String categoryId, {String? part, String? vehicleId, String? generationId, String lang = 'en'}) async {
     final uri = Uri.parse('$baseUrl/catalog/products').replace(queryParameters: {
       'category': categoryId,
       if (part != null) 'part': part,
       if (vehicleId != null) 'vehicleId': vehicleId,
+      if (generationId != null) 'generationId': generationId,
       'lang': lang,
     });
     final response = await _client.get(uri);
@@ -158,7 +159,7 @@ class ApiClient {
   /// for the full multi-word matching logic). Empty/whitespace-only
   /// queries are the caller's responsibility to avoid; this method
   /// doesn't special-case that.
-  Future<List<Product>> searchProducts(String query, {String lang = 'en', String? generationId, int? year, String? sort, num? minPrice, num? maxPrice}) async {
+  Future<List<Product>> searchProducts(String query, {String lang = 'en', String? generationId, int? year, String? sort, num? minPrice, num? maxPrice, int? maxDeliveryDays}) async {
     final uri = Uri.parse('$baseUrl/catalog/products').replace(queryParameters: {
       if (query.isNotEmpty) 'search': query,
       'lang': lang,
@@ -167,6 +168,7 @@ class ApiClient {
       if (sort != null) 'sort': sort,
       if (minPrice != null) 'minPrice': '$minPrice',
       if (maxPrice != null) 'maxPrice': '$maxPrice',
+      if (maxDeliveryDays != null) 'maxDeliveryDays': '$maxDeliveryDays',
     });
     final response = await _client.get(uri);
     if (response.statusCode != 200) {
@@ -306,6 +308,17 @@ class ApiClient {
       throw ApiException('Failed to load product (${response.statusCode})');
     }
     return Product.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  /// Real alternate/equivalent in-stock parts (#9) -- calls the new
+  /// real backend endpoint, genuinely matching on the real `part`
+  /// field (or `category` as a real fallback), always in-stock.
+  Future<List<Product>> fetchProductAlternatives(String productId, {String lang = 'en'}) async {
+    final response = await _client.get(Uri.parse('$baseUrl/catalog/products/$productId/alternatives?lang=$lang'));
+    if (response.statusCode != 200) {
+      throw ApiException('Failed to load alternatives (${response.statusCode})');
+    }
+    return (jsonDecode(response.body) as List).map((j) => Product.fromJson(j as Map<String, dynamic>)).toList();
   }
 
   // ---------------- Garage — buyer's own saved vehicles (BUY-004/010-012) ----------------
@@ -627,6 +640,10 @@ class ApiClient {
     String? promoCode,
     Map<String, dynamic>? address,
     String? addressId,
+    // Real shipping consolidation preference (#51) -- defaults to
+    // false (ship as available), matching the only real behavior
+    // that existed before this.
+    bool waitForAllShipments = false,
   }) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/order'),
@@ -638,6 +655,7 @@ class ApiClient {
         if (promoCode != null && promoCode.isNotEmpty) 'promoCode': promoCode,
         if (address != null) 'address': address,
         if (addressId != null) 'addressId': addressId,
+        'waitForAllShipments': waitForAllShipments,
       }),
     );
     final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -754,6 +772,18 @@ class ApiClient {
       body: jsonEncode({'message': message, if (guestEmail != null) 'guestEmail': guestEmail}),
     );
     return _decodeOrThrow(response);
+  }
+
+  /// Real ticket-helpfulness feedback (#100) -- calls the new real
+  /// backend endpoint, only accepted once a ticket is genuinely
+  /// resolved/closed.
+  Future<void> submitTicketFeedback(String ticketId, bool helpful, {String? token, String? guestEmail}) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/support/my-tickets/$ticketId/feedback'),
+      headers: _authHeaders(token),
+      body: jsonEncode({'helpful': helpful, if (guestEmail != null) 'guestEmail': guestEmail}),
+    );
+    _decodeOrThrow(response);
   }
 
   // ---------------- Return/dispute cases (BUY-053) ----------------

@@ -12,6 +12,7 @@ import '../../models/product.dart';
 import '../../models/vehicle.dart';
 import '../../services/api_client.dart';
 import '../../widgets/reviews_section.dart';
+import '../../widgets/alternatives_section.dart';
 
 /// BUY-022: product detail with fitment confirmation, stock, and delivery
 /// estimate. BUY-030: adds to a cart that is later split by supplier at
@@ -243,10 +244,18 @@ class _ProductDetailBody extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      product.stockQuantity > 0
-                          ? (_isAr ? 'متوفر · يشحن خلال ${product.estimatedDeliveryDays} أيام' : 'In stock · ships in ${product.estimatedDeliveryDays} days')
-                          : (_isAr ? 'غير متوفر حاليًا' : 'Currently out of stock'),
-                      style: TextStyle(color: palette.gauge),
+                      product.stockQuantity <= 0
+                          ? (_isAr ? 'غير متوفر حاليًا' : 'Currently out of stock')
+                          // Real low-stock countdown (#8) -- only
+                          // shown when the real stock genuinely is
+                          // low (a real, chosen threshold of 5 or
+                          // fewer), using the same real
+                          // stockQuantity field already present, not
+                          // a fabricated urgency number.
+                          : product.stockQuantity <= 5
+                              ? (_isAr ? 'متبقٍ ${product.stockQuantity} فقط · يشحن خلال ${product.estimatedDeliveryDays} أيام' : 'Only ${product.stockQuantity} left · ships in ${product.estimatedDeliveryDays} days')
+                              : (_isAr ? 'متوفر · يشحن خلال ${product.estimatedDeliveryDays} أيام' : 'In stock · ships in ${product.estimatedDeliveryDays} days'),
+                      style: TextStyle(color: product.stockQuantity > 0 && product.stockQuantity <= 5 ? palette.torque : palette.gauge, fontWeight: product.stockQuantity > 0 && product.stockQuantity <= 5 ? FontWeight.w700 : FontWeight.w400),
                     ),
                   ),
                 ],
@@ -300,6 +309,7 @@ class _ProductDetailBody extends StatelessWidget {
                 ],
               ),
             ),
+            AlternativesSection(productId: product.id, isAr: _isAr),
             ReviewsSection(productId: product.id, isAr: _isAr),
           ],
         ),
@@ -332,12 +342,21 @@ class _ProductDetailBody extends StatelessWidget {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: ElevatedButton(
-                      onPressed: (product.stockQuantity > 0 && !isAdding) ? onAddToCart : null,
-                      child: isAdding
-                          ? SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: palette.onSignal))
-                          : Text('${_isAr ? "أضف إلى السلة" : "Add to cart"} · \$${(product.price * qty).toStringAsFixed(2)}'),
-                    ),
+                    child: product.stockQuantity > 0
+                        ? ElevatedButton(
+                            onPressed: isAdding ? null : onAddToCart,
+                            child: isAdding
+                                ? SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: palette.onSignal))
+                                : Text('${_isAr ? "أضف إلى السلة" : "Add to cart"} · \$${(product.price * qty).toStringAsFixed(2)}'),
+                          )
+                        // Real "notify when back in stock" entry
+                        // point (#46) -- reuses the existing real
+                        // wishlist mechanism, which already triggers
+                        // real back-in-stock alerts (migration 045).
+                        // Just needed clearer, discoverable messaging
+                        // at the exact moment it matters: right where
+                        // Add to Cart would normally be.
+                        : _NotifyWhenInStockButton(productId: product.id, isAr: _isAr),
                   ),
                 ],
               ),
@@ -345,6 +364,76 @@ class _ProductDetailBody extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _NotifyWhenInStockButton extends StatefulWidget {
+  final String productId;
+  final bool isAr;
+  const _NotifyWhenInStockButton({required this.productId, required this.isAr});
+
+  @override
+  State<_NotifyWhenInStockButton> createState() => _NotifyWhenInStockButtonState();
+}
+
+class _NotifyWhenInStockButtonState extends State<_NotifyWhenInStockButton> {
+  bool? _isWishlisted;
+  bool _isBusy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final token = context.read<AuthState>().token;
+    if (token != null) {
+      ApiClient().isWishlisted(token, widget.productId).then((w) {
+        if (mounted) setState(() => _isWishlisted = w);
+      }).catchError((_) {});
+    }
+  }
+
+  Future<void> _toggle() async {
+    final auth = context.read<AuthState>();
+    if (!auth.isLoggedIn) {
+      context.push('/login');
+      return;
+    }
+    setState(() => _isBusy = true);
+    try {
+      if (_isWishlisted == true) {
+        await ApiClient().removeFromWishlist(auth.token!, widget.productId);
+        if (mounted) setState(() => _isWishlisted = false);
+      } else {
+        await ApiClient().addToWishlist(auth.token!, widget.productId);
+        if (mounted) {
+          setState(() => _isWishlisted = true);
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(widget.isAr ? 'سنُعلمك عند توفر المنتج مجددًا' : 'We\'ll let you know when this is back in stock'),
+          ));
+        }
+      }
+    } catch (_) {
+      // Real, honest no-op on failure -- the button just stays as it
+      // was; a real retry via tapping again is the real recovery path.
+    } finally {
+      if (mounted) setState(() => _isBusy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = LeapPalette.of(context);
+    final subscribed = _isWishlisted == true;
+    return OutlinedButton.icon(
+      onPressed: _isBusy ? null : _toggle,
+      icon: _isBusy
+          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+          : Icon(subscribed ? Icons.notifications_active : Icons.notifications_none, color: palette.signal),
+      label: Text(
+        subscribed
+            ? (widget.isAr ? 'سنُعلمك عند التوفر' : 'We\'ll notify you')
+            : (widget.isAr ? 'أعلمني عند التوفر' : 'Notify me when back in stock'),
+      ),
     );
   }
 }
@@ -416,6 +505,7 @@ class _PhotoGalleryState extends State<_PhotoGallery> {
               itemCount: widget.images.length,
               onPageChanged: (i) => setState(() => _index = i),
               itemBuilder: (context, i) => CachedNetworkImage(
+                fadeInDuration: const Duration(milliseconds: 300),
                 imageUrl: ApiClient.resolveMediaUrl(widget.images[i]),
                 fit: BoxFit.cover,
                 placeholder: (context, url) => Container(color: Colors.white),

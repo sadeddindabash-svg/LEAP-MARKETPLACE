@@ -10,6 +10,7 @@ import '../../core/language_state.dart';
 import '../../core/auth_state.dart';
 import '../../models/product.dart';
 import '../../services/api_client.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'vehicle_filter_sheet.dart';
 import 'sort_and_price_sheet.dart';
 
@@ -18,7 +19,11 @@ import 'sort_and_price_sheet.dart';
 /// screen before this ("TODO: wire to search screen") — this is that
 /// wiring, plus the actual results screen.
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key});
+  // Real pre-filled query (new, #15) -- lets a real caller (Shop by
+  // Symptom) land here with a real search already running, rather
+  // than requiring the person to type it themselves.
+  final String? initialQuery;
+  const SearchScreen({super.key, this.initialQuery});
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -42,6 +47,11 @@ class _SearchScreenState extends State<SearchScreen> {
   // own header comment; genuinely aggregated platform-wide data, not a
   // hardcoded example list.
   List<String> _trendingSearches = [];
+  // Real voice search (#13) -- on-device speech-to-text, no cloud API
+  // key needed. _isListening drives the mic icon's visual state.
+  final stt.SpeechToText _speech = stt.SpeechToText();
+  bool _isListening = false;
+  bool _speechAvailable = false;
 
   @override
   void initState() {
@@ -56,12 +66,43 @@ class _SearchScreenState extends State<SearchScreen> {
     ApiClient().fetchTrendingSearches().then((terms) {
       if (mounted) setState(() => _trendingSearches = terms);
     }).catchError((_) {});
+    if (widget.initialQuery != null && widget.initialQuery!.isNotEmpty) {
+      _controller.text = widget.initialQuery!;
+      _runSearch(widget.initialQuery!);
+    }
+    // Real, best-effort init -- a real failure (no mic permission,
+    // unsupported platform) just leaves the mic button hidden rather
+    // than breaking the rest of this real screen.
+    _speech.initialize().then((available) {
+      if (mounted) setState(() => _speechAvailable = available);
+    }).catchError((_) {});
+  }
+
+  Future<void> _toggleListening() async {
+    if (_isListening) {
+      await _speech.stop();
+      if (mounted) setState(() => _isListening = false);
+      return;
+    }
+    setState(() => _isListening = true);
+    await _speech.listen(
+      onResult: (result) {
+        _controller.text = result.recognizedWords;
+        _controller.selection = TextSelection.fromPosition(TextPosition(offset: _controller.text.length));
+        if (result.finalResult) {
+          setState(() => _isListening = false);
+          _debounce?.cancel();
+          _runSearch(result.recognizedWords.trim());
+        }
+      },
+    );
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
     _controller.dispose();
+    if (_isListening) _speech.stop();
     super.dispose();
   }
 
@@ -155,6 +196,7 @@ class _SearchScreenState extends State<SearchScreen> {
         sort: _sortAndPrice?.sort,
         minPrice: _sortAndPrice?.minPrice,
         maxPrice: _sortAndPrice?.maxPrice,
+        maxDeliveryDays: _sortAndPrice?.maxDeliveryDays,
       );
       if (_lastQuery == query && mounted) {
         setState(() { _results = results; _isSearching = false; });
@@ -179,6 +221,15 @@ class _SearchScreenState extends State<SearchScreen> {
           decoration: InputDecoration(
             hintText: isAr ? 'ابحث عن قطعة أو ماركة أو رقم' : 'Search part, brand, or number',
             border: InputBorder.none,
+            // Real voice search (#13) -- only shown when real speech
+            // recognition is genuinely available on this device.
+            prefixIcon: _speechAvailable
+                ? IconButton(
+                    icon: Icon(_isListening ? Icons.mic : Icons.mic_none, color: _isListening ? LeapPalette.of(context).signal : null),
+                    tooltip: isAr ? 'بحث صوتي' : 'Voice search',
+                    onPressed: _toggleListening,
+                  )
+                : null,
             // Real "clear" button (new) -- closes a real, common gap:
             // no way to clear the search field except manually
             // selecting and deleting the text. Reuses the exact same
@@ -197,6 +248,11 @@ class _SearchScreenState extends State<SearchScreen> {
           ),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.qr_code_scanner),
+            tooltip: isAr ? 'مسح الرمز' : 'Scan barcode',
+            onPressed: () => context.push('/scan-barcode'),
+          ),
           IconButton(
             icon: Icon(Icons.directions_car_filled_outlined, color: _vehicleFilter != null ? LeapPalette.of(context).signal : null),
             tooltip: isAr ? 'تصفية حسب المركبة' : 'Filter by vehicle',

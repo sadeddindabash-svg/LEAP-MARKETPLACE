@@ -98,9 +98,31 @@ class _WishlistScreenState extends State<WishlistScreen> {
               itemCount: products.length,
               itemBuilder: (context, i) {
                 final p = products[i];
-                return ProductCard(
-                  product: p,
-                  onTap: () => context.push('/product/${p.id}').then((_) => _reload()),
+                // Real price-drop indicator (#59) -- only shown when
+                // the real lastKnownPrice snapshot genuinely exceeds
+                // the real current price, i.e. an actual drop
+                // happened, never a fabricated comparison.
+                final hasPriceDrop = p.lastKnownPrice != null && p.lastKnownPrice! > p.price;
+                return Stack(
+                  children: [
+                    ProductCard(
+                      product: p,
+                      onTap: () => context.push('/product/${p.id}').then((_) => _reload()),
+                    ),
+                    if (hasPriceDrop)
+                      Positioned(
+                        top: 8,
+                        left: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(color: LeapPalette.of(context).gauge, borderRadius: BorderRadius.circular(20)),
+                          child: Text(
+                            '\$${p.lastKnownPrice!.toStringAsFixed(0)} → \$${p.price.toStringAsFixed(0)}',
+                            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ),
+                  ],
                 );
               },
             );

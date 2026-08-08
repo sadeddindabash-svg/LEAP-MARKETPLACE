@@ -39,6 +39,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final _promoCodeController = TextEditingController();
   String _selectedPayment = 'card';
   bool _isPlacingOrder = false;
+  // Real shipping consolidation preference (#51) -- defaults to
+  // false (ship as available), matching the only real behavior that
+  // existed before this.
+  bool _waitForAllShipments = false;
   String? _errorMessage;
 
   // Real checkout step progress (new) -- closes a real gap: no
@@ -298,6 +302,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         promoCode: _appliedPromoCode,
         addressId: addressId,
         address: inlineAddress,
+        waitForAllShipments: _waitForAllShipments,
       );
       await cart.clearAfterOrder();
       if (mounted) {
@@ -577,6 +582,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   title: Row(children: [Icon(m.icon, size: 18), const SizedBox(width: 10), Text(m.label)]),
                 ),
               )),
+          // Real shipping consolidation preference (#51) -- only
+          // shown when the real cart genuinely has items from more
+          // than one real supplier (via each real CartItem's own
+          // supplierName). A single-supplier order has nothing real
+          // to consolidate or wait for.
+          if (cart.items.map((i) => i.supplierName).toSet().length > 1) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(border: Border.all(color: LeapPalette.of(context).line), borderRadius: BorderRadius.circular(10)),
+              child: SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _waitForAllShipments,
+                onChanged: (v) => setState(() => _waitForAllShipments = v),
+                title: Text(tr(context, 'wait_for_all_shipments_title')),
+                subtitle: Text(tr(context, 'wait_for_all_shipments_subtitle'), style: TextStyle(fontSize: 12, color: LeapPalette.of(context).muted)),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           KeyedSubtree(key: _summarySectionKey, child: Text(tr(context, 'order_summary'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
           const SizedBox(height: 8),
@@ -602,6 +626,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           borderRadius: BorderRadius.circular(6),
                           child: item.imageUrl != null
                               ? CachedNetworkImage(
+                                  fadeInDuration: const Duration(milliseconds: 300),
                                   imageUrl: ApiClient.resolveMediaUrl(item.imageUrl!),
                                   width: 56,
                                   height: 56,

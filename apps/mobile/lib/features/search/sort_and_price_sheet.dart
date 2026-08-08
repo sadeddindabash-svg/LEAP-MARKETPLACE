@@ -9,9 +9,12 @@ class SortAndPriceSelection {
   final String? sort;
   final num? minPrice;
   final num? maxPrice;
-  const SortAndPriceSelection({this.sort, this.minPrice, this.maxPrice});
+  // Real ships-within-X-days filter (#10) -- estimatedDeliveryDays is
+  // already a real, stored field on every real product.
+  final int? maxDeliveryDays;
+  const SortAndPriceSelection({this.sort, this.minPrice, this.maxPrice, this.maxDeliveryDays});
 
-  bool get isEmpty => sort == null && minPrice == null && maxPrice == null;
+  bool get isEmpty => sort == null && minPrice == null && maxPrice == null && maxDeliveryDays == null;
 
   String get label {
     final parts = <String>[];
@@ -23,6 +26,7 @@ class SortAndPriceSelection {
       final max = maxPrice != null ? '\$$maxPrice' : '+';
       parts.add('$min–$max');
     }
+    if (maxDeliveryDays != null) parts.add('Ships in ${maxDeliveryDays}d');
     return parts.join(' · ');
   }
 }
@@ -46,6 +50,7 @@ class _SortAndPriceSheetState extends State<SortAndPriceSheet> {
   String? _sort;
   final _minController = TextEditingController();
   final _maxController = TextEditingController();
+  int? _maxDeliveryDays;
 
   @override
   void initState() {
@@ -53,6 +58,7 @@ class _SortAndPriceSheetState extends State<SortAndPriceSheet> {
     _sort = widget.initial?.sort;
     if (widget.initial?.minPrice != null) _minController.text = '${widget.initial!.minPrice}';
     if (widget.initial?.maxPrice != null) _maxController.text = '${widget.initial!.maxPrice}';
+    _maxDeliveryDays = widget.initial?.maxDeliveryDays;
   }
 
   @override
@@ -65,7 +71,7 @@ class _SortAndPriceSheetState extends State<SortAndPriceSheet> {
   void _apply() {
     final min = num.tryParse(_minController.text.trim());
     final max = num.tryParse(_maxController.text.trim());
-    Navigator.of(context).pop(SortAndPriceSelection(sort: _sort, minPrice: min, maxPrice: max));
+    Navigator.of(context).pop(SortAndPriceSelection(sort: _sort, minPrice: min, maxPrice: max, maxDeliveryDays: _maxDeliveryDays));
   }
 
   void _clear() {
@@ -117,6 +123,19 @@ class _SortAndPriceSheetState extends State<SortAndPriceSheet> {
               ],
             ),
             const SizedBox(height: 20),
+            // Real ships-within-X-days filter (#10)
+            const Text('Delivery speed', style: TextStyle(fontSize: 12.5, color: LeapColors.muted)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: [
+                _SortChip(label: 'Any', selected: _maxDeliveryDays == null, onTap: () => setState(() => _maxDeliveryDays = null)),
+                _SortChip(label: 'Within 3 days', selected: _maxDeliveryDays == 3, onTap: () => setState(() => _maxDeliveryDays = 3)),
+                _SortChip(label: 'Within 5 days', selected: _maxDeliveryDays == 5, onTap: () => setState(() => _maxDeliveryDays = 5)),
+                _SortChip(label: 'Within 7 days', selected: _maxDeliveryDays == 7, onTap: () => setState(() => _maxDeliveryDays = 7)),
+              ],
+            ),
+            const SizedBox(height: 20),
             Row(
               children: [
                 Expanded(child: OutlinedButton(onPressed: _clear, child: const Text('Clear'))),
@@ -143,7 +162,7 @@ class _SortChip extends StatelessWidget {
       label: Text(label, style: const TextStyle(fontSize: 12.5)),
       selected: selected,
       onSelected: (_) => onTap(),
-      selectedColor: LeapColors.signal.withOpacity(0.15),
+      selectedColor: LeapColors.signal.withValues(alpha: 0.15),
       labelStyle: TextStyle(color: selected ? LeapColors.signal : LeapColors.ink, fontWeight: selected ? FontWeight.w700 : FontWeight.w500),
     );
   }

@@ -91,6 +91,7 @@ class _ProductCardState extends State<ProductCard> {
     final p = widget.product;
     final palette = LeapPalette.of(context);
     final inStock = p.stockQuantity > 0;
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
     final isLoggedIn = context.watch<AuthState>().isLoggedIn;
     return Card(
       margin: EdgeInsets.zero,
@@ -122,6 +123,7 @@ class _ProductCardState extends State<ProductCard> {
                                 imageUrl: ApiClient.resolveMediaUrl(p.images.first),
                                 fit: BoxFit.cover,
                                 width: double.infinity,
+                                fadeInDuration: const Duration(milliseconds: 300),
                                 placeholder: (context, url) => Container(color: const Color(0xFFF5F6F8)),
                                 errorWidget: (context, url, error) => const Icon(Icons.broken_image_outlined, color: LeapColors.muted),
                               )
@@ -169,8 +171,14 @@ class _ProductCardState extends State<ProductCard> {
               ),
               const SizedBox(height: 3),
               Text(
-                inStock ? tr(context, 'in_stock') : tr(context, 'out_of_stock'),
-                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: inStock ? palette.gauge : Colors.red),
+                // Real low-stock countdown (#8), same real threshold
+                // and treatment as Product Detail's own.
+                !inStock
+                    ? tr(context, 'out_of_stock')
+                    : p.stockQuantity <= 5
+                        ? (isAr ? 'متبقٍ ${p.stockQuantity} فقط' : 'Only ${p.stockQuantity} left')
+                        : tr(context, 'in_stock'),
+                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: !inStock ? Colors.red : (p.stockQuantity <= 5 ? palette.torque : palette.gauge)),
               ),
               const SizedBox(height: 6),
               Row(

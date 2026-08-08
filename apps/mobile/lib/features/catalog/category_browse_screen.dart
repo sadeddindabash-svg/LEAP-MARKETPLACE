@@ -123,7 +123,7 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
                                   ),
                                   clipBehavior: Clip.antiAlias,
                                   child: c.photoUrl != null
-                                      ? CachedNetworkImage(imageUrl: ApiClient.resolveMediaUrl(c.photoUrl!), fit: BoxFit.cover, errorWidget: (context, url, error) => Icon(Icons.category_outlined, size: 18, color: palette.muted))
+                                      ? CachedNetworkImage(imageUrl: ApiClient.resolveMediaUrl(c.photoUrl!), fit: BoxFit.cover, fadeInDuration: const Duration(milliseconds: 300), errorWidget: (context, url, error) => Icon(Icons.category_outlined, size: 18, color: palette.muted))
                                       : Icon(Icons.category_outlined, size: 18, color: selected ? palette.signal : palette.muted),
                                 ),
                                 Text(

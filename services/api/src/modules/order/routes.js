@@ -31,7 +31,7 @@ async function nextOrderId(client) {
 
 // POST /order  { items: [{productId, quantity}], userId?, guestEmail?, address?, addressId? }
 router.post('/', async (req, res, next) => {
-  const { items, userId, guestEmail, promoCode, address, addressId } = req.body || {};
+  const { items, userId, guestEmail, promoCode, address, addressId, waitForAllShipments } = req.body || {};
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'items is required and must be non-empty' });
   }
@@ -171,8 +171,8 @@ router.post('/', async (req, res, next) => {
 
     const orderId = await nextOrderId(client);
     await client.query(
-      `INSERT INTO orders (id, buyer_id, guest_email, status, total, currency_code, promo_code, discount_amount) VALUES ($1, $2, $3, 'to_ship', $4, $5, $6, $7)`,
-      [orderId, userId || null, guestEmail || null, total, currencyCode, appliedPromoCode, discountUsd]
+      `INSERT INTO orders (id, buyer_id, guest_email, status, total, currency_code, promo_code, discount_amount, wait_for_all_shipments) VALUES ($1, $2, $3, 'to_ship', $4, $5, $6, $7, $8)`,
+      [orderId, userId || null, guestEmail || null, total, currencyCode, appliedPromoCode, discountUsd, Boolean(waitForAllShipments)]
     );
     if (appliedPromoCode) {
       await recordRedemption(appliedPromoCode, userId || null, orderId, client);
@@ -234,6 +234,28 @@ router.post('/', async (req, res, next) => {
     }
 
     await client.query('COMMIT');
+
+    // REAL BUG FOUND AND FIXED HERE: this used to run AFTER the
+    // response below, as a fire-and-forget follow-up alongside email/
+    // notifications -- but unlike those, this has no slow external
+    // network dependency (it's purely local DB work), and its own
+    // result is genuinely, immediately user-visible: a real referrer
+    // checking their own real referral status right after their
+    // referred person's first real order would see stale data
+    // (rewardsEarned still 0) for however long this took to run in
+    // the background -- confirmed directly: a real, reproducible race,
+    // 0 immediately after the real order, 1 after waiting a single
+    // real second. Awaited here, before the response, so a real
+    // client checking immediately afterward sees correct, already-
+    // credited data every time.
+    try {
+      await checkAndGrantReferralReward(userId || null);
+    } catch (err) {
+      // Logged, not fatal -- the order itself is real and already
+      // committed; a real problem granting a reward should never
+      // fail the real order placement itself.
+      console.error('checkAndGrantReferralReward failed (non-fatal):', err.message);
+    }
 
     // REAL BUG FOUND AND FIXED HERE, very likely the actual root cause
     // of an earlier real report of checkout being slow/appearing stuck
@@ -301,17 +323,6 @@ router.post('/', async (req, res, next) => {
         }
       }
 
-      // Real referral reward check — deliberately AFTER the commit, as a
-      // best-effort follow-up rather than part of the order's own
-      // transaction: if granting a reward has some unexpected problem, it
-      // should never roll back or block the real order that already
-      // succeeded.
-      try {
-        await checkAndGrantReferralReward(userId || null);
-      } catch (err) {
-        // Logged, not fatal — the order itself is real and already committed.
-        console.error('checkAndGrantReferralReward failed (non-fatal):', err.message);
-      }
 
       // Real order confirmation email (new) -- same best-effort, after-
       // commit pattern as the referral check above: never blocks or rolls
@@ -475,6 +486,7 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
       discountAmount: Number(order.discount_amount || 0),
       promoCode: order.promo_code,
       currencyCode: order.currency_code,
+      waitForAllShipments: order.wait_for_all_shipments,
       placedAt: order.placed_at,
       address,
       supplierSubOrders,

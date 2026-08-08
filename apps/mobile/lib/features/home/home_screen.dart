@@ -212,6 +212,31 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(height: 16),
+            // Real Shop by Symptom entry point (new, #15) -- see
+            // shop_by_symptom_screen.dart's own header comment for
+            // the full real scope.
+            InkWell(
+              onTap: () => context.push('/shop-by-symptom'),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(color: palette.chalk, borderRadius: BorderRadius.circular(12)),
+                child: Row(
+                  children: [
+                    Icon(Icons.build_circle_outlined, color: palette.signal),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        isAr ? 'ما الذي تلاحظه في سيارتك؟ تسوق حسب العارض' : 'What\'s your car doing? Shop by symptom',
+                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: palette.ink),
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, color: palette.muted),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
             // 2. Shopping for -- real garage data
             _ShoppingForCard(garageFuture: _garageFuture, isLoggedIn: auth.isLoggedIn),
             const SizedBox(height: 20),
@@ -291,7 +316,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             // it. Falls back to the existing icon when
                             // a real category genuinely has none yet.
                             child: c.photoUrl != null
-                                ? CachedNetworkImage(imageUrl: ApiClient.resolveMediaUrl(c.photoUrl!), fit: BoxFit.cover, errorWidget: (context, url, error) => Icon(_iconForCategory(c.id), color: palette.signal))
+                                ? CachedNetworkImage(imageUrl: ApiClient.resolveMediaUrl(c.photoUrl!), fit: BoxFit.cover, fadeInDuration: const Duration(milliseconds: 300), errorWidget: (context, url, error) => Icon(_iconForCategory(c.id), color: palette.signal))
                                 : Icon(_iconForCategory(c.id), color: palette.signal),
                           ),
                           const SizedBox(height: 6),

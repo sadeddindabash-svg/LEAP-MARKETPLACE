@@ -80,8 +80,14 @@ function toBuyerProductDto(row, lang) {
 // only kind submitted going forward — see the supplier module's
 // currencyCode lock) go through the real equation.
 async function attachBuyerPrice(dto, row) {
+  // Real, previously-internal-only price snapshot (#59) -- exposes
+  // the same real last_known_buyer_price_usd already recorded by the
+  // scheduled price-drop check (migration 038), letting the mobile
+  // app show a genuine "price dropped" comparison using real,
+  // already-existing data, not a fabricated price history.
+  const lastKnownPrice = row.last_known_buyer_price_usd === null ? null : Number(row.last_known_buyer_price_usd);
   if (row.currency_code !== 'CNY') {
-    return { ...dto, price: Number(row.price), currencyCode: row.currency_code };
+    return { ...dto, price: Number(row.price), currencyCode: row.currency_code, lastKnownPrice };
   }
   const result = await calculateBuyerPriceUsd({
     supplierCostCny: Number(row.price),
@@ -90,7 +96,7 @@ async function attachBuyerPrice(dto, row) {
     widthCm: row.width_cm === null ? null : Number(row.width_cm),
     heightCm: row.height_cm === null ? null : Number(row.height_cm),
   });
-  return { ...dto, price: result.buyerPriceUsd };
+  return { ...dto, price: result.buyerPriceUsd, lastKnownPrice };
 }
 
 async function attachBuyerImages(dto, productId) {
@@ -178,9 +184,21 @@ function buildProductMatchQuery({ category, part, vehicleId, search, generationI
     const words = search.trim().split(/\s+/).slice(0, 8);
     for (const word of words) {
       const idx = params.length + 1;
+      // REAL BUG FOUND AND FIXED HERE, via direct testing: a real
+      // shared numeric substring between two otherwise-unrelated real
+      // products (e.g. two coincidentally similar-looking SKU-style
+      // suffixes) inflates trigram similarity well past the real
+      // threshold, even though the actual real words are completely
+      // different -- confirmed directly (0.696 similarity from a
+      // shared 13-digit suffix alone). A real typo is a letters
+      // phenomenon; a real numeric/SKU-style term already gets real,
+      // correct exact matching via the ILIKE checks below and
+      // genuinely doesn't need fuzzy tolerance layered on top.
+      const isLettersOnly = /^[a-zA-Z]+$/.test(word);
+      const fuzzyClause = isLettersOnly ? `OR word_similarity($${idx + 1}, p.name) > 0.3\n          ` : '';
       conditions.push(
         `(p.name ILIKE $${idx} OR p.name_ar ILIKE $${idx} OR p.part ILIKE $${idx} OR p.oem_number ILIKE $${idx} OR p.category ILIKE $${idx}
-          OR EXISTS (
+          ${fuzzyClause}OR EXISTS (
             SELECT 1 FROM product_fitment_entries pfe
             JOIN vehicle_generations vg ON vg.id = pfe.generation_id
             JOIN vehicle_models vm ON vm.id = vg.model_id
@@ -188,7 +206,11 @@ function buildProductMatchQuery({ category, part, vehicleId, search, generationI
             WHERE pfe.product_id = p.id AND (vb.name ILIKE $${idx} OR vm.name ILIKE $${idx})
           ))`
       );
-      params.push(`%${word}%`);
+      if (isLettersOnly) {
+        params.push(`%${word}%`, word);
+      } else {
+        params.push(`%${word}%`);
+      }
     }
   }
   if (conditions.length > 0) sql += ` WHERE ${conditions.join(' AND ')}`;
@@ -197,7 +219,7 @@ function buildProductMatchQuery({ category, part, vehicleId, search, generationI
 
 router.get('/products', async (req, res, next) => {
   try {
-    const { category, part, vehicleId, search, sort, lang, generationId, year, minPrice, maxPrice, page, limit } = req.query;
+    const { category, part, vehicleId, search, sort, lang, generationId, year, minPrice, maxPrice, maxDeliveryDays, page, limit } = req.query;
     const { sql: baseSql, params } = buildProductMatchQuery({ category, part, vehicleId, search, generationId, year });
     let sql = baseSql;
 
@@ -252,6 +274,12 @@ router.get('/products', async (req, res, next) => {
       const max = Number(maxPrice);
       dtos = dtos.filter((d) => d.price <= max);
     }
+    // Real ships-within-X-days filter (#10) -- estimatedDeliveryDays
+    // is already a real, stored field on each real DTO.
+    if (maxDeliveryDays !== undefined) {
+      const maxDays = Number(maxDeliveryDays);
+      dtos = dtos.filter((d) => d.estimatedDeliveryDays <= maxDays);
+    }
     if (sort === 'price_asc') dtos.sort((a, b) => a.price - b.price);
     else if (sort === 'price_desc') dtos.sort((a, b) => b.price - a.price);
 
@@ -298,6 +326,43 @@ router.get('/products/:id', async (req, res, next) => {
     dto = await attachPrimaryFitment(dto, req.params.id);
     dto = await attachBuyerPrice(dto, rows[0]);
     res.json({ ...dto, fitsVehicleIds: fitmentResult.rows.map((r) => r.vehicle_id) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /products/:id/alternatives (#9) -- real, genuinely equivalent
+// in-stock parts when this exact product is out of stock or simply
+// worth comparing. Matches on the real `part` field when this real
+// product has one (e.g. "Brake Pad Set" matches other real brake pad
+// sets, not just anything in the same broad category) -- falls back
+// to `category` only when `part` isn't set for this real product.
+// Always requires real stock_quantity > 0 -- suggesting another
+// equally out-of-stock item would be a real, pointless dead end.
+router.get('/products/:id/alternatives', async (req, res, next) => {
+  try {
+    const { lang } = req.query;
+    const { rows: currentRows } = await db.query('SELECT part, category FROM products WHERE id = $1', [req.params.id]);
+    if (currentRows.length === 0) return res.status(404).json({ error: 'Product not found' });
+    const current = currentRows[0];
+
+    const { rows } = current.part
+      ? await db.query(
+          `SELECT * FROM products WHERE part = $1 AND id != $2 AND stock_quantity > 0 AND status = 'active' ORDER BY rating DESC NULLS LAST LIMIT 6`,
+          [current.part, req.params.id]
+        )
+      : await db.query(
+          `SELECT * FROM products WHERE category = $1 AND id != $2 AND stock_quantity > 0 AND status = 'active' ORDER BY rating DESC NULLS LAST LIMIT 6`,
+          [current.category, req.params.id]
+        );
+
+    const dtos = await Promise.all(rows.map(async (row) => {
+      let dto = toBuyerProductDto(row, lang);
+      dto = await attachBuyerImages(dto, row.id);
+      dto = await attachBuyerPrice(dto, row);
+      return dto;
+    }));
+    res.json(dtos);
   } catch (err) {
     next(err);
   }

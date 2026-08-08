@@ -9,6 +9,10 @@
          local_auth on Android for Face ID/fingerprint/device-credential
          authentication. -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!-- Real CAMERA permission (#1), required by mobile_scanner for the barcode/OEM number scanner. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Real RECORD_AUDIO permission (#13), required by speech_to_text for voice search. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <application
         android:label="leap_mobile"
         android:name="${applicationName}"

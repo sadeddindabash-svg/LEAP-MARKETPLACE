@@ -20,7 +20,14 @@ class ThemeState extends ChangeNotifier {
   static const _storage = FlutterSecureStorage();
   static const _key = 'theme_mode_v1';
 
-  ThemeMode _mode = ThemeMode.light;
+  // Real system-theme default (#26) -- a brand-new install (no real
+  // stored choice yet) now auto-follows the real device's own light/
+  // dark setting, rather than always starting in light mode
+  // regardless of what the person's phone is set to. Never overrides
+  // a real, already-made explicit choice: _init below only ever
+  // changes _mode away from this default when a real stored value
+  // genuinely exists.
+  ThemeMode _mode = ThemeMode.system;
   bool _isReady = false;
 
   ThemeMode get mode => _mode;
@@ -33,6 +40,13 @@ class ThemeState extends ChangeNotifier {
 
   Future<void> _init() async {
     final stored = await _storage.read(key: _key);
+    // REAL BUG AVOIDED HERE: now that the default above is
+    // ThemeMode.system (not light), 'light' must be handled
+    // explicitly too -- the old code relied on light being the
+    // default value itself, which would have silently overridden a
+    // real, already-made explicit "light" choice to system mode
+    // otherwise.
+    if (stored == 'light') _mode = ThemeMode.light;
     if (stored == 'dark') _mode = ThemeMode.dark;
     if (stored == 'system') _mode = ThemeMode.system;
     _isReady = true;

@@ -13,6 +13,8 @@ import 'core/app_strings.dart';
 import 'services/api_client.dart';
 import 'features/home/home_screen.dart';
 import 'features/search/search_screen.dart';
+import 'features/catalog/shop_by_symptom_screen.dart';
+import 'features/catalog/barcode_scanner_screen.dart';
 import 'features/garage/garage_screen.dart';
 import 'features/catalog/category_screen.dart';
 import 'features/catalog/category_browse_screen.dart';
@@ -56,7 +58,12 @@ final GoRouter appRouter = GoRouter(
       ],
     ),
     GoRoute(path: '/garage', builder: (context, state) => const GarageScreen()),
-    GoRoute(path: '/search', builder: (context, state) => const SearchScreen()),
+    GoRoute(
+      path: '/search',
+      builder: (context, state) => SearchScreen(initialQuery: (state.extra as Map?)?['initialQuery'] as String?),
+    ),
+    GoRoute(path: '/shop-by-symptom', builder: (context, state) => const ShopBySymptomScreen()),
+    GoRoute(path: '/scan-barcode', builder: (context, state) => const BarcodeScannerScreen()),
     GoRoute(path: '/addresses', builder: (context, state) => const AddressesScreen()),
     GoRoute(path: '/wishlist', builder: (context, state) => const WishlistScreen()),
     GoRoute(path: '/saved-searches', builder: (context, state) => const SavedSearchesScreen()),

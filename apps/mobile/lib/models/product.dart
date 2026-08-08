@@ -19,6 +19,10 @@ class Product {
   final String? oemNumber;
   final double price;
   final String currencyCode;
+  // Real, previously-internal-only price snapshot (#59) -- from the
+  // scheduled price-drop check, now exposed so Wishlist can show a
+  // genuine "price dropped" comparison. Null means never checked yet.
+  final double? lastKnownPrice;
   final double rating;
   final int reviewCount;
   final int stockQuantity;
@@ -41,6 +45,7 @@ class Product {
     this.part,
     this.oemNumber,
     required this.price,
+    this.lastKnownPrice,
     required this.currencyCode,
     required this.rating,
     required this.reviewCount,
@@ -67,6 +72,7 @@ class Product {
         part: json['part'] as String?,
         oemNumber: json['oemNumber'] as String?,
         price: (json['price'] as num).toDouble(),
+        lastKnownPrice: json['lastKnownPrice'] == null ? null : (json['lastKnownPrice'] as num).toDouble(),
         currencyCode: json['currencyCode'] as String? ?? 'USD',
         rating: (json['rating'] as num?)?.toDouble() ?? 0,
         reviewCount: json['reviewCount'] as int? ?? 0,

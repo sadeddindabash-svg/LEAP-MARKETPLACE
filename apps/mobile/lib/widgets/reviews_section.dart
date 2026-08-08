@@ -244,6 +244,7 @@ class _ReviewsSectionState extends State<ReviewsSection> {
                                       // image display in this app
                                       // already has both.
                                       child: CachedNetworkImage(
+                                        fadeInDuration: const Duration(milliseconds: 300),
                                         imageUrl: '${AppConfig.apiBaseUrl}$url',
                                         width: 56,
                                         height: 56,
@@ -311,6 +312,7 @@ class _ReviewsSectionState extends State<ReviewsSection> {
                             // same fix as this file's own review-photo
                             // display above.
                             child: CachedNetworkImage(
+                              fadeInDuration: const Duration(milliseconds: 300),
                               imageUrl: '${AppConfig.apiBaseUrl}${_selectedPhotos[i]}',
                               width: 64,
                               height: 64,

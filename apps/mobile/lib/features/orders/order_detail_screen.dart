@@ -462,6 +462,7 @@ class _SupplierSubOrderCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(6),
                       child: item['imageUrl'] != null
                           ? CachedNetworkImage(
+                              fadeInDuration: const Duration(milliseconds: 300),
                               imageUrl: ApiClient.resolveMediaUrl(item['imageUrl'] as String),
                               width: 40,
                               height: 40,
@@ -724,6 +725,7 @@ class _ReturnRequestSheetState extends State<_ReturnRequestSheet> {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
                         child: CachedNetworkImage(
+                          fadeInDuration: const Duration(milliseconds: 300),
                           imageUrl: '${AppConfig.apiBaseUrl}${_uploadedPhotoUrls[i]}',
                           width: 64,
                           height: 64,

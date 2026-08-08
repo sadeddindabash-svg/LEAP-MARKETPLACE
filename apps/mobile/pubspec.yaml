@@ -20,6 +20,8 @@ dependencies:
   firebase_crashlytics: ^4.1.5
   package_info_plus: ^8.1.2
   in_app_review: ^2.0.9
+  mobile_scanner: ^5.2.3
+  speech_to_text: ^7.0.0
   # Explicit (was already a transitive dep of `http`) -- needed directly
   # to set a real MediaType/content-type on photo uploads; see
   # api_client.dart's _mediaTypeFor for why that's required on web.

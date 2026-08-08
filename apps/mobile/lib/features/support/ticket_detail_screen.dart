@@ -47,6 +47,12 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   Timer? _pollTimer;
   final _replyController = TextEditingController();
   final _emailController = TextEditingController();
+  // Real ticket-helpfulness feedback (#100) -- tracks whether this
+  // real session has already submitted feedback, so the prompt
+  // disappears immediately after answering rather than staying
+  // visible until the next real poll refresh.
+  bool _feedbackJustSubmitted = false;
+  bool _isSubmittingFeedback = false;
 
   static const _pollInterval = Duration(seconds: 20);
 
@@ -116,6 +122,22 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     }
   }
 
+  Future<void> _submitFeedback(bool helpful) async {
+    final auth = context.read<AuthState>();
+    setState(() => _isSubmittingFeedback = true);
+    try {
+      await ApiClient().submitTicketFeedback(widget.ticketId, helpful, token: auth.token, guestEmail: _activeGuestEmail);
+      if (mounted) {
+        setState(() => _feedbackJustSubmitted = true);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr(context, 'thanks_for_feedback'))));
+      }
+    } on ApiException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _isSubmittingFeedback = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -175,6 +197,42 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
               },
             ),
           ),
+          // Real ticket-helpfulness feedback prompt (#100) -- only
+          // shown when this real ticket has genuinely reached
+          // resolved/closed status, and hasn't already received real
+          // feedback (checked against the real resolutionHelpful
+          // field from the backend, or this session's own real,
+          // just-submitted state).
+          if (!_feedbackJustSubmitted &&
+              _ticket!['resolutionHelpful'] == null &&
+              ['resolved', 'closed'].contains(_ticket!['status']))
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              color: LeapPalette.of(context).chalk,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(tr(context, 'was_this_resolution_helpful'), style: TextStyle(fontWeight: FontWeight.w600, color: LeapPalette.of(context).ink)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: _isSubmittingFeedback ? null : () => _submitFeedback(true),
+                        icon: const Icon(Icons.thumb_up_outlined, size: 16),
+                        label: Text(tr(context, 'yes')),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: _isSubmittingFeedback ? null : () => _submitFeedback(false),
+                        icon: const Icon(Icons.thumb_down_outlined, size: 16),
+                        label: Text(tr(context, 'no')),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.all(12),
             child: Row(

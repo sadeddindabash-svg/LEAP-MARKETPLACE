@@ -198,6 +198,7 @@ class _ReturnCaseDetailScreenState extends State<ReturnCaseDetailScreen> {
                           // same fix as order_detail_screen.dart's own
                           // return-evidence photo preview.
                           child: CachedNetworkImage(
+                            fadeInDuration: const Duration(milliseconds: 300),
                             imageUrl: '${AppConfig.apiBaseUrl}${photos[j]}',
                             width: 72,
                             height: 72,

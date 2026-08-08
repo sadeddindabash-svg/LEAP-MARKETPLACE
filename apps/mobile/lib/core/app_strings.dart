@@ -163,6 +163,8 @@ class AppStrings {
     'email_for_confirmation': {'en': 'Email for order confirmation', 'ar': 'البريد الإلكتروني لتأكيد الطلب'},
     'have_account_login_instead': {'en': 'Have an account? Log in instead', 'ar': 'لديك حساب؟ سجّل الدخول بدلاً من ذلك'},
     'payment_method': {'en': 'Payment method', 'ar': 'طريقة الدفع'},
+    'wait_for_all_shipments_title': {'en': 'Wait and ship together', 'ar': 'الانتظار والشحن معًا'},
+    'wait_for_all_shipments_subtitle': {'en': 'Get all items in one delivery instead of as each supplier ships.', 'ar': 'استلم جميع القطع في شحنة واحدة بدلاً من شحنها فور توفرها من كل مورد.'},
     'delivery_address': {'en': 'Delivery address', 'ar': 'عنوان التوصيل'},
     'order_summary': {'en': 'Order summary', 'ar': 'ملخص الطلب'},
     'place_order': {'en': 'Place order', 'ar': 'إتمام الطلب'},
@@ -291,6 +293,10 @@ class AppStrings {
     'log_in_to_see_all_tickets': {'en': 'Log in to see all your tickets', 'ar': 'سجّل الدخول لرؤية جميع تذاكرك'},
     'email_required_for_guest': {'en': 'Please provide an email so we can reach you.', 'ar': 'يرجى تقديم بريد إلكتروني حتى نتمكن من التواصل معك.'},
     'type_a_message': {'en': 'Type a message…', 'ar': 'اكتب رسالة…'},
+    'was_this_resolution_helpful': {'en': 'Was this resolution helpful?', 'ar': 'هل كان هذا الحل مفيدًا؟'},
+    'yes': {'en': 'Yes', 'ar': 'نعم'},
+    'no': {'en': 'No', 'ar': 'لا'},
+    'thanks_for_feedback': {'en': 'Thanks for letting us know!', 'ar': 'شكرًا لملاحظتك!'},
 
     // ---- Auth: login ----
     'login_subtitle': {'en': 'Log in to view your order history and saved vehicles.', 'ar': 'سجّل الدخول لعرض سجل طلباتك ومركباتك المحفوظة.'},

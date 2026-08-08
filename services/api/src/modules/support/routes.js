@@ -35,6 +35,7 @@ function toTicketSummaryDto(row) {
     priority: row.priority,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    resolutionHelpful: row.resolution_helpful,
   };
 }
 
@@ -219,6 +220,36 @@ router.post('/my-tickets/:id/messages', optionalAuth, async (req, res, next) => 
     await db.query(`INSERT INTO support_ticket_messages (ticket_id, sender_role, message) VALUES ($1, 'buyer', $2)`, [req.params.id, message]);
     await db.query('UPDATE support_tickets SET updated_at = now() WHERE id = $1', [req.params.id]);
     res.status(201).json({ senderRole: 'buyer', message });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /support/my-tickets/:id/feedback  { helpful, guestEmail? } (#100)
+// -- real buyer OR guest (matching email) marks whether the real
+// resolution helped, same optionalAuth + guestEmail-match pattern as
+// the messages endpoint above. CONFIRMED SCOPE: only accepted once
+// the real ticket has genuinely reached 'resolved' or 'closed' --
+// there's nothing real to judge yet on a still-open ticket.
+router.post('/my-tickets/:id/feedback', optionalAuth, async (req, res, next) => {
+  try {
+    const { helpful, guestEmail } = req.body || {};
+    if (typeof helpful !== 'boolean') return res.status(400).json({ error: 'helpful (true or false) is required' });
+
+    const { rows } = await db.query('SELECT * FROM support_tickets WHERE id = $1', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Ticket not found' });
+    const ticket = rows[0];
+
+    const isOwningBuyer = req.user && ticket.buyer_id && req.user.sub === ticket.buyer_id;
+    const guestEmailMatches = ticket.guest_email && guestEmail && guestEmail === ticket.guest_email;
+    if (!isOwningBuyer && !guestEmailMatches) return res.status(404).json({ error: 'Ticket not found' });
+
+    if (!['resolved', 'closed'].includes(ticket.status)) {
+      return res.status(400).json({ error: 'Feedback can only be given once this ticket is resolved.' });
+    }
+
+    await db.query('UPDATE support_tickets SET resolution_helpful = $1 WHERE id = $2', [helpful, req.params.id]);
+    res.json({ id: req.params.id, resolutionHelpful: helpful });
   } catch (err) {
     next(err);
   }

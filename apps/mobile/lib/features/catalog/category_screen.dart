@@ -3,8 +3,10 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/language_state.dart';
+import '../../core/auth_state.dart';
 import '../../core/app_strings.dart';
 import '../../models/product.dart';
+import '../../models/vehicle.dart';
 import '../../services/api_client.dart';
 import '../../widgets/product_card.dart';
 import '../../widgets/skeleton.dart';
@@ -14,9 +16,13 @@ import '../../widgets/skeleton.dart';
 /// Part there lands here with both `categoryId` and `part` set, showing
 /// exactly that part's products via the backend's real exact-match
 /// `part=` filter, not the fuzzy `search=` one).
-/// (Fitment-based filtering via an active vehicle — showing only
-/// confirmed-fit parts — isn't threaded through here yet; see BUY-013 in
-/// the SRS for the full requirement.)
+///
+/// Real fitment-based filtering (new, #2) -- closes this file's own
+/// previously-flagged gap: fetches the real buyer's own saved default
+/// vehicle (same real pattern already established on Home) and, when
+/// one exists, filters to genuinely confirmed-fit results only,
+/// showing the same real Confirmed Fit badge Search's own "My Car"
+/// concept already uses.
 class CategoryScreen extends StatefulWidget {
   final String categoryId;
   final String categoryName;
@@ -30,17 +36,52 @@ class CategoryScreen extends StatefulWidget {
 class _CategoryScreenState extends State<CategoryScreen> {
   Future<List<Product>>? _productsFuture;
   String? _loadedForLanguage;
+  Vehicle? _defaultVehicle;
+  bool _defaultVehicleChecked = false;
+
+  Future<void> _loadDefaultVehicle() async {
+    final auth = context.read<AuthState>();
+    if (!auth.isLoggedIn) {
+      setState(() => _defaultVehicleChecked = true);
+      return;
+    }
+    try {
+      final garage = await ApiClient().fetchMyGarage(auth.token!);
+      final defaultVehicle = garage.isEmpty ? null : garage.firstWhere((v) => v.isDefault, orElse: () => garage.first);
+      if (mounted) {
+        setState(() {
+          _defaultVehicle = defaultVehicle;
+          _defaultVehicleChecked = true;
+          _loadedForLanguage = null; // force a real reload now that the real vehicle is known
+        });
+      }
+    } catch (_) {
+      // Real, honest degrade: a real failure fetching the garage just
+      // means no real fitment filter applies -- the category still
+      // shows its normal, unfiltered real results.
+      if (mounted) setState(() => _defaultVehicleChecked = true);
+    }
+  }
 
   void _ensureLoaded(String language) {
     if (_loadedForLanguage != language) {
       _loadedForLanguage = language;
-      _productsFuture = ApiClient().fetchProductsByCategory(widget.categoryId, part: widget.part, lang: language);
+      _productsFuture = ApiClient().fetchProductsByCategory(widget.categoryId, part: widget.part, generationId: _defaultVehicle?.generationId, lang: language);
     }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDefaultVehicle();
   }
 
   @override
   Widget build(BuildContext context) {
     final language = context.watch<LanguageState>().language;
+    if (!_defaultVehicleChecked) {
+      return Scaffold(appBar: AppBar(title: Text(widget.part ?? widget.categoryName)), body: const ProductGridSkeleton());
+    }
     _ensureLoaded(language);
     return Scaffold(
       appBar: AppBar(title: Text(widget.part ?? widget.categoryName)),
@@ -78,7 +119,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
             itemCount: products.length,
             itemBuilder: (context, i) {
               final p = products[i];
-              return ProductCard(product: p, onTap: () => context.push('/product/${p.id}'));
+              return ProductCard(product: p, onTap: () => context.push('/product/${p.id}'), showConfirmedFitBadge: _defaultVehicle != null);
             },
           );
         },
