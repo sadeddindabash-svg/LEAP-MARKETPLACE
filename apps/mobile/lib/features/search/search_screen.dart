@@ -254,6 +254,11 @@ class _SearchScreenState extends State<SearchScreen> {
             onPressed: () => context.push('/scan-barcode'),
           ),
           IconButton(
+            icon: const Icon(Icons.document_scanner_outlined),
+            tooltip: isAr ? 'صورة رقم القطعة' : 'Photo of part number',
+            onPressed: () => context.push('/scan-part-number'),
+          ),
+          IconButton(
             icon: Icon(Icons.directions_car_filled_outlined, color: _vehicleFilter != null ? LeapPalette.of(context).signal : null),
             tooltip: isAr ? 'تصفية حسب المركبة' : 'Filter by vehicle',
             onPressed: _pickVehicleFilter,
