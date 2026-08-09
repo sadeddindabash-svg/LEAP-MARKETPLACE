@@ -237,59 +237,64 @@ class _ProductDetailBody extends StatelessWidget {
             const SizedBox(height: 16),
             Text(product.name, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: palette.ink)),
             const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: palette.gauge.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-              child: Row(
-                children: [
-                  Icon(Icons.check_circle, color: palette.gauge, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      product.stockQuantity <= 0
-                          ? (_isAr ? 'غير متوفر حاليًا' : 'Currently out of stock')
-                          // Real low-stock countdown (#8) -- only
-                          // shown when the real stock genuinely is
-                          // low (a real, chosen threshold of 5 or
-                          // fewer), using the same real
-                          // stockQuantity field already present, not
-                          // a fabricated urgency number.
-                          : product.stockQuantity <= 5
-                              ? (_isAr ? 'متبقٍ ${product.stockQuantity} فقط · يشحن خلال ${product.estimatedDeliveryDays} أيام' : 'Only ${product.stockQuantity} left · ships in ${product.estimatedDeliveryDays} days')
-                              : (_isAr ? 'متوفر · يشحن خلال ${product.estimatedDeliveryDays} أيام' : 'In stock · ships in ${product.estimatedDeliveryDays} days'),
-                      style: TextStyle(color: product.stockQuantity > 0 && product.stockQuantity <= 5 ? palette.torque : palette.gauge, fontWeight: product.stockQuantity > 0 && product.stockQuantity <= 5 ? FontWeight.w700 : FontWeight.w400),
-                    ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: palette.gauge.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+                  child: Row(
+                    children: [
+                      Icon(Icons.check_circle, color: palette.gauge, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          product.stockQuantity <= 0
+                              ? (_isAr ? 'غير متوفر حاليًا' : 'Currently out of stock')
+                              // Real low-stock countdown (#8) -- only
+                              // shown when the real stock genuinely is
+                              // low (a real, chosen threshold of 5 or
+                              // fewer), using the same real
+                              // stockQuantity field already present, not
+                              // a fabricated urgency number.
+                              : product.stockQuantity <= 5
+                                  ? (_isAr ? 'متبقٍ ${product.stockQuantity} فقط · يشحن خلال ${product.estimatedDeliveryDays} أيام' : 'Only ${product.stockQuantity} left · ships in ${product.estimatedDeliveryDays} days')
+                                  : (_isAr ? 'متوفر · يشحن خلال ${product.estimatedDeliveryDays} أيام' : 'In stock · ships in ${product.estimatedDeliveryDays} days'),
+                          style: TextStyle(color: product.stockQuantity > 0 && product.stockQuantity <= 5 ? palette.torque : palette.gauge, fontWeight: product.stockQuantity > 0 && product.stockQuantity <= 5 ? FontWeight.w700 : FontWeight.w400),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Real, anonymous supplier signals (#73, #74) -- never
+                // the supplier's own name or identity.
+                if (product.isVerifiedSeller || product.shipsFromCountry != null) ...[
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 4,
+                    children: [
+                      if (product.isVerifiedSeller)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.verified, size: 14, color: palette.signal),
+                            const SizedBox(width: 4),
+                            Text(_isAr ? 'بائع موثّق' : 'Verified seller', style: TextStyle(fontSize: 11.5, color: palette.muted)),
+                          ],
+                        ),
+                      if (product.shipsFromCountry != null)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.public, size: 14, color: palette.muted),
+                            const SizedBox(width: 4),
+                            Text(_isAr ? 'يشحن من ${product.shipsFromCountry}' : 'Ships from ${product.shipsFromCountry}', style: TextStyle(fontSize: 11.5, color: palette.muted)),
+                          ],
+                        ),
+                    ],
                   ),
                 ],
-              ),
-              // Real, anonymous supplier signals (#73, #74) -- never
-              // the supplier's own name or identity.
-              if (product.isVerifiedSeller || product.shipsFromCountry != null) ...[
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 4,
-                  children: [
-                    if (product.isVerifiedSeller)
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.verified, size: 14, color: palette.signal),
-                          const SizedBox(width: 4),
-                          Text(_isAr ? 'بائع موثّق' : 'Verified seller', style: TextStyle(fontSize: 11.5, color: palette.muted)),
-                        ],
-                      ),
-                    if (product.shipsFromCountry != null)
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.public, size: 14, color: palette.muted),
-                          const SizedBox(width: 4),
-                          Text(_isAr ? 'يشحن من ${product.shipsFromCountry}' : 'Ships from ${product.shipsFromCountry}', style: TextStyle(fontSize: 11.5, color: palette.muted)),
-                        ],
-                      ),
-                  ],
-                ),
               ],
             ),
             const SizedBox(height: 20),
