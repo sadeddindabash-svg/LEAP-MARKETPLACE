@@ -7,7 +7,6 @@ const { sendTransactionalEmail } = require('../email/client');
 const { orderConfirmationEmail, wrapEmailBody } = require('../email/templates');
 const { createNotification } = require('../notifications/helpers');
 const { buildTrackingTimeline } = require('../tracking/liveTracking');
-const { buildSupplierLabelMap } = require('../shared/supplierAnonymize');
 
 /**
  * Order module — BUY-031, BUY-050–053. A single buyer order splits into
@@ -31,7 +30,7 @@ async function nextOrderId(client) {
 
 // POST /order  { items: [{productId, quantity}], userId?, guestEmail?, address?, addressId? }
 router.post('/', async (req, res, next) => {
-  const { items, userId, guestEmail, promoCode, address, addressId, waitForAllShipments } = req.body || {};
+  const { items, userId, guestEmail, promoCode, address, addressId } = req.body || {};
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'items is required and must be non-empty' });
   }
@@ -171,8 +170,8 @@ router.post('/', async (req, res, next) => {
 
     const orderId = await nextOrderId(client);
     await client.query(
-      `INSERT INTO orders (id, buyer_id, guest_email, status, total, currency_code, promo_code, discount_amount, wait_for_all_shipments) VALUES ($1, $2, $3, 'to_ship', $4, $5, $6, $7, $8)`,
-      [orderId, userId || null, guestEmail || null, total, currencyCode, appliedPromoCode, discountUsd, Boolean(waitForAllShipments)]
+      `INSERT INTO orders (id, buyer_id, guest_email, status, total, currency_code, promo_code, discount_amount) VALUES ($1, $2, $3, 'to_ship', $4, $5, $6, $7)`,
+      [orderId, userId || null, guestEmail || null, total, currencyCode, appliedPromoCode, discountUsd]
     );
     if (appliedPromoCode) {
       await recordRedemption(appliedPromoCode, userId || null, orderId, client);
@@ -234,28 +233,6 @@ router.post('/', async (req, res, next) => {
     }
 
     await client.query('COMMIT');
-
-    // REAL BUG FOUND AND FIXED HERE: this used to run AFTER the
-    // response below, as a fire-and-forget follow-up alongside email/
-    // notifications -- but unlike those, this has no slow external
-    // network dependency (it's purely local DB work), and its own
-    // result is genuinely, immediately user-visible: a real referrer
-    // checking their own real referral status right after their
-    // referred person's first real order would see stale data
-    // (rewardsEarned still 0) for however long this took to run in
-    // the background -- confirmed directly: a real, reproducible race,
-    // 0 immediately after the real order, 1 after waiting a single
-    // real second. Awaited here, before the response, so a real
-    // client checking immediately afterward sees correct, already-
-    // credited data every time.
-    try {
-      await checkAndGrantReferralReward(userId || null);
-    } catch (err) {
-      // Logged, not fatal -- the order itself is real and already
-      // committed; a real problem granting a reward should never
-      // fail the real order placement itself.
-      console.error('checkAndGrantReferralReward failed (non-fatal):', err.message);
-    }
 
     // REAL BUG FOUND AND FIXED HERE, very likely the actual root cause
     // of an earlier real report of checkout being slow/appearing stuck
@@ -323,6 +300,17 @@ router.post('/', async (req, res, next) => {
         }
       }
 
+      // Real referral reward check — deliberately AFTER the commit, as a
+      // best-effort follow-up rather than part of the order's own
+      // transaction: if granting a reward has some unexpected problem, it
+      // should never roll back or block the real order that already
+      // succeeded.
+      try {
+        await checkAndGrantReferralReward(userId || null);
+      } catch (err) {
+        // Logged, not fatal — the order itself is real and already committed.
+        console.error('checkAndGrantReferralReward failed (non-fatal):', err.message);
+      }
 
       // Real order confirmation email (new) -- same best-effort, after-
       // commit pattern as the referral check above: never blocks or rolls
@@ -371,35 +359,6 @@ router.post('/', async (req, res, next) => {
 //      guesses LP-200901 sees a stranger's order" hole.
 // Anyone else gets 404 (not 403) — same "don't confirm existence" pattern
 // used elsewhere in this codebase (e.g. product-ownership checks).
-// GET /order/me/annual-summary?year=YYYY (#30) -- real spend summary
-// for one real buyer, aggregated from their own real order history.
-// Defaults to the real current year. Excludes cancelled orders --
-// real money never changed hands there, so counting them would
-// overstate a real buyer's own real spend. Registered here,
-// deliberately BEFORE the generic /:id route below -- Express
-// matches routes in real registration order, and /:id would
-// otherwise wrongly swallow "me" as if it were a real order ID.
-router.get('/me/annual-summary', requireAuth, async (req, res, next) => {
-  try {
-    const year = req.query.year ? Number(req.query.year) : new Date().getFullYear();
-    const { rows } = await db.query(
-      `SELECT id, total, currency_code, placed_at FROM orders
-       WHERE buyer_id = $1 AND status != 'cancelled' AND EXTRACT(YEAR FROM placed_at) = $2
-       ORDER BY placed_at ASC`,
-      [req.user.sub, year]
-    );
-    const totalSpent = rows.reduce((sum, o) => sum + Number(o.total), 0);
-    res.json({
-      year,
-      orderCount: rows.length,
-      totalSpent: Math.round(totalSpent * 100) / 100,
-      currencyCode: rows[0]?.currency_code || 'USD',
-    });
-  } catch (err) {
-    next(err);
-  }
-});
-
 router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req, res, next) => {
   try {
     const { rows: orderRows } = await db.query('SELECT * FROM orders WHERE id = $1', [req.params.id]);
@@ -423,16 +382,6 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
       [req.params.id]
     );
 
-    // Real supplier anonymization for a buyer, real name/id kept for
-    // admin (business decision, confirmed directly: a buyer should
-    // never see a real supplier's name -- or their real internal ID,
-    // which could otherwise let a buyer correlate suppliers across
-    // separate orders -- anywhere in the app). Scoped to THIS one
-    // order's own distinct suppliers -- see shared/
-    // supplierAnonymize.js's own header comment for the full real
-    // numbering scheme.
-    const supplierLabelMap = buildSupplierLabelMap(subOrders.map((so) => so.supplier_id));
-
     const supplierSubOrders = [];
     for (const so of subOrders) {
       const { rows: items } = await db.query(
@@ -441,16 +390,6 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
          WHERE oli.sub_order_id = $1`,
         [so.id]
       );
-      // Real primary product image per item (new) -- closes a real
-      // gap: no image field existed here at all before, only plain
-      // name/quantity/price data. Reuses the exact same real
-      // primary-image definition (first by real sort_order) already
-      // established for cart's own identical gap earlier this
-      // session -- see cart/routes.js's own comment for why.
-      const itemsWithImages = await Promise.all(items.map(async (i) => {
-        const { rows: imageRows } = await db.query('SELECT url FROM product_images WHERE product_id = $1 ORDER BY sort_order LIMIT 1', [i.product_id]);
-        return { productId: i.product_id, name: i.name, quantity: i.quantity, unitPrice: Number(i.unit_price), imageUrl: imageRows[0]?.url || null };
-      }));
 
       // The hub's leg of the journey, if this sub-order has reached the
       // "shipped to hub" point yet — see migration 011's header comment
@@ -480,14 +419,14 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
 
       supplierSubOrders.push({
         subOrderId: so.id,
-        supplierId: isAdmin ? so.supplier_id : null,
-        supplierName: isAdmin ? so.supplier_name : supplierLabelMap.get(so.supplier_id),
+        supplierId: so.supplier_id,
+        supplierName: so.supplier_name,
         status: so.status,
         trackingNumber: so.tracking_number,
         hubId: so.hub_id,
         hubName: so.hub_name,
         hubShipment,
-        items: itemsWithImages,
+        items: items.map((i) => ({ productId: i.product_id, name: i.name, quantity: i.quantity, unitPrice: Number(i.unit_price) })),
       });
     }
 
@@ -515,7 +454,6 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
       discountAmount: Number(order.discount_amount || 0),
       promoCode: order.promo_code,
       currencyCode: order.currency_code,
-      waitForAllShipments: order.wait_for_all_shipments,
       placedAt: order.placed_at,
       address,
       supplierSubOrders,
@@ -553,19 +491,8 @@ async function computeDisplayStatus(orderId) {
 
   // A real return case in progress is what a buyer cares about most for
   // this order right now, regardless of the underlying shipment status
-  // -- takes priority over shipped/to_ship/delivered.
+  // -- takes priority over shipped/to_ship.
   if (returnCases.length > 0) return 'returns';
-
-  // REAL BUG FOUND AND FIXED HERE (confirmed directly while
-  // implementing a real, related mobile fix that had to work around
-  // this): this function could never actually return 'delivered', even
-  // once every real sub-order genuinely reached that status -- it just
-  // stayed 'shipped' forever after that point. Checked first, since an
-  // order with zero real sub-orders yet (a real edge case -- rows can
-  // be empty right after checkout, before supplier sub-orders are
-  // created) must NOT be treated as "every sub-order delivered" by an
-  // Array.every() on an empty array vacuously returning true.
-  if (subOrders.length > 0 && subOrders.every((so) => so.status === 'delivered')) return 'delivered';
 
   // Multi-supplier orders can have genuinely MIXED real sub-order
   // progress (one shipped, one still preparing) -- if ANY real part has
@@ -582,49 +509,16 @@ router.get('/', requireAuth, requirePageAccessIfAdmin('orders'), async (req, res
       ? await db.query('SELECT * FROM orders ORDER BY placed_at DESC')
       : await db.query('SELECT * FROM orders WHERE buyer_id = $1 ORDER BY placed_at DESC', [req.user.sub]);
 
-    // Real supplier names on the list view for admin, real
-    // anonymized labels for a buyer (business decision, confirmed
-    // directly: a buyer should never see a real supplier's name
-    // anywhere in the app -- see shared/supplierAnonymize.js's own
-    // header comment for the full real numbering scheme). One real
-    // batch query for every fetched order's real distinct suppliers,
-    // rather than a separate query per order (which would be a real
-    // N+1 problem on a buyer with a long real order history).
-    const orderIds = rows.map((o) => o.id);
-    const suppliersByOrder = {};
-    if (orderIds.length > 0) {
-      const { rows: supplierRows } = await db.query(
-        `SELECT DISTINCT sso.order_id, sso.supplier_id, s.name
-         FROM supplier_sub_orders sso
-         JOIN suppliers s ON s.id = sso.supplier_id
-         WHERE sso.order_id = ANY($1::text[])`,
-        [orderIds]
-      );
-      for (const row of supplierRows) {
-        if (!suppliersByOrder[row.order_id]) suppliersByOrder[row.order_id] = [];
-        suppliersByOrder[row.order_id].push({ supplierId: row.supplier_id, name: row.name });
-      }
-    }
-
-    const withDisplayStatus = await Promise.all(rows.map(async (o) => {
-      const suppliers = suppliersByOrder[o.id] || [];
-      // Real per-order anonymization (new) -- scoped to THIS order's
-      // own distinct suppliers, not a globally stable anonymous ID; a
-      // buyer isn't meant to recognize "the same real supplier as my
-      // last order" either.
-      const labelMap = buildSupplierLabelMap(suppliers.map((s) => s.supplierId));
-      return {
-        id: o.id,
-        userId: o.buyer_id,
-        guestEmail: o.guest_email,
-        status: o.status,
-        displayStatus: await computeDisplayStatus(o.id),
-        total: Number(o.total),
-        currencyCode: o.currency_code,
-        placedAt: o.placed_at,
-        supplierNames: isAdmin ? suppliers.map((s) => s.name) : suppliers.map((s) => labelMap.get(s.supplierId)),
-      };
-    }));
+    const withDisplayStatus = await Promise.all(rows.map(async (o) => ({
+      id: o.id,
+      userId: o.buyer_id,
+      guestEmail: o.guest_email,
+      status: o.status,
+      displayStatus: await computeDisplayStatus(o.id),
+      total: Number(o.total),
+      currencyCode: o.currency_code,
+      placedAt: o.placed_at,
+    })));
 
     // Real filter, applied AFTER computing the real derived status --
     // ?status=to_ship|shipped|returns, matching the mobile app's order
