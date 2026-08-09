@@ -236,6 +236,31 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
+            const SizedBox(height: 10),
+            // Real Which Part Do I Need wizard entry point (new,
+            // #61) -- see which_part_wizard_screen.dart's own header
+            // comment for how this differs from Shop by Symptom above.
+            InkWell(
+              onTap: () => context.push('/which-part-wizard'),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(color: palette.chalk, borderRadius: BorderRadius.circular(12)),
+                child: Row(
+                  children: [
+                    Icon(Icons.checklist_outlined, color: palette.signal),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        isAr ? 'لا تعرف اسم القطعة؟ دعنا نساعدك' : 'Not sure what it\'s called? Let us help',
+                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: palette.ink),
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, color: palette.muted),
+                  ],
+                ),
+              ),
+            ),
             const SizedBox(height: 16),
             // 2. Shopping for -- real garage data
             _ShoppingForCard(garageFuture: _garageFuture, isLoggedIn: auth.isLoggedIn),

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
@@ -94,6 +96,26 @@ class _AccountScreenState extends State<AccountScreen> {
       appBar: AppBar(
         title: Text(tr(context, 'account')),
         actions: [
+          // Real, compact language dropdown (new), moved here beside
+          // the notification bell per request -- was previously a
+          // full section further down this same screen; that section
+          // below is now removed to avoid showing the same real
+          // choice twice.
+          PopupMenuButton<String>(
+            tooltip: tr(context, 'language'),
+            icon: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(context.watch<LanguageState>().isArabic ? 'AR' : 'EN', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                const Icon(Icons.arrow_drop_down, size: 18),
+              ],
+            ),
+            onSelected: (lang) => context.read<LanguageState>().setLanguage(lang),
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: 'en', child: Text('English')),
+              const PopupMenuItem(value: 'ar', child: Text('العربية')),
+            ],
+          ),
           if (auth.isLoggedIn)
             Stack(
               children: [
@@ -163,7 +185,6 @@ class _AccountScreenState extends State<AccountScreen> {
                 onTap: r.route == null ? null : () => context.push(r.route!),
               )),
           const Divider(height: 1),
-          const _LanguageSection(),
           const _ThemeSection(),
           if (auth.isLoggedIn) const _AppLockSection(),
           if (auth.isLoggedIn)
@@ -200,14 +221,40 @@ class _ProfileStat extends StatelessWidget {
   }
 }
 
-class _LoggedInHeader extends StatelessWidget {
+class _LoggedInHeader extends StatefulWidget {
   final Map<String, dynamic> user;
   const _LoggedInHeader({required this.user});
 
   @override
+  State<_LoggedInHeader> createState() => _LoggedInHeaderState();
+}
+
+class _LoggedInHeaderState extends State<_LoggedInHeader> {
+  bool _isUploading = false;
+
+  Future<void> _changePhoto() async {
+    final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
+    if (picked == null || !mounted) return;
+    final auth = context.read<AuthState>();
+    setState(() => _isUploading = true);
+    try {
+      final url = await ApiClient().uploadAvatarPhoto(auth.token!, picked);
+      await ApiClient().updateAvatar(auth.token!, url);
+      final updatedUser = await ApiClient().getCurrentUser(auth.token!);
+      await auth.updateSession(auth.token!, updatedUser);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : 'Could not update your photo')));
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final user = widget.user;
     final name = (user['name'] as String?) ?? (user['email'] as String);
     final palette = LeapPalette.of(context);
+    final avatarUrl = user['avatarUrl'] as String?;
     return Container(
       // Deliberately, always dark regardless of the active theme --
       // a real design choice matching the reference's own dark hero
@@ -219,12 +266,36 @@ class _LoggedInHeader extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       child: Row(
         children: [
-          // Real gold accent ring (new) matching the reference's own
-          // gold-ringed avatar treatment.
-          Container(
-            padding: const EdgeInsets.all(2),
-            decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: palette.signal, width: 2)),
-            child: const CircleAvatar(radius: 22, backgroundColor: Color(0xFF2A2F38), child: Icon(Icons.person, color: Colors.white)),
+          // Real gold accent ring (existing) matching the reference's
+          // own gold-ringed avatar treatment -- now tappable to add or
+          // change a real profile photo (#B).
+          GestureDetector(
+            onTap: _isUploading ? null : _changePhoto,
+            child: Stack(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: palette.signal, width: 2)),
+                  child: CircleAvatar(
+                    radius: 22,
+                    backgroundColor: const Color(0xFF2A2F38),
+                    backgroundImage: avatarUrl != null ? CachedNetworkImageProvider(ApiClient.resolveMediaUrl(avatarUrl)) : null,
+                    child: avatarUrl == null ? const Icon(Icons.person, color: Colors.white) : null,
+                  ),
+                ),
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(color: palette.signal, shape: BoxShape.circle, border: Border.all(color: LeapColorsDark.background, width: 1.5)),
+                    child: _isUploading
+                        ? SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5, color: palette.onSignal))
+                        : Icon(Icons.camera_alt, size: 10, color: palette.onSignal),
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -275,89 +346,39 @@ class _LoggedOutHeader extends StatelessWidget {
   }
 }
 
-/// Real, persistent app-wide language setting — see LanguageState's
-/// header comment for exactly what this does and doesn't affect.
-class _LanguageSection extends StatelessWidget {
-  const _LanguageSection();
 
-  @override
-  Widget build(BuildContext context) {
-    final languageState = context.watch<LanguageState>();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(tr(context, 'language'), style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: LeapPalette.of(context).muted)),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _LanguageOption(
-                  label: 'English',
-                  selected: !languageState.isArabic,
-                  onTap: () => context.read<LanguageState>().setLanguage('en'),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _LanguageOption(
-                  label: 'العربية',
-                  selected: languageState.isArabic,
-                  onTap: () => context.read<LanguageState>().setLanguage('ar'),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// Real dark mode toggle (new) -- closes a real, confirmed gap, the
-// single most commonly-requested item from this session's own
-// suggestions list. Reuses _LanguageOption for visual consistency
-// with the language toggle right above it.
+// Real dark/light toggle switch (new) -- closes a real, confirmed
+// gap, the single most commonly-requested item from this session's
+// own suggestions list. A simple switch, per request, rather than
+// separate light/dark/system buttons -- see this class's own build()
+// for how it still correctly reflects the real system default for a
+// first install (#26, an earlier batch) without needing a third,
+// explicit "system" option in this simplified UI.
 class _ThemeSection extends StatelessWidget {
   const _ThemeSection();
 
   @override
   Widget build(BuildContext context) {
     final themeState = context.watch<ThemeState>();
+    // Real effective-theme check (new) -- when mode is still
+    // ThemeMode.system (the real default for a first install, #26,
+    // last batch), the switch needs to reflect the real, current
+    // system brightness, not silently show as "off" regardless of
+    // what dark/light the device is actually in right now.
+    final isDarkNow = themeState.mode == ThemeMode.dark ||
+        (themeState.mode == ThemeMode.system && MediaQuery.platformBrightnessOf(context) == Brightness.dark);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Text(tr(context, 'appearance'), style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: LeapPalette.of(context).muted)),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _LanguageOption(
-                  label: tr(context, 'light_mode'),
-                  selected: themeState.mode == ThemeMode.light,
-                  onTap: () => context.read<ThemeState>().setMode(ThemeMode.light),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _LanguageOption(
-                  label: tr(context, 'dark_mode'),
-                  selected: themeState.mode == ThemeMode.dark,
-                  onTap: () => context.read<ThemeState>().setMode(ThemeMode.dark),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _LanguageOption(
-                  label: tr(context, 'system_default'),
-                  selected: themeState.mode == ThemeMode.system,
-                  onTap: () => context.read<ThemeState>().setMode(ThemeMode.system),
-                ),
-              ),
-            ],
+          Expanded(
+            child: Text(tr(context, 'appearance'), style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: LeapPalette.of(context).ink)),
+          ),
+          Text(tr(context, isDarkNow ? 'dark_mode' : 'light_mode'), style: TextStyle(fontSize: 12.5, color: LeapPalette.of(context).muted)),
+          const SizedBox(width: 8),
+          Switch(
+            value: isDarkNow,
+            onChanged: (wantsDark) => context.read<ThemeState>().setMode(wantsDark ? ThemeMode.dark : ThemeMode.light),
           ),
         ],
       ),
@@ -415,35 +436,6 @@ class _AppLockSection extends StatelessWidget {
             onChanged: (value) => _handleToggle(context, value),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _LanguageOption extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-  const _LanguageOption({required this.label, required this.selected, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          border: Border.all(color: selected ? LeapPalette.of(context).signal : LeapPalette.of(context).line, width: selected ? 2 : 1),
-          borderRadius: BorderRadius.circular(8),
-          color: selected ? LeapPalette.of(context).signal.withValues(alpha: 0.06) : Colors.transparent,
-        ),
-        child: Center(
-          child: Text(
-            label,
-            style: TextStyle(fontWeight: FontWeight.w700, color: selected ? LeapPalette.of(context).signal : LeapPalette.of(context).ink),
-          ),
-        ),
       ),
     );
   }

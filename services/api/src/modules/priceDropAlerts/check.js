@@ -50,6 +50,9 @@ async function checkProductForPriceDrop(product) {
     );
     for (const { buyer_id: buyerId } of wishlisters) {
       try {
+        // Real inline image (#55) -- this real product's own real
+        // first photo, if it has one. Never a placeholder.
+        const { rows: imageRows } = await db.query('SELECT url FROM product_images WHERE product_id = $1 ORDER BY sort_order LIMIT 1', [product.id]);
         await createNotification({
           userId: buyerId,
           type: 'price_drop',
@@ -57,6 +60,7 @@ async function checkProductForPriceDrop(product) {
           body: `${product.name} dropped to $${currentPriceUsd.toFixed(2)} (was $${lastKnown.toFixed(2)}).`,
           linkType: 'product',
           linkId: product.id,
+          imageUrl: imageRows[0]?.url || null,
         });
         const { rows: buyerRows } = await db.query('SELECT email, name FROM users WHERE id = $1', [buyerId]);
         if (buyerRows.length > 0 && buyerRows[0].email) {

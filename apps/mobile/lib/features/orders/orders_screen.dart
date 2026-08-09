@@ -45,6 +45,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
   String _selectedTab = 'all';
   Future<List<dynamic>>? _ordersFuture;
   String? _loadedForKey;
+  // Real annual spend summary (#30) -- fetched once per real logged-
+  // in session, separately from the orders list itself (different
+  // real backend endpoint).
+  Future<Map<String, dynamic>>? _spendSummaryFuture;
   // Real guest order lookup (new) -- closes a real, confirmed gap: a
   // guest who places an order and declines the account-creation
   // prompt (see checkout_screen.dart's own real prompt) had no way
@@ -60,13 +64,19 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   void _ensureLoaded(bool isLoggedIn, String? token) {
     final key = '$_selectedTab|$isLoggedIn';
-    if (_loadedForKey == key) return;
-    _loadedForKey = key;
-    if (!isLoggedIn) {
-      _ordersFuture = Future.value(const []);
-      return;
+    if (_loadedForKey != key) {
+      _loadedForKey = key;
+      if (!isLoggedIn) {
+        _ordersFuture = Future.value(const []);
+      } else {
+        _ordersFuture = ApiClient().fetchMyOrders(token!, status: _selectedTab == 'all' ? null : _selectedTab);
+      }
     }
-    _ordersFuture = ApiClient().fetchMyOrders(token!, status: _selectedTab == 'all' ? null : _selectedTab);
+    // Real annual spend summary (#30) -- fetched once per real
+    // logged-in session, not re-fetched on every real tab switch.
+    if (isLoggedIn && _spendSummaryFuture == null) {
+      _spendSummaryFuture = ApiClient().fetchAnnualSpendSummary(token!);
+    }
   }
 
   void _selectTab(String tabKey) {
@@ -244,24 +254,68 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemBuilder: (context, i) {
                       if (_selectedTab == 'all' && i == 0) {
-                        return Container(
-                          padding: const EdgeInsets.all(16),
-                          margin: const EdgeInsets.only(bottom: 4),
-                          decoration: BoxDecoration(color: palette.card, border: Border.all(color: palette.line), borderRadius: BorderRadius.circular(12)),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(tr(context, 'active_shipments').toUpperCase(), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: palette.signalDark, letterSpacing: 0.5)),
-                                  const SizedBox(height: 4),
-                                  Text('$activeShipments', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: palette.ink)),
-                                ],
+                        return Row(
+                          children: [
+                            Expanded(
+                              child: Container(
+                                padding: const EdgeInsets.all(16),
+                                margin: const EdgeInsets.only(bottom: 4),
+                                decoration: BoxDecoration(color: palette.card, border: Border.all(color: palette.line), borderRadius: BorderRadius.circular(12)),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(tr(context, 'active_shipments').toUpperCase(), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: palette.signalDark, letterSpacing: 0.5)),
+                                        const SizedBox(height: 4),
+                                        Text('$activeShipments', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: palette.ink)),
+                                      ],
+                                    ),
+                                    Icon(Icons.local_shipping_outlined, color: palette.signal, size: 28),
+                                  ],
+                                ),
                               ),
-                              Icon(Icons.local_shipping_outlined, color: palette.signal, size: 28),
-                            ],
-                          ),
+                            ),
+                            // Real annual spend summary tile (#30) --
+                            // loads independently; simply shows
+                            // nothing extra while loading or on a
+                            // real failure, never blocking the
+                            // existing Active Shipments tile beside
+                            // it.
+                            if (_spendSummaryFuture != null)
+                              FutureBuilder<Map<String, dynamic>>(
+                                future: _spendSummaryFuture,
+                                builder: (context, snapshot) {
+                                  if (!snapshot.hasData) return const SizedBox(width: 8);
+                                  final summary = snapshot.data!;
+                                  return Expanded(
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(left: 10),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(16),
+                                        margin: const EdgeInsets.only(bottom: 4),
+                                        decoration: BoxDecoration(color: palette.card, border: Border.all(color: palette.line), borderRadius: BorderRadius.circular(12)),
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text('${summary['year']} SPEND', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: palette.signalDark, letterSpacing: 0.5)),
+                                                const SizedBox(height: 4),
+                                                Text('\$${(summary['totalSpent'] as num).toStringAsFixed(0)}', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: palette.ink)),
+                                              ],
+                                            ),
+                                            Icon(Icons.receipt_long_outlined, color: palette.signal, size: 28),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                          ],
                         );
                       }
                       final o = orders[i - (_selectedTab == 'all' ? 1 : 0)] as Map<String, dynamic>;

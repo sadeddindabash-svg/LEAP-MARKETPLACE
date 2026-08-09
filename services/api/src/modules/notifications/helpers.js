@@ -59,7 +59,7 @@ const db = require('../../../db/pool');
  */
 const { sendPushToUser } = require('../push/client');
 
-async function createNotification({ userId, type, title, body, linkType, linkId }, client = db) {
+async function createNotification({ userId, type, title, body, linkType, linkId, imageUrl }, client = db) {
   if (!userId) return; // e.g. a guest ticket has no real account to notify -- silently skip, not an error
   await client.query(
     `INSERT INTO notifications (user_id, type, title, body, link_type, link_id) VALUES ($1, $2, $3, $4, $5, $6)`,
@@ -73,7 +73,7 @@ async function createNotification({ userId, type, title, body, linkType, linkId 
   // delivery failure (or push simply not being configured yet, see
   // push/client.js's own isPushConfigured()) must never block or fail
   // the real in-app notification this is layered on top of.
-  sendPushToUser({ userId, title, body, linkType, linkId }).catch((err) => {
+  sendPushToUser({ userId, title, body, linkType, linkId, imageUrl }).catch((err) => {
     console.error('[push] sendPushToUser failed:', err.message);
   });
 }

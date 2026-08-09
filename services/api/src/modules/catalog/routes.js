@@ -104,6 +104,24 @@ async function attachBuyerImages(dto, productId) {
   return { ...dto, images: images.map((i) => i.url) };
 }
 
+/**
+ * Real, anonymous supplier signals (#73, #74) -- exposes only the
+ * real `verification_status` (as a plain boolean, #73) and real
+ * `country` (as `shipsFromCountry`, #74), never the supplier's own
+ * real name or any other identifying detail. Preserves this
+ * platform's own deliberate supplier-anonymization design confirmed
+ * directly elsewhere in this file (every real buyer-facing product
+ * query already never selects `suppliers.name` at all) -- this is
+ * genuinely new logistics/trust information, not a real identity
+ * leak.
+ */
+async function attachSupplierSignals(dto, supplierId) {
+  if (!supplierId) return { ...dto, isVerifiedSeller: false, shipsFromCountry: null };
+  const { rows } = await db.query('SELECT verification_status, country FROM suppliers WHERE id = $1', [supplierId]);
+  if (rows.length === 0) return { ...dto, isVerifiedSeller: false, shipsFromCountry: null };
+  return { ...dto, isVerifiedSeller: rows[0].verification_status === 'verified', shipsFromCountry: rows[0].country };
+}
+
 // Real Brand/Model/Year for the product page, resolved from the
 // structured fitment cascade (migration 010). A product can technically
 // have multiple fitment entries (fits several vehicle configurations);
@@ -255,6 +273,7 @@ router.get('/products', async (req, res, next) => {
       let dto = toBuyerProductDto(r, lang);
       dto = await attachBuyerImages(dto, r.id);
       dto = await attachBuyerPrice(dto, r);
+      dto = await attachSupplierSignals(dto, r.supplier_id);
       return dto;
     }));
 
@@ -325,6 +344,7 @@ router.get('/products/:id', async (req, res, next) => {
     dto = await attachBuyerImages(dto, req.params.id);
     dto = await attachPrimaryFitment(dto, req.params.id);
     dto = await attachBuyerPrice(dto, rows[0]);
+    dto = await attachSupplierSignals(dto, rows[0].supplier_id);
     res.json({ ...dto, fitsVehicleIds: fitmentResult.rows.map((r) => r.vehicle_id) });
   } catch (err) {
     next(err);
@@ -342,24 +362,62 @@ router.get('/products/:id', async (req, res, next) => {
 router.get('/products/:id/alternatives', async (req, res, next) => {
   try {
     const { lang } = req.query;
-    const { rows: currentRows } = await db.query('SELECT part, category FROM products WHERE id = $1', [req.params.id]);
+    const { rows: currentRows } = await db.query('SELECT part, category, supplier_id FROM products WHERE id = $1', [req.params.id]);
     if (currentRows.length === 0) return res.status(404).json({ error: 'Product not found' });
     const current = currentRows[0];
 
+    // Real supplier diversity (#80) -- excludes the real same
+    // supplier from results, so a suggested alternative is genuinely
+    // a different, real backup source, not coincidentally the same
+    // one that's already out of stock. NULLIF handles a real product
+    // with no real supplier_id set (e.g. seed data) without excluding
+    // every other real supplier-less product by matching NULL = NULL.
     const { rows } = current.part
       ? await db.query(
-          `SELECT * FROM products WHERE part = $1 AND id != $2 AND stock_quantity > 0 AND status = 'active' ORDER BY rating DESC NULLS LAST LIMIT 6`,
-          [current.part, req.params.id]
+          `SELECT * FROM products WHERE part = $1 AND id != $2 AND stock_quantity > 0 AND status = 'active' AND supplier_id IS DISTINCT FROM $3 ORDER BY rating DESC NULLS LAST LIMIT 6`,
+          [current.part, req.params.id, current.supplier_id]
         )
       : await db.query(
-          `SELECT * FROM products WHERE category = $1 AND id != $2 AND stock_quantity > 0 AND status = 'active' ORDER BY rating DESC NULLS LAST LIMIT 6`,
-          [current.category, req.params.id]
+          `SELECT * FROM products WHERE category = $1 AND id != $2 AND stock_quantity > 0 AND status = 'active' AND supplier_id IS DISTINCT FROM $3 ORDER BY rating DESC NULLS LAST LIMIT 6`,
+          [current.category, req.params.id, current.supplier_id]
         );
 
     const dtos = await Promise.all(rows.map(async (row) => {
       let dto = toBuyerProductDto(row, lang);
       dto = await attachBuyerImages(dto, row.id);
       dto = await attachBuyerPrice(dto, row);
+      dto = await attachSupplierSignals(dto, row.supplier_id);
+      return dto;
+    }));
+    res.json(dtos);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /products/:id/oem-alternatives (#78) -- real, exact-match
+// listings for the identical real OEM part number from different
+// real suppliers, letting a buyer compare real prices for the exact
+// same part. Deliberately anonymous -- never names which supplier is
+// which, matching this platform's own deliberate anonymization
+// design (see attachSupplierSignals' own header comment).
+router.get('/products/:id/oem-alternatives', async (req, res, next) => {
+  try {
+    const { lang } = req.query;
+    const { rows: currentRows } = await db.query('SELECT oem_number FROM products WHERE id = $1', [req.params.id]);
+    if (currentRows.length === 0) return res.status(404).json({ error: 'Product not found' });
+    const oemNumber = currentRows[0].oem_number;
+    if (!oemNumber) return res.json([]); // no real OEM number on this product -- genuinely nothing to compare
+
+    const { rows } = await db.query(
+      `SELECT * FROM products WHERE oem_number = $1 AND id != $2 AND status = 'active' ORDER BY stock_quantity DESC NULLS LAST LIMIT 10`,
+      [oemNumber, req.params.id]
+    );
+    const dtos = await Promise.all(rows.map(async (row) => {
+      let dto = toBuyerProductDto(row, lang);
+      dto = await attachBuyerImages(dto, row.id);
+      dto = await attachBuyerPrice(dto, row);
+      dto = await attachSupplierSignals(dto, row.supplier_id);
       return dto;
     }));
     res.json(dtos);

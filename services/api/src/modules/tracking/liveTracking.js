@@ -149,6 +149,16 @@ async function buildTrackingTimeline(orderId) {
      FROM supplier_sub_orders so WHERE so.order_id = $1`,
     [orderId]
   );
+  // REAL BUG FOUND AND FIXED HERE, via direct testing: fetched once,
+  // used as the real fallback below when a real sub-order has no
+  // real hub_shipment_events yet (e.g. still pending before ever
+  // reaching a hub) -- without this, a genuinely stalled real order
+  // that's never even been picked up incorrectly never showed as
+  // delayed, since there was no real event time to compare against
+  // at all. Matches shipmentDelayCheck/check.js's own correct
+  // fallback logic exactly.
+  const { rows: orderRows } = await db.query('SELECT placed_at FROM orders WHERE id = $1', [orderId]);
+  const orderPlacedAt = orderRows[0]?.placed_at;
 
   const results = [];
   for (const so of subOrders) {
@@ -191,11 +201,23 @@ async function buildTrackingTimeline(orderId) {
     }
 
     const timeline = [...hubMilestones, ...carrierEvents].sort((a, b) => new Date(b.time) - new Date(a.time));
+
+    // Real, automatic delay detection (#57) -- purely time-based (no
+    // real update in 5+ real days while not yet delivered), a
+    // genuine, honest signal. Deliberately does NOT claim a specific
+    // real reason ("customs delay", etc.) -- no such reason is
+    // actually tracked anywhere in this real system, and fabricating
+    // one would be a real, confirmed lie about why something is slow.
+    const mostRecentEventTime = timeline[0]?.time || orderPlacedAt;
+    const daysSinceLastUpdate = mostRecentEventTime ? (Date.now() - new Date(mostRecentEventTime).getTime()) / (24 * 60 * 60 * 1000) : null;
+    const isDelayed = so.supplier_status !== 'delivered' && daysSinceLastUpdate !== null && daysSinceLastUpdate >= 5;
+
     results.push({
       subOrderId: so.id,
       supplierTrackingNumber: so.supplier_tracking_number,
       hubTrackingNumber: hubTrackingNumber || null,
       timeline,
+      isDelayed,
     });
   }
   return results;

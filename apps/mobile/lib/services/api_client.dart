@@ -321,6 +321,16 @@ class ApiClient {
     return (jsonDecode(response.body) as List).map((j) => Product.fromJson(j as Map<String, dynamic>)).toList();
   }
 
+  /// Real multi-supplier price comparison for the identical real OEM
+  /// part number (#78) -- calls the new real backend endpoint.
+  Future<List<Product>> fetchOemAlternatives(String productId, {String lang = 'en'}) async {
+    final response = await _client.get(Uri.parse('$baseUrl/catalog/products/$productId/oem-alternatives?lang=$lang'));
+    if (response.statusCode != 200) {
+      throw ApiException('Failed to load OEM comparison (${response.statusCode})');
+    }
+    return (jsonDecode(response.body) as List).map((j) => Product.fromJson(j as Map<String, dynamic>)).toList();
+  }
+
   // ---------------- Garage — buyer's own saved vehicles (BUY-004/010-012) ----------------
   // REAL BUG FOUND AND FIXED HERE (backend migration 044): this used
   // to also expose fetchMakes()/fetchVehiclesByMake() for the old
@@ -523,6 +533,18 @@ class ApiClient {
       throw ApiException('Failed to load orders (${response.statusCode})');
     }
     return jsonDecode(response.body) as List<dynamic>;
+  }
+
+  /// Real annual spend summary (#30) -- calls the new real backend
+  /// endpoint, aggregating a real buyer's own real order history for
+  /// one real year. Defaults to the real current year.
+  Future<Map<String, dynamic>> fetchAnnualSpendSummary(String token, {int? year}) async {
+    final uri = Uri.parse('$baseUrl/order/me/annual-summary').replace(queryParameters: year != null ? {'year': '$year'} : null);
+    final response = await _client.get(uri, headers: {'Authorization': 'Bearer $token'});
+    if (response.statusCode != 200) {
+      throw ApiException('Failed to load annual summary (${response.statusCode})');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
   /// Fetches full detail for one order, including per-supplier sub-orders
@@ -985,6 +1007,36 @@ class ApiClient {
       throw ApiException(body['error'] as String? ?? 'Failed to upload photo (${response.statusCode})');
     }
     return body['url'] as String;
+  }
+
+  /// Real profile photo upload -- reuses the exact same real generic
+  /// upload endpoint already used for review/product photos (its own
+  /// header comment already states it's meant to be reused this way).
+  Future<String> uploadAvatarPhoto(String token, XFile file) async {
+    final request = http.MultipartRequest('POST', Uri.parse('$baseUrl/uploads/product-image'));
+    request.headers['Authorization'] = 'Bearer $token';
+    final bytes = await file.readAsBytes();
+    request.files.add(http.MultipartFile.fromBytes('image', bytes, filename: file.name, contentType: _mediaTypeFor(file)));
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode != 201) {
+      throw ApiException(body['error'] as String? ?? 'Failed to upload photo (${response.statusCode})');
+    }
+    return body['url'] as String;
+  }
+
+  /// Real profile photo save/remove -- calls the new real
+  /// PATCH /auth/me/avatar. Pass null to remove the real photo.
+  Future<void> updateAvatar(String token, String? avatarUrl) async {
+    final response = await _client.patch(
+      Uri.parse('$baseUrl/auth/me/avatar'),
+      headers: _authHeaders(token),
+      body: jsonEncode({'avatarUrl': avatarUrl}),
+    );
+    if (response.statusCode != 200) {
+      throw ApiException('Failed to update profile photo (${response.statusCode})');
+    }
   }
 
   Future<MyReview> submitReview(String token, {required String productId, required int rating, String? comment, List<String>? photos}) async {

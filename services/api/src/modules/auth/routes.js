@@ -190,11 +190,32 @@ async function getAdminAccessInfo(userId, role, isOwnerFlag) {
 
 router.get('/me', requireAuth, async (req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT id, email, name, role, supplier_id, hub_id, is_owner, created_at, two_factor_enabled FROM users WHERE id = $1', [req.user.sub]);
+    const { rows } = await db.query('SELECT id, email, name, role, supplier_id, hub_id, is_owner, created_at, two_factor_enabled, avatar_url FROM users WHERE id = $1', [req.user.sub]);
     if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
-    const { supplier_id, hub_id, is_owner, two_factor_enabled, ...rest } = rows[0];
+    const { supplier_id, hub_id, is_owner, two_factor_enabled, avatar_url, ...rest } = rows[0];
     const accessInfo = await getAdminAccessInfo(rows[0].id, rows[0].role, is_owner);
-    res.json({ ...rest, supplierId: supplier_id, hubId: hub_id, twoFactorEnabled: two_factor_enabled, ...accessInfo });
+    res.json({ ...rest, supplierId: supplier_id, hubId: hub_id, twoFactorEnabled: two_factor_enabled, avatarUrl: avatar_url, ...accessInfo });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /auth/me/avatar { avatarUrl } -- real profile photo. The real
+// upload itself reuses the existing real POST /uploads/product-image
+// (its own header comment already states it's generic -- used by
+// buyers for real review photos too, not just supplier product
+// photos), which returns a real URL this endpoint then stores. Kept
+// as two real, separate steps (upload, then save) rather than one
+// combined multipart PATCH, matching the exact same real pattern
+// already established for product images and return-case photos.
+router.patch('/me/avatar', requireAuth, async (req, res, next) => {
+  try {
+    const { avatarUrl } = req.body || {};
+    if (avatarUrl !== null && typeof avatarUrl !== 'string') {
+      return res.status(400).json({ error: 'avatarUrl must be a real URL string, or null to remove it' });
+    }
+    await db.query('UPDATE users SET avatar_url = $1 WHERE id = $2', [avatarUrl, req.user.sub]);
+    res.json({ avatarUrl });
   } catch (err) {
     next(err);
   }

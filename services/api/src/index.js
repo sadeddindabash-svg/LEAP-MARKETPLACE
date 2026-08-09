@@ -44,6 +44,7 @@ const { startScheduledSavedSearchCheck } = require('./modules/savedSearches/chec
 const supplierDigestRoutes = require('./modules/supplierDigest/routes');
 const { startScheduledSupplierDigest } = require('./modules/supplierDigest/send');
 const { startScheduledAnniversaryCheck } = require('./modules/loyaltyMilestones/check');
+const { startScheduledDelayCheck } = require('./modules/shipmentDelayCheck/check');
 const pricingRoutes = require('./modules/pricing/routes');
 
 assertRequiredEnvInProduction();
@@ -181,6 +182,9 @@ if (require.main === module) {
   // Real, once-a-day account-anniversary check (#58, migration 054)
   // -- same real startup guard as above.
   startScheduledAnniversaryCheck();
+  // Real, once-a-day shipment-delay check (#57) -- same real startup
+  // guard as above.
+  startScheduledDelayCheck();
 }
 
 module.exports = app;

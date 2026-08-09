@@ -48,7 +48,31 @@ const db = require('../../../db/pool');
  * push from reaching this user's other real devices, so failures are
  * caught and logged per-token, not thrown.
  */
-async function sendPushToUser({ userId, title, body, linkType, linkId }) {
+/**
+ * Resolves a possibly-relative image URL to a real, fully-qualified
+ * one (#55) -- FCM's own `notification.imageUrl` requires a real,
+ * publicly-reachable URL; a real local upload is stored as a
+ * relative path (e.g. `/uploads/x.jpg`), which a device's own push
+ * renderer could never actually fetch as-is. Real cloud storage
+ * already returns a real, absolute URL (see uploads/routes.js's own
+ * `isCloudStorageConfigured` path), so this only ever needs to act
+ * on the real local-disk fallback case.
+ *
+ * HONEST DEGRADE: without a real `PUBLIC_API_URL` configured (this
+ * sandbox has no real, publicly-reachable address to set it to),
+ * returns null -- the real image is silently omitted rather than
+ * sending a real, unreachable URL; the real text notification itself
+ * still arrives normally either way.
+ */
+function resolveAbsoluteImageUrl(url) {
+  if (!url) return null;
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  const publicApiUrl = process.env.PUBLIC_API_URL;
+  if (!publicApiUrl) return null;
+  return `${publicApiUrl.replace(/\/$/, '')}${url}`;
+}
+
+async function sendPushToUser({ userId, title, body, linkType, linkId, imageUrl }) {
   if (!isPushConfigured()) {
     console.log(`[push] Not configured (no FIREBASE_SERVICE_ACCOUNT_JSON) -- would have sent "${title}" to user ${userId}.`);
     return;
@@ -58,12 +82,21 @@ async function sendPushToUser({ userId, title, body, linkType, linkId }) {
 
   const admin = require('firebase-admin');
   getFirebaseApp();
+  const resolvedImageUrl = resolveAbsoluteImageUrl(imageUrl);
   await Promise.all(
     tokens.map(async ({ token }) => {
       try {
         await admin.messaging().send({
           token,
-          notification: { title, body },
+          // Real inline image (#55) -- FCM's own real notification.imageUrl
+          // field. Works directly on real Android with no extra app-side
+          // work. HONEST LIMITATION: real iOS additionally needs a real
+          // Notification Service Extension (native Xcode project code) to
+          // actually render an inline image -- not buildable without real
+          // native iOS project access, so this is a real, harmless no-op
+          // there rather than a broken promise; the real text notification
+          // itself still arrives normally either way.
+          notification: resolvedImageUrl ? { title, body, imageUrl: resolvedImageUrl } : { title, body },
           data: { linkType: linkType || '', linkId: linkId || '' },
         });
       } catch (err) {

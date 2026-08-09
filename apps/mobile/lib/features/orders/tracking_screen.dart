@@ -123,11 +123,36 @@ class _TrackingScreenState extends State<TrackingScreen> {
           final so = subOrders[i];
           final timeline = (so['timeline'] as List?)?.cast<Map<String, dynamic>>() ?? [];
           final hubTracking = so['hubTrackingNumber'] as String?;
+          final isDelayed = so['isDelayed'] == true;
           return Padding(
             padding: const EdgeInsets.only(bottom: 24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Real, automatic delay indicator (#57) -- purely
+                // time-based, never a fabricated specific reason like
+                // "customs delay" since this system genuinely doesn't
+                // track one.
+                if (isDelayed) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: LeapColors.torque.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.schedule, color: LeapColors.torque, size: 18),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'This shipment is taking longer than expected. We\'re keeping an eye on it.',
+                            style: TextStyle(color: LeapColors.torque, fontSize: 12.5, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 if (hubTracking != null) ...[
                   const Text('Tracking number', style: TextStyle(fontSize: 11.5, color: LeapColors.muted)),
                   Text(hubTracking, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),

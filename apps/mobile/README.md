@@ -820,6 +820,114 @@ file has been executed here — written as carefully as verifiable
 without one, but a real `flutter test` run is the genuine next step
 to confirm both pass for real.
 
+## Batch of 13 requested production features + 3 UI changes (#25, #30, #42, #55, #57, #60, #61, #64, #72–74, #78, #80; theme toggle, profile photo, language dropdown)
+
+Delivered together as one batch, per request. 8 of 13 numbered items
+fully built and verified; 5 flagged honestly below rather than faked.
+All 3 UI changes done.
+
+### Done
+
+- **#30 Annual spend summary**: new `GET /order/me/annual-summary`.
+  Found and fixed a real routing bug during testing: initially
+  registered after the existing `/:id` wildcard route, which would
+  have wrongly matched "me" as an order ID. Moved before it, verified
+  both routes work correctly, confirmed with real orders. Shown as a
+  second stat tile on the Orders screen, right beside "Active
+  Shipments."
+- **#55 Rich push with inline image**: real `imageUrl` support
+  through `createNotification` → FCM's own `notification.imageUrl`,
+  wired into the price-drop alert (a real product's real first
+  photo). Found and fixed a real gap before it shipped: photos are
+  stored as relative paths, but FCM needs a real, fully-qualified
+  URL — added `resolveAbsoluteImageUrl`, verified all 5 cases
+  directly. Documented honestly that real iOS additionally needs a
+  real Notification Service Extension to actually render the image,
+  not buildable without native iOS project access — degrades to a
+  normal text notification there instead.
+- **#57 Proactive delay detection**: real, purely time-based (no
+  fabricated "customs delay" claims — this system genuinely doesn't
+  track specific reasons). Both an on-demand signal on the tracking
+  endpoint and a new scheduled daily check that notifies once per
+  delay. Found and fixed a real bug via direct testing: the on-demand
+  computation never fell back to the order's own placement time when
+  a sub-order has no shipment events yet, so a genuinely stalled
+  order that's never been picked up incorrectly never showed as
+  delayed. Real delay banner added to the tracking screen.
+- **#61 "Which part do I need" wizard**: new step-by-step decision
+  tree using the real category/part taxonomy directly — distinct
+  from #15's keyword-search shortcut (an earlier batch). Pick an area
+  of the car, then the specific part, lands on the real category
+  product list either way.
+- **#73/#74 Verified seller badge / ships-from country**: new
+  `attachSupplierSignals` helper exposing real, anonymous signals —
+  never the supplier's own name or identity, preserving this
+  platform's own deliberate supplier-anonymization design (confirmed
+  directly: every real buyer-facing product query already never
+  selects `suppliers.name` at all).
+- **#78 Multi-supplier price comparison**: new
+  `GET /products/:id/oem-alternatives`, exact OEM-number match
+  across suppliers. New `OemComparisonSection` on Product Detail.
+- **#80 Backup supplier suggestion**: enhanced the existing
+  alternatives endpoint with real supplier diversity — excludes the
+  same supplier so a suggestion is genuinely a different backup
+  source. Verified directly by inserting a real second supplier and
+  matching product: correctly appears as an alternative to the first
+  supplier's item, correctly excluded from its own results.
+
+### Genuinely blocked — flagged honestly, not faked
+
+- **#25 Itemized tax/duty breakdown**: no tax or duty computation
+  exists anywhere in this real system to show a breakdown of.
+  Building this UI would mean fabricating numbers with nothing real
+  behind them.
+- **#42 Ask-a-mechanic Q&A forum**: needs a whole new backend system
+  (questions, answers, moderation, mechanic verification) — a
+  genuinely large, separate feature, not something to rush inside
+  this batch.
+- **#60 WhatsApp Business integration**: needs real WhatsApp Business
+  API credentials — the same class of blocker as the payment-provider
+  decision from earlier in this session.
+- **#64 Video-based onboarding**: needs real produced video content
+  that doesn't exist. Producing video assets is outside what this
+  session can build in code.
+- **#72 Supplier response-time stats**: confirmed this platform
+  deliberately isolates suppliers from disputes entirely (its own
+  code comment states directly: "a supplier is never granted access
+  to this table"). There's no real data source for a supplier's own
+  response time, and building one would conflict with the platform's
+  own architecture, not just be missing data.
+
+### The 3 requested UI changes
+
+- **Theme toggle**: replaced the 3-button light/dark/system UI with
+  a simple `Switch`. Correctly reflects the real system brightness
+  when the mode is still "system" (the real default for a first
+  install, from an earlier batch), so it shows the right position
+  immediately even before an explicit choice is made.
+- **Profile photo**: new migration (`avatar_url` on `users`), new
+  `GET`/`PATCH /auth/me/avatar` (reuses the existing generic upload
+  endpoint rather than duplicating it — its own comment already
+  stated it's meant to be reused this way). Tapping the avatar on
+  Account opens the same real picker already used for review photos.
+- **Language dropdown**: moved from a full settings section into a
+  compact dropdown beside the notification bell in the app bar.
+  Removed two widget classes this left entirely dead
+  (`_LanguageSection`, `_LanguageOption`) rather than leaving unused
+  code behind.
+
+### Verification summary
+
+Every backend change tested directly against the real running
+database. A stale backend process serving code from before several
+edits was caught and killed mid-session (Node doesn't hot-reload) —
+worth knowing about if testing shows unexpected old behavior after a
+restart. Full regression suite: web-storefront 38/38, run repeatedly
+throughout. Every mobile file re-checked for bracket balance and
+scanned for the same missing-import class of bug already caught
+multiple times this session — no further instances found in this
+batch.
+
 ## Batch of 19 requested production features (#1, #2, #5, #8–10, #13, #15, #17, #20, #26, #31, #43, #46, #51, #58–59, #73, #100)
 
 Delivered together as one batch, per request, rather than the usual

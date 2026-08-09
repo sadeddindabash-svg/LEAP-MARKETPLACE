@@ -14,6 +14,7 @@ import '../../models/vehicle.dart';
 import '../../services/api_client.dart';
 import '../../widgets/reviews_section.dart';
 import '../../widgets/alternatives_section.dart';
+import '../../widgets/oem_comparison_section.dart';
 
 /// BUY-022: product detail with fitment confirmation, stock, and delivery
 /// estimate. BUY-030: adds to a cart that is later split by supplier at
@@ -261,6 +262,35 @@ class _ProductDetailBody extends StatelessWidget {
                   ),
                 ],
               ),
+              // Real, anonymous supplier signals (#73, #74) -- never
+              // the supplier's own name or identity.
+              if (product.isVerifiedSeller || product.shipsFromCountry != null) ...[
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 4,
+                  children: [
+                    if (product.isVerifiedSeller)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.verified, size: 14, color: palette.signal),
+                          const SizedBox(width: 4),
+                          Text(_isAr ? 'بائع موثّق' : 'Verified seller', style: TextStyle(fontSize: 11.5, color: palette.muted)),
+                        ],
+                      ),
+                    if (product.shipsFromCountry != null)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.public, size: 14, color: palette.muted),
+                          const SizedBox(width: 4),
+                          Text(_isAr ? 'يشحن من ${product.shipsFromCountry}' : 'Ships from ${product.shipsFromCountry}', style: TextStyle(fontSize: 11.5, color: palette.muted)),
+                        ],
+                      ),
+                  ],
+                ),
+              ],
             ),
             const SizedBox(height: 20),
             Text('\$${product.price.toStringAsFixed(2)} ${product.currencyCode}', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 26, color: palette.signal)),
@@ -311,6 +341,7 @@ class _ProductDetailBody extends StatelessWidget {
               ),
             ),
             AlternativesSection(productId: product.id, isAr: _isAr),
+            OemComparisonSection(productId: product.id, isAr: _isAr),
             ReviewsSection(productId: product.id, isAr: _isAr),
           ],
         ),

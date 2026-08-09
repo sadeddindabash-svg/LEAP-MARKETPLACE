@@ -371,6 +371,35 @@ router.post('/', async (req, res, next) => {
 //      guesses LP-200901 sees a stranger's order" hole.
 // Anyone else gets 404 (not 403) — same "don't confirm existence" pattern
 // used elsewhere in this codebase (e.g. product-ownership checks).
+// GET /order/me/annual-summary?year=YYYY (#30) -- real spend summary
+// for one real buyer, aggregated from their own real order history.
+// Defaults to the real current year. Excludes cancelled orders --
+// real money never changed hands there, so counting them would
+// overstate a real buyer's own real spend. Registered here,
+// deliberately BEFORE the generic /:id route below -- Express
+// matches routes in real registration order, and /:id would
+// otherwise wrongly swallow "me" as if it were a real order ID.
+router.get('/me/annual-summary', requireAuth, async (req, res, next) => {
+  try {
+    const year = req.query.year ? Number(req.query.year) : new Date().getFullYear();
+    const { rows } = await db.query(
+      `SELECT id, total, currency_code, placed_at FROM orders
+       WHERE buyer_id = $1 AND status != 'cancelled' AND EXTRACT(YEAR FROM placed_at) = $2
+       ORDER BY placed_at ASC`,
+      [req.user.sub, year]
+    );
+    const totalSpent = rows.reduce((sum, o) => sum + Number(o.total), 0);
+    res.json({
+      year,
+      orderCount: rows.length,
+      totalSpent: Math.round(totalSpent * 100) / 100,
+      currencyCode: rows[0]?.currency_code || 'USD',
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req, res, next) => {
   try {
     const { rows: orderRows } = await db.query('SELECT * FROM orders WHERE id = $1', [req.params.id]);
