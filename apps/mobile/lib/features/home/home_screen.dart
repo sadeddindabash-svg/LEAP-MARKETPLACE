@@ -149,18 +149,11 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Row(
               children: [
-                Icon(Icons.directions_car, color: palette.signal),
+                Image.asset('assets/images/leap_logo.png', height: 32, width: 32),
                 const SizedBox(width: 8),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text('LEAP', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20, color: palette.ink, height: 1.0)),
-                    Text(
-                      isAr ? 'لقطع السيارات' : 'AUTO PARTS',
-                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 9, color: palette.muted, letterSpacing: 1.2),
-                    ),
-                  ],
+                Text(
+                  isAr ? 'ليب لقطع السيارات' : 'LEAP Auto Parts',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: palette.ink),
                 ),
               ],
             ),

@@ -48,11 +48,12 @@ dev_dependencies:
   # -- see the mobile README's "Real device builds (Android, iOS,
   # Huawei)" section for the full real setup.
   flutter_launcher_icons: ^0.14.1
+  flutter_native_splash: ^2.4.4
 
 flutter:
   uses-material-design: true
-  # assets:
-  #   - assets/images/
+  assets:
+    - assets/images/
 
 # Real config for flutter_launcher_icons (new) -- run
 # `flutter pub run flutter_launcher_icons` after `flutter create .` has
@@ -63,3 +64,20 @@ flutter_launcher_icons:
   ios: true
   image_path: "assets/icon/icon.png"
   min_sdk_android: 21
+
+# Real splash screen config for flutter_native_splash (new) -- the
+# real logo centered, on each real theme's own already-established
+# background color (light: LeapColors.chalk #F5F6F8, dark:
+# LeapColorsDark.background #131313), not an arbitrary new color.
+# Run `dart run flutter_native_splash:create` after `flutter pub get`
+# to generate the real native splash assets for both platforms.
+flutter_native_splash:
+  color: "#F5F6F8"
+  image: "assets/images/leap_logo.png"
+  color_dark: "#131313"
+  image_dark: "assets/images/leap_logo.png"
+  android_12:
+    color: "#F5F6F8"
+    image: "assets/images/leap_logo.png"
+    color_dark: "#131313"
+    image_dark: "assets/images/leap_logo.png"

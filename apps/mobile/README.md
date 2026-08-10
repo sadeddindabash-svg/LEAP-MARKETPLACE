@@ -820,6 +820,41 @@ file has been executed here — written as carefully as verifiable
 without one, but a real `flutter test` run is the genuine next step
 to confirm both pass for real.
 
+## Real logo and branding, replacing generic placeholders
+
+**The real, uploaded brand logo now used everywhere it matters**:
+- **App icon**: `assets/icon/icon.png` was a plain solid-orange
+  circle placeholder (confirmed directly: no real design, no text) —
+  replaced with the real logo, padded to a perfect square (the source
+  was 1669×1664, a few pixels off square) and resized to the real
+  1024×1024 `flutter_launcher_icons` requires.
+- **In-app display**: new `assets/images/leap_logo.png`, downscaled
+  to a real, reasonable 512px (the source at full resolution would
+  have meant needlessly bloating the app for an image only ever shown
+  at wordmark/splash sizes).
+- **Home screen wordmark**: replaced the generic `Icons.directions_car`
+  placeholder and the old two-line "LEAP" / "AUTO PARTS" split text
+  with the real logo image and the exact requested wording — "LEAP
+  Auto Parts" / "ليب لقطع السيارات" (a real, deliberate change from
+  the old Arabic text, which was "لقطع السيارات" alone, missing "ليب").
+- **Splash screen (new)**: added `flutter_native_splash`, configured
+  with the real logo centered, on each real theme's own already-
+  established background color — light: `LeapColors.chalk`
+  (`#F5F6F8`), dark: `LeapColorsDark.background` (`#131313`) — not an
+  arbitrary new color invented for this.
+
+**Real, required next steps on your end** (native asset generation —
+can't be run from here, no real Flutter/Dart SDK in this sandbox):
+```
+flutter pub get
+dart run flutter_native_splash:create
+dart run flutter_launcher_icons
+```
+The first command regenerates the real native splash assets for both
+platforms; the second regenerates the real native app icon files from
+the new source image — neither takes effect just by changing the
+source PNGs, both need this real build step to actually run.
+
 ## Search by photo — real, on-device OCR for a printed part/OEM number
 
 **Scoped honestly to what's actually reliable for this catalog**:
