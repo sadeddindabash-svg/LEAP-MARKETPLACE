@@ -820,6 +820,35 @@ file has been executed here — written as carefully as verifiable
 without one, but a real `flutter test` run is the genuine next step
 to confirm both pass for real.
 
+## Real overflow bug fix — found via a real screenshot, "BOTTOM OVERFLOWED BY 39 PIXELS"
+
+**Root cause, confirmed directly**: `ProductCard`'s own natural
+content height grew when the low-stock countdown text (#8, an
+earlier batch) was added — a new line of text with its own spacing.
+Two places wrap the card in a fixed-pixel-height `SizedBox` for a
+horizontal scrolling row (Home's "Recently viewed," and
+`AlternativesSection`), and neither height was updated to match the
+card's new, taller real content — causing a real, visible overflow,
+seen directly in a real screenshot showing Flutter's own debug
+overflow banner on multiple cards at once.
+
+**Fixed with a shared, generously-sized height helper**
+(`productCardHeightFor`) added directly in `product_card.dart`
+itself, right next to the card's own content — specifically so a
+future change to the card is far more likely to prompt updating this
+too, rather than silently causing the same regression again.
+Deliberately generous rather than pixel-exact, since this sandbox has
+no real Flutter renderer to verify an exact value against, and a
+little unused space below the card is a far safer failure mode than
+clipped, overflowing content.
+
+**Checked every other real usage of `ProductCard` in the app**:
+Wishlist, Category, and Search all use an aspect-ratio-based
+`GridView` (not a fixed pixel height) with a ratio generous enough
+that they were never affected by this same bug — confirmed via the
+math (~290px effective height vs. this card's ~254–264px real need),
+not left unchecked.
+
 ## Real logo and branding, replacing generic placeholders
 
 **The real, uploaded brand logo now used everywhere it matters**:

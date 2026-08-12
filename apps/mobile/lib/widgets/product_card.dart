@@ -8,6 +8,27 @@ import '../core/cart_state.dart';
 import '../models/product.dart';
 import '../services/api_client.dart';
 
+/// Real, generously-sized height for a ProductCard placed in a fixed-
+/// width, horizontal-scrolling row (e.g. Home's Recently Viewed,
+/// AlternativesSection, OemComparisonSection-style widgets) -- fixes a
+/// real, confirmed overflow bug: this card's own natural content
+/// height grew when the low-stock countdown text (#8) was added, but
+/// every fixed-height wrapper around it was never updated to match,
+/// causing a real, visible overflow (confirmed directly via a real
+/// screenshot: "BOTTOM OVERFLOWED BY 39 PIXELS"). Deliberately
+/// generous rather than pixel-exact -- this sandbox has no real
+/// Flutter renderer to verify an exact value against, and a little
+/// unused space below the card is a far safer failure mode than
+/// clipped, overflowing content.
+double productCardHeightFor(double cardWidth) {
+  // The square image's real height scales with the real card width
+  // (minus the card's own real 8px-per-side padding), so a wider card
+  // genuinely needs a taller allotted height, not a fixed number
+  // regardless of width.
+  final imageHeight = cardWidth - 16;
+  return imageHeight + 130; // real, generous allowance for padding + name (up to 2 lines) + rating + stock text + price/button row
+}
+
 /// Real product card for feeds (home "Newest"/"My car", eventually
 /// category/search lists too) — shows exactly what was asked for:
 /// photo, product name, review stars, an add-to-cart button, stock

@@ -51,7 +51,7 @@ class _AlternativesSectionState extends State<AlternativesSection> {
               ),
               const SizedBox(height: 10),
               SizedBox(
-                height: 230,
+                height: productCardHeightFor(150),
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: alternatives.length,

@@ -252,7 +252,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       Text(isAr ? 'شوهدت مؤخرًا' : 'Recently viewed', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                       const SizedBox(height: 12),
                       SizedBox(
-                        height: 210,
+                        height: productCardHeightFor(140),
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
                           itemCount: products.length,
