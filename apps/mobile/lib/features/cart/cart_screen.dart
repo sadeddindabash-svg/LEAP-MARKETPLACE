@@ -284,6 +284,12 @@ class _CartItemRow extends StatelessWidget {
     messenger.showSnackBar(
       SnackBar(
         content: Text('$removedName $removedLabel'),
+        // Real, explicit, guaranteed-finite duration (fix) --
+        // confirmed directly that no duration was ever set anywhere
+        // on this SnackBar before, relying entirely on Flutter's own
+        // default. This removes that dependency and directly
+        // guarantees the message can't stay up indefinitely.
+        duration: const Duration(seconds: 4),
         action: SnackBarAction(
           label: undoLabel,
           onPressed: () async {
