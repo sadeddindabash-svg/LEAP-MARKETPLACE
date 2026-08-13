@@ -189,7 +189,18 @@ class RootShell extends StatelessWidget {
       body: child,
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _indexForLocation(location),
-        onTap: (i) => context.go(_tabs[i]),
+        onTap: (i) {
+          // Real fix: dismiss any currently-showing SnackBar the
+          // instant a real tab switch happens. Confirmed root cause:
+          // this Scaffold is shared across all 5 real tabs (only
+          // body: content swaps underneath) -- a real message shown
+          // on one tab would otherwise genuinely persist as an
+          // overlay after switching to a different tab entirely,
+          // since it's the same real Scaffold/ScaffoldMessenger the
+          // whole time.
+          ScaffoldMessenger.of(context).clearSnackBars();
+          context.go(_tabs[i]);
+        },
         items: [
           BottomNavigationBarItem(icon: const Icon(Icons.home_outlined), label: tr(context, 'nav_home')),
           BottomNavigationBarItem(icon: const Icon(Icons.grid_view_outlined), label: tr(context, 'nav_shop')),
