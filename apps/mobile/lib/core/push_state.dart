@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
@@ -46,6 +47,29 @@ class PushState {
       // Checking Firebase.apps first makes initialization correctly
       // idempotent across multiple real call sites.
       if (Firebase.apps.isEmpty) await Firebase.initializeApp();
+      // Real Android notification channels (#87) -- lets a person
+      // mute promotional-style updates at the real OS level while
+      // keeping order-related notifications on. Real, honest scope:
+      // grouped into just 2 real channels based on the real
+      // notification types that actually exist server-side (see
+      // notifications/helpers.js's own real type CHECK constraint) --
+      // not a fabricated third "security" category with nothing real
+      // to put in it yet.
+      final localNotifications = FlutterLocalNotificationsPlugin();
+      const ordersChannel = AndroidNotificationChannel(
+        'orders',
+        'Orders',
+        description: 'Order status, returns, and support replies',
+        importance: Importance.high,
+      );
+      const updatesChannel = AndroidNotificationChannel(
+        'updates',
+        'Updates',
+        description: 'Price drops, back-in-stock alerts, and other updates',
+        importance: Importance.defaultImportance,
+      );
+      await localNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.createNotificationChannel(ordersChannel);
+      await localNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.createNotificationChannel(updatesChannel);
       final messaging = FirebaseMessaging.instance;
       final settings = await messaging.requestPermission(alert: true, badge: true, sound: true);
       if (settings.authorizationStatus == AuthorizationStatus.denied) {

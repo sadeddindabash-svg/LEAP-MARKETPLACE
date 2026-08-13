@@ -18,6 +18,9 @@ class CartItem {
   // cart/routes.js's own comment on why this is an early warning, not
   // a reservation (stock isn't held per-cart anywhere in this schema).
   final int stockQuantity;
+  // Real weight (#23) -- null when a real product has no real weight
+  // on file, never a fabricated default.
+  final double? weightKg;
 
   const CartItem({
     required this.productId,
@@ -28,6 +31,7 @@ class CartItem {
     required this.stockQuantity,
     this.supplierName,
     this.imageUrl,
+    this.weightKg,
   });
 
   double get lineTotal => price * quantity;
@@ -41,5 +45,6 @@ class CartItem {
         stockQuantity: json['stockQuantity'] as int? ?? 0,
         supplierName: json['supplierName'] as String?,
         imageUrl: json['imageUrl'] as String?,
+        weightKg: (json['weightKg'] as num?)?.toDouble(),
       );
 }

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'app.dart';
+import 'core/draft_order_queue.dart';
+import 'core/app_shortcuts.dart';
 
 /// Real crash reporting via Firebase Crashlytics (new).
 ///
@@ -39,6 +41,14 @@ void main() {
       debugPrint('[crashlytics] Not available yet (no real Firebase config configured): $err');
     }
     runApp(const LeapApp());
+    // Real, best-effort draft-order retry on app startup (#60) --
+    // fire-and-forget, never blocks or delays the real app from
+    // starting. A real failure (still offline) just leaves the real
+    // draft queued for the next attempt.
+    DraftOrderQueue.trySubmitPending().catchError((_) => 0);
+    // Real OS-level app shortcuts (#81) -- fire-and-forget, never
+    // blocks real app startup.
+    AppShortcuts.initialize().catchError((_) {});
   }, (error, stackTrace) {
     // Real uncaught async errors (new) -- reported the same real way
     // when Crashlytics happens to be configured; otherwise this is

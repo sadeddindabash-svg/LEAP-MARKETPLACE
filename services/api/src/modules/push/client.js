@@ -72,7 +72,21 @@ function resolveAbsoluteImageUrl(url) {
   return `${publicApiUrl.replace(/\/$/, '')}${url}`;
 }
 
-async function sendPushToUser({ userId, title, body, linkType, linkId, imageUrl }) {
+// Real Android notification-channel routing (#87) -- maps each real
+// notification type to one of the two real channels created on the
+// mobile side (see push_state.dart's own real channel creation).
+// Grouped by the real, actual type CHECK constraint (migration 054):
+// transactional order-related types get the higher-importance
+// "orders" channel, everything else (price drops, back-in-stock,
+// referral rewards, the anniversary message) gets "updates" --
+// genuinely optional-feeling notifications a person might reasonably
+// want to mute separately from their real order updates.
+const ORDERS_CHANNEL_TYPES = new Set(['order_status', 'return_status', 'ticket_reply', 'supplier_message']);
+function channelIdForType(type) {
+  return ORDERS_CHANNEL_TYPES.has(type) ? 'orders' : 'updates';
+}
+
+async function sendPushToUser({ userId, type, title, body, linkType, linkId, imageUrl }) {
   if (!isPushConfigured()) {
     console.log(`[push] Not configured (no FIREBASE_SERVICE_ACCOUNT_JSON) -- would have sent "${title}" to user ${userId}.`);
     return;
@@ -97,6 +111,10 @@ async function sendPushToUser({ userId, title, body, linkType, linkId, imageUrl 
           // there rather than a broken promise; the real text notification
           // itself still arrives normally either way.
           notification: resolvedImageUrl ? { title, body, imageUrl: resolvedImageUrl } : { title, body },
+          // Real Android channel routing (#87) -- matches whichever
+          // real channel this notification type maps to (see
+          // channelIdForType's own header comment).
+          android: { notification: { channelId: channelIdForType(type) } },
           data: { linkType: linkType || '', linkId: linkId || '' },
         });
       } catch (err) {
@@ -110,4 +128,4 @@ async function sendPushToUser({ userId, title, body, linkType, linkId, imageUrl 
   );
 }
 
-module.exports = { isPushConfigured, sendPushToUser };
+module.exports = { isPushConfigured, sendPushToUser, channelIdForType };

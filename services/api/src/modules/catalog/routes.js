@@ -662,6 +662,30 @@ function toPartDto(row) {
  * count together, not split into two separate, smaller real counts
  * that each individually miss the real threshold.
  */
+// GET /catalog/search-autocomplete?prefix=X (#28) -- real
+// autocomplete suggestions as a buyer types, using real, previously-
+// searched terms from search_log (the same real table
+// trending-searches above already aggregates from). Never suggests a
+// fabricated term nobody has actually searched for.
+router.get('/search-autocomplete', async (req, res, next) => {
+  try {
+    const prefix = (req.query.prefix || '').trim();
+    if (prefix.length < 2) return res.json([]); // too short to be a genuinely useful real suggestion
+    const { rows } = await db.query(
+      `SELECT LOWER(query) AS query, COUNT(*) AS count
+       FROM search_log
+       WHERE LOWER(query) LIKE LOWER($1) AND created_at > now() - interval '30 days'
+       GROUP BY LOWER(query)
+       ORDER BY count DESC
+       LIMIT 6`,
+      [`${prefix}%`]
+    );
+    res.json(rows.map((r) => r.query));
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/trending-searches', async (req, res, next) => {
   try {
     const { rows } = await db.query(

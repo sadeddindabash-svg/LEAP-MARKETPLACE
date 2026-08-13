@@ -23,6 +23,15 @@ class WishlistScreen extends StatefulWidget {
 class _WishlistScreenState extends State<WishlistScreen> {
   Future<List<Product>>? _wishlistFuture;
   String? _loadedForLanguage;
+  // Real compare mode (#101) -- lets a buyer select 2-4 real wishlist
+  // items to compare side by side.
+  bool _compareMode = false;
+  final Set<String> _selectedForCompare = {};
+  // Real fix for a real scope mistake: floatingActionButton sits at
+  // the Scaffold's top level, but the real products list only exists
+  // inside the nested FutureBuilder's own builder callback below --
+  // this field is what the button actually reads instead.
+  List<Product> _loadedProducts = [];
 
   void _ensureLoaded(String language, String? token) {
     if (_loadedForLanguage == language || token == null) return;
@@ -45,7 +54,28 @@ class _WishlistScreenState extends State<WishlistScreen> {
     _ensureLoaded(language, auth.token);
 
     return Scaffold(
-      appBar: AppBar(title: Text(tr(context, 'wishlist'))),
+      floatingActionButton: _compareMode && _selectedForCompare.length >= 2
+          ? FloatingActionButton.extended(
+              onPressed: () {
+                final selected = _loadedProducts.where((p) => _selectedForCompare.contains(p.id)).toList();
+                context.push('/compare-products', extra: selected);
+              },
+              icon: const Icon(Icons.compare_arrows),
+              label: Text('${Localizations.localeOf(context).languageCode == 'ar' ? 'مقارنة' : 'Compare'} (${_selectedForCompare.length})'),
+            )
+          : null,
+      appBar: AppBar(
+        title: Text(tr(context, 'wishlist')),
+        actions: [
+          TextButton(
+            onPressed: () => setState(() {
+              _compareMode = !_compareMode;
+              if (!_compareMode) _selectedForCompare.clear();
+            }),
+            child: Text(_compareMode ? tr(context, 'cancel') : (Localizations.localeOf(context).languageCode == 'ar' ? 'مقارنة' : 'Compare')),
+          ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: _reload,
         child: FutureBuilder<List<Product>>(
@@ -66,6 +96,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
               );
             }
             final products = snapshot.data ?? [];
+            _loadedProducts = products;
             if (products.isEmpty) {
               return ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
@@ -103,12 +134,36 @@ class _WishlistScreenState extends State<WishlistScreen> {
                 // the real current price, i.e. an actual drop
                 // happened, never a fabricated comparison.
                 final hasPriceDrop = p.lastKnownPrice != null && p.lastKnownPrice! > p.price;
+                final isSelected = _selectedForCompare.contains(p.id);
                 return Stack(
                   children: [
                     ProductCard(
                       product: p,
-                      onTap: () => context.push('/product/${p.id}').then((_) => _reload()),
+                      onTap: _compareMode
+                          ? () => setState(() {
+                                if (isSelected) {
+                                  _selectedForCompare.remove(p.id);
+                                } else if (_selectedForCompare.length < 4) {
+                                  _selectedForCompare.add(p.id);
+                                }
+                              })
+                          : () => context.push('/product/${p.id}').then((_) => _reload()),
                     ),
+                    if (_compareMode)
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: isSelected ? LeapPalette.of(context).signal : Colors.white,
+                            border: Border.all(color: LeapPalette.of(context).line, width: 1.5),
+                          ),
+                          child: isSelected ? Icon(Icons.check, size: 16, color: LeapPalette.of(context).onSignal) : null,
+                        ),
+                      ),
                     if (hasPriceDrop)
                       Positioned(
                         top: 8,

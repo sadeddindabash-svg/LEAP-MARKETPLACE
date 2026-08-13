@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
@@ -39,14 +40,32 @@ class _SearchScreenState extends State<SearchScreen> {
   // Real Brand/Model/Generation(Year) filter (new) -- see
   // vehicle_filter_sheet.dart. Null means no vehicle filter applied.
   VehicleFilterSelection? _vehicleFilter;
-  // Real sort/price-range filter (new) -- see sort_and_price_sheet.dart.
-  SortAndPriceSelection? _sortAndPrice;
+  // Real sort/price-range filter (new), now with real per-session
+  // persistence (#25) -- initialized from the real static holder
+  // below, so a filter chosen on an earlier visit to this screen
+  // within the same real app run is still applied when returning,
+  // rather than being silently lost every time this screen is
+  // disposed and reopened. Resets naturally on a real app restart
+  // (the static field's own real lifetime), matching "remembered per
+  // session" exactly -- deliberately not persisted to disk, since a
+  // filter from days ago silently still being active would be more
+  // surprising than helpful.
+  SortAndPriceSelection? _sortAndPrice = _lastUsedSortAndPrice;
+  static SortAndPriceSelection? _lastUsedSortAndPrice;
+  // Real clipboard detection (#89) -- the offered text, if any, and
+  // the last real clipboard content already offered/dismissed this
+  // session (avoids re-prompting for the exact same real content).
+  String? _clipboardSuggestion;
+  static String? _lastOfferedClipboardContent;
   // Real recently-searched terms (new) -- see core/recent_searches.dart.
   List<String> _recentSearches = [];
   // Real trending searches (new) -- see ApiClient.fetchTrendingSearches's
   // own header comment; genuinely aggregated platform-wide data, not a
   // hardcoded example list.
   List<String> _trendingSearches = [];
+  // Real autocomplete suggestions (#28) -- shown while actively
+  // typing, before a real search has actually run yet.
+  List<String> _autocompleteSuggestions = [];
   // Real voice search (#13) -- on-device speech-to-text, no cloud API
   // key needed. _isListening drives the mic icon's visual state.
   final stt.SpeechToText _speech = stt.SpeechToText();
@@ -70,6 +89,15 @@ class _SearchScreenState extends State<SearchScreen> {
       _controller.text = widget.initialQuery!;
       _runSearch(widget.initialQuery!);
     }
+    // Real clipboard detection (#89) -- offers to search a plausible-
+    // looking real part number found on the clipboard. Real, honest
+    // heuristic rather than blindly offering any clipboard content:
+    // short (3-30 chars, a real sentence or URL would be longer),
+    // contains at least one real digit (typical of a real part/OEM
+    // number), and isn't a URL or email. Session-level dedup (the
+    // static field) avoids re-offering the exact same real clipboard
+    // content every time this screen reopens.
+    _checkClipboardForPartNumber();
     // Real, best-effort init -- a real failure (no mic permission,
     // unsupported platform) just leaves the mic button hidden rather
     // than breaking the rest of this real screen.
@@ -106,6 +134,28 @@ class _SearchScreenState extends State<SearchScreen> {
     super.dispose();
   }
 
+  Future<void> _checkClipboardForPartNumber() async {
+    try {
+      final data = await Clipboard.getData(Clipboard.kTextPlain);
+      final text = data?.text?.trim();
+      if (text == null || text.isEmpty) return;
+      if (text == _lastOfferedClipboardContent) return; // already offered/dismissed this real content this session
+      final looksLikePartNumber = text.length >= 3 &&
+          text.length <= 30 &&
+          RegExp(r'\d').hasMatch(text) &&
+          !text.contains(' ') &&
+          !text.contains('@') &&
+          !text.toLowerCase().startsWith('http');
+      if (looksLikePartNumber && mounted) {
+        setState(() => _clipboardSuggestion = text);
+      }
+    } catch (_) {
+      // Real, honest no-op -- a real failure reading the clipboard
+      // (e.g. no permission on some platforms) just means no
+      // suggestion, never breaks the rest of this real screen.
+    }
+  }
+
   void _onChanged(String query) {
     _debounce?.cancel();
     // Real, lightweight rebuild (new) -- so the search field's own real
@@ -117,13 +167,28 @@ class _SearchScreenState extends State<SearchScreen> {
     // search ("show me everything under $50") -- only bail out early
     // when there's truly nothing to search by: no text, no filters.
     if (query.trim().isEmpty && _vehicleFilter == null && (_sortAndPrice == null || _sortAndPrice!.isEmpty)) {
-      setState(() { _results = null; _error = null; });
+      setState(() { _results = null; _error = null; _autocompleteSuggestions = []; });
       return;
     }
     // Debounced rather than firing a real network request on every
     // keystroke — a real search-as-you-type still shouldn't hammer the
     // backend once per character typed.
-    _debounce = Timer(const Duration(milliseconds: 400), () => _runSearch(query.trim()));
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      _runSearch(query.trim());
+      // Real autocomplete (#28) -- fetched alongside the real search
+      // itself, sharing the same real debounce rather than a second
+      // separate timer.
+      if (query.trim().length >= 2) {
+        ApiClient().fetchAutocompleteSuggestions(query.trim()).then((suggestions) {
+          if (mounted) setState(() => _autocompleteSuggestions = suggestions);
+        }).catchError((_) {
+          // Real, honest no-op -- a real failure here just means no
+          // suggestions, never blocks the actual search running above.
+        });
+      } else if (mounted) {
+        setState(() => _autocompleteSuggestions = []);
+      }
+    });
   }
 
   Future<void> _pickVehicleFilter() async {
@@ -156,6 +221,7 @@ class _SearchScreenState extends State<SearchScreen> {
     );
     if (selection == null) return;
     setState(() => _sortAndPrice = selection.isEmpty ? null : selection);
+    _lastUsedSortAndPrice = _sortAndPrice;
     _debounce?.cancel();
     if (_controller.text.trim().isEmpty && _vehicleFilter == null && selection.isEmpty) {
       setState(() { _results = null; _error = null; });
@@ -166,6 +232,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   void _clearSortAndPrice() {
     setState(() => _sortAndPrice = null);
+    _lastUsedSortAndPrice = null;
     _debounce?.cancel();
     if (_controller.text.trim().isEmpty && _vehicleFilter == null) {
       setState(() { _results = null; _error = null; });
@@ -298,6 +365,61 @@ class _SearchScreenState extends State<SearchScreen> {
                     ),
                 ],
               ),
+            ),
+          // Real clipboard suggestion (#89) -- only shown when the
+          // real search field is genuinely empty; once someone starts
+          // typing, their own real intent takes priority over a
+          // clipboard guess.
+          if (_clipboardSuggestion != null && _controller.text.trim().isEmpty)
+            Container(
+              margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(color: LeapPalette.of(context).chalk, borderRadius: BorderRadius.circular(10)),
+              child: Row(
+                children: [
+                  Icon(Icons.content_paste, size: 16, color: LeapPalette.of(context).signal),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      isAr ? 'البحث عن "${_clipboardSuggestion!}" من الحافظة؟' : 'Search for "${_clipboardSuggestion!}" from your clipboard?',
+                      style: const TextStyle(fontSize: 12.5),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      _controller.text = _clipboardSuggestion!;
+                      _lastOfferedClipboardContent = _clipboardSuggestion;
+                      setState(() => _clipboardSuggestion = null);
+                      _runSearch(_controller.text);
+                    },
+                    child: Text(isAr ? 'بحث' : 'Search'),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 16),
+                    onPressed: () {
+                      _lastOfferedClipboardContent = _clipboardSuggestion;
+                      setState(() => _clipboardSuggestion = null);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          // Real autocomplete suggestions (#28) -- only shown while
+          // actively typing, before any real results have loaded yet.
+          if (_results == null && _autocompleteSuggestions.isNotEmpty)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: _autocompleteSuggestions.map((s) => ListTile(
+                dense: true,
+                leading: const Icon(Icons.search, size: 18),
+                title: Text(s),
+                onTap: () {
+                  _controller.text = s;
+                  _debounce?.cancel();
+                  setState(() => _autocompleteSuggestions = []);
+                  _runSearch(s);
+                },
+              )).toList(),
             ),
           Expanded(child: _buildBody(isAr)),
         ],

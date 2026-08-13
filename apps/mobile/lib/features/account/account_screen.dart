@@ -87,7 +87,7 @@ class _AccountScreenState extends State<AccountScreen> {
       (icon: Icons.card_giftcard_outlined, label: tr(context, 'referrals'), route: '/referrals'),
       (icon: Icons.inventory_2_outlined, label: tr(context, 'orders_and_returns'), route: '/orders'),
       (icon: Icons.assignment_return_outlined, label: tr(context, 'my_returns'), route: '/returns'),
-      (icon: Icons.chat_bubble_outline, label: tr(context, 'leap_support'), route: '/support'),
+      (icon: Icons.chat_bubble_outline, label: 'Contact us', route: '/contact-us'),
       (icon: Icons.alternate_email, label: tr(context, 'change_email'), route: '/account/change-email'),
       (icon: Icons.shield_outlined, label: 'Two-factor authentication', route: '/account/two-factor'),
     ];
@@ -193,9 +193,69 @@ class _AccountScreenState extends State<AccountScreen> {
               title: Text(tr(context, 'log_out')),
               onTap: () => context.read<AuthState>().logout(),
             ),
+          if (auth.isLoggedIn)
+            ListTile(
+              leading: const Icon(Icons.delete_forever_outlined, color: Colors.red),
+              title: const Text('Delete account', style: TextStyle(color: Colors.red)),
+              onTap: () => _confirmDeleteAccount(context),
+            ),
         ],
       ),
     );
+  }
+
+  Future<void> _confirmDeleteAccount(BuildContext context) async {
+    final confirmedIntent = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete your account?'),
+        content: const Text('This permanently removes your personal info. Your order history stays for our records, but is no longer tied to your name or email.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Continue', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (confirmedIntent != true || !context.mounted) return;
+
+    final passwordController = TextEditingController();
+    String? errorMessage;
+    final confirmedWithPassword = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Confirm your password'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: passwordController, obscureText: true, decoration: const InputDecoration(labelText: 'Password')),
+              if (errorMessage != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 12))),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () async {
+                if (passwordController.text.isEmpty) return;
+                try {
+                  final auth = dialogContext.read<AuthState>();
+                  await ApiClient().deleteAccount(auth.token!, passwordController.text);
+                  if (dialogContext.mounted) Navigator.of(dialogContext).pop(true);
+                } on ApiException catch (e) {
+                  setDialogState(() => errorMessage = e.message);
+                }
+              },
+              child: const Text('Delete', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmedWithPassword == true && context.mounted) {
+      // Real logout after real success -- this session's own token is
+      // now for a real, already-anonymized account.
+      context.read<AuthState>().logout();
+    }
   }
 }
 

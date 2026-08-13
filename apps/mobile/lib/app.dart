@@ -17,6 +17,11 @@ import 'features/catalog/shop_by_symptom_screen.dart';
 import 'features/catalog/which_part_wizard_screen.dart';
 import 'features/catalog/barcode_scanner_screen.dart';
 import 'features/catalog/part_number_scanner_screen.dart';
+import 'features/catalog/product_comparison_screen.dart';
+import 'features/support/report_bug_screen.dart';
+import 'features/account/legal_document_screen.dart';
+import 'features/support/contact_us_screen.dart';
+import 'models/product.dart';
 import 'features/garage/garage_screen.dart';
 import 'features/catalog/category_screen.dart';
 import 'features/catalog/category_browse_screen.dart';
@@ -68,6 +73,14 @@ final GoRouter appRouter = GoRouter(
     GoRoute(path: '/which-part-wizard', builder: (context, state) => const WhichPartWizardScreen()),
     GoRoute(path: '/scan-barcode', builder: (context, state) => const BarcodeScannerScreen()),
     GoRoute(path: '/scan-part-number', builder: (context, state) => const PartNumberScannerScreen()),
+    GoRoute(
+      path: '/compare-products',
+      builder: (context, state) => ProductComparisonScreen(products: state.extra as List<Product>),
+    ),
+    GoRoute(path: '/report-bug', builder: (context, state) => const ReportBugScreen()),
+    GoRoute(path: '/terms', builder: (context, state) => const LegalDocumentScreen(type: LegalDocumentType.terms)),
+    GoRoute(path: '/contact-us', builder: (context, state) => const ContactUsScreen()),
+    GoRoute(path: '/privacy', builder: (context, state) => const LegalDocumentScreen(type: LegalDocumentType.privacy)),
     GoRoute(path: '/addresses', builder: (context, state) => const AddressesScreen()),
     GoRoute(path: '/wishlist', builder: (context, state) => const WishlistScreen()),
     GoRoute(path: '/saved-searches', builder: (context, state) => const SavedSearchesScreen()),

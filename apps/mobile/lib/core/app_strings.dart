@@ -99,6 +99,7 @@ class AppStrings {
     'promo_applied': {'en': 'Applied!', 'ar': 'تم التطبيق!'},
     'you_saved': {'en': 'You saved', 'ar': 'وفّرت'},
     'subtotal': {'en': 'Subtotal', 'ar': 'المجموع الفرعي'},
+    'estimated_weight': {'en': 'Estimated weight', 'ar': 'الوزن التقديري'},
     'discount': {'en': 'Discount', 'ar': 'الخصم'},
 
     // ---- Referrals (new) ----
@@ -296,6 +297,11 @@ class AppStrings {
     'was_this_resolution_helpful': {'en': 'Was this resolution helpful?', 'ar': 'هل كان هذا الحل مفيدًا؟'},
     'yes': {'en': 'Yes', 'ar': 'نعم'},
     'no': {'en': 'No', 'ar': 'لا'},
+    'save_order_for_later_title': {'en': 'Save this order?', 'ar': 'حفظ هذا الطلب؟'},
+    'save_order_for_later_body': {'en': 'We\'ll send it automatically once you\'re back online.', 'ar': 'سنرسله تلقائيًا عند عودة الاتصال بالإنترنت.'},
+    'no_thanks': {'en': 'No thanks', 'ar': 'لا شكرًا'},
+    'save_and_send_later': {'en': 'Save and send later', 'ar': 'حفظ وإرسال لاحقًا'},
+    'order_saved_for_later': {'en': 'Order saved — we\'ll send it once you\'re back online.', 'ar': 'تم حفظ الطلب — سنرسله عند عودة الاتصال.'},
     'thanks_for_feedback': {'en': 'Thanks for letting us know!', 'ar': 'شكرًا لملاحظتك!'},
 
     // ---- Auth: login ----

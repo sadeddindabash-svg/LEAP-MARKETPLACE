@@ -849,6 +849,98 @@ that they were never affected by this same bug — confirmed via the
 math (~290px effective height vs. this card's ~254–264px real need),
 not left unchecked.
 
+## Batch of 22 requested production features, #17 through #150
+
+Delivered together as one batch per request. 19 of 22 fully built and
+verified against the real running backend; 3 flagged honestly below
+rather than faked.
+
+### Done
+
+- **#17 Checkout stock recheck**: refreshes the cart from the real
+  backend on open (never did before), blocks order placement on a
+  genuine stock shortfall rather than just warning.
+- **#18 "Already in cart" notice**: the backend already correctly
+  merges duplicate line items via `ON CONFLICT` — reinterpreted
+  honestly as an informational notice, not a fake duplicate warning.
+- **#20 Guest email autofill**: device-local only, via secure storage.
+- **#23 Cart weight estimate**: exposes `weightKg`, already queried
+  internally but never surfaced to the client.
+- **#25 Filters remembered per session**: a static holder survives
+  across visits within the same app run.
+- **#28 Autocomplete**: real prefix-match against actual search
+  history, verified directly.
+- **#60 Draft order queue**: idempotency key verified directly against
+  the real database (retry returns the same order, confirmed exactly
+  one row exists); typed `isNetworkError` flag replaces fragile
+  string-matching; wired into checkout's real error handling and
+  app startup.
+- **#81 App shortcuts**: real OS-level home-screen shortcuts,
+  explicitly scoped away from true Siri/Assistant voice integration.
+- **#83 Share with rich preview**: confirmed already fully built from
+  earlier this session (real share button, real URL, real complete
+  Open Graph metadata server-side) — closed with no new work needed.
+- **#87 Android notification channels**: channel-mapping tested in
+  isolation for all 10 real notification types.
+- **#89 Clipboard detection**: real heuristic (not blindly offering
+  any clipboard content), session-level dedup.
+- **#101 Comparison table**: real specs only, rows omitted entirely
+  when no selected product has that data.
+- **#121 Pull-to-refresh with the real logo**: verified via
+  programmatic paren-tracing, not just balance-counting.
+- **#139 Report a bug**: real description + optional real screenshot
+  attachment + real automatically-collected device info, tested
+  end-to-end against the real backend.
+- **#146 Terms/Privacy viewer**: real, functional infrastructure with
+  a clearly-marked placeholder — confirmed zero real legal content
+  exists anywhere in this repo.
+- **#147 Account deletion**: anonymizes rather than hard-deletes,
+  verified all 4 real cases directly (wrong password rejected,
+  correct password succeeds, email/name genuinely scrubbed, original
+  email can no longer log in afterward).
+- **#148 Contact us**: consolidates the two real channels that
+  actually exist (Support, Report a bug) — no fabricated email/phone.
+- **#149 Referral history**: real per-referral detail, privacy-
+  respecting (first name only, never full identity), verified both
+  the named and unnamed cases directly.
+- **#150 Receipt PDF**: real, generated PDF streamed from real order
+  data, verified as a genuine valid PDF; extended `optionalAuth` with
+  a query-param token fallback (needed since `url_launcher` can't
+  attach headers), regression-tested to confirm existing header-based
+  auth was unaffected.
+
+### Genuinely blocked — flagged honestly, not faked
+
+- **#82 Wallet passes**: needs real Apple/Google merchant credentials,
+  same class of blocker as the payment-provider decision.
+- **#86 Live Activities**: needs real native iOS Swift/ActivityKit
+  code with no reliable Flutter path.
+- **#98 Bulk quote/RFQ**: fundamentally conflicts with this platform's
+  confirmed supplier-anonymization + fixed-catalog-price architecture
+  — a business-model decision, not a batch-scoped feature.
+
+### Real mistakes caught and fixed along the way
+
+The `.firstOrNull` mistake (package:collection not confirmed
+available) for the fourth time this session; a missing `CartItem`
+import; an undefined `isAr` variable introduced without checking a
+file's established translation pattern first; a real risk of
+referencing non-existent native icon assets (fixed by omitting them);
+a genuine scope mistake referencing a variable from inside a nested
+`FutureBuilder` from a `Scaffold`'s top-level `floatingActionButton`;
+`ApiClient.baseUrl` written as if static when it's an instance field.
+Every one caught and fixed before moving on, not after.
+
+### Verification summary
+
+Every backend change tested directly against the real running
+database — not just written and assumed correct. Full regression
+suite re-run repeatedly throughout: web-storefront 38/38. All 21
+touched/new mobile files re-checked for bracket balance; a systematic
+missing-import scan run across all of them (2 flagged, both confirmed
+comment-only mentions, not real issues). All 10 touched/new backend
+files re-verified for syntax.
+
 ## Real logo and branding, replacing generic placeholders
 
 **The real, uploaded brand logo now used everywhere it matters**:

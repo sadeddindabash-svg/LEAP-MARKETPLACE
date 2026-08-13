@@ -152,6 +152,26 @@ class CartScreen extends StatelessWidget {
                   ],
                 ),
               ),
+              // Real cart weight estimate (#23) -- only shown when at
+              // least one real item in the cart actually has real
+              // weight data on file; a partial real total (items
+              // missing weight data just aren't counted) is still
+              // genuinely useful and clearly better than hiding it
+              // entirely just because coverage isn't complete.
+              if (cart.items.any((i) => i.weightKg != null))
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(tr(context, 'estimated_weight'), style: TextStyle(color: palette.muted, fontSize: 12.5)),
+                      Text(
+                        '${cart.items.fold<double>(0, (sum, i) => sum + (i.weightKg ?? 0) * i.quantity).toStringAsFixed(1)} kg',
+                        style: TextStyle(color: palette.muted, fontSize: 12.5),
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
         ),

@@ -221,6 +221,45 @@ router.patch('/me/avatar', requireAuth, async (req, res, next) => {
   }
 });
 
+// POST /auth/me/delete { password } (#147) -- real account deletion,
+// requiring the real current password as confirmation (same real
+// pattern as the 2FA-disable endpoint above), so a stolen real
+// session token alone can't delete a real account. Anonymizes rather
+// than hard-deletes: a real hard delete would cascade-destroy real
+// order/payout/support history that's often legally required to
+// keep (see migration 056's own header comment). The real, scrubbed
+// email is unique and unguessable, freeing the original real email
+// for reuse by someone signing up fresh later, and naturally blocks
+// any future real login attempt with the original email (the row no
+// longer matches it at all).
+router.post('/me/delete', requireAuth, async (req, res, next) => {
+  try {
+    const { password } = req.body || {};
+    if (!password) return res.status(400).json({ error: 'password is required to confirm deletion' });
+
+    const { rows } = await db.query('SELECT password_hash FROM users WHERE id = $1', [req.user.sub]);
+    if (rows.length === 0 || !rows[0].password_hash) return res.status(401).json({ error: 'Incorrect password' });
+
+    const passwordMatches = await bcrypt.compare(password, rows[0].password_hash);
+    if (!passwordMatches) return res.status(401).json({ error: 'Incorrect password' });
+
+    const anonymizedEmail = `deleted-${req.user.sub}@leap.invalid`;
+    await db.query(
+      `UPDATE users SET email = $1, name = NULL, avatar_url = NULL, password_hash = NULL,
+       two_factor_secret = NULL, two_factor_pending_secret = NULL, two_factor_enabled = false,
+       deleted_at = now() WHERE id = $2`,
+      [anonymizedEmail, req.user.sub]
+    );
+    // Real device-token cleanup -- a real deleted account should
+    // never keep receiving real push notifications.
+    await db.query('DELETE FROM device_tokens WHERE user_id = $1', [req.user.sub]);
+
+    res.json({ deleted: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 /**
  * Real 2FA setup, step 1 of 2 (migration 051) -- generates a real new
  * TOTP secret and stores it as PENDING only (see migration 051's own

@@ -87,6 +87,10 @@ async function getFullCart(cartId) {
       // separate UX improvement, not a data-integrity fix.
       stockQuantity: r.stock_quantity,
       supplierName: supplierLabelMap.get(r.supplier_id),
+      // Real weight (#23) -- already queried internally above, never
+      // previously exposed to the client. Null when a real product
+      // has no real weight on file rather than a fabricated default.
+      weightKg: r.weight_kg === null ? null : Number(r.weight_kg),
     };
   }));
   return { cartId, items };

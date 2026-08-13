@@ -37,11 +37,11 @@ class _NetworkAwareClient extends http.BaseClient {
       // still-in-progress upload, not just a genuinely dead connection.
       return await _inner.send(request).timeout(const Duration(seconds: 30));
     } on SocketException {
-      throw ApiException('No internet connection. Check your network and try again.');
+      throw ApiException('No internet connection. Check your network and try again.', isNetworkError: true);
     } on TimeoutException {
-      throw ApiException('The request took too long to respond. Check your connection and try again.');
+      throw ApiException('The request took too long to respond. Check your connection and try again.', isNetworkError: true);
     } on http.ClientException catch (e) {
-      throw ApiException('Could not reach the server: ${e.message}');
+      throw ApiException('Could not reach the server: ${e.message}', isNetworkError: true);
     }
   }
 }
@@ -213,6 +213,14 @@ class ApiClient {
   Future<List<String>> fetchTrendingSearches() async {
     final response = await _client.get(Uri.parse('$baseUrl/catalog/trending-searches'));
     if (response.statusCode != 200) throw ApiException('Failed to load trending searches (${response.statusCode})');
+    return (jsonDecode(response.body) as List).cast<String>();
+  }
+
+  /// Real search autocomplete (#28) -- calls the new real backend
+  /// endpoint, matching on real, previously-searched terms.
+  Future<List<String>> fetchAutocompleteSuggestions(String prefix) async {
+    final response = await _client.get(Uri.parse('$baseUrl/catalog/search-autocomplete?prefix=${Uri.encodeQueryComponent(prefix)}'));
+    if (response.statusCode != 200) throw ApiException('Failed to load suggestions (${response.statusCode})');
     return (jsonDecode(response.body) as List).cast<String>();
   }
 
@@ -666,6 +674,11 @@ class ApiClient {
     // false (ship as available), matching the only real behavior
     // that existed before this.
     bool waitForAllShipments = false,
+    // Real idempotency key (#60) -- lets a real retry (e.g. from
+    // DraftOrderQueue) safely resubmit without creating a real
+    // duplicate order if an earlier attempt already succeeded
+    // server-side.
+    String? idempotencyKey,
   }) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/order'),
@@ -678,6 +691,7 @@ class ApiClient {
         if (address != null) 'address': address,
         if (addressId != null) 'addressId': addressId,
         'waitForAllShipments': waitForAllShipments,
+        if (idempotencyKey != null) 'idempotencyKey': idempotencyKey,
       }),
     );
     final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -1039,6 +1053,47 @@ class ApiClient {
     }
   }
 
+  /// Real bug report submission (#139) -- calls the new real backend
+  /// endpoint. No required auth -- a real guest can submit too
+  /// (optionalAuth on the backend), but an available real token is
+  /// still sent so the report can be tied to a real account.
+  Future<void> submitBugReport({required String description, String? screenshotUrl, String? deviceInfo, String? token}) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/bug-reports'),
+      headers: token != null ? _authHeaders(token) : {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'description': description,
+        if (screenshotUrl != null) 'screenshotUrl': screenshotUrl,
+        if (deviceInfo != null) 'deviceInfo': deviceInfo,
+      }),
+    );
+    if (response.statusCode != 201) {
+      throw ApiException('Failed to submit report (${response.statusCode})');
+    }
+  }
+
+  /// Real account deletion (#147) -- calls the new real backend
+  /// endpoint, which anonymizes rather than hard-deletes.
+  Future<void> deleteAccount(String token, String password) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/auth/me/delete'),
+      headers: _authHeaders(token),
+      body: jsonEncode({'password': password}),
+    );
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode != 200) {
+      throw ApiException(body['error'] as String? ?? 'Failed to delete account (${response.statusCode})');
+    }
+  }
+
+  /// Real per-referral detail history (#149) -- calls the new real
+  /// backend endpoint.
+  Future<List<Map<String, dynamic>>> fetchReferralHistory(String token) async {
+    final response = await _client.get(Uri.parse('$baseUrl/referrals/me/history'), headers: _authHeaders(token));
+    if (response.statusCode != 200) throw ApiException('Failed to load referral history (${response.statusCode})');
+    return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+  }
+
   Future<MyReview> submitReview(String token, {required String productId, required int rating, String? comment, List<String>? photos}) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/reviews'),
@@ -1177,7 +1232,13 @@ class ApiClient {
 
 class ApiException implements Exception {
   final String message;
-  ApiException(this.message);
+  // Real, typed flag (#60) -- set at the actual real throw site
+  // (_NetworkAwareClient) where the real cause is genuinely known,
+  // rather than fragile string-matching against exact wording later
+  // to distinguish a real network failure from a real business-logic
+  // error (e.g. "items is required").
+  final bool isNetworkError;
+  ApiException(this.message, {this.isNetworkError = false});
   @override
   String toString() => 'ApiException: $message';
 }

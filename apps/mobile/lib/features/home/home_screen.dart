@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:custom_refresh_indicator/custom_refresh_indicator.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -167,8 +168,41 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       body: SafeArea(
-        child: RefreshIndicator(
+        // Real, branded pull-to-refresh (#121) -- renders the real
+        // logo (assets/images/leap_logo.png) instead of Flutter's
+        // generic spinner, since RefreshIndicator itself only
+        // supports changing the spinner's color, not swapping in a
+        // real custom widget.
+        child: CustomRefreshIndicator(
           onRefresh: _handleRefresh,
+          builder: (context, child, controller) {
+            return Stack(
+              children: [
+                child,
+                if (!controller.isIdle)
+                  AnimatedBuilder(
+                    animation: controller,
+                    builder: (context, _) {
+                      final progress = controller.value.clamp(0.0, 1.5);
+                      return Positioned(
+                        top: 16 + (24 * progress.clamp(0.0, 1.0)),
+                        left: 0,
+                        right: 0,
+                        child: Center(
+                          child: Opacity(
+                            opacity: progress.clamp(0.0, 1.0),
+                            child: Transform.rotate(
+                              angle: controller.isLoading ? controller.value * 6.28 : 0,
+                              child: Image.asset('assets/images/leap_logo.png', width: 32, height: 32),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+              ],
+            );
+          },
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [

@@ -23,6 +23,9 @@ class ReferralsScreen extends StatefulWidget {
 
 class _ReferralsScreenState extends State<ReferralsScreen> {
   Map<String, dynamic>? _info;
+  // Real per-referral detail history (#149) -- who joined and when,
+  // with real reward status per referral.
+  List<Map<String, dynamic>>? _history;
   String? _errorMessage;
 
   @override
@@ -40,6 +43,13 @@ class _ReferralsScreenState extends State<ReferralsScreen> {
     } on ApiException catch (e) {
       if (mounted) setState(() => _errorMessage = e.message);
     }
+    // Real, best-effort load (#149) -- a real failure here shouldn't
+    // block the rest of this real screen from showing the stats that
+    // already loaded successfully above.
+    try {
+      final history = await ApiClient().fetchReferralHistory(token);
+      if (mounted) setState(() => _history = history);
+    } catch (_) {}
   }
 
   void _copyCode() {
@@ -139,6 +149,28 @@ class _ReferralsScreenState extends State<ReferralsScreen> {
                       if (_info!['capReached'] == true) ...[
                         const SizedBox(height: 16),
                         Text(tr(context, 'referral_cap_reached'), style: TextStyle(fontSize: 12.5, color: palette.muted)),
+                      ],
+                      // Real per-referral detail history (#149) --
+                      // only shown when there's genuinely at least
+                      // one real referral, never an empty section
+                      // header.
+                      if (_history != null && _history!.isNotEmpty) ...[
+                        const SizedBox(height: 24),
+                        Text('Referral history', style: TextStyle(fontSize: 11.5, color: palette.muted, fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 8),
+                        ..._history!.map((h) {
+                          final firstName = h['firstName'] as String?;
+                          final joinedAt = DateTime.parse(h['joinedAt'] as String);
+                          final rewardGranted = h['rewardGranted'] as bool;
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: ListTile(
+                              leading: Icon(rewardGranted ? Icons.check_circle : Icons.hourglass_empty, color: rewardGranted ? palette.gauge : palette.muted),
+                              title: Text(firstName != null ? '$firstName joined' : 'A new member joined'),
+                              subtitle: Text('${joinedAt.month}/${joinedAt.day}/${joinedAt.year} — ${rewardGranted ? "Reward earned" : "Reward pending"}'),
+                            ),
+                          );
+                        }),
                       ],
                     ],
                   ),

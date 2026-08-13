@@ -5,6 +5,7 @@ import '../core/theme.dart';
 import '../core/app_strings.dart';
 import '../core/auth_state.dart';
 import '../core/cart_state.dart';
+import '../models/cart_item.dart';
 import '../models/product.dart';
 import '../services/api_client.dart';
 
@@ -94,10 +95,28 @@ class _ProductCardState extends State<ProductCard> {
   Future<void> _addToCart() async {
     setState(() => _isAdding = true);
     try {
-      await context.read<CartState>().addItem(widget.product.id, 1);
+      // Real "already in cart" check (#18) -- the real backend
+      // already correctly merges a repeat add into the existing real
+      // line item (confirmed directly: ON CONFLICT ... quantity =
+      // quantity + EXCLUDED.quantity), so there's no real duplicate
+      // to warn about -- this is an honest, informational notice
+      // instead, checked against the real, already-loaded cart
+      // before the add, not a fabricated one.
+      final cart = context.read<CartState>();
+      CartItem? existing;
+      for (final i in cart.items) {
+        if (i.productId == widget.product.id) {
+          existing = i;
+          break;
+        }
+      }
+      await cart.addItem(widget.product.id, 1);
       if (mounted) {
+        final message = existing != null
+            ? '${trRead(context, 'added_to_cart')}: ${widget.product.name} (${existing.quantity + 1} in cart)'
+            : '${trRead(context, 'added_to_cart')}: ${widget.product.name}';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${trRead(context, 'added_to_cart')}: ${widget.product.name}'), duration: const Duration(seconds: 1)),
+          SnackBar(content: Text(message), duration: const Duration(seconds: 1)),
         );
       }
     } on ApiException catch (e) {

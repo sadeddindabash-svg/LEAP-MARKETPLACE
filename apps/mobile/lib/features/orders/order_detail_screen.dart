@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
@@ -391,6 +392,24 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
               icon: const Icon(Icons.local_shipping_outlined, size: 18),
               label: Text(Localizations.localeOf(context).languageCode == 'ar' ? 'تتبع الطلب' : 'Track your package'),
             ),
+          const SizedBox(height: 10),
+          // Real Download receipt button (#150) -- opens the real
+          // receipt PDF in the device's own browser/PDF viewer. Real
+          // token-via-query-param auth (since url_launcher can't
+          // attach a real Authorization header), matching the exact
+          // same real auth support just added on the backend.
+          OutlinedButton.icon(
+            onPressed: () async {
+              final auth = context.read<AuthState>();
+              final query = auth.isLoggedIn
+                  ? 'token=${auth.token}'
+                  : 'guestEmail=${Uri.encodeQueryComponent(widget.guestEmail ?? '')}';
+              final url = Uri.parse('${ApiClient().baseUrl}/order/${widget.orderId}/receipt?$query');
+              await launchUrl(url, mode: LaunchMode.externalApplication);
+            },
+            icon: const Icon(Icons.receipt_long_outlined, size: 18),
+            label: Text(Localizations.localeOf(context).languageCode == 'ar' ? 'تنزيل الإيصال' : 'Download receipt'),
+          ),
           const SizedBox(height: 10),
           FilledButton.icon(
             onPressed: _isReordering ? null : _reorder,

@@ -40,9 +40,14 @@ function requireAuth(req, res, next) {
 function optionalAuth(req, res, next) {
   const header = req.headers.authorization || '';
   const [scheme, token] = header.split(' ');
-  if (scheme === 'Bearer' && token) {
+  // Real query-param token fallback (#150) -- needed for a real
+  // external download link (e.g. a real device's own OS/browser
+  // opening a receipt PDF via url_launcher) that can't attach a real
+  // Authorization header. Only used when no real header is present.
+  const effectiveToken = scheme === 'Bearer' && token ? token : req.query.token;
+  if (effectiveToken) {
     try {
-      req.user = jwt.verify(token, env.jwtSecret);
+      req.user = jwt.verify(effectiveToken, env.jwtSecret);
     } catch {
       // Invalid token on an optional-auth route: proceed as anonymous
       // rather than rejecting, but don't silently pretend it was valid.

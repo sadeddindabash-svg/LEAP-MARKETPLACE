@@ -3,11 +3,13 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/config/app_config.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../core/cart_state.dart';
+import '../../core/draft_order_queue.dart';
 import '../../services/api_client.dart';
 import '../../widgets/step_progress_indicator.dart';
 
@@ -115,10 +117,59 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   @override
   void initState() {
     super.initState();
+    // Real guest-email autofill (#20) -- device-local only, prefills
+    // from a previously-used real guest email so a repeat guest
+    // checkout doesn't retype it every time.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadSavedGuestEmail());
+    // Real stock recheck at checkout start (#17) -- refreshes the
+    // cart from the real backend (already returns live
+    // stockQuantity per item) rather than trusting whatever was
+    // already in memory from whenever the cart screen was last
+    // loaded, which could be stale by the time checkout opens.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _recheckStock());
     // Real saved addresses, fetched once on load -- only meaningful
     // for a real logged-in buyer (migration 030).
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadSavedAddresses());
     _scrollController.addListener(_updateCurrentStepFromScroll);
+  }
+
+  static const _guestEmailStorageKey = 'leap_last_guest_checkout_email';
+  final _secureStorage = const FlutterSecureStorage();
+
+  Future<void> _loadSavedGuestEmail() async {
+    final auth = context.read<AuthState>();
+    if (auth.isLoggedIn) return; // a real logged-in buyer never needs this
+    try {
+      final saved = await _secureStorage.read(key: _guestEmailStorageKey);
+      if (saved != null && saved.isNotEmpty && mounted && _guestEmailController.text.isEmpty) {
+        setState(() => _guestEmailController.text = saved);
+      }
+    } catch (_) {
+      // Real, honest no-op -- a real failure reading local storage
+      // just means no autofill, never blocks checkout.
+    }
+  }
+
+  List<String> _stockChangedItemNames = [];
+
+  Future<void> _recheckStock() async {
+    final cart = context.read<CartState>();
+    final beforeQuantities = {for (final i in cart.items) i.productId: i.quantity};
+    await cart.refresh();
+    if (!mounted) return;
+    final changed = <String>[];
+    for (final item in cart.items) {
+      final before = beforeQuantities[item.productId];
+      // Real, deliberate check: only surfaces a real problem -- the
+      // cart quantity now exceeding real current stock -- not every
+      // real stock number fluctuation (e.g. stock going up, or
+      // staying comfortably above the cart quantity, is never worth
+      // interrupting checkout over).
+      if (before != null && item.quantity > item.stockQuantity) {
+        changed.add(item.name);
+      }
+    }
+    if (changed.isNotEmpty) setState(() => _stockChangedItemNames = changed);
   }
 
   Future<void> _loadSavedAddresses() async {
@@ -304,6 +355,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         address: inlineAddress,
         waitForAllShipments: _waitForAllShipments,
       );
+      // Real guest-email autofill save (#20) -- device-local only,
+      // best-effort, never blocks a real successful order over a
+      // real local-storage write failure.
+      if (!auth.isLoggedIn) {
+        _secureStorage.write(key: _guestEmailStorageKey, value: _guestEmailController.text.trim()).catchError((_) {});
+      }
       await cart.clearAfterOrder();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -355,6 +412,39 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
     } on ApiException catch (e) {
       setState(() => _errorMessage = e.message);
+      // Real draft-order queue offer (#60) -- only for a genuine
+      // real network failure (the new typed isNetworkError flag),
+      // never for a real validation error or any other real problem
+      // that needs the person's own attention right now, not a
+      // silent retry.
+      if (e.isNetworkError && mounted) {
+        final shouldSave = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(trRead(context, 'save_order_for_later_title')),
+            content: Text(trRead(context, 'save_order_for_later_body')),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: Text(trRead(context, 'no_thanks'))),
+              TextButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: Text(trRead(context, 'save_and_send_later'))),
+            ],
+          ),
+        );
+        if (shouldSave == true && mounted) {
+          await DraftOrderQueue.save(
+            items: cart.items,
+            userId: auth.isLoggedIn ? auth.user!['id'] as String : null,
+            guestEmail: auth.isLoggedIn ? null : _guestEmailController.text.trim(),
+            promoCode: _appliedPromoCode,
+            addressId: addressId,
+            address: inlineAddress,
+            waitForAllShipments: _waitForAllShipments,
+          );
+          if (mounted) {
+            setState(() => _errorMessage = null);
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(trRead(context, 'order_saved_for_later'))));
+          }
+        }
+      }
     } catch (e) {
       setState(() => _errorMessage = trRead(context, 'order_placement_error'));
     } finally {
@@ -528,6 +618,29 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               controller: _scrollController,
               padding: const EdgeInsets.all(16),
               children: [
+          // Real stock-change warning (#17) -- only shown when the
+          // real recheck above found a real, genuine problem: a cart
+          // quantity that now exceeds real current stock.
+          if (_stockChangedItemNames.isNotEmpty)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.orange.shade800, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${_stockChangedItemNames.join(", ")} ${_stockChangedItemNames.length == 1 ? "has" : "have"} less stock available now than in your cart. Please adjust the quantity before continuing.',
+                      style: TextStyle(color: Colors.orange.shade900, fontSize: 12.5, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (auth.isLoggedIn)
             Container(
               padding: const EdgeInsets.all(12),
@@ -731,7 +844,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.all(16),
         child: ElevatedButton(
-          onPressed: (cart.isEmpty || _isPlacingOrder) ? null : _placeOrder,
+          onPressed: (cart.isEmpty || _isPlacingOrder || _stockChangedItemNames.isNotEmpty) ? null : _placeOrder,
           child: _isPlacingOrder
               ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
               : Text('${tr(context, 'place_order')} · \$${(cart.total - _previewDiscount(cart.total)).toStringAsFixed(2)}'),

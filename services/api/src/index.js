@@ -130,6 +130,7 @@ app.use('/config', configRoutes);
 app.use('/auth', authRoutes);
 app.use('/supplier', supplierRoutes);
 app.use('/support', supportRoutes);
+app.use('/bug-reports', require('./modules/bugReports/routes'));
 app.use('/returns', returnsRoutes);
 app.use('/garage', garageRoutes);
 app.use('/overview', overviewRoutes);
