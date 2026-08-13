@@ -280,6 +280,7 @@ class _CartItemRow extends StatelessWidget {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
       return;
     }
+    messenger.removeCurrentSnackBar();
     messenger.showSnackBar(
       SnackBar(
         content: Text('$removedName $removedLabel'),
@@ -299,7 +300,7 @@ class _CartItemRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cart = context.read<CartState>();
+    final cart = context.watch<CartState>();
     final palette = LeapPalette.of(context);
     // Real, proactive stock limit (new) -- disables "+" right at the
     // real stock ceiling, rather than only reacting after the backend
@@ -362,8 +363,10 @@ class _CartItemRow extends StatelessWidget {
                       child: Text(item.name, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: palette.ink), maxLines: 2, overflow: TextOverflow.ellipsis),
                     ),
                     IconButton(
-                      onPressed: () => _removeItem(context, cart),
-                      icon: Icon(Icons.delete_outline, size: 18, color: palette.muted),
+                      onPressed: cart.isRemoving(item.productId) ? null : () => _removeItem(context, cart),
+                      icon: cart.isRemoving(item.productId)
+                          ? SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: palette.muted))
+                          : Icon(Icons.delete_outline, size: 18, color: palette.muted),
                       tooltip: 'Remove item',
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
