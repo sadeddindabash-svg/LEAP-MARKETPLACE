@@ -1,5 +1,5 @@
 import 'package:quick_actions/quick_actions.dart';
-import 'app.dart';
+import '../app.dart';
 
 /// Real OS-level home-screen app shortcuts (#81) -- long-press the
 /// real app icon to jump straight into a few real, common actions.
