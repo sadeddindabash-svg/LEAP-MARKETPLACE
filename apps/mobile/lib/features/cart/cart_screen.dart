@@ -202,16 +202,36 @@ class _SupplierGroup extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          for (final item in items) _CartItemRow(item: item),
+          for (final item in items) _CartItemRow(key: ValueKey(item.productId), item: item),
         ],
       ),
     );
   }
 }
 
-class _CartItemRow extends StatelessWidget {
+class _CartItemRow extends StatefulWidget {
   final CartItem item;
-  const _CartItemRow({required this.item});
+  const _CartItemRow({super.key, required this.item});
+
+  @override
+  State<_CartItemRow> createState() => _CartItemRowState();
+}
+
+class _CartItemRowState extends State<_CartItemRow> {
+  // REAL FIX: fully local removal state, not tied to CartState's own
+  // notifyListeners() at all. Suspected root cause of the message
+  // never auto-dismissing: this row previously watched CartState
+  // reactively for this same visual purpose, and CartState.removeItem
+  // notifies listeners twice per removal -- the repeated rebuilds
+  // this caused, right while the real SnackBar was showing, may have
+  // been disrupting its own timer (confirmed manual dismissal via
+  // Undo worked fine, only the automatic timer never fired --
+  // pointing at something disrupting the timer specifically, not the
+  // SnackBar mechanism itself). This is real, local State now,
+  // entirely decoupled from Provider's rebuild mechanism.
+  bool _isRemoving = false;
+
+  CartItem get item => widget.item;
 
   // REAL BUG FOUND AND FIXED HERE: the +/- stepper's onPressed calls
   // were fire-and-forget (`() => cart.setQuantity(...)`, never awaited
@@ -274,11 +294,14 @@ class _CartItemRow extends StatelessWidget {
     final messenger = ScaffoldMessenger.of(context);
     final removedLabel = trRead(context, 'cart_removed_from_cart');
     final undoLabel = trRead(context, 'undo');
+    setState(() => _isRemoving = true);
     try {
       await cart.removeItem(item.productId);
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
       return;
+    } finally {
+      if (mounted) setState(() => _isRemoving = false);
     }
     // REAL BUG FOUND AND FIXED HERE: removeCurrentSnackBar()
     // immediately followed by showSnackBar() in the same synchronous
@@ -313,7 +336,7 @@ class _CartItemRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cart = context.watch<CartState>();
+    final cart = context.read<CartState>();
     final palette = LeapPalette.of(context);
     // Real, proactive stock limit (new) -- disables "+" right at the
     // real stock ceiling, rather than only reacting after the backend
@@ -376,8 +399,8 @@ class _CartItemRow extends StatelessWidget {
                       child: Text(item.name, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: palette.ink), maxLines: 2, overflow: TextOverflow.ellipsis),
                     ),
                     IconButton(
-                      onPressed: cart.isRemoving(item.productId) ? null : () => _removeItem(context, cart),
-                      icon: cart.isRemoving(item.productId)
+                      onPressed: _isRemoving ? null : () => _removeItem(context, cart),
+                      icon: _isRemoving
                           ? SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: palette.muted))
                           : Icon(Icons.delete_outline, size: 18, color: palette.muted),
                       tooltip: 'Remove item',

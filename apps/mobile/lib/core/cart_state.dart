@@ -21,11 +21,6 @@ class CartState extends ChangeNotifier {
   List<CartItem> _items = [];
   bool _isLoading = true;
   String? _errorMessage;
-  // Real guard against repeated/rapid remove taps (fix) -- a second
-  // tap on the same real item while its own real removal is still
-  // in flight is genuinely ignored, rather than sending a redundant
-  // real backend request and queuing a duplicate real message.
-  final Set<String> _removingProductIds = {};
 
   CartState({ApiClient? apiClient}) : _apiClient = apiClient ?? ApiClient() {
     _init();
@@ -35,7 +30,6 @@ class CartState extends ChangeNotifier {
   List<CartItem> get items => List.unmodifiable(_items);
   String? get errorMessage => _errorMessage;
   String? get cartId => _cartId;
-  bool isRemoving(String productId) => _removingProductIds.contains(productId);
 
   double get total => _items.fold(0.0, (sum, i) => sum + i.lineTotal);
   int get itemCount => _items.fold(0, (sum, i) => sum + i.quantity);
@@ -94,19 +88,8 @@ class CartState extends ChangeNotifier {
 
   Future<void> removeItem(String productId) async {
     if (_cartId == null) return;
-    // Real guard against repeated/rapid remove taps (fix) -- a
-    // second real call for the same item while one is already in
-    // flight is a genuine no-op, not a redundant real backend
-    // request that would otherwise queue a duplicate real message.
-    if (_removingProductIds.contains(productId)) return;
-    _removingProductIds.add(productId);
+    _items = await _apiClient.removeCartItem(_cartId!, productId);
     notifyListeners();
-    try {
-      _items = await _apiClient.removeCartItem(_cartId!, productId);
-    } finally {
-      _removingProductIds.remove(productId);
-      notifyListeners();
-    }
   }
 
   /// Called after a successful order placement — clears the local view of
