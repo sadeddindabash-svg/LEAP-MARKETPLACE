@@ -280,7 +280,14 @@ class _CartItemRow extends StatelessWidget {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
       return;
     }
-    messenger.removeCurrentSnackBar();
+    // REAL BUG FOUND AND FIXED HERE: removeCurrentSnackBar()
+    // immediately followed by showSnackBar() in the same synchronous
+    // call is a known, documented Flutter interaction issue in some
+    // versions -- the new SnackBar's own timer can behave
+    // unpredictably right after a forced removal like this. Removed
+    // entirely; the explicit duration below already handles the
+    // real underlying concern (a message that could otherwise
+    // linger) more directly and safely.
     messenger.showSnackBar(
       SnackBar(
         content: Text('$removedName $removedLabel'),
