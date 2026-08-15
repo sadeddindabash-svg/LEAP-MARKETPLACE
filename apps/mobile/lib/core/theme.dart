@@ -38,7 +38,7 @@ class LeapColorsDark {
   static const background = Color(0xFF131313); // surface / surface-dim
   static const surface = Color(0xFF1C1B1B); // surface-container-low
   static const surfaceHigh = Color(0xFF2A2A2A); // surface-container-high
-  static const onSurface = Color(0xFFE5E2E1);
+  static const onSurface = Color(0xFFF2CA50); // primary text color in dark mode -- same real gold as LeapColorsDark.signal, per request (was 0xFFE5E2E1, a light gray)
   static const line = Color(0xFF4D4635); // outline-variant
   static const signal = Color(0xFFF2CA50); // real primary, per the real spec (D4AF37 is actually primary-container there, not primary)
   static const signalContainer = Color(0xFFD4AF37); // metallic-gold / primary-container, used for secondary gold accents
