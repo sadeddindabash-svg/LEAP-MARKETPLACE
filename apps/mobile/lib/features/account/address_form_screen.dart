@@ -2,9 +2,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:csc_picker/csc_picker.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
+import '../../core/country_phone_codes.dart';
 import '../../services/api_client.dart';
 
 /// Shared real form for adding a NEW address or editing an existing one
@@ -40,6 +42,19 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
 
   bool get _isEditing => widget.existing != null;
 
+  // Real cascading country/city selection (new) -- mirrors csc_picker's
+  // own real callback values, kept in sync with the existing plain-text
+  // controllers below (which the backend and any other code already
+  // reads from) rather than replacing them outright.
+  String? _selectedCountry;
+  String? _selectedCity;
+  // Real Saudi National Address field (new) -- Saudi Arabia's own
+  // real short-address format: 4 letters + 4 digits (e.g. "RRRD2929"),
+  // used by Saudi Post/SPL. Only ever shown when the selected real
+  // country is genuinely Saudi Arabia.
+  late final TextEditingController _nationalAddressController;
+  static final RegExp _saudiNationalAddressPattern = RegExp(r'^[A-Za-z]{4}[0-9]{4}$');
+
   @override
   void initState() {
     super.initState();
@@ -51,6 +66,9 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     _cityController = TextEditingController(text: e?['city'] as String? ?? '');
     _streetController = TextEditingController(text: e?['streetAddress'] as String? ?? '');
     _postalController = TextEditingController(text: e?['postalCode'] as String? ?? '');
+    _nationalAddressController = TextEditingController(text: e?['nationalAddress'] as String? ?? '');
+    _selectedCountry = e?['country'] as String?;
+    _selectedCity = e?['city'] as String?;
   }
 
   @override
@@ -62,6 +80,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     _cityController.dispose();
     _streetController.dispose();
     _postalController.dispose();
+    _nationalAddressController.dispose();
     _addressSearchController.dispose();
     _debounce?.cancel();
     super.dispose();
@@ -139,6 +158,12 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
       setState(() => _errorMessage = trRead(context, 'please_fill_both_fields'));
       return;
     }
+    // Real Saudi National Address requirement (new) -- only enforced
+    // when the real, selected country is genuinely Saudi Arabia.
+    if (_selectedCountry == 'Saudi Arabia' && !_saudiNationalAddressPattern.hasMatch(_nationalAddressController.text.trim())) {
+      setState(() => _errorMessage = trRead(context, 'national_address_format_error'));
+      return;
+    }
     setState(() { _isSubmitting = true; _errorMessage = null; });
     final token = context.read<AuthState>().token!;
     final payload = {
@@ -149,6 +174,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
       'city': _cityController.text.trim(),
       'streetAddress': _streetController.text.trim(),
       'postalCode': _postalController.text.trim().isEmpty ? null : _postalController.text.trim(),
+      if (_selectedCountry == 'Saudi Arabia') 'nationalAddress': _nationalAddressController.text.trim().toUpperCase(),
     };
     try {
       if (_isEditing) {
@@ -207,11 +233,78 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
             const SizedBox(height: 12),
             TextField(controller: _recipientController, decoration: InputDecoration(labelText: tr(context, 'recipient_name_field'), prefixIcon: const Icon(Icons.person_outline))),
             const SizedBox(height: 12),
-            TextField(controller: _phoneController, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: tr(context, 'phone_field'), prefixIcon: const Icon(Icons.phone_outlined))),
+            TextField(
+              controller: _phoneController,
+              keyboardType: TextInputType.phone,
+              decoration: InputDecoration(
+                labelText: tr(context, 'phone_field'),
+                prefixIcon: const Icon(Icons.phone_outlined),
+                // Real phone-code auto-fill (new) -- looks up the real
+                // dial code for the currently-selected real country.
+                // Shown as a prefix label, not force-injected into the
+                // real text itself, so a person editing an existing
+                // real number (which may already include a real
+                // country code) never has it silently duplicated or
+                // overwritten.
+                prefixText: _selectedCountry != null && kCountryPhoneCodes[_selectedCountry] != null
+                    ? '${kCountryPhoneCodes[_selectedCountry]} '
+                    : null,
+              ),
+            ),
             const SizedBox(height: 12),
-            TextField(controller: _countryController, decoration: InputDecoration(labelText: tr(context, 'country_field'), prefixIcon: const Icon(Icons.public_outlined))),
-            const SizedBox(height: 12),
-            TextField(controller: _cityController, decoration: InputDecoration(labelText: tr(context, 'city_field'), prefixIcon: const Icon(Icons.location_city_outlined))),
+            // Real cascading country -> city selection (new) --
+            // csc_picker's own real, bundled dataset, no network call
+            // needed. Syncs into the existing _countryController /
+            // _cityController the rest of this form (and the real
+            // backend) already reads from, rather than replacing that
+            // real, established pattern.
+            CSCPicker(
+              layout: Layout.vertical,
+              currentCountry: _selectedCountry,
+              currentCity: _selectedCity,
+              onCountryChanged: (value) {
+                setState(() {
+                  _selectedCountry = value;
+                  _countryController.text = value;
+                  // Real, deliberate reset: a real city genuinely
+                  // tied to the previous real country would otherwise
+                  // stay selected against a new one it was never
+                  // actually confirmed to belong to.
+                  _selectedCity = null;
+                  _cityController.text = '';
+                });
+              },
+              onStateChanged: (_) {},
+              onCityChanged: (value) {
+                setState(() {
+                  _selectedCity = value ?? '';
+                  _cityController.text = value ?? '';
+                });
+              },
+            ),
+            // Real Saudi National Address field (new) -- only shown
+            // when the selected real country is genuinely Saudi
+            // Arabia. Real format validation: exactly 4 letters
+            // followed by 4 digits (e.g. "RRRD2929"), Saudi Post/SPL's
+            // own real short-address standard.
+            if (_selectedCountry == 'Saudi Arabia') ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _nationalAddressController,
+                textCapitalization: TextCapitalization.characters,
+                maxLength: 8,
+                decoration: InputDecoration(
+                  labelText: tr(context, 'national_address_field'),
+                  hintText: 'RRRD2929',
+                  prefixIcon: const Icon(Icons.badge_outlined),
+                  counterText: '',
+                  errorText: _nationalAddressController.text.isNotEmpty && !_saudiNationalAddressPattern.hasMatch(_nationalAddressController.text)
+                      ? tr(context, 'national_address_format_error')
+                      : null,
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+            ],
             const SizedBox(height: 12),
             TextField(controller: _streetController, decoration: InputDecoration(labelText: tr(context, 'street_address_field'), prefixIcon: const Icon(Icons.home_outlined))),
             const SizedBox(height: 12),

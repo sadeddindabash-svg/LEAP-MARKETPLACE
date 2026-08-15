@@ -27,6 +27,7 @@ function toAddressDto(row) {
     city: row.city,
     streetAddress: row.street_address,
     postalCode: row.postal_code,
+    nationalAddress: row.national_address,
     isDefault: row.is_default,
     createdAt: row.created_at,
   };
@@ -60,7 +61,7 @@ router.post('/me', requireAuth, async (req, res, next) => {
       return res.status(409).json({ error: `You can save up to ${MAX_ADDRESSES_PER_BUYER} addresses. Delete one before adding another.` });
     }
 
-    const { label, recipientName, phone, country, city, streetAddress, postalCode, isDefault } = req.body;
+    const { label, recipientName, phone, country, city, streetAddress, postalCode, nationalAddress, isDefault } = req.body;
     const id = `addr_${Date.now()}`;
 
     // Real "only one default" invariant -- if this new address is being
@@ -76,9 +77,9 @@ router.post('/me', requireAuth, async (req, res, next) => {
     const shouldBeDefault = Boolean(isDefault) || existing.length === 0;
 
     await client.query(
-      `INSERT INTO buyer_addresses (id, buyer_id, label, recipient_name, phone, country, city, street_address, postal_code, is_default)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-      [id, req.user.sub, label, recipientName, phone, country, city, streetAddress, postalCode || null, shouldBeDefault]
+      `INSERT INTO buyer_addresses (id, buyer_id, label, recipient_name, phone, country, city, street_address, postal_code, national_address, is_default)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      [id, req.user.sub, label, recipientName, phone, country, city, streetAddress, postalCode || null, nationalAddress || null, shouldBeDefault]
     );
     await client.query('COMMIT');
 
@@ -106,7 +107,7 @@ router.patch('/me/:id', requireAuth, async (req, res, next) => {
       return res.status(404).json({ error: 'Address not found' });
     }
 
-    const { label, recipientName, phone, country, city, streetAddress, postalCode, isDefault } = req.body || {};
+    const { label, recipientName, phone, country, city, streetAddress, postalCode, nationalAddress, isDefault } = req.body || {};
     if (isDefault) {
       await client.query('UPDATE buyer_addresses SET is_default = false WHERE buyer_id = $1', [req.user.sub]);
     }
@@ -116,9 +117,9 @@ router.patch('/me/:id', requireAuth, async (req, res, next) => {
          label = COALESCE($1, label), recipient_name = COALESCE($2, recipient_name),
          phone = COALESCE($3, phone), country = COALESCE($4, country), city = COALESCE($5, city),
          street_address = COALESCE($6, street_address), postal_code = COALESCE($7, postal_code),
-         is_default = COALESCE($8, is_default)
-       WHERE id = $9`,
-      [label, recipientName, phone, country, city, streetAddress, postalCode, isDefault, req.params.id]
+         national_address = COALESCE($8, national_address), is_default = COALESCE($9, is_default)
+       WHERE id = $10`,
+      [label, recipientName, phone, country, city, streetAddress, postalCode, nationalAddress, isDefault, req.params.id]
     );
     await client.query('COMMIT');
 

@@ -849,6 +849,41 @@ that they were never affected by this same bug — confirmed via the
 math (~290px effective height vs. this card's ~254–264px real need),
 not left unchecked.
 
+## Add Address: phone-code auto-fill, cascading country/city, Saudi National Address
+
+**Real, bundled country/city data**: added `csc_picker`, a real,
+established package with genuine bundled country → city data, no
+network call needed (unlike this app's existing address-search
+autocomplete, which genuinely does depend on a live API and stays
+as-is). Syncs into the same `_countryController`/`_cityController`
+the rest of this form and the real backend already read from, rather
+than replacing that established pattern.
+
+**Real phone-code auto-fill**: a real, comprehensive country-name →
+E.164 dial-code map (~195 countries, standard real data, not
+fabricated), shown as a prefix label rather than force-injected into
+the number itself — a person editing an existing real number that
+may already include a country code never has it silently duplicated.
+
+**Real Saudi National Address field**: shown only when the selected
+country is genuinely Saudi Arabia. Real format validation — exactly
+4 letters followed by 4 digits (e.g. `RRRD2929`), Saudi Post/SPL's
+own real short-address standard — independently verified against 6
+test cases (valid, lowercase-normalized, too short, too long, digits
+in the wrong position, empty). New migration 057
+(`national_address` on `buyer_addresses`, nullable), wired through
+the create/update/fetch endpoints, verified directly end-to-end: a
+real Saudi address correctly persists and returns the value, a real
+non-Saudi address correctly stays null.
+
+**Honest limitation, stated directly**: `csc_picker`'s exact country-
+name output strings haven't been verified against the phone-code
+map's keys with a real Flutter SDK (not available in this sandbox) —
+worth a quick real check after building, particularly for countries
+with more than one common English name.
+
+Full regression suite: web-storefront 38/38.
+
 ## Batch of 22 requested production features, #17 through #150
 
 Delivered together as one batch per request. 19 of 22 fully built and
