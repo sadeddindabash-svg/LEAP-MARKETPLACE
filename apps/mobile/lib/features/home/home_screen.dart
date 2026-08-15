@@ -463,12 +463,18 @@ class _ShoppingForCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = LeapPalette.of(context);
+    // Real, deliberate scoping: gold only in dark mode, per the
+    // original request. Light mode keeps its real muted gray --
+    // gold on a light background would have much lower real
+    // contrast/readability than the existing color there.
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final labelColor = isDark ? palette.signal : palette.muted;
     if (!isLoggedIn || garageFuture == null) {
       return Card(
         child: ListTile(
           leading: const Icon(Icons.directions_car_outlined),
-          title: Text(tr(context, 'shopping_for'), style: TextStyle(fontSize: 11, color: palette.muted)),
-          subtitle: Text(tr(context, 'add_a_vehicle')),
+          title: Text(tr(context, 'shopping_for'), style: TextStyle(fontSize: 11, color: labelColor)),
+          subtitle: Text(tr(context, 'add_a_vehicle'), style: isDark ? TextStyle(color: palette.signal) : null),
           trailing: const Icon(Icons.chevron_right),
           onTap: () => context.push('/garage'),
         ),
@@ -482,10 +488,10 @@ class _ShoppingForCard extends StatelessWidget {
         return Card(
           child: ListTile(
             leading: const Icon(Icons.directions_car_outlined),
-            title: Text(tr(context, 'shopping_for'), style: TextStyle(fontSize: 11, color: palette.muted)),
+            title: Text(tr(context, 'shopping_for'), style: TextStyle(fontSize: 11, color: labelColor)),
             subtitle: vehicle != null
                 ? PlateChip(text: '${vehicle.label} · ${vehicle.subLabel}', small: true)
-                : Text(tr(context, 'add_a_vehicle')),
+                : Text(tr(context, 'add_a_vehicle'), style: isDark ? TextStyle(color: palette.signal) : null),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/garage'),
           ),
