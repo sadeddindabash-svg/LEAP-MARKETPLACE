@@ -274,17 +274,30 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
               // (e.g. "🇸🇦    Saudi Arabia", not plain "Saudi
               // Arabia"), which is exactly why the Saudi
               // Address-Code field below never appeared -- the
-              // real string comparison never matched. Disabling the
-              // flag icon entirely keeps the plain, unmodified real
-              // country name, matching kCountryPhoneCodes' own
-              // verified keys and this real comparison exactly.
-              flagState: CountryFlag.DISABLE,
+              // real string comparison never matched.
+              //
+              // SHOW_IN_DROP_DOWN_ONLY restores the real visual flag
+              // icon in the dropdown list (a nicer real UX than no
+              // flag at all) while this package's own source strips
+              // it back off before calling onCountryChanged. BUT:
+              // confirmed directly, mathematically, that this
+              // package's own stripping is actually wrong -- the
+              // real flag-plus-four-spaces prefix is genuinely 8
+              // UTF-16 code units long (a flag emoji is 2 regional-
+              // indicator symbols = 4 code units, plus 4 spaces),
+              // while its own source only strips 6, leaving 2
+              // leftover leading spaces in the real value. Rather
+              // than trust that flawed offset, .trim() below cleans
+              // this up reliably regardless of the exact leftover
+              // whitespace, giving a genuinely clean country name
+              // either way.
+              flagState: CountryFlag.SHOW_IN_DROP_DOWN_ONLY,
               currentCountry: _selectedCountry,
               currentCity: _selectedCity,
               onCountryChanged: (value) {
                 setState(() {
-                  _selectedCountry = value;
-                  _countryController.text = value;
+                  _selectedCountry = value.trim();
+                  _countryController.text = value.trim();
                   // Real, deliberate reset: a real city genuinely
                   // tied to the previous real country would otherwise
                   // stay selected against a new one it was never
