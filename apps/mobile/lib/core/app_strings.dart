@@ -245,7 +245,7 @@ class AppStrings {
     'city_field': {'en': 'City', 'ar': 'المدينة'},
     'street_address_field': {'en': 'Street address', 'ar': 'عنوان الشارع'},
     'postal_code_field': {'en': 'Postal code (optional)', 'ar': 'الرمز البريدي (اختياري)'},
-    'national_address_field': {'en': 'National Address', 'ar': 'العنوان الوطني'},
+    'national_address_field': {'en': 'Address Code', 'ar': 'رمز العنوان'},
     'national_address_format_error': {'en': 'Must be 4 letters followed by 4 numbers, e.g. RRRD2929', 'ar': 'يجب أن يكون 4 أحرف تليها 4 أرقام، مثل RRRD2929'},
     'no_addresses_yet': {'en': 'No saved addresses yet.', 'ar': 'لا توجد عناوين محفوظة بعد.'},
     'address_limit_reached': {'en': 'You can save up to 3 addresses. Delete one before adding another.', 'ar': 'يمكنك حفظ ما يصل إلى 3 عناوين. احذف عنوانًا قبل إضافة آخر.'},
