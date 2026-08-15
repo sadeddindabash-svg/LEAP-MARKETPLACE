@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
-import 'package:csc_picker/csc_picker.dart';
+import 'package:csc_picker_plus/csc_picker_plus.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
@@ -253,13 +253,19 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
             ),
             const SizedBox(height: 12),
             // Real cascading country -> city selection (new) --
-            // csc_picker's own real, bundled dataset, no network call
-            // needed. Syncs into the existing _countryController /
+            // csc_picker_plus's own real, bundled dataset, no network
+            // call needed. Syncs into the existing _countryController /
             // _cityController the rest of this form (and the real
             // backend) already reads from, rather than replacing that
             // real, established pattern.
-            CSCPicker(
+            CSCPickerPlus(
               layout: Layout.vertical,
+              // Real, explicit choice (not just the default) --
+              // guarantees English-first country names are returned
+              // regardless of the device's own current locale,
+              // matching the real, verified keys in
+              // kCountryPhoneCodes exactly.
+              countryStateLanguage: CountryStateLanguage.englishOrNative,
               currentCountry: _selectedCountry,
               currentCity: _selectedCity,
               onCountryChanged: (value) {

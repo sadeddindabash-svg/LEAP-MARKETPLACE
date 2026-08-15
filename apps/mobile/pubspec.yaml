@@ -28,7 +28,7 @@ dependencies:
   custom_refresh_indicator: ^4.0.1
   device_info_plus: ^11.2.0
   url_launcher: ^6.3.1
-  csc_picker: ^0.2.7
+  csc_picker_plus: ^0.0.3
   # Explicit (was already a transitive dep of `http`) -- needed directly
   # to set a real MediaType/content-type on photo uploads; see
   # api_client.dart's _mediaTypeFor for why that's required on web.

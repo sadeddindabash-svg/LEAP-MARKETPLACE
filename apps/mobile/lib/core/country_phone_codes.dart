@@ -140,7 +140,7 @@ const Map<String, String> kCountryPhoneCodes = {
   'Oman': '+968',
   'Pakistan': '+92',
   'Palau': '+680',
-  'Palestinian Territory Occupied': '+970',
+  'Palestine': '+970',
   'Panama': '+507',
   'Papua new Guinea': '+675',
   'Paraguay': '+595',
