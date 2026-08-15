@@ -25,6 +25,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
   late final TextEditingController _recipientController;
   late final TextEditingController _phoneController;
   late final TextEditingController _countryController;
+  late final TextEditingController _stateController;
   late final TextEditingController _cityController;
   late final TextEditingController _streetController;
   late final TextEditingController _postalController;
@@ -48,6 +49,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
   // reads from) rather than replacing them outright.
   String? _selectedCountry;
   String? _selectedCity;
+  String? _selectedState;
   // Real Saudi National Address field (new) -- Saudi Arabia's own
   // real short-address format: 4 letters + 4 digits (e.g. "RRRD2929"),
   // used by Saudi Post/SPL. Only ever shown when the selected real
@@ -63,12 +65,14 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     _recipientController = TextEditingController(text: e?['recipientName'] as String? ?? '');
     _phoneController = TextEditingController(text: e?['phone'] as String? ?? '');
     _countryController = TextEditingController(text: e?['country'] as String? ?? '');
+    _stateController = TextEditingController(text: e?['state'] as String? ?? '');
     _cityController = TextEditingController(text: e?['city'] as String? ?? '');
     _streetController = TextEditingController(text: e?['streetAddress'] as String? ?? '');
     _postalController = TextEditingController(text: e?['postalCode'] as String? ?? '');
     _nationalAddressController = TextEditingController(text: e?['nationalAddress'] as String? ?? '');
     _selectedCountry = e?['country'] as String?;
     _selectedCity = e?['city'] as String?;
+    _selectedState = e?['state'] as String?;
   }
 
   @override
@@ -77,6 +81,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     _recipientController.dispose();
     _phoneController.dispose();
     _countryController.dispose();
+    _stateController.dispose();
     _cityController.dispose();
     _streetController.dispose();
     _postalController.dispose();
@@ -171,6 +176,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
       'recipientName': _recipientController.text.trim(),
       'phone': _phoneController.text.trim(),
       'country': _countryController.text.trim(),
+      'state': _stateController.text.trim().isEmpty ? null : _stateController.text.trim(),
       'city': _cityController.text.trim(),
       'streetAddress': _streetController.text.trim(),
       'postalCode': _postalController.text.trim().isEmpty ? null : _postalController.text.trim(),
@@ -233,25 +239,6 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
             const SizedBox(height: 12),
             TextField(controller: _recipientController, decoration: InputDecoration(labelText: tr(context, 'recipient_name_field'), prefixIcon: const Icon(Icons.person_outline))),
             const SizedBox(height: 12),
-            TextField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              decoration: InputDecoration(
-                labelText: tr(context, 'phone_field'),
-                prefixIcon: const Icon(Icons.phone_outlined),
-                // Real phone-code auto-fill (new) -- looks up the real
-                // dial code for the currently-selected real country.
-                // Shown as a prefix label, not force-injected into the
-                // real text itself, so a person editing an existing
-                // real number (which may already include a real
-                // country code) never has it silently duplicated or
-                // overwritten.
-                prefixText: _selectedCountry != null && kCountryPhoneCodes[_selectedCountry] != null
-                    ? '${kCountryPhoneCodes[_selectedCountry]} '
-                    : null,
-              ),
-            ),
-            const SizedBox(height: 12),
             // Real cascading country -> city selection (new) --
             // csc_picker_plus's own real, bundled dataset, no network
             // call needed. Syncs into the existing _countryController /
@@ -306,7 +293,12 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                   _cityController.text = '';
                 });
               },
-              onStateChanged: (_) {},
+              onStateChanged: (value) {
+                setState(() {
+                  _selectedState = value ?? '';
+                  _stateController.text = value ?? '';
+                });
+              },
               onCityChanged: (value) {
                 setState(() {
                   _selectedCity = value ?? '';
@@ -341,6 +333,25 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
             TextField(controller: _streetController, decoration: InputDecoration(labelText: tr(context, 'street_address_field'), prefixIcon: const Icon(Icons.home_outlined))),
             const SizedBox(height: 12),
             TextField(controller: _postalController, decoration: InputDecoration(labelText: tr(context, 'postal_code_field'), prefixIcon: const Icon(Icons.markunread_mailbox_outlined))),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _phoneController,
+              keyboardType: TextInputType.phone,
+              decoration: InputDecoration(
+                labelText: tr(context, 'phone_field'),
+                prefixIcon: const Icon(Icons.phone_outlined),
+                // Real phone-code auto-fill -- looks up the real dial
+                // code for the currently-selected real country above.
+                // Shown as a prefix label, not force-injected into the
+                // real text itself, so a person editing an existing
+                // real number (which may already include a real
+                // country code) never has it silently duplicated or
+                // overwritten.
+                prefixText: _selectedCountry != null && kCountryPhoneCodes[_selectedCountry] != null
+                    ? '${kCountryPhoneCodes[_selectedCountry]} '
+                    : null,
+              ),
+            ),
             if (_errorMessage != null) ...[
               const SizedBox(height: 12),
               Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 12.5)),
