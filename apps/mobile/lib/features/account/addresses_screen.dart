@@ -45,7 +45,10 @@ class _AddressesScreenState extends State<AddressesScreen> {
     final token = context.read<AuthState>().token!;
     try {
       await ApiClient().updateAddress(token, id, {'isDefault': true});
-      _load();
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(trRead(context, 'address_set_as_default_message'))));
+      }
     } on ApiException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     }
@@ -127,7 +130,18 @@ class _AddressesScreenState extends State<AddressesScreen> {
                         final a = _addresses![i] as Map<String, dynamic>;
                         final isDefault = a['isDefault'] as bool;
                         final label = a['label'] as String;
-                        return Container(
+                        return Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () {
+                              if (isDefault) {
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(trRead(context, 'address_already_default_message'))));
+                              } else {
+                                _setDefault(a['id'] as String);
+                              }
+                            },
+                            child: Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
                             color: palette.card,
@@ -181,6 +195,8 @@ class _AddressesScreenState extends State<AddressesScreen> {
                                 ),
                               ],
                             ],
+                          ),
+                            ),
                           ),
                         );
                       },

@@ -87,9 +87,9 @@ class _AccountScreenState extends State<AccountScreen> {
       (icon: Icons.card_giftcard_outlined, label: tr(context, 'referrals'), route: '/referrals'),
       (icon: Icons.inventory_2_outlined, label: tr(context, 'orders_and_returns'), route: '/orders'),
       (icon: Icons.assignment_return_outlined, label: tr(context, 'my_returns'), route: '/returns'),
-      (icon: Icons.chat_bubble_outline, label: 'Contact us', route: '/contact-us'),
+      (icon: Icons.chat_bubble_outline, label: tr(context, 'contact_us_label'), route: '/contact-us'),
       (icon: Icons.alternate_email, label: tr(context, 'change_email'), route: '/account/change-email'),
-      (icon: Icons.shield_outlined, label: 'Two-factor authentication', route: '/account/two-factor'),
+      (icon: Icons.shield_outlined, label: tr(context, 'two_factor_auth_label'), route: '/account/two-factor'),
     ];
 
     return Scaffold(
@@ -196,7 +196,7 @@ class _AccountScreenState extends State<AccountScreen> {
           if (auth.isLoggedIn)
             ListTile(
               leading: const Icon(Icons.delete_forever_outlined, color: Colors.red),
-              title: const Text('Delete account', style: TextStyle(color: Colors.red)),
+              title: Text(tr(context, 'delete_account_label'), style: const TextStyle(color: Colors.red)),
               onTap: () => _confirmDeleteAccount(context),
             ),
         ],
@@ -208,11 +208,11 @@ class _AccountScreenState extends State<AccountScreen> {
     final confirmedIntent = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete your account?'),
-        content: const Text('This permanently removes your personal info. Your order history stays for our records, but is no longer tied to your name or email.'),
+        title: Text(tr(context, 'delete_account_confirm_title')),
+        content: Text(tr(context, 'delete_account_confirm_body')),
         actions: [
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Continue', style: TextStyle(color: Colors.red))),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: Text(tr(context, 'cancel'))),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: Text(tr(context, 'continue_label'), style: const TextStyle(color: Colors.red))),
         ],
       ),
     );
@@ -224,16 +224,16 @@ class _AccountScreenState extends State<AccountScreen> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Text('Confirm your password'),
+          title: Text(tr(context, 'confirm_password_title')),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: passwordController, obscureText: true, decoration: const InputDecoration(labelText: 'Password')),
+              TextField(controller: passwordController, obscureText: true, decoration: InputDecoration(labelText: tr(context, 'password_field'))),
               if (errorMessage != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 12))),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: Text(tr(context, 'cancel'))),
             TextButton(
               onPressed: () async {
                 if (passwordController.text.isEmpty) return;
@@ -242,10 +242,16 @@ class _AccountScreenState extends State<AccountScreen> {
                   await ApiClient().deleteAccount(auth.token!, passwordController.text);
                   if (dialogContext.mounted) Navigator.of(dialogContext).pop(true);
                 } on ApiException catch (e) {
-                  setDialogState(() => errorMessage = e.message);
+                  // Real, honest, narrow mapping: the backend itself
+                  // only ever returns this exact English string here
+                  // (services/api/src/modules/auth/routes.js) --
+                  // translating it client-side for this one known
+                  // case, not a general backend-message translation
+                  // solution.
+                  setDialogState(() => errorMessage = e.message == 'Incorrect password' ? tr(context, 'incorrect_password_error') : e.message);
                 }
               },
-              child: const Text('Delete', style: TextStyle(color: Colors.red)),
+              child: Text(tr(context, 'delete'), style: const TextStyle(color: Colors.red)),
             ),
           ],
         ),
