@@ -171,10 +171,24 @@ class _AddressesScreenState extends State<AddressesScreen> {
                                       if (action == 'default') _setDefault(a['id'] as String);
                                       if (action == 'delete') _confirmDelete(a['id'] as String);
                                     },
+                                    // REAL BUG FOUND AND FIXED HERE:
+                                    // confirmed directly by reading
+                                    // Flutter's own source --
+                                    // PopupMenuButton's itemBuilder is
+                                    // called from showButtonMenu(),
+                                    // itself only triggered when the
+                                    // button is tapped (an event
+                                    // handler), not during any real
+                                    // build phase, despite the
+                                    // "Builder" name. tr() (which
+                                    // uses context.watch internally)
+                                    // is genuinely unsafe here;
+                                    // trRead() (context.read) is the
+                                    // correct, safe choice.
                                     itemBuilder: (context) => [
-                                      PopupMenuItem(value: 'edit', child: Text(tr(context, 'edit'))),
-                                      if (!isDefault) PopupMenuItem(value: 'default', child: Text(tr(context, 'set_as_default'))),
-                                      PopupMenuItem(value: 'delete', child: Text(tr(context, 'delete'))),
+                                      PopupMenuItem(value: 'edit', child: Text(trRead(context, 'edit'))),
+                                      if (!isDefault) PopupMenuItem(value: 'default', child: Text(trRead(context, 'set_as_default'))),
+                                      PopupMenuItem(value: 'delete', child: Text(trRead(context, 'delete'))),
                                     ],
                                   ),
                                 ],
