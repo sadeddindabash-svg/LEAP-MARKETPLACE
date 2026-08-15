@@ -763,7 +763,14 @@ class ApiClient {
   Map<String, dynamic> _decodeOrThrow(http.Response response) {
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode >= 400) {
-      throw ApiException(body['error'] as String? ?? 'Request failed (${response.statusCode})');
+      // Real, temporary diagnostic aid -- surfaces the real
+      // debugMessage (a development-only field the backend adds for
+      // a genuinely unexpected error) directly in the app's own
+      // error message, so it shows up wherever this exception is
+      // displayed rather than requiring the backend's own terminal.
+      final debugMessage = body['debugMessage'] as String?;
+      final baseMessage = body['error'] as String? ?? 'Request failed (${response.statusCode})';
+      throw ApiException(debugMessage != null ? '$baseMessage: $debugMessage' : baseMessage);
     }
     return body;
   }
