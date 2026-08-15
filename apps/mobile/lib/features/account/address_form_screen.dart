@@ -266,6 +266,19 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
               // matching the real, verified keys in
               // kCountryPhoneCodes exactly.
               countryStateLanguage: CountryStateLanguage.englishOrNative,
+              // REAL BUG FOUND AND FIXED HERE: confirmed directly by
+              // reading this fork's actual widget source -- the
+              // default flagState (CountryFlag.ENABLE) embeds a real
+              // flag emoji directly into the country name string
+              // itself before it's ever passed to onCountryChanged
+              // (e.g. "🇸🇦    Saudi Arabia", not plain "Saudi
+              // Arabia"), which is exactly why the Saudi
+              // Address-Code field below never appeared -- the
+              // real string comparison never matched. Disabling the
+              // flag icon entirely keeps the plain, unmodified real
+              // country name, matching kCountryPhoneCodes' own
+              // verified keys and this real comparison exactly.
+              flagState: CountryFlag.DISABLE,
               currentCountry: _selectedCountry,
               currentCity: _selectedCity,
               onCountryChanged: (value) {
