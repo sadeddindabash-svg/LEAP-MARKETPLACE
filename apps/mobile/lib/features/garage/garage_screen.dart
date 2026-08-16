@@ -238,7 +238,7 @@ class _GarageScreenState extends State<GarageScreen> {
                       Container(
                         height: 120,
                         width: double.infinity,
-                        decoration: BoxDecoration(color: palette.chalk, borderRadius: BorderRadius.circular(10)),
+                        decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(10)),
                         child: Icon(Icons.directions_car, size: 56, color: palette.muted),
                       ),
                       if (v.isDefault)

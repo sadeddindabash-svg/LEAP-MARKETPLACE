@@ -15,6 +15,12 @@ class LeapColors {
 
   static const ink = Color(0xFF14171C);
   static const chalk = Color(0xFFF5F6F8);
+  // Real, separate page-background color (new) -- distinct from chalk,
+  // which stays exactly as-is since it's used directly as a neutral
+  // gray placeholder color (skeleton loaders, image placeholders)
+  // elsewhere and must not change. Confirmed via real rendered mockup
+  // (W1): clear white page, containers get chalk's own light gray.
+  static const page = Colors.white;
   static const line = Color(0xFFE4E6EA);
   static const signal = Color(0xFFF2A71B); // primary action -- real gold, matching the real leapautoparts.com site
   static const signalDark = Color(0xFFC4870D); // pressed/hover state for the real gold
@@ -84,8 +90,8 @@ class LeapPalette {
 
   static const light = LeapPalette(
     ink: LeapColors.ink,
-    chalk: LeapColors.chalk,
-    card: Colors.white,
+    chalk: LeapColors.page,
+    card: LeapColors.chalk,
     line: LeapColors.line,
     signal: LeapColors.signal,
     signalDark: LeapColors.signalDark,
@@ -132,7 +138,7 @@ class LeapTheme {
     const pillShape = StadiumBorder();
 
     return base.copyWith(
-      scaffoldBackgroundColor: LeapColors.chalk,
+      scaffoldBackgroundColor: LeapColors.page,
       textTheme: manropeTextTheme,
       primaryTextTheme: manropeTextTheme,
       colorScheme: base.colorScheme.copyWith(

@@ -174,7 +174,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       decoration: BoxDecoration(
-                        color: selected ? palette.signal : palette.chalk,
+                        color: selected ? palette.signal : palette.card,
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(color: selected ? palette.signal : palette.line),
                       ),

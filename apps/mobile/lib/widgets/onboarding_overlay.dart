@@ -165,7 +165,7 @@ class _OnboardingSlide extends StatelessWidget {
           Container(
             width: 88,
             height: 88,
-            decoration: BoxDecoration(color: palette.chalk, shape: BoxShape.circle),
+            decoration: BoxDecoration(color: palette.card, shape: BoxShape.circle),
             child: Icon(icon, size: 40, color: palette.signal),
           ),
           const SizedBox(height: 24),

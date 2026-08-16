@@ -54,7 +54,7 @@ class ShopBySymptomScreen extends StatelessWidget {
           ..._kSymptoms.map((s) => Card(
                 margin: const EdgeInsets.only(bottom: 10),
                 child: ListTile(
-                  leading: CircleAvatar(backgroundColor: palette.chalk, child: Icon(s.icon, color: palette.signal)),
+                  leading: CircleAvatar(backgroundColor: palette.card, child: Icon(s.icon, color: palette.signal)),
                   title: Text(isAr ? s.labelAr : s.labelEn, style: TextStyle(fontWeight: FontWeight.w600, color: palette.ink)),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => context.push('/search', extra: {'initialQuery': s.searchQuery}),

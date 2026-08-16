@@ -139,7 +139,7 @@ class _SavedSearchesScreenState extends State<SavedSearchesScreen> {
               Container(
                 width: 48,
                 height: 48,
-                decoration: BoxDecoration(color: palette.chalk, borderRadius: BorderRadius.circular(10)),
+                decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(10)),
                 child: Icon(Icons.bookmark_outlined, color: palette.signal),
               ),
               const SizedBox(width: 12),

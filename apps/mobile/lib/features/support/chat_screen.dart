@@ -179,7 +179,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           leading: Container(
                             width: 44,
                             height: 44,
-                            decoration: BoxDecoration(color: palette.chalk, borderRadius: BorderRadius.circular(10)),
+                            decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(10)),
                             child: Icon(isResolved ? Icons.check_circle_outline : Icons.build_outlined, color: isResolved ? palette.gauge : palette.signal),
                           ),
                           title: Text(t['subject'] as String, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w700, color: palette.ink)),

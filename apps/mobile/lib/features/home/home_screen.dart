@@ -294,7 +294,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             width: 52,
                             height: 52,
                             decoration: BoxDecoration(
-                              color: palette.chalk,
+                              color: palette.card,
                               shape: BoxShape.circle,
                               border: Border.all(color: palette.line),
                             ),
@@ -377,7 +377,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         margin: const EdgeInsets.only(bottom: 12),
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: palette.chalk,
+                          color: palette.card,
                           borderRadius: BorderRadius.circular(8),
                           border: Border(left: BorderSide(color: palette.signal, width: 4)),
                         ),
@@ -532,7 +532,7 @@ class _ConversationalHelperCardState extends State<_ConversationalHelperCard> {
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(color: palette.chalk, borderRadius: BorderRadius.circular(14)),
+            decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(14)),
             child: Text(isAr ? greetingAr : greetingEn, style: TextStyle(fontSize: 13.5, color: palette.ink)),
           ),
           const SizedBox(height: 8),
@@ -587,7 +587,7 @@ class _FilterChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
         decoration: BoxDecoration(
-          color: selected ? palette.signal : palette.chalk,
+          color: selected ? palette.signal : palette.card,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: selected ? palette.signal : palette.line),
         ),

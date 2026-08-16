@@ -113,7 +113,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
                             Container(
                               width: 80,
                               height: 80,
-                              decoration: BoxDecoration(color: palette.chalk, shape: BoxShape.circle),
+                              decoration: BoxDecoration(color: palette.card, shape: BoxShape.circle),
                               child: Icon(Icons.location_on_outlined, size: 36, color: palette.muted),
                             ),
                             const SizedBox(height: 16),

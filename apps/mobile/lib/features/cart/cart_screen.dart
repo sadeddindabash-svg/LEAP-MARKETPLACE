@@ -427,7 +427,7 @@ class _CartItemRowState extends State<_CartItemRow> {
                     // Real pill-shaped quantity stepper (new), matching
                     // the real Stitch reference exactly.
                     Container(
-                      decoration: BoxDecoration(color: palette.chalk, borderRadius: BorderRadius.circular(999), border: Border.all(color: palette.line)),
+                      decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(999), border: Border.all(color: palette.line)),
                       child: Row(
                         children: [
                           IconButton(

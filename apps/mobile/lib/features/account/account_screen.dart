@@ -178,12 +178,52 @@ class _AccountScreenState extends State<AccountScreen> {
               style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: LeapPalette.of(context).signalDark, letterSpacing: 1),
             ),
           ),
-          ...rows.map((r) => ListTile(
-                leading: Icon(r.icon, color: LeapPalette.of(context).ink),
-                title: Text(r.label),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: r.route == null ? null : () => context.push(r.route!),
-              )),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              children: rows.map((r) {
+                final palette = LeapPalette.of(context);
+                // Real, confirmed mode-specific badge treatment (new):
+                // dark mode keeps a gold-tinted transparent fill with
+                // a gold icon; light mode uses a solid gold fill with
+                // a near-black icon instead, since bright gold on a
+                // light container reads with much weaker contrast --
+                // confirmed directly via real rendered mockups (option
+                // "L2"/"W1") before writing this.
+                final isDark = Theme.of(context).brightness == Brightness.dark;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: r.route == null ? null : () => context.push(r.route!),
+                      child: Container(
+                        decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(14)),
+                        padding: const EdgeInsets.all(14),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: isDark ? palette.signal.withValues(alpha: 0.12) : palette.signal,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(r.icon, size: 16, color: isDark ? palette.signal : palette.onSignal),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text(r.label, style: TextStyle(fontSize: 14, color: palette.ink))),
+                            Icon(Icons.chevron_right, size: 16, color: palette.muted),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
           const Divider(height: 1),
           const _ThemeSection(),
           if (auth.isLoggedIn) const _AppLockSection(),
@@ -275,7 +315,7 @@ class _ProfileStat extends StatelessWidget {
     final palette = LeapPalette.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 14),
-      decoration: BoxDecoration(color: palette.chalk, borderRadius: BorderRadius.circular(12), border: Border.all(color: palette.line)),
+      decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(12), border: Border.all(color: palette.line)),
       child: Column(
         children: [
           Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: palette.signal)),

@@ -121,7 +121,7 @@ class _ReferralsScreenState extends State<ReferralsScreen> {
                       const SizedBox(height: 8),
                       Container(
                         padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(color: palette.chalk, borderRadius: BorderRadius.circular(10), border: Border.all(color: palette.signal)),
+                        decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(10), border: Border.all(color: palette.signal)),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [

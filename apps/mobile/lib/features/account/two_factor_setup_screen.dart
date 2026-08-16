@@ -172,7 +172,7 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
       const SizedBox(height: 6),
       Container(
         padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: palette.chalk, borderRadius: BorderRadius.circular(8)),
+        decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(8)),
         child: SelectableText(secret, style: const TextStyle(fontWeight: FontWeight.w700, letterSpacing: 1)),
       ),
       const SizedBox(height: 24),

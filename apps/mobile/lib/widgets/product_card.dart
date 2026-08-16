@@ -135,6 +135,7 @@ class _ProductCardState extends State<ProductCard> {
     final isLoggedIn = context.watch<AuthState>().isLoggedIn;
     return Card(
       margin: EdgeInsets.zero,
+      color: palette.card,
       child: InkWell(
         onTap: widget.onTap,
         borderRadius: BorderRadius.circular(12),
@@ -188,6 +189,27 @@ class _ProductCardState extends State<ProductCard> {
                         ),
                       ),
                     ),
+                  if (isLoggedIn)
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: InkWell(
+                        onTap: _isTogglingWishlist ? null : _toggleWishlist,
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          width: 26,
+                          height: 26,
+                          decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xB3000000)),
+                          child: _isTogglingWishlist
+                              ? const Padding(padding: EdgeInsets.all(6), child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              : Icon(
+                                  _isWishlisted == true ? Icons.favorite : Icons.favorite_border,
+                                  size: 14,
+                                  color: _isWishlisted == true ? palette.signal : Colors.white,
+                                ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
               const SizedBox(height: 6),
@@ -210,52 +232,58 @@ class _ProductCardState extends State<ProductCard> {
                 ],
               ),
               const SizedBox(height: 3),
-              Text(
-                // Real low-stock countdown (#8), same real threshold
-                // and treatment as Product Detail's own.
-                !inStock
-                    ? tr(context, 'out_of_stock')
-                    : p.stockQuantity <= 5
-                        ? (isAr ? 'متبقٍ ${p.stockQuantity} فقط' : 'Only ${p.stockQuantity} left')
-                        : tr(context, 'in_stock'),
-                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: !inStock ? Colors.red : (p.stockQuantity <= 5 ? palette.torque : palette.gauge)),
+              Row(
+                children: [
+                  Icon(Icons.circle, size: 6, color: !inStock ? Colors.red : (p.stockQuantity <= 5 ? palette.torque : palette.gauge)),
+                  const SizedBox(width: 4),
+                  Text(
+                    // Real low-stock countdown (#8), same real threshold
+                    // and treatment as Product Detail's own.
+                    !inStock
+                        ? tr(context, 'out_of_stock')
+                        : p.stockQuantity <= 5
+                            ? (isAr ? 'متبقٍ ${p.stockQuantity} فقط' : 'Only ${p.stockQuantity} left')
+                            : tr(context, 'in_stock'),
+                    style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: !inStock ? Colors.red : (p.stockQuantity <= 5 ? palette.torque : palette.gauge)),
+                  ),
+                ],
               ),
               const SizedBox(height: 6),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Flexible(
-                    child: Text(
-                      '\$${p.price.toStringAsFixed(2)}',
-                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: palette.ink),
-                      overflow: TextOverflow.ellipsis,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            '\$${p.price.toStringAsFixed(2)}',
+                            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: palette.ink),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        // Real price-drop comparison (new) -- same real
+                        // hasPriceDrop pattern already used in
+                        // wishlist_screen.dart, using the real
+                        // lastKnownPrice snapshot field, not a
+                        // fabricated sale price.
+                        if (p.lastKnownPrice != null && p.lastKnownPrice! > p.price) ...[
+                          const SizedBox(width: 5),
+                          Flexible(
+                            child: Text(
+                              '\$${p.lastKnownPrice!.toStringAsFixed(2)}',
+                              style: TextStyle(fontSize: 11, color: palette.muted, decoration: TextDecoration.lineThrough),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (isLoggedIn) ...[
-                        InkWell(
-                          onTap: _isTogglingWishlist ? null : _toggleWishlist,
-                          borderRadius: BorderRadius.circular(14),
-                          child: Container(
-                            width: 28,
-                            height: 28,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: palette.line),
-                            ),
-                            child: _isTogglingWishlist
-                                ? const Padding(padding: EdgeInsets.all(6), child: CircularProgressIndicator(strokeWidth: 2))
-                                : Icon(
-                                    _isWishlisted == true ? Icons.favorite : Icons.favorite_border,
-                                    size: 15,
-                                    color: _isWishlisted == true ? palette.signal : palette.muted,
-                                  ),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                      ],
                       InkWell(
                         onTap: (inStock && !_isAdding) ? _addToCart : null,
                         borderRadius: BorderRadius.circular(14),
@@ -282,6 +310,17 @@ class _ProductCardState extends State<ProductCard> {
                   ),
                 ],
               ),
+              if (inStock) ...[
+                const SizedBox(height: 5),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(color: palette.gauge.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(5)),
+                  child: Text(
+                    isAr ? 'الشحن خلال ${p.estimatedDeliveryDays} أيام' : 'Ships in ${p.estimatedDeliveryDays} ${p.estimatedDeliveryDays == 1 ? 'day' : 'days'}',
+                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: palette.gauge),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

@@ -313,7 +313,7 @@ class _ProductDetailBody extends StatelessWidget {
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
-                    color: palette.chalk,
+                    color: palette.card,
                     child: Row(
                       children: [
                         Icon(Icons.settings_suggest_outlined, size: 16, color: palette.signal),
@@ -364,7 +364,7 @@ class _ProductDetailBody extends StatelessWidget {
                   // Real pill-shaped quantity stepper (new), matching
                   // the same style already used on Cart.
                   Container(
-                    decoration: BoxDecoration(color: palette.chalk, borderRadius: BorderRadius.circular(999), border: Border.all(color: palette.line)),
+                    decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(999), border: Border.all(color: palette.line)),
                     child: Row(
                       children: [
                         IconButton(onPressed: () => onQtyChanged(qty > 1 ? qty - 1 : 1), icon: Icon(Icons.remove, size: 16, color: palette.ink), tooltip: 'Decrease quantity'),
