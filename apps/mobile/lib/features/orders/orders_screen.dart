@@ -264,13 +264,15 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(tr(context, 'active_shipments').toUpperCase(), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: palette.signalDark, letterSpacing: 0.5)),
-                                        const SizedBox(height: 4),
-                                        _AnimatedCountText(target: activeShipments, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: palette.ink)),
-                                      ],
+                                    Flexible(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(tr(context, 'active_shipments').toUpperCase(), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: palette.signalDark, letterSpacing: 0.5)),
+                                          const SizedBox(height: 4),
+                                          _AnimatedCountText(target: activeShipments, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: palette.ink)),
+                                        ],
+                                      ),
                                     ),
                                     Icon(Icons.local_shipping_outlined, color: palette.signal, size: 28),
                                   ],
@@ -299,17 +301,19 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                         child: Row(
                                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                           children: [
-                                            Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Text('${summary['year']} SPEND', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: palette.signalDark, letterSpacing: 0.5)),
-                                                const SizedBox(height: 4),
-                                                _AnimatedCountText(
-                                                  target: (summary['totalSpent'] as num).round(),
-                                                  prefix: '\$',
-                                                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: palette.ink),
-                                                ),
-                                              ],
+                                            Flexible(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text('${summary['year']} SPEND', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: palette.signalDark, letterSpacing: 0.5)),
+                                                  const SizedBox(height: 4),
+                                                  _AnimatedCountText(
+                                                    target: (summary['totalSpent'] as num).round(),
+                                                    prefix: '\$',
+                                                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: palette.ink),
+                                                  ),
+                                                ],
+                                              ),
                                             ),
                                             Icon(Icons.receipt_long_outlined, color: palette.signal, size: 28),
                                           ],
