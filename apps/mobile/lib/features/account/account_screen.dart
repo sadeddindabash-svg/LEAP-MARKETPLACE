@@ -7,6 +7,8 @@ import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../core/language_state.dart';
+import '../../core/currency_state.dart';
+import '../../core/config/app_config.dart';
 import '../../core/app_lock_state.dart';
 import '../../core/push_state.dart';
 import '../../core/theme_state.dart';
@@ -114,6 +116,24 @@ class _AccountScreenState extends State<AccountScreen> {
             itemBuilder: (context) => [
               const PopupMenuItem(value: 'en', child: Text('English')),
               const PopupMenuItem(value: 'ar', child: Text('العربية')),
+            ],
+          ),
+          PopupMenuButton<String?>(
+            tooltip: trRead(context, 'currency'),
+            icon: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(context.watch<CurrencyState>().currencyCode, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                const Icon(Icons.arrow_drop_down, size: 18),
+              ],
+            ),
+            onSelected: (code) => context.read<CurrencyState>().setCurrencyCode(code),
+            itemBuilder: (context) => [
+              PopupMenuItem(value: null, child: Text(trRead(context, 'currency_automatic'))),
+              const PopupMenuDivider(),
+              const PopupMenuItem(value: 'USD', child: Text('USD')),
+              ...(List<String>.from(AppConfig.launchMarkets.map((m) => m.currencyCode).where((c) => c != 'USD').toSet())..sort())
+                  .map((code) => PopupMenuItem(value: code, child: Text(code))),
             ],
           ),
           if (auth.isLoggedIn)

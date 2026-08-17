@@ -280,6 +280,8 @@ class AppStrings {
     'guest_browsing': {'en': "You're browsing as a guest", 'ar': 'أنت تتصفح كضيف'},
     'guest_prompt': {'en': 'Log in to save vehicles, see order history across devices, and check out faster.', 'ar': 'سجّل الدخول لحفظ مركباتك، ورؤية سجل الطلبات عبر الأجهزة، وإتمام الشراء بشكل أسرع.'},
     'language': {'en': 'Language', 'ar': 'اللغة'},
+    'currency': {'en': 'Currency', 'ar': 'العملة'},
+    'currency_automatic': {'en': 'Automatic (based on location)', 'ar': 'تلقائي (حسب الموقع)'},
     'appearance': {'en': 'Appearance', 'ar': 'المظهر'},
     'light_mode': {'en': 'Light', 'ar': 'فاتح'},
     'dark_mode': {'en': 'Dark', 'ar': 'داكن'},
