@@ -269,7 +269,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                       children: [
                                         Text(tr(context, 'active_shipments').toUpperCase(), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: palette.signalDark, letterSpacing: 0.5)),
                                         const SizedBox(height: 4),
-                                        Text('$activeShipments', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: palette.ink)),
+                                        _AnimatedCountText(target: activeShipments, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: palette.ink)),
                                       ],
                                     ),
                                     Icon(Icons.local_shipping_outlined, color: palette.signal, size: 28),
@@ -304,7 +304,11 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                               children: [
                                                 Text('${summary['year']} SPEND', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: palette.signalDark, letterSpacing: 0.5)),
                                                 const SizedBox(height: 4),
-                                                Text('\$${(summary['totalSpent'] as num).toStringAsFixed(0)}', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: palette.ink)),
+                                                _AnimatedCountText(
+                                                  target: (summary['totalSpent'] as num).round(),
+                                                  prefix: '\$',
+                                                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: palette.ink),
+                                                ),
                                               ],
                                             ),
                                             Icon(Icons.receipt_long_outlined, color: palette.signal, size: 28),
@@ -382,6 +386,23 @@ class _OrdersScreenState extends State<OrdersScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _AnimatedCountText extends StatelessWidget {
+  final int target;
+  final String prefix;
+  final TextStyle style;
+  const _AnimatedCountText({required this.target, required this.style, this.prefix = ''});
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: target.toDouble()),
+      duration: const Duration(milliseconds: 1500),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) => Text('$prefix${value.round()}', style: style),
     );
   }
 }
