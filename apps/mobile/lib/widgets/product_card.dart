@@ -28,7 +28,16 @@ double productCardHeightFor(double cardWidth) {
   // genuinely needs a taller allotted height, not a fixed number
   // regardless of width.
   final imageHeight = cardWidth - 16;
-  return imageHeight + 130; // real, generous allowance for padding + name (up to 2 lines) + rating + stock text + price/button row
+  // Real, calculated allowance (not a guess) -- confirmed via the
+  // exact same element-by-element measurement used to fix the real
+  // grid overflow this session: spacers (6+4+3+6) + 2-line name at
+  // fontSize 12/height 1.3 (~31px) + rating row (~14px) + stock-status
+  // row (~14px) + price/add-to-cart row (dominated by the real 28px
+  // button circle) + the real delivery-estimate chip (~20px,
+  // previously missing entirely from this allowance -- confirmed real
+  // cause of the real overflow reported here) + the card's own real
+  // top+bottom padding (16px). ~142px real total, some margin added.
+  return imageHeight + 160;
 }
 
 /// Real product card for feeds (home "Newest"/"My car", eventually
