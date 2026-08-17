@@ -172,6 +172,46 @@ const _arabicCountrySymbols = {
   'JOD': 'د.ا',
 };
 
+/// Real flag emoji for the currency picker, one per real currency --
+/// confirmed with the person to use real flag emoji here, trusting
+/// Android's native emoji font support (this couldn't be visually
+/// confirmed from this sandbox or on a Windows preview, a known gap
+/// in Windows browsers' own default emoji font, not expected to be a
+/// real issue on the actual Android device this runs on). Mapped
+/// directly from the real country-currency pairing in
+/// services/api/src/config/markets.js. EUR and USD each cover several
+/// real countries in the launch list -- used the EU flag and US flag
+/// respectively as the single most sensible representative choice for
+/// those two, rather than picking one arbitrary country for each.
+const currencyFlags = {
+  'USD': '🇺🇸',
+  'SAR': '🇸🇦',
+  'AED': '🇦🇪',
+  'OMR': '🇴🇲',
+  'KWD': '🇰🇼',
+  'BHD': '🇧🇭',
+  'QAR': '🇶🇦',
+  'JOD': '🇯🇴',
+  'EUR': '🇪🇺',
+  'BGN': '🇧🇬',
+  'CZK': '🇨🇿',
+  'DKK': '🇩🇰',
+  'HUF': '🇭🇺',
+  'PLN': '🇵🇱',
+  'RON': '🇷🇴',
+  'SEK': '🇸🇪',
+  'GBP': '🇬🇧',
+  'MXN': '🇲🇽',
+  'DOP': '🇩🇴',
+  'ARS': '🇦🇷',
+  'BRL': '🇧🇷',
+  'CLP': '🇨🇱',
+  'PYG': '🇵🇾',
+  'PEN': '🇵🇪',
+  'UYU': '🇺🇾',
+  'VES': '🇻🇪',
+};
+
 /// Real, confirmed Latin-script symbol for every other real launch-
 /// market currency (plus USD). Always used for these regardless of
 /// the app's own language -- confirmed distinction from the 7

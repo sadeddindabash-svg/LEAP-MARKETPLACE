@@ -138,9 +138,9 @@ class _AccountScreenState extends State<AccountScreen> {
             itemBuilder: (context) => [
               PopupMenuItem(value: null, child: Text(trRead(context, 'currency_automatic'))),
               const PopupMenuDivider(),
-              const PopupMenuItem(value: 'USD', child: Text('USD')),
+              PopupMenuItem(value: 'USD', child: Text('${currencyFlags['USD']} USD')),
               ...(List<String>.from(AppConfig.launchMarkets.map((m) => m.currencyCode).where((c) => c != 'USD').toSet())..sort())
-                  .map((code) => PopupMenuItem(value: code, child: Text(code))),
+                  .map((code) => PopupMenuItem(value: code, child: Text('${currencyFlags[code] ?? ''} $code'))),
             ],
           ),
           if (auth.isLoggedIn)
