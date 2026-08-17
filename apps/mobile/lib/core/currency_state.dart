@@ -216,7 +216,7 @@ String _formatAmount(BuildContext context, double amount, String currencyCode) {
   }
   final formatted = NumberFormat('#,##0', 'en_US').format(rounded);
   final symbol = _latinSymbols[currencyCode] ?? currencyCode;
-  return '$symbol$formatted';
+  return '$symbol $formatted';
 }
 
 /// Real, display-only formatted price -- shows the buyer's real
