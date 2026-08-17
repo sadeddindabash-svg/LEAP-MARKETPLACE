@@ -848,7 +848,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           onPressed: (cart.isEmpty || _isPlacingOrder || _stockChangedItemNames.isNotEmpty) ? null : _placeOrder,
           child: _isPlacingOrder
               ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : Text('${tr(context, 'place_order')} · ${formatPriceWithUsd(context, cart.total - _previewDiscount(cart.total))}'),
+              : FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text('${tr(context, 'place_order')} · ${formatPriceWithUsd(context, cart.total - _previewDiscount(cart.total))}'),
+                ),
         ),
       ),
     );
