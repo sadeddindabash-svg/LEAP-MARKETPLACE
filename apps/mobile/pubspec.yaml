@@ -76,12 +76,12 @@ flutter_launcher_icons:
 # Run `dart run flutter_native_splash:create` after `flutter pub get`
 # to generate the real native splash assets for both platforms.
 flutter_native_splash:
-  color: "#F5F6F8"
-  image: "assets/images/leap_logo.png"
-  color_dark: "#131313"
-  image_dark: "assets/images/leap_logo.png"
+  color: "#F2CA50"
+  image: "assets/images/leap_splash_wordmark.png"
+  color_dark: "#F2CA50"
+  image_dark: "assets/images/leap_splash_wordmark.png"
   android_12:
-    color: "#F5F6F8"
-    image: "assets/images/leap_logo.png"
-    color_dark: "#131313"
-    image_dark: "assets/images/leap_logo.png"
+    color: "#F2CA50"
+    image: "assets/images/leap_splash_wordmark.png"
+    color_dark: "#F2CA50"
+    image_dark: "assets/images/leap_splash_wordmark.png"
