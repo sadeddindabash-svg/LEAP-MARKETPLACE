@@ -135,13 +135,22 @@ class _AccountScreenState extends State<AccountScreen> {
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(trRead(context, 'currency_rate_unavailable'))));
               }
             },
-            itemBuilder: (context) => [
-              PopupMenuItem(value: null, child: Text(trRead(context, 'currency_automatic'))),
-              const PopupMenuDivider(),
-              PopupMenuItem(value: 'USD', child: Text('${currencyFlags['USD']} USD')),
-              ...(List<String>.from(AppConfig.launchMarkets.map((m) => m.currencyCode).where((c) => c != 'USD').toSet())..sort())
-                  .map((code) => PopupMenuItem(value: code, child: Text('${currencyFlags[code] ?? ''} $code'))),
-            ],
+            itemBuilder: (context) {
+              final allCodes = List<String>.from(AppConfig.launchMarkets.map((m) => m.currencyCode).where((c) => c != 'USD').toSet());
+              // Real, confirmed fixed order for these 8, requested
+              // directly -- everything else falls back to the
+              // original alphabetical order.
+              const priorityOrder = ['EUR', 'SAR', 'AED', 'GBP', 'JOD', 'BHD', 'QAR', 'KWD'];
+              final priority = priorityOrder.where(allCodes.contains).toList();
+              final rest = allCodes.where((c) => !priorityOrder.contains(c)).toList()..sort();
+              final orderedCodes = [...priority, ...rest];
+              return [
+                PopupMenuItem(value: null, child: Text(trRead(context, 'currency_automatic'))),
+                const PopupMenuDivider(),
+                PopupMenuItem(value: 'USD', child: Text('${currencyFlags['USD']} USD')),
+                ...orderedCodes.map((code) => PopupMenuItem(value: code, child: Text('${currencyFlags[code] ?? ''} $code'))),
+              ];
+            },
           ),
           if (auth.isLoggedIn)
             Stack(
