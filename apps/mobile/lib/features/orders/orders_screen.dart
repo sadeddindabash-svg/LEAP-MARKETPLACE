@@ -258,7 +258,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                           children: [
                             Expanded(
                               child: Container(
-                                height: 92,
+                                height: 100,
                                 padding: const EdgeInsets.all(16),
                                 margin: const EdgeInsets.only(bottom: 4),
                                 decoration: BoxDecoration(color: palette.card, border: Border.all(color: palette.line), borderRadius: BorderRadius.circular(12)),
@@ -291,13 +291,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
                               FutureBuilder<Map<String, dynamic>>(
                                 future: _spendSummaryFuture,
                                 builder: (context, snapshot) {
-                                  if (!snapshot.hasData) return const SizedBox(width: 8, height: 92);
+                                  if (!snapshot.hasData) return const SizedBox(width: 8, height: 100);
                                   final summary = snapshot.data!;
                                   return Expanded(
                                     child: Padding(
                                       padding: const EdgeInsets.only(left: 10),
                                       child: Container(
-                                        height: 92,
+                                        height: 100,
                                         padding: const EdgeInsets.all(16),
                                         margin: const EdgeInsets.only(bottom: 4),
                                         decoration: BoxDecoration(color: palette.card, border: Border.all(color: palette.line), borderRadius: BorderRadius.circular(12)),
