@@ -410,7 +410,11 @@ class _AnimatedCountText extends StatelessWidget {
       tween: Tween(begin: 0, end: target.toDouble()),
       duration: const Duration(milliseconds: 1500),
       curve: Curves.easeOutCubic,
-      builder: (context, value, child) => Text('$prefix${value.round()}', style: style),
+      builder: (context, value, child) => FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Text('$prefix${value.round()}', style: style, maxLines: 1, softWrap: false),
+      ),
     );
   }
 }
