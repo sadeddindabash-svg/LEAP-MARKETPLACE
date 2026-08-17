@@ -158,7 +158,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
       body: Column(
         children: [
           SizedBox(
-            height: 48,
+            height: 56,
             child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
