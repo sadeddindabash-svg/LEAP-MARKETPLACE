@@ -4,7 +4,9 @@ import 'package:flutter/widgets.dart' show BuildContext;
 import 'package:provider/provider.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:intl/intl.dart';
 import 'config/app_config.dart';
+import 'language_state.dart';
 import '../services/api_client.dart';
 
 /// Real, display-only currency conversion -- confirmed scope, discussed
@@ -155,27 +157,85 @@ class CurrencyState extends ChangeNotifier {
   }
 }
 
-/// Real, display-only formatted price (new) -- shows the buyer's real
-/// estimated local-currency price when a real conversion is available,
-/// falling back to the plain USD amount otherwise. For general
-/// browsing displays (product cards, product detail) where only one
-/// price needs to be shown.
+/// Real, confirmed symbol for the 7 Arabic-country currencies (Saudi
+/// Arabia, UAE, Oman, Kuwait, Bahrain, Qatar, Jordan) -- shown only
+/// when the app's own language is Arabic; falls back to the plain
+/// ISO code otherwise, since none of these has a recognized
+/// Latin-script symbol the way "$" or "€" do.
+const _arabicCountrySymbols = {
+  'SAR': 'ر.س',
+  'AED': 'د.إ',
+  'OMR': 'ر.ع.',
+  'KWD': 'د.ك',
+  'BHD': '.د.ب',
+  'QAR': 'ر.ق',
+  'JOD': 'د.ا',
+};
+
+/// Real, confirmed Latin-script symbol for every other real launch-
+/// market currency (plus USD). Always used for these regardless of
+/// the app's own language -- confirmed distinction from the 7
+/// Arabic-country currencies above, which switch to Arabic-Indic
+/// numerals and their own Arabic symbol only in an Arabic-language
+/// app.
+const _latinSymbols = {
+  'USD': '\$',
+  'ARS': '\$',
+  'BGN': 'лв',
+  'BRL': 'R\$',
+  'CLP': '\$',
+  'CZK': 'Kč',
+  'DKK': 'kr',
+  'DOP': 'RD\$',
+  'EUR': '€',
+  'GBP': '£',
+  'HUF': 'Ft',
+  'MXN': '\$',
+  'PEN': 'S/',
+  'PLN': 'zł',
+  'PYG': '₲',
+  'RON': 'lei',
+  'SEK': 'kr',
+  'UYU': '\$U',
+  'VES': 'Bs.',
+};
+
+/// Real, confirmed formatting: no decimal places anywhere (round-
+/// half-up -- Dart's own num.round() already rounds a real 0.5
+/// fraction away from zero, matching the exact confirmed rule), and a
+/// real thousands separator always. Currency-specific numeral/symbol
+/// rule confirmed against several real rendered mockups before
+/// writing this.
+String _formatAmount(BuildContext context, double amount, String currencyCode) {
+  final rounded = amount.round();
+  final isArabicCountryCurrency = _arabicCountrySymbols.containsKey(currencyCode);
+  final isAr = context.watch<LanguageState>().isArabic;
+  if (isArabicCountryCurrency && isAr) {
+    final formatted = NumberFormat('#,##0', 'ar').format(rounded);
+    return '$formatted ${_arabicCountrySymbols[currencyCode]}';
+  }
+  final formatted = NumberFormat('#,##0', 'en_US').format(rounded);
+  final symbol = _latinSymbols[currencyCode] ?? currencyCode;
+  return '$symbol$formatted';
+}
+
+/// Real, display-only formatted price -- shows the buyer's real
+/// estimated local-currency price when a real conversion is
+/// available, falling back to the plain USD amount otherwise.
 String formatPrice(BuildContext context, double usdAmount) {
   final currency = context.watch<CurrencyState>();
   final converted = currency.convert(usdAmount);
-  if (converted == null) return '\$${usdAmount.toStringAsFixed(2)}';
-  return '≈ ${converted.toStringAsFixed(2)} ${currency.currencyCode}';
+  if (converted == null) return _formatAmount(context, usdAmount, 'USD');
+  return _formatAmount(context, converted, currency.currencyCode);
 }
 
-/// Real, display-only formatted price that keeps the real USD charge
-/// amount visible alongside the estimate (new) -- for checkout/cart/
-/// payment-confirmation contexts specifically, where the buyer needs
-/// to see what they're actually being charged, not just the estimate.
-/// Never hides or replaces the real USD amount with the converted one.
+/// Real, display-only formatted price for cart/checkout contexts --
+/// confirmed, per request, to show only the converted currency now,
+/// same as formatPrice. Kept as a separate function (rather than
+/// merged into formatPrice) since callers already reference it by
+/// this name across cart_screen.dart and checkout_screen.dart, and a
+/// future request to bring back the real USD amount at checkout
+/// specifically would only need to change this one function again.
 String formatPriceWithUsd(BuildContext context, double usdAmount) {
-  final currency = context.watch<CurrencyState>();
-  final converted = currency.convert(usdAmount);
-  final usdText = '\$${usdAmount.toStringAsFixed(2)}';
-  if (converted == null) return usdText;
-  return '≈ ${converted.toStringAsFixed(2)} ${currency.currencyCode} ($usdText USD)';
+  return formatPrice(context, usdAmount);
 }
