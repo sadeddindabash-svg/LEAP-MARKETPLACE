@@ -525,19 +525,20 @@ class _PhotoGalleryState extends State<_PhotoGallery> {
   Widget build(BuildContext context) {
     final palette = LeapPalette.of(context);
     if (widget.images.isEmpty) {
-      return Container(
-        height: 220,
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-        child: Center(child: Icon(Icons.album_outlined, size: 64, color: palette.ink)),
+      return AspectRatio(
+        aspectRatio: 1,
+        child: Container(
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+          child: Center(child: Icon(Icons.album_outlined, size: 64, color: palette.ink)),
+        ),
       );
     }
     return Column(
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(12),
-          child: SizedBox(
-            height: 220,
-            width: double.infinity,
+          child: AspectRatio(
+            aspectRatio: 1,
             child: PageView.builder(
               itemCount: widget.images.length,
               onPageChanged: (i) => setState(() => _index = i),

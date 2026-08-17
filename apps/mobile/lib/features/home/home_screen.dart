@@ -220,16 +220,6 @@ class _HomeScreenState extends State<HomeScreen> {
             // 2. Shopping for -- real garage data
             _ShoppingForCard(garageFuture: _garageFuture, isLoggedIn: auth.isLoggedIn),
             const SizedBox(height: 12),
-            // Real conversational quick-reply card (new, direction 11)
-            // -- replaces the previous two separate Shop by Symptom /
-            // Which Part wizard banners with one combined unit.
-            // Personalizes the greeting with the buyer's own real
-            // default vehicle when one exists (same real garageFuture
-            // _ShoppingForCard above already uses), falling back to a
-            // generic greeting otherwise -- never a broken or awkward
-            // string when there's no real vehicle on file yet.
-            _ConversationalHelperCard(garageFuture: _garageFuture, isLoggedIn: auth.isLoggedIn),
-            const SizedBox(height: 20),
             // 2.5. Recently viewed -- real, synced to the buyer's real
             // account (migration 032) -- logged-in buyers only.
             if (auth.isLoggedIn)
@@ -496,77 +486,6 @@ class _ShoppingForCard extends StatelessWidget {
             onTap: () => context.push('/garage'),
           ),
         );
-      },
-    );
-  }
-}
-
-class _ConversationalHelperCard extends StatefulWidget {
-  final Future<List<Vehicle>>? garageFuture;
-  final bool isLoggedIn;
-  const _ConversationalHelperCard({required this.garageFuture, required this.isLoggedIn});
-
-  @override
-  State<_ConversationalHelperCard> createState() => _ConversationalHelperCardState();
-}
-
-class _ConversationalHelperCardState extends State<_ConversationalHelperCard> {
-  // Real dismissal (new) -- "Just browsing" hides this card for the
-  // rest of this real session rather than being a fake button that
-  // goes nowhere. Deliberately session-only, not persisted -- a
-  // genuinely light-touch dismiss, not a permanent hide a person
-  // could forget they set and later wonder where this went.
-  bool _isDismissed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isDismissed) return const SizedBox.shrink();
-    final palette = LeapPalette.of(context);
-    final isAr = Localizations.localeOf(context).languageCode == 'ar';
-
-    Widget buildBubble(String? vehicleModel) {
-      final greetingEn = vehicleModel != null ? 'Hey, what\'s going on with your $vehicleModel today?' : 'Hey, what\'s going on with your car today?';
-      final greetingAr = vehicleModel != null ? 'أهلاً، ما الذي يحدث مع $vehicleModel اليوم؟' : 'أهلاً، ما الذي يحدث مع سيارتك اليوم؟';
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(14)),
-            child: Text(isAr ? greetingAr : greetingEn, style: TextStyle(fontSize: 13.5, color: palette.ink)),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              OutlinedButton(
-                onPressed: () => context.push('/shop-by-symptom'),
-                child: Text(isAr ? 'تصدر صوتًا' : 'It\'s making a noise', style: const TextStyle(fontSize: 12.5)),
-              ),
-              OutlinedButton(
-                onPressed: () => context.push('/which-part-wizard'),
-                child: Text(isAr ? 'أعرف القطعة' : 'I know the part', style: const TextStyle(fontSize: 12.5)),
-              ),
-              OutlinedButton(
-                onPressed: () => setState(() => _isDismissed = true),
-                child: Text(isAr ? 'أتصفح فقط' : 'Just browsing', style: const TextStyle(fontSize: 12.5)),
-              ),
-            ],
-          ),
-        ],
-      );
-    }
-
-    if (!widget.isLoggedIn || widget.garageFuture == null) {
-      return buildBubble(null);
-    }
-    return FutureBuilder<List<Vehicle>>(
-      future: widget.garageFuture,
-      builder: (context, snapshot) {
-        final vehicles = snapshot.data ?? [];
-        final vehicle = vehicles.isNotEmpty ? vehicles.first : null;
-        return buildBubble(vehicle?.model);
       },
     );
   }
