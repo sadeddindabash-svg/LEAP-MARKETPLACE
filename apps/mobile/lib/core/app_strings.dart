@@ -282,6 +282,10 @@ class AppStrings {
     'language': {'en': 'Language', 'ar': 'اللغة'},
     'currency': {'en': 'Currency', 'ar': 'العملة'},
     'currency_automatic': {'en': 'Automatic (based on location)', 'ar': 'تلقائي (حسب الموقع)'},
+    'currency_rate_unavailable': {
+      'en': 'A real conversion rate for this currency isn\'t available yet — prices will show in USD.',
+      'ar': 'معدل التحويل الحقيقي لهذه العملة غير متوفر بعد — ستظهر الأسعار بالدولار الأمريكي.',
+    },
     'appearance': {'en': 'Appearance', 'ar': 'المظهر'},
     'light_mode': {'en': 'Light', 'ar': 'فاتح'},
     'dark_mode': {'en': 'Dark', 'ar': 'داكن'},

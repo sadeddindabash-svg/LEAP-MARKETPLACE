@@ -127,7 +127,13 @@ class _AccountScreenState extends State<AccountScreen> {
                 const Icon(Icons.arrow_drop_down, size: 18),
               ],
             ),
-            onSelected: (code) => context.read<CurrencyState>().setCurrencyCode(code),
+            onSelected: (code) async {
+              final currency = context.read<CurrencyState>();
+              await currency.setCurrencyCode(code);
+              if (code != null && code != 'USD' && !currency.hasConversion && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(trRead(context, 'currency_rate_unavailable'))));
+              }
+            },
             itemBuilder: (context) => [
               PopupMenuItem(value: null, child: Text(trRead(context, 'currency_automatic'))),
               const PopupMenuDivider(),

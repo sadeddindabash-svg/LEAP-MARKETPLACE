@@ -284,6 +284,33 @@ async function main() {
   );
   console.log('Seeded starting CNY_USD exchange rate (manual, 0.14) — update via PATCH /pricing/fx-rate.');
 
+  // Real, officially-pegged GCC currency rates (new) -- Frankfurter
+  // (ECB-backed) doesn't carry these, confirmed via real, repeated
+  // 404s from the live refresh. Unlike a floating market rate, these
+  // are stable, government-set currency pegs to USD that have held
+  // for decades (not a guess or a stale snapshot):
+  //   SAR 3.75   -- Saudi Central Bank (SAMA), pegged since 1986
+  //   AED 3.6725 -- UAE Central Bank, pegged since 1997
+  //   BHD 0.376  -- Central Bank of Bahrain, pegged since 1980
+  //   OMR 0.3845 -- Central Bank of Oman, pegged since 1986
+  //   QAR 3.64   -- Qatar Central Bank, pegged since 2001
+  // Deliberately NOT including JOD here -- it's been remarkably
+  // stable for decades but is a managed rate, not an official hard
+  // peg like the five above, so hardcoding it would be a real
+  // approximation dressed up as a fact. Left as a real, honest gap
+  // (falls back to plain USD) until a real data source for it exists.
+  const gccPegRates = [
+    ['USD_SAR', 3.75],
+    ['USD_AED', 3.6725],
+    ['USD_BHD', 0.376],
+    ['USD_OMR', 0.3845],
+    ['USD_QAR', 3.64],
+  ];
+  for (const [pair, rate] of gccPegRates) {
+    await pool.query(`INSERT INTO fx_rates (currency_pair, rate, source) VALUES ($1, $2, 'manual') ON CONFLICT (currency_pair) DO NOTHING`, [pair, rate]);
+  }
+  console.log('Seeded 5 officially-pegged GCC display rates (manual): SAR, AED, BHD, OMR, QAR.');
+
   // Real, admin-managed category + part reference lists (migration 015).
   // Category IDs match the existing hardcoded values used since
   // migration 001 — every existing product's real category value keeps
