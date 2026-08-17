@@ -121,8 +121,108 @@ module.exports = { refreshLiveFxRate, getFxRateMode, startScheduledFxRateRefresh
 // stakes than a stale CNY_USD supplier rate would.
 const { LAUNCH_MARKETS } = require('../../config/markets');
 
+// Real, confirmed fixed peg -- the Bulgarian lev has been pegged to
+// the euro by law (via a currency board) since 1997, at exactly this
+// rate. Unlike the 5 GCC currencies (pegged directly to USD, so their
+// own USD rate never moves), BGN's real USD rate still floats
+// day-to-day, tracking whatever the live USD_EUR rate happens to be
+// -- so this constant alone isn't a usable USD_BGN rate on its own,
+// it's the fixed EUR_BGN leg used to derive one below.
+const BGN_PER_EUR = 1.95583;
+
+// Real currencies Frankfurter is confirmed not to carry (repeated,
+// consistent 404s) -- excluded from the main loop below to avoid 9
+// wasted daily requests to a free service for pairs already known to
+// fail. BGN is derived from the live USD_EUR rate instead (see
+// refreshBgnFromEurPeg). The other 8 come from a real secondary
+// source (see refreshFromSecondarySource) -- open.er-api.com, chosen
+// for its real, broader-than-ECB coverage, also free and requiring no
+// API key. VES (Venezuelan bolivar) is deliberately left out of both
+// -- its real official and real street exchange rates diverge
+// significantly, so no free source can be trusted to reflect what a
+// real buyer would actually experience; left as an honest gap rather
+// than a real but misleading number.
+const FRANKFURTER_UNSUPPORTED = new Set(['BGN', 'ARS', 'CLP', 'DOP', 'JOD', 'KWD', 'PEN', 'PYG', 'UYU', 'VES']);
+
+// Real, best-effort derivation of USD_BGN from the real, already-
+// live-refreshed USD_EUR rate -- never throws, matching the same
+// non-fatal pattern as every other refresh function here. Reads
+// whatever USD_EUR rate is currently in fx_rates (freshest available,
+// regardless of exactly when in this tick cycle it was last updated),
+// so a momentary read failure here never blocks or crashes the
+// broader real refresh cycle.
+async function refreshBgnFromEurPeg() {
+  try {
+    const { rows } = await db.query("SELECT rate FROM fx_rates WHERE currency_pair = 'USD_EUR'");
+    const usdToEur = rows[0]?.rate;
+    if (typeof usdToEur !== 'number' && typeof usdToEur !== 'string') {
+      throw new Error('No real USD_EUR rate available yet to derive USD_BGN from');
+    }
+    const rate = Number(usdToEur) * BGN_PER_EUR;
+    await db.query(
+      `INSERT INTO fx_rates (currency_pair, rate, source, updated_at) VALUES ('USD_BGN', $1, 'manual', now())
+       ON CONFLICT (currency_pair) DO UPDATE SET rate = $1, source = 'manual', updated_at = now()`,
+      [rate]
+    );
+    console.log(`[fx-rate] Real USD_BGN derived from the live EUR peg: ${rate}`);
+  } catch (err) {
+    console.error('[fx-rate] Real USD_BGN derivation failed, keeping the existing rate (non-fatal):', err.message);
+  }
+}
+
+const SECONDARY_SOURCE_URL = 'https://open.er-api.com/v6/latest/USD';
+const SECONDARY_SOURCE_CURRENCIES = ['ARS', 'CLP', 'DOP', 'JOD', 'KWD', 'PEN', 'PYG', 'UYU'];
+
+// Real, single-call refresh for the 8 real currencies Frankfurter
+// doesn't carry -- open.er-api.com returns every real currency's rate
+// in one real response, so this is one real request covering all 8,
+// not 8 separate ones. Never throws; a real failure here leaves every
+// one of these 8 currencies' existing real rates untouched, same
+// honest fallback as every other refresh path in this file.
+//
+// HONEST LIMITATION, same as Frankfurter's own: this sandbox's
+// network access does not include open.er-api.com in its allowlist,
+// so this could not be tested against the real, live API from here --
+// only built carefully from their documented, public response format
+// ({ result: 'success', rates: { CODE: number, ... } }). Verify the
+// real response shape once running outside this sandbox.
+async function refreshFromSecondarySource() {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    let response;
+    try {
+      response = await fetch(SECONDARY_SOURCE_URL, { signal: controller.signal });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+    if (!response.ok) {
+      throw new Error(`Secondary FX source responded with ${response.status}`);
+    }
+    const body = await response.json();
+    if (body?.result !== 'success' || typeof body?.rates !== 'object') {
+      throw new Error('Secondary FX source response missing a real, valid rates object');
+    }
+    for (const code of SECONDARY_SOURCE_CURRENCIES) {
+      const rate = body.rates[code];
+      if (typeof rate !== 'number' || !Number.isFinite(rate) || rate <= 0) {
+        console.error(`[fx-rate] Secondary source missing a real rate for ${code}, keeping the existing rate (non-fatal)`);
+        continue;
+      }
+      await db.query(
+        `INSERT INTO fx_rates (currency_pair, rate, source, updated_at) VALUES ($1, $2, 'live', now())
+         ON CONFLICT (currency_pair) DO UPDATE SET rate = $2, source = 'live', updated_at = now()`,
+        [`USD_${code}`, rate]
+      );
+      console.log(`[fx-rate] Real live rate refreshed for USD_${code} (secondary source): ${rate}`);
+    }
+  } catch (err) {
+    console.error('[fx-rate] Real secondary source refresh failed entirely, keeping all existing rates (non-fatal):', err.message);
+  }
+}
+
 function startScheduledDisplayCurrencyRefresh() {
-  const currencyCodes = [...new Set(LAUNCH_MARKETS.map((m) => m.currencyCode))].filter((c) => c !== 'USD');
+  const currencyCodes = [...new Set(LAUNCH_MARKETS.map((m) => m.currencyCode))].filter((c) => c !== 'USD' && !FRANKFURTER_UNSUPPORTED.has(c));
   const tick = async () => {
     for (const code of currencyCodes) {
       // Sequential, not parallel -- a real, deliberate choice: Frankfurter
@@ -133,9 +233,17 @@ function startScheduledDisplayCurrencyRefresh() {
       await refreshLiveFxRate(`USD_${code}`);
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
+    // Real, ordered after the loop above -- needs the real, freshly-
+    // updated USD_EUR rate this same tick just refreshed.
+    await refreshBgnFromEurPeg();
+    // Real, single extra request covering the remaining 8 real
+    // currencies Frankfurter doesn't carry.
+    await refreshFromSecondarySource();
   };
   tick(); // real, immediate check on startup
   setInterval(tick, REFRESH_INTERVAL_MS);
 }
 
 module.exports.startScheduledDisplayCurrencyRefresh = startScheduledDisplayCurrencyRefresh;
+module.exports.refreshBgnFromEurPeg = refreshBgnFromEurPeg;
+module.exports.refreshFromSecondarySource = refreshFromSecondarySource;
