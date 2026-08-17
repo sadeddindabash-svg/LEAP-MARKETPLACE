@@ -526,16 +526,19 @@ class _ShoppingForCard extends StatelessWidget {
                   ),
                   Positioned(
                     left: isAr ? 100 : 14,
-                    right: isAr ? 14 : 100,
+                    right: isAr ? 8 : 100,
                     top: 14,
-                    child: Column(
-                      crossAxisAlignment: isAr ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(tr(context, 'shopping_for'), style: TextStyle(fontSize: 11, color: labelColor)),
-                        const SizedBox(height: 4),
-                        PlateChip(text: '${vehicle.label} · ${vehicle.subLabel}', small: true),
-                      ],
+                    child: Directionality(
+                      textDirection: TextDirection.ltr,
+                      child: Column(
+                        crossAxisAlignment: isAr ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(tr(context, 'shopping_for'), style: TextStyle(fontSize: 11, color: labelColor), textDirection: isAr ? TextDirection.rtl : TextDirection.ltr),
+                          const SizedBox(height: 4),
+                          PlateChip(text: '${vehicle.label} · ${vehicle.subLabel}', small: true),
+                        ],
+                      ),
                     ),
                   ),
                 ],
