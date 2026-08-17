@@ -158,7 +158,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
       body: Column(
         children: [
           SizedBox(
-            height: 44,
+            height: 48,
             child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -172,7 +172,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     onTap: () => _selectTab(t.key),
                     borderRadius: BorderRadius.circular(20),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                       decoration: BoxDecoration(
                         color: selected ? palette.signal : palette.card,
                         borderRadius: BorderRadius.circular(20),

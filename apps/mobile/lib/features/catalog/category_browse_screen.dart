@@ -113,8 +113,8 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
                                 // category genuinely has no photo
                                 // uploaded yet (most don't, currently).
                                 Container(
-                                  width: 44,
-                                  height: 44,
+                                  width: 53,
+                                  height: 53,
                                   margin: const EdgeInsets.only(bottom: 6),
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
@@ -123,8 +123,8 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
                                   ),
                                   clipBehavior: Clip.antiAlias,
                                   child: c.photoUrl != null
-                                      ? CachedNetworkImage(imageUrl: ApiClient.resolveMediaUrl(c.photoUrl!), fit: BoxFit.cover, fadeInDuration: const Duration(milliseconds: 300), errorWidget: (context, url, error) => Icon(Icons.category_outlined, size: 18, color: palette.muted))
-                                      : Icon(Icons.category_outlined, size: 18, color: selected ? palette.signal : palette.muted),
+                                      ? CachedNetworkImage(imageUrl: ApiClient.resolveMediaUrl(c.photoUrl!), fit: BoxFit.cover, fadeInDuration: const Duration(milliseconds: 300), errorWidget: (context, url, error) => Icon(Icons.category_outlined, size: 22, color: palette.muted))
+                                      : Icon(Icons.category_outlined, size: 22, color: selected ? palette.signal : palette.muted),
                                 ),
                                 Text(
                                   c.displayName(isAr),
@@ -181,7 +181,7 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
                           return Container(
                             decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(10), border: Border.all(color: palette.line)),
                             child: ListTile(
-                              title: Text(partLabel, style: TextStyle(color: palette.ink)),
+                              title: Text(partLabel, style: TextStyle(fontSize: 14.5, color: palette.ink)),
                               trailing: Icon(Icons.chevron_right, color: palette.muted),
                               onTap: () => context.push(
                                 '/category/$_selectedCategoryId',

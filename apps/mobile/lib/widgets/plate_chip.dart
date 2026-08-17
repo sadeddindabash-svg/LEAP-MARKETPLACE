@@ -13,10 +13,19 @@ class PlateChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Real, deliberate mode-specific color (new) -- LeapColors.ink was
+    // previously hardcoded regardless of theme, which read fine in
+    // light mode but appeared dim/hard-to-read in dark mode (this
+    // widget is shared for the active vehicle chip, order IDs, and
+    // tracking numbers alike). Gold in dark mode only, matching the
+    // same pattern already established elsewhere this session; light
+    // mode's existing appearance is untouched.
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color = isDark ? LeapPalette.of(context).signal : LeapColors.ink;
     return Container(
       padding: EdgeInsets.symmetric(horizontal: small ? 8 : 12, vertical: small ? 3 : 6),
       decoration: BoxDecoration(
-        border: Border.all(color: LeapColors.ink, width: 1.5),
+        border: Border.all(color: color, width: 1.5),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
@@ -26,7 +35,7 @@ class PlateChip extends StatelessWidget {
           fontWeight: FontWeight.w700,
           fontSize: small ? 10.5 : 12,
           letterSpacing: 0.6,
-          color: LeapColors.ink,
+          color: color,
         ),
       ),
     );
