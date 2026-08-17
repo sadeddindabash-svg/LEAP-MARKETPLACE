@@ -497,6 +497,7 @@ class _ShoppingForCard extends StatelessWidget {
         final isAr = context.watch<LanguageState>().isArabic;
         return Card(
           clipBehavior: Clip.antiAlias,
+          color: palette.chalk,
           child: InkWell(
             onTap: () => context.push('/garage'),
             child: SizedBox(
