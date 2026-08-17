@@ -7,6 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/config/app_config.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
+import '../../core/currency_state.dart';
 import '../../core/auth_state.dart';
 import '../../core/cart_state.dart';
 import '../../core/draft_order_queue.dart';
@@ -233,7 +234,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         if (mounted && type != 'free_shipping') {
           final cart = context.read<CartState>();
           final saved = _previewDiscount(cart.total);
-          setState(() => _promoMessage = '${trRead(context, 'you_saved')} \$${saved.toStringAsFixed(2)}!');
+          setState(() => _promoMessage = '${trRead(context, 'you_saved')} ${formatPrice(context, saved)}!');
         } else if (mounted) {
           setState(() => _promoMessage = trRead(context, 'promo_applied'));
         }
@@ -769,7 +770,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Text('\$${(item.price * item.quantity).toStringAsFixed(2)}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                        Text(formatPrice(context, item.price * item.quantity), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
                       ],
                     ),
                   ),
@@ -816,7 +817,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text('${cart.itemCount} item(s) · ${tr(context, 'subtotal')}', style: TextStyle(color: LeapPalette.of(context).muted, fontSize: 12.5)),
-                    Text('\$${cart.total.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                    Text(formatPrice(context, cart.total), style: const TextStyle(fontWeight: FontWeight.w700)),
                   ],
                 ),
                 if (_appliedPromoCode != null) ...[
@@ -825,7 +826,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text('${tr(context, 'discount')} ($_appliedPromoCode)', style: TextStyle(color: LeapPalette.of(context).gauge, fontSize: 12.5)),
-                      Text('-\$${_previewDiscount(cart.total).toStringAsFixed(2)}', style: TextStyle(color: LeapPalette.of(context).gauge, fontWeight: FontWeight.w700)),
+                      Text('-${formatPrice(context, _previewDiscount(cart.total))}', style: TextStyle(color: LeapPalette.of(context).gauge, fontWeight: FontWeight.w700)),
                     ],
                   ),
                 ],
@@ -847,7 +848,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           onPressed: (cart.isEmpty || _isPlacingOrder || _stockChangedItemNames.isNotEmpty) ? null : _placeOrder,
           child: _isPlacingOrder
               ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : Text('${tr(context, 'place_order')} · \$${(cart.total - _previewDiscount(cart.total)).toStringAsFixed(2)}'),
+              : Text('${tr(context, 'place_order')} · ${formatPriceWithUsd(context, cart.total - _previewDiscount(cart.total))}'),
         ),
       ),
     );

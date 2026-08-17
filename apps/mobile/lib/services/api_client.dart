@@ -555,6 +555,17 @@ class ApiClient {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  /// Real buyer-facing display currency rates (new) -- public, no auth
+  /// needed, matching the backend route's own public access. Returns
+  /// { currencyCode: rate } -- 1 USD = `rate` units of currencyCode.
+  Future<Map<String, dynamic>> fetchDisplayRates() async {
+    final response = await _client.get(Uri.parse('$baseUrl/pricing/display-rates'));
+    if (response.statusCode != 200) {
+      throw ApiException('Failed to load display rates (${response.statusCode})');
+    }
+    return (jsonDecode(response.body) as Map<String, dynamic>)['rates'] as Map<String, dynamic>;
+  }
+
   /// Fetches full detail for one order, including per-supplier sub-orders
   /// (needed to know which subOrderId to attach a return request to).
   /// Uses the real logged-in buyer's token — GET /order/:id is

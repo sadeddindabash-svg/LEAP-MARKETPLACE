@@ -109,3 +109,33 @@ function startScheduledFxRateRefresh(currencyPair = 'CNY_USD') {
 }
 
 module.exports = { refreshLiveFxRate, getFxRateMode, startScheduledFxRateRefresh };
+
+// Real buyer-facing display-currency refresh (new) -- reuses the exact
+// same real refreshLiveFxRate() above, just called for every real
+// currency in the confirmed 40-country launch market list (see
+// src/config/markets.js) instead of only CNY_USD. Deliberately always
+// auto-refreshes (no manual/automatic toggle, unlike CNY_USD) since
+// this feeds display-only conversion, not real supplier pricing --
+// the actual charge always happens in USD regardless of what's shown
+// here, so a stale or momentarily-failed rate has much lower real
+// stakes than a stale CNY_USD supplier rate would.
+const { LAUNCH_MARKETS } = require('../../config/markets');
+
+function startScheduledDisplayCurrencyRefresh() {
+  const currencyCodes = [...new Set(LAUNCH_MARKETS.map((m) => m.currencyCode))].filter((c) => c !== 'USD');
+  const tick = async () => {
+    for (const code of currencyCodes) {
+      // Sequential, not parallel -- a real, deliberate choice: Frankfurter
+      // is a free, no-API-key service, and hammering it with 25+
+      // simultaneous requests once a day is an unnecessary real load on
+      // a service this project doesn't pay for. One real request every
+      // real 500ms keeps this well under a minute total either way.
+      await refreshLiveFxRate(`USD_${code}`);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  };
+  tick(); // real, immediate check on startup
+  setInterval(tick, REFRESH_INTERVAL_MS);
+}
+
+module.exports.startScheduledDisplayCurrencyRefresh = startScheduledDisplayCurrencyRefresh;

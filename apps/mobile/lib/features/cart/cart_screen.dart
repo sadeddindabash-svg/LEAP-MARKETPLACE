@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
+import '../../core/currency_state.dart';
 import '../../core/cart_state.dart';
 import '../../models/cart_item.dart';
 import '../../services/api_client.dart';
@@ -55,7 +56,7 @@ class CartScreen extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(tr(context, 'total').toUpperCase(), style: TextStyle(color: palette.muted, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
-                        Text('\$${cart.total.toStringAsFixed(2)}', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 24, color: palette.signal)),
+                        Text(formatPriceWithUsd(context, cart.total), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 24, color: palette.signal)),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -148,7 +149,7 @@ class CartScreen extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(tr(context, 'subtotal'), style: TextStyle(color: palette.muted, fontSize: 13)),
-                    Text('\$${cart.total.toStringAsFixed(2)}', style: TextStyle(color: palette.ink, fontSize: 13, fontWeight: FontWeight.w600)),
+                    Text(formatPrice(context, cart.total), style: TextStyle(color: palette.ink, fontSize: 13, fontWeight: FontWeight.w600)),
                   ],
                 ),
               ),
@@ -440,7 +441,7 @@ class _CartItemRowState extends State<_CartItemRow> {
                         ],
                       ),
                     ),
-                    Text('\$${item.lineTotal.toStringAsFixed(2)}', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: palette.signal)),
+                    Text(formatPrice(context, item.lineTotal), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: palette.signal)),
                   ],
                 ),
               ],

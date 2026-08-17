@@ -35,7 +35,7 @@ const platformSettingsRoutes = require('./modules/platform-settings/routes');
 const payoutsRoutes = require('./modules/payouts/routes');
 const reviewsRoutes = require('./modules/reviews/routes');
 const webhooksRoutes = require('./modules/webhooks/routes');
-const { startScheduledFxRateRefresh } = require('./modules/pricing/fxRateRefresh');
+const { startScheduledFxRateRefresh, startScheduledDisplayCurrencyRefresh } = require('./modules/pricing/fxRateRefresh');
 const { startScheduledPriceDropCheck } = require('./modules/priceDropAlerts/check');
 const priceDropAlertsRoutes = require('./modules/priceDropAlerts/routes');
 const savedSearchesRoutes = require('./modules/savedSearches/routes');
@@ -170,6 +170,12 @@ if (require.main === module) {
   // design, including the honest limitation that this couldn't be
   // tested against the real, live Frankfurter API from this sandbox).
   startScheduledFxRateRefresh();
+  // Real, every-day refresh of all real buyer-facing display
+  // currencies (new) -- see modules/pricing/fxRateRefresh.js's
+  // startScheduledDisplayCurrencyRefresh for the full real design.
+  // Same real startup guard as above -- only when the server actually
+  // runs, never during testing.
+  startScheduledDisplayCurrencyRefresh();
   // Real, every-6-hours price-drop check across wishlisted products
   // (migration 038) -- same real startup guard as the FX rate refresh
   // above, only when the server actually runs, never during testing.

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
+import '../../core/currency_state.dart';
 import '../../core/auth_state.dart';
 import '../../core/cart_state.dart';
 import '../../core/config/app_config.dart';
@@ -298,7 +299,7 @@ class _ProductDetailBody extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 20),
-            Text('\$${product.price.toStringAsFixed(2)} ${product.currencyCode}', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 26, color: palette.signal)),
+            Text(formatPrice(context, product.price), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 26, color: palette.signal)),
             const SizedBox(height: 24),
             Container(
               decoration: BoxDecoration(
@@ -384,7 +385,7 @@ class _ProductDetailBody extends StatelessWidget {
                             onPressed: isAdding ? null : onAddToCart,
                             child: isAdding
                                 ? SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: palette.onSignal))
-                                : Text('${_isAr ? "أضف إلى السلة" : "Add to cart"} · \$${(product.price * qty).toStringAsFixed(2)}'),
+                                : Text('${_isAr ? "أضف إلى السلة" : "Add to cart"} · ${formatPrice(context, product.price * qty)}'),
                           )
                         // Real "notify when back in stock" entry
                         // point (#46) -- reuses the existing real

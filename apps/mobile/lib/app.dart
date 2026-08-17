@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'core/theme.dart';
 import 'core/auth_state.dart';
+import 'core/currency_state.dart';
 import 'core/cart_state.dart';
 import 'core/language_state.dart';
 import 'core/app_lock_state.dart';
@@ -250,6 +251,7 @@ class LeapApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthState()),
         ChangeNotifierProvider(create: (_) => CartState()),
         ChangeNotifierProvider(create: (_) => LanguageState()),
+        ChangeNotifierProvider(create: (_) => CurrencyState()),
         ChangeNotifierProvider(create: (_) => AppLockState()),
         ChangeNotifierProvider(create: (_) => ThemeState()),
       ],

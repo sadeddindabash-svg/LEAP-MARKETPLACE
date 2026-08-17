@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../core/theme.dart';
 import '../core/app_strings.dart';
+import '../core/currency_state.dart';
 import '../core/auth_state.dart';
 import '../core/cart_state.dart';
 import '../models/cart_item.dart';
@@ -258,7 +259,7 @@ class _ProductCardState extends State<ProductCard> {
                       children: [
                         Flexible(
                           child: Text(
-                            '\$${p.price.toStringAsFixed(2)}',
+                            formatPrice(context, p.price),
                             style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: palette.ink),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -272,7 +273,7 @@ class _ProductCardState extends State<ProductCard> {
                           const SizedBox(width: 5),
                           Flexible(
                             child: Text(
-                              '\$${p.lastKnownPrice!.toStringAsFixed(2)}',
+                              formatPrice(context, p.lastKnownPrice!),
                               style: TextStyle(fontSize: 11, color: palette.muted, decoration: TextDecoration.lineThrough),
                               overflow: TextOverflow.ellipsis,
                             ),

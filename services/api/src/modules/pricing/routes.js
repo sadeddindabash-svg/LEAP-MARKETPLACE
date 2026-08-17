@@ -250,4 +250,25 @@ router.post('/preview', requireAuth, requireRole('admin'), requirePageAccess('pr
   }
 });
 
+// GET /pricing/display-rates -- public, no auth. Real buyer-facing
+// display rates only (see fxRateRefresh.js's startScheduledDisplayCurrencyRefresh),
+// never the CNY_USD supplier-pricing rate above -- that one stays
+// admin-only via /fx-rate. Returns a plain { currencyCode: rate } map,
+// USD -> currencyCode pairs only (1 USD = `rate` units of currencyCode),
+// since that's the only real direction the mobile app's own display
+// conversion needs.
+router.get('/display-rates', async (req, res, next) => {
+  try {
+    const { rows } = await db.query("SELECT currency_pair, rate FROM fx_rates WHERE currency_pair LIKE 'USD\\_%' ESCAPE '\\'");
+    const rates = {};
+    for (const row of rows) {
+      const currencyCode = row.currency_pair.split('_')[1];
+      rates[currencyCode] = Number(row.rate);
+    }
+    res.json({ rates });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
