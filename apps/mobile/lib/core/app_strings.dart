@@ -28,7 +28,7 @@ class AppStrings {
   static const Map<String, Map<String, String>> _strings = {
     // ---- Home ----
     'search_hint': {'en': 'Search part, brand, or number', 'ar': 'ابحث عن قطعة أو ماركة أو رقم'},
-    'shopping_for': {'en': 'Shopping for', 'ar': 'التسوق لأجل'},
+    'shopping_for': {'en': 'Shopping for', 'ar': 'التسوق لسيارة'},
     'shop_by_category': {'en': 'Shop by category', 'ar': 'تسوق حسب الفئة'},
     'cat_brake': {'en': 'Brake System', 'ar': 'نظام الفرامل'},
     'cat_engine': {'en': 'Engine', 'ar': 'المحرك'},

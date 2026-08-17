@@ -494,6 +494,7 @@ class _ShoppingForCard extends StatelessWidget {
         // the real database before building this. Falls back to a
         // plain icon, gracefully, when the brand has no real photo
         // set yet (most brands today, confirmed via a real query).
+        final isAr = context.watch<LanguageState>().isArabic;
         return Card(
           clipBehavior: Clip.antiAlias,
           child: InkWell(
@@ -505,9 +506,9 @@ class _ShoppingForCard extends StatelessWidget {
                   Positioned.fill(
                     child: FractionallySizedBox(
                       widthFactor: 0.45,
-                      alignment: Alignment.centerRight,
+                      alignment: isAr ? Alignment.centerLeft : Alignment.centerRight,
                       child: ClipPath(
-                        clipper: _DiagonalClipper(),
+                        clipper: _DiagonalClipper(mirrored: isAr),
                         child: Container(
                           color: palette.card,
                           child: vehicle.brandPhotoUrl != null
@@ -523,11 +524,11 @@ class _ShoppingForCard extends StatelessWidget {
                     ),
                   ),
                   Positioned(
-                    left: 14,
+                    left: isAr ? 100 : 14,
+                    right: isAr ? 14 : 100,
                     top: 14,
-                    right: 100,
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: isAr ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(tr(context, 'shopping_for'), style: TextStyle(fontSize: 11, color: labelColor)),
@@ -549,21 +550,35 @@ class _ShoppingForCard extends StatelessWidget {
 /// Real diagonal-edge clip (new) -- for the "Shopping for" card's
 /// angled photo panel. The top edge starts 25% in from the left, the
 /// bottom edge runs the full width, producing a slanted left border
-/// instead of a plain rectangle.
+/// instead of a plain rectangle. Set mirrored: true for RTL (Arabic),
+/// where the photo panel sits on the left instead of the right --
+/// confirmed against a real rendered mockup before building: this
+/// flips which corner the diagonal starts from, so the slant faces
+/// the correct direction relative to where the panel actually sits.
 class _DiagonalClipper extends CustomClipper<Path> {
+  final bool mirrored;
+  const _DiagonalClipper({this.mirrored = false});
+
   @override
   Path getClip(Size size) {
     final path = Path();
-    path.moveTo(size.width * 0.25, 0);
-    path.lineTo(size.width, 0);
-    path.lineTo(size.width, size.height);
-    path.lineTo(0, size.height);
+    if (mirrored) {
+      path.moveTo(0, 0);
+      path.lineTo(size.width * 0.75, 0);
+      path.lineTo(size.width, size.height);
+      path.lineTo(0, size.height);
+    } else {
+      path.moveTo(size.width * 0.25, 0);
+      path.lineTo(size.width, 0);
+      path.lineTo(size.width, size.height);
+      path.lineTo(0, size.height);
+    }
     path.close();
     return path;
   }
 
   @override
-  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
+  bool shouldReclip(covariant _DiagonalClipper oldClipper) => oldClipper.mirrored != mirrored;
 }
 
 class _FilterChip extends StatelessWidget {
