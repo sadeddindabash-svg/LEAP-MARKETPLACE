@@ -15,8 +15,6 @@ import 'features/home/home_screen.dart';
 import 'features/search/search_screen.dart';
 import 'features/catalog/shop_by_symptom_screen.dart';
 import 'features/catalog/which_part_wizard_screen.dart';
-import 'features/catalog/barcode_scanner_screen.dart';
-import 'features/catalog/part_number_scanner_screen.dart';
 import 'features/catalog/product_comparison_screen.dart';
 import 'features/support/report_bug_screen.dart';
 import 'features/account/legal_document_screen.dart';
@@ -71,8 +69,6 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(path: '/shop-by-symptom', builder: (context, state) => const ShopBySymptomScreen()),
     GoRoute(path: '/which-part-wizard', builder: (context, state) => const WhichPartWizardScreen()),
-    GoRoute(path: '/scan-barcode', builder: (context, state) => const BarcodeScannerScreen()),
-    GoRoute(path: '/scan-part-number', builder: (context, state) => const PartNumberScannerScreen()),
     GoRoute(
       path: '/compare-products',
       builder: (context, state) => ProductComparisonScreen(products: state.extra as List<Product>),

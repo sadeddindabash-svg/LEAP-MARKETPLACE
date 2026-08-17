@@ -187,21 +187,11 @@ class _SupplierGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = LeapPalette.of(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(Icons.inventory_2_outlined, size: 14, color: palette.signal),
-              const SizedBox(width: 6),
-              Text('${tr(context, 'ships_from')} $supplierName'.toUpperCase(),
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: palette.muted, letterSpacing: 0.8)),
-            ],
-          ),
-          const SizedBox(height: 8),
           for (final item in items) _CartItemRow(key: ValueKey(item.productId), item: item),
         ],
       ),

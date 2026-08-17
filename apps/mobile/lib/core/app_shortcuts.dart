@@ -27,9 +27,6 @@ class AppShortcuts {
         case 'orders':
           appRouter.push('/orders');
           break;
-        case 'scan_barcode':
-          appRouter.push('/scan-barcode');
-          break;
       }
     });
     // Real, deliberate omission: `icon` would need a real native
@@ -41,7 +38,6 @@ class AppShortcuts {
     await _quickActions.setShortcutItems([
       const ShortcutItem(type: 'search', localizedTitle: 'Search'),
       const ShortcutItem(type: 'orders', localizedTitle: 'Track order'),
-      const ShortcutItem(type: 'scan_barcode', localizedTitle: 'Scan barcode'),
     ]);
   }
 }
