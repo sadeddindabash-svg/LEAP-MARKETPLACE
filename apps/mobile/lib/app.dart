@@ -12,6 +12,7 @@ import 'widgets/app_lock_gate.dart';
 import 'widgets/force_update_gate.dart';
 import 'core/app_strings.dart';
 import 'services/api_client.dart';
+import 'features/splash/splash_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/search/search_screen.dart';
 import 'features/catalog/shop_by_symptom_screen.dart';
@@ -51,8 +52,9 @@ import 'features/auth/forgot_password_screen.dart';
 import 'features/auth/reset_password_screen.dart';
 
 final GoRouter appRouter = GoRouter(
-  initialLocation: '/home',
+  initialLocation: '/splash',
   routes: [
+    GoRoute(path: '/splash', builder: (context, state) => const SplashScreen()),
     ShellRoute(
       builder: (context, state, child) => RootShell(child: child),
       routes: [
