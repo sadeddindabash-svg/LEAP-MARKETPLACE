@@ -475,20 +475,95 @@ class _ShoppingForCard extends StatelessWidget {
       builder: (context, snapshot) {
         final vehicles = snapshot.data ?? [];
         final vehicle = vehicles.isNotEmpty ? vehicles.first : null;
+        if (vehicle == null) {
+          return Card(
+            child: ListTile(
+              leading: const Icon(Icons.directions_car_outlined),
+              title: Text(tr(context, 'shopping_for'), style: TextStyle(fontSize: 11, color: labelColor)),
+              subtitle: Text(tr(context, 'add_a_vehicle'), style: isDark ? TextStyle(color: palette.signal) : null),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/garage'),
+            ),
+          );
+        }
+        // Real angled photo panel (new, "option 6") -- shows the real
+        // vehicle brand's own photo when one exists. Note this is a
+        // photo of the real BRAND (e.g. a generic Honda image), not
+        // one specific to this exact model/generation -- no per-model
+        // photos exist in this system yet, confirmed directly against
+        // the real database before building this. Falls back to a
+        // plain icon, gracefully, when the brand has no real photo
+        // set yet (most brands today, confirmed via a real query).
         return Card(
-          child: ListTile(
-            leading: const Icon(Icons.directions_car_outlined),
-            title: Text(tr(context, 'shopping_for'), style: TextStyle(fontSize: 11, color: labelColor)),
-            subtitle: vehicle != null
-                ? PlateChip(text: '${vehicle.label} · ${vehicle.subLabel}', small: true)
-                : Text(tr(context, 'add_a_vehicle'), style: isDark ? TextStyle(color: palette.signal) : null),
-            trailing: const Icon(Icons.chevron_right),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
             onTap: () => context.push('/garage'),
+            child: SizedBox(
+              height: 78,
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: FractionallySizedBox(
+                      widthFactor: 0.45,
+                      alignment: Alignment.centerRight,
+                      child: ClipPath(
+                        clipper: _DiagonalClipper(),
+                        child: Container(
+                          color: palette.card,
+                          child: vehicle.brandPhotoUrl != null
+                              ? CachedNetworkImage(
+                                  imageUrl: ApiClient.resolveMediaUrl(vehicle.brandPhotoUrl!),
+                                  fit: BoxFit.cover,
+                                  fadeInDuration: const Duration(milliseconds: 300),
+                                  errorWidget: (context, url, error) => Icon(Icons.directions_car, size: 28, color: palette.muted),
+                                )
+                              : Icon(Icons.directions_car, size: 28, color: palette.muted),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 14,
+                    top: 14,
+                    right: 100,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(tr(context, 'shopping_for'), style: TextStyle(fontSize: 11, color: labelColor)),
+                        const SizedBox(height: 4),
+                        PlateChip(text: '${vehicle.label} · ${vehicle.subLabel}', small: true),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         );
       },
     );
   }
+}
+
+/// Real diagonal-edge clip (new) -- for the "Shopping for" card's
+/// angled photo panel. The top edge starts 25% in from the left, the
+/// bottom edge runs the full width, producing a slanted left border
+/// instead of a plain rectangle.
+class _DiagonalClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    path.moveTo(size.width * 0.25, 0);
+    path.lineTo(size.width, 0);
+    path.lineTo(size.width, size.height);
+    path.lineTo(0, size.height);
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
 }
 
 class _FilterChip extends StatelessWidget {

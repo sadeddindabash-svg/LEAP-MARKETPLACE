@@ -22,6 +22,11 @@ class Vehicle {
   // saved vehicle drives automatic fitment filtering (the home feed)
   // when a buyer has more than one saved.
   final bool isDefault;
+  // Real brand photo (new) -- nullable, not every brand has one yet.
+  // Note this is a photo of the real vehicle BRAND (e.g. a generic
+  // Honda image), not a photo specific to this exact model/generation
+  // -- no per-model photos exist in this system yet.
+  final String? brandPhotoUrl;
 
   const Vehicle({
     required this.generationId,
@@ -32,6 +37,7 @@ class Vehicle {
     required this.yearStart,
     this.yearEnd,
     this.isDefault = false,
+    this.brandPhotoUrl,
   });
 
   // Kept as a synthetic id (not a real column) purely for Flutter
@@ -52,6 +58,7 @@ class Vehicle {
         yearStart: json['yearStart'] as int,
         yearEnd: json['yearEnd'] as int?,
         isDefault: json['isDefault'] as bool? ?? false,
+        brandPhotoUrl: json['brandPhotoUrl'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -63,5 +70,6 @@ class Vehicle {
         'yearStart': yearStart,
         'yearEnd': yearEnd,
         'isDefault': isDefault,
+        'brandPhotoUrl': brandPhotoUrl,
       };
 }

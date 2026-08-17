@@ -32,12 +32,17 @@ function toSavedGenerationDto(row) {
     // saved vehicle drives automatic fitment filtering (the home feed)
     // when a buyer has more than one.
     isDefault: row.is_default,
+    // Real brand photo (new) -- nullable, not every brand has one yet
+    // (see migration 046's own comment: nullable at the DB level,
+    // required only for new brands going forward). Callers must
+    // handle null gracefully, never assume a photo exists.
+    brandPhotoUrl: row.brand_photo_url,
   };
 }
 
 const SAVED_GENERATION_SELECT = `
   SELECT usg.generation_id, usg.year, usg.is_default, vg.name AS generation_name, vg.year_start, vg.year_end,
-         vm.name AS model_name, vb.name AS brand_name
+         vm.name AS model_name, vb.name AS brand_name, vb.photo_url AS brand_photo_url
   FROM user_saved_generations usg
   JOIN vehicle_generations vg ON vg.id = usg.generation_id
   JOIN vehicle_models vm ON vm.id = vg.model_id
