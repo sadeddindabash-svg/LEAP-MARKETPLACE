@@ -398,6 +398,19 @@ export async function updatePartPhoto(token, id, photoUrl) {
   return data;
 }
 
+// Real, new -- 7 reorder endpoints (categories, parts, and all 5
+// vehicle data levels), plus brand photo editing. Same established
+// fitmentMutate one-liner pattern already used for the proven
+// fee-component move endpoint above.
+export const moveCategory = (token, id, direction) => fitmentMutate("POST", `/catalog/categories/${id}/move`, token, { direction });
+export const movePart = (token, id, direction) => fitmentMutate("POST", `/catalog/parts/${id}/move`, token, { direction });
+export const moveBrand = (token, id, direction) => fitmentMutate("POST", `/fitment/brands/${id}/move`, token, { direction });
+export const moveModel = (token, id, direction) => fitmentMutate("POST", `/fitment/models/${id}/move`, token, { direction });
+export const moveGeneration = (token, id, direction) => fitmentMutate("POST", `/fitment/generations/${id}/move`, token, { direction });
+export const moveEngine = (token, id, direction) => fitmentMutate("POST", `/fitment/engines/${id}/move`, token, { direction });
+export const moveTransmission = (token, id, direction) => fitmentMutate("POST", `/fitment/transmissions/${id}/move`, token, { direction });
+export const updateBrandPhoto = (token, id, photoUrl) => fitmentMutate("PATCH", `/fitment/brands/${id}/photo`, token, { photoUrl });
+
 export async function deletePart(token, id) {
   const response = await fetch(`${API_BASE_URL}/catalog/parts/${id}`, {
     method: "DELETE",

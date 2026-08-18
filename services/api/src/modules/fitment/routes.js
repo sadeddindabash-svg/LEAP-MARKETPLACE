@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { logAdminAction } = require('../audit/helpers');
+const { moveItem } = require('../../lib/reorder');
 
 /**
  * Fitment module — Year/Make/Model/Trim reference data (Phase 1, BUY-010).
@@ -50,11 +51,11 @@ router.get('/vehicles', async (req, res, next) => {
 
 router.get('/brands', async (req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT * FROM vehicle_brands ORDER BY name');
+    const { rows } = await db.query('SELECT * FROM vehicle_brands ORDER BY sort_order ASC');
     // nameAr/photoUrl (new, migration 046) -- may be null for a brand
     // created before this requirement existed; a real, honest gap for
     // old data, not hidden.
-    res.json(rows.map((r) => ({ id: r.id, name: r.name, nameAr: r.name_ar, photoUrl: r.photo_url })));
+    res.json(rows.map((r) => ({ id: r.id, name: r.name, nameAr: r.name_ar, photoUrl: r.photo_url, sortOrder: r.sort_order })));
   } catch (err) {
     next(err);
   }
@@ -62,8 +63,8 @@ router.get('/brands', async (req, res, next) => {
 
 router.get('/brands/:brandId/models', async (req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT * FROM vehicle_models WHERE brand_id = $1 ORDER BY name', [req.params.brandId]);
-    res.json(rows.map((r) => ({ id: r.id, brandId: r.brand_id, name: r.name })));
+    const { rows } = await db.query('SELECT * FROM vehicle_models WHERE brand_id = $1 ORDER BY sort_order ASC', [req.params.brandId]);
+    res.json(rows.map((r) => ({ id: r.id, brandId: r.brand_id, name: r.name, sortOrder: r.sort_order })));
   } catch (err) {
     next(err);
   }
@@ -71,8 +72,8 @@ router.get('/brands/:brandId/models', async (req, res, next) => {
 
 router.get('/models/:modelId/generations', async (req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT * FROM vehicle_generations WHERE model_id = $1 ORDER BY year_start', [req.params.modelId]);
-    res.json(rows.map((r) => ({ id: r.id, modelId: r.model_id, name: r.name, yearStart: r.year_start, yearEnd: r.year_end })));
+    const { rows } = await db.query('SELECT * FROM vehicle_generations WHERE model_id = $1 ORDER BY sort_order ASC', [req.params.modelId]);
+    res.json(rows.map((r) => ({ id: r.id, modelId: r.model_id, name: r.name, yearStart: r.year_start, yearEnd: r.year_end, sortOrder: r.sort_order })));
   } catch (err) {
     next(err);
   }
@@ -80,8 +81,8 @@ router.get('/models/:modelId/generations', async (req, res, next) => {
 
 router.get('/generations/:generationId/engines', async (req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT * FROM vehicle_engines WHERE generation_id = $1 ORDER BY name', [req.params.generationId]);
-    res.json(rows.map((r) => ({ id: r.id, generationId: r.generation_id, name: r.name })));
+    const { rows } = await db.query('SELECT * FROM vehicle_engines WHERE generation_id = $1 ORDER BY sort_order ASC', [req.params.generationId]);
+    res.json(rows.map((r) => ({ id: r.id, generationId: r.generation_id, name: r.name, sortOrder: r.sort_order })));
   } catch (err) {
     next(err);
   }
@@ -89,8 +90,8 @@ router.get('/generations/:generationId/engines', async (req, res, next) => {
 
 router.get('/generations/:generationId/transmissions', async (req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT * FROM vehicle_transmissions WHERE generation_id = $1 ORDER BY name', [req.params.generationId]);
-    res.json(rows.map((r) => ({ id: r.id, generationId: r.generation_id, name: r.name })));
+    const { rows } = await db.query('SELECT * FROM vehicle_transmissions WHERE generation_id = $1 ORDER BY sort_order ASC', [req.params.generationId]);
+    res.json(rows.map((r) => ({ id: r.id, generationId: r.generation_id, name: r.name, sortOrder: r.sort_order })));
   } catch (err) {
     next(err);
   }
@@ -136,11 +137,45 @@ router.post('/brands', requireAuth, requireRole('admin'), requirePageAccess('veh
     if (!nameAr || !nameAr.trim()) return res.status(400).json({ error: 'nameAr is required' });
     if (!photoUrl || !photoUrl.trim()) return res.status(400).json({ error: 'photoUrl is required' });
     const id = `brand_${Date.now()}`;
-    await db.query('INSERT INTO vehicle_brands (id, name, name_ar, photo_url) VALUES ($1, $2, $3, $4)', [id, name.trim(), nameAr.trim(), photoUrl.trim()]);
+    const { rows: maxRows } = await db.query('SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM vehicle_brands');
+    await db.query('INSERT INTO vehicle_brands (id, name, name_ar, photo_url, sort_order) VALUES ($1, $2, $3, $4, $5)', [id, name.trim(), nameAr.trim(), photoUrl.trim(), maxRows[0].max_order + 10]);
     await logAdminAction(req, 'brand_created', 'brand', id, { name: name.trim() });
-    res.status(201).json({ id, name: name.trim(), nameAr: nameAr.trim(), photoUrl: photoUrl.trim() });
+    res.status(201).json({ id, name: name.trim(), nameAr: nameAr.trim(), photoUrl: photoUrl.trim(), sortOrder: maxRows[0].max_order + 10 });
   } catch (err) {
     if (isUniqueViolation(err)) return res.status(409).json({ error: `A brand named "${req.body.name}" already exists` });
+    next(err);
+  }
+});
+
+// Real, new -- lets an admin replace an existing brand's photo at any
+// time, same real capability already added for categories and parts.
+// Previously only settable once, at creation (photoUrl is required
+// there, but with no way to ever change it afterward).
+router.patch('/brands/:id/photo', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const { photoUrl } = req.body || {};
+    if (!photoUrl || !photoUrl.trim()) return res.status(400).json({ error: 'photoUrl is required' });
+    const { rows } = await db.query('UPDATE vehicle_brands SET photo_url = $1 WHERE id = $2 RETURNING *', [photoUrl.trim(), req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Brand not found' });
+    await logAdminAction(req, 'brand_photo_changed', 'brand', req.params.id, {});
+    res.json({ id: rows[0].id, name: rows[0].name, nameAr: rows[0].name_ar, photoUrl: rows[0].photo_url });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Real, new -- brands reorder globally (no scope, no real parent to
+// scope by), same real pattern already proven for pricing fee
+// components and product categories.
+router.post('/brands/:id/move', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const { direction } = req.body || {};
+    const { current, neighbor } = await moveItem({ table: 'vehicle_brands', id: req.params.id, direction, orderColumn: 'sort_order', notFoundMessage: 'Brand not found' });
+    await logAdminAction(req, 'brand_reordered', 'brand', current.id, { direction, swappedWith: neighbor.name });
+    const { rows } = await db.query('SELECT * FROM vehicle_brands ORDER BY sort_order ASC');
+    res.json(rows.map((r) => ({ id: r.id, name: r.name, nameAr: r.name_ar, photoUrl: r.photo_url, sortOrder: r.sort_order })));
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
     next(err);
   }
 });
@@ -169,10 +204,28 @@ router.post('/brands/:brandId/models', requireAuth, requireRole('admin'), requir
     const brandCheck = await db.query('SELECT id FROM vehicle_brands WHERE id = $1', [req.params.brandId]);
     if (brandCheck.rows.length === 0) return res.status(404).json({ error: 'Brand not found' });
     const id = `model_${Date.now()}`;
-    await db.query('INSERT INTO vehicle_models (id, brand_id, name) VALUES ($1, $2, $3)', [id, req.params.brandId, name.trim()]);
+    const { rows: maxRows } = await db.query('SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM vehicle_models WHERE brand_id = $1', [req.params.brandId]);
+    await db.query('INSERT INTO vehicle_models (id, brand_id, name, sort_order) VALUES ($1, $2, $3, $4)', [id, req.params.brandId, name.trim(), maxRows[0].max_order + 10]);
     await logAdminAction(req, 'model_created', 'model', id, { name: name.trim(), brandId: req.params.brandId });
-    res.status(201).json({ id, brandId: req.params.brandId, name: name.trim() });
+    res.status(201).json({ id, brandId: req.params.brandId, name: name.trim(), sortOrder: maxRows[0].max_order + 10 });
   } catch (err) {
+    next(err);
+  }
+});
+
+// Real, new -- models reorder only among their own real brand's other
+// models, never mixed in with a different brand's models.
+router.post('/models/:id/move', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const { direction } = req.body || {};
+    const { rows: modelRows } = await db.query('SELECT brand_id FROM vehicle_models WHERE id = $1', [req.params.id]);
+    if (modelRows.length === 0) return res.status(404).json({ error: 'Model not found' });
+    const { current, neighbor } = await moveItem({ table: 'vehicle_models', id: req.params.id, direction, orderColumn: 'sort_order', scopeColumn: 'brand_id', scopeValue: modelRows[0].brand_id, notFoundMessage: 'Model not found' });
+    await logAdminAction(req, 'model_reordered', 'model', current.id, { direction, swappedWith: neighbor.name });
+    const { rows } = await db.query('SELECT * FROM vehicle_models WHERE brand_id = $1 ORDER BY sort_order ASC', [modelRows[0].brand_id]);
+    res.json(rows.map((r) => ({ id: r.id, brandId: r.brand_id, name: r.name, sortOrder: r.sort_order })));
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
     next(err);
   }
 });
@@ -202,13 +255,31 @@ router.post('/models/:modelId/generations', requireAuth, requireRole('admin'), r
     const modelCheck = await db.query('SELECT id FROM vehicle_models WHERE id = $1', [req.params.modelId]);
     if (modelCheck.rows.length === 0) return res.status(404).json({ error: 'Model not found' });
     const id = `gen_${Date.now()}`;
+    const { rows: maxRows } = await db.query('SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM vehicle_generations WHERE model_id = $1', [req.params.modelId]);
     await db.query(
-      'INSERT INTO vehicle_generations (id, model_id, name, year_start, year_end) VALUES ($1, $2, $3, $4, $5)',
-      [id, req.params.modelId, name.trim(), yearStart, yearEnd || null]
+      'INSERT INTO vehicle_generations (id, model_id, name, year_start, year_end, sort_order) VALUES ($1, $2, $3, $4, $5, $6)',
+      [id, req.params.modelId, name.trim(), yearStart, yearEnd || null, maxRows[0].max_order + 10]
     );
     await logAdminAction(req, 'generation_created', 'generation', id, { name: name.trim(), modelId: req.params.modelId, yearStart, yearEnd: yearEnd || null });
-    res.status(201).json({ id, modelId: req.params.modelId, name: name.trim(), yearStart, yearEnd: yearEnd || null });
+    res.status(201).json({ id, modelId: req.params.modelId, name: name.trim(), yearStart, yearEnd: yearEnd || null, sortOrder: maxRows[0].max_order + 10 });
   } catch (err) {
+    next(err);
+  }
+});
+
+// Real, new -- generations reorder only among their own real model's
+// other generations.
+router.post('/generations/:id/move', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const { direction } = req.body || {};
+    const { rows: genRows } = await db.query('SELECT model_id FROM vehicle_generations WHERE id = $1', [req.params.id]);
+    if (genRows.length === 0) return res.status(404).json({ error: 'Generation not found' });
+    const { current, neighbor } = await moveItem({ table: 'vehicle_generations', id: req.params.id, direction, orderColumn: 'sort_order', scopeColumn: 'model_id', scopeValue: genRows[0].model_id, notFoundMessage: 'Generation not found' });
+    await logAdminAction(req, 'generation_reordered', 'generation', current.id, { direction, swappedWith: neighbor.name });
+    const { rows } = await db.query('SELECT * FROM vehicle_generations WHERE model_id = $1 ORDER BY sort_order ASC', [genRows[0].model_id]);
+    res.json(rows.map((r) => ({ id: r.id, modelId: r.model_id, name: r.name, yearStart: r.year_start, yearEnd: r.year_end, sortOrder: r.sort_order })));
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
     next(err);
   }
 });
@@ -237,10 +308,28 @@ router.post('/generations/:generationId/engines', requireAuth, requireRole('admi
     const genCheck = await db.query('SELECT id FROM vehicle_generations WHERE id = $1', [req.params.generationId]);
     if (genCheck.rows.length === 0) return res.status(404).json({ error: 'Generation not found' });
     const id = `eng_${Date.now()}`;
-    await db.query('INSERT INTO vehicle_engines (id, generation_id, name) VALUES ($1, $2, $3)', [id, req.params.generationId, name.trim()]);
+    const { rows: maxRows } = await db.query('SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM vehicle_engines WHERE generation_id = $1', [req.params.generationId]);
+    await db.query('INSERT INTO vehicle_engines (id, generation_id, name, sort_order) VALUES ($1, $2, $3, $4)', [id, req.params.generationId, name.trim(), maxRows[0].max_order + 10]);
     await logAdminAction(req, 'engine_created', 'engine', id, { name: name.trim(), generationId: req.params.generationId });
-    res.status(201).json({ id, generationId: req.params.generationId, name: name.trim() });
+    res.status(201).json({ id, generationId: req.params.generationId, name: name.trim(), sortOrder: maxRows[0].max_order + 10 });
   } catch (err) {
+    next(err);
+  }
+});
+
+// Real, new -- engines reorder only among their own real generation's
+// other engines.
+router.post('/engines/:id/move', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const { direction } = req.body || {};
+    const { rows: engineRows } = await db.query('SELECT generation_id FROM vehicle_engines WHERE id = $1', [req.params.id]);
+    if (engineRows.length === 0) return res.status(404).json({ error: 'Engine not found' });
+    const { current, neighbor } = await moveItem({ table: 'vehicle_engines', id: req.params.id, direction, orderColumn: 'sort_order', scopeColumn: 'generation_id', scopeValue: engineRows[0].generation_id, notFoundMessage: 'Engine not found' });
+    await logAdminAction(req, 'engine_reordered', 'engine', current.id, { direction, swappedWith: neighbor.name });
+    const { rows } = await db.query('SELECT * FROM vehicle_engines WHERE generation_id = $1 ORDER BY sort_order ASC', [engineRows[0].generation_id]);
+    res.json(rows.map((r) => ({ id: r.id, generationId: r.generation_id, name: r.name, sortOrder: r.sort_order })));
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
     next(err);
   }
 });
@@ -269,10 +358,28 @@ router.post('/generations/:generationId/transmissions', requireAuth, requireRole
     const genCheck = await db.query('SELECT id FROM vehicle_generations WHERE id = $1', [req.params.generationId]);
     if (genCheck.rows.length === 0) return res.status(404).json({ error: 'Generation not found' });
     const id = `trans_${Date.now()}`;
-    await db.query('INSERT INTO vehicle_transmissions (id, generation_id, name) VALUES ($1, $2, $3)', [id, req.params.generationId, name.trim()]);
+    const { rows: maxRows } = await db.query('SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM vehicle_transmissions WHERE generation_id = $1', [req.params.generationId]);
+    await db.query('INSERT INTO vehicle_transmissions (id, generation_id, name, sort_order) VALUES ($1, $2, $3, $4)', [id, req.params.generationId, name.trim(), maxRows[0].max_order + 10]);
     await logAdminAction(req, 'transmission_created', 'transmission', id, { name: name.trim(), generationId: req.params.generationId });
-    res.status(201).json({ id, generationId: req.params.generationId, name: name.trim() });
+    res.status(201).json({ id, generationId: req.params.generationId, name: name.trim(), sortOrder: maxRows[0].max_order + 10 });
   } catch (err) {
+    next(err);
+  }
+});
+
+// Real, new -- transmissions reorder only among their own real
+// generation's other transmissions.
+router.post('/transmissions/:id/move', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const { direction } = req.body || {};
+    const { rows: transRows } = await db.query('SELECT generation_id FROM vehicle_transmissions WHERE id = $1', [req.params.id]);
+    if (transRows.length === 0) return res.status(404).json({ error: 'Transmission not found' });
+    const { current, neighbor } = await moveItem({ table: 'vehicle_transmissions', id: req.params.id, direction, orderColumn: 'sort_order', scopeColumn: 'generation_id', scopeValue: transRows[0].generation_id, notFoundMessage: 'Transmission not found' });
+    await logAdminAction(req, 'transmission_reordered', 'transmission', current.id, { direction, swappedWith: neighbor.name });
+    const { rows } = await db.query('SELECT * FROM vehicle_transmissions WHERE generation_id = $1 ORDER BY sort_order ASC', [transRows[0].generation_id]);
+    res.json(rows.map((r) => ({ id: r.id, generationId: r.generation_id, name: r.name, sortOrder: r.sort_order })));
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
     next(err);
   }
 });

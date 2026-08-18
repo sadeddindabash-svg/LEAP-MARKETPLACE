@@ -3,6 +3,7 @@ const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
 const { logAdminAction } = require('../audit/helpers');
+const { moveItem } = require('../../lib/reorder');
 
 /**
  * Catalog module — products, categories, translations.
@@ -774,6 +775,22 @@ router.patch('/categories/:id/photo', requireAuth, requireRole('admin'), require
   }
 });
 
+// Real, new -- categories reorder globally (no scope, no real parent
+// to scope by), same real pattern already proven for pricing fee
+// components.
+router.post('/categories/:id/move', requireAuth, requireRole('admin'), requirePageAccess('categories'), async (req, res, next) => {
+  try {
+    const { direction } = req.body || {};
+    const { current, neighbor } = await moveItem({ table: 'product_categories', id: req.params.id, direction, orderColumn: 'sort_order', notFoundMessage: 'Category not found' });
+    await logAdminAction(req, 'category_reordered', 'category', current.id, { direction, swappedWith: neighbor.name_en });
+    const { rows } = await db.query('SELECT * FROM product_categories ORDER BY sort_order ASC');
+    res.json(rows.map(toCategoryDto));
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
+    next(err);
+  }
+});
+
 // Deleting a category real-protects against orphaning real products —
 // same "you cannot delete what's actually referenced" pattern as
 // Vehicle Data and Hubs, not silently allowed and not a raw DB error.
@@ -866,6 +883,23 @@ router.patch('/parts/:id/photo', requireAuth, requireRole('admin'), requirePageA
     await logAdminAction(req, 'part_photo_changed', 'part', req.params.id, {});
     res.json(toPartDto(rows[0]));
   } catch (err) {
+    next(err);
+  }
+});
+
+// Real, new -- parts reorder only among their own real category's
+// other parts, never mixed in with a different category's parts.
+router.post('/parts/:id/move', requireAuth, requireRole('admin'), requirePageAccess('categories'), async (req, res, next) => {
+  try {
+    const { direction } = req.body || {};
+    const { rows: partRows } = await db.query('SELECT category_id FROM category_parts WHERE id = $1', [req.params.id]);
+    if (partRows.length === 0) return res.status(404).json({ error: 'Part not found' });
+    const { current, neighbor } = await moveItem({ table: 'category_parts', id: req.params.id, direction, orderColumn: 'sort_order', scopeColumn: 'category_id', scopeValue: partRows[0].category_id, notFoundMessage: 'Part not found' });
+    await logAdminAction(req, 'part_reordered', 'part', current.id, { direction, swappedWith: neighbor.name_en });
+    const { rows } = await db.query('SELECT * FROM category_parts WHERE category_id = $1 ORDER BY sort_order ASC', [partRows[0].category_id]);
+    res.json(rows.map(toPartDto));
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
     next(err);
   }
 });

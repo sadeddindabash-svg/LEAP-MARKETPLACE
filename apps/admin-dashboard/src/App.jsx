@@ -2,14 +2,14 @@ import React, { useState, useEffect, createContext, useContext } from "react";
 import LoginPage from "./LoginPage";
 import { exportToExcel } from "./exportToExcel";
 import { FONT_IMPORT, C, disp, body, mono } from "./theme";
-import { PlateChip, Badge, Stars, KpiCard, Card, Th, Td } from "./components/ui";
+import { PlateChip, Badge, Stars, KpiCard, Card, Th, Td, ConfirmDialog } from "./components/ui";
 import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, fetchSupplierById, verifySupplier, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
   createBrand, deleteBrand, createModel, deleteModel, createGeneration, deleteGeneration, createEngine, deleteEngine, createTransmission, deleteTransmission,
   fetchHubLocations, createHubLocation, deleteHubLocation, assignHubToSubOrder,
   fetchFeeComponents, createFeeComponent, updateFeeComponent, deleteFeeComponent, moveFeeComponent, fetchFxRate, updateFxRate, fetchFxRateMode, updateFxRateMode, previewPricing,
   fetchFlaggedShipments,
-  fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart, uploadImage, updateCategoryPhoto, updatePartPhoto,
+  fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart, uploadImage, updateCategoryPhoto, updatePartPhoto, moveCategory, movePart, moveBrand, moveModel, moveGeneration, moveEngine, moveTransmission, updateBrandPhoto,
   fetchSupplierMessagesInbox, fetchSupplierMessageThread, sendSupplierMessage,
   fetchPromoCodes, createPromoCode, updatePromoCode, deletePromoCode,
   fetchAdminUsers, createAdminUser, updateAdminPermissions, deleteAdminUser,
@@ -1481,6 +1481,8 @@ function VehicleDataPage({ onSessionExpired }) {
   const [newBrandPhotoFile, setNewBrandPhotoFile] = useState(null);
   const [newBrandPhotoPreview, setNewBrandPhotoPreview] = useState(null);
   const [isUploadingBrandPhoto, setIsUploadingBrandPhoto] = useState(false);
+  const [replacingBrandPhotoId, setReplacingBrandPhotoId] = useState(null);
+  const [pendingDelete, setPendingDelete] = useState(null); // {kind, id, label}
 
   const loadBrands = () => {
     setLoadState("loading");
@@ -1566,6 +1568,45 @@ function VehicleDataPage({ onSessionExpired }) {
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
       setErrorMessage(err.message); // e.g. the real 409 "products reference this" message
+    } finally {
+      setPendingDelete(null);
+    }
+  };
+
+  // Real, new -- reorders any of the 5 real vehicle data levels.
+  // Updates state directly from each move endpoint's own returned
+  // list, rather than a slower separate re-fetch.
+  const handleMove = async (kind, id, direction) => {
+    try {
+      const token = getStoredToken();
+      if (kind === "brand") setBrands(await moveBrand(token, id, direction));
+      else if (kind === "model") setModels(await moveModel(token, id, direction));
+      else if (kind === "generation") setGenerations(await moveGeneration(token, id, direction));
+      else if (kind === "engine") setEngines(await moveEngine(token, id, direction));
+      else if (kind === "transmission") setTransmissions(await moveTransmission(token, id, direction));
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message); // e.g. the real "already the first/last" message
+    }
+  };
+
+  // Real, new -- lets an admin replace an existing brand's photo at
+  // any time, same real capability already added for categories and
+  // parts.
+  const handleReplaceBrandPhoto = async (id, file) => {
+    if (!file) return;
+    setReplacingBrandPhotoId(id);
+    setErrorMessage(null);
+    try {
+      const token = getStoredToken();
+      const uploadResult = await uploadImage(token, file);
+      await updateBrandPhoto(token, id, uploadResult.url);
+      loadBrands();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setReplacingBrandPhotoId(null);
     }
   };
 
@@ -1607,11 +1648,21 @@ function VehicleDataPage({ onSessionExpired }) {
     </div>
   );
 
-  const listRow = (label, sub, onOpen, onDelete) => (
+  const listRow = (label, sub, onOpen, onDelete, isFirst, isLast, onMoveUp, onMoveDown) => (
     <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderBottom: `1px solid ${C.line}` }}>
-      <div onClick={onOpen} style={{ cursor: onOpen ? "pointer" : "default", flex: 1 }}>
-        <span style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>{label}</span>
-        {sub && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }}>{sub}</span>}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+          <button onClick={onMoveUp} disabled={isFirst} style={{ background: "none", border: "none", padding: 0, cursor: isFirst ? "default" : "pointer", opacity: isFirst ? 0.25 : 1 }} title="Move up">
+            <ChevronUp size={13} color={C.ink} />
+          </button>
+          <button onClick={onMoveDown} disabled={isLast} style={{ background: "none", border: "none", padding: 0, cursor: isLast ? "default" : "pointer", opacity: isLast ? 0.25 : 1 }} title="Move down">
+            <ChevronDown size={13} color={C.ink} />
+          </button>
+        </div>
+        <div onClick={onOpen} style={{ cursor: onOpen ? "pointer" : "default", flex: 1 }}>
+          <span style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>{label}</span>
+          {sub && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }}>{sub}</span>}
+        </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         {onOpen && <ChevronRight size={14} color={C.muted} onClick={onOpen} style={{ cursor: "pointer" }} />}
@@ -1656,22 +1707,43 @@ function VehicleDataPage({ onSessionExpired }) {
                   </button>
                 </div>
                 {brands.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No brands yet.</div>}
-                {brands.map((b) => (
+                {brands.map((b, i) => (
                   <div key={b.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderBottom: `1px solid ${C.line}` }}>
-                    <div onClick={() => openBrand(b)} style={{ cursor: "pointer", flex: 1, display: "flex", alignItems: "center", gap: 10 }}>
-                      {b.photoUrl ? (
-                        <img src={b.photoUrl.startsWith("http") ? b.photoUrl : `${API_BASE_URL}${b.photoUrl}`} alt="" style={{ width: 28, height: 28, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
-                      ) : (
-                        <div style={{ width: 28, height: 28, borderRadius: 6, background: C.canvas, flexShrink: 0 }} />
-                      )}
-                      <div>
+                    <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                        <button onClick={() => handleMove("brand", b.id, "up")} disabled={i === 0} style={{ background: "none", border: "none", padding: 0, cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? 0.25 : 1 }} title="Move up">
+                          <ChevronUp size={13} color={C.ink} />
+                        </button>
+                        <button onClick={() => handleMove("brand", b.id, "down")} disabled={i === brands.length - 1} style={{ background: "none", border: "none", padding: 0, cursor: i === brands.length - 1 ? "default" : "pointer", opacity: i === brands.length - 1 ? 0.25 : 1 }} title="Move down">
+                          <ChevronDown size={13} color={C.ink} />
+                        </button>
+                      </div>
+                      <label
+                        onClick={(e) => e.stopPropagation()}
+                        title="Click to replace this photo"
+                        style={{ position: "relative", width: 28, height: 28, borderRadius: 6, flexShrink: 0, cursor: replacingBrandPhotoId === b.id ? "default" : "pointer", display: "block" }}
+                      >
+                        {b.photoUrl ? (
+                          <img src={b.photoUrl.startsWith("http") ? b.photoUrl : `${API_BASE_URL}${b.photoUrl}`} alt="" style={{ width: 28, height: 28, borderRadius: 6, objectFit: "cover", display: "block", opacity: replacingBrandPhotoId === b.id ? 0.5 : 1 }} />
+                        ) : (
+                          <div style={{ width: 28, height: 28, borderRadius: 6, background: C.canvas }} />
+                        )}
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          disabled={replacingBrandPhotoId === b.id}
+                          onChange={(e) => handleReplaceBrandPhoto(b.id, e.target.files?.[0])}
+                          style={{ display: "none" }}
+                        />
+                      </label>
+                      <div onClick={() => openBrand(b)} style={{ cursor: "pointer" }}>
                         <span style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>{b.name}</span>
                         {b.nameAr && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }} dir="rtl">{b.nameAr}</span>}
                       </div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <ChevronRight size={14} color={C.muted} onClick={() => openBrand(b)} style={{ cursor: "pointer" }} />
-                      <button onClick={() => handleDelete("brand", b.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={14} color={C.red} /></button>
+                      <button onClick={() => setPendingDelete({ kind: "brand", id: b.id, label: b.name })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={14} color={C.red} /></button>
                     </div>
                   </div>
                 ))}
@@ -1682,7 +1754,7 @@ function VehicleDataPage({ onSessionExpired }) {
               <>
                 {addRow("model", `New model under ${selectedBrand.name} (e.g. Focus)`, false)}
                 {models.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No models yet.</div>}
-                {models.map((m) => listRow(m.name, null, () => openModel(m), () => handleDelete("model", m.id)))}
+                {models.map((m, i) => listRow(m.name, null, () => openModel(m), () => setPendingDelete({ kind: "model", id: m.id, label: m.name }), i === 0, i === models.length - 1, () => handleMove("model", m.id, "up"), () => handleMove("model", m.id, "down")))}
               </>
             )}
 
@@ -1690,7 +1762,7 @@ function VehicleDataPage({ onSessionExpired }) {
               <>
                 {addRow("generation", `New generation under ${selectedModel.name} (e.g. Mk4)`, true)}
                 {generations.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No generations yet.</div>}
-                {generations.map((g) => listRow(g.name, `${g.yearStart}–${g.yearEnd || "present"}`, () => openGeneration(g), () => handleDelete("generation", g.id)))}
+                {generations.map((g, i) => listRow(g.name, `${g.yearStart}–${g.yearEnd || "present"}`, () => openGeneration(g), () => setPendingDelete({ kind: "generation", id: g.id, label: g.name }), i === 0, i === generations.length - 1, () => handleMove("generation", g.id, "up"), () => handleMove("generation", g.id, "down")))}
               </>
             )}
 
@@ -1700,19 +1772,25 @@ function VehicleDataPage({ onSessionExpired }) {
                   <div style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.ink, marginBottom: 8 }}>Engines</div>
                   {addRow("engine", "e.g. 1.0L EcoBoost", false)}
                   {engines.length === 0 && <div style={{ ...body, fontSize: 12, color: C.muted, padding: 8 }}>None yet.</div>}
-                  {engines.map((e) => listRow(e.name, null, null, () => handleDelete("engine", e.id)))}
+                  {engines.map((e, i) => listRow(e.name, null, null, () => setPendingDelete({ kind: "engine", id: e.id, label: e.name }), i === 0, i === engines.length - 1, () => handleMove("engine", e.id, "up"), () => handleMove("engine", e.id, "down")))}
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.ink, marginBottom: 8 }}>Transmissions</div>
                   {addRow("transmission", "e.g. 6-Speed Manual", false)}
                   {transmissions.length === 0 && <div style={{ ...body, fontSize: 12, color: C.muted, padding: 8 }}>None yet.</div>}
-                  {transmissions.map((t) => listRow(t.name, null, null, () => handleDelete("transmission", t.id)))}
+                  {transmissions.map((t, i) => listRow(t.name, null, null, () => setPendingDelete({ kind: "transmission", id: t.id, label: t.name }), i === 0, i === transmissions.length - 1, () => handleMove("transmission", t.id, "up"), () => handleMove("transmission", t.id, "down")))}
                 </div>
               </div>
             )}
           </div>
         </Card>
       </div>
+      <ConfirmDialog
+        isOpen={!!pendingDelete}
+        title={`Delete "${pendingDelete?.label}"?`}
+        onConfirm={() => handleDelete(pendingDelete.kind, pendingDelete.id)}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }
@@ -2397,6 +2475,7 @@ function CategoriesPage({ onSessionExpired }) {
   const [isUploadingCatPhoto, setIsUploadingCatPhoto] = useState(false);
   const [isSubmittingCat, setIsSubmittingCat] = useState(false);
   const [replacingPhotoForCatId, setReplacingPhotoForCatId] = useState(null);
+  const [pendingDeleteCat, setPendingDeleteCat] = useState(null); // {id, nameEn}
 
   const loadCategories = () => {
     setLoadState("loading");
@@ -2468,6 +2547,18 @@ function CategoriesPage({ onSessionExpired }) {
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
       setErrorMessage(err.message); // e.g. the real 409 messages for real products or attached parts
+    } finally {
+      setPendingDeleteCat(null);
+    }
+  };
+
+  const handleMoveCategory = async (id, direction) => {
+    try {
+      const updated = await moveCategory(getStoredToken(), id, direction);
+      setCategories(updated);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message); // e.g. the real "already the first/last" message
     }
   };
 
@@ -2509,6 +2600,24 @@ function CategoriesPage({ onSessionExpired }) {
               <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 4px", borderBottom: i < categories.length - 1 ? `1px solid ${C.line}` : "none", cursor: "pointer" }}
                 onClick={() => setOpenCategory(c)}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 1 }} onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => handleMoveCategory(c.id, "up")}
+                      disabled={i === 0}
+                      style={{ background: "none", border: "none", padding: 0, cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? 0.25 : 1 }}
+                      title="Move up"
+                    >
+                      <ChevronUp size={14} color={C.ink} />
+                    </button>
+                    <button
+                      onClick={() => handleMoveCategory(c.id, "down")}
+                      disabled={i === categories.length - 1}
+                      style={{ background: "none", border: "none", padding: 0, cursor: i === categories.length - 1 ? "default" : "pointer", opacity: i === categories.length - 1 ? 0.25 : 1 }}
+                      title="Move down"
+                    >
+                      <ChevronDown size={14} color={C.ink} />
+                    </button>
+                  </div>
                   <label
                     onClick={(e) => e.stopPropagation()}
                     title="Click to replace this photo"
@@ -2536,7 +2645,7 @@ function CategoriesPage({ onSessionExpired }) {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <span style={{ ...body, fontSize: 11.5, color: C.muted }}>{c.id}</span>
-                  <button onClick={(e) => { e.stopPropagation(); handleDeleteCategory(c.id); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={15} color={C.red} /></button>
+                  <button onClick={(e) => { e.stopPropagation(); setPendingDeleteCat({ id: c.id, nameEn: c.nameEn }); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={15} color={C.red} /></button>
                   <ChevronRight size={16} color={C.muted} />
                 </div>
               </div>
@@ -2544,6 +2653,12 @@ function CategoriesPage({ onSessionExpired }) {
           </div>
         </Card>
       </div>
+      <ConfirmDialog
+        isOpen={!!pendingDeleteCat}
+        title={`Delete "${pendingDeleteCat?.nameEn}"?`}
+        onConfirm={() => handleDeleteCategory(pendingDeleteCat.id)}
+        onCancel={() => setPendingDeleteCat(null)}
+      />
     </div>
   );
 }
@@ -2560,6 +2675,7 @@ function CategoryPartsPage({ category, onBack, onSessionExpired }) {
   const [isUploadingPartPhoto, setIsUploadingPartPhoto] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [replacingPhotoForPartId, setReplacingPhotoForPartId] = useState(null);
+  const [pendingDeletePart, setPendingDeletePart] = useState(null); // {id, nameEn}
 
   const load = () => {
     setLoadState("loading");
@@ -2631,6 +2747,18 @@ function CategoryPartsPage({ category, onBack, onSessionExpired }) {
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
       setErrorMessage(err.message); // e.g. the real 409 "products still reference it" message
+    } finally {
+      setPendingDeletePart(null);
+    }
+  };
+
+  const handleMovePart = async (id, direction) => {
+    try {
+      const updated = await movePart(getStoredToken(), id, direction);
+      setParts(updated);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
     }
   };
 
@@ -2667,6 +2795,24 @@ function CategoryPartsPage({ category, onBack, onSessionExpired }) {
             {loadState === "ready" && parts.map((p, i) => (
               <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 4px", borderBottom: i < parts.length - 1 ? `1px solid ${C.line}` : "none" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                    <button
+                      onClick={() => handleMovePart(p.id, "up")}
+                      disabled={i === 0}
+                      style={{ background: "none", border: "none", padding: 0, cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? 0.25 : 1 }}
+                      title="Move up"
+                    >
+                      <ChevronUp size={14} color={C.ink} />
+                    </button>
+                    <button
+                      onClick={() => handleMovePart(p.id, "down")}
+                      disabled={i === parts.length - 1}
+                      style={{ background: "none", border: "none", padding: 0, cursor: i === parts.length - 1 ? "default" : "pointer", opacity: i === parts.length - 1 ? 0.25 : 1 }}
+                      title="Move down"
+                    >
+                      <ChevronDown size={14} color={C.ink} />
+                    </button>
+                  </div>
                   <label
                     title="Click to add or replace this photo"
                     style={{ position: "relative", width: 32, height: 32, borderRadius: 6, flexShrink: 0, cursor: replacingPhotoForPartId === p.id ? "default" : "pointer", display: "block" }}
@@ -2691,12 +2837,18 @@ function CategoryPartsPage({ category, onBack, onSessionExpired }) {
                     {p.nameAr && <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2 }} dir="rtl">{p.nameAr}</div>}
                   </div>
                 </div>
-                <button onClick={() => handleDeletePart(p.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={15} color={C.red} /></button>
+                <button onClick={() => setPendingDeletePart({ id: p.id, nameEn: p.nameEn })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={15} color={C.red} /></button>
               </div>
             ))}
           </div>
         </Card>
       </div>
+      <ConfirmDialog
+        isOpen={!!pendingDeletePart}
+        title={`Delete "${pendingDeletePart?.nameEn}"?`}
+        onConfirm={() => handleDeletePart(pendingDeletePart.id)}
+        onCancel={() => setPendingDeletePart(null)}
+      />
     </div>
   );
 }
