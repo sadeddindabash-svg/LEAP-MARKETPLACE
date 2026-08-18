@@ -284,9 +284,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             width: 52,
                             height: 52,
                             decoration: BoxDecoration(
-                              color: palette.card,
+                              color: palette.chalk,
                               shape: BoxShape.circle,
-                              border: Border.all(color: palette.line),
                             ),
                             clipBehavior: Clip.antiAlias,
                             // Real category photo (new) -- closes a
