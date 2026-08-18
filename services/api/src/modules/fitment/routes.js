@@ -64,7 +64,7 @@ router.get('/brands', async (req, res, next) => {
 router.get('/brands/:brandId/models', async (req, res, next) => {
   try {
     const { rows } = await db.query('SELECT * FROM vehicle_models WHERE brand_id = $1 ORDER BY sort_order ASC', [req.params.brandId]);
-    res.json(rows.map((r) => ({ id: r.id, brandId: r.brand_id, name: r.name, photoUrl: r.photo_url, sortOrder: r.sort_order })));
+    res.json(rows.map((r) => ({ id: r.id, brandId: r.brand_id, name: r.name, nameAr: r.name_ar, photoUrl: r.photo_url, sortOrder: r.sort_order })));
   } catch (err) {
     next(err);
   }
@@ -218,15 +218,15 @@ router.delete('/brands/:id', requireAuth, requireRole('admin'), requirePageAcces
 // POST /fitment/brands/:brandId/models  { name }
 router.post('/brands/:brandId/models', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
-    const { name, photoUrl } = req.body || {};
+    const { name, nameAr, photoUrl } = req.body || {};
     if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' });
     const brandCheck = await db.query('SELECT id FROM vehicle_brands WHERE id = $1', [req.params.brandId]);
     if (brandCheck.rows.length === 0) return res.status(404).json({ error: 'Brand not found' });
     const id = `model_${Date.now()}`;
     const { rows: maxRows } = await db.query('SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM vehicle_models WHERE brand_id = $1', [req.params.brandId]);
-    await db.query('INSERT INTO vehicle_models (id, brand_id, name, photo_url, sort_order) VALUES ($1, $2, $3, $4, $5)', [id, req.params.brandId, name.trim(), photoUrl?.trim() || null, maxRows[0].max_order + 10]);
+    await db.query('INSERT INTO vehicle_models (id, brand_id, name, name_ar, photo_url, sort_order) VALUES ($1, $2, $3, $4, $5, $6)', [id, req.params.brandId, name.trim(), nameAr?.trim() || null, photoUrl?.trim() || null, maxRows[0].max_order + 10]);
     await logAdminAction(req, 'model_created', 'model', id, { name: name.trim(), brandId: req.params.brandId });
-    res.status(201).json({ id, brandId: req.params.brandId, name: name.trim(), photoUrl: photoUrl?.trim() || null, sortOrder: maxRows[0].max_order + 10 });
+    res.status(201).json({ id, brandId: req.params.brandId, name: name.trim(), nameAr: nameAr?.trim() || null, photoUrl: photoUrl?.trim() || null, sortOrder: maxRows[0].max_order + 10 });
   } catch (err) {
     next(err);
   }
@@ -240,12 +240,12 @@ router.post('/brands/:brandId/models', requireAuth, requireRole('admin'), requir
 // time (photo stays on its own separate endpoint below).
 router.patch('/models/:id', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
-    const { name } = req.body || {};
+    const { name, nameAr } = req.body || {};
     if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' });
-    const { rows } = await db.query('UPDATE vehicle_models SET name = $1 WHERE id = $2 RETURNING *', [name.trim(), req.params.id]);
+    const { rows } = await db.query('UPDATE vehicle_models SET name = $1, name_ar = $2 WHERE id = $3 RETURNING *', [name.trim(), nameAr?.trim() || null, req.params.id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Model not found' });
     await logAdminAction(req, 'model_updated', 'model', req.params.id, { name: name.trim() });
-    res.json({ id: rows[0].id, brandId: rows[0].brand_id, name: rows[0].name, photoUrl: rows[0].photo_url, sortOrder: rows[0].sort_order });
+    res.json({ id: rows[0].id, brandId: rows[0].brand_id, name: rows[0].name, nameAr: rows[0].name_ar, photoUrl: rows[0].photo_url, sortOrder: rows[0].sort_order });
   } catch (err) {
     next(err);
   }
@@ -258,7 +258,7 @@ router.patch('/models/:id/photo', requireAuth, requireRole('admin'), requirePage
     const { rows } = await db.query('UPDATE vehicle_models SET photo_url = $1 WHERE id = $2 RETURNING *', [photoUrl.trim(), req.params.id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Model not found' });
     await logAdminAction(req, 'model_photo_changed', 'model', req.params.id, {});
-    res.json({ id: rows[0].id, brandId: rows[0].brand_id, name: rows[0].name, photoUrl: rows[0].photo_url, sortOrder: rows[0].sort_order });
+    res.json({ id: rows[0].id, brandId: rows[0].brand_id, name: rows[0].name, nameAr: rows[0].name_ar, photoUrl: rows[0].photo_url, sortOrder: rows[0].sort_order });
   } catch (err) {
     next(err);
   }
@@ -274,7 +274,7 @@ router.post('/models/:id/move', requireAuth, requireRole('admin'), requirePageAc
     const { current, neighbor } = await moveItem({ table: 'vehicle_models', id: req.params.id, direction, orderColumn: 'sort_order', scopeColumn: 'brand_id', scopeValue: modelRows[0].brand_id, notFoundMessage: 'Model not found' });
     await logAdminAction(req, 'model_reordered', 'model', current.id, { direction, swappedWith: neighbor.name });
     const { rows } = await db.query('SELECT * FROM vehicle_models WHERE brand_id = $1 ORDER BY sort_order ASC', [modelRows[0].brand_id]);
-    res.json(rows.map((r) => ({ id: r.id, brandId: r.brand_id, name: r.name, sortOrder: r.sort_order })));
+    res.json(rows.map((r) => ({ id: r.id, brandId: r.brand_id, name: r.name, nameAr: r.name_ar, photoUrl: r.photo_url, sortOrder: r.sort_order })));
   } catch (err) {
     if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
     next(err);

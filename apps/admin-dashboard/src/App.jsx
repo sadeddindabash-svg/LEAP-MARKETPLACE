@@ -1488,6 +1488,9 @@ function VehicleDataPage({ onSessionExpired }) {
   const [newModelPhotoFile, setNewModelPhotoFile] = useState(null);
   const [newModelPhotoPreview, setNewModelPhotoPreview] = useState(null);
   const [isUploadingModelPhoto, setIsUploadingModelPhoto] = useState(false);
+  // Real, optional Arabic name for a new model (new, migration 062) --
+  // kept optional, same reasoning as the photo above.
+  const [newModelNameAr, setNewModelNameAr] = useState("");
   const [replacingModelPhotoId, setReplacingModelPhotoId] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null); // {kind, id, label}
   const [pendingEdit, setPendingEdit] = useState(null); // {kind, item}
@@ -1550,9 +1553,9 @@ function VehicleDataPage({ onSessionExpired }) {
           setIsUploadingModelPhoto(false);
           modelPhotoUrl = uploadResult.url;
         }
-        await createModel(token, selectedBrand.id, newName.trim(), modelPhotoUrl);
+        await createModel(token, selectedBrand.id, newName.trim(), newModelNameAr.trim() || undefined, modelPhotoUrl);
         openBrand(selectedBrand);
-        setNewModelPhotoFile(null); setNewModelPhotoPreview(null);
+        setNewModelPhotoFile(null); setNewModelPhotoPreview(null); setNewModelNameAr("");
       } else if (kind === "generation") {
         await createGeneration(token, selectedModel.id, newName.trim(), parseInt(newYearStart, 10), newYearEnd ? parseInt(newYearEnd, 10) : undefined);
         openModel(selectedModel);
@@ -1617,7 +1620,7 @@ function VehicleDataPage({ onSessionExpired }) {
     try {
       const token = getStoredToken();
       if (kind === "brand") { await updateBrand(token, item.id, values.name.trim(), values.nameAr.trim()); loadBrands(); }
-      else if (kind === "model") { await updateModel(token, item.id, values.name.trim()); openBrand(selectedBrand); }
+      else if (kind === "model") { await updateModel(token, item.id, values.name.trim(), values.nameAr?.trim() || undefined); openBrand(selectedBrand); }
       else if (kind === "generation") { await updateGeneration(token, item.id, values.name.trim(), parseInt(values.yearStart, 10), values.yearEnd ? parseInt(values.yearEnd, 10) : undefined); openModel(selectedModel); }
       else if (kind === "engine") { await updateEngine(token, item.id, values.name.trim()); openGeneration(selectedGeneration); }
       else if (kind === "transmission") { await updateTransmission(token, item.id, values.name.trim()); openGeneration(selectedGeneration); }
@@ -1708,6 +1711,7 @@ function VehicleDataPage({ onSessionExpired }) {
       </>}
       {kind === "model" && (
         <>
+          <input value={newModelNameAr} onChange={(e) => setNewModelNameAr(e.target.value)} placeholder="Arabic name (optional)" dir="rtl" style={{ ...body, flex: 1, minWidth: 140, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
           <label style={{ ...body, display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", color: newModelPhotoFile ? C.gauge : C.muted }}>
             <ImagePlus size={14} />
             {newModelPhotoFile ? "Photo selected" : "Choose photo (optional)"}
@@ -1863,6 +1867,7 @@ function VehicleDataPage({ onSessionExpired }) {
                       </label>
                       <div onClick={() => openModel(m)} style={{ cursor: "pointer" }}>
                         <span style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>{m.name}</span>
+                        {m.nameAr && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }} dir="rtl">{m.nameAr}</span>}
                       </div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1915,6 +1920,9 @@ function VehicleDataPage({ onSessionExpired }) {
           pendingEdit.kind === "brand" ? [
             { key: "name", label: "Name", value: pendingEdit.item.name },
             { key: "nameAr", label: "Arabic name", value: pendingEdit.item.nameAr, dir: "rtl" },
+          ] : pendingEdit.kind === "model" ? [
+            { key: "name", label: "Name", value: pendingEdit.item.name },
+            { key: "nameAr", label: "Arabic name (optional)", value: pendingEdit.item.nameAr, dir: "rtl" },
           ] : pendingEdit.kind === "generation" ? [
             { key: "name", label: "Name", value: pendingEdit.item.name },
             { key: "yearStart", label: "Start year", value: pendingEdit.item.yearStart, type: "number" },
