@@ -260,39 +260,22 @@ class _GarageScreenState extends State<GarageScreen> {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  Text(v.label, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: palette.ink)),
-                  const SizedBox(height: 2),
-                  Text(v.subLabel, style: TextStyle(fontSize: 12.5, color: palette.muted)),
-                  const SizedBox(height: 14),
+                  // Real "set as default" button and the close button
+                  // now sit on the same real row as the model name --
+                  // confirmed against a real rendered mockup before
+                  // moving them up from the bottom row.
                   Row(
                     children: [
-                      // Real, now a filled, prominent button (was a
-                      // plain TextButton) -- confirmed against a real
-                      // rendered mockup, matching the visual weight of
-                      // the "Default"/"Set as default" button beside it.
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: () => Navigator.of(context).pop(v),
-                          style: ElevatedButton.styleFrom(backgroundColor: palette.signal, foregroundColor: palette.ink, elevation: 0, padding: const EdgeInsets.symmetric(vertical: 12)),
-                          child: Text(tr(context, 'view_compatible_parts'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
-                        ),
-                      ),
+                      Expanded(child: Text(v.label, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: palette.ink))),
                       const SizedBox(width: 8),
-                      // Real "set as default" button (was a small,
-                      // easy-to-miss star icon) -- closes a real gap: a
-                      // buyer with more than one saved vehicle had no
-                      // way to say which one should drive automatic
-                      // fitment filtering (the home feed) -- it
-                      // silently used whichever vehicle happened to be
-                      // first in an arbitrary list order.
                       if (v.isDefault)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                           decoration: BoxDecoration(color: palette.signal.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.star, size: 14, color: palette.signal),
+                              Icon(Icons.star, size: 13, color: palette.signal),
                               const SizedBox(width: 5),
                               Text(tr(context, 'default_vehicle_label'), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: palette.signal)),
                             ],
@@ -301,18 +284,32 @@ class _GarageScreenState extends State<GarageScreen> {
                       else
                         OutlinedButton(
                           onPressed: () => _setDefault(v),
-                          style: OutlinedButton.styleFrom(side: BorderSide(color: palette.muted), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+                          style: OutlinedButton.styleFrom(side: BorderSide(color: palette.muted), padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6)),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.star_border, size: 14, color: palette.muted),
+                              Icon(Icons.star_border, size: 13, color: palette.muted),
                               const SizedBox(width: 5),
                               Text(tr(context, 'set_as_default_vehicle'), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: palette.muted)),
                             ],
                           ),
                         ),
+                      const SizedBox(width: 8),
                       IconButton(icon: Icon(Icons.close, size: 18, color: palette.muted), tooltip: 'Remove vehicle', onPressed: () => _confirmRemove(v)),
                     ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(v.subLabel, style: TextStyle(fontSize: 12.5, color: palette.muted)),
+                  const SizedBox(height: 14),
+                  // Real, now centered rather than stretched full-width
+                  // -- confirmed against a real rendered mockup, since
+                  // this is now the only real action left on this row.
+                  Center(
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.of(context).pop(v),
+                      style: ElevatedButton.styleFrom(backgroundColor: palette.signal, foregroundColor: palette.ink, elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)),
+                      child: Text(tr(context, 'view_compatible_parts'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+                    ),
                   ),
                 ],
               ),
