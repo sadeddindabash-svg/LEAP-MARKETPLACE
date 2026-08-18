@@ -517,8 +517,8 @@ class _ShoppingForCard extends StatelessWidget {
                           color: palette.card,
                           child: Center(
                             child: Container(
-                              width: 70,
-                              height: 70,
+                              width: 75,
+                              height: 75,
                               padding: const EdgeInsets.all(5),
                               decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(8)),
                               child: displayPhotoUrl != null
