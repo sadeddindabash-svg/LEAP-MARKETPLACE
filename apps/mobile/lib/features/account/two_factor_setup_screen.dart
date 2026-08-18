@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/auth_state.dart';
+import '../../core/app_strings.dart';
 import '../../services/api_client.dart';
 
 /// Real two-factor setup/management screen (new) -- closes a real,
@@ -83,7 +84,7 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
           _pendingSetup = null;
           _codeController.clear();
         });
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Two-factor authentication is now on.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr(context, 'two_factor_now_on'))));
       }
     } on ApiException catch (e) {
       setState(() => _errorMessage = e.message);
@@ -108,7 +109,7 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
           _isEnabled = false;
           _passwordController.clear();
         });
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Two-factor authentication is now off.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr(context, 'two_factor_now_off'))));
       }
     } on ApiException catch (e) {
       setState(() => _errorMessage = e.message);
@@ -121,7 +122,7 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
   Widget build(BuildContext context) {
     final palette = LeapPalette.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Two-factor authentication')),
+      appBar: AppBar(title: Text(tr(context, 'two_factor_title'))),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -140,7 +141,7 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
         Icon(Icons.shield_outlined, size: 40, color: palette.signal),
         const SizedBox(height: 16),
         Text(
-          'Add an extra layer of security. Once turned on, you\'ll need a code from your authenticator app (like Google Authenticator or Authy) every time you log in, in addition to your password.',
+          tr(context, 'two_factor_description'),
           style: TextStyle(color: palette.muted, fontSize: 13),
         ),
         const SizedBox(height: 20),
@@ -152,7 +153,7 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
           onPressed: _isBusy ? null : _startSetup,
           child: _isBusy
               ? SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: palette.onSignal))
-              : const Text('Turn on two-factor authentication'),
+              : Text(tr(context, 'two_factor_turn_on')),
         ),
       ];
     }
@@ -164,11 +165,11 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
     final imageBytes = base64Decode(base64Data);
     final secret = _pendingSetup!['secret'] as String;
     return [
-      Text('Scan this code with your authenticator app:', style: TextStyle(color: palette.muted, fontSize: 13)),
+      Text(tr(context, 'two_factor_scan_qr'), style: TextStyle(color: palette.muted, fontSize: 13)),
       const SizedBox(height: 16),
       Center(child: Image.memory(imageBytes, width: 200, height: 200)),
       const SizedBox(height: 16),
-      Text('Or enter this key manually:', style: TextStyle(color: palette.muted, fontSize: 12.5)),
+      Text(tr(context, 'two_factor_manual_key'), style: TextStyle(color: palette.muted, fontSize: 12.5)),
       const SizedBox(height: 6),
       Container(
         padding: const EdgeInsets.all(12),
@@ -176,7 +177,7 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
         child: SelectableText(secret, style: const TextStyle(fontWeight: FontWeight.w700, letterSpacing: 1)),
       ),
       const SizedBox(height: 24),
-      Text('Then enter the 6-digit code it shows:', style: TextStyle(color: palette.muted, fontSize: 13)),
+      Text(tr(context, 'two_factor_enter_code'), style: TextStyle(color: palette.muted, fontSize: 13)),
       const SizedBox(height: 10),
       TextField(
         controller: _codeController,
@@ -195,7 +196,7 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
         onPressed: _isBusy ? null : _confirmSetup,
         child: _isBusy
             ? SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: palette.onSignal))
-            : const Text('Confirm and turn on'),
+            : Text(tr(context, 'two_factor_confirm_turn_on')),
       ),
     ];
   }
@@ -209,17 +210,17 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
           children: [
             Icon(Icons.check_circle, color: palette.gauge),
             const SizedBox(width: 10),
-            const Expanded(child: Text('Two-factor authentication is on.', style: TextStyle(fontWeight: FontWeight.w600))),
+            Expanded(child: Text(tr(context, 'two_factor_is_on'), style: const TextStyle(fontWeight: FontWeight.w600))),
           ],
         ),
       ),
       const SizedBox(height: 24),
-      Text('Enter your current password to turn it off:', style: TextStyle(color: palette.muted, fontSize: 13)),
+      Text(tr(context, 'two_factor_enter_password_to_disable'), style: TextStyle(color: palette.muted, fontSize: 13)),
       const SizedBox(height: 10),
       TextField(
         controller: _passwordController,
         obscureText: true,
-        decoration: const InputDecoration(labelText: 'Current password', prefixIcon: Icon(Icons.lock_outline)),
+        decoration: InputDecoration(labelText: tr(context, 'current_password_field'), prefixIcon: const Icon(Icons.lock_outline)),
       ),
       if (_errorMessage != null) ...[
         const SizedBox(height: 12),
@@ -228,7 +229,7 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
       const SizedBox(height: 16),
       OutlinedButton(
         onPressed: _isBusy ? null : _disable,
-        child: _isBusy ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Turn off two-factor authentication'),
+        child: _isBusy ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)) : Text(tr(context, 'two_factor_turn_off')),
       ),
     ];
   }

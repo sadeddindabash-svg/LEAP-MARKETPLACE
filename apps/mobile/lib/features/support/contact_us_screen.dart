@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import '../../core/theme.dart';
+import '../../core/language_state.dart';
 
 /// Real Contact Us screen (#148) -- consolidates only the real
 /// support channels that actually exist in this app. HONEST SCOPE:
@@ -13,7 +15,7 @@ class ContactUsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = LeapPalette.of(context);
-    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final isAr = context.watch<LanguageState>().isArabic;
     return Scaffold(
       appBar: AppBar(title: Text(isAr ? 'تواصل معنا' : 'Contact us')),
       body: ListView(

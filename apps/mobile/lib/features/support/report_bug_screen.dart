@@ -6,6 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'dart:io';
 import '../../core/theme.dart';
 import '../../core/auth_state.dart';
+import '../../core/app_strings.dart';
 import '../../services/api_client.dart';
 
 /// Real "Report a bug" flow (#139). HONEST SCOPE, stated directly:
@@ -93,7 +94,7 @@ class _ReportBugScreenState extends State<ReportBugScreen> {
     } on ApiException catch (e) {
       setState(() => _errorMessage = e.message);
     } catch (_) {
-      setState(() => _errorMessage = 'Could not submit your report. Please try again.');
+      setState(() => _errorMessage = trRead(context, 'report_bug_submit_error'));
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
@@ -103,24 +104,24 @@ class _ReportBugScreenState extends State<ReportBugScreen> {
   Widget build(BuildContext context) {
     final palette = LeapPalette.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Report a bug')),
+      appBar: AppBar(title: Text(tr(context, 'report_bug_title'))),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('What happened?', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: palette.ink)),
+            Text(tr(context, 'report_bug_what_happened'), style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: palette.ink)),
             const SizedBox(height: 8),
             TextField(
               controller: _descriptionController,
               maxLines: 5,
-              decoration: const InputDecoration(hintText: 'Describe what you were doing and what went wrong...', border: OutlineInputBorder()),
+              decoration: InputDecoration(hintText: tr(context, 'report_bug_description_hint'), border: const OutlineInputBorder()),
             ),
             const SizedBox(height: 16),
             OutlinedButton.icon(
               onPressed: _attachScreenshot,
               icon: const Icon(Icons.attach_file),
-              label: Text(_screenshot == null ? 'Attach a screenshot (optional)' : 'Screenshot attached ✓'),
+              label: Text(_screenshot == null ? tr(context, 'report_bug_attach_screenshot') : tr(context, 'report_bug_screenshot_attached')),
             ),
             if (_errorMessage != null) ...[
               const SizedBox(height: 12),
@@ -131,7 +132,7 @@ class _ReportBugScreenState extends State<ReportBugScreen> {
               onPressed: _isSubmitting ? null : _submit,
               child: _isSubmitting
                   ? SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: palette.onSignal))
-                  : const Text('Submit report'),
+                  : Text(tr(context, 'report_bug_submit')),
             ),
           ],
         ),

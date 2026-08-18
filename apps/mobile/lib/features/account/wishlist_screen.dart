@@ -61,7 +61,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                 context.push('/compare-products', extra: selected);
               },
               icon: const Icon(Icons.compare_arrows),
-              label: Text('${Localizations.localeOf(context).languageCode == 'ar' ? 'مقارنة' : 'Compare'} (${_selectedForCompare.length})'),
+              label: Text('${tr(context, 'compare_label')} (${_selectedForCompare.length})'),
             )
           : null,
       appBar: AppBar(
@@ -72,7 +72,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
               _compareMode = !_compareMode;
               if (!_compareMode) _selectedForCompare.clear();
             }),
-            child: Text(_compareMode ? tr(context, 'cancel') : (Localizations.localeOf(context).languageCode == 'ar' ? 'مقارنة' : 'Compare')),
+            child: Text(_compareMode ? tr(context, 'cancel') : tr(context, 'compare_label')),
           ),
         ],
       ),

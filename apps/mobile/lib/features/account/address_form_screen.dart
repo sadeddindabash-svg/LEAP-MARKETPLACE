@@ -6,6 +6,8 @@ import 'package:csc_picker_plus/csc_picker_plus.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
+import '../../core/language_state.dart';
+import '../../core/arabic_country_names.dart';
 import '../../core/country_phone_codes.dart';
 import '../../services/api_client.dart';
 
@@ -165,7 +167,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     }
     // Real Saudi National Address requirement (new) -- only enforced
     // when the real, selected country is genuinely Saudi Arabia.
-    if (_selectedCountry == 'Saudi Arabia' && !_saudiNationalAddressPattern.hasMatch(_nationalAddressController.text.trim())) {
+    if (normalizeCountryNameToEnglish(_selectedCountry) == 'Saudi Arabia' && !_saudiNationalAddressPattern.hasMatch(_nationalAddressController.text.trim())) {
       setState(() => _errorMessage = trRead(context, 'national_address_format_error'));
       return;
     }
@@ -175,12 +177,12 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
       'label': _labelController.text.trim(),
       'recipientName': _recipientController.text.trim(),
       'phone': _phoneController.text.trim(),
-      'country': _countryController.text.trim(),
+      'country': normalizeCountryNameToEnglish(_countryController.text.trim()),
       'state': _stateController.text.trim().isEmpty ? null : _stateController.text.trim(),
       'city': _cityController.text.trim(),
       'streetAddress': _streetController.text.trim(),
       'postalCode': _postalController.text.trim().isEmpty ? null : _postalController.text.trim(),
-      if (_selectedCountry == 'Saudi Arabia') 'nationalAddress': _nationalAddressController.text.trim().toUpperCase(),
+      if (normalizeCountryNameToEnglish(_selectedCountry) == 'Saudi Arabia') 'nationalAddress': _nationalAddressController.text.trim().toUpperCase(),
     };
     try {
       if (_isEditing) {
@@ -197,6 +199,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
   @override
   Widget build(BuildContext context) {
     final palette = LeapPalette.of(context);
+    final isAr = context.watch<LanguageState>().isArabic;
     return Scaffold(
       appBar: AppBar(title: Text(tr(context, _isEditing ? 'edit_address' : 'add_address'))),
       body: SingleChildScrollView(
@@ -213,7 +216,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
               controller: _addressSearchController,
               onChanged: _onAddressSearchChanged,
               decoration: InputDecoration(
-                labelText: 'Search for your address (optional)',
+                labelText: tr(context, 'search_for_address_hint'),
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: _isSearchingAddress ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))) : null,
               ),
@@ -247,12 +250,14 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
             // real, established pattern.
             CSCPickerPlus(
               layout: Layout.vertical,
-              // Real, explicit choice (not just the default) --
-              // guarantees English-first country names are returned
-              // regardless of the device's own current locale,
-              // matching the real, verified keys in
-              // kCountryPhoneCodes exactly.
-              countryStateLanguage: CountryStateLanguage.englishOrNative,
+              // Real, confirmed pivot: switches the picker's own
+              // display language based on the app's own language
+              // toggle. The real Saudi National Address detection
+              // below is now normalized via
+              // normalizeCountryNameToEnglish() so it keeps working
+              // correctly regardless of which real language the
+              // picker is currently showing.
+              countryStateLanguage: isAr ? CountryStateLanguage.arabic : CountryStateLanguage.englishOrNative,
               // REAL BUG FOUND AND FIXED HERE: confirmed directly by
               // reading this fork's actual widget source -- the
               // default flagState (CountryFlag.ENABLE) embeds a real
@@ -311,7 +316,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
             // Arabia. Real format validation: exactly 4 letters
             // followed by 4 digits (e.g. "RRRD2929"), Saudi Post/SPL's
             // own real short-address standard.
-            if (_selectedCountry == 'Saudi Arabia') ...[
+            if (normalizeCountryNameToEnglish(_selectedCountry) == 'Saudi Arabia') ...[
               const SizedBox(height: 12),
               TextField(
                 controller: _nationalAddressController,
@@ -347,8 +352,8 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                 // real number (which may already include a real
                 // country code) never has it silently duplicated or
                 // overwritten.
-                prefixText: _selectedCountry != null && kCountryPhoneCodes[_selectedCountry] != null
-                    ? '${kCountryPhoneCodes[_selectedCountry]} '
+                prefixText: _selectedCountry != null && kCountryPhoneCodes[normalizeCountryNameToEnglish(_selectedCountry)] != null
+                    ? '${kCountryPhoneCodes[normalizeCountryNameToEnglish(_selectedCountry)]} '
                     : null,
               ),
             ),
