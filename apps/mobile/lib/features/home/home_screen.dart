@@ -504,7 +504,7 @@ class _ShoppingForCard extends StatelessWidget {
           child: InkWell(
             onTap: () => context.push('/garage'),
             child: SizedBox(
-              height: 109,
+              height: 76,
               child: Stack(
                 children: [
                   Positioned.fill(
@@ -517,8 +517,8 @@ class _ShoppingForCard extends StatelessWidget {
                           color: palette.card,
                           child: Center(
                             child: Container(
-                              width: 83,
-                              height: 83,
+                              width: 70,
+                              height: 70,
                               padding: const EdgeInsets.all(5),
                               decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(8)),
                               child: displayPhotoUrl != null
