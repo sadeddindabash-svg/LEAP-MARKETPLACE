@@ -220,7 +220,7 @@ async function fitmentMutate(method, path, token, body) {
   if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
   if (response.status === 204) return null;
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  if (!response.ok) throw new Error(data.debugMessage || data.error || `Request failed (${response.status})`);
   return data;
 }
 

@@ -106,7 +106,7 @@ export function ConfirmDialog({ isOpen, title, message, onConfirm, onCancel }) {
 // required? } -- lets each of the 7 real callers configure exactly
 // which inputs it needs (most need 1-2 text fields; generations need
 // 3, including two real number fields for years).
-export function EditDialog({ isOpen, title, fields, onSave, onCancel }) {
+export function EditDialog({ isOpen, title, fields, onSave, onCancel, errorMessage, isSaving }) {
   const [values, setValues] = useState({});
 
   // Real, deliberate -- resets local state to the real item's
@@ -139,9 +139,18 @@ export function EditDialog({ isOpen, title, fields, onSave, onCancel }) {
             />
           </div>
         ))}
+        {/* Real, new -- shown here specifically because this dialog
+            is a real, full-screen overlay: any error rendered in the
+            page behind it (the normal, page-level error banner) would
+            be completely hidden from the person while this is open,
+            making a real save failure look exactly like "nothing
+            happened" instead of a real, visible error. */}
+        {errorMessage && (
+          <p style={{ ...body, fontSize: 12, color: C.red, margin: "0 0 10px", padding: "8px 10px", background: "rgba(192,54,44,0.08)", borderRadius: 6 }}>{errorMessage}</p>
+        )}
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6 }}>
           <button onClick={onCancel} style={{ ...body, fontSize: 12.5, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "none", cursor: "pointer" }}>Cancel</button>
-          <button onClick={() => onSave(values)} style={{ ...body, fontSize: 12.5, padding: "7px 14px", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontWeight: 700, cursor: "pointer" }}>Save</button>
+          <button disabled={isSaving} onClick={() => onSave(values)} style={{ ...body, fontSize: 12.5, padding: "7px 14px", borderRadius: 8, border: "none", background: isSaving ? "#D1D5DB" : C.signal, color: "#fff", fontWeight: 700, cursor: isSaving ? "default" : "pointer" }}>{isSaving ? "Saving…" : "Save"}</button>
         </div>
       </div>
     </div>

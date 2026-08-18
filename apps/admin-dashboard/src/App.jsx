@@ -1494,6 +1494,7 @@ function VehicleDataPage({ onSessionExpired }) {
   const [replacingModelPhotoId, setReplacingModelPhotoId] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null); // {kind, id, label}
   const [pendingEdit, setPendingEdit] = useState(null); // {kind, item}
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   const loadBrands = () => {
     setLoadState("loading");
@@ -1617,6 +1618,8 @@ function VehicleDataPage({ onSessionExpired }) {
   // immediately.
   const handleSaveEdit = async (values) => {
     const { kind, item } = pendingEdit;
+    setIsSavingEdit(true);
+    setErrorMessage(null);
     try {
       const token = getStoredToken();
       if (kind === "brand") { await updateBrand(token, item.id, values.name.trim(), values.nameAr.trim()); loadBrands(); }
@@ -1628,6 +1631,8 @@ function VehicleDataPage({ onSessionExpired }) {
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
       setErrorMessage(err.message);
+    } finally {
+      setIsSavingEdit(false);
     }
   };
 
@@ -1933,6 +1938,8 @@ function VehicleDataPage({ onSessionExpired }) {
         ) : []}
         onSave={handleSaveEdit}
         onCancel={() => setPendingEdit(null)}
+        errorMessage={errorMessage}
+        isSaving={isSavingEdit}
       />
     </div>
   );
@@ -2620,6 +2627,7 @@ function CategoriesPage({ onSessionExpired }) {
   const [replacingPhotoForCatId, setReplacingPhotoForCatId] = useState(null);
   const [pendingDeleteCat, setPendingDeleteCat] = useState(null); // {id, nameEn}
   const [pendingEditCat, setPendingEditCat] = useState(null); // the full category object
+  const [isSavingCatEdit, setIsSavingCatEdit] = useState(false);
 
   const loadCategories = () => {
     setLoadState("loading");
@@ -2707,6 +2715,8 @@ function CategoriesPage({ onSessionExpired }) {
   };
 
   const handleSaveCategoryEdit = async (values) => {
+    setIsSavingCatEdit(true);
+    setErrorMessage(null);
     try {
       await updateCategory(getStoredToken(), pendingEditCat.id, values.nameEn.trim(), values.nameAr.trim());
       setPendingEditCat(null);
@@ -2714,6 +2724,8 @@ function CategoriesPage({ onSessionExpired }) {
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
       setErrorMessage(err.message);
+    } finally {
+      setIsSavingCatEdit(false);
     }
   };
 
@@ -2824,6 +2836,8 @@ function CategoriesPage({ onSessionExpired }) {
         ] : []}
         onSave={handleSaveCategoryEdit}
         onCancel={() => setPendingEditCat(null)}
+        errorMessage={errorMessage}
+        isSaving={isSavingCatEdit}
       />
     </div>
   );
@@ -2843,6 +2857,7 @@ function CategoryPartsPage({ category, onBack, onSessionExpired }) {
   const [replacingPhotoForPartId, setReplacingPhotoForPartId] = useState(null);
   const [pendingDeletePart, setPendingDeletePart] = useState(null); // {id, nameEn}
   const [pendingEditPart, setPendingEditPart] = useState(null); // the full part object
+  const [isSavingPartEdit, setIsSavingPartEdit] = useState(false);
 
   const load = () => {
     setLoadState("loading");
@@ -2930,6 +2945,8 @@ function CategoryPartsPage({ category, onBack, onSessionExpired }) {
   };
 
   const handleSavePartEdit = async (values) => {
+    setIsSavingPartEdit(true);
+    setErrorMessage(null);
     try {
       await updatePart(getStoredToken(), pendingEditPart.id, values.nameEn.trim(), values.nameAr?.trim() || undefined);
       setPendingEditPart(null);
@@ -2937,6 +2954,8 @@ function CategoryPartsPage({ category, onBack, onSessionExpired }) {
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
       setErrorMessage(err.message);
+    } finally {
+      setIsSavingPartEdit(false);
     }
   };
 
@@ -3037,6 +3056,8 @@ function CategoryPartsPage({ category, onBack, onSessionExpired }) {
         ] : []}
         onSave={handleSavePartEdit}
         onCancel={() => setPendingEditPart(null)}
+        errorMessage={errorMessage}
+        isSaving={isSavingPartEdit}
       />
     </div>
   );
