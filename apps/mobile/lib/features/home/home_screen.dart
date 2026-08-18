@@ -296,8 +296,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             // it. Falls back to the existing icon when
                             // a real category genuinely has none yet.
                             child: c.photoUrl != null
-                                ? CachedNetworkImage(imageUrl: ApiClient.resolveMediaUrl(c.photoUrl!), fit: BoxFit.cover, fadeInDuration: const Duration(milliseconds: 300), errorWidget: (context, url, error) => Icon(_iconForCategory(c.id), color: palette.signal))
-                                : Icon(_iconForCategory(c.id), color: palette.signal),
+                                ? CachedNetworkImage(imageUrl: ApiClient.resolveMediaUrl(c.photoUrl!), fit: BoxFit.cover, fadeInDuration: const Duration(milliseconds: 300), errorWidget: (context, url, error) => Icon(_iconForCategory(c.id), color: palette.signal, size: 31))
+                                : Icon(_iconForCategory(c.id), color: palette.signal, size: 31),
                           ),
                           const SizedBox(height: 6),
                           Text(label, style: const TextStyle(fontSize: 10), textAlign: TextAlign.center),
