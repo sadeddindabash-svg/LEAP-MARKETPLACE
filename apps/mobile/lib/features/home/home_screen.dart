@@ -520,7 +520,7 @@ class _ShoppingForCard extends StatelessWidget {
                                     child: Container(
                                       width: 42,
                                       height: 42,
-                                      decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(8)),
+                                      decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(8), border: Border.all(color: palette.line)),
                                       child: Icon(Icons.directions_car, size: 20, color: palette.muted),
                                     ),
                                   ),
@@ -529,7 +529,7 @@ class _ShoppingForCard extends StatelessWidget {
                                   child: Container(
                                     width: 42,
                                     height: 42,
-                                    decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(8)),
+                                    decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(8), border: Border.all(color: palette.line)),
                                     child: Icon(Icons.directions_car, size: 20, color: palette.muted),
                                   ),
                                 ),
