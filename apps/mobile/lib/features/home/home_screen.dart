@@ -500,7 +500,7 @@ class _ShoppingForCard extends StatelessWidget {
           child: InkWell(
             onTap: () => context.push('/garage'),
             child: SizedBox(
-              height: 78,
+              height: 90,
               child: Stack(
                 children: [
                   Positioned.fill(
@@ -511,28 +511,22 @@ class _ShoppingForCard extends StatelessWidget {
                         clipper: _DiagonalClipper(mirrored: isAr),
                         child: Container(
                           color: palette.card,
-                          child: vehicle.brandPhotoUrl != null
-                              ? CachedNetworkImage(
-                                  imageUrl: ApiClient.resolveMediaUrl(vehicle.brandPhotoUrl!),
-                                  fit: BoxFit.cover,
-                                  fadeInDuration: const Duration(milliseconds: 300),
-                                  errorWidget: (context, url, error) => Center(
-                                    child: Container(
-                                      width: 42,
-                                      height: 42,
-                                      decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(8), border: Border.all(color: palette.line)),
-                                      child: Icon(Icons.directions_car, size: 20, color: palette.muted),
-                                    ),
-                                  ),
-                                )
-                              : Center(
-                                  child: Container(
-                                    width: 42,
-                                    height: 42,
-                                    decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(8), border: Border.all(color: palette.line)),
-                                    child: Icon(Icons.directions_car, size: 20, color: palette.muted),
-                                  ),
-                                ),
+                          child: Center(
+                            child: Container(
+                              width: 64,
+                              height: 64,
+                              padding: const EdgeInsets.all(5),
+                              decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(8)),
+                              child: vehicle.brandPhotoUrl != null
+                                  ? CachedNetworkImage(
+                                      imageUrl: ApiClient.resolveMediaUrl(vehicle.brandPhotoUrl!),
+                                      fit: BoxFit.contain,
+                                      fadeInDuration: const Duration(milliseconds: 300),
+                                      errorWidget: (context, url, error) => Icon(Icons.directions_car, size: 20, color: palette.muted),
+                                    )
+                                  : Icon(Icons.directions_car, size: 20, color: palette.muted),
+                            ),
+                          ),
                         ),
                       ),
                     ),
