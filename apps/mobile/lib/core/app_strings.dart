@@ -239,7 +239,7 @@ class AppStrings {
     'default_vehicle_label': {'en': 'Default', 'ar': 'الافتراضية'},
     'saved_vehicle_label': {'en': 'Saved vehicle', 'ar': 'مركبة محفوظة'},
     'view_compatible_parts': {'en': 'View compatible parts', 'ar': 'عرض القطع المتوافقة'},
-    'set_as_default_vehicle': {'en': 'Set as default vehicle', 'ar': 'تعيين كمركبة افتراضية'},
+    'set_as_default_vehicle': {'en': 'Set as default vehicle', 'ar': 'تعيين كإفتراضي'},
     'label_field': {'en': 'Label (e.g. Home, Work)', 'ar': 'التسمية (مثال: المنزل، العمل)'},
     'recipient_name_field': {'en': 'Recipient name', 'ar': 'اسم المستلم'},
     'phone_field': {'en': 'Phone', 'ar': 'الهاتف'},
