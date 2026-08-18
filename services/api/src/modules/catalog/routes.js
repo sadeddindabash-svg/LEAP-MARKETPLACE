@@ -645,7 +645,7 @@ function toCategoryDto(row) {
   return { id: row.id, nameEn: row.name_en, nameAr: row.name_ar, photoUrl: row.photo_url, sortOrder: row.sort_order, commissionPercent: Number(row.commission_percent) };
 }
 function toPartDto(row) {
-  return { id: row.id, categoryId: row.category_id, nameEn: row.name_en, nameAr: row.name_ar, sortOrder: row.sort_order };
+  return { id: row.id, categoryId: row.category_id, nameEn: row.name_en, nameAr: row.name_ar, sortOrder: row.sort_order, photoUrl: row.photo_url };
 }
 
 /**
@@ -758,6 +758,22 @@ router.post('/categories', requireAuth, requireRole('admin'), requirePageAccess(
   }
 });
 
+// Real, new (previously only settable at creation) -- lets an admin
+// replace a category's real photo at any time, without deleting and
+// recreating the whole category just to swap one image.
+router.patch('/categories/:id/photo', requireAuth, requireRole('admin'), requirePageAccess('categories'), async (req, res, next) => {
+  try {
+    const { photoUrl } = req.body || {};
+    if (!photoUrl || !photoUrl.trim()) return res.status(400).json({ error: 'photoUrl is required' });
+    const { rows } = await db.query('UPDATE product_categories SET photo_url = $1 WHERE id = $2 RETURNING *', [photoUrl.trim(), req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Category not found' });
+    await logAdminAction(req, 'category_photo_changed', 'category', req.params.id, {});
+    res.json(toCategoryDto(rows[0]));
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Deleting a category real-protects against orphaning real products —
 // same "you cannot delete what's actually referenced" pattern as
 // Vehicle Data and Hubs, not silently allowed and not a raw DB error.
@@ -800,14 +816,14 @@ router.get('/categories/:id/parts', async (req, res, next) => {
 
 router.post('/categories/:id/parts', requireAuth, requireRole('admin'), requirePageAccess('categories'), async (req, res, next) => {
   try {
-    const { nameEn, nameAr, sortOrder } = req.body || {};
+    const { nameEn, nameAr, sortOrder, photoUrl } = req.body || {};
     if (!nameEn) return res.status(400).json({ error: 'nameEn is required' });
     const categoryCheck = await db.query('SELECT id FROM product_categories WHERE id = $1', [req.params.id]);
     if (categoryCheck.rows.length === 0) return res.status(404).json({ error: 'Category not found' });
     const partId = `part_${Date.now()}`;
     await db.query(
-      'INSERT INTO category_parts (id, category_id, name_en, name_ar, sort_order) VALUES ($1, $2, $3, $4, $5)',
-      [partId, req.params.id, nameEn, nameAr || null, sortOrder ?? 0]
+      'INSERT INTO category_parts (id, category_id, name_en, name_ar, sort_order, photo_url) VALUES ($1, $2, $3, $4, $5, $6)',
+      [partId, req.params.id, nameEn, nameAr || null, sortOrder ?? 0, photoUrl?.trim() || null]
     );
     const { rows } = await db.query('SELECT * FROM category_parts WHERE id = $1', [partId]);
     await logAdminAction(req, 'part_created', 'part', partId, { nameEn, categoryId: req.params.id });
@@ -833,6 +849,22 @@ router.delete('/parts/:id', requireAuth, requireRole('admin'), requirePageAccess
     await db.query('DELETE FROM category_parts WHERE id = $1', [req.params.id]);
     await logAdminAction(req, 'part_deleted', 'part', req.params.id, { nameEn: partRows[0].name_en });
     res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Real, new (previously never settable at all for parts, per the real
+// gap confirmed before building this) -- lets an admin add or replace
+// a part's real photo at any time.
+router.patch('/parts/:id/photo', requireAuth, requireRole('admin'), requirePageAccess('categories'), async (req, res, next) => {
+  try {
+    const { photoUrl } = req.body || {};
+    if (!photoUrl || !photoUrl.trim()) return res.status(400).json({ error: 'photoUrl is required' });
+    const { rows } = await db.query('UPDATE category_parts SET photo_url = $1 WHERE id = $2 RETURNING *', [photoUrl.trim(), req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Part not found' });
+    await logAdminAction(req, 'part_photo_changed', 'part', req.params.id, {});
+    res.json(toPartDto(rows[0]));
   } catch (err) {
     next(err);
   }

@@ -9,7 +9,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchHubLocations, createHubLocation, deleteHubLocation, assignHubToSubOrder,
   fetchFeeComponents, createFeeComponent, updateFeeComponent, deleteFeeComponent, moveFeeComponent, fetchFxRate, updateFxRate, fetchFxRateMode, updateFxRateMode, previewPricing,
   fetchFlaggedShipments,
-  fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart, uploadImage,
+  fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart, uploadImage, updateCategoryPhoto, updatePartPhoto,
   fetchSupplierMessagesInbox, fetchSupplierMessageThread, sendSupplierMessage,
   fetchPromoCodes, createPromoCode, updatePromoCode, deletePromoCode,
   fetchAdminUsers, createAdminUser, updateAdminPermissions, deleteAdminUser,
@@ -2396,6 +2396,7 @@ function CategoriesPage({ onSessionExpired }) {
   const [newCatPhotoPreview, setNewCatPhotoPreview] = useState(null);
   const [isUploadingCatPhoto, setIsUploadingCatPhoto] = useState(false);
   const [isSubmittingCat, setIsSubmittingCat] = useState(false);
+  const [replacingPhotoForCatId, setReplacingPhotoForCatId] = useState(null);
 
   const loadCategories = () => {
     setLoadState("loading");
@@ -2438,6 +2439,26 @@ function CategoriesPage({ onSessionExpired }) {
     if (!file) return;
     setNewCatPhotoFile(file);
     setNewCatPhotoPreview(URL.createObjectURL(file));
+  };
+
+  // Real, new -- lets an admin replace an existing category's photo
+  // at any time, confirmed with the person: previously only settable
+  // once, at creation.
+  const handleReplaceCategoryPhoto = async (categoryId, file) => {
+    if (!file) return;
+    setReplacingPhotoForCatId(categoryId);
+    setErrorMessage(null);
+    try {
+      const token = getStoredToken();
+      const uploadResult = await uploadImage(token, file);
+      await updateCategoryPhoto(token, categoryId, uploadResult.url);
+      loadCategories();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setReplacingPhotoForCatId(null);
+    }
   };
 
   const handleDeleteCategory = async (id) => {
@@ -2488,11 +2509,26 @@ function CategoriesPage({ onSessionExpired }) {
               <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 4px", borderBottom: i < categories.length - 1 ? `1px solid ${C.line}` : "none", cursor: "pointer" }}
                 onClick={() => setOpenCategory(c)}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  {c.photoUrl ? (
-                    <img src={c.photoUrl.startsWith("http") ? c.photoUrl : `${API_BASE_URL}${c.photoUrl}`} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
-                  ) : (
-                    <div style={{ width: 32, height: 32, borderRadius: 6, background: C.canvas, flexShrink: 0 }} />
-                  )}
+                  <label
+                    onClick={(e) => e.stopPropagation()}
+                    title="Click to replace this photo"
+                    style={{ position: "relative", width: 32, height: 32, borderRadius: 6, flexShrink: 0, cursor: replacingPhotoForCatId === c.id ? "default" : "pointer", display: "block" }}
+                  >
+                    {c.photoUrl ? (
+                      <img src={c.photoUrl.startsWith("http") ? c.photoUrl : `${API_BASE_URL}${c.photoUrl}`} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover", display: "block", opacity: replacingPhotoForCatId === c.id ? 0.5 : 1 }} />
+                    ) : (
+                      <div style={{ width: 32, height: 32, borderRadius: 6, background: C.canvas, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <ImagePlus size={14} color={C.muted} />
+                      </div>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      disabled={replacingPhotoForCatId === c.id}
+                      onChange={(e) => handleReplaceCategoryPhoto(c.id, e.target.files?.[0])}
+                      style={{ display: "none" }}
+                    />
+                  </label>
                   <div>
                     <div style={{ ...body, fontSize: 13.5, fontWeight: 700, color: C.ink }}>{c.nameEn}</div>
                     {c.nameAr && <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2 }} dir="rtl">{c.nameAr}</div>}
@@ -2519,7 +2555,11 @@ function CategoryPartsPage({ category, onBack, onSessionExpired }) {
 
   const [newNameEn, setNewNameEn] = useState("");
   const [newNameAr, setNewNameAr] = useState("");
+  const [newPartPhotoFile, setNewPartPhotoFile] = useState(null);
+  const [newPartPhotoPreview, setNewPartPhotoPreview] = useState(null);
+  const [isUploadingPartPhoto, setIsUploadingPartPhoto] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [replacingPhotoForPartId, setReplacingPhotoForPartId] = useState(null);
 
   const load = () => {
     setLoadState("loading");
@@ -2535,14 +2575,52 @@ function CategoryPartsPage({ category, onBack, onSessionExpired }) {
     setIsSubmitting(true);
     setErrorMessage(null);
     try {
-      await createPart(getStoredToken(), category.id, newNameEn.trim(), newNameAr.trim() || undefined, parts.length * 10 + 10);
-      setNewNameEn(""); setNewNameAr("");
+      const token = getStoredToken();
+      // Real, optional photo (new) -- unlike categories' own required
+      // photo, kept optional here so this doesn't force a new
+      // requirement onto an existing, already-working workflow.
+      let photoUrl;
+      if (newPartPhotoFile) {
+        setIsUploadingPartPhoto(true);
+        const uploadResult = await uploadImage(token, newPartPhotoFile);
+        setIsUploadingPartPhoto(false);
+        photoUrl = uploadResult.url;
+      }
+      await createPart(token, category.id, newNameEn.trim(), newNameAr.trim() || undefined, parts.length * 10 + 10, photoUrl);
+      setNewNameEn(""); setNewNameAr(""); setNewPartPhotoFile(null); setNewPartPhotoPreview(null);
       load();
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
       setErrorMessage(err.message);
     } finally {
       setIsSubmitting(false);
+      setIsUploadingPartPhoto(false);
+    }
+  };
+
+  const handlePartPhotoSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setNewPartPhotoFile(file);
+    setNewPartPhotoPreview(URL.createObjectURL(file));
+  };
+
+  // Real, new -- same real capability as categories' own
+  // handleReplaceCategoryPhoto, for an existing part.
+  const handleReplacePartPhoto = async (partId, file) => {
+    if (!file) return;
+    setReplacingPhotoForPartId(partId);
+    setErrorMessage(null);
+    try {
+      const token = getStoredToken();
+      const uploadResult = await uploadImage(token, file);
+      await updatePartPhoto(token, partId, uploadResult.url);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setReplacingPhotoForPartId(null);
     }
   };
 
@@ -2570,11 +2648,17 @@ function CategoryPartsPage({ category, onBack, onSessionExpired }) {
           <div style={{ padding: 18 }}>
             {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 14 }}>{errorMessage}</div>}
 
-            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
               <input value={newNameEn} onChange={(e) => setNewNameEn(e.target.value)} placeholder="English part name" style={{ ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
               <input value={newNameAr} onChange={(e) => setNewNameAr(e.target.value)} placeholder="Arabic name (optional)" dir="rtl" style={{ ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+              <label style={{ ...body, display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", color: newPartPhotoFile ? C.gauge : C.muted }}>
+                <ImagePlus size={14} />
+                {newPartPhotoFile ? "Photo selected" : "Choose photo (optional)"}
+                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePartPhotoSelect} style={{ display: "none" }} />
+              </label>
+              {newPartPhotoPreview && <img src={newPartPhotoPreview} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
               <button disabled={isSubmitting} onClick={handleAddPart} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
-                <Check size={13} /> Add part
+                <Check size={13} /> {isUploadingPartPhoto ? "Uploading…" : "Add part"}
               </button>
             </div>
 
@@ -2582,9 +2666,30 @@ function CategoryPartsPage({ category, onBack, onSessionExpired }) {
             {loadState === "ready" && parts.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No parts yet — suppliers can't submit anything under this category until you add at least one.</div>}
             {loadState === "ready" && parts.map((p, i) => (
               <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 4px", borderBottom: i < parts.length - 1 ? `1px solid ${C.line}` : "none" }}>
-                <div>
-                  <div style={{ ...body, fontSize: 13.5, fontWeight: 600, color: C.ink }}>{p.nameEn}</div>
-                  {p.nameAr && <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2 }} dir="rtl">{p.nameAr}</div>}
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <label
+                    title="Click to add or replace this photo"
+                    style={{ position: "relative", width: 32, height: 32, borderRadius: 6, flexShrink: 0, cursor: replacingPhotoForPartId === p.id ? "default" : "pointer", display: "block" }}
+                  >
+                    {p.photoUrl ? (
+                      <img src={p.photoUrl.startsWith("http") ? p.photoUrl : `${API_BASE_URL}${p.photoUrl}`} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover", display: "block", opacity: replacingPhotoForPartId === p.id ? 0.5 : 1 }} />
+                    ) : (
+                      <div style={{ width: 32, height: 32, borderRadius: 6, background: C.canvas, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <ImagePlus size={14} color={C.muted} />
+                      </div>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      disabled={replacingPhotoForPartId === p.id}
+                      onChange={(e) => handleReplacePartPhoto(p.id, e.target.files?.[0])}
+                      style={{ display: "none" }}
+                    />
+                  </label>
+                  <div>
+                    <div style={{ ...body, fontSize: 13.5, fontWeight: 600, color: C.ink }}>{p.nameEn}</div>
+                    {p.nameAr && <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2 }} dir="rtl">{p.nameAr}</div>}
+                  </div>
                 </div>
                 <button onClick={() => handleDeletePart(p.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={15} color={C.red} /></button>
               </div>

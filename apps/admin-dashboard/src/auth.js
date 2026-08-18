@@ -359,11 +359,38 @@ export async function fetchPartsForCategory(categoryId) {
   return response.json();
 }
 
-export async function createPart(token, categoryId, nameEn, nameAr, sortOrder) {
+export async function createPart(token, categoryId, nameEn, nameAr, sortOrder, photoUrl) {
   const response = await fetch(`${API_BASE_URL}/catalog/categories/${categoryId}/parts`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ nameEn, nameAr, sortOrder }),
+    body: JSON.stringify({ nameEn, nameAr, sortOrder, photoUrl }),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
+// Real, new -- lets an admin replace a category's photo at any time,
+// not just at creation.
+export async function updateCategoryPhoto(token, id, photoUrl) {
+  const response = await fetch(`${API_BASE_URL}/catalog/categories/${id}/photo`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ photoUrl }),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
+// Real, new -- same real capability as updateCategoryPhoto, for a part.
+export async function updatePartPhoto(token, id, photoUrl) {
+  const response = await fetch(`${API_BASE_URL}/catalog/parts/${id}/photo`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ photoUrl }),
   });
   if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
   const data = await response.json();

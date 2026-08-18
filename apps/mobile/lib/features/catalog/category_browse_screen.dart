@@ -181,6 +181,18 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
                           return Container(
                             decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(10), border: Border.all(color: palette.line)),
                             child: ListTile(
+                              leading: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: part.photoUrl != null
+                                    ? CachedNetworkImage(
+                                        imageUrl: ApiClient.resolveMediaUrl(part.photoUrl!),
+                                        width: 40,
+                                        height: 40,
+                                        fit: BoxFit.cover,
+                                        errorWidget: (context, url, error) => Container(width: 40, height: 40, color: palette.chalk, child: Icon(Icons.build_outlined, size: 18, color: palette.muted)),
+                                      )
+                                    : Container(width: 40, height: 40, color: palette.chalk, child: Icon(Icons.build_outlined, size: 18, color: palette.muted)),
+                              ),
                               title: Text(partLabel, style: TextStyle(fontSize: 14.5, color: palette.ink)),
                               trailing: Icon(Icons.chevron_right, color: palette.muted),
                               onTap: () => context.push(
