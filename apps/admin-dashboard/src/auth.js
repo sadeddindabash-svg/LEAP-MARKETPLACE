@@ -226,8 +226,9 @@ async function fitmentMutate(method, path, token, body) {
 
 export const createBrand = (token, name, nameAr, photoUrl) => fitmentMutate("POST", "/fitment/brands", token, { name, nameAr, photoUrl });
 export const deleteBrand = (token, id) => fitmentMutate("DELETE", `/fitment/brands/${id}`, token);
-export const createModel = (token, brandId, name) => fitmentMutate("POST", `/fitment/brands/${brandId}/models`, token, { name });
+export const createModel = (token, brandId, name, photoUrl) => fitmentMutate("POST", `/fitment/brands/${brandId}/models`, token, { name, photoUrl });
 export const deleteModel = (token, id) => fitmentMutate("DELETE", `/fitment/models/${id}`, token);
+export const updateModelPhoto = (token, id, photoUrl) => fitmentMutate("PATCH", `/fitment/models/${id}/photo`, token, { photoUrl });
 export const createGeneration = (token, modelId, name, yearStart, yearEnd) =>
   fitmentMutate("POST", `/fitment/models/${modelId}/generations`, token, { name, yearStart, yearEnd });
 export const deleteGeneration = (token, id) => fitmentMutate("DELETE", `/fitment/generations/${id}`, token);

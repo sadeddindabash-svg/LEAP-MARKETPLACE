@@ -9,7 +9,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchHubLocations, createHubLocation, deleteHubLocation, assignHubToSubOrder,
   fetchFeeComponents, createFeeComponent, updateFeeComponent, deleteFeeComponent, moveFeeComponent, fetchFxRate, updateFxRate, fetchFxRateMode, updateFxRateMode, previewPricing,
   fetchFlaggedShipments,
-  fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart, uploadImage, updateCategoryPhoto, updatePartPhoto, moveCategory, movePart, moveBrand, moveModel, moveGeneration, moveEngine, moveTransmission, updateBrandPhoto,
+  fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart, uploadImage, updateCategoryPhoto, updatePartPhoto, moveCategory, movePart, moveBrand, moveModel, moveGeneration, moveEngine, moveTransmission, updateBrandPhoto, updateModelPhoto,
   fetchSupplierMessagesInbox, fetchSupplierMessageThread, sendSupplierMessage,
   fetchPromoCodes, createPromoCode, updatePromoCode, deletePromoCode,
   fetchAdminUsers, createAdminUser, updateAdminPermissions, deleteAdminUser,
@@ -1482,6 +1482,12 @@ function VehicleDataPage({ onSessionExpired }) {
   const [newBrandPhotoPreview, setNewBrandPhotoPreview] = useState(null);
   const [isUploadingBrandPhoto, setIsUploadingBrandPhoto] = useState(false);
   const [replacingBrandPhotoId, setReplacingBrandPhotoId] = useState(null);
+  // Real, optional photo for a new model (new) -- unlike brands' own
+  // required photo, kept optional here.
+  const [newModelPhotoFile, setNewModelPhotoFile] = useState(null);
+  const [newModelPhotoPreview, setNewModelPhotoPreview] = useState(null);
+  const [isUploadingModelPhoto, setIsUploadingModelPhoto] = useState(false);
+  const [replacingModelPhotoId, setReplacingModelPhotoId] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null); // {kind, id, label}
 
   const loadBrands = () => {
@@ -1535,8 +1541,16 @@ function VehicleDataPage({ onSessionExpired }) {
         loadBrands();
         setNewBrandNameAr(""); setNewBrandPhotoFile(null); setNewBrandPhotoPreview(null);
       } else if (kind === "model") {
-        await createModel(token, selectedBrand.id, newName.trim());
+        let modelPhotoUrl;
+        if (newModelPhotoFile) {
+          setIsUploadingModelPhoto(true);
+          const uploadResult = await uploadImage(token, newModelPhotoFile);
+          setIsUploadingModelPhoto(false);
+          modelPhotoUrl = uploadResult.url;
+        }
+        await createModel(token, selectedBrand.id, newName.trim(), modelPhotoUrl);
         openBrand(selectedBrand);
+        setNewModelPhotoFile(null); setNewModelPhotoPreview(null);
       } else if (kind === "generation") {
         await createGeneration(token, selectedModel.id, newName.trim(), parseInt(newYearStart, 10), newYearEnd ? parseInt(newYearEnd, 10) : undefined);
         openModel(selectedModel);
@@ -1554,6 +1568,7 @@ function VehicleDataPage({ onSessionExpired }) {
     } finally {
       setIsSubmitting(false);
       setIsUploadingBrandPhoto(false);
+      setIsUploadingModelPhoto(false);
     }
   };
 
@@ -1635,15 +1650,51 @@ function VehicleDataPage({ onSessionExpired }) {
     setNewBrandPhotoPreview(URL.createObjectURL(file));
   };
 
+  const handleModelPhotoSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setNewModelPhotoFile(file);
+    setNewModelPhotoPreview(URL.createObjectURL(file));
+  };
+
+  // Real, new -- lets an admin add or replace an existing model's
+  // photo at any time, same real pattern as handleReplaceBrandPhoto.
+  const handleReplaceModelPhoto = async (id, file) => {
+    if (!file) return;
+    setReplacingModelPhotoId(id);
+    setErrorMessage(null);
+    try {
+      const token = getStoredToken();
+      const uploadResult = await uploadImage(token, file);
+      await updateModelPhoto(token, id, uploadResult.url);
+      openBrand(selectedBrand);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setReplacingModelPhotoId(null);
+    }
+  };
+
   const addRow = (kind, placeholder, showYears) => (
-    <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+    <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
       <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={placeholder} style={{ ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
       {showYears && <>
         <input value={newYearStart} onChange={(e) => setNewYearStart(e.target.value)} placeholder="Start year" type="number" style={{ ...body, width: 100, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
         <input value={newYearEnd} onChange={(e) => setNewYearEnd(e.target.value)} placeholder="End year (optional)" type="number" style={{ ...body, width: 140, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
       </>}
+      {kind === "model" && (
+        <>
+          <label style={{ ...body, display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", color: newModelPhotoFile ? C.gauge : C.muted }}>
+            <ImagePlus size={14} />
+            {newModelPhotoFile ? "Photo selected" : "Choose photo (optional)"}
+            <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleModelPhotoSelect} style={{ display: "none" }} />
+          </label>
+          {newModelPhotoPreview && <img src={newModelPhotoPreview} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
+        </>
+      )}
       <button disabled={isSubmitting} onClick={() => handleAdd(kind)} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
-        <Check size={13} /> Add
+        <Check size={13} /> {kind === "model" && isUploadingModelPhoto ? "Uploading…" : "Add"}
       </button>
     </div>
   );
@@ -1754,7 +1805,47 @@ function VehicleDataPage({ onSessionExpired }) {
               <>
                 {addRow("model", `New model under ${selectedBrand.name} (e.g. Focus)`, false)}
                 {models.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No models yet.</div>}
-                {models.map((m, i) => listRow(m.name, null, () => openModel(m), () => setPendingDelete({ kind: "model", id: m.id, label: m.name }), i === 0, i === models.length - 1, () => handleMove("model", m.id, "up"), () => handleMove("model", m.id, "down")))}
+                {models.map((m, i) => (
+                  <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderBottom: `1px solid ${C.line}` }}>
+                    <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                        <button onClick={() => handleMove("model", m.id, "up")} disabled={i === 0} style={{ background: "none", border: "none", padding: 0, cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? 0.25 : 1 }} title="Move up">
+                          <ChevronUp size={13} color={C.ink} />
+                        </button>
+                        <button onClick={() => handleMove("model", m.id, "down")} disabled={i === models.length - 1} style={{ background: "none", border: "none", padding: 0, cursor: i === models.length - 1 ? "default" : "pointer", opacity: i === models.length - 1 ? 0.25 : 1 }} title="Move down">
+                          <ChevronDown size={13} color={C.ink} />
+                        </button>
+                      </div>
+                      <label
+                        onClick={(e) => e.stopPropagation()}
+                        title="Click to add or replace this photo"
+                        style={{ position: "relative", width: 28, height: 28, borderRadius: 6, flexShrink: 0, cursor: replacingModelPhotoId === m.id ? "default" : "pointer", display: "block" }}
+                      >
+                        {m.photoUrl ? (
+                          <img src={m.photoUrl.startsWith("http") ? m.photoUrl : `${API_BASE_URL}${m.photoUrl}`} alt="" style={{ width: 28, height: 28, borderRadius: 6, objectFit: "cover", display: "block", opacity: replacingModelPhotoId === m.id ? 0.5 : 1 }} />
+                        ) : (
+                          <div style={{ width: 28, height: 28, borderRadius: 6, background: C.canvas, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <ImagePlus size={12} color={C.muted} />
+                          </div>
+                        )}
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          disabled={replacingModelPhotoId === m.id}
+                          onChange={(e) => handleReplaceModelPhoto(m.id, e.target.files?.[0])}
+                          style={{ display: "none" }}
+                        />
+                      </label>
+                      <div onClick={() => openModel(m)} style={{ cursor: "pointer" }}>
+                        <span style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>{m.name}</span>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <ChevronRight size={14} color={C.muted} onClick={() => openModel(m)} style={{ cursor: "pointer" }} />
+                      <button onClick={() => setPendingDelete({ kind: "model", id: m.id, label: m.name })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={14} color={C.red} /></button>
+                    </div>
+                  </div>
+                ))}
               </>
             )}
 

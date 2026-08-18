@@ -494,13 +494,17 @@ class _ShoppingForCard extends StatelessWidget {
         // plain icon, gracefully, when the brand has no real photo
         // set yet (most brands today, confirmed via a real query).
         final isAr = context.watch<LanguageState>().isArabic;
+        // Real, confirmed fallback chain: the model's own photo is
+        // more specific to this exact saved vehicle than the brand's
+        // generic one, so it's preferred whenever it exists.
+        final displayPhotoUrl = vehicle.modelPhotoUrl ?? vehicle.brandPhotoUrl;
         return Card(
           clipBehavior: Clip.antiAlias,
           color: palette.chalk,
           child: InkWell(
             onTap: () => context.push('/garage'),
             child: SizedBox(
-              height: 90,
+              height: 109,
               child: Stack(
                 children: [
                   Positioned.fill(
@@ -513,13 +517,13 @@ class _ShoppingForCard extends StatelessWidget {
                           color: palette.card,
                           child: Center(
                             child: Container(
-                              width: 64,
-                              height: 64,
+                              width: 83,
+                              height: 83,
                               padding: const EdgeInsets.all(5),
                               decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(8)),
-                              child: vehicle.brandPhotoUrl != null
+                              child: displayPhotoUrl != null
                                   ? CachedNetworkImage(
-                                      imageUrl: ApiClient.resolveMediaUrl(vehicle.brandPhotoUrl!),
+                                      imageUrl: ApiClient.resolveMediaUrl(displayPhotoUrl),
                                       fit: BoxFit.contain,
                                       fadeInDuration: const Duration(milliseconds: 300),
                                       errorWidget: (context, url, error) => Icon(Icons.directions_car, size: 20, color: palette.muted),

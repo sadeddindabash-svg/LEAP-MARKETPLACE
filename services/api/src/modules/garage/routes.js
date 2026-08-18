@@ -37,12 +37,17 @@ function toSavedGenerationDto(row) {
     // required only for new brands going forward). Callers must
     // handle null gracefully, never assume a photo exists.
     brandPhotoUrl: row.brand_photo_url,
+    // Real model photo (new, migration 061) -- nullable, optional even
+    // for new models (unlike brands' required photo). The real
+    // "Shopping for" card falls back to brandPhotoUrl, then a plain
+    // generic icon, when this is null.
+    modelPhotoUrl: row.model_photo_url,
   };
 }
 
 const SAVED_GENERATION_SELECT = `
   SELECT usg.generation_id, usg.year, usg.is_default, vg.name AS generation_name, vg.year_start, vg.year_end,
-         vm.name AS model_name, vb.name AS brand_name, vb.photo_url AS brand_photo_url
+         vm.name AS model_name, vm.photo_url AS model_photo_url, vb.name AS brand_name, vb.photo_url AS brand_photo_url
   FROM user_saved_generations usg
   JOIN vehicle_generations vg ON vg.id = usg.generation_id
   JOIN vehicle_models vm ON vm.id = vg.model_id
