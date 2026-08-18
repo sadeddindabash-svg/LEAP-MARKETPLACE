@@ -24,7 +24,14 @@ function toSavedGenerationDto(row) {
     generationId: row.generation_id,
     year: row.year,
     brand: row.brand_name,
+    // Real Arabic brand name (new) -- nullable, not every brand has
+    // one yet (migration 046). Closes a real gap: My Garage always
+    // showed the English name regardless of the app's own language.
+    brandAr: row.brand_name_ar,
     model: row.model_name,
+    // Real Arabic model name (new, migration 062) -- nullable, models
+    // never required this field at all.
+    modelAr: row.model_name_ar,
     generation: row.generation_name,
     yearStart: row.year_start,
     yearEnd: row.year_end,
@@ -47,7 +54,8 @@ function toSavedGenerationDto(row) {
 
 const SAVED_GENERATION_SELECT = `
   SELECT usg.generation_id, usg.year, usg.is_default, vg.name AS generation_name, vg.year_start, vg.year_end,
-         vm.name AS model_name, vm.photo_url AS model_photo_url, vb.name AS brand_name, vb.photo_url AS brand_photo_url
+         vm.name AS model_name, vm.name_ar AS model_name_ar, vm.photo_url AS model_photo_url,
+         vb.name AS brand_name, vb.name_ar AS brand_name_ar, vb.photo_url AS brand_photo_url
   FROM user_saved_generations usg
   JOIN vehicle_generations vg ON vg.id = usg.generation_id
   JOIN vehicle_models vm ON vm.id = vg.model_id

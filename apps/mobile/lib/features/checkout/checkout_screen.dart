@@ -89,13 +89,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // instead (see order_detail_screen.dart's pending-address banner).
   List<dynamic> _savedAddresses = [];
   String? _selectedAddressId;
-  bool _isAddingNewAddress = false;
   bool _isLoadingAddresses = false;
-  final _newAddrRecipientController = TextEditingController();
-  final _newAddrPhoneController = TextEditingController();
-  final _newAddrCountryController = TextEditingController();
-  final _newAddrCityController = TextEditingController();
-  final _newAddrStreetController = TextEditingController();
 
   // Real promo code state -- validated live against the real backend
   // before checkout, then re-validated server-side again at real order
@@ -184,14 +178,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         if (addresses.isNotEmpty) {
           final defaultAddr = addresses.firstWhere((a) => a['isDefault'] == true, orElse: () => addresses.first);
           _selectedAddressId = defaultAddr['id'] as String;
-        } else {
-          _isAddingNewAddress = true; // no real saved addresses yet -- go straight to the real inline form
         }
+        // Real, confirmed with the person -- if there are no real
+        // saved addresses, the address section's own empty-state UI
+        // (below) shows a real, explicit "add an address" prompt
+        // instead of auto-navigating away immediately.
       });
     } catch (_) {
-      // Real, honest fallback: if this fails, just let the buyer add
-      // one manually rather than blocking checkout entirely.
-      setState(() => _isAddingNewAddress = true);
+      // Real, honest fallback: if this fails, the address section's
+      // own empty-state UI (real "add an address" prompt) will show
+      // instead, same as if the buyer genuinely had none yet.
     } finally {
       if (mounted) setState(() => _isLoadingAddresses = false);
     }
@@ -202,11 +198,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _scrollController.dispose();
     _guestEmailController.dispose();
     _promoCodeController.dispose();
-    _newAddrRecipientController.dispose();
-    _newAddrPhoneController.dispose();
-    _newAddrCountryController.dispose();
-    _newAddrCityController.dispose();
-    _newAddrStreetController.dispose();
     super.dispose();
   }
 
@@ -299,46 +290,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
 
     // Real address validation (migration 030) -- a real logged-in
-    // buyer must have picked a saved address or filled in a new one;
-    // a real guest has no such requirement (their address comes after
-    // confirmation instead).
+    // buyer must have picked a saved address; a real guest has no such
+    // requirement (their address comes after confirmation instead).
     String? addressId;
+    // Real, kept declared (always null now) since it's still passed
+    // to the real order-create calls below -- the real inline-
+    // address-creation-at-submit-time flow itself is gone, replaced
+    // by real navigation to the shared address form screen.
     Map<String, dynamic>? inlineAddress;
     if (auth.isLoggedIn) {
-      if (_isAddingNewAddress) {
-        if (_newAddrRecipientController.text.trim().isEmpty ||
-            _newAddrPhoneController.text.trim().isEmpty ||
-            _newAddrCountryController.text.trim().isEmpty ||
-            _newAddrCityController.text.trim().isEmpty ||
-            _newAddrStreetController.text.trim().isEmpty) {
-          setState(() => _errorMessage = trRead(context, 'please_complete_address'));
-          return;
-        }
-        inlineAddress = {
-          'recipientName': _newAddrRecipientController.text.trim(),
-          'phone': _newAddrPhoneController.text.trim(),
-          'country': _newAddrCountryController.text.trim(),
-          'city': _newAddrCityController.text.trim(),
-          'streetAddress': _newAddrStreetController.text.trim(),
-        };
-        // Real, best-effort save to the real account address book, so
-        // it's there to pick next time -- if it fails (e.g. the real
-        // 3-address cap), this order still goes through using the
-        // real inline address typed in, just not saved for reuse.
-        try {
-          final saved = await ApiClient().createAddress(auth.token!, {'label': 'Address', ...inlineAddress});
-          addressId = saved['id'] as String?;
-          inlineAddress = null;
-        } catch (_) {
-          // Real, honest fallback -- proceed with the inline address as-is.
-        }
-      } else {
-        if (_selectedAddressId == null) {
-          setState(() => _errorMessage = trRead(context, 'please_select_address'));
-          return;
-        }
-        addressId = _selectedAddressId;
+      if (_selectedAddressId == null) {
+        setState(() => _errorMessage = trRead(context, 'please_select_address'));
+        return;
       }
+      addressId = _selectedAddressId;
     }
 
     setState(() {
@@ -557,9 +522,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          KeyedSubtree(key: _addressSectionKey, child: const Text('Delivery address', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
+          KeyedSubtree(key: _addressSectionKey, child: Text(tr(context, 'delivery_address'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
           const SizedBox(height: 8),
-          if (_savedAddresses.isNotEmpty && !_isAddingNewAddress) ...[
+          if (_savedAddresses.isNotEmpty) ...[
             for (final a in _savedAddresses)
               RadioListTile<String>(
                 contentPadding: EdgeInsets.zero,
@@ -570,27 +535,28 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 subtitle: Text('${a['streetAddress']}, ${a['city']}, ${a['country']}', style: const TextStyle(fontSize: 12)),
               ),
             TextButton.icon(
-              onPressed: () => setState(() => _isAddingNewAddress = true),
+              onPressed: () async {
+                await context.push('/addresses/add');
+                if (mounted) _loadSavedAddresses();
+              },
               icon: const Icon(Icons.add, size: 16),
-              label: const Text('Add a new address'),
+              label: Text(tr(context, 'add_new_address_button')),
             ),
           ] else ...[
-            TextField(controller: _newAddrRecipientController, decoration: const InputDecoration(labelText: 'Recipient name')),
+            // Real empty state (new) -- previously auto-showed this
+            // screen's own separate inline form instead; now points to
+            // the exact same real add-address screen already used in
+            // the Account tab.
+            Text(tr(context, 'no_saved_addresses'), style: TextStyle(fontSize: 12.5, color: LeapPalette.of(context).muted)),
             const SizedBox(height: 8),
-            TextField(controller: _newAddrPhoneController, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone')),
-            const SizedBox(height: 8),
-            TextField(controller: _newAddrCountryController, decoration: const InputDecoration(labelText: 'Country')),
-            const SizedBox(height: 8),
-            TextField(controller: _newAddrCityController, decoration: const InputDecoration(labelText: 'City')),
-            const SizedBox(height: 8),
-            TextField(controller: _newAddrStreetController, decoration: const InputDecoration(labelText: 'Street address')),
-            if (_savedAddresses.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () => setState(() => _isAddingNewAddress = false),
-                child: const Text('Choose a saved address instead'),
-              ),
-            ],
+            TextButton.icon(
+              onPressed: () async {
+                await context.push('/addresses/add');
+                if (mounted) _loadSavedAddresses();
+              },
+              icon: const Icon(Icons.add, size: 16),
+              label: Text(tr(context, 'add_new_address_button')),
+            ),
           ],
         ],
       ),
@@ -816,7 +782,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('${cart.itemCount} item(s) · ${tr(context, 'subtotal')}', style: TextStyle(color: LeapPalette.of(context).muted, fontSize: 12.5)),
+                    Text('${cart.itemCount} ${tr(context, 'item_count_label')} · ${tr(context, 'subtotal')}', style: TextStyle(color: LeapPalette.of(context).muted, fontSize: 12.5)),
                     Text(formatPrice(context, cart.total), style: const TextStyle(fontWeight: FontWeight.w700)),
                   ],
                 ),

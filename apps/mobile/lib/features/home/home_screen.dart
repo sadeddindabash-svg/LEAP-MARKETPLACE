@@ -381,7 +381,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: palette.signalDark, letterSpacing: 1),
                                 ),
                                 const SizedBox(height: 2),
-                                Text('${firstVehicle.label} · ${firstVehicle.subLabel}', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: palette.ink)),
+                                Text('${firstVehicle.labelFor(isAr)} · ${firstVehicle.subLabel}', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: palette.ink)),
                               ],
                             ),
                             Icon(Icons.check_circle, color: palette.signal),
@@ -547,7 +547,7 @@ class _ShoppingForCard extends StatelessWidget {
                         children: [
                           Text(tr(context, 'shopping_for'), style: TextStyle(fontSize: 11, color: labelColor), textDirection: isAr ? TextDirection.rtl : TextDirection.ltr),
                           const SizedBox(height: 4),
-                          PlateChip(text: '${vehicle.label} · ${vehicle.subLabel}', small: true),
+                          PlateChip(text: '${vehicle.labelFor(isAr)} · ${vehicle.subLabel}', small: true),
                         ],
                       ),
                     ),

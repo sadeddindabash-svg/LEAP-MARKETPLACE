@@ -245,8 +245,11 @@ const _latinSymbols = {
 /// fraction away from zero, matching the exact confirmed rule), and a
 /// real thousands separator always. Currency-specific numeral/symbol
 /// rule confirmed against several real rendered mockups before
-/// writing this.
-String _formatAmount(BuildContext context, double amount, String currencyCode) {
+/// writing this. Public (not the original underscore-prefixed name)
+/// since orders_screen.dart's own count-up animation needs to format
+/// each intermediate frame using this exact same logic, without
+/// re-running the real currency conversion step on every frame.
+String formatAmount(BuildContext context, double amount, String currencyCode) {
   final rounded = amount.round();
   final isArabicCountryCurrency = _arabicCountrySymbols.containsKey(currencyCode);
   final isAr = context.watch<LanguageState>().isArabic;
@@ -265,8 +268,8 @@ String _formatAmount(BuildContext context, double amount, String currencyCode) {
 String formatPrice(BuildContext context, double usdAmount) {
   final currency = context.watch<CurrencyState>();
   final converted = currency.convert(usdAmount);
-  if (converted == null) return _formatAmount(context, usdAmount, 'USD');
-  return _formatAmount(context, converted, currency.currencyCode);
+  if (converted == null) return formatAmount(context, usdAmount, 'USD');
+  return formatAmount(context, converted, currency.currencyCode);
 }
 
 /// Real, display-only formatted price for cart/checkout contexts --

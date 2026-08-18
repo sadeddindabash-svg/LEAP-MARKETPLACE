@@ -166,7 +166,10 @@ class AppStrings {
     'payment_method': {'en': 'Payment method', 'ar': 'طريقة الدفع'},
     'wait_for_all_shipments_title': {'en': 'Wait and ship together', 'ar': 'الانتظار والشحن معًا'},
     'wait_for_all_shipments_subtitle': {'en': 'Get all items in one delivery instead of as each supplier ships.', 'ar': 'استلم جميع القطع في شحنة واحدة بدلاً من شحنها فور توفرها من كل مورد.'},
-    'delivery_address': {'en': 'Delivery address', 'ar': 'عنوان التوصيل'},
+    'delivery_address': {'en': 'Delivery address', 'ar': 'عنوان الشحن'},
+    'item_count_label': {'en': 'item(s)', 'ar': 'عنصر'},
+    'add_new_address_button': {'en': 'Add a new address', 'ar': 'إضافة عنوان جديد'},
+    'no_saved_addresses': {'en': 'No saved addresses yet.', 'ar': 'لا توجد عناوين محفوظة بعد.'},
     'order_summary': {'en': 'Order summary', 'ar': 'ملخص الطلب'},
     'place_order': {'en': 'Place order', 'ar': 'إتمام الطلب'},
     'please_enter_email_order': {'en': 'Please enter an email for your order confirmation.', 'ar': 'يرجى إدخال بريد إلكتروني لتأكيد طلبك.'},
@@ -238,6 +241,13 @@ class AppStrings {
     'remove_vehicle_confirm': {'en': 'Remove this vehicle from your garage?', 'ar': 'إزالة هذه المركبة من مرآبك؟'},
     'default_vehicle_label': {'en': 'Default', 'ar': 'الافتراضية'},
     'saved_vehicle_label': {'en': 'Saved vehicle', 'ar': 'مركبة محفوظة'},
+    // Real, confirmed with the person: "مجمل مشتريات" (total
+    // purchases), not a literal translation of "spend". Year is
+    // interpolated separately by the caller since English puts the
+    // year first ("2026 SPEND") while Arabic puts it last ("مجمل
+    // مشتريات 2026") -- this key holds only the label text itself.
+    'annual_spend_label': {'en': 'SPEND', 'ar': 'مجمل مشتريات'},
+    'supplier_label': {'en': 'Supplier', 'ar': 'المورد'},
     'view_compatible_parts': {'en': 'View compatible parts', 'ar': 'عرض القطع المتوافقة'},
     'set_as_default_vehicle': {'en': 'Set as default vehicle', 'ar': 'تعيين كإفتراضي'},
     'label_field': {'en': 'Label (e.g. Home, Work)', 'ar': 'التسمية (مثال: المنزل، العمل)'},

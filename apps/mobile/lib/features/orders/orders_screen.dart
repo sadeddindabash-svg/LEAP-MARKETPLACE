@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
+import '../../core/language_state.dart';
+import '../../core/currency_state.dart';
 import '../../services/api_client.dart';
 import '../../widgets/plate_chip.dart';
 import '../../widgets/skeleton.dart';
@@ -112,6 +114,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
+    final isAr = context.watch<LanguageState>().isArabic;
     _ensureLoaded(auth.isLoggedIn, auth.token);
 
     if (!auth.isLoggedIn) {
@@ -309,13 +312,22 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                                 crossAxisAlignment: CrossAxisAlignment.start,
                                                 mainAxisAlignment: MainAxisAlignment.center,
                                                 children: [
-                                                  Text('${summary['year']} SPEND', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: palette.signalDark, letterSpacing: 0.5)),
-                                                  const SizedBox(height: 4),
-                                                  _AnimatedCountText(
-                                                    target: (summary['totalSpent'] as num).round(),
-                                                    prefix: '\$',
-                                                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: palette.ink),
+                                                  Text(
+                                                    isAr ? '${tr(context, 'annual_spend_label')} ${summary['year']}' : '${summary['year']} ${tr(context, 'annual_spend_label')}',
+                                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: palette.signalDark, letterSpacing: 0.5),
                                                   ),
+                                                  const SizedBox(height: 4),
+                                                  Builder(builder: (context) {
+                                                    final usdTotal = (summary['totalSpent'] as num).toDouble();
+                                                    final currency = context.watch<CurrencyState>();
+                                                    final converted = currency.convert(usdTotal);
+                                                    final displayCurrencyCode = converted != null ? currency.currencyCode : 'USD';
+                                                    return _AnimatedCountText(
+                                                      target: (converted ?? usdTotal).round(),
+                                                      formatter: (v) => formatAmount(context, v.toDouble(), displayCurrencyCode),
+                                                      style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: palette.ink),
+                                                    );
+                                                  }),
                                                 ],
                                               ),
                                             ),
@@ -373,14 +385,14 @@ class _OrdersScreenState extends State<OrdersScreen> {
                               if (supplierNames.isNotEmpty) ...[
                                 const SizedBox(height: 8),
                                 Text(
-                                  supplierNames.join(', '),
+                                  '${tr(context, 'supplier_label')}: ${supplierNames.join(', ')}',
                                   style: TextStyle(fontSize: 11.5, color: palette.muted),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ],
                               const SizedBox(height: 10),
-                              Text('\$${(o['total'] as num).toStringAsFixed(2)} ${o['currencyCode']}', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: palette.signal)),
+                              Text(formatPrice(context, (o['total'] as num).toDouble()), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: palette.signal)),
                             ],
                           ),
                         ),
@@ -400,9 +412,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
 class _AnimatedCountText extends StatelessWidget {
   final int target;
+  final String Function(int)? formatter;
   final String prefix;
   final TextStyle style;
-  const _AnimatedCountText({required this.target, required this.style, this.prefix = ''});
+  const _AnimatedCountText({required this.target, required this.style, this.prefix = '', this.formatter});
 
   @override
   Widget build(BuildContext context) {
@@ -413,7 +426,13 @@ class _AnimatedCountText extends StatelessWidget {
       builder: (context, value, child) => FittedBox(
         fit: BoxFit.scaleDown,
         alignment: Alignment.centerLeft,
-        child: Text('$prefix${value.round()}', style: style, maxLines: 1, softWrap: false),
+        // Real, confirmed -- prefers the real formatter callback
+        // (full currency-aware formatting, applied fresh to each
+        // intermediate animation frame) when provided, falling back
+        // to the older plain prefix+round() for the one remaining
+        // real caller (Active Shipments) that isn't a real currency
+        // value at all.
+        child: Text(formatter != null ? formatter!(value.round()) : '$prefix${value.round()}', style: style, maxLines: 1, softWrap: false),
       ),
     );
   }

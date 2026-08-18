@@ -14,7 +14,16 @@ class Vehicle {
   final String generationId;
   final int year;
   final String brand;
+  // Real Arabic brand name -- nullable, not every brand has one yet
+  // (migration 046). Used by labelFor() when the app's own language
+  // is Arabic, falling back to the English brand name if this
+  // specific brand doesn't have one.
+  final String? brandAr;
   final String model;
+  // Real Arabic model name (new, migration 062) -- nullable, models
+  // never required this field at all. Same fallback behavior as
+  // brandAr above.
+  final String? modelAr;
   final String generation;
   final int yearStart;
   final int? yearEnd; // null means still in production
@@ -36,7 +45,9 @@ class Vehicle {
     required this.generationId,
     required this.year,
     required this.brand,
+    this.brandAr,
     required this.model,
+    this.modelAr,
     required this.generation,
     required this.yearStart,
     this.yearEnd,
@@ -51,14 +62,35 @@ class Vehicle {
   // primary key (migration 044).
   String get id => '$generationId-$year';
 
-  String get label => '$brand $model';
+  // Real, confirmed with the person -- brand/model names in Arabic
+  // when the app's own language is Arabic, closing the real gap
+  // where My Garage (and the Home screen's "Shopping for" card) always
+  // showed English names regardless of app language. isArabic is
+  // passed in explicitly (rather than this class reading it itself)
+  // since Vehicle is a plain data model with no BuildContext access.
+  // Each part falls back to English independently -- a brand with a
+  // real Arabic name paired with a model that doesn't have one yet
+  // still shows correctly, rather than the whole label falling back
+  // to English just because one half is missing.
+  String labelFor(bool isArabic) {
+    final displayBrand = isArabic ? (brandAr ?? brand) : brand;
+    final displayModel = isArabic ? (modelAr ?? model) : model;
+    return '$displayBrand $displayModel';
+  }
+
+  // Real, deliberately unchanged -- generation names (e.g. "XV70") are
+  // technical codes, not real translatable text, and vehicle_generations
+  // has no real name_ar column at all. The year itself is already
+  // language-neutral.
   String get subLabel => '$generation · $year';
 
   factory Vehicle.fromJson(Map<String, dynamic> json) => Vehicle(
         generationId: json['generationId'] as String,
         year: json['year'] as int,
         brand: json['brand'] as String,
+        brandAr: json['brandAr'] as String?,
         model: json['model'] as String,
+        modelAr: json['modelAr'] as String?,
         generation: json['generation'] as String,
         yearStart: json['yearStart'] as int,
         yearEnd: json['yearEnd'] as int?,
@@ -71,7 +103,9 @@ class Vehicle {
         'generationId': generationId,
         'year': year,
         'brand': brand,
+        'brandAr': brandAr,
         'model': model,
+        'modelAr': modelAr,
         'generation': generation,
         'yearStart': yearStart,
         'yearEnd': yearEnd,

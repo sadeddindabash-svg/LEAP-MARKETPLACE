@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
+import '../../core/language_state.dart';
 import '../../models/vehicle.dart';
 import '../../services/api_client.dart';
 import '../search/vehicle_filter_sheet.dart';
@@ -164,6 +165,7 @@ class _GarageScreenState extends State<GarageScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
+    final isAr = context.watch<LanguageState>().isArabic;
 
     if (!auth.isLoggedIn) {
       return Scaffold(
@@ -266,7 +268,7 @@ class _GarageScreenState extends State<GarageScreen> {
                   // moving them up from the bottom row.
                   Row(
                     children: [
-                      Expanded(child: Text(v.label, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: palette.ink))),
+                      Expanded(child: Text(v.labelFor(isAr), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: palette.ink))),
                       const SizedBox(width: 8),
                       if (v.isDefault)
                         Container(
