@@ -516,9 +516,23 @@ class _ShoppingForCard extends StatelessWidget {
                                   imageUrl: ApiClient.resolveMediaUrl(vehicle.brandPhotoUrl!),
                                   fit: BoxFit.cover,
                                   fadeInDuration: const Duration(milliseconds: 300),
-                                  errorWidget: (context, url, error) => Icon(Icons.directions_car, size: 28, color: palette.muted),
+                                  errorWidget: (context, url, error) => Center(
+                                    child: Container(
+                                      width: 42,
+                                      height: 42,
+                                      decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(8)),
+                                      child: Icon(Icons.directions_car, size: 20, color: palette.muted),
+                                    ),
+                                  ),
                                 )
-                              : Icon(Icons.directions_car, size: 28, color: palette.muted),
+                              : Center(
+                                  child: Container(
+                                    width: 42,
+                                    height: 42,
+                                    decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(8)),
+                                    child: Icon(Icons.directions_car, size: 20, color: palette.muted),
+                                  ),
+                                ),
                         ),
                       ),
                     ),
