@@ -118,8 +118,7 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
                                   margin: const EdgeInsets.only(bottom: 6),
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
-                                    color: Colors.white,
-                                    border: Border.all(color: selected ? palette.signal : palette.line),
+                                    color: palette.chalk,
                                   ),
                                   clipBehavior: Clip.antiAlias,
                                   child: c.photoUrl != null
@@ -179,19 +178,19 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
                           final partLabel = part.displayName(isAr);
                           final categoryLabel = (selectedCategory != null && selectedCategory.id.isNotEmpty) ? selectedCategory.displayName(isAr) : '';
                           return Container(
-                            decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(10), border: Border.all(color: palette.line)),
+                            decoration: BoxDecoration(color: palette.chalk, borderRadius: BorderRadius.circular(10), border: Border.all(color: palette.line)),
                             child: ListTile(
                               leading: ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
                                 child: part.photoUrl != null
                                     ? CachedNetworkImage(
                                         imageUrl: ApiClient.resolveMediaUrl(part.photoUrl!),
-                                        width: 40,
-                                        height: 40,
+                                        width: 52,
+                                        height: 52,
                                         fit: BoxFit.cover,
-                                        errorWidget: (context, url, error) => Container(width: 40, height: 40, color: palette.chalk, child: Icon(Icons.build_outlined, size: 18, color: palette.muted)),
+                                        errorWidget: (context, url, error) => Container(width: 52, height: 52, color: palette.chalk, child: Icon(Icons.build_outlined, size: 23, color: palette.muted)),
                                       )
-                                    : Container(width: 40, height: 40, color: palette.chalk, child: Icon(Icons.build_outlined, size: 18, color: palette.muted)),
+                                    : Container(width: 52, height: 52, color: palette.chalk, child: Icon(Icons.build_outlined, size: 23, color: palette.muted)),
                               ),
                               title: Text(partLabel, style: TextStyle(fontSize: 14.5, color: palette.ink)),
                               trailing: Icon(Icons.chevron_right, color: palette.muted),
