@@ -2,7 +2,7 @@ import React, { useState, useEffect, createContext, useContext } from "react";
 import LoginPage from "./LoginPage";
 import { exportToExcel } from "./exportToExcel";
 import { FONT_IMPORT, C, disp, body, mono } from "./theme";
-import { PlateChip, Badge, Stars, KpiCard, Card, Th, Td, ConfirmDialog } from "./components/ui";
+import { PlateChip, Badge, Stars, KpiCard, Card, Th, Td, ConfirmDialog, EditDialog } from "./components/ui";
 import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, fetchSupplierById, verifySupplier, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
   createBrand, deleteBrand, createModel, deleteModel, createGeneration, deleteGeneration, createEngine, deleteEngine, createTransmission, deleteTransmission,
@@ -10,6 +10,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchFeeComponents, createFeeComponent, updateFeeComponent, deleteFeeComponent, moveFeeComponent, fetchFxRate, updateFxRate, fetchFxRateMode, updateFxRateMode, previewPricing,
   fetchFlaggedShipments,
   fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart, uploadImage, updateCategoryPhoto, updatePartPhoto, moveCategory, movePart, moveBrand, moveModel, moveGeneration, moveEngine, moveTransmission, updateBrandPhoto, updateModelPhoto,
+  updateCategory, updatePart, updateBrand, updateModel, updateGeneration, updateEngine, updateTransmission,
   fetchSupplierMessagesInbox, fetchSupplierMessageThread, sendSupplierMessage,
   fetchPromoCodes, createPromoCode, updatePromoCode, deletePromoCode,
   fetchAdminUsers, createAdminUser, updateAdminPermissions, deleteAdminUser,
@@ -24,7 +25,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
 } from "./auth";
 import {
   LayoutGrid, ShoppingBag, Store, PackageSearch, Wallet, LifeBuoy, Settings,
-  Search, Bell, ChevronDown, ChevronUp, ChevronRight, TrendingUp, TrendingDown, Truck, Plus,
+  Search, Bell, ChevronDown, ChevronUp, ChevronRight, TrendingUp, TrendingDown, Truck, Plus, Pencil,
   CheckCircle2, XCircle, Clock, AlertTriangle, MoreHorizontal, ArrowUpRight,
   Filter as FilterIcon, Download, Check, X, MessageSquare, Star, Globe, Users,
   CreditCard, ExternalLink, ChevronLeft, RotateCcw, Warehouse, Calculator, Layers, Send, Tag, ImagePlus
@@ -1489,6 +1490,7 @@ function VehicleDataPage({ onSessionExpired }) {
   const [isUploadingModelPhoto, setIsUploadingModelPhoto] = useState(false);
   const [replacingModelPhotoId, setReplacingModelPhotoId] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null); // {kind, id, label}
+  const [pendingEdit, setPendingEdit] = useState(null); // {kind, item}
 
   const loadBrands = () => {
     setLoadState("loading");
@@ -1605,6 +1607,27 @@ function VehicleDataPage({ onSessionExpired }) {
     }
   };
 
+  // Real, new -- edits any of the 5 real vehicle data levels, same
+  // real dispatch-by-kind pattern as handleDelete and handleMove
+  // above. Re-opens whichever real parent view is currently showing
+  // afterward, so the edited real name/years are reflected
+  // immediately.
+  const handleSaveEdit = async (values) => {
+    const { kind, item } = pendingEdit;
+    try {
+      const token = getStoredToken();
+      if (kind === "brand") { await updateBrand(token, item.id, values.name.trim(), values.nameAr.trim()); loadBrands(); }
+      else if (kind === "model") { await updateModel(token, item.id, values.name.trim()); openBrand(selectedBrand); }
+      else if (kind === "generation") { await updateGeneration(token, item.id, values.name.trim(), parseInt(values.yearStart, 10), values.yearEnd ? parseInt(values.yearEnd, 10) : undefined); openModel(selectedModel); }
+      else if (kind === "engine") { await updateEngine(token, item.id, values.name.trim()); openGeneration(selectedGeneration); }
+      else if (kind === "transmission") { await updateTransmission(token, item.id, values.name.trim()); openGeneration(selectedGeneration); }
+      setPendingEdit(null);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
   // Real, new -- lets an admin replace an existing brand's photo at
   // any time, same real capability already added for categories and
   // parts.
@@ -1699,7 +1722,7 @@ function VehicleDataPage({ onSessionExpired }) {
     </div>
   );
 
-  const listRow = (label, sub, onOpen, onDelete, isFirst, isLast, onMoveUp, onMoveDown) => (
+  const listRow = (label, sub, onOpen, onDelete, isFirst, isLast, onMoveUp, onMoveDown, onEdit) => (
     <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderBottom: `1px solid ${C.line}` }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -1717,6 +1740,7 @@ function VehicleDataPage({ onSessionExpired }) {
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         {onOpen && <ChevronRight size={14} color={C.muted} onClick={onOpen} style={{ cursor: "pointer" }} />}
+        <button onClick={onEdit} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><Pencil size={13} color={C.muted} /></button>
         <button onClick={onDelete} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={14} color={C.red} /></button>
       </div>
     </div>
@@ -1794,6 +1818,7 @@ function VehicleDataPage({ onSessionExpired }) {
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <ChevronRight size={14} color={C.muted} onClick={() => openBrand(b)} style={{ cursor: "pointer" }} />
+                      <button onClick={() => setPendingEdit({ kind: "brand", item: b })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><Pencil size={13} color={C.muted} /></button>
                       <button onClick={() => setPendingDelete({ kind: "brand", id: b.id, label: b.name })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={14} color={C.red} /></button>
                     </div>
                   </div>
@@ -1842,6 +1867,7 @@ function VehicleDataPage({ onSessionExpired }) {
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <ChevronRight size={14} color={C.muted} onClick={() => openModel(m)} style={{ cursor: "pointer" }} />
+                      <button onClick={() => setPendingEdit({ kind: "model", item: m })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><Pencil size={13} color={C.muted} /></button>
                       <button onClick={() => setPendingDelete({ kind: "model", id: m.id, label: m.name })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={14} color={C.red} /></button>
                     </div>
                   </div>
@@ -1853,7 +1879,7 @@ function VehicleDataPage({ onSessionExpired }) {
               <>
                 {addRow("generation", `New generation under ${selectedModel.name} (e.g. Mk4)`, true)}
                 {generations.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No generations yet.</div>}
-                {generations.map((g, i) => listRow(g.name, `${g.yearStart}–${g.yearEnd || "present"}`, () => openGeneration(g), () => setPendingDelete({ kind: "generation", id: g.id, label: g.name }), i === 0, i === generations.length - 1, () => handleMove("generation", g.id, "up"), () => handleMove("generation", g.id, "down")))}
+                {generations.map((g, i) => listRow(g.name, `${g.yearStart}–${g.yearEnd || "present"}`, () => openGeneration(g), () => setPendingDelete({ kind: "generation", id: g.id, label: g.name }), i === 0, i === generations.length - 1, () => handleMove("generation", g.id, "up"), () => handleMove("generation", g.id, "down"), () => setPendingEdit({ kind: "generation", item: g })))}
               </>
             )}
 
@@ -1863,13 +1889,13 @@ function VehicleDataPage({ onSessionExpired }) {
                   <div style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.ink, marginBottom: 8 }}>Engines</div>
                   {addRow("engine", "e.g. 1.0L EcoBoost", false)}
                   {engines.length === 0 && <div style={{ ...body, fontSize: 12, color: C.muted, padding: 8 }}>None yet.</div>}
-                  {engines.map((e, i) => listRow(e.name, null, null, () => setPendingDelete({ kind: "engine", id: e.id, label: e.name }), i === 0, i === engines.length - 1, () => handleMove("engine", e.id, "up"), () => handleMove("engine", e.id, "down")))}
+                  {engines.map((e, i) => listRow(e.name, null, null, () => setPendingDelete({ kind: "engine", id: e.id, label: e.name }), i === 0, i === engines.length - 1, () => handleMove("engine", e.id, "up"), () => handleMove("engine", e.id, "down"), () => setPendingEdit({ kind: "engine", item: e })))}
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.ink, marginBottom: 8 }}>Transmissions</div>
                   {addRow("transmission", "e.g. 6-Speed Manual", false)}
                   {transmissions.length === 0 && <div style={{ ...body, fontSize: 12, color: C.muted, padding: 8 }}>None yet.</div>}
-                  {transmissions.map((t, i) => listRow(t.name, null, null, () => setPendingDelete({ kind: "transmission", id: t.id, label: t.name }), i === 0, i === transmissions.length - 1, () => handleMove("transmission", t.id, "up"), () => handleMove("transmission", t.id, "down")))}
+                  {transmissions.map((t, i) => listRow(t.name, null, null, () => setPendingDelete({ kind: "transmission", id: t.id, label: t.name }), i === 0, i === transmissions.length - 1, () => handleMove("transmission", t.id, "up"), () => handleMove("transmission", t.id, "down"), () => setPendingEdit({ kind: "transmission", item: t })))}
                 </div>
               </div>
             )}
@@ -1881,6 +1907,24 @@ function VehicleDataPage({ onSessionExpired }) {
         title={`Delete "${pendingDelete?.label}"?`}
         onConfirm={() => handleDelete(pendingDelete.kind, pendingDelete.id)}
         onCancel={() => setPendingDelete(null)}
+      />
+      <EditDialog
+        isOpen={!!pendingEdit}
+        title={`Edit "${pendingEdit?.item?.name}"`}
+        fields={pendingEdit ? (
+          pendingEdit.kind === "brand" ? [
+            { key: "name", label: "Name", value: pendingEdit.item.name },
+            { key: "nameAr", label: "Arabic name", value: pendingEdit.item.nameAr, dir: "rtl" },
+          ] : pendingEdit.kind === "generation" ? [
+            { key: "name", label: "Name", value: pendingEdit.item.name },
+            { key: "yearStart", label: "Start year", value: pendingEdit.item.yearStart, type: "number" },
+            { key: "yearEnd", label: "End year (optional)", value: pendingEdit.item.yearEnd, type: "number" },
+          ] : [
+            { key: "name", label: "Name", value: pendingEdit.item.name },
+          ]
+        ) : []}
+        onSave={handleSaveEdit}
+        onCancel={() => setPendingEdit(null)}
       />
     </div>
   );
@@ -2567,6 +2611,7 @@ function CategoriesPage({ onSessionExpired }) {
   const [isSubmittingCat, setIsSubmittingCat] = useState(false);
   const [replacingPhotoForCatId, setReplacingPhotoForCatId] = useState(null);
   const [pendingDeleteCat, setPendingDeleteCat] = useState(null); // {id, nameEn}
+  const [pendingEditCat, setPendingEditCat] = useState(null); // the full category object
 
   const loadCategories = () => {
     setLoadState("loading");
@@ -2653,6 +2698,17 @@ function CategoriesPage({ onSessionExpired }) {
     }
   };
 
+  const handleSaveCategoryEdit = async (values) => {
+    try {
+      await updateCategory(getStoredToken(), pendingEditCat.id, values.nameEn.trim(), values.nameAr.trim());
+      setPendingEditCat(null);
+      loadCategories();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
   if (openCategory) {
     return (
       <CategoryPartsPage
@@ -2736,6 +2792,7 @@ function CategoriesPage({ onSessionExpired }) {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <span style={{ ...body, fontSize: 11.5, color: C.muted }}>{c.id}</span>
+                  <button onClick={(e) => { e.stopPropagation(); setPendingEditCat(c); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><Pencil size={14} color={C.muted} /></button>
                   <button onClick={(e) => { e.stopPropagation(); setPendingDeleteCat({ id: c.id, nameEn: c.nameEn }); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={15} color={C.red} /></button>
                   <ChevronRight size={16} color={C.muted} />
                 </div>
@@ -2749,6 +2806,16 @@ function CategoriesPage({ onSessionExpired }) {
         title={`Delete "${pendingDeleteCat?.nameEn}"?`}
         onConfirm={() => handleDeleteCategory(pendingDeleteCat.id)}
         onCancel={() => setPendingDeleteCat(null)}
+      />
+      <EditDialog
+        isOpen={!!pendingEditCat}
+        title={`Edit "${pendingEditCat?.nameEn}"`}
+        fields={pendingEditCat ? [
+          { key: "nameEn", label: "English name", value: pendingEditCat.nameEn },
+          { key: "nameAr", label: "Arabic name", value: pendingEditCat.nameAr, dir: "rtl" },
+        ] : []}
+        onSave={handleSaveCategoryEdit}
+        onCancel={() => setPendingEditCat(null)}
       />
     </div>
   );
@@ -2767,6 +2834,7 @@ function CategoryPartsPage({ category, onBack, onSessionExpired }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [replacingPhotoForPartId, setReplacingPhotoForPartId] = useState(null);
   const [pendingDeletePart, setPendingDeletePart] = useState(null); // {id, nameEn}
+  const [pendingEditPart, setPendingEditPart] = useState(null); // the full part object
 
   const load = () => {
     setLoadState("loading");
@@ -2853,6 +2921,17 @@ function CategoryPartsPage({ category, onBack, onSessionExpired }) {
     }
   };
 
+  const handleSavePartEdit = async (values) => {
+    try {
+      await updatePart(getStoredToken(), pendingEditPart.id, values.nameEn.trim(), values.nameAr?.trim() || undefined);
+      setPendingEditPart(null);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 24px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
@@ -2928,6 +3007,7 @@ function CategoryPartsPage({ category, onBack, onSessionExpired }) {
                     {p.nameAr && <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2 }} dir="rtl">{p.nameAr}</div>}
                   </div>
                 </div>
+                <button onClick={() => setPendingEditPart(p)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><Pencil size={14} color={C.muted} /></button>
                 <button onClick={() => setPendingDeletePart({ id: p.id, nameEn: p.nameEn })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={15} color={C.red} /></button>
               </div>
             ))}
@@ -2939,6 +3019,16 @@ function CategoryPartsPage({ category, onBack, onSessionExpired }) {
         title={`Delete "${pendingDeletePart?.nameEn}"?`}
         onConfirm={() => handleDeletePart(pendingDeletePart.id)}
         onCancel={() => setPendingDeletePart(null)}
+      />
+      <EditDialog
+        isOpen={!!pendingEditPart}
+        title={`Edit "${pendingEditPart?.nameEn}"`}
+        fields={pendingEditPart ? [
+          { key: "nameEn", label: "English name", value: pendingEditPart.nameEn },
+          { key: "nameAr", label: "Arabic name (optional)", value: pendingEditPart.nameAr, dir: "rtl" },
+        ] : []}
+        onSave={handleSavePartEdit}
+        onCancel={() => setPendingEditPart(null)}
       />
     </div>
   );

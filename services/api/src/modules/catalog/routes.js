@@ -762,6 +762,24 @@ router.post('/categories', requireAuth, requireRole('admin'), requirePageAccess(
 // Real, new (previously only settable at creation) -- lets an admin
 // replace a category's real photo at any time, without deleting and
 // recreating the whole category just to swap one image.
+// Real, new -- lets an admin edit an existing category's name fields
+// at any time (id stays immutable; photo stays on its own separate
+// endpoint above). Previously only the photo could be changed after
+// creation.
+router.patch('/categories/:id', requireAuth, requireRole('admin'), requirePageAccess('categories'), async (req, res, next) => {
+  try {
+    const { nameEn, nameAr } = req.body || {};
+    if (!nameEn || !nameEn.trim()) return res.status(400).json({ error: 'nameEn is required' });
+    if (!nameAr || !nameAr.trim()) return res.status(400).json({ error: 'nameAr is required' });
+    const { rows } = await db.query('UPDATE product_categories SET name_en = $1, name_ar = $2 WHERE id = $3 RETURNING *', [nameEn.trim(), nameAr.trim(), req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Category not found' });
+    await logAdminAction(req, 'category_updated', 'category', req.params.id, { nameEn: nameEn.trim() });
+    res.json(toCategoryDto(rows[0]));
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.patch('/categories/:id/photo', requireAuth, requireRole('admin'), requirePageAccess('categories'), async (req, res, next) => {
   try {
     const { photoUrl } = req.body || {};
@@ -874,6 +892,22 @@ router.delete('/parts/:id', requireAuth, requireRole('admin'), requirePageAccess
 // Real, new (previously never settable at all for parts, per the real
 // gap confirmed before building this) -- lets an admin add or replace
 // a part's real photo at any time.
+// Real, new -- lets an admin edit an existing part's name fields at
+// any time (photo stays on its own separate endpoint below). nameAr
+// stays optional here, matching how a part is originally created.
+router.patch('/parts/:id', requireAuth, requireRole('admin'), requirePageAccess('categories'), async (req, res, next) => {
+  try {
+    const { nameEn, nameAr } = req.body || {};
+    if (!nameEn || !nameEn.trim()) return res.status(400).json({ error: 'nameEn is required' });
+    const { rows } = await db.query('UPDATE category_parts SET name_en = $1, name_ar = $2 WHERE id = $3 RETURNING *', [nameEn.trim(), nameAr?.trim() || null, req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Part not found' });
+    await logAdminAction(req, 'part_updated', 'part', req.params.id, { nameEn: nameEn.trim() });
+    res.json(toPartDto(rows[0]));
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.patch('/parts/:id/photo', requireAuth, requireRole('admin'), requirePageAccess('categories'), async (req, res, next) => {
   try {
     const { photoUrl } = req.body || {};

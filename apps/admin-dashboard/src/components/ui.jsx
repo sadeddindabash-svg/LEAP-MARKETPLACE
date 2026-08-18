@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Star, TrendingUp, TrendingDown } from "lucide-react";
 import { C, body, disp, mono } from "../theme";
 
@@ -89,6 +90,58 @@ export function ConfirmDialog({ isOpen, title, message, onConfirm, onCancel }) {
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button onClick={onCancel} style={{ ...body, fontSize: 12.5, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "none", cursor: "pointer" }}>Cancel</button>
           <button onClick={onConfirm} style={{ ...body, fontSize: 12.5, padding: "7px 14px", borderRadius: 8, border: "none", background: C.red, color: "#fff", fontWeight: 600, cursor: "pointer" }}>Delete</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Real, new, shared edit dialog -- used across all 7 real levels
+// (categories, parts, brands, models, generations, engines,
+// transmissions), so this same real edit-form logic and styling
+// isn't rebuilt 7 separate times. Confirmed against a real rendered
+// mockup before building this.
+//
+// `fields` is a real array of { key, label, value, type?, dir?,
+// required? } -- lets each of the 7 real callers configure exactly
+// which inputs it needs (most need 1-2 text fields; generations need
+// 3, including two real number fields for years).
+export function EditDialog({ isOpen, title, fields, onSave, onCancel }) {
+  const [values, setValues] = useState({});
+
+  // Real, deliberate -- resets local state to the real item's
+  // current values every time a different real item opens for
+  // editing (or the dialog re-opens), so stale values from whichever
+  // real item was edited previously never leak into a new one.
+  useEffect(() => {
+    if (isOpen && fields) {
+      const initial = {};
+      fields.forEach((f) => { initial[f.key] = f.value ?? ""; });
+      setValues(initial);
+    }
+  }, [isOpen, fields]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={onCancel}>
+      <div style={{ background: "#fff", borderRadius: 12, padding: 20, maxWidth: 340, width: "90%", boxShadow: "0 12px 32px rgba(0,0,0,0.2)" }} onClick={(e) => e.stopPropagation()}>
+        <p style={{ ...disp, fontSize: 15, fontWeight: 700, color: C.ink, margin: "0 0 14px" }}>{title}</p>
+        {(fields || []).map((f) => (
+          <div key={f.key} style={{ marginBottom: 10 }}>
+            <label style={{ ...body, fontSize: 11, color: C.muted, display: "block", marginBottom: 4 }}>{f.label}</label>
+            <input
+              type={f.type || "text"}
+              value={values[f.key] ?? ""}
+              onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+              dir={f.dir}
+              style={{ ...body, width: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 6, padding: "7px 9px", fontSize: 13 }}
+            />
+          </div>
+        ))}
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6 }}>
+          <button onClick={onCancel} style={{ ...body, fontSize: 12.5, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "none", cursor: "pointer" }}>Cancel</button>
+          <button onClick={() => onSave(values)} style={{ ...body, fontSize: 12.5, padding: "7px 14px", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontWeight: 700, cursor: "pointer" }}>Save</button>
         </div>
       </div>
     </div>

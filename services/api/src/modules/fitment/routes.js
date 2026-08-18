@@ -151,6 +151,25 @@ router.post('/brands', requireAuth, requireRole('admin'), requirePageAccess('veh
 // time, same real capability already added for categories and parts.
 // Previously only settable once, at creation (photoUrl is required
 // there, but with no way to ever change it afterward).
+// Real, new -- lets an admin edit an existing brand's name fields at
+// any time (photo stays on its own separate endpoint below). Both
+// name and nameAr required, matching how a brand is originally
+// created.
+router.patch('/brands/:id', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const { name, nameAr } = req.body || {};
+    if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' });
+    if (!nameAr || !nameAr.trim()) return res.status(400).json({ error: 'nameAr is required' });
+    const { rows } = await db.query('UPDATE vehicle_brands SET name = $1, name_ar = $2 WHERE id = $3 RETURNING *', [name.trim(), nameAr.trim(), req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Brand not found' });
+    await logAdminAction(req, 'brand_updated', 'brand', req.params.id, { name: name.trim() });
+    res.json({ id: rows[0].id, name: rows[0].name, nameAr: rows[0].name_ar, photoUrl: rows[0].photo_url });
+  } catch (err) {
+    if (isUniqueViolation(err)) return res.status(409).json({ error: `A brand named "${req.body.name}" already exists` });
+    next(err);
+  }
+});
+
 router.patch('/brands/:id/photo', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
     const { photoUrl } = req.body || {};
@@ -217,6 +236,21 @@ router.post('/brands/:brandId/models', requireAuth, requireRole('admin'), requir
 // time, same real pattern already used for categories, parts, and
 // brands. Kept optional at creation (unlike brands' required photo),
 // but editable the same way once one exists.
+// Real, new -- lets an admin edit an existing model's name at any
+// time (photo stays on its own separate endpoint below).
+router.patch('/models/:id', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const { name } = req.body || {};
+    if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' });
+    const { rows } = await db.query('UPDATE vehicle_models SET name = $1 WHERE id = $2 RETURNING *', [name.trim(), req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Model not found' });
+    await logAdminAction(req, 'model_updated', 'model', req.params.id, { name: name.trim() });
+    res.json({ id: rows[0].id, brandId: rows[0].brand_id, name: rows[0].name, photoUrl: rows[0].photo_url, sortOrder: rows[0].sort_order });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.patch('/models/:id/photo', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
     const { photoUrl } = req.body || {};
@@ -301,6 +335,27 @@ router.post('/generations/:id/move', requireAuth, requireRole('admin'), requireP
   }
 });
 
+// Real, new -- lets an admin edit an existing generation's name and
+// years at any time. Genuinely new capability here specifically --
+// generations have no photo field at all, so this closes the only
+// real level that previously had zero edit capability of any kind.
+router.patch('/generations/:id', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const { name, yearStart, yearEnd } = req.body || {};
+    if (!name || !name.trim() || !yearStart) return res.status(400).json({ error: 'name and yearStart are required' });
+    if (yearEnd && yearEnd < yearStart) return res.status(400).json({ error: 'yearEnd cannot be before yearStart' });
+    const { rows } = await db.query(
+      'UPDATE vehicle_generations SET name = $1, year_start = $2, year_end = $3 WHERE id = $4 RETURNING *',
+      [name.trim(), yearStart, yearEnd || null, req.params.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Generation not found' });
+    await logAdminAction(req, 'generation_updated', 'generation', req.params.id, { name: name.trim() });
+    res.json({ id: rows[0].id, modelId: rows[0].model_id, name: rows[0].name, yearStart: rows[0].year_start, yearEnd: rows[0].year_end, sortOrder: rows[0].sort_order });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // DELETE /fitment/generations/:id
 router.delete('/generations/:id', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
@@ -351,6 +406,20 @@ router.post('/engines/:id/move', requireAuth, requireRole('admin'), requirePageA
   }
 });
 
+// Real, new -- lets an admin edit an existing engine's name.
+router.patch('/engines/:id', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const { name } = req.body || {};
+    if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' });
+    const { rows } = await db.query('UPDATE vehicle_engines SET name = $1 WHERE id = $2 RETURNING *', [name.trim(), req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Engine not found' });
+    await logAdminAction(req, 'engine_updated', 'engine', req.params.id, { name: name.trim() });
+    res.json({ id: rows[0].id, generationId: rows[0].generation_id, name: rows[0].name, sortOrder: rows[0].sort_order });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // DELETE /fitment/engines/:id
 router.delete('/engines/:id', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
@@ -397,6 +466,22 @@ router.post('/transmissions/:id/move', requireAuth, requireRole('admin'), requir
     res.json(rows.map((r) => ({ id: r.id, generationId: r.generation_id, name: r.name, sortOrder: r.sort_order })));
   } catch (err) {
     if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
+    next(err);
+  }
+});
+
+// Real, new -- lets an admin edit an existing transmission's name --
+// the last of the 7 new edit endpoints added across categories,
+// parts, brands, models, generations, engines, and transmissions.
+router.patch('/transmissions/:id', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const { name } = req.body || {};
+    if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' });
+    const { rows } = await db.query('UPDATE vehicle_transmissions SET name = $1 WHERE id = $2 RETURNING *', [name.trim(), req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Transmission not found' });
+    await logAdminAction(req, 'transmission_updated', 'transmission', req.params.id, { name: name.trim() });
+    res.json({ id: rows[0].id, generationId: rows[0].generation_id, name: rows[0].name, sortOrder: rows[0].sort_order });
+  } catch (err) {
     next(err);
   }
 });
