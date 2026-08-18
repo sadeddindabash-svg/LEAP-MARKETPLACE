@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
@@ -225,29 +226,27 @@ class _GarageScreenState extends State<GarageScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Real placeholder hero area (new), matching the
-                  // real Stitch reference's own larger, more prominent
-                  // card style -- deliberately an icon, not a fake
-                  // stock car photo: the real Vehicle model has no
-                  // photo field at all, and showing a real photo of
-                  // the WRONG car (or a generic unrelated stock image)
-                  // would be actively misleading, not a real
-                  // improvement.
-                  Stack(
-                    children: [
-                      Container(
-                        height: 120,
-                        width: double.infinity,
-                        decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(10)),
-                        child: Icon(Icons.directions_car, size: 56, color: palette.muted),
-                      ),
-                      if (v.isDefault)
-                        Positioned(
-                          top: 8,
-                          right: 8,
-                          child: Icon(Icons.star, color: palette.signal, size: 22),
-                        ),
-                    ],
+                  // Real photo hero area, square, sized to the full
+                  // width the card has available -- confirmed against
+                  // several real rendered mockups before building
+                  // this. Same real fallback chain and same real
+                  // BoxFit.contain containment (never cropped) as the
+                  // Home screen's own "Shopping for" card.
+                  AspectRatio(
+                    aspectRatio: 1,
+                    child: Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.all(8),
+                      child: (v.modelPhotoUrl ?? v.brandPhotoUrl) != null
+                          ? CachedNetworkImage(
+                              imageUrl: ApiClient.resolveMediaUrl((v.modelPhotoUrl ?? v.brandPhotoUrl)!),
+                              fit: BoxFit.contain,
+                              fadeInDuration: const Duration(milliseconds: 300),
+                              errorWidget: (context, url, error) => Icon(Icons.directions_car, size: 56, color: palette.muted),
+                            )
+                          : Icon(Icons.directions_car, size: 56, color: palette.muted),
+                    ),
                   ),
                   const SizedBox(height: 14),
                   Row(
@@ -266,30 +265,53 @@ class _GarageScreenState extends State<GarageScreen> {
                   Text(v.subLabel, style: TextStyle(fontSize: 12.5, color: palette.muted)),
                   const SizedBox(height: 14),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(v),
-                        child: Text(tr(context, 'view_compatible_parts')),
+                      // Real, now a filled, prominent button (was a
+                      // plain TextButton) -- confirmed against a real
+                      // rendered mockup, matching the visual weight of
+                      // the "Default"/"Set as default" button beside it.
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () => Navigator.of(context).pop(v),
+                          style: ElevatedButton.styleFrom(backgroundColor: palette.signal, foregroundColor: palette.ink, elevation: 0, padding: const EdgeInsets.symmetric(vertical: 12)),
+                          child: Text(tr(context, 'view_compatible_parts'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+                        ),
                       ),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Real "set as default" star (new) -- closes a
-                          // real gap: a buyer with more than one saved
-                          // vehicle had no way to say which one should
-                          // drive automatic fitment filtering (the home
-                          // feed) -- it silently used whichever vehicle
-                          // happened to be first in an arbitrary list
-                          // order.
-                          IconButton(
-                            icon: Icon(v.isDefault ? Icons.star : Icons.star_border, size: 20, color: v.isDefault ? palette.signal : palette.muted),
-                            tooltip: tr(context, 'set_as_default_vehicle'),
-                            onPressed: v.isDefault ? null : () => _setDefault(v),
+                      const SizedBox(width: 8),
+                      // Real "set as default" button (was a small,
+                      // easy-to-miss star icon) -- closes a real gap: a
+                      // buyer with more than one saved vehicle had no
+                      // way to say which one should drive automatic
+                      // fitment filtering (the home feed) -- it
+                      // silently used whichever vehicle happened to be
+                      // first in an arbitrary list order.
+                      if (v.isDefault)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(color: palette.signal.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.star, size: 14, color: palette.signal),
+                              const SizedBox(width: 5),
+                              Text(tr(context, 'default_vehicle_label'), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: palette.signal)),
+                            ],
                           ),
-                          IconButton(icon: Icon(Icons.close, size: 18, color: palette.muted), tooltip: 'Remove vehicle', onPressed: () => _confirmRemove(v)),
-                        ],
-                      ),
+                        )
+                      else
+                        OutlinedButton(
+                          onPressed: () => _setDefault(v),
+                          style: OutlinedButton.styleFrom(side: BorderSide(color: palette.muted), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.star_border, size: 14, color: palette.muted),
+                              const SizedBox(width: 5),
+                              Text(tr(context, 'set_as_default_vehicle'), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: palette.muted)),
+                            ],
+                          ),
+                        ),
+                      IconButton(icon: Icon(Icons.close, size: 18, color: palette.muted), tooltip: 'Remove vehicle', onPressed: () => _confirmRemove(v)),
                     ],
                   ),
                 ],
