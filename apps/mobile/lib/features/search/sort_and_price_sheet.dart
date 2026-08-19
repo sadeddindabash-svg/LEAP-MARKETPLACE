@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
+import '../../core/app_strings.dart';
 
 /// What the user picked. `sort` is one of 'price_asc'/'price_desc'/
 /// 'newest', or null for the default (no explicit ordering). `minPrice`/
@@ -16,17 +17,17 @@ class SortAndPriceSelection {
 
   bool get isEmpty => sort == null && minPrice == null && maxPrice == null && maxDeliveryDays == null;
 
-  String get label {
+  String labelFor(BuildContext context) {
     final parts = <String>[];
-    if (sort == 'price_asc') parts.add('Price ↑');
-    if (sort == 'price_desc') parts.add('Price ↓');
-    if (sort == 'newest') parts.add('Newest');
+    if (sort == 'price_asc') parts.add('${tr(context, 'price_short_label')} ↑');
+    if (sort == 'price_desc') parts.add('${tr(context, 'price_short_label')} ↓');
+    if (sort == 'newest') parts.add(tr(context, 'newest_label'));
     if (minPrice != null || maxPrice != null) {
       final min = minPrice != null ? '\$$minPrice' : '\$0';
       final max = maxPrice != null ? '\$$maxPrice' : '+';
       parts.add('$min–$max');
     }
-    if (maxDeliveryDays != null) parts.add('Ships in ${maxDeliveryDays}d');
+    if (maxDeliveryDays != null) parts.add('${tr(context, 'ships_in_days_label')} ${maxDeliveryDays}d');
     return parts.join(' · ');
   }
 }
@@ -87,21 +88,21 @@ class _SortAndPriceSheetState extends State<SortAndPriceSheet> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Sort & price', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+            Text(tr(context, 'sort_and_price_title'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
             const SizedBox(height: 16),
-            const Text('Sort by', style: TextStyle(fontSize: 12.5, color: LeapColors.muted)),
+            Text(tr(context, 'sort_by_label'), style: const TextStyle(fontSize: 12.5, color: LeapColors.muted)),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               children: [
-                _SortChip(label: 'Relevance', selected: _sort == null, onTap: () => setState(() => _sort = null)),
-                _SortChip(label: 'Price: Low to High', selected: _sort == 'price_asc', onTap: () => setState(() => _sort = 'price_asc')),
-                _SortChip(label: 'Price: High to Low', selected: _sort == 'price_desc', onTap: () => setState(() => _sort = 'price_desc')),
-                _SortChip(label: 'Newest', selected: _sort == 'newest', onTap: () => setState(() => _sort = 'newest')),
+                _SortChip(label: tr(context, 'relevance_label'), selected: _sort == null, onTap: () => setState(() => _sort = null)),
+                _SortChip(label: tr(context, 'price_low_to_high'), selected: _sort == 'price_asc', onTap: () => setState(() => _sort = 'price_asc')),
+                _SortChip(label: tr(context, 'price_high_to_low'), selected: _sort == 'price_desc', onTap: () => setState(() => _sort = 'price_desc')),
+                _SortChip(label: tr(context, 'newest_label'), selected: _sort == 'newest', onTap: () => setState(() => _sort = 'newest')),
               ],
             ),
             const SizedBox(height: 20),
-            const Text('Price range', style: TextStyle(fontSize: 12.5, color: LeapColors.muted)),
+            Text(tr(context, 'price_range_label'), style: const TextStyle(fontSize: 12.5, color: LeapColors.muted)),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -109,7 +110,7 @@ class _SortAndPriceSheetState extends State<SortAndPriceSheet> {
                   child: TextField(
                     controller: _minController,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(labelText: 'Min', prefixText: '\$'),
+                    decoration: InputDecoration(labelText: tr(context, 'min_field'), prefixText: '\$'),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -117,30 +118,30 @@ class _SortAndPriceSheetState extends State<SortAndPriceSheet> {
                   child: TextField(
                     controller: _maxController,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(labelText: 'Max', prefixText: '\$'),
+                    decoration: InputDecoration(labelText: tr(context, 'max_field'), prefixText: '\$'),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 20),
             // Real ships-within-X-days filter (#10)
-            const Text('Delivery speed', style: TextStyle(fontSize: 12.5, color: LeapColors.muted)),
+            Text(tr(context, 'delivery_speed_label'), style: const TextStyle(fontSize: 12.5, color: LeapColors.muted)),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               children: [
-                _SortChip(label: 'Any', selected: _maxDeliveryDays == null, onTap: () => setState(() => _maxDeliveryDays = null)),
-                _SortChip(label: 'Within 3 days', selected: _maxDeliveryDays == 3, onTap: () => setState(() => _maxDeliveryDays = 3)),
-                _SortChip(label: 'Within 5 days', selected: _maxDeliveryDays == 5, onTap: () => setState(() => _maxDeliveryDays = 5)),
-                _SortChip(label: 'Within 7 days', selected: _maxDeliveryDays == 7, onTap: () => setState(() => _maxDeliveryDays = 7)),
+                _SortChip(label: tr(context, 'delivery_any'), selected: _maxDeliveryDays == null, onTap: () => setState(() => _maxDeliveryDays = null)),
+                _SortChip(label: tr(context, 'within_3_days'), selected: _maxDeliveryDays == 3, onTap: () => setState(() => _maxDeliveryDays = 3)),
+                _SortChip(label: tr(context, 'within_5_days'), selected: _maxDeliveryDays == 5, onTap: () => setState(() => _maxDeliveryDays = 5)),
+                _SortChip(label: tr(context, 'within_7_days'), selected: _maxDeliveryDays == 7, onTap: () => setState(() => _maxDeliveryDays = 7)),
               ],
             ),
             const SizedBox(height: 20),
             Row(
               children: [
-                Expanded(child: OutlinedButton(onPressed: _clear, child: const Text('Clear'))),
+                Expanded(child: OutlinedButton(onPressed: _clear, child: Text(tr(context, 'clear_label')))),
                 const SizedBox(width: 12),
-                Expanded(child: ElevatedButton(onPressed: _apply, child: const Text('Apply'))),
+                Expanded(child: ElevatedButton(onPressed: _apply, child: Text(tr(context, 'apply')))),
               ],
             ),
           ],

@@ -350,7 +350,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   if (_sortAndPrice != null && !_sortAndPrice!.isEmpty)
                     Chip(
                       avatar: const Icon(Icons.tune, size: 16),
-                      label: Text(_sortAndPrice!.label, style: const TextStyle(fontSize: 12.5)),
+                      label: Text(_sortAndPrice!.labelFor(context), style: const TextStyle(fontSize: 12.5)),
                       onDeleted: _clearSortAndPrice,
                     ),
                 ],

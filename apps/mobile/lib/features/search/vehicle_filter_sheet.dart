@@ -312,7 +312,7 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
                 child: OutlinedButton.icon(
                   onPressed: _isLookingUpVin ? null : _lookupByVin,
                   icon: _isLookingUpVin ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.qr_code_scanner_outlined, size: 18),
-                  label: Text(_isLookingUpVin ? 'Looking up your VIN…' : 'Have your VIN? Look it up instead'),
+                  label: Text(_isLookingUpVin ? tr(context, 'looking_up_vin') : tr(context, 'have_vin_look_up')),
                 ),
               ),
             ),
