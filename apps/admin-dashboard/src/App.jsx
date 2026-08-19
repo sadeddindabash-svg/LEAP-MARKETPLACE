@@ -11,6 +11,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchFlaggedShipments,
   fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart, uploadImage, updateCategoryPhoto, updatePartPhoto, moveCategory, movePart, moveBrand, moveModel, moveGeneration, moveEngine, moveTransmission, updateBrandPhoto, updateModelPhoto,
   updateCategory, updatePart, updateBrand, updateModel, updateGeneration, updateEngine, updateTransmission,
+  fetchPaymentMethods, fetchAvailableCountries, createPaymentMethod, updatePaymentMethod, updatePaymentMethodPhoto, movePaymentMethod, activatePaymentMethodCountry, deactivatePaymentMethodCountry, deletePaymentMethod,
   fetchSupplierMessagesInbox, fetchSupplierMessageThread, sendSupplierMessage,
   fetchPromoCodes, createPromoCode, updatePromoCode, deletePromoCode,
   fetchAdminUsers, createAdminUser, updateAdminPermissions, deleteAdminUser,
@@ -2504,6 +2505,258 @@ function PricingPage({ onSessionExpired }) {
   );
 }
 
+// Real payment method management (new) -- confirmed with the person
+// before building: photo required at creation (same rule as
+// categories/brands), started deliberately empty (the previously
+// hardcoded checkout methods -- Visa/Mastercard, Amazon Payment
+// Services, PayPal, Google Pay -- are re-added manually here rather
+// than auto-seeded), and country activation reuses the real,
+// existing 40-country launch-market list rather than a separate one.
+function PaymentMethodsPage({ onSessionExpired }) {
+  const [methods, setMethods] = useState([]);
+  const [countries, setCountries] = useState([]); // [{countryCode, countryName}]
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  const [newNameEn, setNewNameEn] = useState("");
+  const [newNameAr, setNewNameAr] = useState("");
+  const [newPhotoFile, setNewPhotoFile] = useState(null);
+  const [newPhotoPreview, setNewPhotoPreview] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [replacingPhotoId, setReplacingPhotoId] = useState(null);
+
+  const [pendingDelete, setPendingDelete] = useState(null); // {id, nameEn}
+  const [pendingEdit, setPendingEdit] = useState(null); // the full method object
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  // Real, opens the dedicated country-toggle sub-view for one method.
+  const [openCountriesFor, setOpenCountriesFor] = useState(null); // the full method object
+  const [togglingCountry, setTogglingCountry] = useState(null); // countryCode currently in flight
+
+  const load = () => {
+    setLoadState("loading");
+    Promise.all([fetchPaymentMethods(getStoredToken()), fetchAvailableCountries(getStoredToken())])
+      .then(([m, c]) => { setMethods(m); setCountries(c); setLoadState("ready"); })
+      .catch((e) => {
+        if (e instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(e.message); setLoadState("error");
+      });
+  };
+  useEffect(load, []);
+
+  const handlePhotoSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setNewPhotoFile(file);
+    setNewPhotoPreview(URL.createObjectURL(file));
+  };
+
+  const handleAdd = async () => {
+    if (!newNameEn.trim()) { setErrorMessage("An English name is required."); return; }
+    if (!newNameAr.trim()) { setErrorMessage("An Arabic name is required."); return; }
+    if (!newPhotoFile) { setErrorMessage("A photo is required."); return; }
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    try {
+      const token = getStoredToken();
+      setIsUploadingPhoto(true);
+      const uploadResult = await uploadImage(token, newPhotoFile);
+      setIsUploadingPhoto(false);
+      await createPaymentMethod(token, newNameEn.trim(), newNameAr.trim(), uploadResult.url);
+      setNewNameEn(""); setNewNameAr(""); setNewPhotoFile(null); setNewPhotoPreview(null);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSubmitting(false);
+      setIsUploadingPhoto(false);
+    }
+  };
+
+  const handleReplacePhoto = async (id, file) => {
+    if (!file) return;
+    setReplacingPhotoId(id);
+    setErrorMessage(null);
+    try {
+      const token = getStoredToken();
+      const uploadResult = await uploadImage(token, file);
+      await updatePaymentMethodPhoto(token, id, uploadResult.url);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setReplacingPhotoId(null);
+    }
+  };
+
+  const handleMove = async (id, direction) => {
+    try {
+      setMethods(await movePaymentMethod(getStoredToken(), id, direction));
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message); // e.g. the real "already the first/last" message
+    }
+  };
+
+  const handleDelete = async (id) => {
+    try {
+      await deletePaymentMethod(getStoredToken(), id);
+      setPendingDelete(null);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleSaveEdit = async (values) => {
+    setIsSavingEdit(true);
+    setErrorMessage(null);
+    try {
+      await updatePaymentMethod(getStoredToken(), pendingEdit.id, values.nameEn.trim(), values.nameAr.trim());
+      setPendingEdit(null);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleToggleCountry = async (method, countryCode, isCurrentlyActive) => {
+    setTogglingCountry(countryCode);
+    setErrorMessage(null);
+    try {
+      const token = getStoredToken();
+      if (isCurrentlyActive) await deactivatePaymentMethodCountry(token, method.id, countryCode);
+      else await activatePaymentMethodCountry(token, method.id, countryCode);
+      const refreshed = await fetchPaymentMethods(token);
+      setMethods(refreshed);
+      setOpenCountriesFor(refreshed.find((m) => m.id === method.id) || null);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setTogglingCountry(null);
+    }
+  };
+
+  if (loadState === "loading") return <div style={{ ...body, fontSize: 12.5, color: C.muted, textAlign: "center", padding: 32 }}>Loading…</div>;
+
+  // Real, dedicated country-toggle sub-view -- shown instead of the
+  // main list when a specific method's countries are being edited.
+  if (openCountriesFor) {
+    const activeSet = new Set(openCountriesFor.activeCountries);
+    return (
+      <div style={{ padding: 24 }}>
+        <button onClick={() => setOpenCountriesFor(null)} style={{ ...body, display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 13, marginBottom: 16, padding: 0 }}>
+          <ChevronLeft size={16} /> Back to Payment Methods
+        </button>
+        <p style={{ ...disp, fontSize: 18, fontWeight: 700, color: C.ink, margin: "0 0 4px" }}>{openCountriesFor.nameEn}</p>
+        <p style={{ ...body, fontSize: 12.5, color: C.muted, margin: "0 0 20px" }}>{activeSet.size} of {countries.length} countries active</p>
+        {errorMessage && <p style={{ ...body, fontSize: 12.5, color: C.red, margin: "0 0 12px" }}>{errorMessage}</p>}
+        <Card>
+          {countries.map((c) => {
+            const isActive = activeSet.has(c.countryCode);
+            const isToggling = togglingCountry === c.countryCode;
+            return (
+              <div key={c.countryCode} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: `1px solid ${C.line}` }}>
+                <span style={{ ...body, fontSize: 13, color: C.ink }}>{c.countryName} <span style={{ color: C.muted, fontSize: 11.5 }}>({c.countryCode})</span></span>
+                <button
+                  disabled={isToggling}
+                  onClick={() => handleToggleCountry(openCountriesFor, c.countryCode, isActive)}
+                  style={{ width: 40, height: 22, borderRadius: 20, border: "none", cursor: isToggling ? "default" : "pointer", background: isActive ? C.signal : "#D1D5DB", position: "relative", transition: "background 0.15s", opacity: isToggling ? 0.6 : 1 }}
+                >
+                  <span style={{ position: "absolute", top: 2, left: isActive ? 20 : 2, width: 18, height: 18, borderRadius: "50%", background: "#fff", transition: "left 0.15s" }} />
+                </button>
+              </div>
+            );
+          })}
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: 24 }}>
+      <p style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink, margin: "0 0 4px" }}>Payment Methods</p>
+      <p style={{ ...body, fontSize: 13, color: C.muted, margin: "0 0 20px" }}>Control which payment methods buyers see, and in which countries.</p>
+      {errorMessage && <p style={{ ...body, fontSize: 12.5, color: C.red, margin: "0 0 12px" }}>{errorMessage}</p>}
+
+      <Card style={{ padding: 16, marginBottom: 20 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={newNameEn} onChange={(e) => setNewNameEn(e.target.value)} placeholder="English name (e.g. Visa / Mastercard)" style={{ ...body, flex: 1, minWidth: 180, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+          <input value={newNameAr} onChange={(e) => setNewNameAr(e.target.value)} placeholder="Arabic name" dir="rtl" style={{ ...body, flex: 1, minWidth: 180, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+          <label style={{ ...body, display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", color: newPhotoFile ? C.gauge : C.muted }}>
+            <ImagePlus size={14} />
+            {newPhotoFile ? "Photo selected" : "Choose photo"}
+            <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePhotoSelect} style={{ display: "none" }} />
+          </label>
+          {newPhotoPreview && <img src={newPhotoPreview} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
+          <button disabled={isSubmitting} onClick={handleAdd} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
+            <Check size={13} /> {isUploadingPhoto ? "Uploading…" : "Add"}
+          </button>
+        </div>
+      </Card>
+
+      <Card>
+        {methods.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 16 }}>No payment methods yet.</div>}
+        {methods.map((m, i) => (
+          <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: `1px solid ${C.line}` }}>
+            <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                <button onClick={() => handleMove(m.id, "up")} disabled={i === 0} style={{ background: "none", border: "none", padding: 0, cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? 0.25 : 1 }} title="Move up">
+                  <ChevronUp size={13} color={C.ink} />
+                </button>
+                <button onClick={() => handleMove(m.id, "down")} disabled={i === methods.length - 1} style={{ background: "none", border: "none", padding: 0, cursor: i === methods.length - 1 ? "default" : "pointer", opacity: i === methods.length - 1 ? 0.25 : 1 }} title="Move down">
+                  <ChevronDown size={13} color={C.ink} />
+                </button>
+              </div>
+              <label title="Click to replace this photo" style={{ position: "relative", width: 36, height: 36, borderRadius: 8, flexShrink: 0, cursor: replacingPhotoId === m.id ? "default" : "pointer", display: "block" }}>
+                <img src={m.photoUrl.startsWith("http") ? m.photoUrl : `${API_BASE_URL}${m.photoUrl}`} alt="" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", display: "block", opacity: replacingPhotoId === m.id ? 0.5 : 1 }} />
+                <input type="file" accept="image/jpeg,image/png,image/webp" disabled={replacingPhotoId === m.id} onChange={(e) => handleReplacePhoto(m.id, e.target.files?.[0])} style={{ display: "none" }} />
+              </label>
+              <div>
+                <p style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink, margin: 0 }}>{m.nameEn} <span style={{ color: C.muted, fontWeight: 400 }} dir="rtl">{m.nameAr}</span></p>
+                <button onClick={() => setOpenCountriesFor(m)} style={{ ...body, fontSize: 11.5, color: C.signal, background: "none", border: "none", padding: 0, cursor: "pointer", marginTop: 2 }}>
+                  {m.activeCountries.length} of {countries.length} countries active
+                </button>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <button onClick={() => setPendingEdit(m)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><Pencil size={14} color={C.muted} /></button>
+              <button onClick={() => setPendingDelete({ id: m.id, nameEn: m.nameEn })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={15} color={C.red} /></button>
+            </div>
+          </div>
+        ))}
+      </Card>
+
+      <ConfirmDialog
+        isOpen={!!pendingDelete}
+        title={`Delete "${pendingDelete?.nameEn}"?`}
+        onConfirm={() => handleDelete(pendingDelete.id)}
+        onCancel={() => setPendingDelete(null)}
+      />
+      <EditDialog
+        isOpen={!!pendingEdit}
+        title={`Edit "${pendingEdit?.nameEn}"`}
+        fields={pendingEdit ? [
+          { key: "nameEn", label: "English name", value: pendingEdit.nameEn },
+          { key: "nameAr", label: "Arabic name", value: pendingEdit.nameAr, dir: "rtl" },
+        ] : []}
+        onSave={handleSaveEdit}
+        onCancel={() => setPendingEdit(null)}
+        errorMessage={errorMessage}
+        isSaving={isSavingEdit}
+      />
+    </div>
+  );
+}
+
 // Real queue of every flagged hub shipment across all orders — the
 // actual answer to "where do I find a flagged issue," which before this
 // existed had no answer at all beyond already knowing which order to
@@ -4914,6 +5167,7 @@ const NAV = [
   { id: "promoCodes", label: "Promo Codes", icon: Tag },
   { id: "hubs", label: "Hubs", icon: Warehouse },
   { id: "pricing", label: "Pricing", icon: Calculator },
+  { id: "paymentMethods", label: "Payment Methods", icon: CreditCard },
   { id: "flagged", label: "Flagged Shipments", icon: AlertTriangle },
   { id: "payouts", label: "Payouts", icon: Wallet },
   { id: "reviews", label: "Reviews", icon: Star },
@@ -4975,6 +5229,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   else if (page === "promoCodes") content = <PromoCodesPage onSessionExpired={onLogout} />;
   else if (page === "hubs") content = <HubsPage onSessionExpired={onLogout} />;
   else if (page === "pricing") content = <PricingPage onSessionExpired={onLogout} />;
+  else if (page === "paymentMethods") content = <PaymentMethodsPage onSessionExpired={onLogout} />;
   else if (page === "flagged") content = <FlaggedShipmentsPage onOpenOrder={setOpenOrder} onSessionExpired={onLogout} />;
   else if (page === "payouts") content = <PayoutsPage onSessionExpired={onLogout} />;
   else if (page === "reviews") content = <ReviewsPage onSessionExpired={onLogout} />;
