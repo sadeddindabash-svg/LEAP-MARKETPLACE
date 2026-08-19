@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../core/theme.dart';
+import '../../core/language_state.dart';
+import '../../core/app_strings.dart';
 import '../../services/api_client.dart';
 import '../../widgets/skeleton.dart';
 
@@ -94,17 +97,17 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
       builder: (dialogContext) {
         final controller = TextEditingController();
         return AlertDialog(
-          title: const Text('Enter your VIN'),
+          title: Text(tr(context, 'enter_your_vin')),
           content: TextField(
             controller: controller,
             autofocus: true,
             maxLength: 17,
             textCapitalization: TextCapitalization.characters,
-            decoration: const InputDecoration(hintText: '17-character VIN', border: OutlineInputBorder()),
+            decoration: InputDecoration(hintText: tr(context, 'vin_hint'), border: const OutlineInputBorder()),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.of(dialogContext).pop(controller.text), child: const Text('Look up')),
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: Text(tr(context, 'cancel'))),
+            FilledButton(onPressed: () => Navigator.of(dialogContext).pop(controller.text), child: Text(tr(context, 'look_up_button'))),
           ],
         );
       },
@@ -245,21 +248,27 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
     });
   }
 
-  String get _title {
+  String _title(BuildContext context) {
+    final isAr = context.watch<LanguageState>().isArabic;
     switch (_step) {
       case _Step.brand:
-        return 'Choose a brand';
+        return tr(context, 'choose_a_brand');
       case _Step.model:
-        return _selectedBrand?['name'] as String? ?? 'Choose a model';
+        final brand = _selectedBrand;
+        if (brand == null) return tr(context, 'choose_a_model');
+        return (isAr ? brand['nameAr'] as String? : null) ?? brand['name'] as String;
       case _Step.generation:
-        return _selectedModel?['name'] as String? ?? 'Choose a generation';
+        final model = _selectedModel;
+        if (model == null) return tr(context, 'choose_a_generation');
+        return (isAr ? model['nameAr'] as String? : null) ?? model['name'] as String;
       case _Step.year:
-        return 'Choose a year';
+        return tr(context, 'choose_a_year');
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isAr = context.watch<LanguageState>().isArabic;
     return SafeArea(
       child: SizedBox(
         height: MediaQuery.of(context).size.height * 0.7,
@@ -274,7 +283,7 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
                   else
                     const SizedBox(width: 48),
                   Expanded(
-                    child: Text(_title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                    child: Text(_title(context), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                   ),
                   IconButton(icon: const Icon(Icons.close), tooltip: 'Close', onPressed: () => Navigator.of(context).pop()),
                 ],
@@ -308,11 +317,11 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
               ),
             ),
             const Divider(height: 1),
-            Expanded(child: _buildList(future: _brandsFuture, onTap: _selectBrand, labelOf: (b) => b['name'] as String)),
+            Expanded(child: _buildList(future: _brandsFuture, onTap: _selectBrand, labelOf: (b) => (isAr ? b['nameAr'] as String? : null) ?? b['name'] as String)),
           ],
         );
       case _Step.model:
-        return _buildList(future: _modelsFuture!, onTap: _selectModel, labelOf: (m) => m['name'] as String);
+        return _buildList(future: _modelsFuture!, onTap: _selectModel, labelOf: (m) => (isAr ? m['nameAr'] as String? : null) ?? m['name'] as String);
       case _Step.generation:
         return _buildList(
           future: _generationsFuture!,
@@ -339,11 +348,11 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
           return const ListSkeleton(itemCount: 4);
         }
         if (snapshot.hasError) {
-          return Center(child: Text('Could not load: ${snapshot.error}', style: const TextStyle(color: LeapColors.muted)));
+          return Center(child: Text('${tr(context, 'could_not_load_error')}: ${snapshot.error}', style: const TextStyle(color: LeapColors.muted)));
         }
         final items = (snapshot.data ?? []).cast<Map<String, dynamic>>();
         if (items.isEmpty) {
-          return const Center(child: Text('Nothing here yet.', style: TextStyle(color: LeapColors.muted)));
+          return Center(child: Text(tr(context, 'nothing_here_yet'), style: const TextStyle(color: LeapColors.muted)));
         }
         return ListView.separated(
           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -375,7 +384,7 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
       itemBuilder: (context, i) {
         if (i == 0) {
           return ListTile(
-            title: const Text('Any year in this generation', style: TextStyle(fontWeight: FontWeight.w700)),
+            title: Text(tr(context, 'any_year_in_generation'), style: const TextStyle(fontWeight: FontWeight.w700)),
             onTap: () => Navigator.of(context).pop(VehicleFilterSelection(
               generationId: generation['id'] as String,
               label: _labelFor(generation),
