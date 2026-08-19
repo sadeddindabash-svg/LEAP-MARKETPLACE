@@ -268,7 +268,6 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final isAr = context.watch<LanguageState>().isArabic;
     return SafeArea(
       child: SizedBox(
         height: MediaQuery.of(context).size.height * 0.7,
@@ -298,6 +297,7 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
   }
 
   Widget _buildStepBody() {
+    final isAr = context.watch<LanguageState>().isArabic;
     switch (_step) {
       case _Step.brand:
         return Column(
