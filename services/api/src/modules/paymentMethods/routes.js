@@ -3,7 +3,7 @@ const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { logAdminAction } = require('../audit/helpers');
 const { moveItem } = require('../../lib/reorder');
-const { LAUNCH_MARKETS } = require('../../config/markets');
+const { LAUNCH_MARKETS, resolveCountryCode } = require('../../config/markets');
 
 /**
  * Real payment method management (new) -- confirmed with the person
@@ -63,12 +63,14 @@ router.get('/', requireAuth, requireRole('admin'), requirePageAccess('paymentMet
 // address is in, not a fixed global list.
 router.get('/for-country/:countryCode', async (req, res, next) => {
   try {
+    const resolvedCode = resolveCountryCode(req.params.countryCode);
+    if (!resolvedCode) return res.json([]); // real, honest: an unrecognized country simply has no active methods, not an error
     const { rows } = await db.query(
       `SELECT pm.* FROM payment_methods pm
        JOIN payment_method_countries pmc ON pmc.payment_method_id = pm.id
        WHERE pmc.country_code = $1
        ORDER BY pm.sort_order ASC`,
-      [req.params.countryCode]
+      [resolvedCode]
     );
     res.json(rows.map((r) => toPaymentMethodDto(r)));
   } catch (err) {

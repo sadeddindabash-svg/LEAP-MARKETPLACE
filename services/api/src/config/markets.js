@@ -67,4 +67,16 @@ function getMarketByCountryCode(countryCode) {
   return LAUNCH_MARKETS.find((m) => m.countryCode === countryCode) || null;
 }
 
-module.exports = { LAUNCH_MARKETS, COMPLIANCE_HOLD_COUNTRY_CODES, getMarketByCountryCode };
+// Real, new -- resolves either a real 2-letter country code (e.g.
+// "SA") or a real full English country name (e.g. "Saudi Arabia",
+// what a saved address actually stores) to the real country code.
+// Returns null if neither matches a real launch market at all.
+function resolveCountryCode(codeOrName) {
+  if (!codeOrName) return null;
+  const byCode = LAUNCH_MARKETS.find((m) => m.countryCode === codeOrName);
+  if (byCode) return byCode.countryCode;
+  const byName = LAUNCH_MARKETS.find((m) => m.countryName.toLowerCase() === codeOrName.toLowerCase());
+  return byName ? byName.countryCode : null;
+}
+
+module.exports = { LAUNCH_MARKETS, COMPLIANCE_HOLD_COUNTRY_CODES, getMarketByCountryCode, resolveCountryCode };

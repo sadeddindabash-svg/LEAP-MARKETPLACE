@@ -194,6 +194,17 @@ class ApiClient {
     return jsonDecode(response.body) as List<dynamic>;
   }
 
+  // Real, new -- checkout's own real payment methods, filtered to
+  // whichever real country the buyer's own selected shipping address
+  // is in. The backend itself resolves either a real 2-letter country
+  // code or a real full country name (what a saved address actually
+  // stores), so this can be passed straight through unchanged.
+  Future<List<dynamic>> fetchPaymentMethodsForCountry(String country) async {
+    final response = await _client.get(Uri.parse('$baseUrl/payment-methods/for-country/${Uri.encodeComponent(country)}'));
+    if (response.statusCode != 200) throw ApiException('Failed to load payment methods (${response.statusCode})');
+    return jsonDecode(response.body) as List<dynamic>;
+  }
+
   Future<List<dynamic>> fetchModelsForBrand(String brandId) async {
     final response = await _client.get(Uri.parse('$baseUrl/fitment/brands/$brandId/models'));
     if (response.statusCode != 200) throw ApiException('Failed to load models (${response.statusCode})');

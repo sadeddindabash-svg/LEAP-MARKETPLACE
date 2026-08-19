@@ -9,6 +9,7 @@ import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/currency_state.dart';
 import '../../core/auth_state.dart';
+import '../../core/language_state.dart';
 import '../../core/cart_state.dart';
 import '../../core/draft_order_queue.dart';
 import '../../services/api_client.dart';
@@ -40,7 +41,11 @@ class CheckoutScreen extends StatefulWidget {
 class _CheckoutScreenState extends State<CheckoutScreen> {
   final _guestEmailController = TextEditingController();
   final _promoCodeController = TextEditingController();
-  String _selectedPayment = 'card';
+  String? _selectedPayment;
+  // Real, new -- fetched dynamically per country, replacing the old
+  // fixed 4-method hardcoded list.
+  List<dynamic> _paymentMethods = [];
+  bool _isLoadingPaymentMethods = false;
   bool _isPlacingOrder = false;
   // Real shipping consolidation preference (#51) -- defaults to
   // false (ship as available), matching the only real behavior that
@@ -98,16 +103,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Map<String, dynamic>? _appliedPromoDetails;
   String? _promoMessage;
   bool _isValidatingPromo = false;
-
-  static const _paymentMethods = [
-    (id: 'card', label: 'Visa / Mastercard', icon: Icons.credit_card),
-    // Amazon Payment Services: the business's existing gateway, strong for
-    // MENA payment methods — surfaced prominently since 7 of our 40 launch
-    // markets are GCC/Jordan.
-    (id: 'amazon_payment_services', label: 'Amazon Payment Services', icon: Icons.credit_card),
-    (id: 'paypal', label: 'PayPal', icon: Icons.account_balance_wallet_outlined),
-    (id: 'gpay', label: 'Google Pay', icon: Icons.account_balance_wallet_outlined),
-  ];
 
   @override
   void initState() {
@@ -184,12 +179,41 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         // (below) shows a real, explicit "add an address" prompt
         // instead of auto-navigating away immediately.
       });
+      if (_selectedAddressId != null) _loadPaymentMethods();
     } catch (_) {
       // Real, honest fallback: if this fails, the address section's
       // own empty-state UI (real "add an address" prompt) will show
       // instead, same as if the buyer genuinely had none yet.
     } finally {
       if (mounted) setState(() => _isLoadingAddresses = false);
+    }
+  }
+
+  // Real, new -- fetches the real payment methods active for whichever
+  // real country the buyer's currently-selected address is in.
+  // Resets the real selected payment (if it's no longer in the new
+  // real list) whenever the buyer switches to a different saved
+  // address with a different real country.
+  Future<void> _loadPaymentMethods() async {
+    final address = _savedAddresses.firstWhere((a) => a['id'] == _selectedAddressId, orElse: () => null);
+    if (address == null) return;
+    final country = address['country'] as String?;
+    if (country == null || country.isEmpty) return;
+    setState(() => _isLoadingPaymentMethods = true);
+    try {
+      final methods = await ApiClient().fetchPaymentMethodsForCountry(country);
+      setState(() {
+        _paymentMethods = methods;
+        final stillAvailable = methods.any((m) => m['id'] == _selectedPayment);
+        if (!stillAvailable) _selectedPayment = methods.isNotEmpty ? methods.first['id'] as String : null;
+      });
+    } catch (_) {
+      // Real, honest fallback: if this fails, the payment section's
+      // own real empty-state message shows instead, same as if this
+      // country genuinely had none active yet.
+      setState(() => _paymentMethods = []);
+    } finally {
+      if (mounted) setState(() => _isLoadingPaymentMethods = false);
     }
   }
 
@@ -476,7 +500,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // caller can skip navigating anywhere else afterward.
   Future<bool> _showGuestAccountPrompt(String guestEmail) async {
     if (!mounted) return false;
-    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final isAr = context.watch<LanguageState>().isArabic;
     var choseToCreateAccount = false;
     await showDialog<void>(
       context: context,
@@ -530,7 +554,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 contentPadding: EdgeInsets.zero,
                 value: a['id'] as String,
                 groupValue: _selectedAddressId,
-                onChanged: (v) => setState(() => _selectedAddressId = v),
+                onChanged: (v) {
+                  setState(() => _selectedAddressId = v);
+                  _loadPaymentMethods();
+                },
                 title: Text(a['label'] as String? ?? 'Address', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                 subtitle: Text('${a['streetAddress']}, ${a['city']}, ${a['country']}', style: const TextStyle(fontSize: 12)),
               ),
@@ -567,6 +594,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
     final cart = context.watch<CartState>();
+    final isAr = context.watch<LanguageState>().isArabic;
 
     return Scaffold(
       appBar: AppBar(title: Text(tr(context, 'checkout'))),
@@ -648,20 +676,44 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           const SizedBox(height: 12),
           KeyedSubtree(key: _paymentSectionKey, child: Text(tr(context, 'payment_method'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
           const SizedBox(height: 8),
-          ..._paymentMethods.map((m) => Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                decoration: BoxDecoration(
-                  border: Border.all(color: _selectedPayment == m.id ? LeapPalette.of(context).signal : LeapPalette.of(context).line),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: RadioListTile<String>(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                  value: m.id,
-                  groupValue: _selectedPayment,
-                  onChanged: (v) => setState(() => _selectedPayment = v!),
-                  title: Row(children: [Icon(m.icon, size: 18), const SizedBox(width: 10), Text(m.label)]),
-                ),
-              )),
+          if (_isLoadingPaymentMethods)
+            const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Center(child: CircularProgressIndicator(strokeWidth: 2)))
+          else if (_paymentMethods.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(tr(context, 'no_payment_methods_for_country'), style: TextStyle(fontSize: 12.5, color: LeapPalette.of(context).muted)),
+            )
+          else
+            ..._paymentMethods.map((m) => Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: _selectedPayment == m['id'] ? LeapPalette.of(context).signal : LeapPalette.of(context).line),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: RadioListTile<String>(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                    value: m['id'] as String,
+                    groupValue: _selectedPayment,
+                    onChanged: (v) => setState(() => _selectedPayment = v!),
+                    title: Row(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: CachedNetworkImage(
+                            imageUrl: ApiClient.resolveMediaUrl(m['photoUrl'] as String),
+                            width: 24,
+                            height: 24,
+                            fit: BoxFit.contain,
+                            fadeInDuration: const Duration(milliseconds: 200),
+                            errorWidget: (context, url, error) => const Icon(Icons.credit_card, size: 18),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(isAr ? (m['nameAr'] as String) : (m['nameEn'] as String)),
+                      ],
+                    ),
+                  ),
+                )),
           // Real shipping consolidation preference (#51) -- only
           // shown when the real cart genuinely has items from more
           // than one real supplier (via each real CartItem's own

@@ -170,6 +170,7 @@ class AppStrings {
     'item_count_label': {'en': 'item(s)', 'ar': 'عنصر'},
     'add_new_address_button': {'en': 'Add a new address', 'ar': 'إضافة عنوان جديد'},
     'no_saved_addresses': {'en': 'No saved addresses yet.', 'ar': 'لا توجد عناوين محفوظة بعد.'},
+    'no_payment_methods_for_country': {'en': 'No payment methods are available for this address yet.', 'ar': 'لا توجد طرق دفع متاحة لهذا العنوان بعد.'},
     'order_summary': {'en': 'Order summary', 'ar': 'ملخص الطلب'},
     'place_order': {'en': 'Place order', 'ar': 'إتمام الطلب'},
     'please_enter_email_order': {'en': 'Please enter an email for your order confirmation.', 'ar': 'يرجى إدخال بريد إلكتروني لتأكيد طلبك.'},
