@@ -26,6 +26,11 @@ function toPaymentMethodDto(row, activeCountries) {
     nameAr: row.name_ar,
     photoUrl: row.photo_url,
     sortOrder: row.sort_order,
+    // Real, new (migration 064) -- a global master on/off switch,
+    // separate from and independent of per-country activation below.
+    // Lets an admin quickly disable a method everywhere without
+    // losing its per-country configuration.
+    isActive: row.is_active,
     activeCountries: activeCountries || [],
   };
 }
@@ -68,7 +73,7 @@ router.get('/for-country/:countryCode', async (req, res, next) => {
     const { rows } = await db.query(
       `SELECT pm.* FROM payment_methods pm
        JOIN payment_method_countries pmc ON pmc.payment_method_id = pm.id
-       WHERE pmc.country_code = $1
+       WHERE pmc.country_code = $1 AND pm.is_active = true
        ORDER BY pm.sort_order ASC`,
       [resolvedCode]
     );
@@ -93,7 +98,7 @@ router.post('/', requireAuth, requireRole('admin'), requirePageAccess('paymentMe
       [id, nameEn.trim(), nameAr.trim(), photoUrl.trim(), maxRows[0].max_order + 10]
     );
     await logAdminAction(req, 'payment_method_created', 'payment_method', id, { nameEn: nameEn.trim() });
-    res.status(201).json(toPaymentMethodDto({ id, name_en: nameEn.trim(), name_ar: nameAr.trim(), photo_url: photoUrl.trim(), sort_order: maxRows[0].max_order + 10 }, []));
+    res.status(201).json(toPaymentMethodDto({ id, name_en: nameEn.trim(), name_ar: nameAr.trim(), photo_url: photoUrl.trim(), sort_order: maxRows[0].max_order + 10, is_active: true }, []));
   } catch (err) {
     next(err);
   }
@@ -131,6 +136,22 @@ router.patch('/:id/photo', requireAuth, requireRole('admin'), requirePageAccess(
   }
 });
 
+// PATCH /payment-methods/:id/active -- real, new (migration 064) --
+// toggles the global master switch, independent of any per-country
+// setting.
+router.patch('/:id/active', requireAuth, requireRole('admin'), requirePageAccess('paymentMethods'), async (req, res, next) => {
+  try {
+    const { isActive } = req.body || {};
+    if (typeof isActive !== 'boolean') return res.status(400).json({ error: 'isActive must be a boolean' });
+    const { rows } = await db.query('UPDATE payment_methods SET is_active = $1 WHERE id = $2 RETURNING *', [isActive, req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Payment method not found' });
+    await logAdminAction(req, isActive ? 'payment_method_activated' : 'payment_method_deactivated', 'payment_method', req.params.id, {});
+    res.json(toPaymentMethodDto(rows[0]));
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /payment-methods/:id/move -- real reorder, same shared
 // moveItem() helper already used 7 other places in this codebase.
 router.post('/:id/move', requireAuth, requireRole('admin'), requirePageAccess('paymentMethods'), async (req, res, next) => {
@@ -146,6 +167,35 @@ router.post('/:id/move', requireAuth, requireRole('admin'), requirePageAccess('p
     res.json(rows.map((r) => toPaymentMethodDto(r, countriesByMethod[r.id])));
   } catch (err) {
     if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
+    next(err);
+  }
+});
+
+// POST /payment-methods/:id/countries-bulk -- real, new -- activates
+// or deactivates ALL 40 real launch-market countries for this one
+// method in a single real atomic operation, rather than 40 separate
+// round-trips (which would also risk a partial failure leaving
+// inconsistent state). Uses a dedicated real path (not /countries/
+// activate-all) to avoid any real routing ambiguity with the
+// existing per-country :countryCode route above.
+router.post('/:id/countries-bulk', requireAuth, requireRole('admin'), requirePageAccess('paymentMethods'), async (req, res, next) => {
+  try {
+    const { action } = req.body || {};
+    if (action !== 'activate' && action !== 'deactivate') return res.status(400).json({ error: 'action must be "activate" or "deactivate"' });
+    const methodCheck = await db.query('SELECT id FROM payment_methods WHERE id = $1', [req.params.id]);
+    if (methodCheck.rows.length === 0) return res.status(404).json({ error: 'Payment method not found' });
+    if (action === 'activate') {
+      const values = LAUNCH_MARKETS.map((m, i) => `($1, $${i + 2})`).join(', ');
+      await db.query(
+        `INSERT INTO payment_method_countries (payment_method_id, country_code) VALUES ${values} ON CONFLICT DO NOTHING`,
+        [req.params.id, ...LAUNCH_MARKETS.map((m) => m.countryCode)]
+      );
+    } else {
+      await db.query('DELETE FROM payment_method_countries WHERE payment_method_id = $1', [req.params.id]);
+    }
+    await logAdminAction(req, action === 'activate' ? 'payment_method_all_countries_activated' : 'payment_method_all_countries_deactivated', 'payment_method', req.params.id, {});
+    res.status(204).send();
+  } catch (err) {
     next(err);
   }
 });

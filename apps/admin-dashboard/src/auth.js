@@ -788,3 +788,5 @@ export const movePaymentMethod = (token, id, direction) => fitmentMutate("POST",
 export const activatePaymentMethodCountry = (token, id, countryCode) => fitmentMutate("POST", `/payment-methods/${id}/countries/${countryCode}`, token);
 export const deactivatePaymentMethodCountry = (token, id, countryCode) => fitmentMutate("DELETE", `/payment-methods/${id}/countries/${countryCode}`, token);
 export const deletePaymentMethod = (token, id) => fitmentMutate("DELETE", `/payment-methods/${id}`, token);
+export const setPaymentMethodActive = (token, id, isActive) => fitmentMutate("PATCH", `/payment-methods/${id}/active`, token, { isActive });
+export const bulkSetPaymentMethodCountries = (token, id, action) => fitmentMutate("POST", `/payment-methods/${id}/countries-bulk`, token, { action });

@@ -11,7 +11,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchFlaggedShipments,
   fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart, uploadImage, updateCategoryPhoto, updatePartPhoto, moveCategory, movePart, moveBrand, moveModel, moveGeneration, moveEngine, moveTransmission, updateBrandPhoto, updateModelPhoto,
   updateCategory, updatePart, updateBrand, updateModel, updateGeneration, updateEngine, updateTransmission,
-  fetchPaymentMethods, fetchAvailableCountries, createPaymentMethod, updatePaymentMethod, updatePaymentMethodPhoto, movePaymentMethod, activatePaymentMethodCountry, deactivatePaymentMethodCountry, deletePaymentMethod,
+  fetchPaymentMethods, fetchAvailableCountries, createPaymentMethod, updatePaymentMethod, updatePaymentMethodPhoto, movePaymentMethod, activatePaymentMethodCountry, deactivatePaymentMethodCountry, deletePaymentMethod, setPaymentMethodActive, bulkSetPaymentMethodCountries,
   fetchSupplierMessagesInbox, fetchSupplierMessageThread, sendSupplierMessage,
   fetchPromoCodes, createPromoCode, updatePromoCode, deletePromoCode,
   fetchAdminUsers, createAdminUser, updateAdminPermissions, deleteAdminUser,
@@ -2533,6 +2533,8 @@ function PaymentMethodsPage({ onSessionExpired }) {
   // Real, opens the dedicated country-toggle sub-view for one method.
   const [openCountriesFor, setOpenCountriesFor] = useState(null); // the full method object
   const [togglingCountry, setTogglingCountry] = useState(null); // countryCode currently in flight
+  const [togglingActiveId, setTogglingActiveId] = useState(null); // method id currently in flight for the master switch
+  const [bulkActionInFlight, setBulkActionInFlight] = useState(false);
 
   const load = () => {
     setLoadState("loading");
@@ -2645,6 +2647,43 @@ function PaymentMethodsPage({ onSessionExpired }) {
     }
   };
 
+  // Real, new -- the main list's own master on/off switch, separate
+  // from and independent of any per-country setting.
+  const handleToggleActive = async (method) => {
+    setTogglingActiveId(method.id);
+    setErrorMessage(null);
+    try {
+      const token = getStoredToken();
+      await setPaymentMethodActive(token, method.id, !method.isActive);
+      setMethods(await fetchPaymentMethods(token));
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setTogglingActiveId(null);
+    }
+  };
+
+  // Real, new -- activates or deactivates all 40 real launch-market
+  // countries for the method currently open in the country screen, in
+  // a single real request rather than 40 separate ones.
+  const handleBulkCountries = async (action) => {
+    setBulkActionInFlight(true);
+    setErrorMessage(null);
+    try {
+      const token = getStoredToken();
+      await bulkSetPaymentMethodCountries(token, openCountriesFor.id, action);
+      const refreshed = await fetchPaymentMethods(token);
+      setMethods(refreshed);
+      setOpenCountriesFor(refreshed.find((m) => m.id === openCountriesFor.id) || null);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setBulkActionInFlight(false);
+    }
+  };
+
   if (loadState === "loading") return <div style={{ ...body, fontSize: 12.5, color: C.muted, textAlign: "center", padding: 32 }}>Loading…</div>;
 
   // Real, dedicated country-toggle sub-view -- shown instead of the
@@ -2657,7 +2696,15 @@ function PaymentMethodsPage({ onSessionExpired }) {
           <ChevronLeft size={16} /> Back to Payment Methods
         </button>
         <p style={{ ...disp, fontSize: 18, fontWeight: 700, color: C.ink, margin: "0 0 4px" }}>{openCountriesFor.nameEn}</p>
-        <p style={{ ...body, fontSize: 12.5, color: C.muted, margin: "0 0 20px" }}>{activeSet.size} of {countries.length} countries active</p>
+        <p style={{ ...body, fontSize: 12.5, color: C.muted, margin: "0 0 12px" }}>{activeSet.size} of {countries.length} countries active</p>
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          <button disabled={bulkActionInFlight} onClick={() => handleBulkCountries("activate")} style={{ ...body, fontSize: 12, fontWeight: 600, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "none", cursor: bulkActionInFlight ? "default" : "pointer", opacity: bulkActionInFlight ? 0.6 : 1 }}>
+            Activate all
+          </button>
+          <button disabled={bulkActionInFlight} onClick={() => handleBulkCountries("deactivate")} style={{ ...body, fontSize: 12, fontWeight: 600, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "none", cursor: bulkActionInFlight ? "default" : "pointer", opacity: bulkActionInFlight ? 0.6 : 1 }}>
+            Deactivate all
+          </button>
+        </div>
         {errorMessage && <p style={{ ...body, fontSize: 12.5, color: C.red, margin: "0 0 12px" }}>{errorMessage}</p>}
         <Card>
           {countries.map((c) => {
@@ -2727,7 +2774,15 @@ function PaymentMethodsPage({ onSessionExpired }) {
                 </button>
               </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <button
+                disabled={togglingActiveId === m.id}
+                onClick={() => handleToggleActive(m)}
+                title={m.isActive ? "Active everywhere it's turned on per-country" : "Disabled everywhere, regardless of country settings"}
+                style={{ width: 36, height: 20, borderRadius: 20, border: "none", cursor: togglingActiveId === m.id ? "default" : "pointer", background: m.isActive ? C.signal : "#D1D5DB", position: "relative", transition: "background 0.15s", opacity: togglingActiveId === m.id ? 0.6 : 1 }}
+              >
+                <span style={{ position: "absolute", top: 2, left: m.isActive ? 18 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left 0.15s" }} />
+              </button>
               <button onClick={() => setPendingEdit(m)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><Pencil size={14} color={C.muted} /></button>
               <button onClick={() => setPendingDelete({ id: m.id, nameEn: m.nameEn })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={15} color={C.red} /></button>
             </div>
