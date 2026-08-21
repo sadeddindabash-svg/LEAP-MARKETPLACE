@@ -4,6 +4,7 @@ const { requireAuth, requireRole, requirePageAccess } = require('../auth/middlew
 const { logAdminAction } = require('../audit/helpers');
 const { moveItem } = require('../../lib/reorder');
 const { LAUNCH_MARKETS, resolveCountryCode } = require('../../config/markets');
+const { PROVIDER_FIELD_SCHEMAS } = require('../../config/paymentProviderSchemas');
 
 /**
  * Real payment method management (new) -- confirmed with the person
@@ -31,6 +32,12 @@ function toPaymentMethodDto(row, activeCountries) {
     // Lets an admin quickly disable a method everywhere without
     // losing its per-country configuration.
     isActive: row.is_active,
+    // Real, new (migration 066) -- which real gateway (see
+    // config/paymentProviderSchemas.js) this method actually charges
+    // through. Nullable -- a method with no real provider assigned
+    // yet simply can't be checked out with; surfaced clearly here
+    // rather than silently defaulting to something unconfirmed.
+    providerId: row.provider_id,
     activeCountries: activeCountries || [],
   };
 }
@@ -43,6 +50,14 @@ const router = express.Router();
 // duplicate country list that could drift out of sync with this one.
 router.get('/available-countries', requireAuth, requireRole('admin'), requirePageAccess('paymentMethods'), async (req, res) => {
   res.json(LAUNCH_MARKETS.map((m) => ({ countryCode: m.countryCode, countryName: m.countryName })));
+});
+
+// GET /payment-methods/available-providers -- real, exposes the same
+// real known-provider set config/paymentProviderSchemas.js already
+// defines, so the admin portal's own provider-selection dropdown
+// doesn't need its own separate, duplicate list.
+router.get('/available-providers', requireAuth, requireRole('admin'), requirePageAccess('paymentMethods'), async (req, res) => {
+  res.json(Object.entries(PROVIDER_FIELD_SCHEMAS).map(([providerId, schema]) => ({ providerId, label: schema.label })));
 });
 
 // GET /payment-methods -- admin list, every method with its own real
@@ -87,18 +102,19 @@ router.get('/for-country/:countryCode', async (req, res, next) => {
 // required per the person's own confirmed decision.
 router.post('/', requireAuth, requireRole('admin'), requirePageAccess('paymentMethods'), async (req, res, next) => {
   try {
-    const { nameEn, nameAr, photoUrl } = req.body || {};
+    const { nameEn, nameAr, photoUrl, providerId } = req.body || {};
     if (!nameEn || !nameEn.trim()) return res.status(400).json({ error: 'nameEn is required' });
     if (!nameAr || !nameAr.trim()) return res.status(400).json({ error: 'nameAr is required' });
     if (!photoUrl || !photoUrl.trim()) return res.status(400).json({ error: 'photoUrl is required' });
+    if (providerId && !PROVIDER_FIELD_SCHEMAS[providerId]) return res.status(400).json({ error: `Unknown providerId: ${providerId}` });
     const id = `pm_${Date.now()}`;
     const { rows: maxRows } = await db.query('SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM payment_methods');
     await db.query(
-      'INSERT INTO payment_methods (id, name_en, name_ar, photo_url, sort_order) VALUES ($1, $2, $3, $4, $5)',
-      [id, nameEn.trim(), nameAr.trim(), photoUrl.trim(), maxRows[0].max_order + 10]
+      'INSERT INTO payment_methods (id, name_en, name_ar, photo_url, sort_order, provider_id) VALUES ($1, $2, $3, $4, $5, $6)',
+      [id, nameEn.trim(), nameAr.trim(), photoUrl.trim(), maxRows[0].max_order + 10, providerId || null]
     );
     await logAdminAction(req, 'payment_method_created', 'payment_method', id, { nameEn: nameEn.trim() });
-    res.status(201).json(toPaymentMethodDto({ id, name_en: nameEn.trim(), name_ar: nameAr.trim(), photo_url: photoUrl.trim(), sort_order: maxRows[0].max_order + 10, is_active: true }, []));
+    res.status(201).json(toPaymentMethodDto({ id, name_en: nameEn.trim(), name_ar: nameAr.trim(), photo_url: photoUrl.trim(), sort_order: maxRows[0].max_order + 10, is_active: true, provider_id: providerId || null }, []));
   } catch (err) {
     next(err);
   }
@@ -109,10 +125,11 @@ router.post('/', requireAuth, requireRole('admin'), requirePageAccess('paymentMe
 // other entity in this codebase).
 router.patch('/:id', requireAuth, requireRole('admin'), requirePageAccess('paymentMethods'), async (req, res, next) => {
   try {
-    const { nameEn, nameAr } = req.body || {};
+    const { nameEn, nameAr, providerId } = req.body || {};
     if (!nameEn || !nameEn.trim()) return res.status(400).json({ error: 'nameEn is required' });
     if (!nameAr || !nameAr.trim()) return res.status(400).json({ error: 'nameAr is required' });
-    const { rows } = await db.query('UPDATE payment_methods SET name_en = $1, name_ar = $2 WHERE id = $3 RETURNING *', [nameEn.trim(), nameAr.trim(), req.params.id]);
+    if (providerId && !PROVIDER_FIELD_SCHEMAS[providerId]) return res.status(400).json({ error: `Unknown providerId: ${providerId}` });
+    const { rows } = await db.query('UPDATE payment_methods SET name_en = $1, name_ar = $2, provider_id = $3 WHERE id = $4 RETURNING *', [nameEn.trim(), nameAr.trim(), providerId || null, req.params.id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Payment method not found' });
     await logAdminAction(req, 'payment_method_updated', 'payment_method', req.params.id, { nameEn: nameEn.trim() });
     res.json(toPaymentMethodDto(rows[0]));

@@ -1,5 +1,6 @@
 const { Client, Environment, OrdersController, CheckoutPaymentIntent } = require('@paypal/paypal-server-sdk');
 const { env } = require('../../../config/env');
+const { getProviderCredentials } = require('../../paymentProviders/routes');
 
 /**
  * PayPal integration via the official @paypal/paypal-server-sdk (Orders v2
@@ -7,6 +8,15 @@ const { env } = require('../../../config/env');
  * (inspected directly — Client config shape, OrdersController method
  * signatures, Order/PurchaseUnitRequest/AmountWithBreakdown models) rather
  * than assumed from memory.
+ *
+ * Real, updated (migration 065/066) -- credentials now come from the
+ * real, encrypted, admin-editable payment_provider_credentials table
+ * (see paymentProviders/routes.js's own getProviderCredentials),
+ * not static environment variables. Deliberately no module-level
+ * client caching anymore -- an admin can update these credentials at
+ * any time through the real admin portal, and a cached client built
+ * from the real old credentials would otherwise keep using them
+ * silently until a server restart.
  *
  * ============================================================
  * IMPORTANT — PayPal's amount format is NOT the same as Stripe's:
@@ -35,7 +45,8 @@ const { env } = require('../../../config/env');
  *     Stripe), but our own isConfigured() guard still prevents any call
  *     from being attempted without real credentials
  * Run one real sandbox create-order + capture-order as the first next step
- * once PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET are available.
+ * once real credentials are saved via the admin portal's Payment Providers
+ * page.
  */
 
 // Per PayPal's currency-code documentation — NOT independently verified
@@ -57,23 +68,26 @@ function formatAmountForPaypal(amount, currencyCode) {
   return { value: Number(amount).toFixed(2), warning: null };
 }
 
-function isConfigured() {
-  return Boolean(env.paypalClientId && env.paypalClientSecret);
+async function isConfigured() {
+  const creds = await getProviderCredentials('paypal');
+  return Boolean(creds?.clientId && creds?.clientSecret);
 }
 
-let ordersController = null;
-function getOrdersController() {
-  if (ordersController) return ordersController;
-  if (!isConfigured()) return null;
+/**
+ * Real, builds a fresh OrdersController per call, using whatever
+ * credentials are currently saved -- returns null if not configured.
+ */
+async function getOrdersController() {
+  const creds = await getProviderCredentials('paypal');
+  if (!creds?.clientId || !creds?.clientSecret) return null;
   const client = new Client({
     clientCredentialsAuthCredentials: {
-      oAuthClientId: env.paypalClientId,
-      oAuthClientSecret: env.paypalClientSecret,
+      oAuthClientId: creds.clientId,
+      oAuthClientSecret: creds.clientSecret,
     },
     environment: env.paypalEnvironment === 'production' ? Environment.Production : Environment.Sandbox,
   });
-  ordersController = new OrdersController(client);
-  return ordersController;
+  return new OrdersController(client);
 }
 
 /**
@@ -83,9 +97,9 @@ function getOrdersController() {
  * Checkout flow.
  */
 async function createOrder({ amount, currencyCode, referenceId, returnUrl, cancelUrl }) {
-  const controller = getOrdersController();
+  const controller = await getOrdersController();
   if (!controller) {
-    throw new Error('PayPal is not configured. Set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET in your .env (see .env.example).');
+    throw new Error('PayPal is not configured. Set it up in the admin portal\'s Payment Providers page.');
   }
   const { value, warning } = formatAmountForPaypal(amount, currencyCode);
 
@@ -114,9 +128,9 @@ async function createOrder({ amount, currencyCode, referenceId, returnUrl, cance
 
 /** Step 2: captures payment after the buyer has approved via approveUrl. */
 async function captureOrder(orderId) {
-  const controller = getOrdersController();
+  const controller = await getOrdersController();
   if (!controller) {
-    throw new Error('PayPal is not configured. Set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET in your .env (see .env.example).');
+    throw new Error('PayPal is not configured. Set it up in the admin portal\'s Payment Providers page.');
   }
   const response = await controller.captureOrder({ id: orderId });
   return response.result;

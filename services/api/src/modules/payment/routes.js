@@ -1,8 +1,8 @@
 const express = require('express');
-const { env } = require('../../config/env');
 const { toGatewayAmount } = require('./currency');
 const aps = require('./providers/amazonPaymentServices');
 const paypal = require('./providers/paypal');
+const { getProviderCredentials } = require('../paymentProviders/routes');
 
 /**
  * Payment module — BUY-040–044.
@@ -19,18 +19,29 @@ const paypal = require('./providers/paypal');
  * exactly what WAS verified locally (request shaping, amount math, error
  * guards) vs. what still needs a real test transaction. Read those files
  * before assuming any of this works end-to-end.
+ *
+ * Real, updated (migration 065/066) -- credentials for all three now
+ * come from the real, encrypted, admin-editable
+ * payment_provider_credentials table, set up through the admin
+ * portal's own Payment Providers page, not static environment
+ * variables.
  */
 const router = express.Router();
 
 const PROVIDERS = ['stripe', 'amazon_payment_services', 'paypal', 'google_pay'];
 
-let stripeClient = null;
-function getStripeClient() {
-  if (stripeClient) return stripeClient;
-  if (!env.stripeSecretKey) return null;
+/**
+ * Real, builds a fresh Stripe client per call using whatever
+ * credentials are currently saved -- returns null if not configured.
+ * Deliberately no module-level caching, same real reasoning as
+ * PayPal/APS: an admin can update this credential at any time through
+ * the real admin portal.
+ */
+async function getStripeClient() {
+  const creds = await getProviderCredentials('stripe');
+  if (!creds?.secretKey) return null;
   const Stripe = require('stripe');
-  stripeClient = new Stripe(env.stripeSecretKey);
-  return stripeClient;
+  return new Stripe(creds.secretKey);
 }
 
 /**
@@ -39,7 +50,7 @@ function getStripeClient() {
  * see the routing note in the /intent handler.
  */
 async function createStripeIntent(amount, currencyCode) {
-  const stripe = getStripeClient();
+  const stripe = await getStripeClient();
   if (!stripe) return null;
   const { amount: gatewayAmount, warning } = toGatewayAmount(amount, currencyCode);
   const intent = await stripe.paymentIntents.create({
@@ -89,7 +100,7 @@ router.post('/intent', async (req, res) => {
     }
     if (!result.data) {
       return res.status(503).json({
-        error: 'Stripe is not configured. Set STRIPE_SECRET_KEY in your .env (see .env.example) — a test-mode key is fine for development.',
+        error: 'Stripe is not configured. Set it up in the admin portal\'s Payment Providers page.',
       });
     }
     const { intent, warning } = result.data;
@@ -107,9 +118,9 @@ router.post('/intent', async (req, res) => {
   }
 
   if (provider === 'amazon_payment_services') {
-    if (!aps.isConfigured()) {
+    if (!(await aps.isConfigured())) {
       return res.status(503).json({
-        error: 'Amazon Payment Services is not configured. Set APS_MERCHANT_IDENTIFIER, APS_ACCESS_CODE, and APS_SHA_REQUEST_PHRASE in your .env (see .env.example).',
+        error: 'Amazon Payment Services is not configured. Set it up in the admin portal\'s Payment Providers page.',
       });
     }
     if (!customerEmail || !returnUrl) {
@@ -130,9 +141,9 @@ router.post('/intent', async (req, res) => {
   }
 
   if (provider === 'paypal') {
-    if (!paypal.isConfigured()) {
+    if (!(await paypal.isConfigured())) {
       return res.status(503).json({
-        error: 'PayPal is not configured. Set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET in your .env (see .env.example).',
+        error: 'PayPal is not configured. Set it up in the admin portal\'s Payment Providers page.',
       });
     }
     try {
@@ -154,7 +165,7 @@ router.post('/intent', async (req, res) => {
 // POST /payment/paypal/capture/:orderId — step 2 of PayPal's flow, called
 // after the buyer approves the order at the approveUrl from /intent.
 router.post('/paypal/capture/:orderId', async (req, res) => {
-  if (!paypal.isConfigured()) {
+  if (!(await paypal.isConfigured())) {
     return res.status(503).json({ error: 'PayPal is not configured.' });
   }
   try {

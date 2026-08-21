@@ -130,13 +130,26 @@ export function EditDialog({ isOpen, title, fields, onSave, onCancel, errorMessa
         {(fields || []).map((f) => (
           <div key={f.key} style={{ marginBottom: 10 }}>
             <label style={{ ...body, fontSize: 11, color: C.muted, display: "block", marginBottom: 4 }}>{f.label}</label>
-            <input
-              type={f.type || "text"}
-              value={values[f.key] ?? ""}
-              onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
-              dir={f.dir}
-              style={{ ...body, width: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 6, padding: "7px 9px", fontSize: 13 }}
-            />
+            {f.options ? (
+              <select
+                value={values[f.key] ?? ""}
+                onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+                style={{ ...body, width: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 6, padding: "7px 9px", fontSize: 13, background: "#fff" }}
+              >
+                <option value="">{f.placeholder || "-- Not set --"}</option>
+                {f.options.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type={f.type || "text"}
+                value={values[f.key] ?? ""}
+                onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+                dir={f.dir}
+                style={{ ...body, width: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 6, padding: "7px 9px", fontSize: 13 }}
+              />
+            )}
           </div>
         ))}
         {/* Real, new -- shown here specifically because this dialog

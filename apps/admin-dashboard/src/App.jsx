@@ -11,7 +11,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchFlaggedShipments,
   fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart, uploadImage, updateCategoryPhoto, updatePartPhoto, moveCategory, movePart, moveBrand, moveModel, moveGeneration, moveEngine, moveTransmission, updateBrandPhoto, updateModelPhoto,
   updateCategory, updatePart, updateBrand, updateModel, updateGeneration, updateEngine, updateTransmission,
-  fetchPaymentMethods, fetchAvailableCountries, createPaymentMethod, updatePaymentMethod, updatePaymentMethodPhoto, movePaymentMethod, activatePaymentMethodCountry, deactivatePaymentMethodCountry, deletePaymentMethod, setPaymentMethodActive, bulkSetPaymentMethodCountries,
+  fetchPaymentMethods, fetchAvailableCountries, fetchAvailableProviders, createPaymentMethod, updatePaymentMethod, updatePaymentMethodPhoto, movePaymentMethod, activatePaymentMethodCountry, deactivatePaymentMethodCountry, deletePaymentMethod, setPaymentMethodActive, bulkSetPaymentMethodCountries,
   fetchPaymentProviders, savePaymentProviderCredentials, deletePaymentProviderCredentials,
   fetchSupplierMessagesInbox, fetchSupplierMessageThread, sendSupplierMessage,
   fetchPromoCodes, createPromoCode, updatePromoCode, deletePromoCode,
@@ -2516,6 +2516,7 @@ function PricingPage({ onSessionExpired }) {
 function PaymentMethodsPage({ onSessionExpired }) {
   const [methods, setMethods] = useState([]);
   const [countries, setCountries] = useState([]); // [{countryCode, countryName}]
+  const [providers, setProviders] = useState([]); // [{providerId, label}]
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
 
@@ -2523,6 +2524,7 @@ function PaymentMethodsPage({ onSessionExpired }) {
   const [newNameAr, setNewNameAr] = useState("");
   const [newPhotoFile, setNewPhotoFile] = useState(null);
   const [newPhotoPreview, setNewPhotoPreview] = useState(null);
+  const [newProviderId, setNewProviderId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [replacingPhotoId, setReplacingPhotoId] = useState(null);
@@ -2539,8 +2541,8 @@ function PaymentMethodsPage({ onSessionExpired }) {
 
   const load = () => {
     setLoadState("loading");
-    Promise.all([fetchPaymentMethods(getStoredToken()), fetchAvailableCountries(getStoredToken())])
-      .then(([m, c]) => { setMethods(m); setCountries(c); setLoadState("ready"); })
+    Promise.all([fetchPaymentMethods(getStoredToken()), fetchAvailableCountries(getStoredToken()), fetchAvailableProviders(getStoredToken())])
+      .then(([m, c, p]) => { setMethods(m); setCountries(c); setProviders(p); setLoadState("ready"); })
       .catch((e) => {
         if (e instanceof SessionExpiredError) return onSessionExpired();
         setErrorMessage(e.message); setLoadState("error");
@@ -2566,8 +2568,8 @@ function PaymentMethodsPage({ onSessionExpired }) {
       setIsUploadingPhoto(true);
       const uploadResult = await uploadImage(token, newPhotoFile);
       setIsUploadingPhoto(false);
-      await createPaymentMethod(token, newNameEn.trim(), newNameAr.trim(), uploadResult.url);
-      setNewNameEn(""); setNewNameAr(""); setNewPhotoFile(null); setNewPhotoPreview(null);
+      await createPaymentMethod(token, newNameEn.trim(), newNameAr.trim(), uploadResult.url, newProviderId || undefined);
+      setNewNameEn(""); setNewNameAr(""); setNewPhotoFile(null); setNewPhotoPreview(null); setNewProviderId("");
       load();
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
@@ -2619,7 +2621,7 @@ function PaymentMethodsPage({ onSessionExpired }) {
     setIsSavingEdit(true);
     setErrorMessage(null);
     try {
-      await updatePaymentMethod(getStoredToken(), pendingEdit.id, values.nameEn.trim(), values.nameAr.trim());
+      await updatePaymentMethod(getStoredToken(), pendingEdit.id, values.nameEn.trim(), values.nameAr.trim(), values.providerId || undefined);
       setPendingEdit(null);
       load();
     } catch (err) {
@@ -2739,6 +2741,12 @@ function PaymentMethodsPage({ onSessionExpired }) {
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <input value={newNameEn} onChange={(e) => setNewNameEn(e.target.value)} placeholder="English name (e.g. Visa / Mastercard)" style={{ ...body, flex: 1, minWidth: 180, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
           <input value={newNameAr} onChange={(e) => setNewNameAr(e.target.value)} placeholder="Arabic name" dir="rtl" style={{ ...body, flex: 1, minWidth: 180, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+          <select value={newProviderId} onChange={(e) => setNewProviderId(e.target.value)} style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, background: "#fff" }}>
+            <option value="">Provider (optional, can set later)</option>
+            {providers.map((p) => (
+              <option key={p.providerId} value={p.providerId}>{p.label}</option>
+            ))}
+          </select>
           <label style={{ ...body, display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", color: newPhotoFile ? C.gauge : C.muted }}>
             <ImagePlus size={14} />
             {newPhotoFile ? "Photo selected" : "Choose photo"}
@@ -2770,9 +2778,16 @@ function PaymentMethodsPage({ onSessionExpired }) {
               </label>
               <div>
                 <p style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink, margin: 0 }}>{m.nameEn} <span style={{ color: C.muted, fontWeight: 400 }} dir="rtl">{m.nameAr}</span></p>
-                <button onClick={() => setOpenCountriesFor(m)} style={{ ...body, fontSize: 11.5, color: C.signal, background: "none", border: "none", padding: 0, cursor: "pointer", marginTop: 2 }}>
-                  {m.activeCountries.length} of {countries.length} countries active
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
+                  <button onClick={() => setOpenCountriesFor(m)} style={{ ...body, fontSize: 11.5, color: C.signal, background: "none", border: "none", padding: 0, cursor: "pointer" }}>
+                    {m.activeCountries.length} of {countries.length} countries active
+                  </button>
+                  {m.providerId ? (
+                    <span style={{ ...body, fontSize: 11, color: C.muted }}>· {providers.find((p) => p.providerId === m.providerId)?.label || m.providerId}</span>
+                  ) : (
+                    <span style={{ ...body, fontSize: 11, fontWeight: 600, color: C.red }}>· No provider set — can't be checked out with</span>
+                  )}
+                </div>
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -2803,6 +2818,7 @@ function PaymentMethodsPage({ onSessionExpired }) {
         fields={pendingEdit ? [
           { key: "nameEn", label: "English name", value: pendingEdit.nameEn },
           { key: "nameAr", label: "Arabic name", value: pendingEdit.nameAr, dir: "rtl" },
+          { key: "providerId", label: "Gateway provider (which real service actually charges the buyer)", value: pendingEdit.providerId || "", options: providers.map((p) => ({ value: p.providerId, label: p.label })) },
         ] : []}
         onSave={handleSaveEdit}
         onCancel={() => setPendingEdit(null)}

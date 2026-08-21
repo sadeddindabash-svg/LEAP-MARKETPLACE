@@ -781,8 +781,9 @@ export async function searchAdmin(token, query) {
 // same real fitmentMutate helper already used for categories/fitment.
 export const fetchPaymentMethods = (token) => fitmentMutate("GET", "/payment-methods", token);
 export const fetchAvailableCountries = (token) => fitmentMutate("GET", "/payment-methods/available-countries", token);
-export const createPaymentMethod = (token, nameEn, nameAr, photoUrl) => fitmentMutate("POST", "/payment-methods", token, { nameEn, nameAr, photoUrl });
-export const updatePaymentMethod = (token, id, nameEn, nameAr) => fitmentMutate("PATCH", `/payment-methods/${id}`, token, { nameEn, nameAr });
+export const fetchAvailableProviders = (token) => fitmentMutate("GET", "/payment-methods/available-providers", token);
+export const createPaymentMethod = (token, nameEn, nameAr, photoUrl, providerId) => fitmentMutate("POST", "/payment-methods", token, { nameEn, nameAr, photoUrl, providerId });
+export const updatePaymentMethod = (token, id, nameEn, nameAr, providerId) => fitmentMutate("PATCH", `/payment-methods/${id}`, token, { nameEn, nameAr, providerId });
 export const updatePaymentMethodPhoto = (token, id, photoUrl) => fitmentMutate("PATCH", `/payment-methods/${id}/photo`, token, { photoUrl });
 export const movePaymentMethod = (token, id, direction) => fitmentMutate("POST", `/payment-methods/${id}/move`, token, { direction });
 export const activatePaymentMethodCountry = (token, id, countryCode) => fitmentMutate("POST", `/payment-methods/${id}/countries/${countryCode}`, token);

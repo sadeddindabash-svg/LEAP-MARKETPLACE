@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { env } = require('../../../config/env');
+const { getProviderCredentials } = require('../../paymentProviders/routes');
 
 /**
  * Amazon Payment Services (APS) — formerly PayFort before Amazon's
@@ -8,6 +8,14 @@ const { env } = require('../../../config/env');
  * for MENA payment methods (Mada, meeza, local cards) that Stripe covers
  * less completely — a good fit given 7 of our 40 launch markets are
  * GCC/Jordan.
+ *
+ * Real, updated (migration 065/066) -- credentials now come from the
+ * real, encrypted, admin-editable payment_provider_credentials table
+ * (see paymentProviders/routes.js's own getProviderCredentials),
+ * not static environment variables. buildSignature and
+ * buildPurchaseRequest stay pure, fully unit-testable functions --
+ * credentials are passed in explicitly as a real parameter now,
+ * rather than read from a global env object internally.
  *
  * ============================================================
  * VERIFY BEFORE PRODUCTION — read this before trusting this file:
@@ -33,7 +41,8 @@ const { env } = require('../../../config/env');
  *
  * Treat this as a solid structural starting point, not a verified
  * integration. Run a real sandbox transaction against Amazon's actual
- * sandbox environment as the first next step.
+ * sandbox environment as the first next step, once real credentials are
+ * saved via the admin portal's Payment Providers page.
  */
 
 /**
@@ -51,23 +60,21 @@ function buildSignature(params, sharedPhrase) {
   return crypto.createHash('sha256').update(signedString).digest('hex').toUpperCase();
 }
 
-function isConfigured() {
-  return Boolean(env.apsMerchantIdentifier && env.apsAccessCode && env.apsShaRequestPhrase);
+async function isConfigured() {
+  const creds = await getProviderCredentials('amazon_payment_services');
+  return Boolean(creds?.merchantIdentifier && creds?.accessCode && creds?.shaRequestPhrase);
 }
 
 /**
  * Builds (but does not send — see caller) a purchase request payload.
- * Exported separately from the network call so the payload/signature
- * logic can be unit-tested without a live connection.
+ * Pure, fully unit-testable -- credentials now passed in explicitly
+ * (real, migration 065/066) rather than read from env internally.
  */
-function buildPurchaseRequest({ merchantReference, amount, currencyCode, customerEmail, returnUrl, language = 'en' }) {
-  if (!isConfigured()) {
-    throw new Error('Amazon Payment Services is not configured. Set APS_MERCHANT_IDENTIFIER, APS_ACCESS_CODE, and APS_SHA_REQUEST_PHRASE in .env');
-  }
+function buildPurchaseRequest({ merchantReference, amount, currencyCode, customerEmail, returnUrl, language = 'en' }, credentials) {
   const params = {
     command: 'PURCHASE',
-    access_code: env.apsAccessCode,
-    merchant_identifier: env.apsMerchantIdentifier,
+    access_code: credentials.accessCode,
+    merchant_identifier: credentials.merchantIdentifier,
     merchant_reference: merchantReference,
     amount: String(amount),
     currency: currencyCode.toUpperCase(),
@@ -77,7 +84,7 @@ function buildPurchaseRequest({ merchantReference, amount, currencyCode, custome
   };
   return {
     ...params,
-    signature: buildSignature(params, env.apsShaRequestPhrase),
+    signature: buildSignature(params, credentials.shaRequestPhrase),
   };
 }
 
@@ -85,10 +92,14 @@ function buildPurchaseRequest({ merchantReference, amount, currencyCode, custome
  * Sends the purchase request to APS. NOT NETWORK-TESTED — see file header.
  */
 async function createPurchase(purchaseParams) {
-  const payload = buildPurchaseRequest(purchaseParams);
-  const baseUrl = env.apsApiBaseUrl; // TODO: confirm real sandbox/production URL
+  const credentials = await getProviderCredentials('amazon_payment_services');
+  if (!credentials?.merchantIdentifier || !credentials?.accessCode || !credentials?.shaRequestPhrase) {
+    throw new Error('Amazon Payment Services is not configured. Set it up in the admin portal\'s Payment Providers page.');
+  }
+  const payload = buildPurchaseRequest(purchaseParams, credentials);
+  const baseUrl = credentials.apiBaseUrl;
   if (!baseUrl) {
-    throw new Error('APS_API_BASE_URL is not set — confirm the correct sandbox/production endpoint from your APS merchant dashboard before setting this.');
+    throw new Error('No API Base URL saved for Amazon Payment Services — confirm the correct sandbox/production endpoint from your APS merchant dashboard and add it in the admin portal.');
   }
   // REAL BUG FOUND AND FIXED HERE, same real bug class already found
   // and fixed for the SMTP email transport, the translation API, and
@@ -113,9 +124,9 @@ async function createPurchase(purchaseParams) {
 
   // Response signature verification — APS signs responses too, using the
   // separate SHA *response* phrase. Verify before trusting the response.
-  if (env.apsShaResponsePhrase && data.signature) {
+  if (credentials.shaResponsePhrase && data.signature) {
     const { signature: receivedSignature, ...rest } = data;
-    const expectedSignature = buildSignature(rest, env.apsShaResponsePhrase);
+    const expectedSignature = buildSignature(rest, credentials.shaResponsePhrase);
     if (receivedSignature !== expectedSignature) {
       throw new Error('APS response signature mismatch — possible tampering or a phrase/config mismatch. Do not trust this response.');
     }
