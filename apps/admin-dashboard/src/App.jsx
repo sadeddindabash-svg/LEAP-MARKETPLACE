@@ -5352,12 +5352,16 @@ function SettingsPage({ currentUser, onSessionExpired }) {
   return (
     <div>
       <TopBar title="Settings" subtitle="Team permissions, commission rules, and platform configuration" />
-      <div style={{ padding: 24, display: "flex", gap: 16, flexWrap: "wrap" }}>
-        <TeamPermissionsSection currentUser={currentUser} onSessionExpired={onSessionExpired} />
-        <CommissionRulesSection onSessionExpired={onSessionExpired} />
-        <ReturnWindowSection onSessionExpired={onSessionExpired} />
-        <EmailTestSection />
-        <AuditLogSection currentUser={currentUser} onSessionExpired={onSessionExpired} />
+      <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+          <TeamPermissionsSection currentUser={currentUser} onSessionExpired={onSessionExpired} />
+          <AuditLogSection currentUser={currentUser} onSessionExpired={onSessionExpired} />
+        </div>
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+          <CommissionRulesSection onSessionExpired={onSessionExpired} />
+          <ReturnWindowSection onSessionExpired={onSessionExpired} />
+          <EmailTestSection />
+        </div>
       </div>
     </div>
   );
