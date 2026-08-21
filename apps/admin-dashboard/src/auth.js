@@ -790,3 +790,9 @@ export const deactivatePaymentMethodCountry = (token, id, countryCode) => fitmen
 export const deletePaymentMethod = (token, id) => fitmentMutate("DELETE", `/payment-methods/${id}`, token);
 export const setPaymentMethodActive = (token, id, isActive) => fitmentMutate("PATCH", `/payment-methods/${id}/active`, token, { isActive });
 export const bulkSetPaymentMethodCountries = (token, id, action) => fitmentMutate("POST", `/payment-methods/${id}/countries-bulk`, token, { action });
+
+// Real, new -- payment provider credentials (the real "set up page"
+// system, separate from payment_methods' own display/catalog layer).
+export const fetchPaymentProviders = (token) => fitmentMutate("GET", "/payment-providers", token);
+export const savePaymentProviderCredentials = (token, providerId, values) => fitmentMutate("PUT", `/payment-providers/${providerId}`, token, values);
+export const deletePaymentProviderCredentials = (token, providerId) => fitmentMutate("DELETE", `/payment-providers/${providerId}`, token);

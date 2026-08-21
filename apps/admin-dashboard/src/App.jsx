@@ -12,6 +12,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart, uploadImage, updateCategoryPhoto, updatePartPhoto, moveCategory, movePart, moveBrand, moveModel, moveGeneration, moveEngine, moveTransmission, updateBrandPhoto, updateModelPhoto,
   updateCategory, updatePart, updateBrand, updateModel, updateGeneration, updateEngine, updateTransmission,
   fetchPaymentMethods, fetchAvailableCountries, createPaymentMethod, updatePaymentMethod, updatePaymentMethodPhoto, movePaymentMethod, activatePaymentMethodCountry, deactivatePaymentMethodCountry, deletePaymentMethod, setPaymentMethodActive, bulkSetPaymentMethodCountries,
+  fetchPaymentProviders, savePaymentProviderCredentials, deletePaymentProviderCredentials,
   fetchSupplierMessagesInbox, fetchSupplierMessageThread, sendSupplierMessage,
   fetchPromoCodes, createPromoCode, updatePromoCode, deletePromoCode,
   fetchAdminUsers, createAdminUser, updateAdminPermissions, deleteAdminUser,
@@ -29,7 +30,7 @@ import {
   Search, Bell, ChevronDown, ChevronUp, ChevronRight, TrendingUp, TrendingDown, Truck, Plus, Pencil,
   CheckCircle2, XCircle, Clock, AlertTriangle, MoreHorizontal, ArrowUpRight,
   Filter as FilterIcon, Download, Check, X, MessageSquare, Star, Globe, Users,
-  CreditCard, ExternalLink, ChevronLeft, RotateCcw, Warehouse, Calculator, Layers, Send, Tag, ImagePlus
+  CreditCard, ExternalLink, ChevronLeft, RotateCcw, Warehouse, Calculator, Layers, Send, Tag, ImagePlus, Key
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -2812,6 +2813,144 @@ function PaymentMethodsPage({ onSessionExpired }) {
   );
 }
 
+// Real, new -- the actual credential "set up page" system (separate
+// from PaymentMethodsPage's own display/catalog layer above). Lists
+// every known real gateway provider and its real configuration
+// status, and opens a dedicated real setup form per provider with
+// fields rendered dynamically from what the real backend returns
+// (rather than hardcoding each provider's own shape here) -- Stripe
+// needs 2 real fields, Amazon Payment Services needs 5, etc.
+function PaymentProvidersPage({ onSessionExpired }) {
+  const [providers, setProviders] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [openProvider, setOpenProvider] = useState(null); // the full provider object currently being edited
+  const [formValues, setFormValues] = useState({});
+  const [isSaving, setIsSaving] = useState(false);
+  const [pendingClear, setPendingClear] = useState(null); // {providerId, label}
+
+  const load = () => {
+    setLoadState("loading");
+    fetchPaymentProviders(getStoredToken())
+      .then((data) => { setProviders(data); setLoadState("ready"); })
+      .catch((e) => {
+        if (e instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(e.message); setLoadState("error");
+      });
+  };
+  useEffect(load, []);
+
+  const handleOpenProvider = (provider) => {
+    setOpenProvider(provider);
+    setErrorMessage(null);
+    // Real, deliberate -- non-secret fields pre-fill with their real
+    // current value (safe to show in full); secret fields start
+    // empty, with the real masked value shown only as a placeholder
+    // hint -- matches the real backend's own "empty submission means
+    // keep the existing real value" design exactly, so an admin who
+    // isn't changing a secret never has to re-type it.
+    const initial = {};
+    for (const f of provider.fields) initial[f.key] = f.secret ? "" : f.value;
+    setFormValues(initial);
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    setErrorMessage(null);
+    try {
+      await savePaymentProviderCredentials(getStoredToken(), openProvider.providerId, formValues);
+      setOpenProvider(null);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleClear = async (providerId) => {
+    try {
+      await deletePaymentProviderCredentials(getStoredToken(), providerId);
+      setPendingClear(null);
+      setOpenProvider(null);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
+  if (loadState === "loading") return <div style={{ ...body, fontSize: 12.5, color: C.muted, textAlign: "center", padding: 32 }}>Loading…</div>;
+
+  if (openProvider) {
+    return (
+      <div style={{ padding: 24 }}>
+        <button onClick={() => setOpenProvider(null)} style={{ ...body, display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 13, marginBottom: 16, padding: 0 }}>
+          <ChevronLeft size={16} /> Back to Payment Providers
+        </button>
+        <p style={{ ...disp, fontSize: 18, fontWeight: 700, color: C.ink, margin: "0 0 4px" }}>{openProvider.label}</p>
+        <p style={{ ...body, fontSize: 12.5, color: C.muted, margin: "0 0 20px" }}>
+          {openProvider.isConfigured ? "Already configured" : "Not yet configured"} — credentials are encrypted before storage and never shown in full once saved.
+        </p>
+        {errorMessage && <p style={{ ...body, fontSize: 12.5, color: C.red, margin: "0 0 12px" }}>{errorMessage}</p>}
+        <Card style={{ padding: 16 }}>
+          {openProvider.fields.map((f) => (
+            <div key={f.key} style={{ marginBottom: 14 }}>
+              <label style={{ ...body, fontSize: 12, fontWeight: 600, color: C.ink, display: "block", marginBottom: 4 }}>{f.label}</label>
+              <input
+                type={f.secret ? "password" : "text"}
+                value={formValues[f.key] ?? ""}
+                onChange={(e) => setFormValues((v) => ({ ...v, [f.key]: e.target.value }))}
+                placeholder={f.secret && f.value ? `Currently set (${f.value}) — leave blank to keep it` : ""}
+                style={{ ...body, width: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }}
+              />
+            </div>
+          ))}
+          <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+            <button disabled={isSaving} onClick={handleSave} style={{ ...body, flex: 1, padding: "9px 16px", borderRadius: 8, border: "none", background: isSaving ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 13, fontWeight: 700, cursor: isSaving ? "default" : "pointer" }}>
+              {isSaving ? "Saving…" : "Save"}
+            </button>
+            {openProvider.isConfigured && (
+              <button onClick={() => setPendingClear({ providerId: openProvider.providerId, label: openProvider.label })} style={{ ...body, padding: "9px 16px", borderRadius: 8, border: `1px solid ${C.red}`, background: "none", color: C.red, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                Clear credentials
+              </button>
+            )}
+          </div>
+        </Card>
+        <ConfirmDialog
+          isOpen={!!pendingClear}
+          title={`Clear ${pendingClear?.label} credentials?`}
+          message="This immediately stops any real transactions through this provider until it's set up again."
+          onConfirm={() => handleClear(pendingClear.providerId)}
+          onCancel={() => setPendingClear(null)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: 24 }}>
+      <p style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink, margin: "0 0 4px" }}>Payment Providers</p>
+      <p style={{ ...body, fontSize: 13, color: C.muted, margin: "0 0 20px" }}>Connect each payment method to its real gateway. Credentials are encrypted and never shown in full once saved.</p>
+      {errorMessage && <p style={{ ...body, fontSize: 12.5, color: C.red, margin: "0 0 12px" }}>{errorMessage}</p>}
+      <Card>
+        {providers.map((p) => (
+          <div key={p.providerId} onClick={() => handleOpenProvider(p)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", borderBottom: `1px solid ${C.line}`, cursor: "pointer" }}>
+            <span style={{ ...body, fontSize: 13.5, fontWeight: 700, color: C.ink }}>{p.label}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ ...body, fontSize: 11.5, fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: p.isConfigured ? "rgba(34,197,94,0.12)" : "rgba(107,114,128,0.12)", color: p.isConfigured ? "#16A34A" : C.muted }}>
+                {p.isConfigured ? "Configured" : "Not configured"}
+              </span>
+              <ChevronRight size={14} color={C.muted} />
+            </div>
+          </div>
+        ))}
+      </Card>
+    </div>
+  );
+}
+
 // Real queue of every flagged hub shipment across all orders — the
 // actual answer to "where do I find a flagged issue," which before this
 // existed had no answer at all beyond already knowing which order to
@@ -5223,6 +5362,7 @@ const NAV = [
   { id: "hubs", label: "Hubs", icon: Warehouse },
   { id: "pricing", label: "Pricing", icon: Calculator },
   { id: "paymentMethods", label: "Payment Methods", icon: CreditCard },
+  { id: "paymentProviders", label: "Payment Providers", icon: Key },
   { id: "flagged", label: "Flagged Shipments", icon: AlertTriangle },
   { id: "payouts", label: "Payouts", icon: Wallet },
   { id: "reviews", label: "Reviews", icon: Star },
@@ -5285,6 +5425,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   else if (page === "hubs") content = <HubsPage onSessionExpired={onLogout} />;
   else if (page === "pricing") content = <PricingPage onSessionExpired={onLogout} />;
   else if (page === "paymentMethods") content = <PaymentMethodsPage onSessionExpired={onLogout} />;
+  else if (page === "paymentProviders") content = <PaymentProvidersPage onSessionExpired={onLogout} />;
   else if (page === "flagged") content = <FlaggedShipmentsPage onOpenOrder={setOpenOrder} onSessionExpired={onLogout} />;
   else if (page === "payouts") content = <PayoutsPage onSessionExpired={onLogout} />;
   else if (page === "reviews") content = <ReviewsPage onSessionExpired={onLogout} />;
