@@ -27,7 +27,7 @@ export default async function HomePage() {
           <div className="mt-8 flex gap-3">
             <Link
               href="/search"
-              className="inline-flex items-center rounded-md bg-signal px-6 py-3 text-white font-semibold hover:bg-signal-dark transition-colors"
+              className="inline-flex items-center rounded-md bg-signal px-6 py-3 text-on-signal font-semibold hover:bg-signal-dark transition-colors"
             >
               Browse parts
             </Link>

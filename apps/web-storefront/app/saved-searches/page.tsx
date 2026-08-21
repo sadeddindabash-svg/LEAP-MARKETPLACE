@@ -53,7 +53,7 @@ export default function SavedSearchesPage() {
         </p>
         <Link
           href="/login"
-          className="mt-6 inline-flex items-center rounded-md bg-signal px-6 py-3 text-white font-semibold hover:bg-signal-dark transition-colors"
+          className="mt-6 inline-flex items-center rounded-md bg-signal px-6 py-3 text-on-signal font-semibold hover:bg-signal-dark transition-colors"
         >
           Log in
         </Link>

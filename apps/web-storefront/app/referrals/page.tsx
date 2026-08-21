@@ -52,7 +52,7 @@ export default function ReferralsPage() {
         <p className="mt-3 text-muted">Log in to get your own referral link.</p>
         <Link
           href="/login"
-          className="mt-6 inline-flex items-center rounded-md bg-signal px-6 py-3 text-white font-semibold hover:bg-signal-dark transition-colors"
+          className="mt-6 inline-flex items-center rounded-md bg-signal px-6 py-3 text-on-signal font-semibold hover:bg-signal-dark transition-colors"
         >
           Log in
         </Link>
@@ -89,7 +89,7 @@ export default function ReferralsPage() {
           />
           <button
             onClick={handleCopy}
-            className="rounded-md bg-signal px-4 py-2 text-sm text-white font-semibold hover:bg-signal-dark transition-colors flex-shrink-0"
+            className="rounded-md bg-signal px-4 py-2 text-sm text-on-signal font-semibold hover:bg-signal-dark transition-colors flex-shrink-0"
           >
             {copied ? "Copied ✓" : "Copy"}
           </button>

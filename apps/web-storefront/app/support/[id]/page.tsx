@@ -86,7 +86,7 @@ function SupportTicketContent() {
             className="flex-1 rounded-md border border-line px-3 py-2 text-sm"
             placeholder="you@example.com"
           />
-          <button type="submit" className="rounded-md bg-signal px-5 py-2 text-sm text-white font-semibold hover:bg-signal-dark transition-colors">
+          <button type="submit" className="rounded-md bg-signal px-5 py-2 text-sm text-on-signal font-semibold hover:bg-signal-dark transition-colors">
             View
           </button>
         </form>
@@ -141,7 +141,7 @@ function SupportTicketContent() {
         <button
           type="submit"
           disabled={isSending}
-          className="rounded-md bg-signal px-5 py-2 text-sm text-white font-semibold hover:bg-signal-dark transition-colors disabled:opacity-60"
+          className="rounded-md bg-signal px-5 py-2 text-sm text-on-signal font-semibold hover:bg-signal-dark transition-colors disabled:opacity-60"
         >
           {isSending ? "Sending…" : "Send"}
         </button>

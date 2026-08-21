@@ -63,7 +63,7 @@ export function AddToCartButton({ productId, inStock }: Props) {
       <button
         onClick={handleAdd}
         disabled={status === "adding"}
-        className="flex-1 rounded-md bg-signal px-6 py-3 text-white font-semibold hover:bg-signal-dark transition-colors disabled:opacity-60"
+        className="flex-1 rounded-md bg-signal px-6 py-3 text-on-signal font-semibold hover:bg-signal-dark transition-colors disabled:opacity-60"
       >
         {status === "adding" ? "Adding…" : status === "added" ? "Added ✓" : status === "error" ? "Couldn't add — try again" : "Add to cart"}
       </button>

@@ -40,9 +40,9 @@ import {
 /* ============================================================
    LEAP OPS — token system (shared brand, ops-tool execution)
    Color:  Asphalt #14171C (chrome/sidebar) · Cloud #F5F6F8 (canvas)
-           Signal #E8622C (primary action / attention) · Torque #2A5FD9 (data / links)
+           Signal #F2A71B (primary action / attention) · Torque #2A5FD9 (data / links)
            Gauge #1E9D6B (success) · Amber #B9791F (pending) · Red #C0362C (risk)
-   Type:   Barlow Condensed (numerals/headings) · Inter (UI/body) · JetBrains Mono (codes/IDs)
+   Type:   Manrope (headings/UI/body, matching the mobile app exactly) · JetBrains Mono (codes/IDs)
    Signature: "plate chip" tags for order/supplier/tracking codes — same device as the buyer app.
    ============================================================ */
 
@@ -244,7 +244,7 @@ function NotificationBell({ nav }) {
       >
         <Bell size={18} color={C.ink} />
         {total > 0 && (
-          <span style={{ position: "absolute", top: -6, right: -6, background: C.signal, color: "#fff", borderRadius: "50%", minWidth: 16, height: 16, fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>
+          <span style={{ position: "absolute", top: -6, right: -6, background: C.signal, color: C.onSignal, borderRadius: "50%", minWidth: 16, height: 16, fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>
             {total > 9 ? "9+" : total}
           </span>
         )}
@@ -745,7 +745,7 @@ function HubAssignmentPanel({ subOrder, onAssigned, onSessionExpired }) {
           <button
             disabled={isAssigning || !selectedHubId}
             onClick={handleAssign}
-            style={{ ...body, padding: "7px 14px", borderRadius: 7, border: "none", background: isAssigning || !selectedHubId ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isAssigning || !selectedHubId ? "default" : "pointer" }}
+            style={{ ...body, padding: "7px 14px", borderRadius: 7, border: "none", background: isAssigning || !selectedHubId ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isAssigning || !selectedHubId ? "default" : "pointer" }}
           >Assign</button>
         </div>
         {errorMessage && <div style={{ ...body, fontSize: 11.5, color: C.red, marginTop: 6 }}>{errorMessage}</div>}
@@ -1727,7 +1727,7 @@ function VehicleDataPage({ onSessionExpired }) {
           {newModelPhotoPreview && <img src={newModelPhotoPreview} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
         </>
       )}
-      <button disabled={isSubmitting} onClick={() => handleAdd(kind)} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
+      <button disabled={isSubmitting} onClick={() => handleAdd(kind)} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
         <Check size={13} /> {kind === "model" && isUploadingModelPhoto ? "Uploading…" : "Add"}
       </button>
     </div>
@@ -1788,7 +1788,7 @@ function VehicleDataPage({ onSessionExpired }) {
                     <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleBrandPhotoSelect} style={{ display: "none" }} />
                   </label>
                   {newBrandPhotoPreview && <img src={newBrandPhotoPreview} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
-                  <button disabled={isSubmitting} onClick={() => handleAdd("brand")} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
+                  <button disabled={isSubmitting} onClick={() => handleAdd("brand")} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
                     <Check size={13} /> {isUploadingBrandPhoto ? "Uploading…" : "Add"}
                   </button>
                 </div>
@@ -2018,7 +2018,7 @@ function HubWorkloadSection({ onSessionExpired }) {
                           onChange={(e) => setEditValue(e.target.value)}
                           style={{ ...body, width: 70, border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 8px", fontSize: 12 }}
                         />
-                        <button onClick={() => handleSaveCapacity(h.id)} style={{ ...body, fontSize: 11.5, fontWeight: 700, color: "#fff", background: C.signal, border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>Save</button>
+                        <button onClick={() => handleSaveCapacity(h.id)} style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.onSignal, background: C.signal, border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>Save</button>
                         <button onClick={() => setEditingId(null)} style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>Cancel</button>
                       </>
                     ) : (
@@ -2175,7 +2175,7 @@ function HubsPage({ onSessionExpired }) {
               <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Hub name (e.g. Rotterdam Hub)" style={{ ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
               <input value={newRegion} onChange={(e) => setNewRegion(e.target.value)} placeholder="Region (e.g. Europe)" style={{ ...body, flex: 1, minWidth: 140, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
               <input value={newAddress} onChange={(e) => setNewAddress(e.target.value)} placeholder="Address (optional)" style={{ ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
-              <button disabled={isSubmitting} onClick={handleAdd} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
+              <button disabled={isSubmitting} onClick={handleAdd} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
                 <Check size={13} /> Add hub
               </button>
             </div>
@@ -2395,7 +2395,7 @@ function PricingPage({ onSessionExpired }) {
                 {fxRateMode === "manual" ? (
                   <div style={{ display: "flex", gap: 8 }}>
                     <input type="number" step="0.0001" value={rateInput} onChange={(e) => setRateInput(e.target.value)} style={{ ...body, width: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
-                    <button disabled={isSavingRate} onClick={handleSaveRate} style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: isSavingRate ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSavingRate ? "default" : "pointer" }}>
+                    <button disabled={isSavingRate} onClick={handleSaveRate} style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: isSavingRate ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSavingRate ? "default" : "pointer" }}>
                       {isSavingRate ? "Saving…" : "Update rate"}
                     </button>
                   </div>
@@ -2419,7 +2419,7 @@ function PricingPage({ onSessionExpired }) {
               </select>
               <input type="number" step="0.01" value={newValue} onChange={(e) => setNewValue(e.target.value)} placeholder="Value" style={{ ...body, flex: 1, minWidth: 90, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
               <input type="number" value={newSortOrder} onChange={(e) => setNewSortOrder(e.target.value)} placeholder="Order" style={{ ...body, flex: 1, minWidth: 80, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
-              <button disabled={isSubmitting} onClick={handleAddFee} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
+              <button disabled={isSubmitting} onClick={handleAddFee} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
                 <Check size={13} /> Add fee
               </button>
             </div>
@@ -2753,7 +2753,7 @@ function PaymentMethodsPage({ onSessionExpired }) {
             <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePhotoSelect} style={{ display: "none" }} />
           </label>
           {newPhotoPreview && <img src={newPhotoPreview} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
-          <button disabled={isSubmitting} onClick={handleAdd} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
+          <button disabled={isSubmitting} onClick={handleAdd} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
             <Check size={13} /> {isUploadingPhoto ? "Uploading…" : "Add"}
           </button>
         </div>
@@ -2924,7 +2924,7 @@ function PaymentProvidersPage({ onSessionExpired }) {
             </div>
           ))}
           <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-            <button disabled={isSaving} onClick={handleSave} style={{ ...body, flex: 1, padding: "9px 16px", borderRadius: 8, border: "none", background: isSaving ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 13, fontWeight: 700, cursor: isSaving ? "default" : "pointer" }}>
+            <button disabled={isSaving} onClick={handleSave} style={{ ...body, flex: 1, padding: "9px 16px", borderRadius: 8, border: "none", background: isSaving ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 13, fontWeight: 700, cursor: isSaving ? "default" : "pointer" }}>
               {isSaving ? "Saving…" : "Save"}
             </button>
             {openProvider.isConfigured && (
@@ -3045,7 +3045,7 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired }) {
                     </div>
                     <button
                       onClick={() => onOpenOrder(s.orderId)}
-                      style={{ ...body, padding: "7px 14px", borderRadius: 7, border: "none", background: C.signal, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
+                      style={{ ...body, padding: "7px 14px", borderRadius: 7, border: "none", background: C.signal, color: C.onSignal, fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
                     >
                       View order
                     </button>
@@ -3220,7 +3220,7 @@ function CategoriesPage({ onSessionExpired }) {
                 <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleCatPhotoSelect} style={{ display: "none" }} />
               </label>
               {newCatPhotoPreview && <img src={newCatPhotoPreview} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
-              <button disabled={isSubmittingCat} onClick={handleAddCategory} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmittingCat ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSubmittingCat ? "default" : "pointer" }}>
+              <button disabled={isSubmittingCat} onClick={handleAddCategory} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmittingCat ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSubmittingCat ? "default" : "pointer" }}>
                 <Check size={13} /> {isUploadingCatPhoto ? "Uploading…" : "Add category"}
               </button>
             </div>
@@ -3445,7 +3445,7 @@ function CategoryPartsPage({ category, onBack, onSessionExpired }) {
                 <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePartPhotoSelect} style={{ display: "none" }} />
               </label>
               {newPartPhotoPreview && <img src={newPartPhotoPreview} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
-              <button disabled={isSubmitting} onClick={handleAddPart} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
+              <button disabled={isSubmitting} onClick={handleAddPart} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
                 <Check size={13} /> {isUploadingPartPhoto ? "Uploading…" : "Add part"}
               </button>
             </div>
@@ -3673,7 +3673,7 @@ function SupplierMessageThreadPage({ supplierId, supplierName, onBack, onSession
           const canToggle = !isMe && m.translationStatus === "success";
           return (
             <div key={m.id} style={{ alignSelf: isMe ? "flex-end" : "flex-start", maxWidth: "65%" }}>
-              <div style={{ ...body, fontSize: 13, padding: "10px 14px", borderRadius: 12, lineHeight: 1.5, background: isMe ? C.signal : "#fff", color: isMe ? "#fff" : C.ink, border: isMe ? "none" : `1px solid ${C.line}` }}>
+              <div style={{ ...body, fontSize: 13, padding: "10px 14px", borderRadius: 12, lineHeight: 1.5, background: isMe ? C.signal : "#fff", color: isMe ? C.onSignal : C.ink, border: isMe ? "none" : `1px solid ${C.line}` }}>
                 {displayText}
               </div>
               {!isMe && m.translationStatus === "unavailable" && (
@@ -3863,7 +3863,7 @@ function PromoCodesPage({ onSessionExpired }) {
                 <span style={{ ...body, fontSize: 10, color: C.muted }}>Expires (blank = never)</span>
                 <input value={newExpiresAt} onChange={(e) => setNewExpiresAt(e.target.value)} type="date" style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
               </div>
-              <button disabled={isSubmitting} onClick={handleCreate} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
+              <button disabled={isSubmitting} onClick={handleCreate} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
                 <Check size={13} /> Create
               </button>
             </div>
@@ -4507,7 +4507,7 @@ function TicketDetailPage({ ticketId, onBack, onSessionExpired }) {
                   <div style={{
                     ...body, fontSize: 13, padding: "10px 14px", borderRadius: 12,
                     background: m.senderRole === "admin" ? C.signal : C.canvas,
-                    color: m.senderRole === "admin" ? "#fff" : C.ink,
+                    color: m.senderRole === "admin" ? C.onSignal : C.ink,
                   }}>{m.message}</div>
                   <div style={{ ...body, fontSize: 10.5, color: C.muted, marginTop: 3, textAlign: m.senderRole === "admin" ? "right" : "left" }}>
                     {m.senderRole === "admin" ? "Platform" : "Buyer"} · {new Date(m.createdAt).toLocaleString()}
@@ -4526,7 +4526,7 @@ function TicketDetailPage({ ticketId, onBack, onSessionExpired }) {
               <button
                 disabled={isSending}
                 onClick={handleReply}
-                style={{ ...body, padding: "9px 16px", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 13, fontWeight: 700, cursor: isSending ? "default" : "pointer", opacity: isSending ? 0.6 : 1 }}
+                style={{ ...body, padding: "9px 16px", borderRadius: 8, border: "none", background: C.signal, color: C.onSignal, fontSize: 13, fontWeight: 700, cursor: isSending ? "default" : "pointer", opacity: isSending ? 0.6 : 1 }}
               >Send</button>
             </div>
           </Card>
@@ -4760,7 +4760,7 @@ function ReturnCaseDetailPage({ caseId, onBack, onSessionExpired }) {
             </div>
             <div style={{ padding: 12, borderTop: `1px solid ${C.line}`, display: "flex", gap: 8 }}>
               <input value={buyerReply} onChange={(e) => setBuyerReply(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendBuyerReply()} placeholder="Reply to buyer…" style={{ ...body, flex: 1, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 10px", fontSize: 12.5 }} />
-              <button disabled={isSending} onClick={sendBuyerReply} style={{ ...body, padding: "8px 14px", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSending ? "default" : "pointer" }}>Send</button>
+              <button disabled={isSending} onClick={sendBuyerReply} style={{ ...body, padding: "8px 14px", borderRadius: 8, border: "none", background: C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSending ? "default" : "pointer" }}>Send</button>
             </div>
           </Card>
           <Card title="Supplier thread">
@@ -4775,7 +4775,7 @@ function ReturnCaseDetailPage({ caseId, onBack, onSessionExpired }) {
             </div>
             <div style={{ padding: 12, borderTop: `1px solid ${C.line}`, display: "flex", gap: 8 }}>
               <input value={supplierReply} onChange={(e) => setSupplierReply(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendSupplierReply()} placeholder="Message supplier…" style={{ ...body, flex: 1, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 10px", fontSize: 12.5 }} />
-              <button disabled={isSending} onClick={sendSupplierReply} style={{ ...body, padding: "8px 14px", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSending ? "default" : "pointer" }}>Send</button>
+              <button disabled={isSending} onClick={sendSupplierReply} style={{ ...body, padding: "8px 14px", borderRadius: 8, border: "none", background: C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSending ? "default" : "pointer" }}>Send</button>
             </div>
           </Card>
           <div style={{ ...body, fontSize: 11, color: C.muted, padding: "0 4px" }}>
@@ -4964,7 +4964,7 @@ function TeamPermissionsSection({ currentUser, onSessionExpired }) {
                     </label>
                   ))}
                 </div>
-                <button onClick={() => handleSavePermissions(a.id)} style={{ ...body, marginTop: 8, padding: "6px 12px", borderRadius: 7, border: "none", background: C.signal, color: "#fff", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
+                <button onClick={() => handleSavePermissions(a.id)} style={{ ...body, marginTop: 8, padding: "6px 12px", borderRadius: 7, border: "none", background: C.signal, color: C.onSignal, fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
                   Save permissions
                 </button>
               </>
@@ -5001,7 +5001,7 @@ function TeamPermissionsSection({ currentUser, onSessionExpired }) {
               ))}
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <button disabled={isSubmitting} onClick={handleCreate} style={{ ...body, padding: "7px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
+              <button disabled={isSubmitting} onClick={handleCreate} style={{ ...body, padding: "7px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
                 Create admin
               </button>
               <button onClick={() => setShowCreateForm(false)} style={{ ...body, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "none", color: C.muted, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
@@ -5475,7 +5475,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
               <button key={n.id} onClick={() => { setPage(n.id); setOpenOrder(null); setOpenTicket(null); setOpenCase(null); }} style={{
                 width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", marginBottom: 2, borderRadius: 8,
                 border: "none", cursor: "pointer", textAlign: "left",
-                background: active ? C.signal : "transparent", color: active ? "#fff" : "#B8BEC9",
+                background: active ? C.signal : "transparent", color: active ? C.onSignal : "#B8BEC9",
               }}>
                 <Icon size={16} />
                 <span style={{ ...body, fontSize: 13, fontWeight: active ? 700 : 500, flex: 1 }}>{n.label}</span>
@@ -5545,9 +5545,12 @@ export default function LeapAdminApp() {
 
   if (authState.status === "checking") {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 700, fontFamily: "'Inter', sans-serif", color: "#6B7280", fontSize: 13 }}>
-        Checking session…
-      </div>
+      <>
+        <style>{FONT_IMPORT}</style>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 700, ...body, color: "#6B7280", fontSize: 13 }}>
+          Checking session…
+        </div>
+      </>
     );
   }
   if (authState.status === "loggedOut") {

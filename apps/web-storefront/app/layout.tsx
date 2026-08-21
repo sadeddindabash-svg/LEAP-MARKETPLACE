@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Barlow_Condensed, Inter, JetBrains_Mono } from "next/font/google";
+import { Manrope, JetBrains_Mono } from "next/font/google";
 import Link from "next/link";
 import { CartProvider } from "@/components/CartProvider";
 import { AuthProvider } from "@/components/AuthProvider";
@@ -8,18 +8,15 @@ import AccountLink from "@/components/AccountLink";
 import NotificationBell from "@/components/NotificationBell";
 import "./globals.css";
 
-// Real brand fonts, carried over exactly from the established system
-// in apps/mobile/lib/core/theme.dart / docs/prototypes/leap_mobile_prototype.jsx
-// -- Barlow Condensed for display/headlines, Inter for body, JetBrains
-// Mono for part numbers and the plate-chip fitment badge.
-const barlowCondensed = Barlow_Condensed({
-  variable: "--font-barlow-condensed",
-  weight: ["500", "600", "700"],
-  subsets: ["latin"],
-});
-const inter = Inter({
-  variable: "--font-inter",
-  weight: ["400", "500", "600", "700"],
+// Real, confirmed with the person -- updated to match the real mobile
+// app's own current design exactly (apps/mobile/lib/core/theme.dart),
+// replacing the real previous 2-font split (Barlow Condensed for
+// display, Inter for body) with a single real Manrope font, matching
+// the mobile app's own real uniform typeface. JetBrains Mono is kept
+// for part numbers and the plate-chip fitment badge.
+const manrope = Manrope({
+  variable: "--font-manrope",
+  weight: ["400", "500", "600", "700", "800"],
   subsets: ["latin"],
 });
 const jetbrainsMono = JetBrains_Mono({
@@ -45,7 +42,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${barlowCondensed.variable} ${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      className={`${manrope.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-chalk text-ink">
         <AuthProvider>

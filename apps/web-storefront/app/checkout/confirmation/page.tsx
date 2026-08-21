@@ -32,7 +32,7 @@ function ConfirmationContent() {
       </p>
       <Link
         href="/search"
-        className="mt-8 inline-flex items-center rounded-md bg-signal px-6 py-3 text-white font-semibold hover:bg-signal-dark transition-colors"
+        className="mt-8 inline-flex items-center rounded-md bg-signal px-6 py-3 text-on-signal font-semibold hover:bg-signal-dark transition-colors"
       >
         Continue browsing
       </Link>

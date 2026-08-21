@@ -163,7 +163,7 @@ export function EditDialog({ isOpen, title, fields, onSave, onCancel, errorMessa
         )}
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6 }}>
           <button onClick={onCancel} style={{ ...body, fontSize: 12.5, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "none", cursor: "pointer" }}>Cancel</button>
-          <button disabled={isSaving} onClick={() => onSave(values)} style={{ ...body, fontSize: 12.5, padding: "7px 14px", borderRadius: 8, border: "none", background: isSaving ? "#D1D5DB" : C.signal, color: "#fff", fontWeight: 700, cursor: isSaving ? "default" : "pointer" }}>{isSaving ? "Saving…" : "Save"}</button>
+          <button disabled={isSaving} onClick={() => onSave(values)} style={{ ...body, fontSize: 12.5, padding: "7px 14px", borderRadius: 8, border: "none", background: isSaving ? "#D1D5DB" : C.signal, color: C.onSignal, fontWeight: 700, cursor: isSaving ? "default" : "pointer" }}>{isSaving ? "Saving…" : "Save"}</button>
         </div>
       </div>
     </div>

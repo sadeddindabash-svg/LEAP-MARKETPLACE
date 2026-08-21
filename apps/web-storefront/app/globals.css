@@ -1,22 +1,33 @@
 @import "tailwindcss";
 
 /*
- * Brand tokens carried over EXACTLY from apps/mobile/lib/core/theme.dart
- * (itself carried over from docs/prototypes/leap_mobile_prototype.jsx)
- * so this storefront is visually the same product as the app, not a
- * reskin. Same reasoning for the fonts below: Barlow Condensed (an
- * industrial, gauge-cluster display face -- fitting for an auto parts
- * catalog), Inter for body copy, JetBrains Mono for part numbers and
- * the "plate chip" fitment badge (the mobile app's own established
- * signature element, carried over below in globals rather than
- * reinvented).
+ * Real, confirmed with the person -- updated to match the real mobile
+ * app's own current design exactly (apps/mobile/lib/core/theme.dart),
+ * not the mobile app's own older, pre-rebrand palette this file had
+ * actually drifted to despite its own previous comment claiming an
+ * exact carry-over (the real gold #F2A71B here was still the real old
+ * orange-red #E8622C before this). Manrope replaces the real previous
+ * 2-font split (Barlow Condensed for display, Inter for body) with a
+ * single real font variable, matching the mobile app's own real
+ * single uniform typeface -- JetBrains Mono is kept for the plate-chip
+ * fitment badge specifically, since the mobile app's own plate-chip
+ * element also uses a real distinct monospace family for this exact
+ * purpose (just Flutter's own generic system monospace rather than a
+ * specific named font), so this is a reasonable, minor divergence
+ * rather than an actual mismatch. Dark mode is confirmed as a real,
+ * separate, later phase -- not part of this change.
  */
 :root {
   --color-ink: #14171c;
   --color-chalk: #f5f6f8;
   --color-line: #e4e6ea;
-  --color-signal: #e8622c;
-  --color-signal-dark: #c94f1e;
+  --color-signal: #f2a71b;
+  --color-signal-dark: #c4870d;
+  /* Real, new -- dark text-on-gold, matching the mobile app's own
+     real onSignal token exactly. Gold is too light for white text to
+     read well against it, matching the real site's own real contrast
+     choice (dark text on every real gold button/pill there). */
+  --color-on-signal: #241a05;
   --color-torque: #2a5fd9;
   --color-gauge: #1e9d6b;
   --color-amber: #b9791f;
@@ -29,12 +40,13 @@
   --color-line: var(--color-line);
   --color-signal: var(--color-signal);
   --color-signal-dark: var(--color-signal-dark);
+  --color-on-signal: var(--color-on-signal);
   --color-torque: var(--color-torque);
   --color-gauge: var(--color-gauge);
   --color-amber: var(--color-amber);
   --color-muted: var(--color-muted);
-  --font-display: var(--font-barlow-condensed);
-  --font-body: var(--font-inter);
+  --font-display: var(--font-manrope);
+  --font-body: var(--font-manrope);
   --font-plate: var(--font-jetbrains-mono);
 }
 

@@ -81,7 +81,7 @@ export default function ReturnsPage() {
           </div>
           <button
             type="submit"
-            className="w-full rounded-md bg-signal px-6 py-3 text-white font-semibold hover:bg-signal-dark transition-colors"
+            className="w-full rounded-md bg-signal px-6 py-3 text-on-signal font-semibold hover:bg-signal-dark transition-colors"
           >
             Track return
           </button>

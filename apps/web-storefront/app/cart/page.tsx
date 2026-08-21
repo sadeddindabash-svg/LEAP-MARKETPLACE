@@ -21,7 +21,7 @@ export default function CartPage() {
         <p className="mt-3 text-muted">Find a part to get started.</p>
         <Link
           href="/search"
-          className="mt-6 inline-flex items-center rounded-md bg-signal px-6 py-3 text-white font-semibold hover:bg-signal-dark transition-colors"
+          className="mt-6 inline-flex items-center rounded-md bg-signal px-6 py-3 text-on-signal font-semibold hover:bg-signal-dark transition-colors"
         >
           Browse parts
         </Link>
@@ -84,7 +84,7 @@ export default function CartPage() {
 
       <Link
         href="/checkout"
-        className="mt-6 block text-center rounded-md bg-signal px-6 py-3 text-white font-semibold hover:bg-signal-dark transition-colors"
+        className="mt-6 block text-center rounded-md bg-signal px-6 py-3 text-on-signal font-semibold hover:bg-signal-dark transition-colors"
       >
         Proceed to checkout
       </Link>

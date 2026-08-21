@@ -312,7 +312,7 @@ export default function CheckoutPage() {
         <button
           type="submit"
           disabled={isPlacing}
-          className="w-full rounded-md bg-signal px-6 py-3 text-white font-semibold hover:bg-signal-dark transition-colors disabled:opacity-60"
+          className="w-full rounded-md bg-signal px-6 py-3 text-on-signal font-semibold hover:bg-signal-dark transition-colors disabled:opacity-60"
         >
           {isPlacing ? "Placing order…" : "Place order"}
         </button>
