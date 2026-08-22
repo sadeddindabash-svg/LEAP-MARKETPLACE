@@ -540,7 +540,7 @@ class _ShoppingForCard extends StatelessWidget {
                 children: [
                   Positioned.fill(
                     child: FractionallySizedBox(
-                      widthFactor: 0.45,
+                      widthFactor: 0.315, // 0.7x the original 0.45 -- confirmed with the person, text position left untouched
                       alignment: isAr ? Alignment.centerLeft : Alignment.centerRight,
                       child: ClipPath(
                         clipper: _DiagonalClipper(mirrored: isAr),
