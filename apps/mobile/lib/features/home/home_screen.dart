@@ -504,7 +504,7 @@ class _ShoppingForCard extends StatelessWidget {
       future: garageFuture,
       builder: (context, snapshot) {
         final vehicles = snapshot.data ?? [];
-        final vehicle = vehicles.isNotEmpty ? vehicles.first : null;
+        final vehicle = vehicles.isNotEmpty ? vehicles.firstWhere((v) => v.isDefault, orElse: () => vehicles.first) : null;
         if (vehicle == null) {
           return Card(
             child: ListTile(
