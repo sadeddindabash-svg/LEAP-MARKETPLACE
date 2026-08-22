@@ -353,7 +353,16 @@ class _CartItemRowState extends State<_CartItemRow> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: palette.line),
       ),
-      child: Row(
+      // Real, new -- tapping the row (anywhere not already its own
+      // interactive control, like the quantity stepper or remove
+      // button, which still receive their own taps first) opens this
+      // product's own page.
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => context.push('/product/${item.productId}'),
+          child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Real product thumbnail (new), sized up to match the real
@@ -453,7 +462,11 @@ class _CartItemRowState extends State<_CartItemRow> {
               ],
             ),
           ),
+          const SizedBox(width: 4),
+          Icon(Icons.chevron_right, size: 18, color: palette.muted),
         ],
+          ),
+        ),
       ),
     );
   }

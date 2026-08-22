@@ -749,7 +749,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 for (final item in cart.items)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Row(
+                    // Real, new -- tapping this item opens its own
+                    // product page.
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: InkWell(
+                        onTap: () => context.push('/product/${item.productId}'),
+                        child: Row(
                       children: [
                         // Real product thumbnail (new) -- closes a
                         // real gap: only the product's name was shown
@@ -789,7 +795,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         ),
                         const SizedBox(width: 8),
                         Text(formatPrice(context, item.price * item.quantity), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                        const SizedBox(width: 4),
+                        Icon(Icons.chevron_right, size: 16, color: LeapPalette.of(context).muted),
                       ],
+                        ),
+                      ),
                     ),
                   ),
               ],

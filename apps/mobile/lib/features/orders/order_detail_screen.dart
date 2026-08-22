@@ -472,7 +472,13 @@ class _SupplierSubOrderCard extends StatelessWidget {
             for (final item in items)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
+                // Real, new -- tapping this item opens its own
+                // product page.
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: InkWell(
+                    onTap: () => context.push('/product/${item['productId']}'),
+                    child: Row(
                   children: [
                     // Real product thumbnail (new) -- closes a real
                     // gap: items were shown as plain text only before,
@@ -493,7 +499,11 @@ class _SupplierSubOrderCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 10),
                     Expanded(child: Text('${item['name']} × ${item['quantity']}', style: const TextStyle(fontSize: 12.5))),
+                    const SizedBox(width: 4),
+                    Icon(Icons.chevron_right, size: 16, color: LeapPalette.of(context).muted),
                   ],
+                    ),
+                  ),
                 ),
               ),
             const SizedBox(height: 8),
