@@ -571,9 +571,9 @@ class _ShoppingForCard extends StatelessWidget {
                     right: isAr ? 8 : 100,
                     top: 14,
                     child: Directionality(
-                      textDirection: TextDirection.ltr,
+                      textDirection: isAr ? TextDirection.rtl : TextDirection.ltr,
                       child: Column(
-                        crossAxisAlignment: isAr ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(tr(context, 'shopping_for'), style: TextStyle(fontSize: 11, color: labelColor), textDirection: isAr ? TextDirection.rtl : TextDirection.ltr),
