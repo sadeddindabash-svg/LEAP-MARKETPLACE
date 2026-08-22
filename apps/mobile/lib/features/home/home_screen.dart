@@ -77,6 +77,26 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // Real, new -- fixes a real reported bug: changing the default
+  // vehicle in My Garage never updated the "Shopping for" card here,
+  // since _garageFuture was only ever fetched once (guarded by "if
+  // null" in _ensureGarageLoaded above) and nothing re-fetched it on
+  // return from the garage screen. Re-fetches on every real return
+  // from '/garage', regardless of whether anything was actually
+  // changed there -- simpler and safer than trying to detect whether
+  // a real change happened, and this screen already re-fetches its
+  // whole garage future on pull-to-refresh the same way.
+  void _navigateToGarage(BuildContext context) {
+    context.push('/garage').then((_) {
+      if (!mounted) return;
+      final auth = context.read<AuthState>();
+      if (!auth.isLoggedIn) return;
+      setState(() {
+        _garageFuture = ApiClient().fetchMyGarage(auth.token!);
+      });
+    });
+  }
+
   void _ensureRecentlyViewedLoaded(AuthState auth) {
     if (_recentlyViewedFuture == null && auth.isLoggedIn) {
       _recentlyViewedFuture = ApiClient().fetchRecentlyViewed(auth.token!);
@@ -218,7 +238,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 16),
             // 2. Shopping for -- real garage data
-            _ShoppingForCard(garageFuture: _garageFuture, isLoggedIn: auth.isLoggedIn),
+            _ShoppingForCard(garageFuture: _garageFuture, isLoggedIn: auth.isLoggedIn, onNavigateToGarage: () => _navigateToGarage(context)),
             const SizedBox(height: 12),
             // 2.5. Recently viewed -- real, synced to the buyer's real
             // account (migration 032) -- logged-in buyers only.
@@ -345,7 +365,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         // Real CTA (new) -- closes a real gap: just
                         // text before, no way to act on it from here.
                         OutlinedButton.icon(
-                          onPressed: () => context.push('/garage'),
+                          onPressed: () => _navigateToGarage(context),
                           icon: const Icon(Icons.add, size: 18),
                           label: Text(tr(context, 'add_a_vehicle')),
                         ),
@@ -447,7 +467,8 @@ class _HomeScreenState extends State<HomeScreen> {
 class _ShoppingForCard extends StatelessWidget {
   final Future<List<Vehicle>>? garageFuture;
   final bool isLoggedIn;
-  const _ShoppingForCard({required this.garageFuture, required this.isLoggedIn});
+  final VoidCallback onNavigateToGarage;
+  const _ShoppingForCard({required this.garageFuture, required this.isLoggedIn, required this.onNavigateToGarage});
 
   @override
   Widget build(BuildContext context) {
@@ -465,7 +486,7 @@ class _ShoppingForCard extends StatelessWidget {
           title: Text(tr(context, 'shopping_for'), style: TextStyle(fontSize: 11, color: labelColor)),
           subtitle: Text(tr(context, 'add_a_vehicle'), style: isDark ? TextStyle(color: palette.signal) : null),
           trailing: const Icon(Icons.chevron_right),
-          onTap: () => context.push('/garage'),
+          onTap: () => onNavigateToGarage(),
         ),
       );
     }
@@ -481,7 +502,7 @@ class _ShoppingForCard extends StatelessWidget {
               title: Text(tr(context, 'shopping_for'), style: TextStyle(fontSize: 11, color: labelColor)),
               subtitle: Text(tr(context, 'add_a_vehicle'), style: isDark ? TextStyle(color: palette.signal) : null),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.push('/garage'),
+              onTap: () => onNavigateToGarage(),
             ),
           );
         }
@@ -502,7 +523,7 @@ class _ShoppingForCard extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           color: palette.chalk,
           child: InkWell(
-            onTap: () => context.push('/garage'),
+            onTap: () => onNavigateToGarage(),
             child: SizedBox(
               height: 76,
               child: Stack(
