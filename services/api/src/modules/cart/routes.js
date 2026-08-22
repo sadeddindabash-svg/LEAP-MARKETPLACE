@@ -38,7 +38,7 @@ async function getFullCart(cartId) {
   // label consistently across every item in this one real response
   // (see shared/supplierAnonymize.js's own header comment for the
   // full real numbering scheme).
-  const supplierLabelMap = buildSupplierLabelMap(rows.map((r) => r.supplier_id));
+  const supplierLabelMap = buildSupplierLabelMap(rows.map((r) => r.supplier_id), cartId);
   // Same real, live pricing calculation as the catalog module (see
   // services/api/src/modules/pricing/engine.js) — the cart shows the
   // real current buyer price, not the supplier's RMB cost, and reflects

@@ -443,7 +443,7 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
     // order's own distinct suppliers -- see shared/
     // supplierAnonymize.js's own header comment for the full real
     // numbering scheme.
-    const supplierLabelMap = buildSupplierLabelMap(subOrders.map((so) => so.supplier_id));
+    const supplierLabelMap = buildSupplierLabelMap(subOrders.map((so) => so.supplier_id), req.params.id);
 
     const supplierSubOrders = [];
     for (const so of subOrders) {
@@ -624,7 +624,7 @@ router.get('/', requireAuth, requirePageAccessIfAdmin('orders'), async (req, res
       // own distinct suppliers, not a globally stable anonymous ID; a
       // buyer isn't meant to recognize "the same real supplier as my
       // last order" either.
-      const labelMap = buildSupplierLabelMap(suppliers.map((s) => s.supplierId));
+      const labelMap = buildSupplierLabelMap(suppliers.map((s) => s.supplierId), o.id);
       return {
         id: o.id,
         userId: o.buyer_id,
