@@ -8,6 +8,7 @@ import 'core/cart_state.dart';
 import 'core/language_state.dart';
 import 'core/app_lock_state.dart';
 import 'core/theme_state.dart';
+import 'core/garage_state.dart';
 import 'widgets/app_lock_gate.dart';
 import 'widgets/force_update_gate.dart';
 import 'core/app_strings.dart';
@@ -256,6 +257,7 @@ class LeapApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => CurrencyState()),
         ChangeNotifierProvider(create: (_) => AppLockState()),
         ChangeNotifierProvider(create: (_) => ThemeState()),
+        ChangeNotifierProvider(create: (_) => GarageState()),
       ],
       child: Consumer2<LanguageState, ThemeState>(
         builder: (context, languageState, themeState, _) {

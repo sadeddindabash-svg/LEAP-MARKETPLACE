@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../core/language_state.dart';
+import '../../core/garage_state.dart';
 import '../../models/vehicle.dart';
 import '../../services/api_client.dart';
 import '../search/vehicle_filter_sheet.dart';
@@ -79,7 +80,10 @@ class _GarageScreenState extends State<GarageScreen> {
       // _vehicles (a plain field, not wrapped in a new Future handed to
       // a FutureBuilder) -- see this file's own header comment for why.
       final updatedGarage = await ApiClient().removeVehicleFromGarage(auth.token!, v.generationId, v.year);
-      if (mounted) setState(() => _vehicles = updatedGarage);
+      if (mounted) {
+        setState(() => _vehicles = updatedGarage);
+        context.read<GarageState>().notifyGarageChanged();
+      }
     } on ApiException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     }
@@ -92,7 +96,10 @@ class _GarageScreenState extends State<GarageScreen> {
       // file's own header comment for why a Future.value()/
       // FutureBuilder replacement was never used here.
       final updatedGarage = await ApiClient().setDefaultVehicle(auth.token!, v.generationId, v.year);
-      if (mounted) setState(() => _vehicles = updatedGarage);
+      if (mounted) {
+        setState(() => _vehicles = updatedGarage);
+        context.read<GarageState>().notifyGarageChanged();
+      }
     } on ApiException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     }
@@ -142,7 +149,10 @@ class _GarageScreenState extends State<GarageScreen> {
       // genuinely means "don't narrow." Falls back to the generation's
       // own real starting year, never a placeholder.
       final updatedGarage = await ApiClient().addVehicleToGarage(auth.token!, selection.generationId, selection.year ?? selection.yearStart);
-      if (mounted) setState(() => _vehicles = updatedGarage);
+      if (mounted) {
+        setState(() => _vehicles = updatedGarage);
+        context.read<GarageState>().notifyGarageChanged();
+      }
     } on ApiException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     }

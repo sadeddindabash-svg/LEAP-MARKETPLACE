@@ -7,6 +7,7 @@ import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../core/language_state.dart';
+import '../../core/garage_state.dart';
 import '../../models/category.dart';
 import '../../models/product.dart';
 import '../../models/vehicle.dart';
@@ -50,6 +51,12 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late Future<List<ProductCategory>> _categoriesFuture;
   Future<List<Vehicle>>? _garageFuture;
+  // Real, new -- tracks the last GarageState.version this screen has
+  // already re-fetched for, so _ensureGarageLoaded can tell "the
+  // default vehicle changed somewhere else" apart from "already
+  // up to date," regardless of which screen changed it or how the
+  // person navigated back here.
+  int? _lastSeenGarageVersion;
 
   String _feedFilter = 'newest'; // 'newest' | 'my_car'
   Future<List<Product>>? _feedFuture;
@@ -71,10 +78,13 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _ensureGarageLoaded(AuthState auth) {
-    if (_garageFuture == null && auth.isLoggedIn) {
+  void _ensureGarageLoaded(AuthState auth, int currentGarageVersion) {
+    final needsInitialLoad = _garageFuture == null && auth.isLoggedIn;
+    final changedElsewhere = auth.isLoggedIn && _lastSeenGarageVersion != null && currentGarageVersion != _lastSeenGarageVersion;
+    if (needsInitialLoad || changedElsewhere) {
       _garageFuture = ApiClient().fetchMyGarage(auth.token!);
     }
+    _lastSeenGarageVersion = currentGarageVersion;
   }
 
   // Real, new -- fixes a real reported bug: changing the default
@@ -154,7 +164,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final language = context.watch<LanguageState>().language;
     final isAr = context.watch<LanguageState>().isArabic;
     final palette = LeapPalette.of(context);
-    _ensureGarageLoaded(auth);
+    _ensureGarageLoaded(auth, context.watch<GarageState>().version);
     _ensureRecentlyViewedLoaded(auth);
 
     return Scaffold(
