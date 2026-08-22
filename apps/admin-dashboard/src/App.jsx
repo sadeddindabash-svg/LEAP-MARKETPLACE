@@ -5151,7 +5151,8 @@ function ReturnWindowSection({ onSessionExpired }) {
 // /order/:id/receipt). Confirmed with the person against a real
 // rendered mockup before building.
 function ReceiptFooterSection() {
-  const [footerNote, setFooterNote] = useState("");
+  const [footerNoteEn, setFooterNoteEn] = useState("");
+  const [footerNoteAr, setFooterNoteAr] = useState("");
   const [loadState, setLoadState] = useState("loading");
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
@@ -5159,7 +5160,7 @@ function ReceiptFooterSection() {
 
   useEffect(() => {
     fetchReceiptFooter(getStoredToken())
-      .then((data) => { setFooterNote(data.footerNote ?? ""); setLoadState("ready"); })
+      .then((data) => { setFooterNoteEn(data.footerNoteEn ?? ""); setFooterNoteAr(data.footerNoteAr ?? ""); setLoadState("ready"); })
       .catch((err) => { setErrorMessage(err.message); setLoadState("error"); });
   }, []);
 
@@ -5168,8 +5169,9 @@ function ReceiptFooterSection() {
     setErrorMessage(null);
     setSavedMessage(null);
     try {
-      const data = await updateReceiptFooter(getStoredToken(), footerNote);
-      setFooterNote(data.footerNote ?? "");
+      const data = await updateReceiptFooter(getStoredToken(), footerNoteEn, footerNoteAr);
+      setFooterNoteEn(data.footerNoteEn ?? "");
+      setFooterNoteAr(data.footerNoteAr ?? "");
       setSavedMessage("Saved.");
     } catch (err) {
       setErrorMessage(err.message);
@@ -5182,21 +5184,36 @@ function ReceiptFooterSection() {
     <Card title="Receipt footer" style={{ flex: 1 }}>
       <div style={{ padding: 20 }}>
         <div style={{ ...body, fontSize: 12.5, color: C.muted, marginBottom: 14 }}>
-          Shown at the bottom of every order receipt PDF a buyer downloads. Leave blank for no footer note.
+          Shown at the bottom of every order receipt PDF a buyer downloads -- the English or Arabic version below is used depending on which language the receipt was requested in. Leave either blank for no footer note in that language.
         </div>
         {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 12 }}>{errorMessage}</div>}
         {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}
         {loadState === "ready" && (
           <div>
+            <label style={{ ...body, fontSize: 11, fontWeight: 700, color: C.muted, display: "block", marginBottom: 4 }}>English</label>
             <textarea
-              value={footerNote}
-              onChange={(e) => setFooterNote(e.target.value)}
+              value={footerNoteEn}
+              onChange={(e) => setFooterNoteEn(e.target.value)}
               maxLength={500}
-              rows={3}
+              rows={2}
               placeholder="e.g. Thank you for shopping with Leap Auto Parts."
-              style={{ ...body, width: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13, resize: "vertical" }}
+              style={{ ...body, width: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13, resize: "vertical", marginBottom: 4 }}
             />
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+            <div style={{ ...body, fontSize: 11, color: C.muted, textAlign: "right", marginBottom: 14 }}>{footerNoteEn.length}/500</div>
+
+            <label style={{ ...body, fontSize: 11, fontWeight: 700, color: C.muted, display: "block", marginBottom: 4 }}>Arabic</label>
+            <textarea
+              value={footerNoteAr}
+              onChange={(e) => setFooterNoteAr(e.target.value)}
+              maxLength={500}
+              rows={2}
+              dir="rtl"
+              placeholder="مثال: شكرا لتسوقكم مع ليب لقطع السيارات"
+              style={{ ...body, width: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13, resize: "vertical", marginBottom: 4 }}
+            />
+            <div style={{ ...body, fontSize: 11, color: C.muted, textAlign: "right", marginBottom: 14 }}>{footerNoteAr.length}/500</div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <button
                 disabled={isSaving}
                 onClick={handleSave}
@@ -5205,7 +5222,6 @@ function ReceiptFooterSection() {
                 {isSaving ? "Saving…" : "Save"}
               </button>
               {!isSaving && savedMessage && <span style={{ ...body, fontSize: 12, color: C.gauge }}>{savedMessage}</span>}
-              <span style={{ ...body, fontSize: 11, color: C.muted, marginLeft: "auto" }}>{footerNote.length}/500</span>
             </div>
           </div>
         )}

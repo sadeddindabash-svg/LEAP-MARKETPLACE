@@ -628,11 +628,11 @@ export async function fetchReceiptFooter(token) {
   return response.json();
 }
 
-export async function updateReceiptFooter(token, footerNote) {
+export async function updateReceiptFooter(token, footerNoteEn, footerNoteAr) {
   const response = await fetch(`${API_BASE_URL}/platform-settings/receipt-footer`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ footerNote }),
+    body: JSON.stringify({ footerNoteEn, footerNoteAr }),
   });
   if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
   const data = await response.json();

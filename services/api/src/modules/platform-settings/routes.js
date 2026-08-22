@@ -165,8 +165,9 @@ router.patch('/min-app-version', requireAuth, requireRole('admin'), async (req, 
 // special-cased null handling the way min-app-version does.
 router.get('/receipt-footer', requireAuth, requireRole('admin'), async (req, res, next) => {
   try {
-    const { rows } = await db.query("SELECT value FROM platform_settings WHERE key = 'receipt_footer_note'");
-    res.json({ footerNote: rows[0]?.value ?? '' });
+    const { rows } = await db.query("SELECT key, value FROM platform_settings WHERE key IN ('receipt_footer_note_en', 'receipt_footer_note_ar')");
+    const byKey = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+    res.json({ footerNoteEn: byKey.receipt_footer_note_en ?? '', footerNoteAr: byKey.receipt_footer_note_ar ?? '' });
   } catch (err) {
     next(err);
   }
@@ -174,20 +175,25 @@ router.get('/receipt-footer', requireAuth, requireRole('admin'), async (req, res
 
 router.patch('/receipt-footer', requireAuth, requireRole('admin'), async (req, res, next) => {
   try {
-    const { footerNote } = req.body || {};
-    if (typeof footerNote !== 'string') {
-      return res.status(400).json({ error: 'footerNote must be a string' });
+    const { footerNoteEn, footerNoteAr } = req.body || {};
+    if (typeof footerNoteEn !== 'string' || typeof footerNoteAr !== 'string') {
+      return res.status(400).json({ error: 'footerNoteEn and footerNoteAr must both be strings' });
     }
-    if (footerNote.length > 500) {
-      return res.status(400).json({ error: 'footerNote must be 500 characters or fewer' });
+    if (footerNoteEn.length > 500 || footerNoteAr.length > 500) {
+      return res.status(400).json({ error: 'Each footer note must be 500 characters or fewer' });
     }
     await db.query(
-      `INSERT INTO platform_settings (key, value, updated_at) VALUES ('receipt_footer_note', $1, now())
+      `INSERT INTO platform_settings (key, value, updated_at) VALUES ('receipt_footer_note_en', $1, now())
        ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = now()`,
-      [footerNote.trim()]
+      [footerNoteEn.trim()]
     );
-    await logAdminAction(req, 'receipt_footer_changed', 'platform_setting', 'receipt_footer_note', { footerNote: footerNote.trim() });
-    res.json({ footerNote: footerNote.trim() });
+    await db.query(
+      `INSERT INTO platform_settings (key, value, updated_at) VALUES ('receipt_footer_note_ar', $1, now())
+       ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = now()`,
+      [footerNoteAr.trim()]
+    );
+    await logAdminAction(req, 'receipt_footer_changed', 'platform_setting', 'receipt_footer_note', { footerNoteEn: footerNoteEn.trim(), footerNoteAr: footerNoteAr.trim() });
+    res.json({ footerNoteEn: footerNoteEn.trim(), footerNoteAr: footerNoteAr.trim() });
   } catch (err) {
     next(err);
   }
