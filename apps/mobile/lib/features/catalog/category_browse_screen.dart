@@ -180,8 +180,7 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
                           return Container(
                             decoration: BoxDecoration(color: palette.chalk, borderRadius: BorderRadius.circular(10), border: Border.all(color: palette.line)),
                             child: ListTile(
-                              leading: ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
+                              leading: ClipOval(
                                 child: part.photoUrl != null
                                     ? CachedNetworkImage(
                                         imageUrl: ApiClient.resolveMediaUrl(part.photoUrl!),
