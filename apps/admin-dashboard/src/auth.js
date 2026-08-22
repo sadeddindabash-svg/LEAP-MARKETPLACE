@@ -621,6 +621,25 @@ export async function updateReturnWindow(token, returnWindowDays) {
   return data;
 }
 
+export async function fetchReceiptFooter(token) {
+  const response = await fetch(`${API_BASE_URL}/platform-settings/receipt-footer`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) throw new Error(`Failed to load receipt footer (${response.status})`);
+  return response.json();
+}
+
+export async function updateReceiptFooter(token, footerNote) {
+  const response = await fetch(`${API_BASE_URL}/platform-settings/receipt-footer`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ footerNote }),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
 // Real "send test email" (new) -- lets an admin verify real SMTP
 // configuration works without waiting for a real customer event
 // (order, shipment, payout) to trigger a real transactional email

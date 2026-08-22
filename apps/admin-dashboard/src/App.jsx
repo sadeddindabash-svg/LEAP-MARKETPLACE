@@ -16,7 +16,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchSupplierMessagesInbox, fetchSupplierMessageThread, sendSupplierMessage,
   fetchPromoCodes, createPromoCode, updatePromoCode, deletePromoCode,
   fetchAdminUsers, createAdminUser, updateAdminPermissions, deleteAdminUser,
-  fetchPayoutsOwed, fetchPayoutHistory, recordPayout, fetchSupplierPayoutMethod, fetchReturnWindow, updateReturnWindow, updateCategoryCommission, sendTestEmail,
+  fetchPayoutsOwed, fetchPayoutHistory, recordPayout, fetchSupplierPayoutMethod, fetchReturnWindow, updateReturnWindow, fetchReceiptFooter, updateReceiptFooter, updateCategoryCommission, sendTestEmail,
   fetchPendingReviews, moderateReview, fetchRequireVerifiedPurchase, updateRequireVerifiedPurchase,
   fetchAuditLog,
   fetchSupplierAnalytics,
@@ -5146,6 +5146,74 @@ function ReturnWindowSection({ onSessionExpired }) {
   );
 }
 
+// Real, new -- the admin-editable text shown at the bottom of every
+// real order receipt PDF (see services/api's own order/routes.js GET
+// /order/:id/receipt). Confirmed with the person against a real
+// rendered mockup before building.
+function ReceiptFooterSection() {
+  const [footerNote, setFooterNote] = useState("");
+  const [loadState, setLoadState] = useState("loading");
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [savedMessage, setSavedMessage] = useState(null);
+
+  useEffect(() => {
+    fetchReceiptFooter(getStoredToken())
+      .then((data) => { setFooterNote(data.footerNote ?? ""); setLoadState("ready"); })
+      .catch((err) => { setErrorMessage(err.message); setLoadState("error"); });
+  }, []);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    setErrorMessage(null);
+    setSavedMessage(null);
+    try {
+      const data = await updateReceiptFooter(getStoredToken(), footerNote);
+      setFooterNote(data.footerNote ?? "");
+      setSavedMessage("Saved.");
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Card title="Receipt footer" style={{ flex: 1 }}>
+      <div style={{ padding: 20 }}>
+        <div style={{ ...body, fontSize: 12.5, color: C.muted, marginBottom: 14 }}>
+          Shown at the bottom of every order receipt PDF a buyer downloads. Leave blank for no footer note.
+        </div>
+        {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 12 }}>{errorMessage}</div>}
+        {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}
+        {loadState === "ready" && (
+          <div>
+            <textarea
+              value={footerNote}
+              onChange={(e) => setFooterNote(e.target.value)}
+              maxLength={500}
+              rows={3}
+              placeholder="e.g. Thank you for shopping with Leap Auto Parts."
+              style={{ ...body, width: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13, resize: "vertical" }}
+            />
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+              <button
+                disabled={isSaving}
+                onClick={handleSave}
+                style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: isSaving ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSaving ? "default" : "pointer" }}
+              >
+                {isSaving ? "Saving…" : "Save"}
+              </button>
+              {!isSaving && savedMessage && <span style={{ ...body, fontSize: 12, color: C.gauge }}>{savedMessage}</span>}
+              <span style={{ ...body, fontSize: 11, color: C.muted, marginLeft: "auto" }}>{footerNote.length}/500</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 // Real, exact set of every action type this codebase actually logs
 // (confirmed by grepping every real logAdminAction(...) call site, not
 // guessed) -- used to populate a real filter dropdown rather than free
@@ -5361,6 +5429,9 @@ function SettingsPage({ currentUser, onSessionExpired }) {
           <CommissionRulesSection onSessionExpired={onSessionExpired} />
           <ReturnWindowSection onSessionExpired={onSessionExpired} />
           <EmailTestSection />
+        </div>
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+          <ReceiptFooterSection />
         </div>
       </div>
     </div>

@@ -155,4 +155,42 @@ router.patch('/min-app-version', requireAuth, requireRole('admin'), async (req, 
   }
 });
 
+// Real, admin-configurable footer note shown at the bottom of every
+// real order receipt PDF (see order/routes.js's own GET /:id/receipt).
+// Reuses the same generic platform_settings key-value store already
+// established for the settings above -- no new migration needed.
+// Empty string is a valid, deliberate value (no footer note shown at
+// all), distinct from "never configured" -- both resolve to '' here
+// on the real receipt PDF either way, so this doesn't need its own
+// special-cased null handling the way min-app-version does.
+router.get('/receipt-footer', requireAuth, requireRole('admin'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query("SELECT value FROM platform_settings WHERE key = 'receipt_footer_note'");
+    res.json({ footerNote: rows[0]?.value ?? '' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/receipt-footer', requireAuth, requireRole('admin'), async (req, res, next) => {
+  try {
+    const { footerNote } = req.body || {};
+    if (typeof footerNote !== 'string') {
+      return res.status(400).json({ error: 'footerNote must be a string' });
+    }
+    if (footerNote.length > 500) {
+      return res.status(400).json({ error: 'footerNote must be 500 characters or fewer' });
+    }
+    await db.query(
+      `INSERT INTO platform_settings (key, value, updated_at) VALUES ('receipt_footer_note', $1, now())
+       ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = now()`,
+      [footerNote.trim()]
+    );
+    await logAdminAction(req, 'receipt_footer_changed', 'platform_setting', 'receipt_footer_note', { footerNote: footerNote.trim() });
+    res.json({ footerNote: footerNote.trim() });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
