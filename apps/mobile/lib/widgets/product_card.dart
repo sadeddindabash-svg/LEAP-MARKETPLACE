@@ -143,7 +143,9 @@ class _ProductCardState extends State<ProductCard> {
     final inStock = p.stockQuantity > 0;
     final isAr = Localizations.localeOf(context).languageCode == 'ar';
     final isLoggedIn = context.watch<AuthState>().isLoggedIn;
-    return Card(
+    return Align(
+      alignment: Alignment.topCenter,
+      child: Card(
       margin: EdgeInsets.zero,
       color: palette.card,
       child: InkWell(
@@ -374,6 +376,7 @@ class _ProductCardState extends State<ProductCard> {
             ],
           ),
         ),
+      ),
       ),
     );
   }
