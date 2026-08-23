@@ -348,19 +348,20 @@ class _ProductDetailBody extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 14),
                     child: Column(
                       children: [
-                        _SpecRow(label: _lPartName, value: product.part ?? _lNotSpecified),
-                        _SpecRow(label: _lBrand, value: product.brand ?? _lNotSpecified),
-                        _SpecRow(label: _lModel, value: product.model ?? _lNotSpecified),
-                        _SpecRow(label: _lYear, value: product.year?.toString() ?? _lNotSpecified),
-                        _SpecRow(label: _lPartNo, value: product.oemNumber ?? _lNotSpecified),
-                        _SpecRow(label: _lDescription, value: (product.description?.isNotEmpty ?? false) ? product.description! : _lNotSpecified),
+                        _SpecRow(index: 0, label: _lPartName, value: product.part ?? _lNotSpecified),
+                        _SpecRow(index: 1, label: _lBrand, value: product.brand ?? _lNotSpecified),
+                        _SpecRow(index: 2, label: _lModel, value: product.model ?? _lNotSpecified),
+                        _SpecRow(index: 3, label: _lYear, value: product.year?.toString() ?? _lNotSpecified),
+                        _SpecRow(index: 4, label: _lPartNo, value: product.oemNumber ?? _lNotSpecified),
                         _SpecRow(
+                          index: 5,
                           label: _lDimensions,
                           value: (product.lengthCm != null && product.widthCm != null && product.heightCm != null)
                               ? '${product.lengthCm} × ${product.widthCm} × ${product.heightCm} cm'
                               : _lNotSpecified,
                         ),
-                        _SpecRow(label: _lWeight, value: product.weightKg != null ? '${product.weightKg} kg' : _lNotSpecified, isLast: true),
+                        _SpecRow(index: 6, label: _lWeight, value: product.weightKg != null ? '${product.weightKg} kg' : _lNotSpecified),
+                        _SpecRow(index: 7, label: _lDescription, value: (product.description?.isNotEmpty ?? false) ? product.description! : _lNotSpecified, isLast: true),
                       ],
                     ),
                   ),
@@ -502,17 +503,23 @@ class _NotifyWhenInStockButtonState extends State<_NotifyWhenInStockButton> {
 }
 
 class _SpecRow extends StatelessWidget {
+  final int index;
   final String label;
   final String value;
   final bool isLast;
-  const _SpecRow({required this.label, required this.value, this.isLast = false});
+  const _SpecRow({required this.index, required this.label, required this.value, this.isLast = false});
 
   @override
   Widget build(BuildContext context) {
     final palette = LeapPalette.of(context);
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
       decoration: BoxDecoration(
+        // Real, confirmed via a rendered mockup: alternating row fill
+        // -- even rows keep the real current look (no fill), odd rows
+        // use palette.chalk, the same real light fill already
+        // established elsewhere in this app for subtle backgrounds.
+        color: index.isOdd ? palette.chalk : null,
         border: isLast ? null : Border(bottom: BorderSide(color: palette.line)),
       ),
       child: Row(
