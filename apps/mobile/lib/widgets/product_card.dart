@@ -36,8 +36,11 @@ double productCardHeightFor(double cardWidth) {
   // button circle) + the real delivery-estimate chip (~20px,
   // previously missing entirely from this allowance -- confirmed real
   // cause of the real overflow reported here) + the card's own real
-  // top+bottom padding (16px). ~142px real total, some margin added.
-  return imageHeight + 160;
+  // top+bottom padding (16px) + the real 12px bottom padding added
+  // afterward (confirmed real cause of a real, reported "overflowed
+  // by 0.200 pixels" this same session -- that padding was never
+  // reflected here). ~154px real total, some margin added.
+  return imageHeight + 175;
 }
 
 /// Real product card for feeds (home "Newest"/"My car", eventually
