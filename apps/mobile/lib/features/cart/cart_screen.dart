@@ -55,12 +55,12 @@ class CartScreen extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(tr(context, 'total').toUpperCase(), style: TextStyle(color: palette.muted, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                        Text(tr(context, 'total').toUpperCase(), style: TextStyle(color: palette.muted, fontSize: 16, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
                         Flexible(
                           child: FittedBox(
                             fit: BoxFit.scaleDown,
                             alignment: Alignment.centerRight,
-                            child: Text(formatPriceWithUsd(context, cart.total), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 24, color: palette.signal)),
+                            child: Text(formatPriceWithUsd(context, cart.total), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: palette.signal)),
                           ),
                         ),
                       ],
