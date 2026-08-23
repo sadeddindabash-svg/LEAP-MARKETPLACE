@@ -36,6 +36,15 @@ class _ReviewsSectionState extends State<ReviewsSection> {
   String? _errorMessage;
   String? _loadedForProductId;
 
+  // Real -- confirmed via a rendered mockup: show only the newest 3
+  // reviews initially, revealing 3 more each time "Show more" is
+  // tapped. Purely client-side (the real backend already returns
+  // every real approved review in one response, already sorted
+  // newest-first), reset to 3 whenever a genuinely different real
+  // product's reviews load.
+  static const _reviewBatchSize = 3;
+  int _visibleReviewCount = _reviewBatchSize;
+
   // Real review photos (migration 031) -- confirmed cap of 3, optional.
   final List<String> _selectedPhotos = [];
   bool _isUploadingPhoto = false;
@@ -43,6 +52,7 @@ class _ReviewsSectionState extends State<ReviewsSection> {
   void _ensureLoaded(String? token) {
     if (_loadedForProductId == widget.productId) return;
     _loadedForProductId = widget.productId;
+    _visibleReviewCount = _reviewBatchSize;
     _summaryFuture = ApiClient().fetchProductReviews(widget.productId);
     if (token != null) {
       ApiClient().fetchMyReviews(token).then((reviews) {
@@ -202,7 +212,7 @@ class _ReviewsSectionState extends State<ReviewsSection> {
               if (summary.reviews.isEmpty)
                 Text(_lNoReviews, style: const TextStyle(color: LeapColors.muted, fontSize: 13))
               else
-                ...summary.reviews.map((r) => Padding(
+                ...summary.reviews.take(_visibleReviewCount).map((r) => Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -275,6 +285,18 @@ class _ReviewsSectionState extends State<ReviewsSection> {
                         ],
                       ),
                     )),
+
+              if (summary.reviews.length > _visibleReviewCount) ...[
+                Center(
+                  child: OutlinedButton(
+                    onPressed: () => setState(() => _visibleReviewCount += _reviewBatchSize),
+                    child: Text(
+                      widget.isAr ? 'عرض $_reviewBatchSize تقييمات أخرى' : 'Show $_reviewBatchSize more reviews',
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
 
               const Divider(height: 24),
 

@@ -48,14 +48,15 @@ class ProductPhotosSection extends StatelessWidget {
             itemBuilder: (context, i) {
               return ClipRRect(
                 borderRadius: BorderRadius.circular(10),
-                child: CachedNetworkImage(
-                  imageUrl: ApiClient.resolveMediaUrl(images[i]),
-                  width: double.infinity,
-                  height: 220,
-                  fit: BoxFit.cover,
-                  fadeInDuration: const Duration(milliseconds: 300),
-                  placeholder: (context, url) => Container(height: 220, color: const Color(0xFFF5F6F8)),
-                  errorWidget: (context, url, error) => const Icon(Icons.broken_image_outlined, color: LeapColors.muted),
+                child: AspectRatio(
+                  aspectRatio: 1,
+                  child: CachedNetworkImage(
+                    imageUrl: ApiClient.resolveMediaUrl(images[i]),
+                    fit: BoxFit.cover,
+                    fadeInDuration: const Duration(milliseconds: 300),
+                    placeholder: (context, url) => Container(color: const Color(0xFFF5F6F8)),
+                    errorWidget: (context, url, error) => const Icon(Icons.broken_image_outlined, color: LeapColors.muted),
+                  ),
                 ),
               );
             },
