@@ -437,28 +437,34 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: Text(tr(context, 'no_products_yet'), style: TextStyle(color: palette.muted), textAlign: TextAlign.center),
                       );
                     }
-                    return GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        mainAxisSpacing: 10,
-                        crossAxisSpacing: 10,
-                        childAspectRatio: 0.55,
-                      ),
-                      itemCount: products.length,
-                      itemBuilder: (context, i) {
-                        final p = products[i];
-                        return ProductCard(
-                          product: p,
-                          onTap: () => context.push('/product/${p.id}'),
-                          // Real "confirmed fit" badge (new) -- only
-                          // ever shown for genuine My Car results,
-                          // which are already always fitment-filtered
-                          // server-side (see _ensureFeedLoaded).
-                          showConfirmedFitBadge: _feedFilter == 'my_car',
-                        );
+                    return LayoutBuilder(
+                      builder: (context, gridConstraints) {
+                        final cardWidth = (gridConstraints.maxWidth - 10) / 2;
+                        final cardHeight = productCardHeightFor(cardWidth);
+                        return GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            mainAxisSpacing: 10,
+                            crossAxisSpacing: 10,
+                            childAspectRatio: cardWidth / cardHeight,
+                          ),
+                          itemCount: products.length,
+                          itemBuilder: (context, i) {
+                            final p = products[i];
+                            return ProductCard(
+                              product: p,
+                              onTap: () => context.push('/product/${p.id}'),
+                              // Real "confirmed fit" badge (new) -- only
+                              // ever shown for genuine My Car results,
+                              // which are already always fitment-filtered
+                              // server-side (see _ensureFeedLoaded).
+                              showConfirmedFitBadge: _feedFilter == 'my_car',
+                            );
                       },
+                    );
+                  },
                     );
                   },
                     ),

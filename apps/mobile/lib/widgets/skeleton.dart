@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/theme.dart';
+import 'product_card.dart';
 
 /// Real skeleton loading placeholders (new) -- closes a real gap: this
 /// app only ever used a plain spinner while loading, never a content-
@@ -93,18 +94,24 @@ class ProductGridSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GridView.builder(
+    return LayoutBuilder(
+      builder: (context, gridConstraints) {
+        final cardWidth = (gridConstraints.maxWidth - 16 * 2 - 10) / 2;
+        final cardHeight = productCardHeightFor(cardWidth);
+        return GridView.builder(
       padding: const EdgeInsets.all(16),
       physics: const NeverScrollableScrollPhysics(),
       shrinkWrap: true,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
         mainAxisSpacing: 10,
         crossAxisSpacing: 10,
-        childAspectRatio: 0.55,
+        childAspectRatio: cardWidth / cardHeight,
       ),
       itemCount: itemCount,
       itemBuilder: (context, i) => const ProductCardSkeleton(),
+        );
+      },
     );
   }
 }

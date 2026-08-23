@@ -117,14 +117,18 @@ class _WishlistScreenState extends State<WishlistScreen> {
                 ],
               );
             }
-            return GridView.builder(
+            return LayoutBuilder(
+              builder: (context, gridConstraints) {
+                final cardWidth = (gridConstraints.maxWidth - 16 * 2 - 10) / 2;
+                final cardHeight = productCardHeightFor(cardWidth);
+                return GridView.builder(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
                 mainAxisSpacing: 10,
                 crossAxisSpacing: 10,
-                childAspectRatio: 0.55,
+                childAspectRatio: cardWidth / cardHeight,
               ),
               itemCount: products.length,
               itemBuilder: (context, i) {
@@ -178,6 +182,8 @@ class _WishlistScreenState extends State<WishlistScreen> {
                         ),
                       ),
                   ],
+                );
+              },
                 );
               },
             );

@@ -544,24 +544,30 @@ class _SearchScreenState extends State<SearchScreen> {
     }
     if (_results == null) return const SizedBox.shrink();
 
-    return GridView.builder(
-      padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 10,
-        crossAxisSpacing: 10,
-        childAspectRatio: 0.55,
-      ),
-      itemCount: _results!.length,
-      itemBuilder: (context, i) {
-        final p = _results![i];
-        // Real "confirmed fit" badge (new) -- shown only when a real
-        // vehicle filter is genuinely active, matching the exact same
-        // real rule already established on Home's own "My Car" filter
-        // (these results are already fitment-filtered server-side
-        // whenever a real vehicle filter is applied -- see
-        // ApiClient().searchProducts's own generationId param above).
-        return ProductCard(product: p, onTap: () => context.push('/product/${p.id}'), showConfirmedFitBadge: _vehicleFilter != null);
+    return LayoutBuilder(
+      builder: (context, gridConstraints) {
+        final cardWidth = (gridConstraints.maxWidth - 16 * 2 - 10) / 2;
+        final cardHeight = productCardHeightFor(cardWidth);
+        return GridView.builder(
+          padding: const EdgeInsets.all(16),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: cardWidth / cardHeight,
+          ),
+          itemCount: _results!.length,
+          itemBuilder: (context, i) {
+            final p = _results![i];
+            // Real "confirmed fit" badge (new) -- shown only when a real
+            // vehicle filter is genuinely active, matching the exact same
+            // real rule already established on Home's own "My Car" filter
+            // (these results are already fitment-filtered server-side
+            // whenever a real vehicle filter is applied -- see
+            // ApiClient().searchProducts's own generationId param above).
+            return ProductCard(product: p, onTap: () => context.push('/product/${p.id}'), showConfirmedFitBadge: _vehicleFilter != null);
+          },
+        );
       },
     );
   }

@@ -108,18 +108,24 @@ class _CategoryScreenState extends State<CategoryScreen> {
               ),
             );
           }
-          return GridView.builder(
-            padding: const EdgeInsets.all(16),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              childAspectRatio: 0.55,
-            ),
-            itemCount: products.length,
-            itemBuilder: (context, i) {
-              final p = products[i];
-              return ProductCard(product: p, onTap: () => context.push('/product/${p.id}'), showConfirmedFitBadge: _defaultVehicle != null);
+          return LayoutBuilder(
+            builder: (context, gridConstraints) {
+              final cardWidth = (gridConstraints.maxWidth - 16 * 2 - 10) / 2;
+              final cardHeight = productCardHeightFor(cardWidth);
+              return GridView.builder(
+                padding: const EdgeInsets.all(16),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  childAspectRatio: cardWidth / cardHeight,
+                ),
+                itemCount: products.length,
+                itemBuilder: (context, i) {
+                  final p = products[i];
+                  return ProductCard(product: p, onTap: () => context.push('/product/${p.id}'), showConfirmedFitBadge: _defaultVehicle != null);
+                },
+              );
             },
           );
         },
