@@ -146,7 +146,9 @@ class _ProductCardState extends State<ProductCard> {
     return UnconstrainedBox(
       alignment: Alignment.topCenter,
       constrainedAxis: Axis.horizontal,
-      child: Card(
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Card(
       margin: EdgeInsets.zero,
       color: palette.card,
       child: InkWell(
@@ -392,6 +394,7 @@ class _ProductCardState extends State<ProductCard> {
             ],
           ),
         ),
+      ),
       ),
       ),
     );
