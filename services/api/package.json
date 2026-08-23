@@ -16,7 +16,9 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1089.0",
     "@paypal/paypal-server-sdk": "^2.4.0",
+    "arabic-reshaper": "^1.1.0",
     "bcryptjs": "^3.0.3",
+    "bidi-js": "^1.0.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",

@@ -185,6 +185,17 @@ export async function verifySupplier(token, supplierId, status) {
 // ---------------- Fitment cascade management (Brand -> Model -> Generation -> Engine/Transmission) ----------------
 // GETs are public (no auth needed to browse), but every write below is admin-only.
 
+export async function fetchPartBrands() {
+  const response = await fetch(`${API_BASE_URL}/part-brands`);
+  if (!response.ok) throw new Error(`Failed to load part brands (${response.status})`);
+  return response.json();
+}
+export const createPartBrand = (token, name, nameAr, logoUrl) => fitmentMutate("POST", "/part-brands", token, { name, nameAr, logoUrl });
+export const updatePartBrand = (token, id, name, nameAr) => fitmentMutate("PATCH", `/part-brands/${id}`, token, { name, nameAr });
+export const updatePartBrandLogo = (token, id, logoUrl) => fitmentMutate("PATCH", `/part-brands/${id}/logo`, token, { logoUrl });
+export const deletePartBrand = (token, id) => fitmentMutate("DELETE", `/part-brands/${id}`, token);
+export const assignPartBrandToProduct = (token, productId, brandId) => fitmentMutate("PATCH", `/part-brands/assign/${productId}`, token, { brandId });
+
 export async function fetchBrands() {
   const response = await fetch(`${API_BASE_URL}/fitment/brands`);
   if (!response.ok) throw new Error(`Failed to load brands (${response.status})`);

@@ -17,6 +17,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchPromoCodes, createPromoCode, updatePromoCode, deletePromoCode,
   fetchAdminUsers, createAdminUser, updateAdminPermissions, deleteAdminUser,
   fetchPayoutsOwed, fetchPayoutHistory, recordPayout, fetchSupplierPayoutMethod, fetchReturnWindow, updateReturnWindow, fetchReceiptFooter, updateReceiptFooter, updateCategoryCommission, sendTestEmail,
+  fetchPartBrands, createPartBrand, updatePartBrand, updatePartBrandLogo, deletePartBrand, assignPartBrandToProduct,
   fetchPendingReviews, moderateReview, fetchRequireVerifiedPurchase, updateRequireVerifiedPurchase,
   fetchAuditLog,
   fetchSupplierAnalytics,
@@ -30,7 +31,7 @@ import {
   Search, Bell, ChevronDown, ChevronUp, ChevronRight, TrendingUp, TrendingDown, Truck, Plus, Pencil,
   CheckCircle2, XCircle, Clock, AlertTriangle, MoreHorizontal, ArrowUpRight,
   Filter as FilterIcon, Download, Check, X, MessageSquare, Star, Globe, Users,
-  CreditCard, ExternalLink, ChevronLeft, RotateCcw, Warehouse, Calculator, Layers, Send, Tag, ImagePlus, Key
+  CreditCard, ExternalLink, ChevronLeft, RotateCcw, Warehouse, Calculator, Layers, Send, Tag, ImagePlus, Key, Award
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -1941,6 +1942,252 @@ function VehicleDataPage({ onSessionExpired }) {
         onSave={handleSaveEdit}
         onCancel={() => setPendingEdit(null)}
         errorMessage={errorMessage}
+        isSaving={isSavingEdit}
+      />
+    </div>
+  );
+}
+
+// Real, admin management of PART-manufacturer brands (e.g. MAHLE,
+// RIDEX, Hongqi) -- confirmed directly with the person as a genuinely
+// separate real entity from vehicle_brands above (real vehicle makes
+// like BMW/Toyota, used for fitment). Deliberately much simpler than
+// VehicleDataPage: a real flat list, no nested drill-down levels,
+// since a part brand has no real hierarchy underneath it.
+//
+// Also includes a real, minimal "assign to product" form -- no
+// general product-editing UI exists anywhere in this admin portal
+// yet (real products are created and managed entirely by suppliers),
+// so this is confirmed as the right, scoped capability here rather
+// than building a full real product-management system as part of
+// this feature.
+function PartBrandsPage({ onSessionExpired }) {
+  const [brands, setBrands] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  const [newName, setNewName] = useState("");
+  const [newNameAr, setNewNameAr] = useState("");
+  const [newLogoFile, setNewLogoFile] = useState(null);
+  const [newLogoPreview, setNewLogoPreview] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [pendingDelete, setPendingDelete] = useState(null); // {id, name}
+  const [pendingEdit, setPendingEdit] = useState(null); // brand object
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [replacingLogoId, setReplacingLogoId] = useState(null);
+
+  const [assignProductId, setAssignProductId] = useState("");
+  const [assignBrandId, setAssignBrandId] = useState("");
+  const [isAssigning, setIsAssigning] = useState(false);
+  const [assignResult, setAssignResult] = useState(null); // {productName} | null
+  const [assignError, setAssignError] = useState(null);
+
+  const loadBrands = () => {
+    setLoadState("loading");
+    fetchPartBrands().then((b) => { setBrands(b); setLoadState("ready"); }).catch((e) => { setErrorMessage(e.message); setLoadState("error"); });
+  };
+  useEffect(loadBrands, []);
+
+  const handleAdd = async () => {
+    if (!newName.trim()) { setErrorMessage("Name is required."); return; }
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    try {
+      const token = getStoredToken();
+      let logoUrl;
+      if (newLogoFile) {
+        const uploadResult = await uploadImage(token, newLogoFile);
+        logoUrl = uploadResult.url;
+      }
+      await createPartBrand(token, newName.trim(), newNameAr.trim() || undefined, logoUrl);
+      loadBrands();
+      setNewName(""); setNewNameAr(""); setNewLogoFile(null); setNewLogoPreview(null);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleReplaceLogo = async (brandId, file) => {
+    setReplacingLogoId(brandId);
+    setErrorMessage(null);
+    try {
+      const token = getStoredToken();
+      const uploadResult = await uploadImage(token, file);
+      await updatePartBrandLogo(token, brandId, uploadResult.url);
+      loadBrands();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setReplacingLogoId(null);
+    }
+  };
+
+  const handleSaveEdit = async (values) => {
+    setIsSavingEdit(true);
+    try {
+      const token = getStoredToken();
+      await updatePartBrand(token, pendingEdit.id, values.name, values.nameAr);
+      setPendingEdit(null);
+      loadBrands();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      const token = getStoredToken();
+      await deletePartBrand(token, pendingDelete.id);
+      setPendingDelete(null);
+      loadBrands();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+      setPendingDelete(null);
+    }
+  };
+
+  const handleAssign = async () => {
+    if (!assignProductId.trim()) { setAssignError("Enter a product ID."); return; }
+    setIsAssigning(true);
+    setAssignError(null);
+    setAssignResult(null);
+    try {
+      const token = getStoredToken();
+      const result = await assignPartBrandToProduct(token, assignProductId.trim(), assignBrandId || null);
+      setAssignResult(result);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setAssignError(err.message);
+    } finally {
+      setIsAssigning(false);
+    }
+  };
+
+  return (
+    <div>
+      <TopBar title="Part Brands" subtitle="Manufacturer brands (e.g. MAHLE, Hongqi) shown as a small logo badge on a product's own card -- separate from Vehicle Data's own vehicle makes" />
+      <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+        {errorMessage && <div style={{ ...body, fontSize: 12.5, color: C.red, background: C.redBg, borderRadius: 8, padding: 10 }}>{errorMessage}</div>}
+
+        <Card title="Add a brand">
+          <div style={{ padding: 16, display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <div>
+              <label style={{ ...body, fontSize: 11, color: C.muted, display: "block", marginBottom: 4 }}>Name</label>
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. MAHLE" style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13, width: 160 }} />
+            </div>
+            <div>
+              <label style={{ ...body, fontSize: 11, color: C.muted, display: "block", marginBottom: 4 }}>Arabic name (optional)</label>
+              <input value={newNameAr} onChange={(e) => setNewNameAr(e.target.value)} dir="rtl" style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13, width: 160 }} />
+            </div>
+            <div>
+              <label style={{ ...body, fontSize: 11, color: C.muted, display: "block", marginBottom: 4 }}>Logo (optional)</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files[0];
+                  setNewLogoFile(file || null);
+                  setNewLogoPreview(file ? URL.createObjectURL(file) : null);
+                }}
+                style={{ ...body, fontSize: 12 }}
+              />
+            </div>
+            {newLogoPreview && <img src={newLogoPreview} alt="" style={{ width: 36, height: 36, borderRadius: 6, objectFit: "contain", background: "#fff", border: `1px solid ${C.line}` }} />}
+            <button
+              disabled={isSubmitting}
+              onClick={handleAdd}
+              style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}
+            >
+              {isSubmitting ? "Adding…" : "Add brand"}
+            </button>
+          </div>
+        </Card>
+
+        <Card title="Brands">
+          <div style={{ padding: 16 }}>
+            {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}
+            {loadState === "ready" && brands.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>No brands yet.</div>}
+            {loadState === "ready" && brands.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {brands.map((b) => (
+                  <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 12, border: `1px solid ${C.line}`, borderRadius: 10, padding: 10 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 6, background: "#fff", border: `1px solid ${C.line}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" }}>
+                      {b.logoUrl ? <img src={b.logoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <span style={{ ...body, fontSize: 10, color: C.muted }}>No logo</span>}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ ...disp, fontSize: 13.5, fontWeight: 700, margin: 0 }}>{b.name}</p>
+                      {b.nameAr && <p style={{ ...body, fontSize: 12, color: C.muted, margin: 0 }} dir="rtl">{b.nameAr}</p>}
+                    </div>
+                    <label style={{ ...body, fontSize: 11.5, fontWeight: 600, color: C.muted, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 10px", cursor: "pointer" }}>
+                      {replacingLogoId === b.id ? "Uploading…" : "Replace logo"}
+                      <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files[0]; if (f) handleReplaceLogo(b.id, f); }} />
+                    </label>
+                    <button onClick={() => setPendingEdit(b)} style={{ ...body, fontSize: 11.5, fontWeight: 600, color: C.muted, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 10px", cursor: "pointer" }}>Edit</button>
+                    <button onClick={() => setPendingDelete({ id: b.id, name: b.name })} style={{ ...body, fontSize: 11.5, fontWeight: 600, color: C.red, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 10px", cursor: "pointer" }}>Delete</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Card>
+
+        <Card title="Assign a brand to a product">
+          <div style={{ padding: 16 }}>
+            <div style={{ ...body, fontSize: 12.5, color: C.muted, marginBottom: 14 }}>
+              No general product-editing page exists yet -- this is a scoped way to link an existing product to one of the brands above by its own product ID.
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+              <div>
+                <label style={{ ...body, fontSize: 11, color: C.muted, display: "block", marginBottom: 4 }}>Product ID</label>
+                <input value={assignProductId} onChange={(e) => setAssignProductId(e.target.value)} placeholder="e.g. p1" style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13, width: 160 }} />
+              </div>
+              <div>
+                <label style={{ ...body, fontSize: 11, color: C.muted, display: "block", marginBottom: 4 }}>Brand</label>
+                <select value={assignBrandId} onChange={(e) => setAssignBrandId(e.target.value)} style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13, width: 180, background: "#fff" }}>
+                  <option value="">-- None (clear brand) --</option>
+                  {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </div>
+              <button
+                disabled={isAssigning}
+                onClick={handleAssign}
+                style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: isAssigning ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isAssigning ? "default" : "pointer" }}
+              >
+                {isAssigning ? "Saving…" : "Assign"}
+              </button>
+            </div>
+            {assignError && <div style={{ ...body, fontSize: 12, color: C.red, marginTop: 10 }}>{assignError}</div>}
+            {assignResult && <div style={{ ...body, fontSize: 12, color: C.gauge, marginTop: 10 }}>Updated "{assignResult.productName}".</div>}
+          </div>
+        </Card>
+      </div>
+
+      <ConfirmDialog
+        isOpen={!!pendingDelete}
+        title={`Delete "${pendingDelete?.name}"?`}
+        message="Any products using this brand will show no logo until reassigned."
+        onConfirm={handleDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
+      <EditDialog
+        isOpen={!!pendingEdit}
+        title="Edit brand"
+        fields={[
+          { key: "name", label: "Name", value: pendingEdit?.name },
+          { key: "nameAr", label: "Arabic name", value: pendingEdit?.nameAr, dir: "rtl" },
+        ]}
+        onSave={handleSaveEdit}
+        onCancel={() => setPendingEdit(null)}
+        errorMessage={null}
         isSaving={isSavingEdit}
       />
     </div>
@@ -5463,6 +5710,7 @@ const NAV = [
   { id: "moderation", label: "Moderation", icon: PackageSearch },
   { id: "returns", label: "Returns", icon: RotateCcw },
   { id: "vehicleData", label: "Vehicle Data", icon: Truck },
+  { id: "partBrands", label: "Part Brands", icon: Award },
   { id: "categories", label: "Categories", icon: Layers },
   { id: "supplierMessages", label: "Supplier Messages", icon: MessageSquare },
   { id: "promoCodes", label: "Promo Codes", icon: Tag },
@@ -5526,6 +5774,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   else if (page === "moderation") content = <ModerationPage onSessionExpired={onLogout} />;
   else if (page === "returns") content = <ReturnsPage onOpenCase={setOpenCase} onSessionExpired={onLogout} />;
   else if (page === "vehicleData") content = <VehicleDataPage onSessionExpired={onLogout} />;
+  else if (page === "partBrands") content = <PartBrandsPage onSessionExpired={onLogout} />;
   else if (page === "categories") content = <CategoriesPage onSessionExpired={onLogout} />;
   else if (page === "supplierMessages") content = <SupplierMessagesPage onSessionExpired={onLogout} />;
   else if (page === "promoCodes") content = <PromoCodesPage onSessionExpired={onLogout} />;

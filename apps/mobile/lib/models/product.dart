@@ -36,6 +36,14 @@ class Product {
   final String? brand;
   final String? model;
   final int? year;
+  // Real, new -- the PART's own manufacturer brand (e.g. MAHLE,
+  // Hongqi), confirmed directly with the person as a real, distinct
+  // concept from `brand` above (which is the real vehicle MAKE this
+  // part fits, e.g. BMW -- unrelated). Both null when the product has
+  // no part brand assigned, the real default for every product
+  // before this feature existed.
+  final String? partBrandName;
+  final String? partBrandLogoUrl;
   final double? weightKg;
   final double? lengthCm;
   final double? widthCm;
@@ -62,6 +70,8 @@ class Product {
     this.brand,
     this.model,
     this.year,
+    this.partBrandName,
+    this.partBrandLogoUrl,
     this.weightKg,
     this.lengthCm,
     this.widthCm,
@@ -91,6 +101,8 @@ class Product {
         brand: json['brand'] as String?,
         model: json['model'] as String?,
         year: json['year'] as int?,
+        partBrandName: json['brandName'] as String?,
+        partBrandLogoUrl: json['brandLogoUrl'] as String?,
         weightKg: (json['weightKg'] as num?)?.toDouble(),
         lengthCm: (json['lengthCm'] as num?)?.toDouble(),
         widthCm: (json['widthCm'] as num?)?.toDouble(),

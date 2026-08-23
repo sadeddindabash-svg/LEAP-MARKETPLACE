@@ -44,6 +44,7 @@ function resolveLanguage(row, lang) {
 // rather than done inline here.
 function toBuyerProductDto(row, lang) {
   const { name, description } = resolveLanguage(row, lang);
+  const brandName = lang === 'ar' && row.brand_name_ar ? row.brand_name_ar : row.brand_name || null;
   return {
     id: row.id,
     name,
@@ -52,6 +53,8 @@ function toBuyerProductDto(row, lang) {
     part: row.part,
     position: row.position,
     oemNumber: row.oem_number,
+    brandName,
+    brandLogoUrl: row.brand_logo_url || null,
     currencyCode: 'USD', // confirmed: buyer-facing price is always USD for now
     rating: row.rating != null ? Number(row.rating) : null,
     reviewCount: row.review_count,
@@ -157,7 +160,7 @@ async function attachPrimaryFitment(dto, productId) {
 function buildProductMatchQuery({ category, part, vehicleId, search, generationId, year }) {
   const conditions = [];
   const params = [];
-  let sql = `SELECT p.* FROM products p`;
+  let sql = `SELECT p.*, pb.name AS brand_name, pb.name_ar AS brand_name_ar, pb.logo_url AS brand_logo_url FROM products p LEFT JOIN part_brands pb ON pb.id = p.brand_id`;
   if (vehicleId) {
     sql += ` JOIN product_fitment pf ON pf.product_id = p.id AND pf.vehicle_id = $${params.length + 1}`;
     params.push(vehicleId);
@@ -337,7 +340,7 @@ router.get('/products', async (req, res, next) => {
 router.get('/products/:id', async (req, res, next) => {
   try {
     const { lang } = req.query;
-    const { rows } = await db.query(`SELECT p.* FROM products p WHERE p.id = $1`, [req.params.id]);
+    const { rows } = await db.query(`SELECT p.*, pb.name AS brand_name, pb.name_ar AS brand_name_ar, pb.logo_url AS brand_logo_url FROM products p LEFT JOIN part_brands pb ON pb.id = p.brand_id WHERE p.id = $1`, [req.params.id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
 
     const fitmentResult = await db.query('SELECT vehicle_id FROM product_fitment WHERE product_id = $1', [req.params.id]);
@@ -375,11 +378,11 @@ router.get('/products/:id/alternatives', async (req, res, next) => {
     // every other real supplier-less product by matching NULL = NULL.
     const { rows } = current.part
       ? await db.query(
-          `SELECT * FROM products WHERE part = $1 AND id != $2 AND stock_quantity > 0 AND status = 'active' AND supplier_id IS DISTINCT FROM $3 ORDER BY rating DESC NULLS LAST LIMIT 6`,
+          `SELECT p.*, pb.name AS brand_name, pb.name_ar AS brand_name_ar, pb.logo_url AS brand_logo_url FROM products p LEFT JOIN part_brands pb ON pb.id = p.brand_id WHERE p.part = $1 AND p.id != $2 AND p.stock_quantity > 0 AND p.status = 'active' AND p.supplier_id IS DISTINCT FROM $3 ORDER BY p.rating DESC NULLS LAST LIMIT 6`,
           [current.part, req.params.id, current.supplier_id]
         )
       : await db.query(
-          `SELECT * FROM products WHERE category = $1 AND id != $2 AND stock_quantity > 0 AND status = 'active' AND supplier_id IS DISTINCT FROM $3 ORDER BY rating DESC NULLS LAST LIMIT 6`,
+          `SELECT p.*, pb.name AS brand_name, pb.name_ar AS brand_name_ar, pb.logo_url AS brand_logo_url FROM products p LEFT JOIN part_brands pb ON pb.id = p.brand_id WHERE p.category = $1 AND p.id != $2 AND p.stock_quantity > 0 AND p.status = 'active' AND p.supplier_id IS DISTINCT FROM $3 ORDER BY p.rating DESC NULLS LAST LIMIT 6`,
           [current.category, req.params.id, current.supplier_id]
         );
 
@@ -411,7 +414,7 @@ router.get('/products/:id/oem-alternatives', async (req, res, next) => {
     if (!oemNumber) return res.json([]); // no real OEM number on this product -- genuinely nothing to compare
 
     const { rows } = await db.query(
-      `SELECT * FROM products WHERE oem_number = $1 AND id != $2 AND status = 'active' ORDER BY stock_quantity DESC NULLS LAST LIMIT 10`,
+      `SELECT p.*, pb.name AS brand_name, pb.name_ar AS brand_name_ar, pb.logo_url AS brand_logo_url FROM products p LEFT JOIN part_brands pb ON pb.id = p.brand_id WHERE p.oem_number = $1 AND p.id != $2 AND p.status = 'active' ORDER BY p.stock_quantity DESC NULLS LAST LIMIT 10`,
       [oemNumber, req.params.id]
     );
     const dtos = await Promise.all(rows.map(async (row) => {
