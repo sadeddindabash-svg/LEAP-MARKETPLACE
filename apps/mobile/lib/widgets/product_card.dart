@@ -220,16 +220,19 @@ class _ProductCardState extends State<ProductCard> {
                         ),
                       ),
                     ),
-                  // Real part-brand logo badge (new) -- confirmed
-                  // directly against a rendered mockup: bottom-left
-                  // corner, 36px (1.5x the initially-shown 24px size),
-                  // white rounded background so any logo reads
-                  // clearly regardless of the product photo behind
-                  // it. Shown only when this specific product
-                  // actually has a real part brand logo set -- most
-                  // products won't yet, and that's the correct,
-                  // unremarkable default, not a missing-data bug.
-                  if (p.partBrandLogoUrl != null)
+                  // Real vehicle-brand logo badge (e.g. BMW, Hongqi) --
+                  // confirmed directly against a rendered mockup:
+                  // bottom-left corner, 36px (1.5x the initially-shown
+                  // 24px size), white rounded background so any logo
+                  // reads clearly regardless of the product photo
+                  // behind it. Sourced automatically from the same
+                  // real fitment data a supplier already selects at
+                  // product submission -- zero new admin workflow,
+                  // per the person's own explicit correction. Shown
+                  // only when this specific product's own primary
+                  // fitment entry actually has a brand with a real
+                  // logo set.
+                  if (p.brandLogoUrl != null)
                     Positioned(
                       bottom: 6,
                       left: 6,
@@ -243,15 +246,15 @@ class _ProductCardState extends State<ProductCard> {
                           border: Border.all(color: const Color(0x1F000000)),
                         ),
                         child: CachedNetworkImage(
-                          imageUrl: ApiClient.resolveMediaUrl(p.partBrandLogoUrl!),
+                          imageUrl: ApiClient.resolveMediaUrl(p.brandLogoUrl!),
                           fit: BoxFit.contain,
-                          // Real, deliberately silent fallbacks --
-                          // a slow-loading or broken real brand logo
+                          // Real, deliberately silent fallbacks -- a
+                          // slow-loading or broken real brand logo
                           // shouldn't show a jarring placeholder/error
                           // icon on top of the real product photo;
                           // simplest is to just show nothing for that
-                          // brief moment rather than draw attention
-                          // to a real, non-critical decorative element.
+                          // brief moment rather than draw attention to
+                          // a real, non-critical decorative element.
                           placeholder: (context, url) => const SizedBox.shrink(),
                           errorWidget: (context, url, error) => const SizedBox.shrink(),
                         ),

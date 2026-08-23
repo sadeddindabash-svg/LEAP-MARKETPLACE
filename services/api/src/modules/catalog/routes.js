@@ -44,7 +44,6 @@ function resolveLanguage(row, lang) {
 // rather than done inline here.
 function toBuyerProductDto(row, lang) {
   const { name, description } = resolveLanguage(row, lang);
-  const brandName = lang === 'ar' && row.brand_name_ar ? row.brand_name_ar : row.brand_name || null;
   return {
     id: row.id,
     name,
@@ -53,8 +52,6 @@ function toBuyerProductDto(row, lang) {
     part: row.part,
     position: row.position,
     oemNumber: row.oem_number,
-    brandName,
-    brandLogoUrl: row.brand_logo_url || null,
     currencyCode: 'USD', // confirmed: buyer-facing price is always USD for now
     rating: row.rating != null ? Number(row.rating) : null,
     reviewCount: row.review_count,
@@ -133,9 +130,9 @@ async function attachSupplierSignals(dto, supplierId) {
 // flat "Brand: / Model: / Year:" product-page layout. If multi-fitment
 // products become common enough that buyers need to see the full list,
 // that's a real follow-up, not something to overbuild here on a guess.
-async function attachPrimaryFitment(dto, productId) {
+async function attachPrimaryFitment(dto, productId, lang) {
   const { rows } = await db.query(
-    `SELECT vb.name AS brand, vm.name AS model, pfe.year
+    `SELECT vb.name AS brand, vb.name_ar AS brand_ar, vb.photo_url AS brand_logo_url, vm.name AS model, pfe.year
      FROM product_fitment_entries pfe
      JOIN vehicle_generations vg ON vg.id = pfe.generation_id
      JOIN vehicle_models vm ON vm.id = vg.model_id
@@ -145,7 +142,8 @@ async function attachPrimaryFitment(dto, productId) {
     [productId]
   );
   const primary = rows[0] || null;
-  return { ...dto, brand: primary?.brand || null, model: primary?.model || null, year: primary?.year || null };
+  const brandName = lang === 'ar' && primary?.brand_ar ? primary.brand_ar : primary?.brand || null;
+  return { ...dto, brand: brandName, brandLogoUrl: primary?.brand_logo_url || null, model: primary?.model || null, year: primary?.year || null };
 }
 
 // GET /catalog/products?category=brake&part=Front+Brake+Disc&vehicleId=v1&search=bmw+brake&sort=newest&lang=en|ar
@@ -160,7 +158,7 @@ async function attachPrimaryFitment(dto, productId) {
 function buildProductMatchQuery({ category, part, vehicleId, search, generationId, year }) {
   const conditions = [];
   const params = [];
-  let sql = `SELECT p.*, pb.name AS brand_name, pb.name_ar AS brand_name_ar, pb.logo_url AS brand_logo_url FROM products p LEFT JOIN part_brands pb ON pb.id = p.brand_id`;
+  let sql = `SELECT p.* FROM products p`;
   if (vehicleId) {
     sql += ` JOIN product_fitment pf ON pf.product_id = p.id AND pf.vehicle_id = $${params.length + 1}`;
     params.push(vehicleId);
@@ -276,6 +274,7 @@ router.get('/products', async (req, res, next) => {
     let dtos = await Promise.all(rows.map(async (r) => {
       let dto = toBuyerProductDto(r, lang);
       dto = await attachBuyerImages(dto, r.id);
+      dto = await attachPrimaryFitment(dto, r.id, lang);
       dto = await attachBuyerPrice(dto, r);
       dto = await attachSupplierSignals(dto, r.supplier_id);
       return dto;
@@ -340,13 +339,13 @@ router.get('/products', async (req, res, next) => {
 router.get('/products/:id', async (req, res, next) => {
   try {
     const { lang } = req.query;
-    const { rows } = await db.query(`SELECT p.*, pb.name AS brand_name, pb.name_ar AS brand_name_ar, pb.logo_url AS brand_logo_url FROM products p LEFT JOIN part_brands pb ON pb.id = p.brand_id WHERE p.id = $1`, [req.params.id]);
+    const { rows } = await db.query(`SELECT p.* FROM products p WHERE p.id = $1`, [req.params.id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
 
     const fitmentResult = await db.query('SELECT vehicle_id FROM product_fitment WHERE product_id = $1', [req.params.id]);
     let dto = toBuyerProductDto(rows[0], lang);
     dto = await attachBuyerImages(dto, req.params.id);
-    dto = await attachPrimaryFitment(dto, req.params.id);
+    dto = await attachPrimaryFitment(dto, req.params.id, lang);
     dto = await attachBuyerPrice(dto, rows[0]);
     dto = await attachSupplierSignals(dto, rows[0].supplier_id);
     res.json({ ...dto, fitsVehicleIds: fitmentResult.rows.map((r) => r.vehicle_id) });
@@ -378,17 +377,18 @@ router.get('/products/:id/alternatives', async (req, res, next) => {
     // every other real supplier-less product by matching NULL = NULL.
     const { rows } = current.part
       ? await db.query(
-          `SELECT p.*, pb.name AS brand_name, pb.name_ar AS brand_name_ar, pb.logo_url AS brand_logo_url FROM products p LEFT JOIN part_brands pb ON pb.id = p.brand_id WHERE p.part = $1 AND p.id != $2 AND p.stock_quantity > 0 AND p.status = 'active' AND p.supplier_id IS DISTINCT FROM $3 ORDER BY p.rating DESC NULLS LAST LIMIT 6`,
+          `SELECT * FROM products WHERE part = $1 AND id != $2 AND stock_quantity > 0 AND status = 'active' AND supplier_id IS DISTINCT FROM $3 ORDER BY rating DESC NULLS LAST LIMIT 6`,
           [current.part, req.params.id, current.supplier_id]
         )
       : await db.query(
-          `SELECT p.*, pb.name AS brand_name, pb.name_ar AS brand_name_ar, pb.logo_url AS brand_logo_url FROM products p LEFT JOIN part_brands pb ON pb.id = p.brand_id WHERE p.category = $1 AND p.id != $2 AND p.stock_quantity > 0 AND p.status = 'active' AND p.supplier_id IS DISTINCT FROM $3 ORDER BY p.rating DESC NULLS LAST LIMIT 6`,
+          `SELECT * FROM products WHERE category = $1 AND id != $2 AND stock_quantity > 0 AND status = 'active' AND supplier_id IS DISTINCT FROM $3 ORDER BY rating DESC NULLS LAST LIMIT 6`,
           [current.category, req.params.id, current.supplier_id]
         );
 
     const dtos = await Promise.all(rows.map(async (row) => {
       let dto = toBuyerProductDto(row, lang);
       dto = await attachBuyerImages(dto, row.id);
+      dto = await attachPrimaryFitment(dto, row.id, lang);
       dto = await attachBuyerPrice(dto, row);
       dto = await attachSupplierSignals(dto, row.supplier_id);
       return dto;
@@ -414,12 +414,13 @@ router.get('/products/:id/oem-alternatives', async (req, res, next) => {
     if (!oemNumber) return res.json([]); // no real OEM number on this product -- genuinely nothing to compare
 
     const { rows } = await db.query(
-      `SELECT p.*, pb.name AS brand_name, pb.name_ar AS brand_name_ar, pb.logo_url AS brand_logo_url FROM products p LEFT JOIN part_brands pb ON pb.id = p.brand_id WHERE p.oem_number = $1 AND p.id != $2 AND p.status = 'active' ORDER BY p.stock_quantity DESC NULLS LAST LIMIT 10`,
+      `SELECT * FROM products WHERE oem_number = $1 AND id != $2 AND status = 'active' ORDER BY stock_quantity DESC NULLS LAST LIMIT 10`,
       [oemNumber, req.params.id]
     );
     const dtos = await Promise.all(rows.map(async (row) => {
       let dto = toBuyerProductDto(row, lang);
       dto = await attachBuyerImages(dto, row.id);
+      dto = await attachPrimaryFitment(dto, row.id, lang);
       dto = await attachBuyerPrice(dto, row);
       dto = await attachSupplierSignals(dto, row.supplier_id);
       return dto;

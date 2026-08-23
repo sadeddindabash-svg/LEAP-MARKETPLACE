@@ -34,16 +34,15 @@ class Product {
   final int estimatedDeliveryDays;
   final List<String> images;
   final String? brand;
+  // Real, new -- the same real vehicle brand's own logo (e.g. BMW,
+  // Hongqi), sourced from the exact same real fitment data a supplier
+  // already selects when submitting their product -- confirmed
+  // directly with the person as requiring zero new real admin
+  // workflow, correcting an earlier real misunderstanding that
+  // treated this as a separate part-manufacturer brand concept.
+  final String? brandLogoUrl;
   final String? model;
   final int? year;
-  // Real, new -- the PART's own manufacturer brand (e.g. MAHLE,
-  // Hongqi), confirmed directly with the person as a real, distinct
-  // concept from `brand` above (which is the real vehicle MAKE this
-  // part fits, e.g. BMW -- unrelated). Both null when the product has
-  // no part brand assigned, the real default for every product
-  // before this feature existed.
-  final String? partBrandName;
-  final String? partBrandLogoUrl;
   final double? weightKg;
   final double? lengthCm;
   final double? widthCm;
@@ -68,10 +67,9 @@ class Product {
     required this.estimatedDeliveryDays,
     this.images = const [],
     this.brand,
+    this.brandLogoUrl,
     this.model,
     this.year,
-    this.partBrandName,
-    this.partBrandLogoUrl,
     this.weightKg,
     this.lengthCm,
     this.widthCm,
@@ -99,10 +97,9 @@ class Product {
         estimatedDeliveryDays: json['estimatedDeliveryDays'] as int? ?? 7,
         images: (json['images'] as List?)?.cast<String>() ?? const [],
         brand: json['brand'] as String?,
+        brandLogoUrl: json['brandLogoUrl'] as String?,
         model: json['model'] as String?,
         year: json['year'] as int?,
-        partBrandName: json['brandName'] as String?,
-        partBrandLogoUrl: json['brandLogoUrl'] as String?,
         weightKg: (json['weightKg'] as num?)?.toDouble(),
         lengthCm: (json['lengthCm'] as num?)?.toDouble(),
         widthCm: (json['widthCm'] as num?)?.toDouble(),
