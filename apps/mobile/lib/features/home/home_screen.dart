@@ -16,6 +16,7 @@ import '../../widgets/plate_chip.dart';
 import '../../widgets/product_card.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/onboarding_overlay.dart';
+import '../../widgets/brand_logo_marquee.dart';
 
 /// Real, admin-managed icon per known category id — a NEW category an
 /// admin adds via the admin dashboard's Categories page (see
@@ -250,6 +251,20 @@ class _HomeScreenState extends State<HomeScreen> {
             // 2. Shopping for -- real garage data
             _ShoppingForCard(garageFuture: _garageFuture, isLoggedIn: auth.isLoggedIn, onNavigateToGarage: () => _navigateToGarage(context)),
             const SizedBox(height: 12),
+            // 2.6. Brand logo marquee (new) -- confirmed exact position
+            // with the person: between "Shopping for" and "Recently
+            // viewed". A purely decorative, continuously auto-
+            // scrolling strip, so it needs no isLoggedIn gate (unlike
+            // Recently Viewed below it) and no vehicle-selection
+            // dependency (unlike the "Shopping for" card above it).
+            // Own its own real spacing internally (matching the
+            // established pattern for every other optional section on
+            // this page) rather than an external, unconditional
+            // spacer here -- confirmed this section can genuinely be
+            // empty for a brand-new deployment with no brand logos
+            // uploaded yet, in which case an unconditional external
+            // spacer would show as an unexplained extra gap.
+            const BrandLogoMarquee(),
             // 2.5. Recently viewed -- real, synced to the buyer's real
             // account (migration 032) -- logged-in buyers only.
             if (auth.isLoggedIn)
