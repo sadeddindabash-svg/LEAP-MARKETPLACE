@@ -265,11 +265,22 @@ class _ProductCardState extends State<ProductCard> {
                 ],
               ),
               const SizedBox(height: 6),
-              Text(
-                p.name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, height: 1.3),
+              // Real, confirmed with the person: reserve a fixed
+              // 2-line height regardless of this specific product's
+              // own real name length, so every card in a row is the
+              // same real height -- a short 1-line name no longer
+              // makes its own card shorter than a neighboring card
+              // with a longer, genuinely 2-line name. 12 * 1.3 * 2 =
+              // the real, exact height 2 lines at this font
+              // size/line-height actually occupy.
+              SizedBox(
+                height: 12 * 1.3 * 2 + 2,
+                child: Text(
+                  p.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, height: 1.3),
+                ),
               ),
               const SizedBox(height: 4),
               Row(
@@ -362,9 +373,13 @@ class _ProductCardState extends State<ProductCard> {
                   ),
                 ],
               ),
-              if (inStock) ...[
-                const SizedBox(height: 5),
-                Container(
+              const SizedBox(height: 5),
+              Visibility(
+                visible: inStock,
+                maintainSize: true,
+                maintainAnimation: true,
+                maintainState: true,
+                child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(color: palette.gauge.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(5)),
                   child: Text(
@@ -372,7 +387,7 @@ class _ProductCardState extends State<ProductCard> {
                     style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: palette.gauge),
                   ),
                 ),
-              ],
+              ),
             ],
           ),
         ),
