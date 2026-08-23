@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../core/theme.dart';
 import '../services/api_client.dart';
 
 /// Real, new -- a continuously auto-scrolling strip of vehicle brand
@@ -122,6 +123,7 @@ class _BrandLogoMarqueeState extends State<BrandLogoMarquee> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = LeapPalette.of(context);
     // Real, deliberate empty-state handling -- confirmed as this
     // app's own established convention: still loading, or genuinely
     // no brand has a real logo yet, both show nothing here.
@@ -144,12 +146,16 @@ class _BrandLogoMarqueeState extends State<BrandLogoMarquee> {
             for (final brand in _renderedBrands)
               Padding(
                 padding: const EdgeInsets.only(right: _gap),
-                child: ClipOval(
-                  child: Container(
-                    width: _circleSize,
-                    height: _circleSize,
-                    color: Colors.white,
-                    child: CachedNetworkImage(
+                child: Container(
+                  width: _circleSize,
+                  height: _circleSize,
+                  decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: palette.line)),
+                  child: ClipOval(
+                    child: Container(
+                      width: _circleSize,
+                      height: _circleSize,
+                      color: Colors.white,
+                      child: CachedNetworkImage(
                       imageUrl: ApiClient.resolveMediaUrl(brand['photoUrl'] as String),
                       fit: BoxFit.contain,
                       fadeInDuration: const Duration(milliseconds: 300),
@@ -163,6 +169,7 @@ class _BrandLogoMarqueeState extends State<BrandLogoMarquee> {
                       errorWidget: (context, url, error) => const SizedBox.shrink(),
                     ),
                   ),
+                ),
                 ),
               ),
           ],
