@@ -16,7 +16,7 @@ import '../../services/api_client.dart';
 import '../../widgets/reviews_section.dart';
 import '../../widgets/alternatives_section.dart';
 import '../../widgets/oem_comparison_section.dart';
-import '../../widgets/customer_photos_section.dart';
+import '../../widgets/product_photos_section.dart';
 import '../../widgets/same_model_section.dart';
 import '../../widgets/same_brand_section.dart';
 import '../../widgets/newest_products_section.dart';
@@ -370,7 +370,7 @@ class _ProductDetailBody extends StatelessWidget {
             AlternativesSection(productId: product.id, isAr: _isAr),
             OemComparisonSection(productId: product.id, isAr: _isAr),
             ReviewsSection(productId: product.id, isAr: _isAr),
-            CustomerPhotosSection(productId: product.id, isAr: _isAr),
+            ProductPhotosSection(images: product.images, isAr: _isAr),
             SameModelSection(productId: product.id, isAr: _isAr),
             SameBrandSection(productId: product.id, isAr: _isAr),
             NewestProductsSection(productId: product.id, isAr: _isAr),

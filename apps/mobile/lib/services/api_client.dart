@@ -138,12 +138,13 @@ class ApiClient {
   /// codebase ever wrote a real row into -- it silently returned
   /// nothing meaningful this whole time. Now takes generationId/year,
   /// the same real, populated filter the search vehicle picker uses.
-  Future<List<Product>> fetchProducts({String? sort, String? generationId, int? year, String lang = 'en', int? limit}) async {
+  Future<List<Product>> fetchProducts({String? sort, String? generationId, int? year, String lang = 'en', int? limit, int? page}) async {
     final uri = Uri.parse('$baseUrl/catalog/products').replace(queryParameters: {
       if (sort != null) 'sort': sort,
       if (generationId != null) 'generationId': generationId,
       if (year != null) 'year': '$year',
       if (limit != null) 'limit': '$limit',
+      if (page != null) 'page': '$page',
       'lang': lang,
     });
     final response = await _client.get(uri);
@@ -356,8 +357,8 @@ class ApiClient {
   /// directly with the person via a written plan first as genuinely
   /// distinct from fetchProductAlternatives above (same part,
   /// different supplier) -- this is different parts, same real car.
-  Future<List<Product>> fetchSameModelProducts(String productId, {String lang = 'en'}) async {
-    final response = await _client.get(Uri.parse('$baseUrl/catalog/products/$productId/same-model?lang=$lang'));
+  Future<List<Product>> fetchSameModelProducts(String productId, {String lang = 'en', int page = 1}) async {
+    final response = await _client.get(Uri.parse('$baseUrl/catalog/products/$productId/same-model?lang=$lang&page=$page'));
     if (response.statusCode != 200) {
       throw ApiException('Failed to load same-model products (${response.statusCode})');
     }
@@ -367,25 +368,12 @@ class ApiClient {
   /// Same real idea as fetchSameModelProducts above, broadened to the
   /// whole real vehicle brand -- the real backend already excludes
   /// anything shown there, so these two real lists never overlap.
-  Future<List<Product>> fetchSameBrandProducts(String productId, {String lang = 'en'}) async {
-    final response = await _client.get(Uri.parse('$baseUrl/catalog/products/$productId/same-brand?lang=$lang'));
+  Future<List<Product>> fetchSameBrandProducts(String productId, {String lang = 'en', int page = 1}) async {
+    final response = await _client.get(Uri.parse('$baseUrl/catalog/products/$productId/same-brand?lang=$lang&page=$page'));
     if (response.statusCode != 200) {
       throw ApiException('Failed to load same-brand products (${response.statusCode})');
     }
     return (jsonDecode(response.body) as List).map((j) => Product.fromJson(j as Map<String, dynamic>)).toList();
-  }
-
-  /// Real, new -- every real approved review's own photos for this
-  /// product, aggregated together in one real gallery (confirmed
-  /// directly with the person via a written plan first), distinct
-  /// from how review photos already show scattered inline within
-  /// each individual review.
-  Future<List<String>> fetchReviewPhotos(String productId) async {
-    final response = await _client.get(Uri.parse('$baseUrl/catalog/products/$productId/review-photos'));
-    if (response.statusCode != 200) {
-      throw ApiException('Failed to load review photos (${response.statusCode})');
-    }
-    return (jsonDecode(response.body) as List).cast<String>();
   }
 
   // ---------------- Garage — buyer's own saved vehicles (BUY-004/010-012) ----------------

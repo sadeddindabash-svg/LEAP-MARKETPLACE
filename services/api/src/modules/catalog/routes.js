@@ -471,7 +471,11 @@ router.get('/products/:id/oem-alternatives', async (req, res, next) => {
 // real model_id to search by.
 router.get('/products/:id/same-model', async (req, res, next) => {
   try {
-    const { lang } = req.query;
+    const { lang, page, limit } = req.query;
+    const limitNum = Math.min(Math.max(Number(limit) || 10, 1), 50);
+    const pageNum = Math.max(Number(page) || 1, 1);
+    const offset = (pageNum - 1) * limitNum;
+
     const { rows: fitmentRows } = await db.query(
       `SELECT vm.id AS model_id FROM product_fitment_entries pfe
        JOIN vehicle_generations vg ON vg.id = pfe.generation_id
@@ -487,8 +491,8 @@ router.get('/products/:id/same-model', async (req, res, next) => {
        JOIN product_fitment_entries pfe ON pfe.product_id = p.id
        JOIN vehicle_generations vg ON vg.id = pfe.generation_id
        WHERE vg.model_id = $1 AND p.id != $2 AND p.stock_quantity > 0 AND p.status = 'active'
-       ORDER BY p.rating DESC NULLS LAST LIMIT 10`,
-      [modelId, req.params.id]
+       ORDER BY p.rating DESC NULLS LAST, p.id ASC LIMIT $3 OFFSET $4`,
+      [modelId, req.params.id, limitNum, offset]
     );
     const dtos = await Promise.all(rows.map(async (row) => {
       let dto = toBuyerProductDto(row, lang);
@@ -512,7 +516,11 @@ router.get('/products/:id/same-model', async (req, res, next) => {
 // appears in both real rows on the product page.
 router.get('/products/:id/same-brand', async (req, res, next) => {
   try {
-    const { lang } = req.query;
+    const { lang, page, limit } = req.query;
+    const limitNum = Math.min(Math.max(Number(limit) || 10, 1), 50);
+    const pageNum = Math.max(Number(page) || 1, 1);
+    const offset = (pageNum - 1) * limitNum;
+
     const { rows: fitmentRows } = await db.query(
       `SELECT vb.id AS brand_id, vm.id AS model_id FROM product_fitment_entries pfe
        JOIN vehicle_generations vg ON vg.id = pfe.generation_id
@@ -535,8 +543,8 @@ router.get('/products/:id/same-brand', async (req, res, next) => {
            JOIN vehicle_generations vg2 ON vg2.id = pfe2.generation_id
            WHERE vg2.model_id = $3
          )
-       ORDER BY p.rating DESC NULLS LAST LIMIT 10`,
-      [brandId, req.params.id, modelId]
+       ORDER BY p.rating DESC NULLS LAST, p.id ASC LIMIT $4 OFFSET $5`,
+      [brandId, req.params.id, modelId, limitNum, offset]
     );
     const dtos = await Promise.all(rows.map(async (row) => {
       let dto = toBuyerProductDto(row, lang);
@@ -581,29 +589,6 @@ router.get('/products/:id/reviews', async (req, res, next) => {
       reviewCount: rows.length,
       reviews: rows.map((r) => ({ id: r.id, buyerName: r.buyer_name, rating: r.rating, comment: r.comment, createdAt: r.created_at, photos: photosByReview[r.id] || [], isVerifiedPurchase: r.is_verified_purchase })),
     });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// GET /products/:id/review-photos -- real, new aggregated gallery of
-// every real approved review's own photos together in one place,
-// confirmed directly with the person via a written plan first as
-// genuinely distinct from how review photos already show scattered
-// inline within each individual review above. Ordered chronologically
-// (oldest real review first, then that review's own real internal
-// sort_order) -- "in order which have been added", not shuffled or
-// ranked by rating/helpfulness.
-router.get('/products/:id/review-photos', async (req, res, next) => {
-  try {
-    const { rows } = await db.query(
-      `SELECT rp.url FROM review_photos rp
-       JOIN product_reviews r ON r.id = rp.review_id
-       WHERE r.product_id = $1 AND r.status = 'approved'
-       ORDER BY r.created_at ASC, rp.sort_order ASC`,
-      [req.params.id]
-    );
-    res.json(rows.map((r) => r.url));
   } catch (err) {
     next(err);
   }
