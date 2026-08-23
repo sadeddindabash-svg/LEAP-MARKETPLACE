@@ -60,7 +60,7 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
 
     const modelRes = await fetch(`${BACKEND_URL}/fitment/brands/${brand.id}/models`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: 'E2E Model' }),
+      body: JSON.stringify({ name: 'E2E Model', nameAr: 'موديل اختبار' }),
     });
     const model = await modelRes.json();
     expect(model.brandId).toBe(brand.id);
@@ -111,7 +111,7 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
     const brand = await brandRes.json();
     const modelRes = await fetch(`${BACKEND_URL}/fitment/brands/${brand.id}/models`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: 'Year Test Model' }),
+      body: JSON.stringify({ name: 'Year Test Model', nameAr: 'موديل اختبار السنة' }),
     });
     const model = await modelRes.json();
 
@@ -156,7 +156,7 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
     const brand = await brandRes.json();
     const modelRes = await fetch(`${BACKEND_URL}/fitment/brands/${brand.id}/models`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-      body: JSON.stringify({ name: 'Protection Test Model' }),
+      body: JSON.stringify({ name: 'Protection Test Model', nameAr: 'موديل اختبار الحماية' }),
     });
     const model = await modelRes.json();
     const genRes = await fetch(`${BACKEND_URL}/fitment/models/${model.id}/generations`, {
@@ -201,7 +201,7 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
     const brand = await brandRes.json();
     const modelRes = await fetch(`${BACKEND_URL}/fitment/brands/${brand.id}/models`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: 'Cascade Test Model' }),
+      body: JSON.stringify({ name: 'Cascade Test Model', nameAr: 'موديل اختبار التسلسل' }),
     });
     const model = await modelRes.json();
     await fetch(`${BACKEND_URL}/fitment/models/${model.id}/generations`, {

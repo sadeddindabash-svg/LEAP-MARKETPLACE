@@ -111,7 +111,7 @@ describe.runIf(backendUp)('category + parts reference system against a REAL runn
 
     const partRes = await fetch(`${BACKEND_URL}/catalog/categories/${uniqueId}/parts`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-      body: JSON.stringify({ nameEn: `Unique Part ${Date.now()}` }),
+      body: JSON.stringify({ nameEn: `Unique Part ${Date.now()}`, nameAr: 'جزء فريد' }),
     });
     expect(partRes.status).toBe(201);
     const part = await partRes.json();
@@ -147,7 +147,7 @@ describe.runIf(backendUp)('category + parts reference system against a REAL runn
     });
     await fetch(`${BACKEND_URL}/catalog/categories/${uniqueId}/parts`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-      body: JSON.stringify({ nameEn: `Attached Part ${Date.now()}` }),
+      body: JSON.stringify({ nameEn: `Attached Part ${Date.now()}`, nameAr: 'جزء مرفق' }),
     });
     const deleteWithPartsRes = await fetch(`${BACKEND_URL}/catalog/categories/${uniqueId}`, {
       method: 'DELETE', headers: { Authorization: `Bearer ${adminToken}` },

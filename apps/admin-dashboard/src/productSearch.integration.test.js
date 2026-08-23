@@ -25,7 +25,7 @@ async function createRealPart(category, nameEn) {
   await fetch(`${BACKEND_URL}/catalog/categories/${category}/parts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-    body: JSON.stringify({ nameEn }),
+    body: JSON.stringify({ nameEn, nameAr: `عربي ${nameEn}` }),
   });
 }
 

@@ -132,7 +132,7 @@ async function attachSupplierSignals(dto, supplierId) {
 // that's a real follow-up, not something to overbuild here on a guess.
 async function attachPrimaryFitment(dto, productId, lang) {
   const { rows } = await db.query(
-    `SELECT vb.name AS brand, vb.name_ar AS brand_ar, vb.photo_url AS brand_logo_url, vm.name AS model, pfe.year
+    `SELECT vb.name AS brand, vb.name_ar AS brand_ar, vb.photo_url AS brand_logo_url, vm.name AS model, vm.name_ar AS model_ar, pfe.year
      FROM product_fitment_entries pfe
      JOIN vehicle_generations vg ON vg.id = pfe.generation_id
      JOIN vehicle_models vm ON vm.id = vg.model_id
@@ -143,7 +143,33 @@ async function attachPrimaryFitment(dto, productId, lang) {
   );
   const primary = rows[0] || null;
   const brandName = lang === 'ar' && primary?.brand_ar ? primary.brand_ar : primary?.brand || null;
-  return { ...dto, brand: brandName, brandLogoUrl: primary?.brand_logo_url || null, model: primary?.model || null, year: primary?.year || null };
+  const modelName = lang === 'ar' && primary?.model_ar ? primary.model_ar : primary?.model || null;
+  return { ...dto, brand: brandName, brandLogoUrl: primary?.brand_logo_url || null, model: modelName, year: primary?.year || null };
+}
+
+/**
+ * Real fix for a real, confirmed gap: products.part is stored as
+ * plain English text (migration 015 -- validated against
+ * category_parts.name_en at submission, but deliberately never made
+ * a foreign key, "to avoid a large blast-radius change"). This means
+ * it was never resolved back to Arabic at read time even though
+ * category_parts.name_ar already exists and already has its own real
+ * admin-editable field -- confirmed directly with the person as
+ * exactly why Technical Specifications' own real Part Name row showed
+ * English even in Arabic mode. Falls back to the original real
+ * English text if no matching category_parts row exists for this
+ * product's own category, or if that row has no real Arabic name set
+ * yet (this will still happen for any of the 160 real existing parts
+ * missing one until an admin fills them in -- a real data-completeness
+ * gap, not a real code bug, once this fix is in place).
+ */
+async function attachPartTranslation(dto, row, lang) {
+  if (lang !== 'ar' || !row.part) return dto;
+  const { rows } = await db.query('SELECT name_ar FROM category_parts WHERE category_id = $1 AND name_en = $2 LIMIT 1', [row.category, row.part]);
+  if (rows.length > 0 && rows[0].name_ar) {
+    return { ...dto, part: rows[0].name_ar };
+  }
+  return dto;
 }
 
 // GET /catalog/products?category=brake&part=Front+Brake+Disc&vehicleId=v1&search=bmw+brake&sort=newest&lang=en|ar
@@ -275,6 +301,7 @@ router.get('/products', async (req, res, next) => {
       let dto = toBuyerProductDto(r, lang);
       dto = await attachBuyerImages(dto, r.id);
       dto = await attachPrimaryFitment(dto, r.id, lang);
+      dto = await attachPartTranslation(dto, r, lang);
       dto = await attachBuyerPrice(dto, r);
       dto = await attachSupplierSignals(dto, r.supplier_id);
       return dto;
@@ -346,6 +373,7 @@ router.get('/products/:id', async (req, res, next) => {
     let dto = toBuyerProductDto(rows[0], lang);
     dto = await attachBuyerImages(dto, req.params.id);
     dto = await attachPrimaryFitment(dto, req.params.id, lang);
+    dto = await attachPartTranslation(dto, rows[0], lang);
     dto = await attachBuyerPrice(dto, rows[0]);
     dto = await attachSupplierSignals(dto, rows[0].supplier_id);
     res.json({ ...dto, fitsVehicleIds: fitmentResult.rows.map((r) => r.vehicle_id) });
@@ -389,6 +417,7 @@ router.get('/products/:id/alternatives', async (req, res, next) => {
       let dto = toBuyerProductDto(row, lang);
       dto = await attachBuyerImages(dto, row.id);
       dto = await attachPrimaryFitment(dto, row.id, lang);
+      dto = await attachPartTranslation(dto, row, lang);
       dto = await attachBuyerPrice(dto, row);
       dto = await attachSupplierSignals(dto, row.supplier_id);
       return dto;
@@ -421,6 +450,7 @@ router.get('/products/:id/oem-alternatives', async (req, res, next) => {
       let dto = toBuyerProductDto(row, lang);
       dto = await attachBuyerImages(dto, row.id);
       dto = await attachPrimaryFitment(dto, row.id, lang);
+      dto = await attachPartTranslation(dto, row, lang);
       dto = await attachBuyerPrice(dto, row);
       dto = await attachSupplierSignals(dto, row.supplier_id);
       return dto;
@@ -857,6 +887,7 @@ router.post('/categories/:id/parts', requireAuth, requireRole('admin'), requireP
   try {
     const { nameEn, nameAr, sortOrder, photoUrl } = req.body || {};
     if (!nameEn) return res.status(400).json({ error: 'nameEn is required' });
+    if (!nameAr || !nameAr.trim()) return res.status(400).json({ error: 'nameAr is required' });
     const categoryCheck = await db.query('SELECT id FROM product_categories WHERE id = $1', [req.params.id]);
     if (categoryCheck.rows.length === 0) return res.status(404).json({ error: 'Category not found' });
     const partId = `part_${Date.now()}`;
@@ -903,7 +934,8 @@ router.patch('/parts/:id', requireAuth, requireRole('admin'), requirePageAccess(
   try {
     const { nameEn, nameAr } = req.body || {};
     if (!nameEn || !nameEn.trim()) return res.status(400).json({ error: 'nameEn is required' });
-    const { rows } = await db.query('UPDATE category_parts SET name_en = $1, name_ar = $2 WHERE id = $3 RETURNING *', [nameEn.trim(), nameAr?.trim() || null, req.params.id]);
+    if (!nameAr || !nameAr.trim()) return res.status(400).json({ error: 'nameAr is required' });
+    const { rows } = await db.query('UPDATE category_parts SET name_en = $1, name_ar = $2 WHERE id = $3 RETURNING *', [nameEn.trim(), nameAr.trim(), req.params.id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Part not found' });
     await logAdminAction(req, 'part_updated', 'part', req.params.id, { nameEn: nameEn.trim() });
     res.json(toPartDto(rows[0]));

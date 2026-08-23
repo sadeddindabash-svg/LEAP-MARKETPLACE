@@ -100,6 +100,7 @@ describe('Categories page — real category/part reference management (mocked fe
     fireEvent.click(await screen.findByText('Brake System'));
     await waitFor(() => screen.getByPlaceholderText(/english part name/i));
     fireEvent.change(screen.getByPlaceholderText(/english part name/i), { target: { value: 'Brake Fluid' } });
+    fireEvent.change(screen.getByPlaceholderText(/arabic name \(required\)/i), { target: { value: 'سائل الفرامل' } });
     fireEvent.click(screen.getByRole('button', { name: /add part/i }));
 
     await waitFor(() => expect(screen.getByText('Brake Fluid')).toBeInTheDocument());

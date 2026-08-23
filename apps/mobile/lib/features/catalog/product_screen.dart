@@ -200,6 +200,18 @@ class _ProductDetailBody extends StatelessWidget {
   String get _lWeight => _isAr ? 'الوزن' : 'Weight';
   String get _lNotSpecified => _isAr ? 'غير محدد' : 'Not specified';
 
+  // Real, small country-name translation -- confirmed with the person:
+  // every real supplier's own country is currently "China" (the only
+  // real value this can be today), so this map starts with just that
+  // one real, confirmed entry. Falls back to the plain English name
+  // for any real country not yet in this map, rather than showing
+  // nothing at all if a new real supplier country is ever added.
+  static const _arabicCountryNames = {'China': 'الصين'};
+  String _countryName(String? country) {
+    if (country == null) return '';
+    return _isAr ? (_arabicCountryNames[country] ?? country) : country;
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = LeapPalette.of(context);
@@ -290,7 +302,12 @@ class _ProductDetailBody extends StatelessWidget {
                           children: [
                             Icon(Icons.public, size: 14, color: palette.muted),
                             const SizedBox(width: 4),
-                            Text(_isAr ? 'يشحن من ${product.shipsFromCountry}' : 'Ships from ${product.shipsFromCountry}', style: TextStyle(fontSize: 11.5, color: palette.muted)),
+                            Text(
+                              _isAr
+                                  ? 'يشحن من مستودع ${_countryName(product.shipsFromCountry)}'
+                                  : 'Ships from ${product.shipsFromCountry} Warehouse',
+                              style: TextStyle(fontSize: 11.5, color: palette.muted),
+                            ),
                           ],
                         ),
                     ],
