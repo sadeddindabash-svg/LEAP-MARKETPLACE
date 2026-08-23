@@ -461,6 +461,98 @@ router.get('/products/:id/oem-alternatives', async (req, res, next) => {
   }
 });
 
+// GET /products/:id/same-model -- real "more parts for your car" cross-
+// sell, confirmed directly with the person via a written plan first:
+// genuinely different real parts for the SAME real vehicle model this
+// product fits, not the same real part from a different real supplier
+// (that's what /alternatives above is for). Uses this product's own
+// real PRIMARY fitment entry (same "first by id" real convention
+// already established in attachPrimaryFitment above) to resolve which
+// real model_id to search by.
+router.get('/products/:id/same-model', async (req, res, next) => {
+  try {
+    const { lang } = req.query;
+    const { rows: fitmentRows } = await db.query(
+      `SELECT vm.id AS model_id FROM product_fitment_entries pfe
+       JOIN vehicle_generations vg ON vg.id = pfe.generation_id
+       JOIN vehicle_models vm ON vm.id = vg.model_id
+       WHERE pfe.product_id = $1 ORDER BY pfe.id ASC LIMIT 1`,
+      [req.params.id]
+    );
+    if (fitmentRows.length === 0) return res.json([]); // no real fitment on this product at all -- genuinely nothing to show
+    const modelId = fitmentRows[0].model_id;
+
+    const { rows } = await db.query(
+      `SELECT DISTINCT p.* FROM products p
+       JOIN product_fitment_entries pfe ON pfe.product_id = p.id
+       JOIN vehicle_generations vg ON vg.id = pfe.generation_id
+       WHERE vg.model_id = $1 AND p.id != $2 AND p.stock_quantity > 0 AND p.status = 'active'
+       ORDER BY p.rating DESC NULLS LAST LIMIT 10`,
+      [modelId, req.params.id]
+    );
+    const dtos = await Promise.all(rows.map(async (row) => {
+      let dto = toBuyerProductDto(row, lang);
+      dto = await attachBuyerImages(dto, row.id);
+      dto = await attachPrimaryFitment(dto, row.id, lang);
+      dto = await attachPartTranslation(dto, row, lang);
+      dto = await attachBuyerPrice(dto, row);
+      dto = await attachSupplierSignals(dto, row.supplier_id);
+      return dto;
+    }));
+    res.json(dtos);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /products/:id/same-brand -- same real idea as same-model above,
+// broadened to the whole real vehicle brand. Deliberately excludes
+// every real product already surfaced by same-model (confirmed
+// directly with the person), so the exact same real product never
+// appears in both real rows on the product page.
+router.get('/products/:id/same-brand', async (req, res, next) => {
+  try {
+    const { lang } = req.query;
+    const { rows: fitmentRows } = await db.query(
+      `SELECT vb.id AS brand_id, vm.id AS model_id FROM product_fitment_entries pfe
+       JOIN vehicle_generations vg ON vg.id = pfe.generation_id
+       JOIN vehicle_models vm ON vm.id = vg.model_id
+       JOIN vehicle_brands vb ON vb.id = vm.brand_id
+       WHERE pfe.product_id = $1 ORDER BY pfe.id ASC LIMIT 1`,
+      [req.params.id]
+    );
+    if (fitmentRows.length === 0) return res.json([]);
+    const { brand_id: brandId, model_id: modelId } = fitmentRows[0];
+
+    const { rows } = await db.query(
+      `SELECT DISTINCT p.* FROM products p
+       JOIN product_fitment_entries pfe ON pfe.product_id = p.id
+       JOIN vehicle_generations vg ON vg.id = pfe.generation_id
+       JOIN vehicle_models vm ON vm.id = vg.model_id
+       WHERE vm.brand_id = $1 AND p.id != $2 AND p.stock_quantity > 0 AND p.status = 'active'
+         AND p.id NOT IN (
+           SELECT pfe2.product_id FROM product_fitment_entries pfe2
+           JOIN vehicle_generations vg2 ON vg2.id = pfe2.generation_id
+           WHERE vg2.model_id = $3
+         )
+       ORDER BY p.rating DESC NULLS LAST LIMIT 10`,
+      [brandId, req.params.id, modelId]
+    );
+    const dtos = await Promise.all(rows.map(async (row) => {
+      let dto = toBuyerProductDto(row, lang);
+      dto = await attachBuyerImages(dto, row.id);
+      dto = await attachPrimaryFitment(dto, row.id, lang);
+      dto = await attachPartTranslation(dto, row, lang);
+      dto = await attachBuyerPrice(dto, row);
+      dto = await attachSupplierSignals(dto, row.supplier_id);
+      return dto;
+    }));
+    res.json(dtos);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /products/:id/reviews — real, public: only real APPROVED reviews
 // (migration 025) are ever shown to a buyer, plus a real average rating
 // computed directly from those same approved reviews — never from
@@ -489,6 +581,29 @@ router.get('/products/:id/reviews', async (req, res, next) => {
       reviewCount: rows.length,
       reviews: rows.map((r) => ({ id: r.id, buyerName: r.buyer_name, rating: r.rating, comment: r.comment, createdAt: r.created_at, photos: photosByReview[r.id] || [], isVerifiedPurchase: r.is_verified_purchase })),
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /products/:id/review-photos -- real, new aggregated gallery of
+// every real approved review's own photos together in one place,
+// confirmed directly with the person via a written plan first as
+// genuinely distinct from how review photos already show scattered
+// inline within each individual review above. Ordered chronologically
+// (oldest real review first, then that review's own real internal
+// sort_order) -- "in order which have been added", not shuffled or
+// ranked by rating/helpfulness.
+router.get('/products/:id/review-photos', async (req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT rp.url FROM review_photos rp
+       JOIN product_reviews r ON r.id = rp.review_id
+       WHERE r.product_id = $1 AND r.status = 'approved'
+       ORDER BY r.created_at ASC, rp.sort_order ASC`,
+      [req.params.id]
+    );
+    res.json(rows.map((r) => r.url));
   } catch (err) {
     next(err);
   }
