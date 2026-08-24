@@ -10,6 +10,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchFeeComponents, createFeeComponent, updateFeeComponent, deleteFeeComponent, moveFeeComponent, fetchFxRate, updateFxRate, fetchFxRateMode, updateFxRateMode, previewPricing,
   fetchFlaggedShipments,
   fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart, uploadImage, updateCategoryPhoto, updatePartPhoto, moveCategory, movePart, moveBrand, moveModel, moveGeneration, moveEngine, moveTransmission, updateBrandPhoto, updateModelPhoto,
+  fetchQuoteRequestQueue, fetchQuoteRequestDetail, updateQuoteRequestItem, addQuoteRequestItemPhoto, deleteQuoteRequestItemPhoto, sendQuoteRequestQuote,
   updateCategory, updatePart, updateBrand, updateModel, updateGeneration, updateEngine, updateTransmission,
   fetchPaymentMethods, fetchAvailableCountries, fetchAvailableProviders, createPaymentMethod, updatePaymentMethod, updatePaymentMethodPhoto, movePaymentMethod, activatePaymentMethodCountry, deactivatePaymentMethodCountry, deletePaymentMethod, setPaymentMethodActive, bulkSetPaymentMethodCountries,
   fetchPaymentProviders, savePaymentProviderCredentials, deletePaymentProviderCredentials,
@@ -30,7 +31,7 @@ import {
   Search, Bell, ChevronDown, ChevronUp, ChevronRight, TrendingUp, TrendingDown, Truck, Plus, Pencil,
   CheckCircle2, XCircle, Clock, AlertTriangle, MoreHorizontal, ArrowUpRight,
   Filter as FilterIcon, Download, Check, X, MessageSquare, Star, Globe, Users,
-  CreditCard, ExternalLink, ChevronLeft, RotateCcw, Warehouse, Calculator, Layers, Send, Tag, ImagePlus, Key
+  CreditCard, ExternalLink, ChevronLeft, RotateCcw, Warehouse, Calculator, Layers, Send, Tag, ImagePlus, Key, FileQuestion
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -1944,6 +1945,273 @@ function VehicleDataPage({ onSessionExpired }) {
         errorMessage={errorMessage}
         isSaving={isSavingEdit}
       />
+    </div>
+  );
+}
+
+// Real "request a part we don't carry" admin page (RFQ), confirmed
+// with the person through several rounds of design discussion before
+// building: real buyers list real parts they need for a specific real
+// vehicle; real staff source real prices from real suppliers OFFLINE
+// (there is deliberately no supplier-facing bidding UI) and enter
+// them here. Sending a quote creates a real product under the real
+// "Leap Supplier" account and feeds it into the existing real
+// moderation queue -- this page never bypasses that real review step.
+function PartRequestsPage({ onSessionExpired }) {
+  const [selectedId, setSelectedId] = useState(null);
+  return selectedId
+    ? <PartRequestDetail requestId={selectedId} onBack={() => setSelectedId(null)} onSessionExpired={onSessionExpired} />
+    : <PartRequestQueue onSelect={setSelectedId} onSessionExpired={onSessionExpired} />;
+}
+
+function PartRequestQueue({ onSelect, onSessionExpired }) {
+  const [queue, setQueue] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  useEffect(() => {
+    setLoadState("loading");
+    fetchQuoteRequestQueue(getStoredToken())
+      .then((q) => { setQueue(q); setLoadState("ready"); })
+      .catch((e) => {
+        if (e instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(e.message);
+        setLoadState("error");
+      });
+  }, [onSessionExpired]);
+
+  const statusStyle = {
+    submitted: { bg: C.amberBg, text: C.amber },
+    quoted: { bg: C.gaugeBg, text: C.gauge },
+    ordered: { bg: C.torqueBg, text: C.torque },
+  };
+
+  return (
+    <div>
+      <TopBar title="Part Requests" subtitle="Buyers asking for parts not currently listed -- source a real price and send a quote" />
+      <div style={{ padding: 24 }}>
+        {errorMessage && <div style={{ ...body, fontSize: 12.5, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>}
+        <Card title="Requests">
+          <div style={{ padding: 16 }}>
+            {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}
+            {loadState === "ready" && queue.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>No open requests right now.</div>}
+            {loadState === "ready" && queue.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {queue.map((r) => {
+                  const style = statusStyle[r.status] || { bg: "#F1EFE8", text: C.muted };
+                  return (
+                    <button
+                      key={r.id}
+                      onClick={() => onSelect(r.id)}
+                      style={{ display: "flex", alignItems: "center", gap: 12, border: `1px solid ${C.line}`, borderRadius: 10, padding: 12, background: "#fff", cursor: "pointer", textAlign: "left", width: "100%" }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ ...disp, fontSize: 13.5, fontWeight: 700, margin: 0 }}>{r.buyerName}</p>
+                        <p style={{ ...body, fontSize: 12, color: C.muted, margin: 0 }}>{r.itemCount} item{r.itemCount === 1 ? "" : "s"}</p>
+                      </div>
+                      <span style={{ ...body, fontSize: 11, fontWeight: 700, color: style.text, background: style.bg, borderRadius: 20, padding: "3px 10px", textTransform: "capitalize" }}>{r.status}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function PartRequestDetail({ requestId, onBack, onSessionExpired }) {
+  const [request, setRequest] = useState(null);
+  const [categories, setCategories] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [savingItemId, setSavingItemId] = useState(null);
+  const [isSending, setIsSending] = useState(false);
+
+  const load = () => {
+    setLoadState("loading");
+    Promise.all([fetchQuoteRequestDetail(getStoredToken(), requestId), fetchCategories()])
+      .then(([r, cats]) => { setRequest(r); setCategories(cats); setLoadState("ready"); })
+      .catch((e) => {
+        if (e instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(e.message);
+        setLoadState("error");
+      });
+  };
+  useEffect(load, [requestId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleFieldChange = async (itemId, field, value) => {
+    setSavingItemId(itemId);
+    setErrorMessage(null);
+    try {
+      const token = getStoredToken();
+      await updateQuoteRequestItem(token, requestId, itemId, { [field]: value });
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setSavingItemId(null);
+    }
+  };
+
+  const handlePhotoUpload = async (itemId, file) => {
+    setSavingItemId(itemId);
+    setErrorMessage(null);
+    try {
+      const token = getStoredToken();
+      const uploadResult = await uploadImage(token, file);
+      await addQuoteRequestItemPhoto(token, requestId, itemId, uploadResult.url);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setSavingItemId(null);
+    }
+  };
+
+  const handleRemovePhoto = async (itemId, photoId) => {
+    setSavingItemId(itemId);
+    try {
+      const token = getStoredToken();
+      await deleteQuoteRequestItemPhoto(token, requestId, itemId, photoId);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setSavingItemId(null);
+    }
+  };
+
+  const handleSendQuote = async () => {
+    setIsSending(true);
+    setErrorMessage(null);
+    try {
+      await sendQuoteRequestQuote(getStoredToken(), requestId);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  if (loadState === "loading") {
+    return (
+      <div>
+        <TopBar title="Part Request" subtitle="" />
+        <div style={{ padding: 24 }}><div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div></div>
+      </div>
+    );
+  }
+  if (loadState === "error" || !request) {
+    return (
+      <div>
+        <TopBar title="Part Request" subtitle="" />
+        <div style={{ padding: 24 }}>
+          <div style={{ ...body, fontSize: 12.5, color: C.red, background: C.redBg, borderRadius: 8, padding: 10 }}>{errorMessage || "Couldn't load this request."}</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <TopBar title={`Request from ${request.buyerId}`} subtitle={`${request.brand || ""} ${request.model || ""} ${request.generation ? `(${request.generation})` : ""} · ${request.year}`} />
+      <div style={{ padding: 24 }}>
+        <button onClick={onBack} style={{ ...body, fontSize: 12.5, fontWeight: 600, color: C.muted, background: "none", border: "none", cursor: "pointer", padding: 0, marginBottom: 16, display: "flex", alignItems: "center", gap: 4 }}>
+          <ChevronLeft size={14} /> Back to queue
+        </button>
+        {errorMessage && <div style={{ ...body, fontSize: 12.5, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>}
+
+        <Card title="Items">
+          <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+            {request.items.map((item) => {
+              const locked = item.status !== "pending";
+              return (
+                <div key={item.id} style={{ border: `1px solid ${C.line}`, borderRadius: 10, padding: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                    <div>
+                      <p style={{ ...disp, fontSize: 13.5, fontWeight: 700, margin: 0 }}>{item.name}</p>
+                      {item.description && <p style={{ ...body, fontSize: 12, color: C.muted, margin: "2px 0 0" }}>{item.description}</p>}
+                      <p style={{ ...body, fontSize: 11.5, color: C.muted, margin: "2px 0 0" }}>Qty: {item.quantity}</p>
+                    </div>
+                    {item.status === "priced" && <span style={{ ...body, fontSize: 11, fontWeight: 700, color: C.gauge, background: C.gaugeBg, borderRadius: 20, padding: "3px 10px" }}>Ready</span>}
+                    {item.status === "unavailable" && <span style={{ ...body, fontSize: 11, fontWeight: 700, color: C.red, background: C.redBg, borderRadius: 20, padding: "3px 10px" }}>Unavailable</span>}
+                  </div>
+
+                  {item.referencePhotoUrl && (
+                    <img src={item.referencePhotoUrl} alt="" style={{ width: 56, height: 56, borderRadius: 8, objectFit: "cover", border: `1px solid ${C.line}`, marginBottom: 10 }} />
+                  )}
+
+                  {!locked && (
+                    <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+                      <div>
+                        <label style={{ ...body, fontSize: 11, color: C.muted, display: "block", marginBottom: 4 }}>Price (USD)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          defaultValue={item.draftPrice ?? ""}
+                          onBlur={(e) => e.target.value && handleFieldChange(item.id, "draftPrice", Number(e.target.value))}
+                          style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13, width: 100 }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ ...body, fontSize: 11, color: C.muted, display: "block", marginBottom: 4 }}>Category</label>
+                        <select
+                          defaultValue={item.draftCategory || ""}
+                          onChange={(e) => e.target.value && handleFieldChange(item.id, "category", e.target.value)}
+                          style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13, width: 160, background: "#fff" }}
+                        >
+                          <option value="">Select…</option>
+                          {categories.map((c) => <option key={c.id} value={c.id}>{c.nameEn}</option>)}
+                        </select>
+                      </div>
+                      <label style={{ ...body, fontSize: 11.5, fontWeight: 600, color: C.muted, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 6, padding: "8px 12px", cursor: "pointer" }}>
+                        {savingItemId === item.id ? "Saving…" : "Add photo"}
+                        <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files[0]; if (f) handlePhotoUpload(item.id, f); }} />
+                      </label>
+                    </div>
+                  )}
+
+                  {item.stagedPhotos && item.stagedPhotos.length > 0 && (
+                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                      {item.stagedPhotos.map((p) => (
+                        <div key={p.id} style={{ position: "relative" }}>
+                          <img src={p.url} alt="" style={{ width: 48, height: 48, borderRadius: 6, objectFit: "cover", border: `1px solid ${C.line}` }} />
+                          {!locked && (
+                            <button onClick={() => handleRemovePhoto(item.id, p.id)} style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: "50%", border: "none", background: C.red, color: "#fff", fontSize: 11, cursor: "pointer", lineHeight: "18px" }}>×</button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+
+        {request.status === "submitted" && (
+          <div style={{ marginTop: 16 }}>
+            <button
+              disabled={isSending}
+              onClick={handleSendQuote}
+              style={{ ...body, padding: "10px 20px", borderRadius: 8, border: "none", background: isSending ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 13, fontWeight: 700, cursor: isSending ? "default" : "pointer" }}
+            >
+              {isSending ? "Sending…" : "Send quote to buyer"}
+            </button>
+            <p style={{ ...body, fontSize: 11.5, color: C.muted, marginTop: 8 }}>
+              Only items with a price, category, and at least one photo will be included. Everything else is marked unavailable for this request.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -5468,6 +5736,7 @@ const NAV = [
   { id: "moderation", label: "Moderation", icon: PackageSearch },
   { id: "returns", label: "Returns", icon: RotateCcw },
   { id: "vehicleData", label: "Vehicle Data", icon: Truck },
+  { id: "partRequests", label: "Part Requests", icon: FileQuestion },
   { id: "categories", label: "Categories", icon: Layers },
   { id: "supplierMessages", label: "Supplier Messages", icon: MessageSquare },
   { id: "promoCodes", label: "Promo Codes", icon: Tag },
@@ -5531,6 +5800,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   else if (page === "moderation") content = <ModerationPage onSessionExpired={onLogout} />;
   else if (page === "returns") content = <ReturnsPage onOpenCase={setOpenCase} onSessionExpired={onLogout} />;
   else if (page === "vehicleData") content = <VehicleDataPage onSessionExpired={onLogout} />;
+  else if (page === "partRequests") content = <PartRequestsPage onSessionExpired={onLogout} />;
   else if (page === "categories") content = <CategoriesPage onSessionExpired={onLogout} />;
   else if (page === "supplierMessages") content = <SupplierMessagesPage onSessionExpired={onLogout} />;
   else if (page === "promoCodes") content = <PromoCodesPage onSessionExpired={onLogout} />;
