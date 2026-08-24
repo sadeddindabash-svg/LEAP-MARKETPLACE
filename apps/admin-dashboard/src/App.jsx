@@ -2157,7 +2157,7 @@ function PartRequestDetail({ requestId, onBack, onSessionExpired }) {
                   </div>
 
                   {item.referencePhotoUrl && (
-                    <img src={item.referencePhotoUrl} alt="" style={{ width: 56, height: 56, borderRadius: 8, objectFit: "cover", border: `1px solid ${C.line}`, marginBottom: 10 }} />
+                    <img src={item.referencePhotoUrl.startsWith("http") ? item.referencePhotoUrl : `${API_BASE_URL}${item.referencePhotoUrl}`} alt="" style={{ width: 56, height: 56, borderRadius: 8, objectFit: "cover", border: `1px solid ${C.line}`, marginBottom: 10 }} />
                   )}
 
                   {!locked && (
@@ -2194,7 +2194,7 @@ function PartRequestDetail({ requestId, onBack, onSessionExpired }) {
                     <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                       {item.stagedPhotos.map((p) => (
                         <div key={p.id} style={{ position: "relative" }}>
-                          <img src={p.url} alt="" style={{ width: 48, height: 48, borderRadius: 6, objectFit: "cover", border: `1px solid ${C.line}` }} />
+                          <img src={p.url.startsWith("http") ? p.url : `${API_BASE_URL}${p.url}`} alt="" style={{ width: 48, height: 48, borderRadius: 6, objectFit: "cover", border: `1px solid ${C.line}` }} />
                           {!locked && (
                             <button onClick={() => handleRemovePhoto(item.id, p.id)} style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: "50%", border: "none", background: C.red, color: "#fff", fontSize: 11, cursor: "pointer", lineHeight: "18px" }}>×</button>
                           )}
