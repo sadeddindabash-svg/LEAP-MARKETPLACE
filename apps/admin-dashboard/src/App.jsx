@@ -2133,6 +2133,12 @@ function PartRequestDetail({ requestId, onBack, onSessionExpired }) {
           <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
             {request.items.map((item) => {
               const locked = item.status !== "pending";
+              const missing = [];
+              if (!locked) {
+                if (item.draftPrice == null) missing.push("price");
+                if (!item.draftCategory) missing.push("category");
+                if (!item.stagedPhotos || item.stagedPhotos.length === 0) missing.push("photo");
+              }
               return (
                 <div key={item.id} style={{ border: `1px solid ${C.line}`, borderRadius: 10, padding: 12 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
@@ -2143,6 +2149,11 @@ function PartRequestDetail({ requestId, onBack, onSessionExpired }) {
                     </div>
                     {item.status === "priced" && <span style={{ ...body, fontSize: 11, fontWeight: 700, color: C.gauge, background: C.gaugeBg, borderRadius: 20, padding: "3px 10px" }}>Ready</span>}
                     {item.status === "unavailable" && <span style={{ ...body, fontSize: 11, fontWeight: 700, color: C.red, background: C.redBg, borderRadius: 20, padding: "3px 10px" }}>Unavailable</span>}
+                    {!locked && (
+                      missing.length === 0
+                        ? <span style={{ ...body, fontSize: 11, fontWeight: 700, color: C.gauge, background: C.gaugeBg, borderRadius: 20, padding: "3px 10px" }}>Ready to send</span>
+                        : <span style={{ ...body, fontSize: 11, fontWeight: 700, color: C.amber, background: C.amberBg, borderRadius: 20, padding: "3px 10px" }}>Missing: {missing.join(", ")}</span>
+                    )}
                   </div>
 
                   {item.referencePhotoUrl && (
@@ -2199,6 +2210,14 @@ function PartRequestDetail({ requestId, onBack, onSessionExpired }) {
 
         {request.status === "submitted" && (
           <div style={{ marginTop: 16 }}>
+            {(() => {
+              const readyCount = request.items.filter((i) => i.draftPrice != null && i.draftCategory && i.stagedPhotos && i.stagedPhotos.length > 0).length;
+              return (
+                <p style={{ ...body, fontSize: 12.5, fontWeight: 600, color: readyCount > 0 ? C.gauge : C.amber, marginBottom: 10 }}>
+                  {readyCount} of {request.items.length} item{request.items.length === 1 ? "" : "s"} ready to send{readyCount < request.items.length ? " -- the rest will be marked unavailable" : ""}
+                </p>
+              );
+            })()}
             <button
               disabled={isSending}
               onClick={handleSendQuote}
