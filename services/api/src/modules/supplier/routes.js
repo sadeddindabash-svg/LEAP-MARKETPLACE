@@ -90,6 +90,31 @@ router.patch('/:id/verify', requireAuth, requireRole('admin'), requirePageAccess
   }
 });
 
+// PATCH /supplier/:id/country  { country: string }
+// Real, confirmed with the person: this is a real buyer-facing trust/
+// logistics signal (shipsFromCountry, catalog/routes.js's own
+// attachSupplierSignals), directly shaping a real buyer's delivery
+// expectations -- admin-only, matching the exact same established
+// pattern as verification_status right above, not supplier self-edit.
+router.patch('/:id/country', requireAuth, requireRole('admin'), requirePageAccess('suppliers'), async (req, res, next) => {
+  try {
+    const { country } = req.body || {};
+    if (!country || typeof country !== 'string' || !country.trim()) {
+      return res.status(400).json({ error: 'country is required' });
+    }
+    const { rows } = await db.query(
+      `UPDATE suppliers SET country = $1 WHERE id = $2 RETURNING *`,
+      [country.trim(), req.params.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Supplier not found' });
+    await logAdminAction(req, 'supplier_country_updated', 'supplier', req.params.id, { country: country.trim(), supplierName: rows[0].name });
+    const { id: sid, name: sname, country: updatedCountry, contact_email: sEmail, verification_status: sVerif, created_at: sCreated } = rows[0];
+    res.json({ id: sid, name: sname, country: updatedCountry, contactEmail: sEmail, verificationStatus: sVerif, createdAt: sCreated });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /supplier/:id/analytics — admin-only, real analytics for any one
 // real supplier the admin picks (confirmed scope: not a platform-wide
 // aggregate). Same real getSupplierAnalytics() the supplier's own

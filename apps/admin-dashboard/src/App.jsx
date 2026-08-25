@@ -3,7 +3,7 @@ import LoginPage from "./LoginPage";
 import { exportToExcel } from "./exportToExcel";
 import { FONT_IMPORT, C, disp, body, mono } from "./theme";
 import { PlateChip, Badge, Stars, KpiCard, Card, Th, Td, ConfirmDialog, EditDialog } from "./components/ui";
-import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, fetchSupplierById, verifySupplier, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
+import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, fetchSupplierById, verifySupplier, updateSupplierCountry, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
   createBrand, deleteBrand, createModel, deleteModel, createGeneration, deleteGeneration, createEngine, deleteEngine, createTransmission, deleteTransmission,
   fetchHubLocations, createHubLocation, deleteHubLocation, assignHubToSubOrder,
@@ -803,6 +803,9 @@ function SupplierDetailPage({ supplierId, onBack, onSessionExpired }) {
   const [supplier, setSupplier] = useState(null);
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
+  const [countryDraft, setCountryDraft] = useState("");
+  const [isEditingCountry, setIsEditingCountry] = useState(false);
+  const [isSavingCountry, setIsSavingCountry] = useState(false);
 
   useEffect(() => {
     fetchSupplierById(getStoredToken(), supplierId)
@@ -813,6 +816,22 @@ function SupplierDetailPage({ supplierId, onBack, onSessionExpired }) {
         setLoadState("error");
       });
   }, [supplierId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleUpdateCountry = async () => {
+    if (!countryDraft.trim()) return;
+    setIsSavingCountry(true);
+    setErrorMessage(null);
+    try {
+      const updated = await updateSupplierCountry(getStoredToken(), supplierId, countryDraft.trim());
+      setSupplier({ ...supplier, country: updated.country });
+      setIsEditingCountry(false);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSavingCountry(false);
+    }
+  };
 
   if (loadState === "loading") {
     return (
@@ -843,7 +862,31 @@ function SupplierDetailPage({ supplierId, onBack, onSessionExpired }) {
         <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}><ChevronLeft size={20} color={C.ink} /></button>
         <div>
           <div style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink }}>{supplier.name}</div>
-          <div style={{ ...body, fontSize: 12, color: C.muted }}>{supplier.country} · {supplier.contactEmail || "no contact email"}</div>
+          <div style={{ ...body, fontSize: 12, color: C.muted, display: "flex", alignItems: "center", gap: 6 }}>
+            {isEditingCountry ? (
+              <>
+                <input
+                  autoFocus
+                  value={countryDraft}
+                  onChange={(e) => setCountryDraft(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleUpdateCountry()}
+                  style={{ ...body, fontSize: 12, border: `1px solid ${C.line}`, borderRadius: 6, padding: "3px 8px", width: 120 }}
+                />
+                <button onClick={handleUpdateCountry} disabled={isSavingCountry} style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.signal, background: "none", border: "none", cursor: isSavingCountry ? "default" : "pointer" }}>
+                  {isSavingCountry ? "Saving…" : "Save"}
+                </button>
+                <button onClick={() => setIsEditingCountry(false)} disabled={isSavingCountry} style={{ ...body, fontSize: 11.5, color: C.muted, background: "none", border: "none", cursor: "pointer" }}>Cancel</button>
+              </>
+            ) : (
+              <>
+                <span>{supplier.country}</span>
+                <button onClick={() => { setCountryDraft(supplier.country || ""); setIsEditingCountry(true); }} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: 0 }} title="Edit ships-from country">
+                  <Pencil size={11} color={C.muted} />
+                </button>
+              </>
+            )}
+            <span>· {supplier.contactEmail || "no contact email"}</span>
+          </div>
         </div>
         <div style={{ marginLeft: "auto" }}>
           {supplier.verificationStatus === "verified" && <Badge label="Verified" color={C.gauge} bg={C.gaugeBg} />}
@@ -851,6 +894,9 @@ function SupplierDetailPage({ supplierId, onBack, onSessionExpired }) {
           {supplier.verificationStatus === "rejected" && <Badge label="Rejected" color={C.red} bg={C.redBg} />}
         </div>
       </div>
+      {errorMessage && (
+        <div style={{ ...body, fontSize: 12.5, color: C.red, background: C.redBg, padding: "10px 28px" }}>{errorMessage}</div>
+      )}
       <div style={{ padding: 24 }}>
         <Card title={`Products (${supplier.products.length})`}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
