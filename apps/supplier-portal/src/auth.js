@@ -71,6 +71,18 @@ export function createProduct(token, product) {
   return authedMutate("POST", "/supplier/me/products", token, product);
 }
 
+// ---------------- Part requests (Leap Supplier only) ----------------
+
+export function fetchPartRequestQueue(token) {
+  return authedGet("/quote-requests/supplier/queue", token);
+}
+export function fetchPartRequestDetail(token, id) {
+  return authedGet(`/quote-requests/supplier/${id}`, token);
+}
+export function sendPartRequestQuote(token, id) {
+  return authedMutate("POST", `/quote-requests/supplier/${id}/send-quote`, token, {});
+}
+
 // ---------------- Structured fitment cascade (Brand -> Model -> Generation -> Engine/Transmission) ----------------
 
 export async function fetchBrands() {

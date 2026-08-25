@@ -7,7 +7,7 @@ import {
   Search, Bell, ChevronRight, ChevronLeft, TrendingUp, Plus, Upload, Download, Check, X,
   Star, MoreHorizontal, FileSpreadsheet, ImagePlus, Truck, Send, AlertTriangle, Store,
   BadgeCheck, Building2, CreditCard, Bike, Disc, BatteryMedium,
-  Lightbulb, Wrench, Fan, Cog, Languages
+  Lightbulb, Wrench, Fan, Cog, Languages, FileQuestion
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar,
@@ -28,6 +28,7 @@ import {
   fetchMyPayoutMethod, updateMyPayoutMethod,
   fetchMyNotifications, fetchUnreadNotificationCount, markNotificationRead, markAllNotificationsRead,
   bulkImportProducts, fetchMyDrafts, completeDraftProduct,
+  fetchPartRequestQueue, fetchPartRequestDetail, sendPartRequestQuote,
 } from "./auth";
 
 /* ============================================================
@@ -47,7 +48,7 @@ import {
 const STRINGS = {
   zh: {
     badge: "供应商", role: "店铺运营", searchPlaceholder: "搜索商品、订单编号…",
-    nav: { overview: "概览", products: "商品管理", orders: "订单管理", returns: "退货/售后", messages: "消息中心", finance: "财务结算", settings: "店铺设置" },
+    nav: { overview: "概览", products: "商品管理", partRequests: "求购请求", orders: "订单管理", returns: "退货/售后", messages: "消息中心", finance: "财务结算", settings: "店铺设置" },
     verifiedSince: (d) => `已认证供应商 · 入驻于 ${d}`,
     overview: {
       title: "概览", subtitle: "数据每 5 分钟更新一次",
@@ -139,7 +140,7 @@ const STRINGS = {
   },
   en: {
     badge: "Supplier", role: "Store Operator", searchPlaceholder: "Search products, order numbers…",
-    nav: { overview: "Overview", products: "Products", orders: "Orders", returns: "Returns", messages: "Messages", finance: "Finance", settings: "Settings" },
+    nav: { overview: "Overview", products: "Products", partRequests: "Part Requests", orders: "Orders", returns: "Returns", messages: "Messages", finance: "Finance", settings: "Settings" },
     verifiedSince: (d) => `Verified supplier · Joined ${d}`,
     overview: {
       title: "Overview", subtitle: "Data refreshes every 5 minutes",
@@ -594,7 +595,7 @@ const POSITION_OPTIONS = [
 ];
 const MIN_PRODUCT_PHOTOS = 3;
 
-function AddProductForm({ onCancel, onCreated }) {
+function AddProductForm({ onCancel, onCreated, prefill }) {
   const { t, lang } = useLang();
   const { onSessionExpired } = useSupplier();
   const f = t.products.addForm;
@@ -602,8 +603,8 @@ function AddProductForm({ onCancel, onCreated }) {
   const inputStyle = useInputStyle();
 
   // Basic fields
-  const [nameZh, setNameZh] = useState("");
-  const [descriptionZh, setDescriptionZh] = useState("");
+  const [nameZh, setNameZh] = useState(prefill?.name || "");
+  const [descriptionZh, setDescriptionZh] = useState(prefill?.description || "");
   const [categories, setCategories] = useState([]);
   const [category, setCategory] = useState("");
   const [parts, setParts] = useState([]);
@@ -624,8 +625,8 @@ function AddProductForm({ onCancel, onCreated }) {
   const [models, setModels] = useState([]);
   const [selectedModelId, setSelectedModelId] = useState("");
   const [generations, setGenerations] = useState([]);
-  const [selectedGenerationId, setSelectedGenerationId] = useState("");
-  const [selectedYear, setSelectedYear] = useState("");
+  const [selectedGenerationId, setSelectedGenerationId] = useState(prefill?.generationId || "");
+  const [selectedYear, setSelectedYear] = useState(prefill?.year ? String(prefill.year) : "");
   const [engines, setEngines] = useState([]);
   const [selectedEngineId, setSelectedEngineId] = useState("");
   const [transmissions, setTransmissions] = useState([]);
@@ -771,6 +772,7 @@ function AddProductForm({ onCancel, onCreated }) {
         lengthCm: parseFloat(lengthCm),
         widthCm: parseFloat(widthCm),
         heightCm: parseFloat(heightCm),
+        fulfillsRequestItemId: prefill?.fulfillsRequestItemId || undefined,
       });
       onCreated();
     } catch (err) {
@@ -842,6 +844,11 @@ function AddProductForm({ onCancel, onCreated }) {
           <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 10 }}>
             {cascadeLabel("适配车型", "Vehicle Fitment")}
           </div>
+          {prefill?.generationId ? (
+            <div style={{ ...font, fontSize: 13, color: C.ink, background: C.canvas, border: `1px solid ${C.line}`, borderRadius: 8, padding: "10px 12px" }}>
+              {prefill.vehicleLabel} <span style={{ color: C.muted, fontSize: 11.5 }}>({cascadeLabel("已由买家选定，不可更改", "already chosen by the buyer, can't be changed")})</span>
+            </div>
+          ) : (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
             <Field label={cascadeLabel("品牌", "Brand")}>
               <select style={selectStyle} value={selectedBrandId} onChange={(e) => handleBrandChange(e.target.value)}>
@@ -880,6 +887,7 @@ function AddProductForm({ onCancel, onCreated }) {
               </select>
             </Field>
           </div>
+          )}
         </div>
 
         {/* ---- Photos ---- */}
@@ -1473,6 +1481,185 @@ function DraftsPanel({ onCancel }) {
         ))}
       </div>
     </Card>
+  );
+}
+
+// Real "request a part we don't carry" fulfillment page (RFQ),
+// visible only to the real "Leap Supplier" account -- confirmed with
+// the person through a real, direct correction mid-session: this
+// used to live in the admin portal with its own simplified pricing
+// flow, but real staff now fulfil a request item through this exact
+// same real, full product submission form every other supplier uses,
+// with zero shortcuts (real CNY pricing, real weight/dimensions, a
+// real OEM number, at least 3 real photos).
+function PartRequestsPage({ onSessionExpired }) {
+  const [selectedId, setSelectedId] = useState(null);
+  return selectedId
+    ? <PartRequestDetail requestId={selectedId} onBack={() => setSelectedId(null)} onSessionExpired={onSessionExpired} />
+    : <PartRequestQueue onSelect={setSelectedId} onSessionExpired={onSessionExpired} />;
+}
+
+function PartRequestQueue({ onSelect, onSessionExpired }) {
+  const { t, lang } = useLang();
+  const font = useBodyFont();
+  const [queue, setQueue] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  useEffect(() => {
+    setLoadState("loading");
+    fetchPartRequestQueue(getStoredToken())
+      .then((q) => { setQueue(q); setLoadState("ready"); })
+      .catch((e) => {
+        if (e instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(e.message);
+        setLoadState("error");
+      });
+  }, [onSessionExpired]);
+
+  const statusStyle = {
+    submitted: { bg: C.amberBg, text: C.amber },
+    quoted: { bg: C.gaugeBg, text: C.gauge },
+    ordered: { bg: C.torqueBg, text: C.torque },
+  };
+
+  return (
+    <div style={{ padding: 24 }}>
+      {errorMessage && <div style={{ ...font, fontSize: 12.5, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>}
+      <Card title={lang === "zh" ? "求购请求" : "Part Requests"}>
+        <div style={{ padding: 16 }}>
+          {loadState === "loading" && <div style={{ ...font, fontSize: 12.5, color: C.muted }}>{lang === "zh" ? "加载中…" : "Loading…"}</div>}
+          {loadState === "ready" && queue.length === 0 && <div style={{ ...font, fontSize: 12.5, color: C.muted }}>{lang === "zh" ? "暂无待处理请求。" : "No open requests right now."}</div>}
+          {loadState === "ready" && queue.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {queue.map((r) => {
+                const style = statusStyle[r.status] || { bg: C.canvas, text: C.muted };
+                return (
+                  <button
+                    key={r.id}
+                    onClick={() => onSelect(r.id)}
+                    style={{ display: "flex", alignItems: "center", gap: 12, border: `1px solid ${C.line}`, borderRadius: 10, padding: 12, background: "#fff", cursor: "pointer", textAlign: "left", width: "100%" }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ ...disp, fontSize: 15, fontWeight: 700, margin: 0, color: C.ink }}>{r.buyerName}</p>
+                      <p style={{ ...font, fontSize: 12, color: C.muted, margin: 0 }}>{r.itemCount} {lang === "zh" ? "件商品" : `item${r.itemCount === 1 ? "" : "s"}`}</p>
+                    </div>
+                    <span style={{ ...font, fontSize: 11, fontWeight: 700, color: style.text, background: style.bg, borderRadius: 20, padding: "3px 10px", textTransform: "capitalize" }}>{r.status}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function PartRequestDetail({ requestId, onBack, onSessionExpired }) {
+  const { lang } = useLang();
+  const font = useBodyFont();
+  const [request, setRequest] = useState(null);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [fulfillingItem, setFulfillingItem] = useState(null); // the item currently being fulfilled via AddProductForm
+  const [isSending, setIsSending] = useState(false);
+
+  const load = () => {
+    setLoadState("loading");
+    fetchPartRequestDetail(getStoredToken(), requestId)
+      .then((r) => { setRequest(r); setLoadState("ready"); })
+      .catch((e) => {
+        if (e instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(e.message);
+        setLoadState("error");
+      });
+  };
+  useEffect(load, [requestId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSendQuote = async () => {
+    setIsSending(true);
+    setErrorMessage(null);
+    try {
+      await sendPartRequestQuote(getStoredToken(), requestId);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  if (fulfillingItem && request) {
+    const vehicleLabel = [request.brand, request.model, request.generation ? `(${request.generation})` : null, `· ${request.year}`].filter(Boolean).join(" ");
+    return (
+      <div style={{ padding: 24 }}>
+        <AddProductForm
+          prefill={{
+            name: fulfillingItem.name,
+            description: fulfillingItem.description,
+            generationId: request.generationId,
+            year: request.year,
+            vehicleLabel,
+            fulfillsRequestItemId: fulfillingItem.id,
+          }}
+          onCancel={() => setFulfillingItem(null)}
+          onCreated={() => { setFulfillingItem(null); load(); }}
+        />
+      </div>
+    );
+  }
+
+  if (loadState === "loading") return <div style={{ padding: 24 }}><div style={{ ...font, fontSize: 12.5, color: C.muted }}>{lang === "zh" ? "加载中…" : "Loading…"}</div></div>;
+  if (loadState === "error" || !request) return <div style={{ padding: 24 }}><div style={{ ...font, fontSize: 12.5, color: C.red, background: C.redBg, borderRadius: 8, padding: 10 }}>{errorMessage || (lang === "zh" ? "加载失败。" : "Couldn't load this request.")}</div></div>;
+
+  const readyCount = request.items.filter((i) => i.status !== "pending").length;
+
+  return (
+    <div style={{ padding: 24 }}>
+      <button onClick={onBack} style={{ ...font, fontSize: 12.5, fontWeight: 600, color: C.muted, background: "none", border: "none", cursor: "pointer", padding: 0, marginBottom: 16, display: "flex", alignItems: "center", gap: 4 }}>
+        <ChevronLeft size={14} /> {lang === "zh" ? "返回列表" : "Back to queue"}
+      </button>
+      {errorMessage && <div style={{ ...font, fontSize: 12.5, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>}
+
+      <Card title={`${request.brand || ""} ${request.model || ""} ${request.generation ? `(${request.generation})` : ""} · ${request.year}`}>
+        <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+          {request.items.map((item) => (
+            <div key={item.id} style={{ border: `1px solid ${C.line}`, borderRadius: 10, padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ ...disp, fontSize: 15, fontWeight: 700, margin: 0, color: C.ink }}>{item.name}</p>
+                {item.description && <p style={{ ...font, fontSize: 12, color: C.muted, margin: "2px 0 0" }}>{item.description}</p>}
+                <p style={{ ...font, fontSize: 11.5, color: C.muted, margin: "2px 0 0" }}>{lang === "zh" ? "数量" : "Qty"}: {item.quantity}</p>
+              </div>
+              {item.status === "pending" && request.status === "submitted" && (
+                <button onClick={() => setFulfillingItem(item)} style={{ ...font, fontSize: 12.5, fontWeight: 700, color: "#fff", background: C.signal, border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", whiteSpace: "nowrap" }}>
+                  {lang === "zh" ? "创建商品" : "Create listing"}
+                </button>
+              )}
+              {item.status === "priced" && <span style={{ ...font, fontSize: 11, fontWeight: 700, color: C.gauge, background: C.gaugeBg, borderRadius: 20, padding: "3px 10px" }}>{lang === "zh" ? "已就绪" : "Ready"}</span>}
+              {item.status === "unavailable" && <span style={{ ...font, fontSize: 11, fontWeight: 700, color: C.red, background: C.redBg, borderRadius: 20, padding: "3px 10px" }}>{lang === "zh" ? "无法提供" : "Unavailable"}</span>}
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {request.status === "submitted" && (
+        <div style={{ marginTop: 16 }}>
+          <p style={{ ...font, fontSize: 12.5, fontWeight: 600, color: readyCount > 0 ? C.gauge : C.amber, marginBottom: 10 }}>
+            {readyCount} {lang === "zh" ? "/" : "of"} {request.items.length} {lang === "zh" ? "件已处理" : `item${request.items.length === 1 ? "" : "s"} addressed`}
+            {readyCount < request.items.length ? (lang === "zh" ? "，其余将标记为无法提供" : " -- the rest will be marked unavailable") : ""}
+          </p>
+          <button
+            disabled={isSending}
+            onClick={handleSendQuote}
+            style={{ ...font, padding: "10px 20px", borderRadius: 8, border: "none", background: isSending ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 13, fontWeight: 700, cursor: isSending ? "default" : "pointer" }}
+          >
+            {isSending ? (lang === "zh" ? "发送中…" : "Sending…") : (lang === "zh" ? "发送报价给买家" : "Send quote to buyer")}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2514,7 +2701,7 @@ function SettingsPage() {
 
 /* ---------------- Shell ---------------- */
 
-const NAV_ICONS = { overview: LayoutGrid, products: PackageSearch, orders: ShoppingBag, returns: RotateCcw, messages: MessageSquare, finance: Wallet, settings: Settings };
+const NAV_ICONS = { overview: LayoutGrid, products: PackageSearch, partRequests: FileQuestion, orders: ShoppingBag, returns: RotateCcw, messages: MessageSquare, finance: Wallet, settings: Settings };
 const NAV_ORDER = ["overview", "products", "orders", "returns", "messages", "finance", "settings"];
 
 function PortalShell() {
@@ -2523,8 +2710,13 @@ function PortalShell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const { t, lang } = useLang();
   const outerSupplierContext = useSupplier();
-  const { profile, onLogout } = outerSupplierContext;
+  const { profile, currentUser, onLogout } = outerSupplierContext;
   const font = useBodyFont();
+
+  const isLeapSupplier = currentUser?.supplierId === "supplier_leap";
+  const navOrder = isLeapSupplier
+    ? ["overview", "products", "partRequests", "orders", "returns", "messages", "finance", "settings"]
+    : NAV_ORDER;
 
   const refreshUnreadCount = () => {
     fetchUnreadNotificationCount(getStoredToken()).then(setUnreadCount).catch(() => {}); // non-critical -- badge just stays as-is
@@ -2535,6 +2727,7 @@ function PortalShell() {
   if (openOrder) content = <OrderDetailPanel order={openOrder} onBack={() => setOpenOrder(null)} onUpdated={(updated) => setOpenOrder({ ...openOrder, ...updated })} />;
   else if (page === "overview") content = <OverviewPage onSessionExpired={onLogout} />;
   else if (page === "products") content = <ProductsPage />;
+  else if (page === "partRequests") content = <PartRequestsPage onSessionExpired={onLogout} />;
   else if (page === "orders") content = <OrdersPage onOpen={setOpenOrder} />;
   else if (page === "returns") content = <ReturnsPage />;
   else if (page === "messages") content = <MessagesPage />;
@@ -2557,7 +2750,7 @@ function PortalShell() {
           <LangToggle />
         </div>
         <div style={{ flex: 1, padding: "0 12px" }}>
-          {NAV_ORDER.map(id => {
+          {navOrder.map(id => {
             const Icon = NAV_ICONS[id];
             const active = page === id && !openOrder;
             return (

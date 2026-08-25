@@ -224,29 +224,6 @@ async function fitmentMutate(method, path, token, body) {
   return data;
 }
 
-export async function fetchQuoteRequestQueue(token) {
-  const response = await fetch(`${API_BASE_URL}/quote-requests/admin/queue`, { headers: { Authorization: `Bearer ${token}` } });
-  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || `Failed to load the quote request queue (${response.status})`);
-  return data;
-}
-export async function fetchQuoteRequestDetail(token, id) {
-  const response = await fetch(`${API_BASE_URL}/quote-requests/admin/${id}`, { headers: { Authorization: `Bearer ${token}` } });
-  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || `Failed to load the request (${response.status})`);
-  return data;
-}
-export const updateQuoteRequestItem = (token, requestId, itemId, { draftPrice, category, part } = {}) =>
-  fitmentMutate("PATCH", `/quote-requests/admin/${requestId}/items/${itemId}`, token, { draftPrice, category, part });
-export const addQuoteRequestItemPhoto = (token, requestId, itemId, url) =>
-  fitmentMutate("POST", `/quote-requests/admin/${requestId}/items/${itemId}/photos`, token, { url });
-export const deleteQuoteRequestItemPhoto = (token, requestId, itemId, photoId) =>
-  fitmentMutate("DELETE", `/quote-requests/admin/${requestId}/items/${itemId}/photos/${photoId}`, token);
-export const sendQuoteRequestQuote = (token, requestId) =>
-  fitmentMutate("POST", `/quote-requests/admin/${requestId}/send-quote`, token);
-
 export const createBrand = (token, name, nameAr, photoUrl) => fitmentMutate("POST", "/fitment/brands", token, { name, nameAr, photoUrl });
 export const deleteBrand = (token, id) => fitmentMutate("DELETE", `/fitment/brands/${id}`, token);
 export const createModel = (token, brandId, name, nameAr, photoUrl) => fitmentMutate("POST", `/fitment/brands/${brandId}/models`, token, { name, nameAr, photoUrl });

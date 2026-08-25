@@ -309,7 +309,33 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
     nameZh, descriptionZh, category, part, position, oemNumber,
     price, currencyCode, stockQuantity, estimatedDeliveryDays,
     fitment, images, weightKg, lengthCm, widthCm, heightCm,
+    fulfillsRequestItemId,
   } = req.body || {};
+
+  // Real, confirmed integration point for the "request a part we
+  // don't carry" system (migration 067): only the one real, shared
+  // "Leap Supplier" account can submit a product that fulfils a real
+  // buyer's request item -- confirmed directly with the person that
+  // this real product must go through the exact same real submission
+  // requirements as any other supplier's, with zero shortcuts, so
+  // this is validated here rather than via a separate, simplified
+  // endpoint.
+  let requestItem = null;
+  if (fulfillsRequestItemId) {
+    if (req.user.supplierId !== 'supplier_leap') {
+      return res.status(403).json({ error: 'Only the Leap Supplier account can fulfil a part request' });
+    }
+    const { rows: itemRows } = await db.query(
+      `SELECT qri.*, qr.status AS request_status FROM quote_request_items qri
+       JOIN quote_requests qr ON qr.id = qri.request_id
+       WHERE qri.id = $1`,
+      [fulfillsRequestItemId]
+    );
+    if (itemRows.length === 0) return res.status(404).json({ error: 'Unknown fulfillsRequestItemId' });
+    requestItem = itemRows[0];
+    if (requestItem.request_status !== 'submitted') return res.status(409).json({ error: 'This request is no longer open for new listings' });
+    if (requestItem.status !== 'pending') return res.status(409).json({ error: 'This item already has a listing or was marked unavailable' });
+  }
 
   // ---- Validation (fail loudly and specifically, not with one generic message) ----
   const missing = [];
@@ -431,6 +457,10 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
 
     for (let i = 0; i < images.length; i++) {
       await client.query('INSERT INTO product_images (product_id, url, sort_order) VALUES ($1, $2, $3)', [id, images[i], i]);
+    }
+
+    if (requestItem) {
+      await client.query(`UPDATE quote_request_items SET status = 'priced', product_id = $1 WHERE id = $2`, [id, requestItem.id]);
     }
 
     await client.query('COMMIT');
