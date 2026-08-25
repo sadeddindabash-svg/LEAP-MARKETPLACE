@@ -96,7 +96,7 @@ class _QuoteRequestDetailScreenState extends State<QuoteRequestDetailScreen> {
     setState(() { _isPlacingOrder = true; _errorMessage = null; });
     try {
       await ApiClient().placeQuoteRequestOrder(token, widget.requestId, cartId: cartId);
-      if (mounted) context.push('/cart');
+      if (mounted) context.go('/cart');
     } on ApiException catch (e) {
       if (mounted) setState(() { _errorMessage = e.message; _isPlacingOrder = false; });
     }

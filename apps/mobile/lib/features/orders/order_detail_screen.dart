@@ -322,7 +322,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(isAr ? 'تمت إضافة $addedCount عنصرًا إلى سلتك.' : '$addedCount item${addedCount == 1 ? '' : 's'} added to your cart.'),
-          action: SnackBarAction(label: isAr ? 'عرض السلة' : 'View cart', onPressed: () => context.push('/cart')),
+          action: SnackBarAction(label: isAr ? 'عرض السلة' : 'View cart', onPressed: () => context.go('/cart')),
         ),
       );
     } else if (addedCount > 0 && failedNames.isNotEmpty) {
@@ -334,7 +334,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
                 : '$addedCount item${addedCount == 1 ? '' : 's'} added. Could not add: ${failedNames.join(', ')}',
           ),
           duration: const Duration(seconds: 6),
-          action: SnackBarAction(label: isAr ? 'عرض السلة' : 'View cart', onPressed: () => context.push('/cart')),
+          action: SnackBarAction(label: isAr ? 'عرض السلة' : 'View cart', onPressed: () => context.go('/cart')),
         ),
       );
     } else {
