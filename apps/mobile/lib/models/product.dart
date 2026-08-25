@@ -28,6 +28,7 @@ class Product {
   // deliberate anonymization design.
   final bool isVerifiedSeller;
   final String? shipsFromCountry;
+  final String? shipsFromCountryAr;
   final double rating;
   final int reviewCount;
   final int stockQuantity;
@@ -60,6 +61,7 @@ class Product {
     this.lastKnownPrice,
     this.isVerifiedSeller = false,
     this.shipsFromCountry,
+    this.shipsFromCountryAr,
     required this.currencyCode,
     required this.rating,
     required this.reviewCount,
@@ -90,6 +92,7 @@ class Product {
         lastKnownPrice: json['lastKnownPrice'] == null ? null : (json['lastKnownPrice'] as num).toDouble(),
         isVerifiedSeller: json['isVerifiedSeller'] as bool? ?? false,
         shipsFromCountry: json['shipsFromCountry'] as String?,
+        shipsFromCountryAr: json['shipsFromCountryAr'] as String?,
         currencyCode: json['currencyCode'] as String? ?? 'USD',
         rating: (json['rating'] as num?)?.toDouble() ?? 0,
         reviewCount: json['reviewCount'] as int? ?? 0,

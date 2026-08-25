@@ -131,10 +131,10 @@ async function attachBuyerImages(dto, productId) {
  * leak.
  */
 async function attachSupplierSignals(dto, supplierId) {
-  if (!supplierId) return { ...dto, isVerifiedSeller: false, shipsFromCountry: null };
-  const { rows } = await db.query('SELECT verification_status, country FROM suppliers WHERE id = $1', [supplierId]);
-  if (rows.length === 0) return { ...dto, isVerifiedSeller: false, shipsFromCountry: null };
-  return { ...dto, isVerifiedSeller: rows[0].verification_status === 'verified', shipsFromCountry: rows[0].country };
+  if (!supplierId) return { ...dto, isVerifiedSeller: false, shipsFromCountry: null, shipsFromCountryAr: null };
+  const { rows } = await db.query('SELECT verification_status, country, country_ar FROM suppliers WHERE id = $1', [supplierId]);
+  if (rows.length === 0) return { ...dto, isVerifiedSeller: false, shipsFromCountry: null, shipsFromCountryAr: null };
+  return { ...dto, isVerifiedSeller: rows[0].verification_status === 'verified', shipsFromCountry: rows[0].country, shipsFromCountryAr: rows[0].country_ar };
 }
 
 // Real Brand/Model/Year for the product page, resolved from the

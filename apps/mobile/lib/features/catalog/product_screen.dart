@@ -204,16 +204,20 @@ class _ProductDetailBody extends StatelessWidget {
   String get _lWeight => _isAr ? 'الوزن' : 'Weight';
   String get _lNotSpecified => _isAr ? 'غير محدد' : 'Not specified';
 
-  // Real, small country-name translation -- confirmed with the person:
-  // every real supplier's own country is currently "China" (the only
-  // real value this can be today), so this map starts with just that
-  // one real, confirmed entry. Falls back to the plain English name
-  // for any real country not yet in this map, rather than showing
-  // nothing at all if a new real supplier country is ever added.
+  // Real, deliberate fallback-only map now -- confirmed with the
+  // person: a supplier's own real country is now admin-editable to
+  // any real value (both English and Arabic, via the admin portal),
+  // so shipsFromCountryAr (the real, admin-provided translation) is
+  // always checked FIRST. This map only remains as a fallback for
+  // existing real suppliers who haven't had that new real field
+  // filled in yet -- 'China' already has a real, confirmed-correct
+  // translation, so it's kept rather than showing raw English to an
+  // Arabic buyer in the meantime.
   static const _arabicCountryNames = {'China': 'الصين'};
-  String _countryName(String? country) {
+  String _countryName(String? country, String? countryAr) {
     if (country == null) return '';
-    return _isAr ? (_arabicCountryNames[country] ?? country) : country;
+    if (!_isAr) return country;
+    return countryAr?.isNotEmpty == true ? countryAr! : (_arabicCountryNames[country] ?? country);
   }
 
   @override
@@ -308,7 +312,7 @@ class _ProductDetailBody extends StatelessWidget {
                             const SizedBox(width: 4),
                             Text(
                               _isAr
-                                  ? 'يشحن من مستودع ${_countryName(product.shipsFromCountry)}'
+                                  ? 'يشحن من مستودع ${_countryName(product.shipsFromCountry, product.shipsFromCountryAr)}'
                                   : 'Ships from ${product.shipsFromCountry} Warehouse',
                               style: TextStyle(fontSize: 11.5, color: palette.muted),
                             ),

@@ -182,11 +182,11 @@ export async function verifySupplier(token, supplierId, status) {
   return data;
 }
 
-export async function updateSupplierCountry(token, supplierId, country) {
+export async function updateSupplierCountry(token, supplierId, country, countryAr) {
   const response = await fetch(`${API_BASE_URL}/supplier/${supplierId}/country`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ country }),
+    body: JSON.stringify({ country, countryAr }),
   });
   if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
   const data = await response.json();

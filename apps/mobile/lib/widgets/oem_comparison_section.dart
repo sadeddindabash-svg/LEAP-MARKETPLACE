@@ -74,7 +74,12 @@ class _OemComparisonSectionState extends State<OemComparisonSection> {
                             Row(mainAxisSize: MainAxisSize.min, children: [
                               Icon(Icons.public, size: 13, color: palette.muted),
                               const SizedBox(width: 3),
-                              Text(widget.isAr ? 'من ${m.shipsFromCountry}' : 'From ${m.shipsFromCountry}', style: TextStyle(fontSize: 11, color: palette.muted)),
+                              Text(
+                                widget.isAr
+                                    ? 'من ${m.shipsFromCountryAr?.isNotEmpty == true ? m.shipsFromCountryAr : m.shipsFromCountry}'
+                                    : 'From ${m.shipsFromCountry}',
+                                style: TextStyle(fontSize: 11, color: palette.muted),
+                              ),
                             ]),
                         ],
                       ),

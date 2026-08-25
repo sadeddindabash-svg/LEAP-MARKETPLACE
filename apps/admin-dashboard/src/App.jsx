@@ -804,6 +804,7 @@ function SupplierDetailPage({ supplierId, onBack, onSessionExpired }) {
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
   const [countryDraft, setCountryDraft] = useState("");
+  const [countryArDraft, setCountryArDraft] = useState("");
   const [isEditingCountry, setIsEditingCountry] = useState(false);
   const [isSavingCountry, setIsSavingCountry] = useState(false);
 
@@ -822,8 +823,8 @@ function SupplierDetailPage({ supplierId, onBack, onSessionExpired }) {
     setIsSavingCountry(true);
     setErrorMessage(null);
     try {
-      const updated = await updateSupplierCountry(getStoredToken(), supplierId, countryDraft.trim());
-      setSupplier({ ...supplier, country: updated.country });
+      const updated = await updateSupplierCountry(getStoredToken(), supplierId, countryDraft.trim(), countryArDraft.trim());
+      setSupplier({ ...supplier, country: updated.country, countryAr: updated.countryAr });
       setIsEditingCountry(false);
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
@@ -870,7 +871,16 @@ function SupplierDetailPage({ supplierId, onBack, onSessionExpired }) {
                   value={countryDraft}
                   onChange={(e) => setCountryDraft(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleUpdateCountry()}
-                  style={{ ...body, fontSize: 12, border: `1px solid ${C.line}`, borderRadius: 6, padding: "3px 8px", width: 120 }}
+                  placeholder="English"
+                  style={{ ...body, fontSize: 12, border: `1px solid ${C.line}`, borderRadius: 6, padding: "3px 8px", width: 110 }}
+                />
+                <input
+                  value={countryArDraft}
+                  onChange={(e) => setCountryArDraft(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleUpdateCountry()}
+                  placeholder="العربية"
+                  dir="rtl"
+                  style={{ ...body, fontSize: 12, border: `1px solid ${C.line}`, borderRadius: 6, padding: "3px 8px", width: 110 }}
                 />
                 <button onClick={handleUpdateCountry} disabled={isSavingCountry} style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.signal, background: "none", border: "none", cursor: isSavingCountry ? "default" : "pointer" }}>
                   {isSavingCountry ? "Saving…" : "Save"}
@@ -879,8 +889,8 @@ function SupplierDetailPage({ supplierId, onBack, onSessionExpired }) {
               </>
             ) : (
               <>
-                <span>{supplier.country}</span>
-                <button onClick={() => { setCountryDraft(supplier.country || ""); setIsEditingCountry(true); }} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: 0 }} title="Edit ships-from country">
+                <span>{supplier.country}{supplier.countryAr ? ` (${supplier.countryAr})` : ""}</span>
+                <button onClick={() => { setCountryDraft(supplier.country || ""); setCountryArDraft(supplier.countryAr || ""); setIsEditingCountry(true); }} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: 0 }} title="Edit ships-from country">
                   <Pencil size={11} color={C.muted} />
                 </button>
               </>

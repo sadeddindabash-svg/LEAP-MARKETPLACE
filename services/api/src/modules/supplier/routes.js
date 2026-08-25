@@ -25,6 +25,7 @@ function toSupplierDto(row) {
     id: row.id,
     name: row.name,
     country: row.country,
+    countryAr: row.country_ar,
     contactEmail: row.contact_email,
     verificationStatus: row.verification_status,
     listingCount: Number(row.listing_count) || 0,
@@ -98,18 +99,18 @@ router.patch('/:id/verify', requireAuth, requireRole('admin'), requirePageAccess
 // pattern as verification_status right above, not supplier self-edit.
 router.patch('/:id/country', requireAuth, requireRole('admin'), requirePageAccess('suppliers'), async (req, res, next) => {
   try {
-    const { country } = req.body || {};
+    const { country, countryAr } = req.body || {};
     if (!country || typeof country !== 'string' || !country.trim()) {
       return res.status(400).json({ error: 'country is required' });
     }
     const { rows } = await db.query(
-      `UPDATE suppliers SET country = $1 WHERE id = $2 RETURNING *`,
-      [country.trim(), req.params.id]
+      `UPDATE suppliers SET country = $1, country_ar = $2 WHERE id = $3 RETURNING *`,
+      [country.trim(), countryAr?.trim() || null, req.params.id]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Supplier not found' });
-    await logAdminAction(req, 'supplier_country_updated', 'supplier', req.params.id, { country: country.trim(), supplierName: rows[0].name });
-    const { id: sid, name: sname, country: updatedCountry, contact_email: sEmail, verification_status: sVerif, created_at: sCreated } = rows[0];
-    res.json({ id: sid, name: sname, country: updatedCountry, contactEmail: sEmail, verificationStatus: sVerif, createdAt: sCreated });
+    await logAdminAction(req, 'supplier_country_updated', 'supplier', req.params.id, { country: country.trim(), countryAr: countryAr?.trim() || null, supplierName: rows[0].name });
+    const { id: sid, name: sname, country: updatedCountry, country_ar: updatedCountryAr, contact_email: sEmail, verification_status: sVerif, created_at: sCreated } = rows[0];
+    res.json({ id: sid, name: sname, country: updatedCountry, countryAr: updatedCountryAr, contactEmail: sEmail, verificationStatus: sVerif, createdAt: sCreated });
   } catch (err) {
     next(err);
   }
