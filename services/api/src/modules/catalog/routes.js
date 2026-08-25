@@ -24,6 +24,20 @@ const router = express.Router();
 // mandatory to approve — see migration 012 — but defensive regardless).
 // Deliberately never includes name_zh/description_zh here at all — a
 // buyer should never see the untranslated Chinese original, full stop.
+// Real, confirmed fix for a reported bug: a product could go live
+// with genuine, untranslated Chinese text still sitting in its own
+// real "English"/"Arabic" name, because the real moderation endpoints
+// only ever checked that nameEn/nameAr were non-empty -- never that
+// they were actually written in the right real language, rather than
+// the original Chinese submission simply carried over unedited. A
+// real CJK Unicode range check can't verify a translation is GOOD,
+// but it can catch this exact real mistake before it ever reaches a
+// buyer.
+const CJK_REGEX = /[\u4e00-\u9fff]/;
+function containsChineseCharacters(text) {
+  return typeof text === 'string' && CJK_REGEX.test(text);
+}
+
 function resolveLanguage(row, lang) {
   if (lang === 'ar' && row.name_ar) {
     return { name: row.name_ar, description: row.description_ar || row.description };
@@ -672,6 +686,20 @@ router.patch('/products/:id/moderate', requireAuth, requireRole('admin'), requir
     if (missing.length > 0) {
       return res.status(400).json({ error: `${missing.join(' and ')} required to approve — enter the reviewed translation(s) first` });
     }
+    // Real, confirmed fix -- catches the exact reported bug: the
+    // original Chinese submission still sitting untranslated in
+    // nameEn/nameAr, rather than a genuine English/Arabic
+    // translation.
+    if (action === 'approve') {
+      const stillChinese = [];
+      if (containsChineseCharacters(nameEn)) stillChinese.push('nameEn');
+      if (containsChineseCharacters(descriptionEn)) stillChinese.push('descriptionEn');
+      if (containsChineseCharacters(nameAr)) stillChinese.push('nameAr');
+      if (containsChineseCharacters(descriptionAr)) stillChinese.push('descriptionAr');
+      if (stillChinese.length > 0) {
+        return res.status(400).json({ error: `${stillChinese.join(', ')} still contains Chinese characters — translate before approving` });
+      }
+    }
     const newStatus = action === 'approve' ? 'active' : 'inactive';
     const { rows } = await db.query(
       `UPDATE products SET
@@ -725,6 +753,21 @@ router.post('/products/bulk-moderate', requireAuth, requireRole('admin'), requir
       if (action === 'approve' && (!nameEn || !nameAr)) {
         results.push({ productId, success: false, error: 'nameEn and nameAr required to approve' });
         continue;
+      }
+      // Real, confirmed fix -- same check as the single-item endpoint
+      // above: catches the original Chinese submission still sitting
+      // untranslated in nameEn/nameAr, rather than a genuine
+      // English/Arabic translation.
+      if (action === 'approve') {
+        const stillChinese = [];
+        if (containsChineseCharacters(nameEn)) stillChinese.push('nameEn');
+        if (containsChineseCharacters(descriptionEn)) stillChinese.push('descriptionEn');
+        if (containsChineseCharacters(nameAr)) stillChinese.push('nameAr');
+        if (containsChineseCharacters(descriptionAr)) stillChinese.push('descriptionAr');
+        if (stillChinese.length > 0) {
+          results.push({ productId, success: false, error: `${stillChinese.join(', ')} still contains Chinese characters — translate before approving` });
+          continue;
+        }
       }
       try {
         const newStatus = action === 'approve' ? 'active' : 'inactive';
