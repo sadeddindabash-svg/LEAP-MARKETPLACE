@@ -11,6 +11,7 @@ import '../models/cart_item.dart';
 import '../models/vehicle.dart';
 import '../models/review.dart';
 import '../models/saved_search.dart';
+import '../models/quote_request.dart';
 
 /// Real, centralized offline/network-failure handling (new). Without
 /// this, a real network failure (no internet, DNS lookup failure, a
@@ -1282,6 +1283,124 @@ class ApiClient {
       throw ApiException(body['reason'] as String? ?? body['error'] as String? ?? 'Request failed (${response.statusCode})');
     }
     return body; // { valid: bool, promoCode?, reason? } -- caller checks `valid` itself, a 400 here is a real "invalid code" answer, not a crash
+  }
+
+  // ============================================================
+  // Real "request a part we don't carry" (RFQ), confirmed with the
+  // person through several rounds of design discussion before
+  // building.
+  // ============================================================
+
+  Future<QuoteRequest> createQuoteRequest(String token, {required String generationId, required int year}) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/quote-requests'),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      body: jsonEncode({'generationId': generationId, 'year': year}),
+    );
+    if (response.statusCode >= 400) {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      throw ApiException(body['error'] as String? ?? 'Failed to create the request (${response.statusCode})');
+    }
+    return QuoteRequest.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<List<QuoteRequest>> fetchMyQuoteRequests(String token) async {
+    final response = await _client.get(Uri.parse('$baseUrl/quote-requests/mine'), headers: {'Authorization': 'Bearer $token'});
+    if (response.statusCode != 200) throw ApiException('Failed to load your requests (${response.statusCode})');
+    final list = jsonDecode(response.body) as List;
+    return list.map((r) => QuoteRequest.fromJson(r as Map<String, dynamic>)).toList();
+  }
+
+  Future<QuoteRequest> fetchQuoteRequest(String token, String requestId) async {
+    final response = await _client.get(Uri.parse('$baseUrl/quote-requests/$requestId'), headers: {'Authorization': 'Bearer $token'});
+    if (response.statusCode != 200) throw ApiException('Failed to load this request (${response.statusCode})');
+    return QuoteRequest.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<QuoteRequest> addQuoteRequestItem(
+    String token,
+    String requestId, {
+    required String name,
+    String? description,
+    String? referencePhotoUrl,
+    int quantity = 1,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/quote-requests/$requestId/items'),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      body: jsonEncode({'name': name, 'description': description, 'referencePhotoUrl': referencePhotoUrl, 'quantity': quantity}),
+    );
+    if (response.statusCode >= 400) {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      throw ApiException(body['error'] as String? ?? 'Failed to add this item (${response.statusCode})');
+    }
+    return QuoteRequest.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<QuoteRequest> updateQuoteRequestItem(
+    String token,
+    String requestId,
+    String itemId, {
+    String? name,
+    String? description,
+    String? referencePhotoUrl,
+    int? quantity,
+  }) async {
+    final response = await _client.patch(
+      Uri.parse('$baseUrl/quote-requests/$requestId/items/$itemId'),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      body: jsonEncode({
+        if (name != null) 'name': name,
+        if (description != null) 'description': description,
+        if (referencePhotoUrl != null) 'referencePhotoUrl': referencePhotoUrl,
+        if (quantity != null) 'quantity': quantity,
+      }),
+    );
+    if (response.statusCode >= 400) {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      throw ApiException(body['error'] as String? ?? 'Failed to update this item (${response.statusCode})');
+    }
+    return QuoteRequest.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<QuoteRequest> deleteQuoteRequestItem(String token, String requestId, String itemId) async {
+    final response = await _client.delete(Uri.parse('$baseUrl/quote-requests/$requestId/items/$itemId'), headers: {'Authorization': 'Bearer $token'});
+    if (response.statusCode >= 400) {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      throw ApiException(body['error'] as String? ?? 'Failed to remove this item (${response.statusCode})');
+    }
+    return QuoteRequest.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<QuoteRequest> submitQuoteRequest(String token, String requestId) async {
+    final response = await _client.post(Uri.parse('$baseUrl/quote-requests/$requestId/submit'), headers: {'Authorization': 'Bearer $token'});
+    if (response.statusCode >= 400) {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      throw ApiException(body['error'] as String? ?? 'Failed to submit this request (${response.statusCode})');
+    }
+    return QuoteRequest.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<QuoteRequest> cancelQuoteRequest(String token, String requestId) async {
+    final response = await _client.post(Uri.parse('$baseUrl/quote-requests/$requestId/cancel'), headers: {'Authorization': 'Bearer $token'});
+    if (response.statusCode >= 400) {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      throw ApiException(body['error'] as String? ?? 'Failed to cancel this request (${response.statusCode})');
+    }
+    return QuoteRequest.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<QuoteRequest> placeQuoteRequestOrder(String token, String requestId, {required String cartId}) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/quote-requests/$requestId/place-order'),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      body: jsonEncode({'cartId': cartId}),
+    );
+    if (response.statusCode >= 400) {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      throw ApiException(body['error'] as String? ?? 'Failed to place this order (${response.statusCode})');
+    }
+    return QuoteRequest.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 }
 

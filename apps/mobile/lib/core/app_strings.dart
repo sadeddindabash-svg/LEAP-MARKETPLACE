@@ -131,6 +131,7 @@ class AppStrings {
 
     // ---- Garage ----
     'my_garage': {'en': 'My Garage', 'ar': 'مركبتي'},
+    'my_part_requests': {'en': 'My Requests', 'ar': 'طلبات القطع'},
     'vehicles_stat': {'en': 'Vehicles', 'ar': 'المركبات'},
     'orders_stat': {'en': 'Orders', 'ar': 'الطلبات'},
     'wishlist_stat': {'en': 'Wishlist', 'ar': 'المفضلة'},

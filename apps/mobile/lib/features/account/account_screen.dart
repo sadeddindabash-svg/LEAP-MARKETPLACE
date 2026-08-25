@@ -89,6 +89,7 @@ class _AccountScreenState extends State<AccountScreen> {
       (icon: Icons.bookmark_outlined, label: tr(context, 'saved_searches'), route: '/saved-searches'),
       (icon: Icons.card_giftcard_outlined, label: tr(context, 'referrals'), route: '/referrals'),
       (icon: Icons.inventory_2_outlined, label: tr(context, 'orders_and_returns'), route: '/orders'),
+      (icon: Icons.request_quote_outlined, label: tr(context, 'my_part_requests'), route: '/part-requests'),
       (icon: Icons.assignment_return_outlined, label: tr(context, 'my_returns'), route: '/returns'),
       (icon: Icons.chat_bubble_outline, label: tr(context, 'contact_us_label'), route: '/contact-us'),
       (icon: Icons.alternate_email, label: tr(context, 'change_email'), route: '/account/change-email'),

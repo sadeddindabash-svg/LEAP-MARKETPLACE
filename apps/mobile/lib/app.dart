@@ -24,6 +24,9 @@ import 'features/account/legal_document_screen.dart';
 import 'features/support/contact_us_screen.dart';
 import 'models/product.dart';
 import 'features/garage/garage_screen.dart';
+import 'features/quote_requests/request_quote_screen.dart';
+import 'features/quote_requests/my_requests_screen.dart';
+import 'features/quote_requests/quote_request_detail_screen.dart';
 import 'features/catalog/category_screen.dart';
 import 'features/catalog/category_browse_screen.dart';
 import 'features/catalog/product_screen.dart';
@@ -67,6 +70,9 @@ final GoRouter appRouter = GoRouter(
       ],
     ),
     GoRoute(path: '/garage', builder: (context, state) => const GarageScreen()),
+    GoRoute(path: '/request-quote', builder: (context, state) => const RequestQuoteScreen()),
+    GoRoute(path: '/part-requests', builder: (context, state) => const MyRequestsScreen()),
+    GoRoute(path: '/part-requests/:id', builder: (context, state) => QuoteRequestDetailScreen(requestId: state.pathParameters['id']!)),
     GoRoute(
       path: '/search',
       builder: (context, state) => SearchScreen(initialQuery: (state.extra as Map?)?['initialQuery'] as String?),
