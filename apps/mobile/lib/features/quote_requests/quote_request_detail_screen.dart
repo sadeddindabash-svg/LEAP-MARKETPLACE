@@ -172,7 +172,13 @@ class _QuoteRequestDetailScreenState extends State<QuoteRequestDetailScreen> {
                     ElevatedButton(
                       onPressed: (readyItems.isEmpty || _isPlacingOrder) ? null : _placeOrder,
                       style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 48), backgroundColor: palette.signal, foregroundColor: palette.onSignal),
-                      child: Text(_isPlacingOrder ? (isAr ? 'جارٍ المعالجة…' : 'Processing…') : (isAr ? 'إتمام الطلب' : 'Place order')),
+                      child: Text(_isPlacingOrder ? (isAr ? 'جارٍ الإضافة…' : 'Adding…') : (isAr ? 'إضافة إلى السلة' : 'Add to cart')),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      isAr ? 'أكمل الدفع من سلتك لإتمام الطلب.' : "Complete checkout from your cart to finish the order.",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 11.5, color: palette.muted),
                     ),
                   ],
                 ),
@@ -271,6 +277,15 @@ class _ItemRow extends StatelessWidget {
             )
           else
             Text(isAr ? 'الكمية: ${item.quantity}' : 'Qty: ${item.quantity}', style: TextStyle(fontSize: 12, color: palette.muted)),
+          if (item.readyToOrder && item.productId != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: OutlinedButton(
+                onPressed: () => context.push('/product/${item.productId}'),
+                style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 36)),
+                child: Text(isAr ? 'عرض المنتج' : 'View product', style: const TextStyle(fontSize: 12.5)),
+              ),
+            ),
         ],
       ),
     );

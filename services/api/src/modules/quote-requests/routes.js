@@ -297,7 +297,6 @@ router.post('/:id/place-order', requireAuth, async (req, res, next) => {
         [cartId, item.product_id, item.quantity]
       );
     }
-    await db.query(`UPDATE quote_requests SET status = 'ordered' WHERE id = $1`, [req.params.id]);
     const { rows } = await db.query('SELECT * FROM quote_requests WHERE id = $1', [req.params.id]);
     res.json(await toRequestDto(rows[0]));
   } catch (err) {

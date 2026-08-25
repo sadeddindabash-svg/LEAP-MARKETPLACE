@@ -298,6 +298,29 @@ router.post('/', async (req, res, next) => {
       console.error('checkAndGrantReferralReward failed (non-fatal):', err.message);
     }
 
+    // Real, confirmed fix for the "request a part we don't carry"
+    // system (RFQ): a quote request only genuinely becomes 'ordered'
+    // once a real order actually exists for one of its own real
+    // priced items -- not merely when those items were added to a
+    // real cart (adding to cart happens well before this real
+    // address/payment step, and the buyer could still abandon it).
+    // Awaited here, before the response, for the exact same real
+    // reason the referral-reward check above is: a real buyer
+    // checking "My Requests" immediately after placing this real
+    // order should see it as ordered right away, not stale.
+    try {
+      const orderedProductIds = items.map((i) => i.productId);
+      await db.query(
+        `UPDATE quote_requests SET status = 'ordered'
+         WHERE status = 'quoted' AND id IN (
+           SELECT DISTINCT request_id FROM quote_request_items WHERE product_id = ANY($1::text[])
+         )`,
+        [orderedProductIds]
+      );
+    } catch (err) {
+      console.error('Failed to mark a fulfilled quote request as ordered (non-fatal):', err.message);
+    }
+
     // REAL BUG FOUND AND FIXED HERE, very likely the actual root cause
     // of an earlier real report of checkout being slow/appearing stuck
     // ("keeps loading") that was, at the time, attributed to a generic
