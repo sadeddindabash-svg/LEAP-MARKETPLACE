@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth } = require('../auth/middleware');
+const { attachBuyerPrice } = require('../catalog/routes');
 
 /**
  * Quote-requests module -- real "request a part we don't carry"
@@ -40,10 +41,21 @@ async function toItemDto(row) {
     productId: row.product_id,
   };
   if (row.status === 'priced' && row.product_id) {
-    const { rows } = await db.query('SELECT price, currency_code, status FROM products WHERE id = $1', [row.product_id]);
+    const { rows } = await db.query(
+      'SELECT price, currency_code, status, weight_kg, length_cm, width_cm, height_cm, last_known_buyer_price_usd FROM products WHERE id = $1',
+      [row.product_id]
+    );
     if (rows.length > 0) {
-      dto.price = Number(rows[0].price);
-      dto.currencyCode = rows[0].currency_code;
+      // Real, confirmed bug fix -- this used to expose the real
+      // supplier's own raw RMB cost directly as if it were already a
+      // real USD price (reported directly: "780 rmb ... shows the
+      // buyer 780$"). Reuses the exact same real, already-built
+      // pricing engine (markup fees + a real FX rate) every other
+      // real product already goes through, rather than a duplicated
+      // or approximated version of that real conversion.
+      const priced = await attachBuyerPrice({}, rows[0]);
+      dto.price = priced.price;
+      dto.currencyCode = 'USD';
       dto.readyToOrder = rows[0].status === 'active';
     }
   }
