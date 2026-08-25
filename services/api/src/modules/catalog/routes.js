@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
+const { resolveDestinationIsoCode, calculateDeliveryDays } = require('../deliveryEstimate/engine');
 const { logAdminAction } = require('../audit/helpers');
 const { moveItem } = require('../../lib/reorder');
 
@@ -70,7 +71,7 @@ function toBuyerProductDto(row, lang) {
     rating: row.rating != null ? Number(row.rating) : null,
     reviewCount: row.review_count,
     stockQuantity: row.stock_quantity,
-    estimatedDeliveryDays: row.estimated_delivery_days,
+    estimatedDeliveryDays: null, // placeholder, overwritten by attachDeliveryEstimate below -- see its own comment
     weightKg: row.weight_kg === null ? null : Number(row.weight_kg),
     lengthCm: row.length_cm === null ? null : Number(row.length_cm),
     widthCm: row.width_cm === null ? null : Number(row.width_cm),
@@ -135,6 +136,26 @@ async function attachSupplierSignals(dto, supplierId) {
   const { rows } = await db.query('SELECT verification_status, country, country_ar FROM suppliers WHERE id = $1', [supplierId]);
   if (rows.length === 0) return { ...dto, isVerifiedSeller: false, shipsFromCountry: null, shipsFromCountryAr: null };
   return { ...dto, isVerifiedSeller: rows[0].verification_status === 'verified', shipsFromCountry: rows[0].country, shipsFromCountryAr: rows[0].country_ar };
+}
+
+// Real, confirmed replacement for the previous manual, supplier-typed
+// delivery estimate -- confirmed with the person through several
+// rounds of design discussion before building. Reuses
+// dto.shipsFromCountry (already set by attachSupplierSignals right
+// before this is always called) rather than a duplicate real
+// supplier lookup. destinationIsoCode is resolved ONCE per real
+// request (not per product) by the caller, via
+// resolveDestinationIsoCode(req) -- see this module's own call sites.
+async function attachDeliveryEstimate(dto, destinationIsoCode) {
+  const days = await calculateDeliveryDays({
+    weightKg: dto.weightKg,
+    lengthCm: dto.lengthCm,
+    widthCm: dto.widthCm,
+    heightCm: dto.heightCm,
+    warehouseCountry: dto.shipsFromCountry,
+    destinationIsoCode,
+  });
+  return { ...dto, estimatedDeliveryDays: days };
 }
 
 // Real Brand/Model/Year for the product page, resolved from the
@@ -311,6 +332,7 @@ router.get('/products', async (req, res, next) => {
     if (sort === 'newest') sql += ' ORDER BY p.created_at DESC';
 
     const { rows } = await db.query(sql, params);
+    const destinationIsoCode = await resolveDestinationIsoCode(req);
     let dtos = await Promise.all(rows.map(async (r) => {
       let dto = toBuyerProductDto(r, lang);
       dto = await attachBuyerImages(dto, r.id);
@@ -318,6 +340,7 @@ router.get('/products', async (req, res, next) => {
       dto = await attachPartTranslation(dto, r, lang);
       dto = await attachBuyerPrice(dto, r);
       dto = await attachSupplierSignals(dto, r.supplier_id);
+      dto = await attachDeliveryEstimate(dto, destinationIsoCode);
       return dto;
     }));
 
@@ -337,8 +360,10 @@ router.get('/products', async (req, res, next) => {
       const max = Number(maxPrice);
       dtos = dtos.filter((d) => d.price <= max);
     }
-    // Real ships-within-X-days filter (#10) -- estimatedDeliveryDays
-    // is already a real, stored field on each real DTO.
+    // Real ships-within-X-days filter (#10) -- estimatedDeliveryDays is
+    // now a real, calculated value (see attachDeliveryEstimate above,
+    // already run on every DTO in the .map() block above this point),
+    // not a raw stored column.
     if (maxDeliveryDays !== undefined) {
       const maxDays = Number(maxDeliveryDays);
       dtos = dtos.filter((d) => d.estimatedDeliveryDays <= maxDays);
@@ -390,6 +415,7 @@ router.get('/products/:id', async (req, res, next) => {
     dto = await attachPartTranslation(dto, rows[0], lang);
     dto = await attachBuyerPrice(dto, rows[0]);
     dto = await attachSupplierSignals(dto, rows[0].supplier_id);
+    dto = await attachDeliveryEstimate(dto, await resolveDestinationIsoCode(req));
     res.json({ ...dto, fitsVehicleIds: fitmentResult.rows.map((r) => r.vehicle_id) });
   } catch (err) {
     next(err);
@@ -427,6 +453,7 @@ router.get('/products/:id/alternatives', async (req, res, next) => {
           [current.category, req.params.id, current.supplier_id]
         );
 
+    const destinationIsoCode = await resolveDestinationIsoCode(req);
     const dtos = await Promise.all(rows.map(async (row) => {
       let dto = toBuyerProductDto(row, lang);
       dto = await attachBuyerImages(dto, row.id);
@@ -434,6 +461,7 @@ router.get('/products/:id/alternatives', async (req, res, next) => {
       dto = await attachPartTranslation(dto, row, lang);
       dto = await attachBuyerPrice(dto, row);
       dto = await attachSupplierSignals(dto, row.supplier_id);
+      dto = await attachDeliveryEstimate(dto, destinationIsoCode);
       return dto;
     }));
     res.json(dtos);
@@ -460,6 +488,7 @@ router.get('/products/:id/oem-alternatives', async (req, res, next) => {
       `SELECT * FROM products WHERE oem_number = $1 AND id != $2 AND status = 'active' ORDER BY stock_quantity DESC NULLS LAST LIMIT 10`,
       [oemNumber, req.params.id]
     );
+    const destinationIsoCode = await resolveDestinationIsoCode(req);
     const dtos = await Promise.all(rows.map(async (row) => {
       let dto = toBuyerProductDto(row, lang);
       dto = await attachBuyerImages(dto, row.id);
@@ -467,6 +496,7 @@ router.get('/products/:id/oem-alternatives', async (req, res, next) => {
       dto = await attachPartTranslation(dto, row, lang);
       dto = await attachBuyerPrice(dto, row);
       dto = await attachSupplierSignals(dto, row.supplier_id);
+      dto = await attachDeliveryEstimate(dto, destinationIsoCode);
       return dto;
     }));
     res.json(dtos);
@@ -508,6 +538,7 @@ router.get('/products/:id/same-model', async (req, res, next) => {
        ORDER BY p.rating DESC NULLS LAST, p.id ASC LIMIT $3 OFFSET $4`,
       [modelId, req.params.id, limitNum, offset]
     );
+    const destinationIsoCode = await resolveDestinationIsoCode(req);
     const dtos = await Promise.all(rows.map(async (row) => {
       let dto = toBuyerProductDto(row, lang);
       dto = await attachBuyerImages(dto, row.id);
@@ -515,6 +546,7 @@ router.get('/products/:id/same-model', async (req, res, next) => {
       dto = await attachPartTranslation(dto, row, lang);
       dto = await attachBuyerPrice(dto, row);
       dto = await attachSupplierSignals(dto, row.supplier_id);
+      dto = await attachDeliveryEstimate(dto, destinationIsoCode);
       return dto;
     }));
     res.json(dtos);
@@ -560,6 +592,7 @@ router.get('/products/:id/same-brand', async (req, res, next) => {
        ORDER BY p.rating DESC NULLS LAST, p.id ASC LIMIT $4 OFFSET $5`,
       [brandId, req.params.id, modelId, limitNum, offset]
     );
+    const destinationIsoCode = await resolveDestinationIsoCode(req);
     const dtos = await Promise.all(rows.map(async (row) => {
       let dto = toBuyerProductDto(row, lang);
       dto = await attachBuyerImages(dto, row.id);
@@ -567,6 +600,7 @@ router.get('/products/:id/same-brand', async (req, res, next) => {
       dto = await attachPartTranslation(dto, row, lang);
       dto = await attachBuyerPrice(dto, row);
       dto = await attachSupplierSignals(dto, row.supplier_id);
+      dto = await attachDeliveryEstimate(dto, destinationIsoCode);
       return dto;
     }));
     res.json(dtos);

@@ -156,7 +156,6 @@ function toProductDto(row) {
     currencyCode: row.currency_code,
     stockQuantity: row.stock_quantity,
     lowStockThreshold: row.low_stock_threshold,
-    estimatedDeliveryDays: row.estimated_delivery_days,
     weightKg: row.weight_kg === null ? null : Number(row.weight_kg),
     lengthCm: row.length_cm === null ? null : Number(row.length_cm),
     widthCm: row.width_cm === null ? null : Number(row.width_cm),
@@ -333,7 +332,7 @@ const MIN_PRODUCT_PHOTOS = 3;
 router.post('/me/products', requireAuth, requireRole('supplier'), async (req, res, next) => {
   const {
     nameZh, descriptionZh, category, part, position, oemNumber,
-    price, currencyCode, stockQuantity, estimatedDeliveryDays,
+    price, currencyCode, stockQuantity,
     fitment, images, weightKg, lengthCm, widthCm, heightCm,
     fulfillsRequestItemId,
   } = req.body || {};
@@ -468,11 +467,11 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
     await client.query(
       `INSERT INTO products
          (id, supplier_id, name, name_zh, description, description_zh, category, part, position, oem_number,
-          price, currency_code, stock_quantity, estimated_delivery_days, status,
+          price, currency_code, stock_quantity, status,
           weight_kg, length_cm, width_cm, height_cm)
-       VALUES ($1, $2, $3, $3, NULL, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'translating', $13, $14, $15, $16)`,
+       VALUES ($1, $2, $3, $3, NULL, $4, $5, $6, $7, $8, $9, $10, $11, 'translating', $12, $13, $14, $15)`,
       [id, req.user.supplierId, nameZh, descriptionZh || null, category, part, position, oemNumber,
-        price, currencyCode, stockQuantity || 0, estimatedDeliveryDays || 7,
+        price, currencyCode, stockQuantity || 0,
         weightKg, lengthCm, widthCm, heightCm]
     );
 

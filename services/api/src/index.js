@@ -53,6 +53,11 @@ const pricingRoutes = require('./modules/pricing/routes');
 assertRequiredEnvInProduction();
 
 const app = express();
+// Real, confirmed necessary for the delivery-estimate feature's own
+// real IP-based geolocation: without this, req.ip would reflect a
+// real reverse proxy/load balancer's own IP in production, not the
+// real client's.
+app.set('trust proxy', true);
 // Disabled alongside the real Cache-Control fix below -- Express
 // generates a weak ETag by default on every response, which invites
 // conditional-GET caching behavior this dynamic API doesn't want.
