@@ -194,6 +194,39 @@ export async function updateSupplierCountry(token, supplierId, country, countryA
   return data;
 }
 
+async function deliveryRulesGet(path, token) {
+  const response = await fetch(`${API_BASE_URL}/delivery-rules${path}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+async function deliveryRulesMutate(method, path, token, body) {
+  const response = await fetch(`${API_BASE_URL}/delivery-rules${path}`, {
+    method,
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (response.status === 204) return null;
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
+export const fetchCountriesList = (token) => deliveryRulesGet("/countries", token);
+export const fetchCountryGroups = (token) => deliveryRulesGet("/country-groups", token);
+export const createCountryGroup = (token, name, nameAr) => deliveryRulesMutate("POST", "/country-groups", token, { name, nameAr });
+export const deleteCountryGroup = (token, id) => deliveryRulesMutate("DELETE", `/country-groups/${id}`, token);
+export const addCountryGroupMember = (token, groupId, isoCode) => deliveryRulesMutate("POST", `/country-groups/${groupId}/members`, token, { isoCode });
+export const removeCountryGroupMember = (token, groupId, isoCode) => deliveryRulesMutate("DELETE", `/country-groups/${groupId}/members/${isoCode}`, token);
+
+export const fetchDeliveryRules = (token) => deliveryRulesGet("", token);
+export const createDeliveryRule = (token, rule) => deliveryRulesMutate("POST", "", token, rule);
+export const updateDeliveryRule = (token, id, rule) => deliveryRulesMutate("PATCH", `/${id}`, token, rule);
+export const deleteDeliveryRule = (token, id) => deliveryRulesMutate("DELETE", `/${id}`, token);
+export const reorderDeliveryRules = (token, orderedIds) => deliveryRulesMutate("POST", "/reorder", token, { orderedIds });
+
 // ---------------- Fitment cascade management (Brand -> Model -> Generation -> Engine/Transmission) ----------------
 // GETs are public (no auth needed to browse), but every write below is admin-only.
 

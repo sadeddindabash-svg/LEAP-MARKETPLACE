@@ -4,6 +4,8 @@ import { exportToExcel } from "./exportToExcel";
 import { FONT_IMPORT, C, disp, body, mono } from "./theme";
 import { PlateChip, Badge, Stars, KpiCard, Card, Th, Td, ConfirmDialog, EditDialog } from "./components/ui";
 import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, fetchSupplierById, verifySupplier, updateSupplierCountry, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
+  fetchCountriesList, fetchCountryGroups, createCountryGroup, deleteCountryGroup, addCountryGroupMember, removeCountryGroupMember,
+  fetchDeliveryRules, createDeliveryRule, updateDeliveryRule, deleteDeliveryRule, reorderDeliveryRules,
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
   createBrand, deleteBrand, createModel, deleteModel, createGeneration, deleteGeneration, createEngine, deleteEngine, createTransmission, deleteTransmission,
   fetchHubLocations, createHubLocation, deleteHubLocation, assignHubToSubOrder,
@@ -1516,6 +1518,271 @@ function ModerationPage({ onSessionExpired }) {
 // Drill-down navigation (Brands -> Models -> Generations -> Engines &
 // Transmissions) with breadcrumbs, rather than one giant flat page —
 // matches how deep the real cascade actually is.
+// Real admin page for the "request a part we don't carry" system's
+// own delivery-day estimate engine -- confirmed via a rendered
+// mockup with the person through several rounds of design discussion
+// before building. Country groups (top) let one real rule cover many
+// real destination countries at once; the rules table (bottom)
+// matches a real product's own weight/volume/warehouse/destination
+// against a real, admin-configured number of days. Reorder uses this
+// app's own already-established up/down pattern (see moveCategory
+// etc.), not a new drag-and-drop library.
+function DeliveryRulesPage({ onSessionExpired }) {
+  const [groups, setGroups] = useState([]);
+  const [rules, setRules] = useState([]);
+  const [countries, setCountries] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [newGroupName, setNewGroupName] = useState("");
+
+  const refresh = async () => {
+    try {
+      const [g, r, c] = await Promise.all([
+        fetchCountryGroups(getStoredToken()),
+        fetchDeliveryRules(getStoredToken()),
+        fetchCountriesList(getStoredToken()),
+      ]);
+      setGroups(g);
+      setRules(r);
+      setCountries(c);
+      setErrorMessage(null);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
+  const load = async () => {
+    setLoadState("loading");
+    await refresh();
+    setLoadState((prev) => (prev === "loading" ? "ready" : prev));
+  };
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleCreateGroup = async () => {
+    if (!newGroupName.trim()) return;
+    try {
+      await createCountryGroup(getStoredToken(), newGroupName.trim());
+      setNewGroupName("");
+      refresh();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleDeleteGroup = async (id) => {
+    try {
+      await deleteCountryGroup(getStoredToken(), id);
+      refresh();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleAddMember = async (groupId, isoCode) => {
+    try {
+      await addCountryGroupMember(getStoredToken(), groupId, isoCode);
+      refresh();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleRemoveMember = async (groupId, isoCode) => {
+    try {
+      await removeCountryGroupMember(getStoredToken(), groupId, isoCode);
+      refresh();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleAddRule = async () => {
+    try {
+      await createDeliveryRule(getStoredToken(), { deliveryDays: 7 });
+      refresh();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleUpdateRule = async (id, patch) => {
+    try {
+      const updated = await updateDeliveryRule(getStoredToken(), id, patch);
+      setRules((prev) => prev.map((r) => (r.id === id ? updated : r)));
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleDeleteRule = async (id) => {
+    try {
+      await deleteDeliveryRule(getStoredToken(), id);
+      refresh();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleMove = async (index, direction) => {
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= rules.length) return;
+    const newOrder = [...rules];
+    [newOrder[index], newOrder[targetIndex]] = [newOrder[targetIndex], newOrder[index]];
+    setRules(newOrder);
+    try {
+      await reorderDeliveryRules(getStoredToken(), newOrder.map((r) => r.id));
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+      refresh();
+    }
+  };
+
+  const numInputStyle = { width: 60, fontSize: 12.5, border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 6px" };
+
+  if (loadState === "loading") return <div style={{ padding: 24 }}><span style={{ ...body, color: C.muted }}>Loading…</span></div>;
+
+  return (
+    <div style={{ padding: 24 }}>
+      {errorMessage && (
+        <div style={{ ...body, fontSize: 12.5, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>
+      )}
+
+      <Card title="Destination country groups" style={{ marginBottom: 20 }}>
+        <div style={{ padding: 16 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
+            {groups.map((g) => (
+              <div key={g.id} style={{ border: `1px solid ${C.line}`, borderRadius: 8, padding: 10, minWidth: 180 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <span style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.ink }}>{g.name}</span>
+                  <button onClick={() => handleDeleteGroup(g.id)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }} title="Delete group">
+                    <X size={13} color={C.muted} />
+                  </button>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                  {g.members.map((m) => (
+                    <span key={m.isoCode} style={{ ...body, fontSize: 11, background: C.canvas, borderRadius: 20, padding: "2px 6px 2px 8px", display: "flex", alignItems: "center", gap: 3 }}>
+                      {m.name}
+                      <button onClick={() => handleRemoveMember(g.id, m.isoCode)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: 0 }}>
+                        <X size={9} color={C.muted} />
+                      </button>
+                    </span>
+                  ))}
+                  <select
+                    value=""
+                    onChange={(e) => { if (e.target.value) handleAddMember(g.id, e.target.value); }}
+                    style={{ ...body, fontSize: 11, border: `1px dashed ${C.line}`, borderRadius: 20, padding: "2px 6px", background: "none" }}
+                  >
+                    <option value="">+ Add country</option>
+                    {countries.filter((c) => !g.members.some((m) => m.isoCode === c.isoCode)).map((c) => (
+                      <option key={c.isoCode} value={c.isoCode}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              value={newGroupName}
+              onChange={(e) => setNewGroupName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleCreateGroup()}
+              placeholder="New group name"
+              style={{ ...body, fontSize: 12.5, border: `1px solid ${C.line}`, borderRadius: 6, padding: "6px 10px", flex: 1, maxWidth: 220 }}
+            />
+            <button onClick={handleCreateGroup} style={{ ...body, fontSize: 12.5, fontWeight: 700, color: "#fff", background: C.signal, border: "none", borderRadius: 6, padding: "6px 14px", cursor: "pointer" }}>
+              Add group
+            </button>
+          </div>
+        </div>
+      </Card>
+
+      <Card title="Delivery rules">
+        <div style={{ padding: 16 }}>
+          <p style={{ ...body, fontSize: 12, color: C.muted, marginTop: 0, marginBottom: 14 }}>First matching rule wins — order matters, use the arrows to reorder.</p>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <Th></Th>
+                <Th>Weight (kg)</Th>
+                <Th>Volume (cm³)</Th>
+                <Th>Warehouse</Th>
+                <Th>Destination</Th>
+                <Th>Days</Th>
+                <Th></Th>
+              </tr>
+            </thead>
+            <tbody>
+              {rules.map((rule, i) => (
+                <tr key={rule.id}>
+                  <Td>
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                      <button onClick={() => handleMove(i, "up")} disabled={i === 0} style={{ background: "none", border: "none", cursor: i === 0 ? "default" : "pointer", display: "flex", opacity: i === 0 ? 0.3 : 1 }}>
+                        <ChevronUp size={14} color={C.muted} />
+                      </button>
+                      <button onClick={() => handleMove(i, "down")} disabled={i === rules.length - 1} style={{ background: "none", border: "none", cursor: i === rules.length - 1 ? "default" : "pointer", display: "flex", opacity: i === rules.length - 1 ? 0.3 : 1 }}>
+                        <ChevronDown size={14} color={C.muted} />
+                      </button>
+                    </div>
+                  </Td>
+                  <Td>
+                    <input type="number" defaultValue={rule.minWeightKg ?? ""} placeholder="any" style={numInputStyle}
+                      onBlur={(e) => handleUpdateRule(rule.id, { minWeightKg: e.target.value === "" ? null : Number(e.target.value) })} />
+                    {" – "}
+                    <input type="number" defaultValue={rule.maxWeightKg ?? ""} placeholder="any" style={numInputStyle}
+                      onBlur={(e) => handleUpdateRule(rule.id, { maxWeightKg: e.target.value === "" ? null : Number(e.target.value) })} />
+                  </Td>
+                  <Td>
+                    <input type="number" defaultValue={rule.minVolumeCm3 ?? ""} placeholder="any" style={numInputStyle}
+                      onBlur={(e) => handleUpdateRule(rule.id, { minVolumeCm3: e.target.value === "" ? null : Number(e.target.value) })} />
+                    {" – "}
+                    <input type="number" defaultValue={rule.maxVolumeCm3 ?? ""} placeholder="any" style={numInputStyle}
+                      onBlur={(e) => handleUpdateRule(rule.id, { maxVolumeCm3: e.target.value === "" ? null : Number(e.target.value) })} />
+                  </Td>
+                  <Td>
+                    <input type="text" defaultValue={rule.warehouseCountry ?? ""} placeholder="any" style={{ ...numInputStyle, width: 90 }}
+                      onBlur={(e) => handleUpdateRule(rule.id, { warehouseCountry: e.target.value.trim() || null })} />
+                  </Td>
+                  <Td>
+                    <select
+                      value={rule.destinationGroupId || ""}
+                      onChange={(e) => handleUpdateRule(rule.id, { destinationGroupId: e.target.value || null })}
+                      style={{ ...body, fontSize: 12.5, border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 6px" }}
+                    >
+                      <option value="">any</option>
+                      {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                    </select>
+                  </Td>
+                  <Td>
+                    <input type="number" defaultValue={rule.deliveryDays} style={{ ...numInputStyle, width: 44 }}
+                      onBlur={(e) => { const v = Number(e.target.value); if (v > 0) handleUpdateRule(rule.id, { deliveryDays: v }); }} />
+                  </Td>
+                  <Td>
+                    <button onClick={() => handleDeleteRule(rule.id)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }} title="Delete rule">
+                      <X size={14} color={C.muted} />
+                    </button>
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <button onClick={handleAddRule} style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.signal, background: "none", border: `1px dashed ${C.line}`, borderRadius: 8, padding: "8px 14px", cursor: "pointer", marginTop: 14, width: "100%" }}>
+            + Add rule
+          </button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function VehicleDataPage({ onSessionExpired }) {
   const [brands, setBrands] = useState([]);
   const [selectedBrand, setSelectedBrand] = useState(null);
@@ -5524,6 +5791,7 @@ const NAV = [
   { id: "moderation", label: "Moderation", icon: PackageSearch },
   { id: "returns", label: "Returns", icon: RotateCcw },
   { id: "vehicleData", label: "Vehicle Data", icon: Truck },
+  { id: "deliveryRules", label: "Delivery Rules", icon: Globe },
   { id: "categories", label: "Categories", icon: Layers },
   { id: "supplierMessages", label: "Supplier Messages", icon: MessageSquare },
   { id: "promoCodes", label: "Promo Codes", icon: Tag },
@@ -5587,6 +5855,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   else if (page === "moderation") content = <ModerationPage onSessionExpired={onLogout} />;
   else if (page === "returns") content = <ReturnsPage onOpenCase={setOpenCase} onSessionExpired={onLogout} />;
   else if (page === "vehicleData") content = <VehicleDataPage onSessionExpired={onLogout} />;
+  else if (page === "deliveryRules") content = <DeliveryRulesPage onSessionExpired={onLogout} />;
   else if (page === "categories") content = <CategoriesPage onSessionExpired={onLogout} />;
   else if (page === "supplierMessages") content = <SupplierMessagesPage onSessionExpired={onLogout} />;
   else if (page === "promoCodes") content = <PromoCodesPage onSessionExpired={onLogout} />;
