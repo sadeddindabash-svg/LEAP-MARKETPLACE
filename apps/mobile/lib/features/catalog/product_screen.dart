@@ -361,10 +361,10 @@ class _ProductDetailBody extends StatelessWidget {
                           index: 5,
                           label: _lDimensions,
                           value: (product.lengthCm != null && product.widthCm != null && product.heightCm != null)
-                              ? '${product.lengthCm} × ${product.widthCm} × ${product.heightCm} cm'
+                              ? '${product.lengthCm} × ${product.widthCm} × ${product.heightCm} ${_isAr ? "سم" : "cm"}'
                               : _lNotSpecified,
                         ),
-                        _SpecRow(index: 6, label: _lWeight, value: product.weightKg != null ? '${product.weightKg} kg' : _lNotSpecified),
+                        _SpecRow(index: 6, label: _lWeight, value: product.weightKg != null ? '${product.weightKg} ${_isAr ? "كغم" : "kg"}' : _lNotSpecified),
                         _SpecRow(index: 7, label: _lDescription, value: (product.description?.isNotEmpty ?? false) ? product.description! : _lNotSpecified, isLast: true),
                       ],
                     ),

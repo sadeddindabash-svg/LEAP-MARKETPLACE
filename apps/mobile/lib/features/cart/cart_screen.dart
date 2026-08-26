@@ -173,7 +173,7 @@ class CartScreen extends StatelessWidget {
                     children: [
                       Text(tr(context, 'estimated_weight'), style: TextStyle(color: palette.muted, fontSize: 12.5)),
                       Text(
-                        '${cart.items.fold<double>(0, (sum, i) => sum + (i.weightKg ?? 0) * i.quantity).toStringAsFixed(1)} kg',
+                        '${cart.items.fold<double>(0, (sum, i) => sum + (i.weightKg ?? 0) * i.quantity).toStringAsFixed(1)} ${tr(context, 'kg_unit')}',
                         style: TextStyle(color: palette.muted, fontSize: 12.5),
                       ),
                     ],

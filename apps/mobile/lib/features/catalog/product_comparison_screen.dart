@@ -24,7 +24,7 @@ class ProductComparisonScreen extends StatelessWidget {
       (isAr ? 'المخزون' : 'Stock', (p) => p.stockQuantity > 0 ? (isAr ? '${p.stockQuantity} متوفر' : '${p.stockQuantity} in stock') : (isAr ? 'غير متوفر' : 'Out of stock')),
       (isAr ? 'التسليم' : 'Delivery', (p) => p.deliveryDateLabel(isAr)),
       (isAr ? 'رقم OEM' : 'OEM number', (p) => p.oemNumber ?? ''),
-      (isAr ? 'الوزن' : 'Weight', (p) => p.weightKg != null ? '${p.weightKg!.toStringAsFixed(1)} kg' : ''),
+      (isAr ? 'الوزن' : 'Weight', (p) => p.weightKg != null ? '${p.weightKg!.toStringAsFixed(1)} ${isAr ? "كغم" : "kg"}' : ''),
       (isAr ? 'بائع موثّق' : 'Verified seller', (p) => p.isVerifiedSeller ? (isAr ? 'نعم' : 'Yes') : ''),
       (isAr ? 'الشحن من' : 'Ships from', (p) => (isAr ? (p.shipsFromCountryAr?.isNotEmpty == true ? p.shipsFromCountryAr : p.shipsFromCountry) : p.shipsFromCountry) ?? ''),
     ];

@@ -100,6 +100,7 @@ class AppStrings {
     'you_saved': {'en': 'You saved', 'ar': 'وفّرت'},
     'subtotal': {'en': 'Subtotal', 'ar': 'المجموع الفرعي'},
     'estimated_weight': {'en': 'Estimated weight', 'ar': 'الوزن التقديري'},
+    'kg_unit': {'en': 'kg', 'ar': 'كغم'},
     'discount': {'en': 'Discount', 'ar': 'الخصم'},
 
     // ---- Referrals (new) ----
@@ -305,7 +306,7 @@ class AppStrings {
     'within_5_days': {'en': 'Within 5 days', 'ar': 'خلال 5 أيام'},
     'within_7_days': {'en': 'Within 7 days', 'ar': 'خلال 7 أيام'},
     'clear_label': {'en': 'Clear', 'ar': 'مسح'},
-    'ships_in_days_label': {'en': 'Ships in', 'ar': 'يشحن خلال'},
+    'ships_in_days_label': {'en': 'Delivery in', 'ar': 'التوصيل خلال'},
     'price_short_label': {'en': 'Price', 'ar': 'السعر'},
     'recipient_name_field': {'en': 'Recipient name', 'ar': 'اسم المستلم'},
     'phone_field': {'en': 'Phone', 'ar': 'الهاتف'},
