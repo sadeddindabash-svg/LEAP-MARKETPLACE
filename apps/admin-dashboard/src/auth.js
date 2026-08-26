@@ -215,6 +215,7 @@ async function deliveryRulesMutate(method, path, token, body) {
 }
 
 export const fetchCountriesList = (token) => deliveryRulesGet("/countries", token);
+export const fetchWarehouseCountries = (token) => deliveryRulesGet("/warehouse-countries", token);
 export const fetchCountryGroups = (token) => deliveryRulesGet("/country-groups", token);
 export const createCountryGroup = (token, name, nameAr) => deliveryRulesMutate("POST", "/country-groups", token, { name, nameAr });
 export const deleteCountryGroup = (token, id) => deliveryRulesMutate("DELETE", `/country-groups/${id}`, token);

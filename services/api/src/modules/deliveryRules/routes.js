@@ -52,6 +52,22 @@ router.get('/countries', requireAuth, requireRole('admin'), requirePageAccess('d
   res.json(COUNTRIES);
 });
 
+// GET /delivery-rules/warehouse-countries -- the actual, distinct set
+// of real countries already in use across real suppliers, confirmed
+// with the person to replace a real free-text warehouse field: a
+// typo there would silently make a rule never match anything at all,
+// since matching is exact. Deliberately NOT reusing GET /supplier
+// (gated by the separate 'suppliers' page permission) -- an admin
+// granted only 'deliveryRules' access should still fully work here.
+router.get('/warehouse-countries', requireAuth, requireRole('admin'), requirePageAccess('deliveryRules'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT DISTINCT country FROM suppliers WHERE country IS NOT NULL ORDER BY country ASC');
+    res.json(rows.map((r) => r.country));
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ============================================================
 // Real country groups
 // ============================================================

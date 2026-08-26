@@ -4,7 +4,7 @@ import { exportToExcel } from "./exportToExcel";
 import { FONT_IMPORT, C, disp, body, mono } from "./theme";
 import { PlateChip, Badge, Stars, KpiCard, Card, Th, Td, ConfirmDialog, EditDialog } from "./components/ui";
 import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, fetchSupplierById, verifySupplier, updateSupplierCountry, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
-  fetchCountriesList, fetchCountryGroups, createCountryGroup, deleteCountryGroup, addCountryGroupMember, removeCountryGroupMember,
+  fetchCountriesList, fetchWarehouseCountries, fetchCountryGroups, createCountryGroup, deleteCountryGroup, addCountryGroupMember, removeCountryGroupMember,
   fetchDeliveryRules, createDeliveryRule, updateDeliveryRule, deleteDeliveryRule, reorderDeliveryRules,
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
   createBrand, deleteBrand, createModel, deleteModel, createGeneration, deleteGeneration, createEngine, deleteEngine, createTransmission, deleteTransmission,
@@ -1531,20 +1531,23 @@ function DeliveryRulesPage({ onSessionExpired }) {
   const [groups, setGroups] = useState([]);
   const [rules, setRules] = useState([]);
   const [countries, setCountries] = useState([]);
+  const [warehouseCountries, setWarehouseCountries] = useState([]);
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
   const [newGroupName, setNewGroupName] = useState("");
 
   const refresh = async () => {
     try {
-      const [g, r, c] = await Promise.all([
+      const [g, r, c, wc] = await Promise.all([
         fetchCountryGroups(getStoredToken()),
         fetchDeliveryRules(getStoredToken()),
         fetchCountriesList(getStoredToken()),
+        fetchWarehouseCountries(getStoredToken()),
       ]);
       setGroups(g);
       setRules(r);
       setCountries(c);
+      setWarehouseCountries(wc);
       setErrorMessage(null);
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
@@ -1748,8 +1751,17 @@ function DeliveryRulesPage({ onSessionExpired }) {
                       onBlur={(e) => handleUpdateRule(rule.id, { maxVolumeCm3: e.target.value === "" ? null : Number(e.target.value) })} />
                   </Td>
                   <Td>
-                    <input type="text" defaultValue={rule.warehouseCountry ?? ""} placeholder="any" style={{ ...numInputStyle, width: 90 }}
-                      onBlur={(e) => handleUpdateRule(rule.id, { warehouseCountry: e.target.value.trim() || null })} />
+                    <select
+                      value={rule.warehouseCountry || ""}
+                      onChange={(e) => handleUpdateRule(rule.id, { warehouseCountry: e.target.value || null })}
+                      style={{ ...body, fontSize: 12.5, border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 6px" }}
+                    >
+                      <option value="">any</option>
+                      {rule.warehouseCountry && !warehouseCountries.includes(rule.warehouseCountry) && (
+                        <option value={rule.warehouseCountry}>{rule.warehouseCountry} (no longer in use)</option>
+                      )}
+                      {warehouseCountries.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
                   </Td>
                   <Td>
                     <select
