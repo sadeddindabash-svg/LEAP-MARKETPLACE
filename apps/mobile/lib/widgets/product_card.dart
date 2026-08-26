@@ -6,6 +6,7 @@ import '../core/app_strings.dart';
 import '../core/currency_state.dart';
 import '../core/auth_state.dart';
 import '../core/cart_state.dart';
+import '../core/language_state.dart';
 import '../models/cart_item.dart';
 import '../models/product.dart';
 import '../services/api_client.dart';
@@ -144,7 +145,7 @@ class _ProductCardState extends State<ProductCard> {
     final p = widget.product;
     final palette = LeapPalette.of(context);
     final inStock = p.stockQuantity > 0;
-    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final isAr = context.watch<LanguageState>().isArabic;
     final isLoggedIn = context.watch<AuthState>().isLoggedIn;
     return UnconstrainedBox(
       alignment: Alignment.topCenter,
@@ -389,7 +390,7 @@ class _ProductCardState extends State<ProductCard> {
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(color: palette.gauge.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(5)),
                   child: Text(
-                    isAr ? 'الشحن خلال ${p.estimatedDeliveryDays} أيام' : 'Ships in ${p.estimatedDeliveryDays} ${p.estimatedDeliveryDays == 1 ? 'day' : 'days'}',
+                    isAr ? 'التوصيل خلال ${p.estimatedDeliveryDays} أيام' : 'Delivery in ${p.estimatedDeliveryDays} ${p.estimatedDeliveryDays == 1 ? 'day' : 'days'}',
                     style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: palette.gauge),
                   ),
                 ),

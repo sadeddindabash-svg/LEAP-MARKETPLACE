@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/auth_state.dart';
+import '../../core/language_state.dart';
 import '../../services/api_client.dart';
 import '../../models/quote_request.dart';
 
@@ -54,7 +55,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   @override
   Widget build(BuildContext context) {
     final palette = LeapPalette.of(context);
-    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final isAr = context.watch<LanguageState>().isArabic;
     return Scaffold(
       appBar: AppBar(title: Text(isAr ? 'طلباتي' : 'My Requests')),
       floatingActionButton: FloatingActionButton.extended(

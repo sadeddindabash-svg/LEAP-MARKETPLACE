@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/auth_state.dart';
 import '../../core/cart_state.dart';
+import '../../core/language_state.dart';
 import '../../services/api_client.dart';
 import '../../models/quote_request.dart';
 
@@ -66,7 +67,7 @@ class _QuoteRequestDetailScreenState extends State<QuoteRequestDetailScreen> {
   }
 
   Future<void> _cancelRequest() async {
-    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final isAr = context.read<LanguageState>().isArabic;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -105,7 +106,7 @@ class _QuoteRequestDetailScreenState extends State<QuoteRequestDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final palette = LeapPalette.of(context);
-    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final isAr = context.watch<LanguageState>().isArabic;
 
     if (_request == null) {
       return Scaffold(

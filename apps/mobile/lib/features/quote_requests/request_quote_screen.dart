@@ -8,6 +8,7 @@ import '../../core/auth_state.dart';
 import '../../services/api_client.dart';
 import '../../models/quote_request.dart';
 import '../search/vehicle_filter_sheet.dart';
+import '../../core/language_state.dart';
 
 const int kMaxQuoteRequestItems = 20;
 
@@ -117,7 +118,7 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
   @override
   Widget build(BuildContext context) {
     final palette = LeapPalette.of(context);
-    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final isAr = context.watch<LanguageState>().isArabic;
 
     if (_isPickingVehicle) {
       return Scaffold(appBar: AppBar(), body: const SizedBox.shrink());
@@ -261,7 +262,7 @@ class _AddItemSheetState extends State<_AddItemSheet> {
   @override
   Widget build(BuildContext context) {
     final palette = LeapPalette.of(context);
-    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final isAr = context.watch<LanguageState>().isArabic;
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 16, right: 16, top: 16),
       child: Column(
