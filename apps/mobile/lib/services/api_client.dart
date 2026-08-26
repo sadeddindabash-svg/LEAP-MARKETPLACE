@@ -1204,8 +1204,9 @@ class ApiClient {
     await _client.post(Uri.parse('$baseUrl/recently-viewed/$productId'), headers: _authHeaders(token));
   }
 
-  Future<List<Product>> fetchRecentlyViewed(String token) async {
-    final response = await _client.get(Uri.parse('$baseUrl/recently-viewed/me'), headers: _authHeaders(token));
+  Future<List<Product>> fetchRecentlyViewed(String token, {String lang = 'en'}) async {
+    final uri = Uri.parse('$baseUrl/recently-viewed/me').replace(queryParameters: {'lang': lang});
+    final response = await _client.get(uri, headers: _authHeaders(token));
     if (response.statusCode != 200) throw ApiException('Failed to load recently viewed products (${response.statusCode})');
     final body = jsonDecode(response.body) as List;
     return body.map((e) => Product.fromJson(e as Map<String, dynamic>)).toList();

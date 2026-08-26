@@ -1,7 +1,8 @@
 const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth } = require('../auth/middleware');
-const { toBuyerProductDto, attachBuyerPrice, attachBuyerImages } = require('../catalog/routes');
+const { toBuyerProductDto, attachBuyerPrice, attachBuyerImages, attachSupplierSignals, attachDeliveryEstimate } = require('../catalog/routes');
+const { resolveDestinationIsoCode } = require('../deliveryEstimate/engine');
 
 /**
  * Real wishlist (migration 018) — a buyer saves real products for
@@ -23,10 +24,13 @@ router.get('/me', requireAuth, async (req, res, next) => {
        ORDER BY w.created_at DESC`,
       [req.user.sub]
     );
+    const destinationIsoCode = await resolveDestinationIsoCode(req);
     const dtos = await Promise.all(rows.map(async (r) => {
       let dto = toBuyerProductDto(r, lang);
       dto = await attachBuyerImages(dto, r.id);
       dto = await attachBuyerPrice(dto, r);
+      dto = await attachSupplierSignals(dto, r.supplier_id);
+      dto = await attachDeliveryEstimate(dto, destinationIsoCode);
       return dto;
     }));
     res.json(dtos);

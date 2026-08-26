@@ -108,9 +108,9 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _ensureRecentlyViewedLoaded(AuthState auth) {
+  void _ensureRecentlyViewedLoaded(AuthState auth, String language) {
     if (_recentlyViewedFuture == null && auth.isLoggedIn) {
-      _recentlyViewedFuture = ApiClient().fetchRecentlyViewed(auth.token!);
+      _recentlyViewedFuture = ApiClient().fetchRecentlyViewed(auth.token!, lang: language);
     }
   }
 
@@ -145,11 +145,12 @@ class _HomeScreenState extends State<HomeScreen> {
   /// before pull-to-refresh existed, not something new introduced here.
   Future<void> _handleRefresh() async {
     final auth = context.read<AuthState>();
+    final language = context.read<LanguageState>().language;
     setState(() {
       _categoriesFuture = ApiClient().fetchCategories();
       if (auth.isLoggedIn) {
         _garageFuture = ApiClient().fetchMyGarage(auth.token!);
-        _recentlyViewedFuture = ApiClient().fetchRecentlyViewed(auth.token!);
+        _recentlyViewedFuture = ApiClient().fetchRecentlyViewed(auth.token!, lang: language);
       }
       _loadedForFeedKey = null;
     });
@@ -166,7 +167,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final isAr = context.watch<LanguageState>().isArabic;
     final palette = LeapPalette.of(context);
     _ensureGarageLoaded(auth, context.watch<GarageState>().version);
-    _ensureRecentlyViewedLoaded(auth);
+    _ensureRecentlyViewedLoaded(auth, language);
 
     return Scaffold(
       // Real, fixed app bar (new) -- matches the real Stitch reference
