@@ -279,8 +279,8 @@ class _ProductDetailBody extends StatelessWidget {
                               // stockQuantity field already present, not
                               // a fabricated urgency number.
                               : product.stockQuantity <= 5
-                                  ? (_isAr ? 'متبقٍ ${product.stockQuantity} فقط · يشحن خلال ${product.estimatedDeliveryDays} أيام' : 'Only ${product.stockQuantity} left · ships in ${product.estimatedDeliveryDays} days')
-                                  : (_isAr ? 'متوفر · يشحن خلال ${product.estimatedDeliveryDays} أيام' : 'In stock · ships in ${product.estimatedDeliveryDays} days'),
+                                  ? (_isAr ? 'متبقٍ ${product.stockQuantity} فقط · التسليم: ${product.deliveryDateLabel(true)}' : 'Only ${product.stockQuantity} left · Delivery: ${product.deliveryDateLabel(false)}')
+                                  : (_isAr ? 'متوفر · التسليم: ${product.deliveryDateLabel(true)}' : 'In stock · Delivery: ${product.deliveryDateLabel(false)}'),
                           style: TextStyle(color: product.stockQuantity > 0 && product.stockQuantity <= 5 ? palette.torque : palette.gauge, fontWeight: product.stockQuantity > 0 && product.stockQuantity <= 5 ? FontWeight.w700 : FontWeight.w400),
                         ),
                       ),

@@ -390,7 +390,7 @@ class _ProductCardState extends State<ProductCard> {
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(color: palette.gauge.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(5)),
                   child: Text(
-                    isAr ? 'التوصيل خلال ${p.estimatedDeliveryDays} أيام' : 'Delivery in ${p.estimatedDeliveryDays} ${p.estimatedDeliveryDays == 1 ? 'day' : 'days'}',
+                    isAr ? 'التسليم: ${p.deliveryDateLabel(true)}' : 'Delivery: ${p.deliveryDateLabel(false)}',
                     style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: palette.gauge),
                   ),
                 ),

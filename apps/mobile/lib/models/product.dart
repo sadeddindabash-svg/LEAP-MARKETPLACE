@@ -109,4 +109,21 @@ class Product {
         heightCm: (json['heightCm'] as num?)?.toDouble(),
         fitsVehicleIds: (json['fitsVehicleIds'] as List?)?.cast<String>() ?? const [],
       );
+
+  // Real, confirmed replacement for the previous relative "in X days"
+  // display -- confirmed with the person via a rendered mockup:
+  // "Sep. 2" (English) / "2 سبتمبر" (Arabic), today's real date plus
+  // this real product's own real estimatedDeliveryDays. A small,
+  // self-contained month-name lookup, not intl's DateFormat/locale
+  // system -- this app has never initialized real locale data
+  // anywhere, and that's an async setup step easy to miss; safer to
+  // avoid the risk entirely for a real, user-facing date.
+  static const _monthNamesEn = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'Jun.', 'Jul.', 'Aug.', 'Sep.', 'Oct.', 'Nov.', 'Dec.'];
+  static const _monthNamesAr = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+
+  String deliveryDateLabel(bool isAr) {
+    final date = DateTime.now().add(Duration(days: estimatedDeliveryDays));
+    if (isAr) return '${date.day} ${_monthNamesAr[date.month - 1]}';
+    return '${_monthNamesEn[date.month - 1]} ${date.day}';
+  }
 }
