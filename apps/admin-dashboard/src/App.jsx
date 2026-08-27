@@ -5,6 +5,7 @@ import { FONT_IMPORT, C, disp, body, mono } from "./theme";
 import { PlateChip, Badge, Stars, KpiCard, Card, Th, Td, ConfirmDialog, EditDialog } from "./components/ui";
 import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, fetchSupplierById, verifySupplier, updateSupplierCountry, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
   fetchCountriesList, fetchWarehouseCountries, fetchCountryGroups, createCountryGroup, deleteCountryGroup, addCountryGroupMember, removeCountryGroupMember,
+  fetchAdminProducts, fetchAdminProductDetail, updateAdminProduct,
   fetchDeliveryRules, createDeliveryRule, updateDeliveryRule, deleteDeliveryRule, reorderDeliveryRules,
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
   createBrand, deleteBrand, createModel, deleteModel, createGeneration, deleteGeneration, createEngine, deleteEngine, createTransmission, deleteTransmission,
@@ -32,7 +33,7 @@ import {
   Search, Bell, ChevronDown, ChevronUp, ChevronRight, TrendingUp, TrendingDown, Truck, Plus, Pencil,
   CheckCircle2, XCircle, Clock, AlertTriangle, MoreHorizontal, ArrowUpRight,
   Filter as FilterIcon, Download, Check, X, MessageSquare, Star, Globe, Users,
-  CreditCard, ExternalLink, ChevronLeft, RotateCcw, Warehouse, Calculator, Layers, Send, Tag, ImagePlus, Key
+  CreditCard, ExternalLink, ChevronLeft, RotateCcw, Warehouse, Calculator, Layers, Send, Tag, ImagePlus, Key, Package
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -1791,6 +1792,448 @@ function DeliveryRulesPage({ onSessionExpired }) {
           </button>
         </div>
       </Card>
+    </div>
+  );
+}
+
+const ALLOWED_POSITIONS = ['Front', 'Rear', 'Left', 'Right', 'Front-Left', 'Front-Right', 'Rear-Left', 'Rear-Right', 'Universal'];
+
+// Real admin "All Products" feature -- confirmed with the person
+// through direct design discussion before building: edit any real
+// live product's data except price (that stays exclusively the real
+// supplier's own to set, shown here read-only). A new, separate
+// page, not folded into Moderation (which is specifically for
+// pending products awaiting a first real review, not already-live
+// ones).
+function AllProductsPage({ onSessionExpired }) {
+  const [selectedId, setSelectedId] = useState(null);
+  return selectedId
+    ? <ProductEditPage productId={selectedId} onBack={() => setSelectedId(null)} onSessionExpired={onSessionExpired} />
+    : <ProductListPage onSelect={setSelectedId} onSessionExpired={onSessionExpired} />;
+}
+
+function ProductListPage({ onSelect, onSessionExpired }) {
+  const [data, setData] = useState(null);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  const load = async (searchValue, pageValue) => {
+    try {
+      const result = await fetchAdminProducts(getStoredToken(), { search: searchValue, page: pageValue });
+      setData(result);
+      setErrorMessage(null);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+  useEffect(() => { load(search, page); }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    setPage(1);
+    load(search, 1);
+  };
+
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
+
+  return (
+    <div style={{ padding: 24 }}>
+      <form onSubmit={handleSearch} style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by name, OEM number, or supplier…"
+          style={{ ...body, fontSize: 13, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 12px", flex: 1, maxWidth: 360 }}
+        />
+        <button type="submit" style={{ ...body, fontSize: 13, fontWeight: 700, color: "#fff", background: C.signal, border: "none", borderRadius: 8, padding: "8px 18px", cursor: "pointer" }}>
+          Search
+        </button>
+      </form>
+
+      {errorMessage && (
+        <div style={{ ...body, fontSize: 12.5, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>
+      )}
+
+      <Card title={data ? `Products (${data.total})` : "Products"}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              <Th>Name</Th>
+              <Th>Category / Part</Th>
+              <Th>OEM #</Th>
+              <Th align="right">Price</Th>
+              <Th align="right">Stock</Th>
+              <Th>Supplier</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {(data?.products || []).map((p) => (
+              <tr key={p.id} onClick={() => onSelect(p.id)} style={{ cursor: "pointer" }}>
+                <Td>{p.name}</Td>
+                <Td>{p.category}{p.part ? ` / ${p.part}` : ""}</Td>
+                <Td>{p.oemNumber || "—"}</Td>
+                <Td align="right">{p.price.toFixed(2)} {p.currencyCode}</Td>
+                <Td align="right">{p.stockQuantity}</Td>
+                <Td>{p.supplierName || "—"}</Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {data && data.products.length === 0 && (
+          <div style={{ padding: 24, textAlign: "center" }}>
+            <span style={{ ...body, fontSize: 13, color: C.muted }}>No products match this search.</span>
+          </div>
+        )}
+        {data && totalPages > 1 && (
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, padding: 16 }}>
+            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} style={{ ...body, fontSize: 12.5, background: "none", border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 10px", cursor: page === 1 ? "default" : "pointer", opacity: page === 1 ? 0.4 : 1 }}>
+              Previous
+            </button>
+            <span style={{ ...body, fontSize: 12.5, color: C.muted }}>Page {page} of {totalPages}</span>
+            <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} style={{ ...body, fontSize: 12.5, background: "none", border: `1px solid ${C.line}`, borderRadius: 6, padding: "4px 10px", cursor: page === totalPages ? "default" : "pointer", opacity: page === totalPages ? 0.4 : 1 }}>
+              Next
+            </button>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function ProductEditPage({ productId, onBack, onSessionExpired }) {
+  const [product, setProduct] = useState(null);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Editable field state
+  const [nameEn, setNameEn] = useState("");
+  const [nameAr, setNameAr] = useState("");
+  const [descriptionEn, setDescriptionEn] = useState("");
+  const [descriptionAr, setDescriptionAr] = useState("");
+  const [category, setCategory] = useState("");
+  const [part, setPart] = useState("");
+  const [position, setPosition] = useState("");
+  const [oemNumber, setOemNumber] = useState("");
+  const [stockQuantity, setStockQuantity] = useState("");
+  const [lowStockThreshold, setLowStockThreshold] = useState("");
+  const [weightKg, setWeightKg] = useState("");
+  const [lengthCm, setLengthCm] = useState("");
+  const [widthCm, setWidthCm] = useState("");
+  const [heightCm, setHeightCm] = useState("");
+  const [images, setImages] = useState([]);
+  const [fitment, setFitment] = useState([]);
+
+  const [categories, setCategories] = useState([]);
+  const [parts, setParts] = useState([]);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+
+  // "Add fitment" cascade
+  const [brands, setBrands] = useState([]);
+  const [selectedBrandId, setSelectedBrandId] = useState("");
+  const [models, setModels] = useState([]);
+  const [selectedModelId, setSelectedModelId] = useState("");
+  const [generations, setGenerations] = useState([]);
+  const [selectedGenerationId, setSelectedGenerationId] = useState("");
+  const [selectedYear, setSelectedYear] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [detail, cats, brandList] = await Promise.all([
+          fetchAdminProductDetail(getStoredToken(), productId),
+          fetchCategories(),
+          fetchBrands(),
+        ]);
+        setProduct(detail);
+        setNameEn(detail.name || "");
+        setNameAr(detail.nameAr || "");
+        setDescriptionEn(detail.description || "");
+        setDescriptionAr(detail.descriptionAr || "");
+        setCategory(detail.category || "");
+        setPart(detail.part || "");
+        setPosition(detail.position || "");
+        setOemNumber(detail.oemNumber || "");
+        setStockQuantity(String(detail.stockQuantity ?? ""));
+        setLowStockThreshold(String(detail.lowStockThreshold ?? ""));
+        setWeightKg(detail.weightKg != null ? String(detail.weightKg) : "");
+        setLengthCm(detail.lengthCm != null ? String(detail.lengthCm) : "");
+        setWidthCm(detail.widthCm != null ? String(detail.widthCm) : "");
+        setHeightCm(detail.heightCm != null ? String(detail.heightCm) : "");
+        setImages(detail.images || []);
+        setFitment(detail.fitment || []);
+        setCategories(cats);
+        setBrands(brandList);
+        if (detail.category) setParts(await fetchPartsForCategory(detail.category));
+        setLoadState("ready");
+      } catch (err) {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      }
+    })();
+  }, [productId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleCategoryChange = async (newCategory) => {
+    setCategory(newCategory);
+    setPart("");
+    setParts(newCategory ? await fetchPartsForCategory(newCategory) : []);
+  };
+
+  const handleBrandChange = async (brandId) => {
+    setSelectedBrandId(brandId);
+    setSelectedModelId(""); setModels([]); setSelectedGenerationId(""); setGenerations([]); setSelectedYear("");
+    if (brandId) setModels(await fetchModelsForBrand(brandId));
+  };
+  const handleModelChange = async (modelId) => {
+    setSelectedModelId(modelId);
+    setSelectedGenerationId(""); setGenerations([]); setSelectedYear("");
+    if (modelId) setGenerations(await fetchGenerationsForModel(modelId));
+  };
+
+  const selectedGeneration = generations.find((g) => g.id === selectedGenerationId);
+  const yearOptions = selectedGeneration
+    ? Array.from({ length: (selectedGeneration.yearEnd || new Date().getFullYear()) - selectedGeneration.yearStart + 1 }, (_, i) => selectedGeneration.yearStart + i)
+    : [];
+
+  const handleAddFitment = () => {
+    if (!selectedGenerationId || !selectedYear) return;
+    const brand = brands.find((b) => b.id === selectedBrandId);
+    const model = models.find((m) => m.id === selectedModelId);
+    setFitment([...fitment, {
+      generationId: selectedGenerationId,
+      year: Number(selectedYear),
+      label: `${brand?.name} ${model?.name} (${selectedGeneration?.name}) · ${selectedYear}`,
+    }]);
+    setSelectedBrandId(""); setModels([]); setSelectedModelId(""); setGenerations([]); setSelectedGenerationId(""); setSelectedYear("");
+  };
+
+  const handleRemoveFitment = (index) => setFitment(fitment.filter((_, i) => i !== index));
+
+  const handleUploadPhoto = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingPhoto(true);
+    setErrorMessage(null);
+    try {
+      const result = await uploadImage(getStoredToken(), file);
+      setImages([...images, result.url]);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+  const handleRemovePhoto = (index) => setImages(images.filter((_, i) => i !== index));
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    setErrorMessage(null);
+    setSaveSuccess(false);
+    try {
+      await updateAdminProduct(getStoredToken(), productId, {
+        nameEn, nameAr,
+        descriptionEn: descriptionEn || null, descriptionAr: descriptionAr || null,
+        category, part, position, oemNumber: oemNumber || null,
+        stockQuantity: stockQuantity === "" ? undefined : Number(stockQuantity),
+        lowStockThreshold: lowStockThreshold === "" ? undefined : Number(lowStockThreshold),
+        weightKg: weightKg === "" ? null : Number(weightKg),
+        lengthCm: lengthCm === "" ? null : Number(lengthCm),
+        widthCm: widthCm === "" ? null : Number(widthCm),
+        heightCm: heightCm === "" ? null : Number(heightCm),
+        images,
+        fitment: fitment.map((f) => ({ generationId: f.generationId, year: f.year, engineId: f.engineId, transmissionId: f.transmissionId })),
+      });
+      setSaveSuccess(true);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const inputStyle = { ...body, fontSize: 13, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 12px", width: "100%", boxSizing: "border-box" };
+  const labelStyle = { ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, display: "block", marginBottom: 4 };
+
+  if (loadState === "loading") return <div style={{ padding: 24 }}><span style={{ ...body, color: C.muted }}>Loading…</span></div>;
+  if (loadState === "error" || !product) return (
+    <div style={{ padding: 24 }}>
+      <button onClick={onBack} style={{ ...body, fontSize: 12.5, color: C.muted, background: "none", border: "none", cursor: "pointer", marginBottom: 16 }}>← Back</button>
+      <div style={{ ...body, color: C.red }}>{errorMessage || "Couldn't load this product."}</div>
+    </div>
+  );
+
+  return (
+    <div style={{ padding: 24, maxWidth: 760 }}>
+      <button onClick={onBack} style={{ ...body, fontSize: 12.5, color: C.muted, background: "none", border: "none", cursor: "pointer", marginBottom: 16 }}>← Back to Products</button>
+
+      {errorMessage && <div style={{ ...body, fontSize: 12.5, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>}
+      {saveSuccess && <div style={{ ...body, fontSize: 12.5, color: C.gauge, background: C.gaugeBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>Saved.</div>}
+
+      <Card title="Basic info" style={{ marginBottom: 20 }}>
+        <div style={{ padding: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <div>
+            <label style={labelStyle}>Name (English)</label>
+            <input style={inputStyle} value={nameEn} onChange={(e) => setNameEn(e.target.value)} />
+          </div>
+          <div>
+            <label style={labelStyle}>Name (Arabic)</label>
+            <input style={{ ...inputStyle, direction: "rtl" }} value={nameAr} onChange={(e) => setNameAr(e.target.value)} />
+          </div>
+          <div>
+            <label style={labelStyle}>Description (English)</label>
+            <textarea style={{ ...inputStyle, minHeight: 70 }} value={descriptionEn} onChange={(e) => setDescriptionEn(e.target.value)} />
+          </div>
+          <div>
+            <label style={labelStyle}>Description (Arabic)</label>
+            <textarea style={{ ...inputStyle, minHeight: 70, direction: "rtl" }} value={descriptionAr} onChange={(e) => setDescriptionAr(e.target.value)} />
+          </div>
+          <div>
+            <label style={labelStyle}>Category</label>
+            <select style={inputStyle} value={category} onChange={(e) => handleCategoryChange(e.target.value)}>
+              <option value="">Select…</option>
+              {categories.map((c) => <option key={c.id} value={c.id}>{c.nameEn}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Part</label>
+            <select style={inputStyle} value={part} onChange={(e) => setPart(e.target.value)} disabled={!category}>
+              <option value="">Select…</option>
+              {part && !parts.some((p) => p.nameEn === part) && (
+                <option value={part}>{part} (no longer in this category)</option>
+              )}
+              {parts.map((p) => <option key={p.id} value={p.nameEn}>{p.nameEn}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Position</label>
+            <select style={inputStyle} value={position} onChange={(e) => setPosition(e.target.value)}>
+              <option value="">Select…</option>
+              {ALLOWED_POSITIONS.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>OEM number</label>
+            <input style={inputStyle} value={oemNumber} onChange={(e) => setOemNumber(e.target.value)} />
+          </div>
+        </div>
+      </Card>
+
+      <Card title="Price (read-only — set by the supplier only)" style={{ marginBottom: 20 }}>
+        <div style={{ padding: 16 }}>
+          <span style={{ ...disp, fontSize: 18, fontWeight: 700, color: C.ink }}>{product.price.toFixed(2)} {product.currencyCode}</span>
+        </div>
+      </Card>
+
+      <Card title="Stock" style={{ marginBottom: 20 }}>
+        <div style={{ padding: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <div>
+            <label style={labelStyle}>Stock quantity</label>
+            <input type="number" style={inputStyle} value={stockQuantity} onChange={(e) => setStockQuantity(e.target.value)} />
+          </div>
+          <div>
+            <label style={labelStyle}>Low-stock threshold</label>
+            <input type="number" style={inputStyle} value={lowStockThreshold} onChange={(e) => setLowStockThreshold(e.target.value)} />
+          </div>
+        </div>
+      </Card>
+
+      <Card title="Weight & dimensions" style={{ marginBottom: 20 }}>
+        <div style={{ padding: 16, display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 14 }}>
+          <div>
+            <label style={labelStyle}>Weight (kg)</label>
+            <input type="number" style={inputStyle} value={weightKg} onChange={(e) => setWeightKg(e.target.value)} />
+          </div>
+          <div>
+            <label style={labelStyle}>Length (cm)</label>
+            <input type="number" style={inputStyle} value={lengthCm} onChange={(e) => setLengthCm(e.target.value)} />
+          </div>
+          <div>
+            <label style={labelStyle}>Width (cm)</label>
+            <input type="number" style={inputStyle} value={widthCm} onChange={(e) => setWidthCm(e.target.value)} />
+          </div>
+          <div>
+            <label style={labelStyle}>Height (cm)</label>
+            <input type="number" style={inputStyle} value={heightCm} onChange={(e) => setHeightCm(e.target.value)} />
+          </div>
+        </div>
+      </Card>
+
+      <Card title={`Photos (${images.length})`} style={{ marginBottom: 20 }}>
+        <div style={{ padding: 16 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
+            {images.map((url, i) => (
+              <div key={i} style={{ position: "relative", width: 80, height: 80 }}>
+                <img src={url.startsWith("http") ? url : `${API_BASE_URL}${url}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 8, border: `1px solid ${C.line}` }} />
+                <button onClick={() => handleRemovePhoto(i)} style={{ position: "absolute", top: -6, right: -6, background: C.red, color: "#fff", border: "none", borderRadius: "50%", width: 18, height: 18, cursor: "pointer", fontSize: 11, lineHeight: 1 }}>×</button>
+              </div>
+            ))}
+          </div>
+          <label style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.signal, cursor: isUploadingPhoto ? "default" : "pointer" }}>
+            {isUploadingPhoto ? "Uploading…" : "+ Add photo"}
+            <input type="file" accept="image/*" onChange={handleUploadPhoto} disabled={isUploadingPhoto} style={{ display: "none" }} />
+          </label>
+        </div>
+      </Card>
+
+      <Card title={`Vehicle fitment (${fitment.length})`} style={{ marginBottom: 20 }}>
+        <div style={{ padding: 16 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+            {fitment.map((f, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 12px" }}>
+                <span style={{ ...body, fontSize: 12.5, color: C.ink }}>{f.label}</span>
+                <button onClick={() => handleRemoveFitment(i)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 12 }}>Remove</button>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr auto", gap: 8, alignItems: "end" }}>
+            <div>
+              <label style={labelStyle}>Brand</label>
+              <select style={inputStyle} value={selectedBrandId} onChange={(e) => handleBrandChange(e.target.value)}>
+                <option value="">Select…</option>
+                {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Model</label>
+              <select style={inputStyle} value={selectedModelId} onChange={(e) => handleModelChange(e.target.value)} disabled={!selectedBrandId}>
+                <option value="">Select…</option>
+                {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Generation</label>
+              <select style={inputStyle} value={selectedGenerationId} onChange={(e) => { setSelectedGenerationId(e.target.value); setSelectedYear(""); }} disabled={!selectedModelId}>
+                <option value="">Select…</option>
+                {generations.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Year</label>
+              <select style={inputStyle} value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} disabled={!selectedGenerationId}>
+                <option value="">Select…</option>
+                {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+            <button onClick={handleAddFitment} disabled={!selectedYear} style={{ ...body, fontSize: 12.5, fontWeight: 700, color: "#fff", background: selectedYear ? C.signal : "#D1D5DB", border: "none", borderRadius: 8, padding: "8px 14px", cursor: selectedYear ? "pointer" : "default" }}>
+              Add
+            </button>
+          </div>
+        </div>
+      </Card>
+
+      <button
+        onClick={handleSave}
+        disabled={isSaving}
+        style={{ ...body, fontSize: 14, fontWeight: 700, color: "#fff", background: isSaving ? "#D1D5DB" : C.signal, border: "none", borderRadius: 8, padding: "12px 24px", cursor: isSaving ? "default" : "pointer", width: "100%" }}
+      >
+        {isSaving ? "Saving…" : "Save changes"}
+      </button>
     </div>
   );
 }
@@ -5801,6 +6244,7 @@ const NAV = [
   { id: "orders", label: "Orders", icon: ShoppingBag },
   { id: "suppliers", label: "Suppliers", icon: Store },
   { id: "moderation", label: "Moderation", icon: PackageSearch },
+  { id: "allProducts", label: "All Products", icon: Package },
   { id: "returns", label: "Returns", icon: RotateCcw },
   { id: "vehicleData", label: "Vehicle Data", icon: Truck },
   { id: "deliveryRules", label: "Delivery Rules", icon: Globe },
@@ -5865,6 +6309,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   else if (page === "orders") content = <OrdersPage onOpenOrder={setOpenOrder} onSessionExpired={onLogout} />;
   else if (page === "suppliers") content = <SuppliersPage onOpenSupplier={setOpenSupplier} onSessionExpired={onLogout} />;
   else if (page === "moderation") content = <ModerationPage onSessionExpired={onLogout} />;
+  else if (page === "allProducts") content = <AllProductsPage onSessionExpired={onLogout} />;
   else if (page === "returns") content = <ReturnsPage onOpenCase={setOpenCase} onSessionExpired={onLogout} />;
   else if (page === "vehicleData") content = <VehicleDataPage onSessionExpired={onLogout} />;
   else if (page === "deliveryRules") content = <DeliveryRulesPage onSessionExpired={onLogout} />;

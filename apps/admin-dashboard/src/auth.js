@@ -368,6 +368,37 @@ export async function fetchCategories() {
   return response.json();
 }
 
+export async function fetchAdminProducts(token, { search, page } = {}) {
+  const params = new URLSearchParams();
+  if (search) params.set("search", search);
+  if (page) params.set("page", page);
+  const response = await fetch(`${API_BASE_URL}/catalog/admin/products?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
+export async function fetchAdminProductDetail(token, id) {
+  const response = await fetch(`${API_BASE_URL}/catalog/admin/products/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
+export async function updateAdminProduct(token, id, patch) {
+  const response = await fetch(`${API_BASE_URL}/catalog/admin/products/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(patch),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
 export async function createCategory(token, id, nameEn, nameAr, photoUrl, sortOrder) {
   const response = await fetch(`${API_BASE_URL}/catalog/categories`, {
     method: "POST",
