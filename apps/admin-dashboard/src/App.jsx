@@ -2152,6 +2152,32 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
     }
   };
 
+  // Real, confirmed with the person: uses fetch+blob rather than
+  // relying on the HTML <a download> attribute alone -- that
+  // attribute is often silently ignored by real browsers for cross-
+  // origin resources (this admin portal and the backend run on
+  // different real origins), so this works reliably regardless.
+  const handleDownloadPhoto = async (url, index) => {
+    setErrorMessage(null);
+    try {
+      const fullUrl = url.startsWith("http") ? url : `${API_BASE_URL}${url}`;
+      const response = await fetch(fullUrl);
+      if (!response.ok) throw new Error(`Failed to download photo (${response.status})`);
+      const blob = await response.blob();
+      const extension = url.split(".").pop().split("?")[0] || "jpg";
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = `${nameEn || "product"}-photo-${index + 1}.${extension}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     setErrorMessage(null);
@@ -2297,6 +2323,9 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
                   <input type="file" accept="image/*" onChange={(e) => handleReplacePhoto(i, e)} disabled={isUploadingPhoto} style={{ display: "none" }} />
                 </label>
                 <button onClick={() => handleRemovePhoto(i)} style={{ position: "absolute", top: -6, right: -6, background: C.red, color: "#fff", border: "none", borderRadius: "50%", width: 18, height: 18, cursor: "pointer", fontSize: 11, lineHeight: 1 }}>×</button>
+                <button onClick={() => handleDownloadPhoto(url, i)} title="Download this photo" style={{ position: "absolute", bottom: -6, left: -6, background: C.ink, color: "#fff", border: "none", borderRadius: "50%", width: 20, height: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Download size={11} />
+                </button>
               </div>
             ))}
           </div>
