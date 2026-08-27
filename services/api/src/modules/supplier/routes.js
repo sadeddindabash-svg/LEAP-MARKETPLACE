@@ -326,8 +326,7 @@ router.get('/me/products', requireAuth, requireRole('supplier'), async (req, res
 // A fixed, real list rather than free text — "Position" in the SRS
 // cascade (Brand -> ... -> Category -> Part -> Position -> OEM Number)
 // means where on the vehicle the part sits, not a free-form description.
-const ALLOWED_POSITIONS = ['Front', 'Rear', 'Left', 'Right', 'Front-Left', 'Front-Right', 'Rear-Left', 'Rear-Right', 'Universal'];
-const MIN_PRODUCT_PHOTOS = 3;
+const { ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS } = require('../shared/productValidation');
 
 router.post('/me/products', requireAuth, requireRole('supplier'), async (req, res, next) => {
   const {

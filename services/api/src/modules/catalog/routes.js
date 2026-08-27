@@ -3,6 +3,7 @@ const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
 const { resolveDestinationIsoCode, calculateDeliveryDays } = require('../deliveryEstimate/engine');
+const { ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS } = require('../shared/productValidation');
 const { logAdminAction } = require('../audit/helpers');
 const { moveItem } = require('../../lib/reorder');
 
@@ -840,6 +841,192 @@ router.post('/products/bulk-moderate', requireAuth, requireRole('admin'), requir
     res.json({ results });
   } catch (err) {
     next(err);
+  }
+});
+
+// ============================================================
+// Real admin product management (all live products) -- confirmed
+// with the person through direct design discussion before building:
+// a new, separate "All Products" admin page, edit everything except
+// price (and its tightly-coupled currency_code, since editing one
+// without the other would misrepresent the real price -- that stays
+// exclusively the supplier's own to set). Stock quantity confirmed
+// included, unlike price.
+//
+// Genuinely fills a real gap, not just a convenience: confirmed by
+// reading the real supplier's own edit endpoint (PATCH /supplier/me/
+// products/:id) that a real supplier can only ever touch price/
+// stock/lowStockThreshold on their own already-live product --
+// nothing else. There was previously no way for anyone to correct a
+// real mistake in category, images, fitment, or dimensions once a
+// real product went live, short of rejecting it back into
+// moderation.
+// ============================================================
+
+// GET /catalog/admin/products?search=...&page=...
+router.get('/admin/products', requireAuth, requireRole('admin'), requirePageAccess('products'), async (req, res, next) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const pageSize = 30;
+    const offset = (page - 1) * pageSize;
+
+    const params = [];
+    let where = `WHERE p.status = 'active'`;
+    if (search) {
+      params.push(`%${search}%`);
+      where += ` AND (p.name ILIKE $${params.length} OR p.oem_number ILIKE $${params.length} OR s.name ILIKE $${params.length})`;
+    }
+
+    const { rows: countRows } = await db.query(`SELECT COUNT(*) AS total FROM products p LEFT JOIN suppliers s ON s.id = p.supplier_id ${where}`, params);
+    params.push(pageSize, offset);
+    const { rows } = await db.query(
+      `SELECT p.id, p.name, p.category, p.part, p.oem_number, p.price, p.currency_code, p.stock_quantity, s.name AS supplier_name
+       FROM products p LEFT JOIN suppliers s ON s.id = p.supplier_id
+       ${where}
+       ORDER BY p.name ASC
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params
+    );
+    res.json({
+      products: rows.map((r) => ({
+        id: r.id, name: r.name, category: r.category, part: r.part, oemNumber: r.oem_number,
+        price: Number(r.price), currencyCode: r.currency_code, stockQuantity: r.stock_quantity, supplierName: r.supplier_name,
+      })),
+      total: Number(countRows[0].total),
+      page,
+      pageSize,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /catalog/admin/products/:id -- full real detail for editing,
+// including real fitment and real images, deliberately NOT the
+// buyer-facing DTO (no real price conversion/delivery estimate --
+// this is an internal editing view, not a storefront one).
+router.get('/admin/products/:id', requireAuth, requireRole('admin'), requirePageAccess('products'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT * FROM products p WHERE p.id = $1', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
+    const row = rows[0];
+
+    const { rows: images } = await db.query('SELECT url FROM product_images WHERE product_id = $1 ORDER BY sort_order', [row.id]);
+    const { rows: fitmentRows } = await db.query(
+      `SELECT pfe.generation_id, pfe.year, pfe.engine_id, pfe.transmission_id,
+              vb.name AS brand_name, vm.name AS model_name, vg.name AS generation_name
+       FROM product_fitment_entries pfe
+       JOIN vehicle_generations vg ON vg.id = pfe.generation_id
+       JOIN vehicle_models vm ON vm.id = vg.model_id
+       JOIN vehicle_brands vb ON vb.id = vm.brand_id
+       WHERE pfe.product_id = $1`,
+      [row.id]
+    );
+
+    res.json({
+      id: row.id,
+      name: row.name,
+      nameAr: row.name_ar,
+      description: row.description,
+      descriptionAr: row.description_ar,
+      category: row.category,
+      part: row.part,
+      position: row.position,
+      oemNumber: row.oem_number,
+      price: Number(row.price),
+      currencyCode: row.currency_code,
+      stockQuantity: row.stock_quantity,
+      lowStockThreshold: row.low_stock_threshold,
+      weightKg: row.weight_kg === null ? null : Number(row.weight_kg),
+      lengthCm: row.length_cm === null ? null : Number(row.length_cm),
+      widthCm: row.width_cm === null ? null : Number(row.width_cm),
+      heightCm: row.height_cm === null ? null : Number(row.height_cm),
+      images: images.map((i) => i.url),
+      fitment: fitmentRows.map((f) => ({
+        generationId: f.generation_id, year: f.year, engineId: f.engine_id, transmissionId: f.transmission_id,
+        label: `${f.brand_name} ${f.model_name} (${f.generation_name}) · ${f.year}`,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /catalog/admin/products/:id -- everything except price/
+// currencyCode, confirmed directly with the person. Every field
+// independently optional (a real partial update, matching this
+// codebase's own established COALESCE convention) -- images/fitment
+// are real, full replacements when provided at all (arrays, not
+// simple columns), left untouched when omitted from the request.
+router.patch('/admin/products/:id', requireAuth, requireRole('admin'), requirePageAccess('products'), async (req, res, next) => {
+  const client = await db.getPool().connect();
+  try {
+    const {
+      nameEn, nameAr, descriptionEn, descriptionAr, category, part, position, oemNumber,
+      stockQuantity, lowStockThreshold, weightKg, lengthCm, widthCm, heightCm,
+      images, fitment,
+    } = req.body || {};
+
+    if (position !== undefined && position !== null && !ALLOWED_POSITIONS.includes(position)) {
+      return res.status(400).json({ error: `position must be one of: ${ALLOWED_POSITIONS.join(', ')}` });
+    }
+    if (images !== undefined && images.length < MIN_PRODUCT_PHOTOS) {
+      return res.status(400).json({ error: `At least ${MIN_PRODUCT_PHOTOS} photos required` });
+    }
+    if (fitment !== undefined && fitment.length === 0) {
+      return res.status(400).json({ error: 'At least one vehicle fitment entry is required -- an empty list would make this product unsearchable' });
+    }
+
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `UPDATE products SET
+         name = COALESCE($1, name), name_ar = COALESCE($2, name_ar),
+         description = COALESCE($3, description), description_ar = COALESCE($4, description_ar),
+         category = COALESCE($5, category), part = COALESCE($6, part), position = COALESCE($7, position),
+         oem_number = COALESCE($8, oem_number),
+         stock_quantity = COALESCE($9, stock_quantity), low_stock_threshold = COALESCE($10, low_stock_threshold),
+         weight_kg = COALESCE($11, weight_kg), length_cm = COALESCE($12, length_cm),
+         width_cm = COALESCE($13, width_cm), height_cm = COALESCE($14, height_cm)
+       WHERE id = $15
+       RETURNING id`,
+      [
+        nameEn ?? null, nameAr ?? null, descriptionEn ?? null, descriptionAr ?? null,
+        category ?? null, part ?? null, position ?? null, oemNumber ?? null,
+        stockQuantity ?? null, lowStockThreshold ?? null,
+        weightKg ?? null, lengthCm ?? null, widthCm ?? null, heightCm ?? null,
+        req.params.id,
+      ]
+    );
+    if (rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    if (images !== undefined) {
+      await client.query('DELETE FROM product_images WHERE product_id = $1', [req.params.id]);
+      for (let i = 0; i < images.length; i++) {
+        await client.query('INSERT INTO product_images (product_id, url, sort_order) VALUES ($1, $2, $3)', [req.params.id, images[i], i]);
+      }
+    }
+    if (fitment !== undefined) {
+      await client.query('DELETE FROM product_fitment_entries WHERE product_id = $1', [req.params.id]);
+      for (const f of fitment) {
+        await client.query(
+          `INSERT INTO product_fitment_entries (product_id, generation_id, year, engine_id, transmission_id) VALUES ($1, $2, $3, $4, $5)`,
+          [req.params.id, f.generationId, f.year, f.engineId || null, f.transmissionId || null]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+    await logAdminAction(req, 'product_edited', 'product', req.params.id, {});
+    res.json({ id: req.params.id });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
   }
 });
 
