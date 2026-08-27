@@ -1818,9 +1818,28 @@ function ProductListPage({ onSelect, onSessionExpired }) {
   const [page, setPage] = useState(1);
   const [errorMessage, setErrorMessage] = useState(null);
 
-  const load = async (searchValue, pageValue) => {
+  const [suppliers, setSuppliers] = useState([]);
+  const [brands, setBrands] = useState([]);
+  const [supplierId, setSupplierId] = useState("");
+  const [brand, setBrand] = useState("");
+  const [year, setYear] = useState("");
+  const [weightMin, setWeightMin] = useState("");
+  const [weightMax, setWeightMax] = useState("");
+  const [volumeMin, setVolumeMin] = useState("");
+  const [volumeMax, setVolumeMax] = useState("");
+  const [sortBy, setSortBy] = useState("name");
+  const [sortDir, setSortDir] = useState("asc");
+  const [groupBy, setGroupBy] = useState("");
+
+  useEffect(() => {
+    fetchSuppliers(getStoredToken()).then(setSuppliers).catch(() => {}); // non-critical -- filter just stays empty
+    fetchBrands().then(setBrands).catch(() => {});
+  }, []);
+
+  const load = async (overrides = {}) => {
+    const params = { search, page, supplierId, brand, year, weightMin, weightMax, volumeMin, volumeMax, sortBy, sortDir, groupBy, ...overrides };
     try {
-      const result = await fetchAdminProducts(getStoredToken(), { search: searchValue, page: pageValue });
+      const result = await fetchAdminProducts(getStoredToken(), params);
       setData(result);
       setErrorMessage(null);
     } catch (err) {
@@ -1828,19 +1847,39 @@ function ProductListPage({ onSelect, onSessionExpired }) {
       setErrorMessage(err.message);
     }
   };
-  useEffect(() => { load(search, page); }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load({ page }); }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Real, deliberate: every filter/sort/group control re-runs the
+  // real query from page 1 -- staying on page 4 of a real, now-
+  // different result set would show a confusing, mismatched slice.
+  const applyAndReload = (overrides) => {
+    setPage(1);
+    load({ page: 1, ...overrides });
+  };
 
   const handleSearch = (e) => {
     e.preventDefault();
-    setPage(1);
-    load(search, 1);
+    applyAndReload({ search });
   };
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
+  const groupLabels = { supplier: "Supplier", brand: "Brand", year: "Year", weight: "Weight (kg)", volume: "Volume (cm³)" };
+  const groupValueFor = (p) => {
+    if (groupBy === "supplier") return p.supplierName || "—";
+    if (groupBy === "brand") return p.brand || "—";
+    if (groupBy === "year") return p.year ?? "—";
+    if (groupBy === "weight") return p.weightKg ?? "—";
+    if (groupBy === "volume") return p.volumeCm3 != null ? Math.round(p.volumeCm3) : "—";
+    return null;
+  };
+
+  const filterInputStyle = { ...body, fontSize: 12.5, border: `1px solid ${C.line}`, borderRadius: 6, padding: "6px 8px", width: 90 };
+
+  let lastGroupValue = undefined;
 
   return (
     <div style={{ padding: 24 }}>
-      <form onSubmit={handleSearch} style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+      <form onSubmit={handleSearch} style={{ display: "flex", gap: 8, marginBottom: 12 }}>
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -1852,6 +1891,48 @@ function ProductListPage({ onSelect, onSessionExpired }) {
         </button>
       </form>
 
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 16, padding: 12, background: C.card, border: `1px solid ${C.line}`, borderRadius: 8 }}>
+        <select value={supplierId} onChange={(e) => { setSupplierId(e.target.value); applyAndReload({ supplierId: e.target.value }); }} style={filterInputStyle}>
+          <option value="">All suppliers</option>
+          {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        <select value={brand} onChange={(e) => { setBrand(e.target.value); applyAndReload({ brand: e.target.value }); }} style={filterInputStyle}>
+          <option value="">All brands</option>
+          {brands.map((b) => <option key={b.id} value={b.name}>{b.name}</option>)}
+        </select>
+        <input type="number" placeholder="Year" value={year} onChange={(e) => { setYear(e.target.value); applyAndReload({ year: e.target.value }); }} style={{ ...filterInputStyle, width: 70 }} />
+        <span style={{ ...body, fontSize: 11.5, color: C.muted }}>Weight</span>
+        <input type="number" placeholder="min" value={weightMin} onChange={(e) => { setWeightMin(e.target.value); applyAndReload({ weightMin: e.target.value }); }} style={{ ...filterInputStyle, width: 60 }} />
+        <input type="number" placeholder="max" value={weightMax} onChange={(e) => { setWeightMax(e.target.value); applyAndReload({ weightMax: e.target.value }); }} style={{ ...filterInputStyle, width: 60 }} />
+        <span style={{ ...body, fontSize: 11.5, color: C.muted }}>Volume</span>
+        <input type="number" placeholder="min" value={volumeMin} onChange={(e) => { setVolumeMin(e.target.value); applyAndReload({ volumeMin: e.target.value }); }} style={{ ...filterInputStyle, width: 60 }} />
+        <input type="number" placeholder="max" value={volumeMax} onChange={(e) => { setVolumeMax(e.target.value); applyAndReload({ volumeMax: e.target.value }); }} style={{ ...filterInputStyle, width: 60 }} />
+
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ ...body, fontSize: 11.5, color: C.muted }}>Sort</span>
+          <select value={sortBy} onChange={(e) => { setSortBy(e.target.value); applyAndReload({ sortBy: e.target.value }); }} style={filterInputStyle}>
+            <option value="name">Name</option>
+            <option value="supplier">Supplier</option>
+            <option value="brand">Brand</option>
+            <option value="year">Year</option>
+            <option value="weight">Weight</option>
+            <option value="volume">Volume</option>
+          </select>
+          <button onClick={() => { const next = sortDir === "asc" ? "desc" : "asc"; setSortDir(next); applyAndReload({ sortDir: next }); }} style={{ background: "none", border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 8px", cursor: "pointer" }} title="Toggle sort direction">
+            {sortDir === "asc" ? <ChevronUp size={14} color={C.muted} /> : <ChevronDown size={14} color={C.muted} />}
+          </button>
+          <span style={{ ...body, fontSize: 11.5, color: C.muted }}>Group</span>
+          <select value={groupBy} onChange={(e) => { setGroupBy(e.target.value); applyAndReload({ groupBy: e.target.value }); }} style={filterInputStyle}>
+            <option value="">None</option>
+            <option value="supplier">Supplier</option>
+            <option value="brand">Brand</option>
+            <option value="year">Year</option>
+            <option value="weight">Weight</option>
+            <option value="volume">Volume</option>
+          </select>
+        </div>
+      </div>
+
       {errorMessage && (
         <div style={{ ...body, fontSize: 12.5, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>
       )}
@@ -1860,6 +1941,7 @@ function ProductListPage({ onSelect, onSessionExpired }) {
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr>
+              <Th></Th>
               <Th>Name</Th>
               <Th>Category / Part</Th>
               <Th>OEM #</Th>
@@ -1869,16 +1951,37 @@ function ProductListPage({ onSelect, onSessionExpired }) {
             </tr>
           </thead>
           <tbody>
-            {(data?.products || []).map((p) => (
-              <tr key={p.id} onClick={() => onSelect(p.id)} style={{ cursor: "pointer" }}>
-                <Td>{p.name}</Td>
-                <Td>{p.category}{p.part ? ` / ${p.part}` : ""}</Td>
-                <Td>{p.oemNumber || "—"}</Td>
-                <Td align="right">{p.price.toFixed(2)} {p.currencyCode}</Td>
-                <Td align="right">{p.stockQuantity}</Td>
-                <Td>{p.supplierName || "—"}</Td>
-              </tr>
-            ))}
+            {(data?.products || []).map((p) => {
+              const groupValue = groupBy ? groupValueFor(p) : null;
+              const showGroupHeader = groupBy && groupValue !== lastGroupValue;
+              if (showGroupHeader) lastGroupValue = groupValue;
+              return (
+                <React.Fragment key={p.id}>
+                  {showGroupHeader && (
+                    <tr>
+                      <td colSpan={7} style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, background: C.canvas, padding: "8px 16px", borderBottom: `1px solid ${C.line}`, textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                        {groupLabels[groupBy]}: {groupValue}
+                      </td>
+                    </tr>
+                  )}
+                  <tr onClick={() => onSelect(p.id)} style={{ cursor: "pointer" }}>
+                    <Td>
+                      {p.firstImage ? (
+                        <img src={p.firstImage.startsWith("http") ? p.firstImage : `${API_BASE_URL}${p.firstImage}`} alt="" style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 6, border: `1px solid ${C.line}`, display: "block" }} />
+                      ) : (
+                        <div style={{ width: 36, height: 36, borderRadius: 6, border: `1px solid ${C.line}`, background: C.canvas }} />
+                      )}
+                    </Td>
+                    <Td>{p.name}</Td>
+                    <Td>{p.category}{p.part ? ` / ${p.part}` : ""}</Td>
+                    <Td>{p.oemNumber || "—"}</Td>
+                    <Td align="right">{p.price.toFixed(2)} {p.currencyCode}</Td>
+                    <Td align="right">{p.stockQuantity}</Td>
+                    <Td>{p.supplierName || "—"}</Td>
+                  </tr>
+                </React.Fragment>
+              );
+            })}
           </tbody>
         </table>
         {data && data.products.length === 0 && (
@@ -2030,6 +2133,25 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
   };
   const handleRemovePhoto = (index) => setImages(images.filter((_, i) => i !== index));
 
+  // Real, confirmed with the person: replaces one specific existing
+  // photo in place (same index, keeping its position in the real
+  // order), rather than only supporting remove-then-add-at-the-end.
+  const handleReplacePhoto = async (index, e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingPhoto(true);
+    setErrorMessage(null);
+    try {
+      const result = await uploadImage(getStoredToken(), file);
+      setImages(images.map((url, i) => (i === index ? result.url : url)));
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     setErrorMessage(null);
@@ -2170,6 +2292,10 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
             {images.map((url, i) => (
               <div key={i} style={{ position: "relative", width: 80, height: 80 }}>
                 <img src={url.startsWith("http") ? url : `${API_BASE_URL}${url}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 8, border: `1px solid ${C.line}` }} />
+                <label style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.45)", borderRadius: 8, opacity: 0, cursor: isUploadingPhoto ? "default" : "pointer", transition: "opacity 0.15s" }} onMouseEnter={(e) => { e.currentTarget.style.opacity = 1; }} onMouseLeave={(e) => { e.currentTarget.style.opacity = 0; }}>
+                  <span style={{ ...body, fontSize: 10.5, fontWeight: 700, color: "#fff" }}>Replace</span>
+                  <input type="file" accept="image/*" onChange={(e) => handleReplacePhoto(i, e)} disabled={isUploadingPhoto} style={{ display: "none" }} />
+                </label>
                 <button onClick={() => handleRemovePhoto(i)} style={{ position: "absolute", top: -6, right: -6, background: C.red, color: "#fff", border: "none", borderRadius: "50%", width: 18, height: 18, cursor: "pointer", fontSize: 11, lineHeight: 1 }}>×</button>
               </div>
             ))}

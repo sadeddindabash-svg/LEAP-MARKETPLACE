@@ -368,10 +368,20 @@ export async function fetchCategories() {
   return response.json();
 }
 
-export async function fetchAdminProducts(token, { search, page } = {}) {
+export async function fetchAdminProducts(token, { search, page, supplierId, brand, year, weightMin, weightMax, volumeMin, volumeMax, sortBy, sortDir, groupBy } = {}) {
   const params = new URLSearchParams();
   if (search) params.set("search", search);
   if (page) params.set("page", page);
+  if (supplierId) params.set("supplierId", supplierId);
+  if (brand) params.set("brand", brand);
+  if (year) params.set("year", year);
+  if (weightMin !== undefined && weightMin !== "") params.set("weightMin", weightMin);
+  if (weightMax !== undefined && weightMax !== "") params.set("weightMax", weightMax);
+  if (volumeMin !== undefined && volumeMin !== "") params.set("volumeMin", volumeMin);
+  if (volumeMax !== undefined && volumeMax !== "") params.set("volumeMax", volumeMax);
+  if (sortBy) params.set("sortBy", sortBy);
+  if (sortDir) params.set("sortDir", sortDir);
+  if (groupBy) params.set("groupBy", groupBy);
   const response = await fetch(`${API_BASE_URL}/catalog/admin/products?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
   if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
   const data = await response.json();
