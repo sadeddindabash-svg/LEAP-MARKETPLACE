@@ -867,9 +867,37 @@ router.post('/products/bulk-moderate', requireAuth, requireRole('admin'), requir
 router.get('/admin/products', requireAuth, requireRole('admin'), requirePageAccess('products'), async (req, res, next) => {
   try {
     const search = (req.query.search || '').trim();
+    const supplierId = (req.query.supplierId || '').trim();
+    const brand = (req.query.brand || '').trim();
+    const year = req.query.year ? parseInt(req.query.year, 10) : null;
+    const weightMin = req.query.weightMin !== undefined ? parseFloat(req.query.weightMin) : null;
+    const weightMax = req.query.weightMax !== undefined ? parseFloat(req.query.weightMax) : null;
+    const volumeMin = req.query.volumeMin !== undefined ? parseFloat(req.query.volumeMin) : null;
+    const volumeMax = req.query.volumeMax !== undefined ? parseFloat(req.query.volumeMax) : null;
+    const groupBy = ['supplier', 'brand', 'year', 'weight', 'volume'].includes(req.query.groupBy) ? req.query.groupBy : null;
+    const sortBy = groupBy || (['name', 'supplier', 'brand', 'year', 'weight', 'volume'].includes(req.query.sortBy) ? req.query.sortBy : 'name');
+    const sortDir = req.query.sortDir === 'desc' ? 'DESC' : 'ASC';
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const pageSize = 30;
+    // Real, confirmed necessary: a real group split across pages would
+    // defeat the whole point of grouping, so a much larger real page
+    // size is used whenever groupBy is active.
+    const pageSize = groupBy ? 500 : 30;
     const offset = (page - 1) * pageSize;
+
+    const baseFrom = `
+      FROM products p
+      LEFT JOIN suppliers s ON s.id = p.supplier_id
+      LEFT JOIN LATERAL (
+        SELECT vb.name AS brand_name, pfe.year AS fitment_year
+        FROM product_fitment_entries pfe
+        JOIN vehicle_generations vg ON vg.id = pfe.generation_id
+        JOIN vehicle_models vm ON vm.id = vg.model_id
+        JOIN vehicle_brands vb ON vb.id = vm.brand_id
+        WHERE pfe.product_id = p.id
+        ORDER BY pfe.id ASC
+        LIMIT 1
+      ) pf ON true
+    `;
 
     const params = [];
     let where = `WHERE p.status = 'active'`;
@@ -877,14 +905,38 @@ router.get('/admin/products', requireAuth, requireRole('admin'), requirePageAcce
       params.push(`%${search}%`);
       where += ` AND (p.name ILIKE $${params.length} OR p.oem_number ILIKE $${params.length} OR s.name ILIKE $${params.length})`;
     }
+    if (supplierId) {
+      params.push(supplierId);
+      where += ` AND p.supplier_id = $${params.length}`;
+    }
+    if (brand) {
+      params.push(brand);
+      where += ` AND pf.brand_name = $${params.length}`;
+    }
+    if (year) {
+      params.push(year);
+      where += ` AND pf.fitment_year = $${params.length}`;
+    }
+    if (weightMin != null) { params.push(weightMin); where += ` AND p.weight_kg >= $${params.length}`; }
+    if (weightMax != null) { params.push(weightMax); where += ` AND p.weight_kg <= $${params.length}`; }
+    if (volumeMin != null) { params.push(volumeMin); where += ` AND (p.length_cm * p.width_cm * p.height_cm) >= $${params.length}`; }
+    if (volumeMax != null) { params.push(volumeMax); where += ` AND (p.length_cm * p.width_cm * p.height_cm) <= $${params.length}`; }
 
-    const { rows: countRows } = await db.query(`SELECT COUNT(*) AS total FROM products p LEFT JOIN suppliers s ON s.id = p.supplier_id ${where}`, params);
+    const orderColumn = {
+      name: 'p.name', supplier: 's.name', brand: 'pf.brand_name', year: 'pf.fitment_year',
+      weight: 'p.weight_kg', volume: '(p.length_cm * p.width_cm * p.height_cm)',
+    }[sortBy];
+
+    const { rows: countRows } = await db.query(`SELECT COUNT(*) AS total ${baseFrom} ${where}`, params);
     params.push(pageSize, offset);
     const { rows } = await db.query(
-      `SELECT p.id, p.name, p.category, p.part, p.oem_number, p.price, p.currency_code, p.stock_quantity, s.name AS supplier_name
-       FROM products p LEFT JOIN suppliers s ON s.id = p.supplier_id
+      `SELECT p.id, p.name, p.category, p.part, p.oem_number, p.price, p.currency_code, p.stock_quantity,
+              p.weight_kg, p.length_cm, p.width_cm, p.height_cm,
+              s.name AS supplier_name, pf.brand_name, pf.fitment_year,
+              (SELECT url FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.sort_order ASC LIMIT 1) AS first_image
+       ${baseFrom}
        ${where}
-       ORDER BY p.name ASC
+       ORDER BY ${orderColumn} ${sortDir} NULLS LAST, p.name ASC
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     );
@@ -892,10 +944,15 @@ router.get('/admin/products', requireAuth, requireRole('admin'), requirePageAcce
       products: rows.map((r) => ({
         id: r.id, name: r.name, category: r.category, part: r.part, oemNumber: r.oem_number,
         price: Number(r.price), currencyCode: r.currency_code, stockQuantity: r.stock_quantity, supplierName: r.supplier_name,
+        weightKg: r.weight_kg === null ? null : Number(r.weight_kg),
+        volumeCm3: (r.length_cm != null && r.width_cm != null && r.height_cm != null) ? Number(r.length_cm) * Number(r.width_cm) * Number(r.height_cm) : null,
+        brand: r.brand_name, year: r.fitment_year,
+        firstImage: r.first_image,
       })),
       total: Number(countRows[0].total),
       page,
       pageSize,
+      groupBy,
     });
   } catch (err) {
     next(err);
