@@ -799,7 +799,7 @@ function AddProductForm({ onCancel, onCreated, prefill }) {
               {categories.map(c => <option key={c.id} value={c.id}>{c.nameEn}</option>)}
             </select>
           </Field>
-          <Field label={cascadeLabel("部件类型", "Part")}>
+          <Field label={cascadeLabel("部件类型", "Part Classification")}>
             <select style={selectStyle} value={part} onChange={(e) => setPart(e.target.value)} disabled={isLoadingParts || parts.length === 0}>
               {isLoadingParts && <option>{cascadeLabel("加载中…", "Loading…")}</option>}
               {!isLoadingParts && parts.length === 0 && <option>{cascadeLabel("此类别暂无部件", "No parts yet for this category")}</option>}
@@ -1377,7 +1377,7 @@ function CompleteDraftForm({ draft, onCancel, onCompleted }) {
                 {categories.map((c) => <option key={c.id} value={c.id}>{c.nameEn}</option>)}
               </select>
             </Field>
-            <Field label={cascadeLabel('部件', 'Part')}>
+            <Field label={cascadeLabel('部件', 'Part Classification')}>
               <select style={selectStyle} value={part} onChange={(e) => setPart(e.target.value)} disabled={parts.length === 0}>
                 {parts.map((p) => <option key={p.nameEn} value={p.nameEn}>{p.nameEn}</option>)}
               </select>

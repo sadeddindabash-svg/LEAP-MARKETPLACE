@@ -2249,7 +2249,7 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
             </select>
           </div>
           <div>
-            <label style={labelStyle}>Part</label>
+            <label style={labelStyle}>Part Classification</label>
             <select style={inputStyle} value={part} onChange={(e) => setPart(e.target.value)} disabled={!category}>
               <option value="">Select…</option>
               {part && !parts.some((p) => p.nameEn === part) && (
