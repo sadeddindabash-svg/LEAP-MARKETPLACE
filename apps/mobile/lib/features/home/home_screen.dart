@@ -314,42 +314,71 @@ class _HomeScreenState extends State<HomeScreen> {
                   );
                 }
                 final categories = snapshot.data ?? [];
+                // Real, confirmed with the person via a rendered
+                // mockup: only the first 7 real categories show here,
+                // followed by an 8th "more" tile -- but only when
+                // there's genuinely more to see (more than 7 real
+                // categories exist); otherwise every real category
+                // already fits and the tile would be pointless.
+                final visibleCategories = categories.take(7).toList();
+                final showMoreTile = categories.length > 7;
                 return GridView.count(
                   crossAxisCount: 4,
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   mainAxisSpacing: 12,
                   crossAxisSpacing: 12,
-                  children: categories.map((c) {
-                    final label = c.displayName(isAr);
-                    return GestureDetector(
-                      onTap: () => context.push('/category-browse/${c.id}'),
-                      child: Column(
-                        children: [
-                          Container(
-                            width: 52,
-                            height: 52,
-                            decoration: BoxDecoration(
-                              color: palette.chalk,
-                              shape: BoxShape.circle,
+                  children: [
+                    ...visibleCategories.map((c) {
+                      final label = c.displayName(isAr);
+                      return GestureDetector(
+                        onTap: () => context.push('/category-browse/${c.id}'),
+                        child: Column(
+                          children: [
+                            Container(
+                              width: 52,
+                              height: 52,
+                              decoration: BoxDecoration(
+                                color: palette.chalk,
+                                shape: BoxShape.circle,
+                              ),
+                              clipBehavior: Clip.antiAlias,
+                              // Real category photo (new) -- closes a
+                              // real gap: the backend's own real,
+                              // admin-uploaded photoUrl field existed
+                              // already, this screen just never showed
+                              // it. Falls back to the existing icon when
+                              // a real category genuinely has none yet.
+                              child: c.photoUrl != null
+                                  ? CachedNetworkImage(imageUrl: ApiClient.resolveMediaUrl(c.photoUrl!), fit: BoxFit.cover, fadeInDuration: const Duration(milliseconds: 300), errorWidget: (context, url, error) => Icon(_iconForCategory(c.id), color: palette.signal, size: 31))
+                                  : Icon(_iconForCategory(c.id), color: palette.signal, size: 31),
                             ),
-                            clipBehavior: Clip.antiAlias,
-                            // Real category photo (new) -- closes a
-                            // real gap: the backend's own real,
-                            // admin-uploaded photoUrl field existed
-                            // already, this screen just never showed
-                            // it. Falls back to the existing icon when
-                            // a real category genuinely has none yet.
-                            child: c.photoUrl != null
-                                ? CachedNetworkImage(imageUrl: ApiClient.resolveMediaUrl(c.photoUrl!), fit: BoxFit.cover, fadeInDuration: const Duration(milliseconds: 300), errorWidget: (context, url, error) => Icon(_iconForCategory(c.id), color: palette.signal, size: 31))
-                                : Icon(_iconForCategory(c.id), color: palette.signal, size: 31),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(label, style: const TextStyle(fontSize: 10), textAlign: TextAlign.center),
-                        ],
+                            const SizedBox(height: 6),
+                            Text(label, style: const TextStyle(fontSize: 10), textAlign: TextAlign.center),
+                          ],
+                        ),
+                      );
+                    }),
+                    if (showMoreTile)
+                      GestureDetector(
+                        onTap: () => context.go('/categories'),
+                        child: Column(
+                          children: [
+                            Container(
+                              width: 52,
+                              height: 52,
+                              decoration: BoxDecoration(
+                                color: palette.chalk,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(Icons.category_outlined, color: palette.signal, size: 28),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(isAr ? 'الكل' : 'All', style: const TextStyle(fontSize: 10), textAlign: TextAlign.center),
+                          ],
+                        ),
                       ),
-                    );
-                  }).toList(),
+                  ],
                 );
               },
             ),
