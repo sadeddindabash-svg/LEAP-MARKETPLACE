@@ -326,7 +326,7 @@ router.get('/me/products', requireAuth, requireRole('supplier'), async (req, res
 // A fixed, real list rather than free text — "Position" in the SRS
 // cascade (Brand -> ... -> Category -> Part -> Position -> OEM Number)
 // means where on the vehicle the part sits, not a free-form description.
-const { ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS } = require('../shared/productValidation');
+const { ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS, validateNameLength } = require('../shared/productValidation');
 
 router.post('/me/products', requireAuth, requireRole('supplier'), async (req, res, next) => {
   const {
@@ -381,6 +381,10 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
   if (heightCm === undefined || heightCm === null) missing.push('heightCm');
   if (missing.length > 0) {
     return res.status(400).json({ error: `Missing required field(s): ${missing.join(', ')}` });
+  }
+  const nameLengthError = validateNameLength(nameZh, 'nameZh');
+  if (nameLengthError) {
+    return res.status(400).json({ error: nameLengthError });
   }
   if (weightKg !== undefined && weightKg !== null && weightKg <= 0) {
     return res.status(400).json({ error: 'weightKg must be a positive number' });
@@ -553,6 +557,11 @@ router.post('/me/products/bulk-import', requireAuth, requireRole('supplier'), as
       const { oemNumber, itemName, price } = item;
       if (!oemNumber || !itemName || price === undefined || price === null || price <= 0) {
         results.push({ index: i, success: false, error: 'oemNumber, itemName, and a positive price are all required' });
+        continue;
+      }
+      const nameLengthError = validateNameLength(itemName, 'itemName');
+      if (nameLengthError) {
+        results.push({ index: i, success: false, error: nameLengthError });
         continue;
       }
 

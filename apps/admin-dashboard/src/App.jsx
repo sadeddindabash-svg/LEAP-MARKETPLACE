@@ -1461,8 +1461,10 @@ function ModerationPage({ onSessionExpired }) {
                         <input
                           value={nameEn}
                           onChange={(e) => setNameEn(e.target.value)}
+                          maxLength={100}
                           style={{ ...body, width: "100%", border: `1px solid ${C.line}`, borderRadius: 8, padding: "9px 11px", fontSize: 13, boxSizing: "border-box" }}
                         />
+                        <span style={{ ...body, fontSize: 10.5, color: nameEn.length > 0 && (nameEn.length < 25 || nameEn.length > 100) ? C.red : C.muted }}>{nameEn.length}/100 (min 25)</span>
                       </div>
                       <div>
                         <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 5 }}>English description (optional)</div>
@@ -1478,8 +1480,10 @@ function ModerationPage({ onSessionExpired }) {
                           value={nameAr}
                           onChange={(e) => setNameAr(e.target.value)}
                           dir="rtl"
+                          maxLength={100}
                           style={{ ...body, width: "100%", border: `1px solid ${C.line}`, borderRadius: 8, padding: "9px 11px", fontSize: 13, boxSizing: "border-box" }}
                         />
+                        <span style={{ ...body, fontSize: 10.5, color: nameAr.length > 0 && (nameAr.length < 25 || nameAr.length > 100) ? C.red : C.muted }}>{nameAr.length}/100 (min 25)</span>
                       </div>
                       <div>
                         <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 5 }}>Arabic description (optional)</div>
@@ -2227,11 +2231,13 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
         <div style={{ padding: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           <div>
             <label style={labelStyle}>Name (English)</label>
-            <input style={inputStyle} value={nameEn} onChange={(e) => setNameEn(e.target.value)} />
+            <input style={inputStyle} value={nameEn} onChange={(e) => setNameEn(e.target.value)} maxLength={100} />
+            <span style={{ ...body, fontSize: 10.5, color: nameEn.length < 25 || nameEn.length > 100 ? C.red : C.muted }}>{nameEn.length}/100 (min 25)</span>
           </div>
           <div>
             <label style={labelStyle}>Name (Arabic)</label>
-            <input style={{ ...inputStyle, direction: "rtl" }} value={nameAr} onChange={(e) => setNameAr(e.target.value)} />
+            <input style={{ ...inputStyle, direction: "rtl" }} value={nameAr} onChange={(e) => setNameAr(e.target.value)} maxLength={100} />
+            <span style={{ ...body, fontSize: 10.5, color: nameAr.length < 25 || nameAr.length > 100 ? C.red : C.muted }}>{nameAr.length}/100 (min 25)</span>
           </div>
           <div>
             <label style={labelStyle}>Description (English)</label>

@@ -3,7 +3,7 @@ const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
 const { resolveDestinationIsoCode, calculateDeliveryDays } = require('../deliveryEstimate/engine');
-const { ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS } = require('../shared/productValidation');
+const { ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS, validateNameLength } = require('../shared/productValidation');
 const { logAdminAction } = require('../audit/helpers');
 const { moveItem } = require('../../lib/reorder');
 
@@ -734,6 +734,14 @@ router.patch('/products/:id/moderate', requireAuth, requireRole('admin'), requir
       if (stillChinese.length > 0) {
         return res.status(400).json({ error: `${stillChinese.join(', ')} still contains Chinese characters — translate before approving` });
       }
+      const nameLengthErrors = [];
+      const enError = validateNameLength(nameEn, 'nameEn');
+      if (enError) nameLengthErrors.push(enError);
+      const arError = validateNameLength(nameAr, 'nameAr');
+      if (arError) nameLengthErrors.push(arError);
+      if (nameLengthErrors.length > 0) {
+        return res.status(400).json({ error: nameLengthErrors.join('; ') });
+      }
     }
     const newStatus = action === 'approve' ? 'active' : 'inactive';
     const { rows } = await db.query(
@@ -801,6 +809,15 @@ router.post('/products/bulk-moderate', requireAuth, requireRole('admin'), requir
         if (containsChineseCharacters(descriptionAr)) stillChinese.push('descriptionAr');
         if (stillChinese.length > 0) {
           results.push({ productId, success: false, error: `${stillChinese.join(', ')} still contains Chinese characters — translate before approving` });
+          continue;
+        }
+        const nameLengthErrors = [];
+        const enError = validateNameLength(nameEn, 'nameEn');
+        if (enError) nameLengthErrors.push(enError);
+        const arError = validateNameLength(nameAr, 'nameAr');
+        if (arError) nameLengthErrors.push(arError);
+        if (nameLengthErrors.length > 0) {
+          results.push({ productId, success: false, error: nameLengthErrors.join('; ') });
           continue;
         }
       }
@@ -1027,6 +1044,14 @@ router.patch('/admin/products/:id', requireAuth, requireRole('admin'), requirePa
 
     if (position !== undefined && position !== null && !ALLOWED_POSITIONS.includes(position)) {
       return res.status(400).json({ error: `position must be one of: ${ALLOWED_POSITIONS.join(', ')}` });
+    }
+    if (nameEn !== undefined) {
+      const nameEnError = validateNameLength(nameEn, 'nameEn');
+      if (nameEnError) return res.status(400).json({ error: nameEnError });
+    }
+    if (nameAr !== undefined) {
+      const nameArError = validateNameLength(nameAr, 'nameAr');
+      if (nameArError) return res.status(400).json({ error: nameArError });
     }
     // Real, confirmed fix found via self-audit: unlike the real
     // supplier submission endpoint (which validates these are
