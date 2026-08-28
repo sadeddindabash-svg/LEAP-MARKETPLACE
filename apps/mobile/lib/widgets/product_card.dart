@@ -81,7 +81,7 @@ class _ProductCardState extends State<ProductCard> {
   // (Home, search, wishlist, Recently Viewed, category browse) --
   // confirmed this is the only real product-card component in the
   // whole real codebase before building.
-  static const int _kMaxNameLength = 35;
+  static const int _kMaxNameLength = 45;
   String _truncatedName(String name) {
     if (name.length <= _kMaxNameLength) return name;
     return '${name.substring(0, _kMaxNameLength)}...';
