@@ -367,11 +367,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             Container(
                               width: 52,
                               height: 52,
-                              decoration: BoxDecoration(
-                                color: palette.chalk,
+                              decoration: const BoxDecoration(
+                                color: Colors.white,
                                 shape: BoxShape.circle,
                               ),
-                              child: Icon(Icons.category_outlined, color: palette.signal, size: 28),
+                              child: Icon(Icons.grid_view, color: palette.signal, size: 28),
                             ),
                             const SizedBox(height: 6),
                             Text(isAr ? 'الكل' : 'All', style: const TextStyle(fontSize: 10), textAlign: TextAlign.center),
