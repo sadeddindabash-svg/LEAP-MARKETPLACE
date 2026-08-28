@@ -252,7 +252,7 @@ class _HomeScreenState extends State<HomeScreen> {
             // 2. Shopping for -- real garage data
             _ShoppingForCard(garageFuture: _garageFuture, isLoggedIn: auth.isLoggedIn, onNavigateToGarage: () => _navigateToGarage(context)),
             const SizedBox(height: 12),
-            // 2.6. Brand logo marquee (new) -- confirmed exact position
+            // 2.5. Brand logo marquee (new) -- confirmed exact position
             // with the person: between "Shopping for" and "Recently
             // viewed". A purely decorative, continuously auto-
             // scrolling strip, so it needs no isLoggedIn gate (unlike
@@ -266,39 +266,7 @@ class _HomeScreenState extends State<HomeScreen> {
             // uploaded yet, in which case an unconditional external
             // spacer would show as an unexplained extra gap.
             const BrandLogoMarquee(),
-            // 2.5. Recently viewed -- real, synced to the buyer's real
-            // account (migration 032) -- logged-in buyers only.
-            if (auth.isLoggedIn)
-              FutureBuilder<List<Product>>(
-                future: _recentlyViewedFuture,
-                builder: (context, snapshot) {
-                  final products = snapshot.data ?? [];
-                  if (snapshot.connectionState != ConnectionState.done || products.isEmpty) {
-                    return const SizedBox.shrink();
-                  }
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(isAr ? 'شوهدت مؤخرًا' : 'Recently viewed', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        height: productCardHeightFor(140),
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: products.length,
-                          separatorBuilder: (context, i) => const SizedBox(width: 10),
-                          itemBuilder: (context, i) {
-                            final p = products[i];
-                            return SizedBox(width: 140, child: ProductCard(product: p, onTap: () => context.push('/product/${p.id}')));
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-                  );
-                },
-              ),
-            // 3. Shop by category
+            // 2.6. Shop by category
             Text(tr(context, 'shop_by_category'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
             const SizedBox(height: 12),
             FutureBuilder<List<ProductCategory>>(
@@ -383,6 +351,38 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
             const SizedBox(height: 24),
+            // 2.7. Recently viewed -- real, synced to the buyer's real
+            // account (migration 032) -- logged-in buyers only.
+            if (auth.isLoggedIn)
+              FutureBuilder<List<Product>>(
+                future: _recentlyViewedFuture,
+                builder: (context, snapshot) {
+                  final products = snapshot.data ?? [];
+                  if (snapshot.connectionState != ConnectionState.done || products.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(isAr ? 'شوهدت مؤخرًا' : 'Recently viewed', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        height: productCardHeightFor(140),
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: products.length,
+                          separatorBuilder: (context, i) => const SizedBox(width: 10),
+                          itemBuilder: (context, i) {
+                            final p = products[i];
+                            return SizedBox(width: 140, child: ProductCard(product: p, onTap: () => context.push('/product/${p.id}')));
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+                  );
+                },
+              ),
             // 4. Filter: Newest / My car
             Row(
               children: [
