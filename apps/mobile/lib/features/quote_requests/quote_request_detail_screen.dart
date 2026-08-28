@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../core/auth_state.dart';
 import '../../core/cart_state.dart';
 import '../../core/language_state.dart';
+import '../../core/currency_state.dart';
 import '../../services/api_client.dart';
 import '../../models/quote_request.dart';
 
@@ -166,7 +167,7 @@ class _QuoteRequestDetailScreenState extends State<QuoteRequestDetailScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(isAr ? 'الإجمالي' : 'Total', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-                        Text('\$${total.toStringAsFixed(2)}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: palette.signalDark)),
+                        Text(formatPrice(context, total), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: palette.signalDark)),
                       ],
                     ),
                     const SizedBox(height: 10),
@@ -259,7 +260,7 @@ class _ItemRow extends StatelessWidget {
                 Text(isAr ? 'غير متوفر' : 'Unavailable', style: const TextStyle(fontSize: 11.5, color: Colors.red, fontWeight: FontWeight.w700))
               else if (item.status == 'priced')
                 Text(
-                  item.readyToOrder ? '\$${item.price?.toStringAsFixed(2)}' : (isAr ? 'قيد المراجعة' : 'Pending approval'),
+                  item.readyToOrder ? formatPrice(context, item.price ?? 0) : (isAr ? 'قيد المراجعة' : 'Pending approval'),
                   style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: item.readyToOrder ? palette.signalDark : palette.amber),
                 ),
             ],

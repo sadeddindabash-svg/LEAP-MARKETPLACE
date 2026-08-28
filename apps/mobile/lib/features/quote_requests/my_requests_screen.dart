@@ -52,6 +52,29 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     }
   }
 
+  // Real, confirmed fix found via self-audit: the status badge was
+  // showing the raw English database value directly, even in Arabic.
+  // Matches the same real status values already translated correctly
+  // in quote_request_detail_screen.dart's own _StatusBanner.
+  String _statusLabel(String status, bool isAr) {
+    switch (status) {
+      case 'draft':
+        return isAr ? 'مسودة' : 'Draft';
+      case 'submitted':
+        return isAr ? 'قيد المراجعة' : 'Submitted';
+      case 'quoted':
+        return isAr ? 'تم التسعير' : 'Quoted';
+      case 'ordered':
+        return isAr ? 'تم الطلب' : 'Ordered';
+      case 'expired':
+        return isAr ? 'منتهي الصلاحية' : 'Expired';
+      case 'cancelled':
+        return isAr ? 'ملغى' : 'Cancelled';
+      default:
+        return status;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = LeapPalette.of(context);
@@ -111,7 +134,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                     decoration: BoxDecoration(color: _statusColor(request.status, palette).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
                                     child: Text(
-                                      request.status,
+                                      _statusLabel(request.status, isAr),
                                       style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _statusColor(request.status, palette)),
                                     ),
                                   ),

@@ -1028,11 +1028,91 @@ router.patch('/admin/products/:id', requireAuth, requireRole('admin'), requirePa
     if (position !== undefined && position !== null && !ALLOWED_POSITIONS.includes(position)) {
       return res.status(400).json({ error: `position must be one of: ${ALLOWED_POSITIONS.join(', ')}` });
     }
+    // Real, confirmed fix found via self-audit: unlike the real
+    // supplier submission endpoint (which validates these are
+    // positive), this admin edit endpoint had no such check at all --
+    // a real typo (e.g. a negative weight) would silently corrupt
+    // this real product's own delivery-estimate calculations.
+    for (const [field, value] of [['weightKg', weightKg], ['lengthCm', lengthCm], ['widthCm', widthCm], ['heightCm', heightCm]]) {
+      if (value !== undefined && value !== null && value <= 0) {
+        return res.status(400).json({ error: `${field} must be a positive number` });
+      }
+    }
+    for (const [field, value] of [['stockQuantity', stockQuantity], ['lowStockThreshold', lowStockThreshold]]) {
+      if (value !== undefined && value !== null && value < 0) {
+        return res.status(400).json({ error: `${field} cannot be negative` });
+      }
+    }
     if (images !== undefined && images.length < MIN_PRODUCT_PHOTOS) {
       return res.status(400).json({ error: `At least ${MIN_PRODUCT_PHOTOS} photos required` });
     }
     if (fitment !== undefined && fitment.length === 0) {
       return res.status(400).json({ error: 'At least one vehicle fitment entry is required -- an empty list would make this product unsearchable' });
+    }
+    // Real, confirmed fix found via self-audit: unlike the real
+    // supplier submission endpoint (which validates every one of
+    // these), this admin edit endpoint's fitment replacement had zero
+    // validation at all -- it would either silently save a real
+    // mismatched year/engine/transmission, or throw a raw, unhandled
+    // database error if a real generationId didn't exist. Loops over
+    // every real entry, since this endpoint (unlike the supplier's
+    // own single-entry submission) supports multiple fitment entries
+    // per product.
+    if (fitment !== undefined) {
+      for (const f of fitment) {
+        if (!f.generationId || !f.year) {
+          return res.status(400).json({ error: 'Each fitment entry needs a generationId and a year' });
+        }
+        const genCheck = await client.query('SELECT * FROM vehicle_generations WHERE id = $1', [f.generationId]);
+        if (genCheck.rows.length === 0) {
+          return res.status(400).json({ error: `Unknown fitment generationId: ${f.generationId}` });
+        }
+        const generation = genCheck.rows[0];
+        const maxYear = generation.year_end || new Date().getFullYear() + 1;
+        if (f.year < generation.year_start || f.year > maxYear) {
+          return res.status(400).json({ error: `Fitment year ${f.year} is outside this generation's range (${generation.year_start}–${generation.year_end || 'present'})` });
+        }
+        if (f.engineId) {
+          const engCheck = await client.query('SELECT id FROM vehicle_engines WHERE id = $1 AND generation_id = $2', [f.engineId, f.generationId]);
+          if (engCheck.rows.length === 0) {
+            return res.status(400).json({ error: 'A fitment engineId does not belong to its given generation' });
+          }
+        }
+        if (f.transmissionId) {
+          const transCheck = await client.query('SELECT id FROM vehicle_transmissions WHERE id = $1 AND generation_id = $2', [f.transmissionId, f.generationId]);
+          if (transCheck.rows.length === 0) {
+            return res.status(400).json({ error: 'A fitment transmissionId does not belong to its given generation' });
+          }
+        }
+      }
+    }
+    // Real, confirmed fix found via self-audit: category/part were
+    // never validated at all here, unlike the real supplier
+    // submission endpoint, which validates both. Only checks whatever
+    // is actually being changed -- a partial update, matching this
+    // endpoint's own established COALESCE convention.
+    if (category !== undefined) {
+      const categoryCheck = await client.query('SELECT id FROM product_categories WHERE id = $1', [category]);
+      if (categoryCheck.rows.length === 0) {
+        return res.status(400).json({ error: 'Unknown category' });
+      }
+    }
+    if (part !== undefined) {
+      // Real, correctly resolved: the EFFECTIVE category is whichever
+      // one this real product will actually have after this update --
+      // the newly-provided one if category is also being changed in
+      // this same real request, otherwise the product's own existing
+      // real category.
+      let effectiveCategory = category;
+      if (effectiveCategory === undefined) {
+        const { rows: existingRows } = await client.query('SELECT category FROM products WHERE id = $1', [req.params.id]);
+        if (existingRows.length === 0) return res.status(404).json({ error: 'Product not found' });
+        effectiveCategory = existingRows[0].category;
+      }
+      const partCheck = await client.query('SELECT id FROM category_parts WHERE category_id = $1 AND name_en = $2', [effectiveCategory, part]);
+      if (partCheck.rows.length === 0) {
+        return res.status(400).json({ error: 'part must belong to the selected category' });
+      }
     }
 
     await client.query('BEGIN');

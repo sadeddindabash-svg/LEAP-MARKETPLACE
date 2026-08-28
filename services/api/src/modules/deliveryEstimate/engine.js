@@ -69,10 +69,10 @@ async function calculateDeliveryDays({ weightKg, lengthCm, widthCm, heightCm, wa
     const { rows } = await db.query(
       `SELECT dr.delivery_days
        FROM delivery_rules dr
-       WHERE ($1::numeric IS NULL OR dr.min_weight_kg IS NULL OR $1 >= dr.min_weight_kg)
-         AND ($1::numeric IS NULL OR dr.max_weight_kg IS NULL OR $1 <= dr.max_weight_kg)
-         AND ($2::numeric IS NULL OR dr.min_volume_cm3 IS NULL OR $2 >= dr.min_volume_cm3)
-         AND ($2::numeric IS NULL OR dr.max_volume_cm3 IS NULL OR $2 <= dr.max_volume_cm3)
+       WHERE (dr.min_weight_kg IS NULL OR ($1::numeric IS NOT NULL AND $1 >= dr.min_weight_kg))
+         AND (dr.max_weight_kg IS NULL OR ($1::numeric IS NOT NULL AND $1 <= dr.max_weight_kg))
+         AND (dr.min_volume_cm3 IS NULL OR ($2::numeric IS NOT NULL AND $2 >= dr.min_volume_cm3))
+         AND (dr.max_volume_cm3 IS NULL OR ($2::numeric IS NOT NULL AND $2 <= dr.max_volume_cm3))
          AND (dr.warehouse_country IS NULL OR dr.warehouse_country = $3)
          AND (
            dr.destination_group_id IS NULL
