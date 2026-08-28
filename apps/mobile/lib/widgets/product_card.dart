@@ -73,6 +73,20 @@ class _ProductCardState extends State<ProductCard> {
   bool? _isWishlisted; // null while unknown/loading; only checked for logged-in buyers
   bool _isTogglingWishlist = false;
 
+  // Real, confirmed with the person via a rendered mockup before
+  // building: a real, fixed 35-character cut with "..." appended if
+  // longer -- a deterministic character count, not Flutter's own
+  // visual/line-based ellipsis (which varies by rendered width/font
+  // metrics). Applies everywhere this real, shared card is used
+  // (Home, search, wishlist, Recently Viewed, category browse) --
+  // confirmed this is the only real product-card component in the
+  // whole real codebase before building.
+  static const int _kMaxNameLength = 35;
+  String _truncatedName(String name) {
+    if (name.length <= _kMaxNameLength) return name;
+    return '${name.substring(0, _kMaxNameLength)}...';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -283,7 +297,7 @@ class _ProductCardState extends State<ProductCard> {
               SizedBox(
                 height: 12 * 1.3 * 2 + 2,
                 child: Text(
-                  p.name,
+                  _truncatedName(p.name),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, height: 1.3),
