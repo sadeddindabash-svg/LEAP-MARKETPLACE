@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth } = require('../auth/middleware');
-const { toBuyerProductDto, attachBuyerPrice, attachBuyerImages, attachSupplierSignals, attachDeliveryEstimate } = require('../catalog/routes');
+const { toBuyerProductDto, attachBuyerPrice, attachBuyerImages, attachSupplierSignals, attachDeliveryEstimate, attachPrimaryFitment } = require('../catalog/routes');
 const { resolveDestinationIsoCode } = require('../deliveryEstimate/engine');
 
 /**
@@ -59,6 +59,7 @@ router.get('/me', requireAuth, async (req, res, next) => {
       dto = await attachBuyerPrice(dto, r);
       dto = await attachSupplierSignals(dto, r.supplier_id);
       dto = await attachDeliveryEstimate(dto, destinationIsoCode);
+      dto = await attachPrimaryFitment(dto, r.id, lang);
       return dto;
     }));
     res.json(dtos);

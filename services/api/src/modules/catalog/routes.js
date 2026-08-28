@@ -1485,4 +1485,5 @@ module.exports.attachBuyerPrice = attachBuyerPrice;
 module.exports.attachBuyerImages = attachBuyerImages;
 module.exports.attachSupplierSignals = attachSupplierSignals;
 module.exports.attachDeliveryEstimate = attachDeliveryEstimate;
+module.exports.attachPrimaryFitment = attachPrimaryFitment;
 module.exports.buildProductMatchQuery = buildProductMatchQuery;
