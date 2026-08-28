@@ -834,8 +834,9 @@ function AddProductForm({ onCancel, onCreated, prefill }) {
             <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={heightCm} onChange={(e) => setHeightCm(e.target.value)} />
           </Field>
           <div style={{ gridColumn: "1 / -1" }}>
-            <Field label={cascadeLabel("商品描述（中文，选填）", "Description (Chinese, optional)")}>
-              <textarea style={{ ...inputStyle, height: 70, resize: "none" }} value={descriptionZh} onChange={(e) => setDescriptionZh(e.target.value)} />
+            <Field label={cascadeLabel("商品描述（中文）", "Description (Chinese)")}>
+              <textarea style={{ ...inputStyle, height: 70, resize: "none" }} value={descriptionZh} onChange={(e) => setDescriptionZh(e.target.value)} maxLength={150} />
+              <div style={{ fontSize: 10.5, color: descriptionZh.length > 0 && (descriptionZh.length < 100 || descriptionZh.length > 150) ? C.red : C.muted, marginTop: 2 }}>{descriptionZh.length}/150 (min 100)</div>
             </Field>
           </div>
         </div>

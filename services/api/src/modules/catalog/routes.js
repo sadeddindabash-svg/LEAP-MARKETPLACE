@@ -3,7 +3,7 @@ const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
 const { resolveDestinationIsoCode, calculateDeliveryDays } = require('../deliveryEstimate/engine');
-const { ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS, validateNameLength } = require('../shared/productValidation');
+const { ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS, validateNameLength, validateDescriptionLength } = require('../shared/productValidation');
 const { logAdminAction } = require('../audit/helpers');
 const { moveItem } = require('../../lib/reorder');
 
@@ -718,6 +718,8 @@ router.patch('/products/:id/moderate', requireAuth, requireRole('admin'), requir
     const missing = [];
     if (action === 'approve' && !nameEn) missing.push('nameEn');
     if (action === 'approve' && !nameAr) missing.push('nameAr');
+    if (action === 'approve' && !descriptionEn) missing.push('descriptionEn');
+    if (action === 'approve' && !descriptionAr) missing.push('descriptionAr');
     if (missing.length > 0) {
       return res.status(400).json({ error: `${missing.join(' and ')} required to approve — enter the reviewed translation(s) first` });
     }
@@ -739,6 +741,10 @@ router.patch('/products/:id/moderate', requireAuth, requireRole('admin'), requir
       if (enError) nameLengthErrors.push(enError);
       const arError = validateNameLength(nameAr, 'nameAr');
       if (arError) nameLengthErrors.push(arError);
+      const descEnError = validateDescriptionLength(descriptionEn, 'descriptionEn');
+      if (descEnError) nameLengthErrors.push(descEnError);
+      const descArError = validateDescriptionLength(descriptionAr, 'descriptionAr');
+      if (descArError) nameLengthErrors.push(descArError);
       if (nameLengthErrors.length > 0) {
         return res.status(400).json({ error: nameLengthErrors.join('; ') });
       }
@@ -797,6 +803,10 @@ router.post('/products/bulk-moderate', requireAuth, requireRole('admin'), requir
         results.push({ productId, success: false, error: 'nameEn and nameAr required to approve' });
         continue;
       }
+      if (action === 'approve' && (!descriptionEn || !descriptionAr)) {
+        results.push({ productId, success: false, error: 'descriptionEn and descriptionAr required to approve' });
+        continue;
+      }
       // Real, confirmed fix -- same check as the single-item endpoint
       // above: catches the original Chinese submission still sitting
       // untranslated in nameEn/nameAr, rather than a genuine
@@ -816,6 +826,10 @@ router.post('/products/bulk-moderate', requireAuth, requireRole('admin'), requir
         if (enError) nameLengthErrors.push(enError);
         const arError = validateNameLength(nameAr, 'nameAr');
         if (arError) nameLengthErrors.push(arError);
+        const descEnError = validateDescriptionLength(descriptionEn, 'descriptionEn');
+        if (descEnError) nameLengthErrors.push(descEnError);
+        const descArError = validateDescriptionLength(descriptionAr, 'descriptionAr');
+        if (descArError) nameLengthErrors.push(descArError);
         if (nameLengthErrors.length > 0) {
           results.push({ productId, success: false, error: nameLengthErrors.join('; ') });
           continue;
@@ -1052,6 +1066,14 @@ router.patch('/admin/products/:id', requireAuth, requireRole('admin'), requirePa
     if (nameAr !== undefined) {
       const nameArError = validateNameLength(nameAr, 'nameAr');
       if (nameArError) return res.status(400).json({ error: nameArError });
+    }
+    if (descriptionEn !== undefined) {
+      const descriptionEnError = validateDescriptionLength(descriptionEn, 'descriptionEn');
+      if (descriptionEnError) return res.status(400).json({ error: descriptionEnError });
+    }
+    if (descriptionAr !== undefined) {
+      const descriptionArError = validateDescriptionLength(descriptionAr, 'descriptionAr');
+      if (descriptionArError) return res.status(400).json({ error: descriptionArError });
     }
     // Real, confirmed fix found via self-audit: unlike the real
     // supplier submission endpoint (which validates these are

@@ -1467,12 +1467,14 @@ function ModerationPage({ onSessionExpired }) {
                         <span style={{ ...body, fontSize: 10.5, color: nameEn.length > 0 && (nameEn.length < 25 || nameEn.length > 100) ? C.red : C.muted }}>{nameEn.length}/100 (min 25)</span>
                       </div>
                       <div>
-                        <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 5 }}>English description (optional)</div>
+                        <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 5 }}>English description (required to approve)</div>
                         <input
                           value={descriptionEn}
                           onChange={(e) => setDescriptionEn(e.target.value)}
+                          maxLength={150}
                           style={{ ...body, width: "100%", border: `1px solid ${C.line}`, borderRadius: 8, padding: "9px 11px", fontSize: 13, boxSizing: "border-box" }}
                         />
+                        <span style={{ ...body, fontSize: 10.5, color: descriptionEn.length > 0 && (descriptionEn.length < 100 || descriptionEn.length > 150) ? C.red : C.muted }}>{descriptionEn.length}/150 (min 100)</span>
                       </div>
                       <div>
                         <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 5 }}>Arabic name (required to approve)</div>
@@ -1486,13 +1488,15 @@ function ModerationPage({ onSessionExpired }) {
                         <span style={{ ...body, fontSize: 10.5, color: nameAr.length > 0 && (nameAr.length < 25 || nameAr.length > 100) ? C.red : C.muted }}>{nameAr.length}/100 (min 25)</span>
                       </div>
                       <div>
-                        <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 5 }}>Arabic description (optional)</div>
+                        <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 5 }}>Arabic description (required to approve)</div>
                         <input
                           value={descriptionAr}
                           onChange={(e) => setDescriptionAr(e.target.value)}
                           dir="rtl"
+                          maxLength={150}
                           style={{ ...body, width: "100%", border: `1px solid ${C.line}`, borderRadius: 8, padding: "9px 11px", fontSize: 13, boxSizing: "border-box" }}
                         />
+                        <span style={{ ...body, fontSize: 10.5, color: descriptionAr.length > 0 && (descriptionAr.length < 100 || descriptionAr.length > 150) ? C.red : C.muted }}>{descriptionAr.length}/150 (min 100)</span>
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
@@ -2187,9 +2191,16 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
     setErrorMessage(null);
     setSaveSuccess(false);
     try {
-      await updateAdminProduct(getStoredToken(), productId, {
-        nameEn, nameAr,
-        descriptionEn: descriptionEn || null, descriptionAr: descriptionAr || null,
+      // Real, deliberate: only send these 4 real, length-validated
+      // fields when they genuinely differ from the real original
+      // loaded value. Description was previously optional -- many
+      // real, already-live products likely have none at all -- so
+      // always sending it unconditionally would have blocked saving
+      // ANY unrelated change (e.g. just updating stock) on those real
+      // products with a validation error on a field the admin never
+      // touched. undefined here correctly means "not being changed,"
+      // matching the backend's own already-established convention.
+      const payload = {
         category, part, position, oemNumber: oemNumber || null,
         stockQuantity: stockQuantity === "" ? undefined : Number(stockQuantity),
         lowStockThreshold: lowStockThreshold === "" ? undefined : Number(lowStockThreshold),
@@ -2199,7 +2210,12 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
         heightCm: heightCm === "" ? null : Number(heightCm),
         images,
         fitment: fitment.map((f) => ({ generationId: f.generationId, year: f.year, engineId: f.engineId, transmissionId: f.transmissionId })),
-      });
+      };
+      if (nameEn !== (product.name || "")) payload.nameEn = nameEn;
+      if (nameAr !== (product.nameAr || "")) payload.nameAr = nameAr;
+      if (descriptionEn !== (product.description || "")) payload.descriptionEn = descriptionEn;
+      if (descriptionAr !== (product.descriptionAr || "")) payload.descriptionAr = descriptionAr;
+      await updateAdminProduct(getStoredToken(), productId, payload);
       setSaveSuccess(true);
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();

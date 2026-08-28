@@ -326,7 +326,7 @@ router.get('/me/products', requireAuth, requireRole('supplier'), async (req, res
 // A fixed, real list rather than free text — "Position" in the SRS
 // cascade (Brand -> ... -> Category -> Part -> Position -> OEM Number)
 // means where on the vehicle the part sits, not a free-form description.
-const { ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS, validateNameLength } = require('../shared/productValidation');
+const { ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS, validateNameLength, validateDescriptionLength } = require('../shared/productValidation');
 
 router.post('/me/products', requireAuth, requireRole('supplier'), async (req, res, next) => {
   const {
@@ -364,6 +364,7 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
   // ---- Validation (fail loudly and specifically, not with one generic message) ----
   const missing = [];
   if (!nameZh) missing.push('nameZh');
+  if (!descriptionZh) missing.push('descriptionZh');
   if (!category) missing.push('category');
   if (!part) missing.push('part');
   if (!position) missing.push('position');
@@ -385,6 +386,10 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
   const nameLengthError = validateNameLength(nameZh, 'nameZh');
   if (nameLengthError) {
     return res.status(400).json({ error: nameLengthError });
+  }
+  const descLengthError = validateDescriptionLength(descriptionZh, 'descriptionZh');
+  if (descLengthError) {
+    return res.status(400).json({ error: descLengthError });
   }
   if (weightKg !== undefined && weightKg !== null && weightKg <= 0) {
     return res.status(400).json({ error: 'weightKg must be a positive number' });
