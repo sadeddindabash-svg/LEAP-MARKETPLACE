@@ -194,7 +194,7 @@ class _ProductDetailBody extends StatelessWidget {
   // The exact field labels requested, bilingual. Only these product-page
   // labels are translated in this pass — see LanguageState's header
   // comment for the honest scope boundary on the rest of the app's UI.
-  String get _lPartName => _isAr ? 'تصنيف القطعة' : 'Part Classification';
+  String get _lPartName => _isAr ? 'تصنيف المنتج' : 'Part Class.';
   String get _lBrand => _isAr ? 'الماركة' : 'Brand';
   String get _lModel => _isAr ? 'الموديل' : 'Model';
   String get _lYear => _isAr ? 'السنة' : 'Year';
