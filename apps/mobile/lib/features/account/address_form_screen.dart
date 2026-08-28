@@ -284,6 +284,16 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
               // whitespace, giving a genuinely clean country name
               // either way.
               flagState: CountryFlag.SHOW_IN_DROP_DOWN_ONLY,
+              dropdownDecoration: BoxDecoration(
+                color: palette.card,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: palette.line),
+              ),
+              disabledDropdownDecoration: BoxDecoration(
+                color: palette.card,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: palette.line),
+              ),
               currentCountry: _selectedCountry,
               currentCity: _selectedCity,
               onCountryChanged: (value) {
