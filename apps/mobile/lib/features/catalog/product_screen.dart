@@ -115,8 +115,13 @@ class _ProductScreenState extends State<ProductScreen> {
     try {
       await context.read<CartState>().addItem(product.id, _qty);
       if (mounted) {
+        final isAr = context.read<LanguageState>().isArabic;
+        final qtyPrefix = _qty > 1 ? '${_qty} × ' : '';
+        final message = isAr
+            ? 'تمت إضافة $qtyPrefix${product.name} إلى السلة'
+            : 'Added $qtyPrefix${product.name} to your basket';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Added ${_qty > 1 ? "$_qty × " : ""}${product.name} to your basket')),
+          SnackBar(content: Text(message)),
         );
       }
     } on ApiException catch (e) {
