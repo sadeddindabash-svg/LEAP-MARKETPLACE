@@ -805,10 +805,11 @@ router.patch('/me/products/:id', requireAuth, requireRole('supplier'), async (re
 router.get('/me/orders', requireAuth, requireRole('supplier'), async (req, res, next) => {
   try {
     const { rows: subOrders } = await db.query(
-      `SELECT so.id, so.order_id, so.status, so.tracking_number, so.hub_id, h.name AS hub_name, o.placed_at
+      `SELECT so.id, so.order_id, so.status, so.tracking_number, so.hub_id, h.name AS hub_name, h.address AS hub_address, o.placed_at, hs.id AS hub_shipment_id
        FROM supplier_sub_orders so
        JOIN orders o ON o.id = so.order_id
        LEFT JOIN hubs h ON h.id = so.hub_id
+       LEFT JOIN hub_shipments hs ON hs.sub_order_id = so.id
        WHERE so.supplier_id = $1
        ORDER BY o.placed_at DESC`,
       [req.user.supplierId]
@@ -829,6 +830,8 @@ router.get('/me/orders', requireAuth, requireRole('supplier'), async (req, res, 
         trackingNumber: so.tracking_number,
         hubId: so.hub_id,
         hubName: so.hub_name,
+        hubAddress: so.hub_address,
+        hubShipmentId: so.hub_shipment_id,
         placedAt: so.placed_at,
         items: items.map((i) => ({ productId: i.product_id, name: i.name, quantity: i.quantity, unitPrice: Number(i.unit_price) })),
       });
@@ -899,11 +902,14 @@ router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), asy
       return res.status(404).json({ error: 'Sub-order not found' });
     }
 
+    let hubShipmentId = null;
     if (status === 'shipped') {
       await client.query(
         `INSERT INTO hub_shipments (sub_order_id, hub_id) VALUES ($1, $2) ON CONFLICT (sub_order_id) DO NOTHING`,
         [rows[0].id, rows[0].hub_id]
       );
+      const { rows: hsRows } = await client.query('SELECT id FROM hub_shipments WHERE sub_order_id = $1', [rows[0].id]);
+      hubShipmentId = hsRows[0]?.id ?? null;
     }
 
     // Real trigger #1 (of the 4 confirmed for notifications — see
@@ -931,7 +937,7 @@ router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), asy
     // now happens FIRST -- a real, best-effort email send must never
     // be able to block the real, already-successful response if an
     // SMTP server is ever slow or unreachable.
-    res.json({ subOrderId: rows[0].id, orderId: rows[0].order_id, status: rows[0].status, trackingNumber: rows[0].tracking_number });
+    res.json({ subOrderId: rows[0].id, orderId: rows[0].order_id, status: rows[0].status, trackingNumber: rows[0].tracking_number, hubShipmentId });
 
     if (status === 'shipped') {
       (async () => {
