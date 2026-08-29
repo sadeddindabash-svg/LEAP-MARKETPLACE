@@ -6,7 +6,7 @@ import {
   LayoutGrid, PackageSearch, ShoppingBag, RotateCcw, MessageSquare, Wallet, Settings,
   Search, Bell, ChevronRight, ChevronLeft, TrendingUp, Plus, Upload, Download, Check, X,
   Star, MoreHorizontal, FileSpreadsheet, ImagePlus, Truck, Send, AlertTriangle, Store,
-  BadgeCheck, Building2, CreditCard, Bike, Disc, BatteryMedium,
+  BadgeCheck, Building2, CreditCard, Bike, Disc, BatteryMedium, Car,
   Lightbulb, Wrench, Fan, Cog, Languages, FileQuestion
 } from "lucide-react";
 import {
@@ -825,61 +825,9 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
           </div>
         )}
 
-        {/* ---- Basic info ---- */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-          <Field label={cascadeLabel("商品名称（中文）", "Product name (Chinese)")}>
-            <input style={inputStyle} placeholder="例如：前刹车盘 300mm" value={nameZh} onChange={(e) => setNameZh(e.target.value)} maxLength={100} />
-            <div style={{ fontSize: 10.5, color: nameZh.length > 0 && (nameZh.length < 25 || nameZh.length > 100) ? C.red : C.muted, marginTop: 2 }}>{nameZh.length}/100 (min 25)</div>
-          </Field>
-          <Field label={cascadeLabel("类别", "Category")}>
-            <select style={selectStyle} value={category} onChange={(e) => setCategory(e.target.value)}>
-              {categories.map(c => <option key={c.id} value={c.id}>{c.nameEn}</option>)}
-            </select>
-          </Field>
-          <Field label={cascadeLabel("部件类型", "Part Class.")}>
-            <select style={selectStyle} value={part} onChange={(e) => setPart(e.target.value)} disabled={isLoadingParts || parts.length === 0}>
-              {isLoadingParts && <option>{cascadeLabel("加载中…", "Loading…")}</option>}
-              {!isLoadingParts && parts.length === 0 && <option>{cascadeLabel("此类别暂无部件", "No parts yet for this category")}</option>}
-              {!isLoadingParts && parts.map(p => <option key={p.id} value={p.nameEn}>{p.nameEn}</option>)}
-            </select>
-          </Field>
-          <Field label={cascadeLabel("安装位置", "Position")}>
-            <select style={selectStyle} value={position} onChange={(e) => setPosition(e.target.value)}>
-              {POSITION_OPTIONS.map(p => <option key={p.id} value={p.id}>{p[lang]}</option>)}
-            </select>
-          </Field>
-          <Field label={cascadeLabel("OEM 编号", "OEM Number")}>
-            <input style={inputStyle} placeholder="e.g. 34116792217" value={oemNumber} onChange={(e) => setOemNumber(e.target.value)} />
-          </Field>
-          <Field label={cascadeLabel("价格 (¥ 人民币)", "Price (¥ RMB)")}>
-            <input type="number" step="0.01" style={inputStyle} placeholder="0.00" value={price} onChange={(e) => setPrice(e.target.value)} />
-          </Field>
-          <Field label={cascadeLabel("库存数量", "Stock quantity")}>
-            <input type="number" style={inputStyle} placeholder="0" value={stock} onChange={(e) => setStock(e.target.value)} />
-          </Field>
-          <Field label={cascadeLabel("重量 (kg)", "Weight (kg)")}>
-            <input type="number" step="0.01" min="0" style={inputStyle} placeholder="0.00" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} />
-          </Field>
-          <Field label={cascadeLabel("长度 (cm)", "Length (cm)")}>
-            <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={lengthCm} onChange={(e) => setLengthCm(e.target.value)} />
-          </Field>
-          <Field label={cascadeLabel("宽度 (cm)", "Width (cm)")}>
-            <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={widthCm} onChange={(e) => setWidthCm(e.target.value)} />
-          </Field>
-          <Field label={cascadeLabel("高度 (cm)", "Height (cm)")}>
-            <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={heightCm} onChange={(e) => setHeightCm(e.target.value)} />
-          </Field>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <Field label={cascadeLabel("商品描述（中文）", "Description (Chinese)")}>
-              <textarea style={{ ...inputStyle, height: 70, resize: "none" }} value={descriptionZh} onChange={(e) => setDescriptionZh(e.target.value)} maxLength={150} />
-              <div style={{ fontSize: 10.5, color: descriptionZh.length > 0 && (descriptionZh.length < 100 || descriptionZh.length > 150) ? C.red : C.muted, marginTop: 2 }}>{descriptionZh.length}/150 (min 100)</div>
-            </Field>
-          </div>
-        </div>
-
-        {/* ---- Fitment cascade ---- */}
-        <div>
-          <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 10 }}>
+        {/* ---- Vehicle Fitment ---- */}
+        <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, padding: 18 }}>
+          <div style={{ ...font, fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 14 }}>
             {cascadeLabel("适配车型", "Vehicle Fitment")}
           </div>
           {prefill?.generationId ? (
@@ -887,60 +835,129 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
               {prefill.vehicleLabel} <span style={{ color: C.muted, fontSize: 11.5 }}>({cascadeLabel("已由买家选定，不可更改", "already chosen by the buyer, can't be changed")})</span>
             </div>
           ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-            <Field label={cascadeLabel("品牌", "Brand")}>
-              <select style={selectStyle} value={selectedBrandId} onChange={(e) => handleBrandChange(e.target.value)}>
-                <option value="">{cascadeLabel("请选择", "Select…")}</option>
-                {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
-            </Field>
-            <Field label={cascadeLabel("车型", "Model")}>
-              <select style={selectStyle} value={selectedModelId} onChange={(e) => handleModelChange(e.target.value)} disabled={!selectedBrandId}>
-                <option value="">{cascadeLabel("请选择", "Select…")}</option>
-                {models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
-            </Field>
-            <Field label={cascadeLabel("世代", "Generation")}>
-              <select style={selectStyle} value={selectedGenerationId} onChange={(e) => handleGenerationChange(e.target.value)} disabled={!selectedModelId}>
-                <option value="">{cascadeLabel("请选择", "Select…")}</option>
-                {generations.map(g => <option key={g.id} value={g.id}>{g.name} ({g.yearStart}–{g.yearEnd || cascadeLabel("至今", "present")})</option>)}
-              </select>
-            </Field>
-            <Field label={cascadeLabel("年份", "Year")}>
-              <select style={selectStyle} value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} disabled={!selectedGenerationId}>
-                <option value="">{cascadeLabel("请选择", "Select…")}</option>
-                {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </Field>
-            <Field label={cascadeLabel("发动机（选填）", "Engine (optional)")}>
-              <select style={selectStyle} value={selectedEngineId} onChange={(e) => setSelectedEngineId(e.target.value)} disabled={!selectedGenerationId}>
-                <option value="">{cascadeLabel("任意发动机", "Any engine")}</option>
-                {engines.map(en => <option key={en.id} value={en.id}>{en.name}</option>)}
-              </select>
-            </Field>
-            <Field label={cascadeLabel("变速箱（选填）", "Transmission (optional)")}>
-              <select style={selectStyle} value={selectedTransmissionId} onChange={(e) => setSelectedTransmissionId(e.target.value)} disabled={!selectedGenerationId}>
-                <option value="">{cascadeLabel("任意变速箱", "Any transmission")}</option>
-                {transmissions.map(tr => <option key={tr.id} value={tr.id}>{tr.name}</option>)}
-              </select>
-            </Field>
-          </div>
-          )}
-          {selectedModel?.photoUrl && (
-            <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10 }}>
-              <img
-                src={`${API_BASE_URL}${selectedModel.photoUrl}`}
-                alt={selectedModel.name}
-                style={{ width: 96, height: 72, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.line}` }}
-              />
-              <div style={{ ...font, fontSize: 12, color: C.muted }}>{f.vehiclePhotoHint}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
+            <div>
+              <div style={{ ...font, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 8 }}>{cascadeLabel("车辆信息", "Car details")}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <Field label={cascadeLabel("品牌", "Brand")}>
+                  <select style={selectStyle} value={selectedBrandId} onChange={(e) => handleBrandChange(e.target.value)}>
+                    <option value="">{cascadeLabel("请选择", "Select…")}</option>
+                    {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                </Field>
+                <Field label={cascadeLabel("车型", "Model")}>
+                  <select style={selectStyle} value={selectedModelId} onChange={(e) => handleModelChange(e.target.value)} disabled={!selectedBrandId}>
+                    <option value="">{cascadeLabel("请选择", "Select…")}</option>
+                    {models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+                </Field>
+                <Field label={cascadeLabel("世代", "Generation")}>
+                  <select style={selectStyle} value={selectedGenerationId} onChange={(e) => handleGenerationChange(e.target.value)} disabled={!selectedModelId}>
+                    <option value="">{cascadeLabel("请选择", "Select…")}</option>
+                    {generations.map(g => <option key={g.id} value={g.id}>{g.name} ({g.yearStart}–{g.yearEnd || cascadeLabel("至今", "present")})</option>)}
+                  </select>
+                </Field>
+                <Field label={cascadeLabel("年份", "Year")}>
+                  <select style={selectStyle} value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} disabled={!selectedGenerationId}>
+                    <option value="">{cascadeLabel("请选择", "Select…")}</option>
+                    {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                </Field>
+                <Field label={cascadeLabel("发动机（选填）", "Engine (optional)")}>
+                  <select style={selectStyle} value={selectedEngineId} onChange={(e) => setSelectedEngineId(e.target.value)} disabled={!selectedGenerationId}>
+                    <option value="">{cascadeLabel("任意发动机", "Any engine")}</option>
+                    {engines.map(en => <option key={en.id} value={en.id}>{en.name}</option>)}
+                  </select>
+                </Field>
+                <Field label={cascadeLabel("变速箱（选填）", "Transmission (optional)")}>
+                  <select style={selectStyle} value={selectedTransmissionId} onChange={(e) => setSelectedTransmissionId(e.target.value)} disabled={!selectedGenerationId}>
+                    <option value="">{cascadeLabel("任意变速箱", "Any transmission")}</option>
+                    {transmissions.map(tr => <option key={tr.id} value={tr.id}>{tr.name}</option>)}
+                  </select>
+                </Field>
+              </div>
             </div>
+            <div>
+              <div style={{ ...font, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 8 }}>{cascadeLabel("车辆照片", "Car photo")}</div>
+              <div style={{ width: "100%", aspectRatio: "1 / 1", borderRadius: 10, border: `1px solid ${C.line}`, background: C.canvas, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                {selectedModel?.photoUrl ? (
+                  <img
+                    src={`${API_BASE_URL}${selectedModel.photoUrl}`}
+                    alt={selectedModel.name}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                ) : (
+                  <Car size={36} color={C.muted} />
+                )}
+              </div>
+              {selectedModel?.photoUrl && (
+                <div style={{ ...font, fontSize: 11.5, color: C.muted, marginTop: 6 }}>{f.vehiclePhotoHint}</div>
+              )}
+            </div>
+          </div>
           )}
         </div>
 
-        {/* ---- Photos ---- */}
-        <div>
-          <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 4 }}>
+        {/* ---- Product Details ---- */}
+        <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, padding: 18 }}>
+          <div style={{ ...font, fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 14 }}>
+            {cascadeLabel("商品详情", "Product Details")}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <Field label={cascadeLabel("商品名称（中文）", "Product name (Chinese)")}>
+              <input style={inputStyle} placeholder="例如：前刹车盘 300mm" value={nameZh} onChange={(e) => setNameZh(e.target.value)} maxLength={100} />
+              <div style={{ fontSize: 10.5, color: nameZh.length > 0 && (nameZh.length < 25 || nameZh.length > 100) ? C.red : C.muted, marginTop: 2 }}>{nameZh.length}/100 (min 25)</div>
+            </Field>
+            <Field label={cascadeLabel("类别", "Category")}>
+              <select style={selectStyle} value={category} onChange={(e) => setCategory(e.target.value)}>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.nameEn}</option>)}
+              </select>
+            </Field>
+            <Field label={cascadeLabel("部件类型", "Part Class.")}>
+              <select style={selectStyle} value={part} onChange={(e) => setPart(e.target.value)} disabled={isLoadingParts || parts.length === 0}>
+                {isLoadingParts && <option>{cascadeLabel("加载中…", "Loading…")}</option>}
+                {!isLoadingParts && parts.length === 0 && <option>{cascadeLabel("此类别暂无部件", "No parts yet for this category")}</option>}
+                {!isLoadingParts && parts.map(p => <option key={p.id} value={p.nameEn}>{p.nameEn}</option>)}
+              </select>
+            </Field>
+            <Field label={cascadeLabel("安装位置", "Position")}>
+              <select style={selectStyle} value={position} onChange={(e) => setPosition(e.target.value)}>
+                {POSITION_OPTIONS.map(p => <option key={p.id} value={p.id}>{p[lang]}</option>)}
+              </select>
+            </Field>
+            <Field label={cascadeLabel("OEM 编号", "OEM Number")}>
+              <input style={inputStyle} placeholder="e.g. 34116792217" value={oemNumber} onChange={(e) => setOemNumber(e.target.value)} />
+            </Field>
+            <Field label={cascadeLabel("价格 (¥ 人民币)", "Price (¥ RMB)")}>
+              <input type="number" step="0.01" style={inputStyle} placeholder="0.00" value={price} onChange={(e) => setPrice(e.target.value)} />
+            </Field>
+            <Field label={cascadeLabel("库存数量", "Stock quantity")}>
+              <input type="number" style={inputStyle} placeholder="0" value={stock} onChange={(e) => setStock(e.target.value)} />
+            </Field>
+            <Field label={cascadeLabel("重量 (kg)", "Weight (kg)")}>
+              <input type="number" step="0.01" min="0" style={inputStyle} placeholder="0.00" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} />
+            </Field>
+            <Field label={cascadeLabel("长度 (cm)", "Length (cm)")}>
+              <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={lengthCm} onChange={(e) => setLengthCm(e.target.value)} />
+            </Field>
+            <Field label={cascadeLabel("宽度 (cm)", "Width (cm)")}>
+              <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={widthCm} onChange={(e) => setWidthCm(e.target.value)} />
+            </Field>
+            <Field label={cascadeLabel("高度 (cm)", "Height (cm)")}>
+              <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={heightCm} onChange={(e) => setHeightCm(e.target.value)} />
+            </Field>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <Field label={cascadeLabel("商品描述（中文）", "Description (Chinese)")}>
+                <textarea style={{ ...inputStyle, height: 70, resize: "none" }} value={descriptionZh} onChange={(e) => setDescriptionZh(e.target.value)} maxLength={150} />
+                <div style={{ fontSize: 10.5, color: descriptionZh.length > 0 && (descriptionZh.length < 100 || descriptionZh.length > 150) ? C.red : C.muted, marginTop: 2 }}>{descriptionZh.length}/150 (min 100)</div>
+              </Field>
+            </div>
+          </div>
+        </div>
+
+        {/* ---- Product Photos ---- */}
+        <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, padding: 18 }}>
+          <div style={{ ...font, fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 4 }}>
             {cascadeLabel(`商品照片（至少 ${MIN_PRODUCT_PHOTOS} 张，高清）`, `Product Photos (at least ${MIN_PRODUCT_PHOTOS}, high resolution)`)}
           </div>
           <div style={{ ...font, fontSize: 11, color: C.muted, marginBottom: 10 }}>

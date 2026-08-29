@@ -68,7 +68,7 @@ describe('Add Product form — real category/part cascading dropdowns (mocked fe
     await loginAndOpenAddProduct();
 
     await waitFor(() => screen.getByText('Front Brake Disc'));
-    const categorySelect = screen.getAllByRole('combobox')[0];
+    const categorySelect = screen.getByText('Brake System').closest('select');
     fireEvent.change(categorySelect, { target: { value: 'filters' } });
 
     await waitFor(() => expect(screen.getByText('Air Filter')).toBeInTheDocument());
