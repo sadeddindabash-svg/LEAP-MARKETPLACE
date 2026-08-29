@@ -1,0 +1,66 @@
+name: leap_hub_mobile
+description: Leap Auto Parts Marketplace — inspection hub staff mobile app. Replaces apps/hub-portal (web) once verified solid in real use.
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Explicit (transitive dep of `http`) -- needed directly to set a
+  # real MediaType/content-type on evidence photo uploads, same reason
+  # as apps/mobile's api_client.dart (_mediaTypeFor).
+  http_parser: ^4.1.0
+  cupertino_icons: ^1.0.6
+  provider: ^6.1.2               # same state-management choice as apps/mobile, for consistency
+  http: ^1.2.1                   # API client to services/api
+  flutter_secure_storage: ^9.2.2 # auth token + language preference storage -- never plain SharedPreferences for a token
+  image_picker: ^1.1.2           # evidence photo capture -- camera-first, see EvidencePhotoPicker's own header comment
+  # Real native QR/barcode scanning -- the whole reason for this
+  # rebuild over the web portal. The web hub-portal's own README
+  # explicitly deferred this: "needs a real barcode-decoding library
+  # dependency and can't be meaningfully verified without a physical
+  # camera and a real printed barcode to scan against, neither
+  # available in this environment." Native mobile removes both
+  # blockers -- confirmed with the person this is the actual scanning
+  # library to use, matching what a real device build can verify.
+  mobile_scanner: ^6.0.2
+  cached_network_image: ^3.4.1   # same real reasoning as apps/mobile: evidence/product photos re-fetched from the network on every scroll otherwise
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.1
+  flutter_native_splash: ^2.4.4
+
+flutter:
+  uses-material-design: true
+
+# Run `flutter pub run flutter_launcher_icons` after `flutter create .`
+# has generated the real android/ (and ios/) platform folders, and
+# after placing a real source icon at assets/icon/icon.png (1024x1024)
+# -- same real setup steps as apps/mobile's own README section.
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icon/icon.png"
+  min_sdk_android: 21
+
+# Real splash screen, on this app's own real signal-orange brand color
+# (see core/theme.dart) -- deliberately NOT apps/mobile's gold, since
+# the web hub-portal already established its own distinct real color
+# identity (C.signal: #E8622C) and this rebuild preserves it rather
+# than silently reusing the buyer app's palette.
+flutter_native_splash:
+  color: "#E8622C"
+  image: "assets/images/leap_hub_splash_wordmark.png"
+  color_dark: "#14171C"
+  image_dark: "assets/images/leap_hub_splash_wordmark.png"
+  android_12:
+    color: "#E8622C"
+    image: "assets/images/leap_hub_splash_wordmark.png"
+    color_dark: "#14171C"
+    image_dark: "assets/images/leap_hub_splash_wordmark.png"
