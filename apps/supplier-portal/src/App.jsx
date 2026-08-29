@@ -6,7 +6,7 @@ import {
   LayoutGrid, PackageSearch, ShoppingBag, RotateCcw, MessageSquare, Wallet, Settings,
   Search, Bell, ChevronRight, ChevronLeft, TrendingUp, Plus, Upload, Download, Check, X,
   Star, MoreHorizontal, FileSpreadsheet, ImagePlus, Truck, Send, AlertTriangle, Store,
-  BadgeCheck, Building2, CreditCard, Bike, Disc, BatteryMedium, Car,
+  BadgeCheck, Building2, CreditCard, Bike, Disc, BatteryMedium, Car, Video,
   Lightbulb, Wrench, Fan, Cog, Languages, FileQuestion
 } from "lucide-react";
 import {
@@ -23,7 +23,7 @@ import {
   fetchMyOrders, updateSubOrder, fetchMyReturnCases, fetchMyReturnCaseById, replyToReturnCase,
   fetchMyOverview,
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
-  uploadProductImage, API_BASE_URL,
+  uploadProductImage, uploadProductVideo, fetchProductRequirements, API_BASE_URL,
   fetchCategories, fetchPartsForCategory,
   fetchMyMessages, sendMyMessage,
   fetchMyPayoutMethod, updateMyPayoutMethod,
@@ -587,6 +587,29 @@ function useInputStyle() {
   return { ...font, width: "100%", border: `1px solid ${C.line}`, borderRadius: 8, padding: "9px 11px", fontSize: 13, outline: "none", boxSizing: "border-box" };
 }
 
+// Real, fast, in-browser video duration check -- reads a real video
+// file's own metadata via a temporary <video> element, without ever
+// uploading it, so an obviously-too-long video is rejected instantly
+// rather than after a slow real upload. Deliberately NOT the real
+// authoritative check (that's the real, server-side ffprobe check) --
+// this is purely for fast real feedback, since a client-side check
+// alone could always be bypassed.
+function getVideoDurationClientSide(file) {
+  return new Promise((resolve, reject) => {
+    const videoEl = document.createElement('video');
+    videoEl.preload = 'metadata';
+    videoEl.onloadedmetadata = () => {
+      URL.revokeObjectURL(videoEl.src);
+      resolve(videoEl.duration);
+    };
+    videoEl.onerror = () => {
+      URL.revokeObjectURL(videoEl.src);
+      reject(new Error('Could not read this video file'));
+    };
+    videoEl.src = URL.createObjectURL(file);
+  });
+}
+
 // Matches the backend's ALLOWED_POSITIONS exactly (see
 // services/api/src/modules/supplier/routes.js) — a fixed, real list,
 // not free text, since "Position" means where on the vehicle the part
@@ -645,6 +668,19 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
   // Photos
   const [photos, setPhotos] = useState([]); // [{ url, width, height }]
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+
+  // Confirmed with the person: exactly one real product video, admin-
+  // configurable max duration -- checked client-side first (fast
+  // feedback, no wasted upload) and server-side too (the real,
+  // authoritative check, since a client-side check alone could be
+  // bypassed).
+  const [video, setVideo] = useState(null); // { url, durationSeconds } | null
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [requirements, setRequirements] = useState({ minPhotos: 4, photosRequired: true, videoRequired: true, maxVideoDurationSeconds: 8 });
+
+  useEffect(() => {
+    fetchProductRequirements().then(setRequirements).catch(() => {}); // non-critical -- falls back to the real defaults above
+  }, []);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -740,6 +776,36 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
 
   const removePhoto = (url) => setPhotos((prev) => prev.filter((p) => p.url !== url));
 
+  const handleVideoSelect = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setError(null);
+    try {
+      const durationSeconds = await getVideoDurationClientSide(file);
+      if (durationSeconds > requirements.maxVideoDurationSeconds) {
+        setError(cascadeLabel(
+          `视频过长（${durationSeconds.toFixed(1)} 秒）。最长不能超过 ${requirements.maxVideoDurationSeconds} 秒。`,
+          `Video is too long (${durationSeconds.toFixed(1)}s). Must be ${requirements.maxVideoDurationSeconds}s or less.`
+        ));
+        return;
+      }
+    } catch (e2) {
+      setError(e2.message);
+      return;
+    }
+    setIsUploadingVideo(true);
+    try {
+      const result = await uploadProductVideo(getStoredToken(), file);
+      setVideo(result);
+    } catch (err) {
+      setError(err.message);
+    }
+    setIsUploadingVideo(false);
+  };
+
+  const removeVideo = () => setVideo(null);
+
   const handleSubmit = async () => {
     const missing = [];
     if (!nameZh.trim()) missing.push(lang === "zh" ? "商品名称" : "product name");
@@ -748,7 +814,8 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
     if (!price) missing.push(lang === "zh" ? "价格" : "price");
     if (!selectedGenerationId) missing.push(lang === "zh" ? "车型世代" : "vehicle generation");
     if (!selectedYear) missing.push(lang === "zh" ? "年份" : "year");
-    if (photos.length < MIN_PRODUCT_PHOTOS) missing.push(lang === "zh" ? `至少 ${MIN_PRODUCT_PHOTOS} 张照片` : `at least ${MIN_PRODUCT_PHOTOS} photos`);
+    if (requirements.photosRequired && photos.length !== requirements.minPhotos) missing.push(lang === "zh" ? `${requirements.minPhotos} 张照片` : `exactly ${requirements.minPhotos} photos`);
+    if (requirements.videoRequired && !video) missing.push(lang === "zh" ? "商品视频" : "product video");
     if (!weightKg) missing.push(lang === "zh" ? "重量" : "weight");
     if (!lengthCm) missing.push(lang === "zh" ? "长度" : "length");
     if (!widthCm) missing.push(lang === "zh" ? "宽度" : "width");
@@ -780,6 +847,7 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
           transmissionId: selectedTransmissionId || undefined,
         },
         images: photos.map((p) => p.url),
+        videoUrl: video?.url || undefined,
         weightKg: parseFloat(weightKg),
         lengthCm: parseFloat(lengthCm),
         widthCm: parseFloat(widthCm),
@@ -797,6 +865,7 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
         setWeightKg(""); setLengthCm(""); setWidthCm(""); setHeightCm("");
         setPosition(POSITION_OPTIONS[0].id);
         setPhotos([]);
+        setVideo(null);
         setPart(parts.length > 0 ? parts[0].nameEn : "");
         setIsSubmitting(false);
         setSaveSuccess(true);
@@ -951,32 +1020,75 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
         {/* ---- Product Photos ---- */}
         <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, padding: 18 }}>
           <div style={{ ...font, fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 4 }}>
-            {cascadeLabel(`商品照片（至少 ${MIN_PRODUCT_PHOTOS} 张，高清）`, `Product Photos (at least ${MIN_PRODUCT_PHOTOS}, high resolution)`)}
+            {cascadeLabel(
+              `商品照片（${requirements.minPhotos} 张${requirements.photosRequired ? "，必填" : "，选填"}，高清）`,
+              `Product Photos (${requirements.minPhotos}${requirements.photosRequired ? ", required" : ", optional"}, high resolution)`
+            )}
           </div>
           <div style={{ ...font, fontSize: 11, color: C.muted, marginBottom: 10 }}>
             {cascadeLabel("最短边至少 800 像素。", "Shortest side must be at least 800px.")}
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {photos.map((p) => (
-              <div key={p.url} style={{ position: "relative", width: 84, height: 84 }}>
-                <img src={`${API_BASE_URL}${p.url}`} alt="" style={{ width: 84, height: 84, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.line}` }} />
-                <button
-                  onClick={() => removePhoto(p.url)}
-                  style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", border: "none", background: C.red, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            ))}
+            {Array.from({ length: requirements.minPhotos }, (_, i) => i).map((i) => {
+              const p = photos[i];
+              if (p) {
+                return (
+                  <div key={p.url} style={{ position: "relative", width: 84, height: 84 }}>
+                    <img src={`${API_BASE_URL}${p.url}`} alt="" style={{ width: 84, height: 84, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.line}` }} />
+                    <button
+                      onClick={() => removePhoto(p.url)}
+                      style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", border: "none", background: C.red, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                );
+              }
+              return (
+                <label key={i} style={{
+                  width: 84, height: 84, borderRadius: 8, border: `1.5px dashed ${C.line}`, display: "flex",
+                  flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, cursor: "pointer", color: C.muted,
+                }}>
+                  {isUploadingPhoto ? <span style={{ fontSize: 11 }}>...</span> : <ImagePlus size={20} />}
+                  <span style={{ fontSize: 10 }}>{cascadeLabel("添加", "Add")}</span>
+                  <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={handlePhotoSelect} disabled={isUploadingPhoto} />
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ---- Product Video ---- */}
+        <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, padding: 18 }}>
+          <div style={{ ...font, fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 4 }}>
+            {cascadeLabel(
+              `商品视频（${requirements.videoRequired ? "必填" : "选填"}，最长 ${requirements.maxVideoDurationSeconds} 秒）`,
+              `Product Video (${requirements.videoRequired ? "required" : "optional"}, max ${requirements.maxVideoDurationSeconds}s)`
+            )}
+          </div>
+          <div style={{ ...font, fontSize: 11, color: C.muted, marginBottom: 10 }}>
+            {cascadeLabel("视频过长将被拒绝上传。", "A video longer than the limit will be rejected.")}
+          </div>
+          {video ? (
+            <div style={{ position: "relative", width: 160, height: 120 }}>
+              <video src={`${API_BASE_URL}${video.url}`} controls style={{ width: 160, height: 120, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.line}` }} />
+              <button
+                onClick={removeVideo}
+                style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", border: "none", background: C.red, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ) : (
             <label style={{
-              width: 84, height: 84, borderRadius: 8, border: `1.5px dashed ${C.line}`, display: "flex",
+              width: 160, height: 120, borderRadius: 8, border: `1.5px dashed ${C.line}`, display: "flex",
               flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, cursor: "pointer", color: C.muted,
             }}>
-              {isUploadingPhoto ? <span style={{ fontSize: 11 }}>...</span> : <ImagePlus size={20} />}
-              <span style={{ fontSize: 10 }}>{cascadeLabel("添加", "Add")}</span>
-              <input type="file" accept="image/jpeg,image/png,image/webp" multiple style={{ display: "none" }} onChange={handlePhotoSelect} disabled={isUploadingPhoto} />
+              {isUploadingVideo ? <span style={{ fontSize: 11 }}>...</span> : <Video size={22} />}
+              <span style={{ fontSize: 10 }}>{cascadeLabel("添加视频", "Add video")}</span>
+              <input type="file" accept="video/mp4,video/webm,video/quicktime" style={{ display: "none" }} onChange={handleVideoSelect} disabled={isUploadingVideo} />
             </label>
-          </div>
+          )}
         </div>
 
         <div style={{ ...font, fontSize: 11, color: C.muted, background: C.canvas, borderRadius: 8, padding: 10 }}>

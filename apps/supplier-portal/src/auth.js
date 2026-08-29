@@ -133,6 +133,26 @@ export async function uploadProductImage(token, file) {
   return data; // { url, width, height }
 }
 
+export async function uploadProductVideo(token, file) {
+  const formData = new FormData();
+  formData.append("video", file);
+  const response = await fetch(`${API_BASE_URL}/uploads/product-video`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Upload failed (${response.status})`);
+  return data; // { url, durationSeconds }
+}
+
+export async function fetchProductRequirements() {
+  const response = await fetch(`${API_BASE_URL}/catalog/product-requirements`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
 export function updateProduct(token, productId, updates) {
   return authedMutate("PATCH", `/supplier/me/products/${productId}`, token, updates);
 }
