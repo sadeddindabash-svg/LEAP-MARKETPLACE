@@ -797,8 +797,7 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
         setWeightKg(""); setLengthCm(""); setWidthCm(""); setHeightCm("");
         setPosition(POSITION_OPTIONS[0].id);
         setPhotos([]);
-        if (categories.length > 0) setCategory(categories[0].id);
-        setPart("");
+        setPart(parts.length > 0 ? parts[0].nameEn : "");
         setIsSubmitting(false);
         setSaveSuccess(true);
         onCreated();
