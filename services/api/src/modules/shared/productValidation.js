@@ -17,10 +17,18 @@ function validateTextLength(text, fieldLabel, min, max) {
   return null;
 }
 
-// Real, confirmed with the person: enforced everywhere a real product
-// name can be entered -- the real supplier's own initial submission,
-// the real admin's own approval step, and the real admin's own later
-// edit.
+// Real, confirmed with the person: the real supplier's own initial
+// submission now only needs a real minimum of 10 characters (down
+// from 25) -- the real admin's own approval step and later edit stay
+// completely unchanged at the real original 25-100 range. Two
+// separate real rules now, not one shared one, since suppliers and
+// admins genuinely need different real minimums.
+const MIN_SUPPLIER_NAME_LENGTH = 10;
+const MAX_SUPPLIER_NAME_LENGTH = 100;
+function validateSupplierNameLength(name, fieldLabel) {
+  return validateTextLength(name, fieldLabel, MIN_SUPPLIER_NAME_LENGTH, MAX_SUPPLIER_NAME_LENGTH);
+}
+
 const MIN_NAME_LENGTH = 25;
 const MAX_NAME_LENGTH = 100;
 function validateNameLength(name, fieldLabel) {
@@ -45,6 +53,7 @@ function validateDescriptionLength(description, fieldLabel) {
 
 module.exports = {
   ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS,
+  MIN_SUPPLIER_NAME_LENGTH, MAX_SUPPLIER_NAME_LENGTH, validateSupplierNameLength,
   MIN_NAME_LENGTH, MAX_NAME_LENGTH, validateNameLength,
   MIN_DESCRIPTION_LENGTH, MAX_DESCRIPTION_LENGTH, validateDescriptionLength,
 };

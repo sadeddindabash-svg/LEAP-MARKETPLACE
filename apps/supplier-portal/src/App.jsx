@@ -906,7 +906,7 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             <Field label={cascadeLabel("商品名称（中文）", "Product name (Chinese)")}>
               <input style={inputStyle} placeholder="例如：前刹车盘 300mm" value={nameZh} onChange={(e) => setNameZh(e.target.value)} maxLength={100} />
-              <div style={{ fontSize: 10.5, color: nameZh.length > 0 && (nameZh.length < 25 || nameZh.length > 100) ? C.red : C.muted, marginTop: 2 }}>{nameZh.length}/100 (min 25)</div>
+              <div style={{ fontSize: 10.5, color: nameZh.length > 0 && (nameZh.length < 10 || nameZh.length > 100) ? C.red : C.muted, marginTop: 2 }}>{nameZh.length}/100 (min 10)</div>
             </Field>
             <Field label={cascadeLabel("类别", "Category")}>
               <select style={selectStyle} value={category} onChange={(e) => setCategory(e.target.value)}>
@@ -946,12 +946,6 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
             <Field label={cascadeLabel("高度 (cm)", "Height (cm)")}>
               <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={heightCm} onChange={(e) => setHeightCm(e.target.value)} />
             </Field>
-            <div style={{ gridColumn: "1 / -1" }}>
-              <Field label={cascadeLabel("商品描述（中文）", "Description (Chinese)")}>
-                <textarea style={{ ...inputStyle, height: 70, resize: "none" }} value={descriptionZh} onChange={(e) => setDescriptionZh(e.target.value)} maxLength={150} />
-                <div style={{ fontSize: 10.5, color: descriptionZh.length > 0 && (descriptionZh.length < 100 || descriptionZh.length > 150) ? C.red : C.muted, marginTop: 2 }}>{descriptionZh.length}/150 (min 100)</div>
-              </Field>
-            </div>
           </div>
         </div>
 
