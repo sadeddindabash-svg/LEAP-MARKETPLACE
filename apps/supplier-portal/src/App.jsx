@@ -82,6 +82,8 @@ const STRINGS = {
         descLabel: "商品描述", descPlaceholder: "材质、工艺、认证信息等",
         imageLabel: "商品图片", imageHint: "点击或拖拽上传图片（建议 1000×1000px 以上）",
         cancel: "取消", submit: "提交平台审核",
+        savedKeepFitment: "商品已添加。车型信息已保留，可继续添加同一车型的其他商品。",
+        vehiclePhotoHint: "请核对车型图片，确认车型无误",
       },
       bulk: {
         title: "批量上传商品", templateTitle: "批量导入模板（.xlsx）", templateSub: "包含商品信息与车型适配字段，请勿更改表头",
@@ -176,6 +178,8 @@ const STRINGS = {
         descLabel: "Description", descPlaceholder: "Materials, construction, certifications, etc.",
         imageLabel: "Product images", imageHint: "Click or drag to upload (1000\u00d71000px or larger recommended)",
         cancel: "Cancel", submit: "Submit for platform review",
+        savedKeepFitment: "Product added. Vehicle fitment kept \u2014 keep adding more products for the same vehicle.",
+        vehiclePhotoHint: "Check the vehicle photo to confirm this is the right one",
       },
       bulk: {
         title: "Bulk upload products", templateTitle: "Bulk import template (.xlsx)", templateSub: "Includes product and fitment fields \u2014 do not change the header row",
@@ -600,7 +604,7 @@ const POSITION_OPTIONS = [
 ];
 const MIN_PRODUCT_PHOTOS = 3;
 
-function AddProductForm({ onCancel, onCreated, prefill }) {
+function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = false }) {
   const { t, lang } = useLang();
   const { onSessionExpired } = useSupplier();
   const f = t.products.addForm;
@@ -623,6 +627,7 @@ function AddProductForm({ onCancel, onCreated, prefill }) {
   const [lengthCm, setLengthCm] = useState("");
   const [widthCm, setWidthCm] = useState("");
   const [heightCm, setHeightCm] = useState("");
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Fitment cascade
   const [brands, setBrands] = useState([]);
@@ -708,6 +713,7 @@ function AddProductForm({ onCancel, onCreated, prefill }) {
     } catch (e) { setError(e.message); }
   };
 
+  const selectedModel = models.find((m) => m.id === selectedModelId);
   const selectedGeneration = generations.find((g) => g.id === selectedGenerationId);
   const yearOptions = selectedGeneration
     ? Array.from(
@@ -755,6 +761,7 @@ function AddProductForm({ onCancel, onCreated, prefill }) {
 
     setIsSubmitting(true);
     setError(null);
+    setSaveSuccess(false);
     try {
       await createProduct(getStoredToken(), {
         nameZh: nameZh.trim(),
@@ -779,7 +786,25 @@ function AddProductForm({ onCancel, onCreated, prefill }) {
         heightCm: parseFloat(heightCm),
         fulfillsRequestItemId: prefill?.fulfillsRequestItemId || undefined,
       });
-      onCreated();
+      if (staysOpenAfterSave) {
+        // Real, confirmed with the person: reset every real field
+        // except the real fitment cascade -- a supplier listing many
+        // real parts for the same real car shouldn't have to re-pick
+        // brand/model/generation/year/engine/transmission every
+        // single time, only until they themselves change it.
+        setNameZh(""); setDescriptionZh("");
+        setOemNumber(""); setPrice(""); setStock("");
+        setWeightKg(""); setLengthCm(""); setWidthCm(""); setHeightCm("");
+        setPosition(POSITION_OPTIONS[0].id);
+        setPhotos([]);
+        if (categories.length > 0) setCategory(categories[0].id);
+        setPart("");
+        setIsSubmitting(false);
+        setSaveSuccess(true);
+        onCreated();
+      } else {
+        onCreated();
+      }
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
       setError(err.message);
@@ -793,6 +818,12 @@ function AddProductForm({ onCancel, onCreated, prefill }) {
   return (
     <Card title={f.title} action={<button onClick={onCancel} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={17} color={C.muted} /></button>}>
       <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 20 }}>
+
+        {saveSuccess && (
+          <div style={{ ...font, padding: "10px 14px", borderRadius: 8, background: "#EAF7EE", border: "1px solid #B7E4C4", color: "#1E7A34", fontSize: 13, fontWeight: 600 }}>
+            {f.savedKeepFitment}
+          </div>
+        )}
 
         {/* ---- Basic info ---- */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
@@ -894,6 +925,16 @@ function AddProductForm({ onCancel, onCreated, prefill }) {
               </select>
             </Field>
           </div>
+          )}
+          {selectedModel?.photoUrl && (
+            <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10 }}>
+              <img
+                src={`${API_BASE_URL}${selectedModel.photoUrl}`}
+                alt={selectedModel.name}
+                style={{ width: 96, height: 72, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.line}` }}
+              />
+              <div style={{ ...font, fontSize: 12, color: C.muted }}>{f.vehiclePhotoHint}</div>
+            </div>
           )}
         </div>
 
@@ -1697,7 +1738,7 @@ function ProductsPage() {
   };
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (mode === "add") return <div style={{ padding: 24 }}><AddProductForm onCancel={() => setMode("list")} onCreated={() => { setMode("list"); load(); }} /></div>;
+  if (mode === "add") return <div style={{ padding: 24 }}><AddProductForm onCancel={() => setMode("list")} onCreated={() => { load(); }} staysOpenAfterSave /></div>;
   if (mode === "bulk") return <div style={{ padding: 24 }}><BulkUploadPanel onCancel={() => setMode("list")} onImported={load} /></div>;
   if (mode === "drafts") return <div style={{ padding: 24 }}><DraftsPanel onCancel={() => { setMode("list"); load(); }} /></div>;
 
