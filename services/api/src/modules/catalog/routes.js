@@ -662,7 +662,7 @@ router.get('/moderation-queue', requireAuth, requireRole('admin'), requirePageAc
   try {
     const { rows } = await db.query(`
       SELECT
-        p.id, p.name, p.name_zh, p.description_zh, p.category, p.part, p.position, p.oem_number, p.created_at,
+        p.id, p.name, p.name_zh, p.description_zh, p.category, p.part, p.position, p.oem_number, p.created_at, p.video_url,
         s.name AS supplier_name,
         s.created_at AS supplier_created_at,
         (SELECT COUNT(*) FROM product_fitment_entries pfe WHERE pfe.product_id = p.id) AS fitment_count
@@ -687,6 +687,7 @@ router.get('/moderation-queue', requireAuth, requireRole('admin'), requirePageAc
         position: r.position,
         oemNumber: r.oem_number,
         images: images.map((i) => i.url),
+        videoUrl: r.video_url,
         supplierName: r.supplier_name,
         submittedAt: r.created_at,
         flags,
@@ -1031,6 +1032,7 @@ router.get('/admin/products/:id', requireAuth, requireRole('admin'), requirePage
       widthCm: row.width_cm === null ? null : Number(row.width_cm),
       heightCm: row.height_cm === null ? null : Number(row.height_cm),
       images: images.map((i) => i.url),
+      videoUrl: row.video_url,
       fitment: fitmentRows.map((f) => ({
         generationId: f.generation_id, year: f.year, engineId: f.engine_id, transmissionId: f.transmission_id,
         label: `${f.brand_name} ${f.model_name} (${f.generation_name}) · ${f.year}`,
@@ -1053,7 +1055,7 @@ router.patch('/admin/products/:id', requireAuth, requireRole('admin'), requirePa
     const {
       nameEn, nameAr, descriptionEn, descriptionAr, category, part, position, oemNumber,
       stockQuantity, lowStockThreshold, weightKg, lengthCm, widthCm, heightCm,
-      images, fitment,
+      images, videoUrl, fitment,
     } = req.body || {};
 
     if (position !== undefined && position !== null && !ALLOWED_POSITIONS.includes(position)) {
@@ -1171,14 +1173,16 @@ router.patch('/admin/products/:id', requireAuth, requireRole('admin'), requirePa
          oem_number = COALESCE($8, oem_number),
          stock_quantity = COALESCE($9, stock_quantity), low_stock_threshold = COALESCE($10, low_stock_threshold),
          weight_kg = COALESCE($11, weight_kg), length_cm = COALESCE($12, length_cm),
-         width_cm = COALESCE($13, width_cm), height_cm = COALESCE($14, height_cm)
-       WHERE id = $15
+         width_cm = COALESCE($13, width_cm), height_cm = COALESCE($14, height_cm),
+         video_url = COALESCE($15, video_url)
+       WHERE id = $16
        RETURNING id`,
       [
         nameEn ?? null, nameAr ?? null, descriptionEn ?? null, descriptionAr ?? null,
         category ?? null, part ?? null, position ?? null, oemNumber ?? null,
         stockQuantity ?? null, lowStockThreshold ?? null,
         weightKg ?? null, lengthCm ?? null, widthCm ?? null, heightCm ?? null,
+        videoUrl ?? null,
         req.params.id,
       ]
     );
@@ -1290,6 +1294,59 @@ router.get('/categories', async (req, res, next) => {
   try {
     const { rows } = await db.query('SELECT * FROM product_categories ORDER BY sort_order ASC');
     res.json(rows.map(toCategoryDto));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Real, confirmed with the person: a single, admin-configurable set
+// of product-submission requirements (photo count, whether photos/
+// video are mandatory at all, max real video duration) -- rather than
+// hardcoded constants only a code change could adjust. GET is public,
+// matching /categories's own real pattern directly above (non-
+// sensitive config info both the real supplier portal and the real
+// admin portal need to read); PATCH is admin-only, gated the same way
+// as the rest of the "All Products" admin page, since that's
+// confirmed where this settings container lives.
+function toProductRequirementsDto(row) {
+  return {
+    minPhotos: row.min_photos,
+    photosRequired: row.photos_required,
+    videoRequired: row.video_required,
+    maxVideoDurationSeconds: row.max_video_duration_seconds,
+  };
+}
+
+router.get('/product-requirements', async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT * FROM product_requirements WHERE id = 1');
+    res.json(toProductRequirementsDto(rows[0]));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/admin/product-requirements', requireAuth, requireRole('admin'), requirePageAccess('products'), async (req, res, next) => {
+  try {
+    const { minPhotos, photosRequired, videoRequired, maxVideoDurationSeconds } = req.body || {};
+    if (minPhotos !== undefined && (!Number.isInteger(minPhotos) || minPhotos < 1)) {
+      return res.status(400).json({ error: 'minPhotos must be a whole number of at least 1' });
+    }
+    if (maxVideoDurationSeconds !== undefined && (!Number.isInteger(maxVideoDurationSeconds) || maxVideoDurationSeconds < 1)) {
+      return res.status(400).json({ error: 'maxVideoDurationSeconds must be a whole number of at least 1' });
+    }
+    const { rows } = await db.query(
+      `UPDATE product_requirements SET
+         min_photos = COALESCE($1, min_photos),
+         photos_required = COALESCE($2, photos_required),
+         video_required = COALESCE($3, video_required),
+         max_video_duration_seconds = COALESCE($4, max_video_duration_seconds),
+         updated_at = now()
+       WHERE id = 1
+       RETURNING *`,
+      [minPhotos ?? null, photosRequired ?? null, videoRequired ?? null, maxVideoDurationSeconds ?? null]
+    );
+    res.json(toProductRequirementsDto(rows[0]));
   } catch (err) {
     next(err);
   }

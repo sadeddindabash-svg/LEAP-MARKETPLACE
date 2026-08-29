@@ -160,6 +160,7 @@ function toProductDto(row) {
     lengthCm: row.length_cm === null ? null : Number(row.length_cm),
     widthCm: row.width_cm === null ? null : Number(row.width_cm),
     heightCm: row.height_cm === null ? null : Number(row.height_cm),
+    videoUrl: row.video_url,
     status: row.status,
     createdAt: row.created_at,
   };
@@ -332,7 +333,7 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
   const {
     nameZh, descriptionZh, category, part, position, oemNumber,
     price, currencyCode, stockQuantity,
-    fitment, images, weightKg, lengthCm, widthCm, heightCm,
+    fitment, images, videoUrl, weightKg, lengthCm, widthCm, heightCm,
     fulfillsRequestItemId,
   } = req.body || {};
 
@@ -421,8 +422,17 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
   if (currencyCode !== 'CNY') {
     return res.status(400).json({ error: "currencyCode must be 'CNY' — suppliers price in RMB; the buyer-facing USD price is computed automatically" });
   }
-  if (!Array.isArray(images) || images.length < MIN_PRODUCT_PHOTOS) {
-    return res.status(400).json({ error: `At least ${MIN_PRODUCT_PHOTOS} product photos are required (got ${Array.isArray(images) ? images.length : 0}). Upload via POST /uploads/product-image first.` });
+  const { rows: reqRows } = await db.query('SELECT * FROM product_requirements WHERE id = 1');
+  const requirements = reqRows[0] || { min_photos: 4, photos_required: true, video_required: true };
+  const photoCount = Array.isArray(images) ? images.length : 0;
+  if (requirements.photos_required && photoCount !== requirements.min_photos) {
+    return res.status(400).json({ error: `Exactly ${requirements.min_photos} product photos are required (got ${photoCount}). Upload via POST /uploads/product-image first.` });
+  }
+  if (!requirements.photos_required && photoCount > requirements.min_photos) {
+    return res.status(400).json({ error: `At most ${requirements.min_photos} product photos are allowed (got ${photoCount}).` });
+  }
+  if (requirements.video_required && !videoUrl) {
+    return res.status(400).json({ error: 'A product video is required. Upload via POST /uploads/product-video first.' });
   }
   const { generationId, year, engineId, transmissionId } = fitment;
   if (!generationId || !year) {
@@ -471,11 +481,11 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
       `INSERT INTO products
          (id, supplier_id, name, name_zh, description, description_zh, category, part, position, oem_number,
           price, currency_code, stock_quantity, status,
-          weight_kg, length_cm, width_cm, height_cm)
-       VALUES ($1, $2, $3, $3, NULL, $4, $5, $6, $7, $8, $9, $10, $11, 'translating', $12, $13, $14, $15)`,
+          weight_kg, length_cm, width_cm, height_cm, video_url)
+       VALUES ($1, $2, $3, $3, NULL, $4, $5, $6, $7, $8, $9, $10, $11, 'translating', $12, $13, $14, $15, $16)`,
       [id, req.user.supplierId, nameZh, descriptionZh || null, category, part, position, oemNumber,
         price, currencyCode, stockQuantity || 0,
-        weightKg, lengthCm, widthCm, heightCm]
+        weightKg, lengthCm, widthCm, heightCm, videoUrl || null]
     );
 
     await client.query(
@@ -605,6 +615,8 @@ router.post('/me/products/bulk-import', requireAuth, requireRole('supplier'), as
 // rather than a generic "incomplete."
 router.get('/me/products/drafts', requireAuth, requireRole('supplier'), async (req, res, next) => {
   try {
+    const { rows: reqRows } = await db.query('SELECT * FROM product_requirements WHERE id = 1');
+    const requirements = reqRows[0] || { min_photos: 4, photos_required: true, video_required: true };
     const { rows } = await db.query(
       `SELECT p.*, COALESCE(img.count, 0) AS photo_count
        FROM products p
@@ -620,7 +632,8 @@ router.get('/me/products/drafts', requireAuth, requireRole('supplier'), async (r
       if (!row.part) missing.push('part');
       if (!row.position) missing.push('position');
       if (row.weight_kg === null) missing.push('dimensions');
-      if (Number(row.photo_count) < MIN_PRODUCT_PHOTOS) missing.push('photos');
+      if (requirements.photos_required && Number(row.photo_count) !== requirements.min_photos) missing.push('photos');
+      if (requirements.video_required && !row.video_url) missing.push('video');
       return { ...dto, missing };
     }));
     res.json(dtos);
@@ -657,6 +670,7 @@ router.patch('/me/products/:id/complete', requireAuth, requireRole('supplier'), 
     const widthCm = req.body.widthCm ?? (draft.width_cm === null ? null : Number(draft.width_cm));
     const heightCm = req.body.heightCm ?? (draft.height_cm === null ? null : Number(draft.height_cm));
     const images = req.body.images;
+    const videoUrl = req.body.videoUrl ?? draft.video_url;
 
     if (category && category !== draft.category) {
       const { category: matchedCategory } = await tryMatchCategoryAndPart(category, null, client);
@@ -671,7 +685,9 @@ router.patch('/me/products/:id/complete', requireAuth, requireRole('supplier'), 
       }
     }
 
-    const validation = validateCompleteFields({ category, part, position, weightKg, lengthCm, widthCm, heightCm, images });
+    const { rows: reqRows } = await client.query('SELECT * FROM product_requirements WHERE id = 1');
+    const requirements = reqRows[0] || { min_photos: 4, photos_required: true, video_required: true };
+    const validation = validateCompleteFields({ category, part, position, weightKg, lengthCm, widthCm, heightCm, images, videoUrl }, requirements);
     if (!validation.valid) {
       return res.status(400).json({ error: validation.error });
     }
@@ -680,9 +696,9 @@ router.patch('/me/products/:id/complete', requireAuth, requireRole('supplier'), 
     await client.query(
       `UPDATE products SET
          category = $1, part = $2, position = $3, weight_kg = $4, length_cm = $5, width_cm = $6, height_cm = $7,
-         status = 'translating'
-       WHERE id = $8`,
-      [category, part, position, weightKg, lengthCm, widthCm, heightCm, req.params.id]
+         video_url = $8, status = 'translating'
+       WHERE id = $9`,
+      [category, part, position, weightKg, lengthCm, widthCm, heightCm, videoUrl || null, req.params.id]
     );
     await client.query('DELETE FROM product_images WHERE product_id = $1', [req.params.id]);
     for (let i = 0; i < images.length; i++) {

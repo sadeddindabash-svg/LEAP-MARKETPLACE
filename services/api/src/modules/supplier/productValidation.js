@@ -74,7 +74,7 @@ function tryMatchDimensions({ weightKg, lengthCm, widthCm, heightCm }) {
 // matching above, every one of these is now required, matching the
 // exact same real bar the original single-item endpoint always held
 // products to before they could enter real moderation.
-function validateCompleteFields({ category, part, position, weightKg, lengthCm, widthCm, heightCm, images }) {
+function validateCompleteFields({ category, part, position, weightKg, lengthCm, widthCm, heightCm, images, videoUrl }, requirements) {
   const missing = [];
   if (!category) missing.push('category');
   if (!part) missing.push('part');
@@ -92,9 +92,15 @@ function validateCompleteFields({ category, part, position, weightKg, lengthCm, 
   for (const [field, value] of [['weightKg', weightKg], ['lengthCm', lengthCm], ['widthCm', widthCm], ['heightCm', heightCm]]) {
     if (value <= 0) return { valid: false, error: `${field} must be a positive number` };
   }
-  const MIN_PRODUCT_PHOTOS = 3;
-  if (!Array.isArray(images) || images.length < MIN_PRODUCT_PHOTOS) {
-    return { valid: false, error: `At least ${MIN_PRODUCT_PHOTOS} product photos are required (got ${Array.isArray(images) ? images.length : 0})` };
+  const photoCount = Array.isArray(images) ? images.length : 0;
+  if (requirements.photos_required && photoCount !== requirements.min_photos) {
+    return { valid: false, error: `Exactly ${requirements.min_photos} product photos are required (got ${photoCount})` };
+  }
+  if (!requirements.photos_required && photoCount > requirements.min_photos) {
+    return { valid: false, error: `At most ${requirements.min_photos} product photos are allowed (got ${photoCount})` };
+  }
+  if (requirements.video_required && !videoUrl) {
+    return { valid: false, error: 'A product video is required' };
   }
   return { valid: true };
 }

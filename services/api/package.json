@@ -25,6 +25,7 @@
     "express": "^4.19.2",
     "firebase-admin": "^12.7.0",
     "geoip-lite": "^1.4.10",
+    "get-video-duration": "^5.0.0",
     "image-size": "^2.0.2",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
