@@ -65,10 +65,10 @@ class _ScanScreenState extends State<ScanScreen> {
         title: Text(t.queue.title),
         actions: [
           IconButton(
-            icon: ValueListenableBuilder(
-              valueListenable: _controller.torchState,
+            icon: ValueListenableBuilder<MobileScannerState>(
+              valueListenable: _controller,
               builder: (context, state, child) {
-                return Icon(state == TorchState.on ? Icons.flash_on : Icons.flash_off);
+                return Icon(state.torchState == TorchState.on ? Icons.flash_on : Icons.flash_off);
               },
             ),
             onPressed: () => _controller.toggleTorch(),
