@@ -409,6 +409,29 @@ export async function updateAdminProduct(token, id, patch) {
   return data;
 }
 
+// Confirmed with the person: the admin-configurable product-
+// submission requirements (photo count, whether photos/video are
+// mandatory, max video duration) -- GET is public (no token needed,
+// matching the backend's own real design), PATCH is admin-only.
+export async function fetchProductRequirements() {
+  const response = await fetch(`${API_BASE_URL}/catalog/product-requirements`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
+export async function updateProductRequirements(token, patch) {
+  const response = await fetch(`${API_BASE_URL}/catalog/admin/product-requirements`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(patch),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
 export async function createCategory(token, id, nameEn, nameAr, photoUrl, sortOrder) {
   const response = await fetch(`${API_BASE_URL}/catalog/categories`, {
     method: "POST",

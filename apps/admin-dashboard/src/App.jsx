@@ -6,6 +6,7 @@ import { PlateChip, Badge, Stars, KpiCard, Card, Th, Td, ConfirmDialog, EditDial
 import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, fetchSupplierById, verifySupplier, updateSupplierCountry, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
   fetchCountriesList, fetchWarehouseCountries, fetchCountryGroups, createCountryGroup, deleteCountryGroup, addCountryGroupMember, removeCountryGroupMember,
   fetchAdminProducts, fetchAdminProductDetail, updateAdminProduct,
+  fetchProductRequirements, updateProductRequirements,
   fetchDeliveryRules, createDeliveryRule, updateDeliveryRule, deleteDeliveryRule, reorderDeliveryRules,
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
   createBrand, deleteBrand, createModel, deleteModel, createGeneration, deleteGeneration, createEngine, deleteEngine, createTransmission, deleteTransmission,
@@ -1820,6 +1821,98 @@ function AllProductsPage({ onSessionExpired }) {
     : <ProductListPage onSelect={setSelectedId} onSessionExpired={onSessionExpired} />;
 }
 
+// Confirmed with the person: a new settings container at the top of
+// this page, letting an admin configure how many photos a supplier
+// must submit, whether photos/video are mandatory at all, and the
+// max real video duration -- rather than these being fixed constants
+// only a code change could adjust.
+function ProductRequirementsSettings({ onSessionExpired }) {
+  const [minPhotos, setMinPhotos] = useState("");
+  const [photosRequired, setPhotosRequired] = useState(true);
+  const [videoRequired, setVideoRequired] = useState(true);
+  const [maxVideoDuration, setMaxVideoDuration] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetchProductRequirements()
+      .then((r) => {
+        setMinPhotos(String(r.minPhotos));
+        setPhotosRequired(r.photosRequired);
+        setVideoRequired(r.videoRequired);
+        setMaxVideoDuration(String(r.maxVideoDurationSeconds));
+        setIsLoading(false);
+      })
+      .catch((e) => { setError(e.message); setIsLoading(false); });
+  }, []);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    setError(null);
+    setSaveSuccess(false);
+    try {
+      const updated = await updateProductRequirements(getStoredToken(), {
+        minPhotos: parseInt(minPhotos, 10),
+        photosRequired,
+        videoRequired,
+        maxVideoDurationSeconds: parseInt(maxVideoDuration, 10),
+      });
+      setMinPhotos(String(updated.minPhotos));
+      setPhotosRequired(updated.photosRequired);
+      setVideoRequired(updated.videoRequired);
+      setMaxVideoDuration(String(updated.maxVideoDurationSeconds));
+      setSaveSuccess(true);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const numberInputStyle = { ...body, fontSize: 13, border: `1px solid ${C.line}`, borderRadius: 6, padding: "6px 10px", width: 70 };
+
+  return (
+    <Card title="Product requirements" style={{ marginBottom: 20 }}>
+      <div style={{ padding: 16 }}>
+        {isLoading ? (
+          <div style={{ ...body, fontSize: 13, color: C.muted }}>Loading…</div>
+        ) : (
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 24 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ ...body, fontSize: 12.5, color: C.muted }}>Photos required</span>
+              <input type="number" min="1" style={numberInputStyle} value={minPhotos} onChange={(e) => setMinPhotos(e.target.value)} />
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+              <input type="checkbox" checked={photosRequired} onChange={(e) => setPhotosRequired(e.target.checked)} />
+              <span style={{ ...body, fontSize: 12.5, color: C.ink }}>Photos mandatory</span>
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+              <input type="checkbox" checked={videoRequired} onChange={(e) => setVideoRequired(e.target.checked)} />
+              <span style={{ ...body, fontSize: 12.5, color: C.ink }}>Video mandatory</span>
+            </label>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ ...body, fontSize: 12.5, color: C.muted }}>Max video length (seconds)</span>
+              <input type="number" min="1" style={numberInputStyle} value={maxVideoDuration} onChange={(e) => setMaxVideoDuration(e.target.value)} />
+            </div>
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              style={{ ...body, fontSize: 12.5, fontWeight: 700, color: "#fff", background: isSaving ? "#D1D5DB" : C.signal, border: "none", borderRadius: 8, padding: "8px 16px", cursor: isSaving ? "default" : "pointer" }}
+            >
+              {isSaving ? "Saving…" : "Save"}
+            </button>
+            {saveSuccess && <span style={{ ...body, fontSize: 12.5, color: "#1E7A34" }}>Saved.</span>}
+          </div>
+        )}
+        {error && <div style={{ ...body, fontSize: 12.5, color: C.red, marginTop: 10 }}>{error}</div>}
+      </div>
+    </Card>
+  );
+}
+
 function ProductListPage({ onSelect, onSessionExpired }) {
   const [data, setData] = useState(null);
   const [search, setSearch] = useState("");
@@ -1887,6 +1980,7 @@ function ProductListPage({ onSelect, onSessionExpired }) {
 
   return (
     <div style={{ padding: 24 }}>
+      <ProductRequirementsSettings onSessionExpired={onSessionExpired} />
       <form onSubmit={handleSearch} style={{ display: "flex", gap: 8, marginBottom: 12 }}>
         <input
           value={search}
