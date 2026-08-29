@@ -5,9 +5,10 @@ import '../models/product.dart';
 import '../services/api_client.dart';
 import 'product_card.dart';
 
-/// Real alternate/equivalent in-stock parts (#9) -- shown especially
-/// valuable when this real product is out of stock, but genuinely
-/// useful as a comparison aid regardless. Mirrors ReviewsSection's own
+/// Confirmed with the person: merged what used to be two separate
+/// sections (alternate parts + "same model, different part") into
+/// one -- now matches the same real vehicle model AND the same real
+/// category together, always in-stock. Mirrors ReviewsSection's own
 /// real self-fetching widget pattern.
 class AlternativesSection extends StatefulWidget {
   final String productId;
@@ -46,7 +47,7 @@ class _AlternativesSectionState extends State<AlternativesSection> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                widget.isAr ? 'قطع مماثلة متوفرة' : 'Similar parts in stock',
+                widget.isAr ? 'منتجات مماثلة' : 'Similar products',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: palette.ink),
               ),
               const SizedBox(height: 10),

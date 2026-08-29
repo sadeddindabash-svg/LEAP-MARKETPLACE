@@ -434,25 +434,35 @@ router.get('/products/:id', async (req, res, next) => {
 router.get('/products/:id/alternatives', async (req, res, next) => {
   try {
     const { lang } = req.query;
-    const { rows: currentRows } = await db.query('SELECT part, category, supplier_id FROM products WHERE id = $1', [req.params.id]);
+    const { rows: currentRows } = await db.query('SELECT category FROM products WHERE id = $1', [req.params.id]);
     if (currentRows.length === 0) return res.status(404).json({ error: 'Product not found' });
     const current = currentRows[0];
 
-    // Real supplier diversity (#80) -- excludes the real same
-    // supplier from results, so a suggested alternative is genuinely
-    // a different, real backup source, not coincidentally the same
-    // one that's already out of stock. NULLIF handles a real product
-    // with no real supplier_id set (e.g. seed data) without excluding
-    // every other real supplier-less product by matching NULL = NULL.
-    const { rows } = current.part
-      ? await db.query(
-          `SELECT * FROM products WHERE part = $1 AND id != $2 AND stock_quantity > 0 AND status = 'active' AND supplier_id IS DISTINCT FROM $3 ORDER BY rating DESC NULLS LAST LIMIT 6`,
-          [current.part, req.params.id, current.supplier_id]
-        )
-      : await db.query(
-          `SELECT * FROM products WHERE category = $1 AND id != $2 AND stock_quantity > 0 AND status = 'active' AND supplier_id IS DISTINCT FROM $3 ORDER BY rating DESC NULLS LAST LIMIT 6`,
-          [current.category, req.params.id, current.supplier_id]
-        );
+    // Confirmed with the person: merged what used to be two separate
+    // real sections (this one, matched on part/category; "same-model"
+    // below, matched on vehicle model via fitment) into one. Now
+    // requires BOTH the same real vehicle model AND the same real
+    // category -- a real, deliberate narrowing, not a broadening.
+    // Confirmed explicitly: no supplier exclusion here (any supplier).
+    const { rows: fitmentRows } = await db.query(
+      `SELECT vm.id AS model_id FROM product_fitment_entries pfe
+       JOIN vehicle_generations vg ON vg.id = pfe.generation_id
+       JOIN vehicle_models vm ON vm.id = vg.model_id
+       WHERE pfe.product_id = $1 ORDER BY pfe.id ASC LIMIT 1`,
+      [req.params.id]
+    );
+    if (fitmentRows.length === 0) return res.json([]); // no real fitment on this product at all -- genuinely nothing to show
+    const modelId = fitmentRows[0].model_id;
+
+    const { rows } = await db.query(
+      `SELECT DISTINCT p.* FROM products p
+       JOIN product_fitment_entries pfe ON pfe.product_id = p.id
+       JOIN vehicle_generations vg ON vg.id = pfe.generation_id
+       JOIN vehicle_models vm ON vm.id = vg.model_id
+       WHERE vm.id = $1 AND p.category = $2 AND p.id != $3 AND p.stock_quantity > 0 AND p.status = 'active'
+       ORDER BY p.rating DESC NULLS LAST LIMIT 6`,
+      [modelId, current.category, req.params.id]
+    );
 
     const destinationIsoCode = await resolveDestinationIsoCode(req);
     const dtos = await Promise.all(rows.map(async (row) => {
@@ -506,67 +516,24 @@ router.get('/products/:id/oem-alternatives', async (req, res, next) => {
   }
 });
 
-// GET /products/:id/same-model -- real "more parts for your car" cross-
-// sell, confirmed directly with the person via a written plan first:
-// genuinely different real parts for the SAME real vehicle model this
-// product fits, not the same real part from a different real supplier
-// (that's what /alternatives above is for). Uses this product's own
-// real PRIMARY fitment entry (same "first by id" real convention
-// already established in attachPrimaryFitment above) to resolve which
-// real model_id to search by.
-router.get('/products/:id/same-model', async (req, res, next) => {
-  try {
-    const { lang, page, limit } = req.query;
-    const limitNum = Math.min(Math.max(Number(limit) || 10, 1), 50);
-    const pageNum = Math.max(Number(page) || 1, 1);
-    const offset = (pageNum - 1) * limitNum;
-
-    const { rows: fitmentRows } = await db.query(
-      `SELECT vm.id AS model_id FROM product_fitment_entries pfe
-       JOIN vehicle_generations vg ON vg.id = pfe.generation_id
-       JOIN vehicle_models vm ON vm.id = vg.model_id
-       WHERE pfe.product_id = $1 ORDER BY pfe.id ASC LIMIT 1`,
-      [req.params.id]
-    );
-    if (fitmentRows.length === 0) return res.json([]); // no real fitment on this product at all -- genuinely nothing to show
-    const modelId = fitmentRows[0].model_id;
-
-    const { rows } = await db.query(
-      `SELECT DISTINCT p.* FROM products p
-       JOIN product_fitment_entries pfe ON pfe.product_id = p.id
-       JOIN vehicle_generations vg ON vg.id = pfe.generation_id
-       WHERE vg.model_id = $1 AND p.id != $2 AND p.stock_quantity > 0 AND p.status = 'active'
-       ORDER BY p.rating DESC NULLS LAST, p.id ASC LIMIT $3 OFFSET $4`,
-      [modelId, req.params.id, limitNum, offset]
-    );
-    const destinationIsoCode = await resolveDestinationIsoCode(req);
-    const dtos = await Promise.all(rows.map(async (row) => {
-      let dto = toBuyerProductDto(row, lang);
-      dto = await attachBuyerImages(dto, row.id);
-      dto = await attachPrimaryFitment(dto, row.id, lang);
-      dto = await attachPartTranslation(dto, row, lang);
-      dto = await attachBuyerPrice(dto, row);
-      dto = await attachSupplierSignals(dto, row.supplier_id);
-      dto = await attachDeliveryEstimate(dto, destinationIsoCode);
-      return dto;
-    }));
-    res.json(dtos);
-  } catch (err) {
-    next(err);
-  }
-});
-
-// GET /products/:id/same-brand -- same real idea as same-model above,
-// broadened to the whole real vehicle brand. Deliberately excludes
-// every real product already surfaced by same-model (confirmed
-// directly with the person), so the exact same real product never
-// appears in both real rows on the product page.
+// GET /products/:id/same-brand -- broadened to the whole real vehicle
+// brand. Deliberately excludes every real product already surfaced by
+// the merged /alternatives endpoint above (confirmed directly with
+// the person), so the exact same real product never appears in both
+// real rows on the product page. Since /alternatives now requires
+// BOTH matching model AND matching category, this exclusion checks
+// both too -- otherwise a same-model-but-different-category product
+// would wrongly vanish from the page entirely, shown in neither row.
 router.get('/products/:id/same-brand', async (req, res, next) => {
   try {
     const { lang, page, limit } = req.query;
     const limitNum = Math.min(Math.max(Number(limit) || 10, 1), 50);
     const pageNum = Math.max(Number(page) || 1, 1);
     const offset = (pageNum - 1) * limitNum;
+
+    const { rows: currentRows } = await db.query('SELECT category FROM products WHERE id = $1', [req.params.id]);
+    if (currentRows.length === 0) return res.status(404).json({ error: 'Product not found' });
+    const currentCategory = currentRows[0].category;
 
     const { rows: fitmentRows } = await db.query(
       `SELECT vb.id AS brand_id, vm.id AS model_id FROM product_fitment_entries pfe
@@ -588,10 +555,11 @@ router.get('/products/:id/same-brand', async (req, res, next) => {
          AND p.id NOT IN (
            SELECT pfe2.product_id FROM product_fitment_entries pfe2
            JOIN vehicle_generations vg2 ON vg2.id = pfe2.generation_id
-           WHERE vg2.model_id = $3
+           JOIN products p2 ON p2.id = pfe2.product_id
+           WHERE vg2.model_id = $3 AND p2.category = $4
          )
-       ORDER BY p.rating DESC NULLS LAST, p.id ASC LIMIT $4 OFFSET $5`,
-      [brandId, req.params.id, modelId, limitNum, offset]
+       ORDER BY p.rating DESC NULLS LAST, p.id ASC LIMIT $5 OFFSET $6`,
+      [brandId, req.params.id, modelId, currentCategory, limitNum, offset]
     );
     const destinationIsoCode = await resolveDestinationIsoCode(req);
     const dtos = await Promise.all(rows.map(async (row) => {

@@ -11,8 +11,8 @@ import 'product_card.dart';
 /// near this section's own bottom edge -- not a horizontal carousel,
 /// and not a manual "load more" tap.
 ///
-/// Used by SameModelSection, SameBrandSection, and
-/// NewestProductsSection, which differ only in their own real
+/// Used by SameBrandSection and NewestProductsSection, which differ
+/// only in their own real
 /// fetchPage function and header text -- this widget holds all the
 /// shared real pagination/scroll-detection logic once.
 class LazyProductGrid extends StatefulWidget {

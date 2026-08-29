@@ -332,9 +332,11 @@ class ApiClient {
     return Product.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
-  /// Real alternate/equivalent in-stock parts (#9) -- calls the new
-  /// real backend endpoint, genuinely matching on the real `part`
-  /// field (or `category` as a real fallback), always in-stock.
+  /// Confirmed with the person: merged what used to be two separate
+  /// real sections (this one, plus a separate "same-model" one) into
+  /// one. Now genuinely requires BOTH the same real vehicle model AND
+  /// the same real category, always in-stock -- a real narrowing, not
+  /// a broadening.
   Future<List<Product>> fetchProductAlternatives(String productId, {String lang = 'en'}) async {
     final response = await _client.get(Uri.parse('$baseUrl/catalog/products/$productId/alternatives?lang=$lang'));
     if (response.statusCode != 200) {
@@ -353,22 +355,10 @@ class ApiClient {
     return (jsonDecode(response.body) as List).map((j) => Product.fromJson(j as Map<String, dynamic>)).toList();
   }
 
-  /// Real "more parts for your car" cross-sell -- other real products
-  /// fitting the SAME real vehicle model as this one, confirmed
-  /// directly with the person via a written plan first as genuinely
-  /// distinct from fetchProductAlternatives above (same part,
-  /// different supplier) -- this is different parts, same real car.
-  Future<List<Product>> fetchSameModelProducts(String productId, {String lang = 'en', int page = 1}) async {
-    final response = await _client.get(Uri.parse('$baseUrl/catalog/products/$productId/same-model?lang=$lang&page=$page'));
-    if (response.statusCode != 200) {
-      throw ApiException('Failed to load same-model products (${response.statusCode})');
-    }
-    return (jsonDecode(response.body) as List).map((j) => Product.fromJson(j as Map<String, dynamic>)).toList();
-  }
-
-  /// Same real idea as fetchSameModelProducts above, broadened to the
-  /// whole real vehicle brand -- the real backend already excludes
-  /// anything shown there, so these two real lists never overlap.
+  /// Same real idea as fetchProductAlternatives above, broadened to
+  /// the whole real vehicle brand -- the real backend already
+  /// excludes anything shown there, so these two real lists never
+  /// overlap.
   Future<List<Product>> fetchSameBrandProducts(String productId, {String lang = 'en', int page = 1}) async {
     final response = await _client.get(Uri.parse('$baseUrl/catalog/products/$productId/same-brand?lang=$lang&page=$page'));
     if (response.statusCode != 200) {

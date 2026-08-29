@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import '../services/api_client.dart';
 import 'lazy_product_grid.dart';
 
-/// Same real idea as SameModelSection, broadened to the whole real
+/// Same real idea as AlternativesSection (merged with what used to be
+/// a separate SameModelSection), broadened to the whole real
 /// vehicle brand -- the real backend already excludes anything shown
 /// there, so these two real sections never show the same product
 /// twice. Confirmed directly with the person via a written plan

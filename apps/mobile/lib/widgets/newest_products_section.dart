@@ -6,7 +6,7 @@ import 'lazy_product_grid.dart';
 /// real fetchProducts(sort: 'newest') call already used by Home's own
 /// Newest feed, confirmed directly with the person as deliberately
 /// unfiltered (not scoped to this product's own model/brand, unlike
-/// SameModelSection/SameBrandSection above it). Excludes the current
+/// AlternativesSection/SameBrandSection above it). Excludes the current
 /// real product itself from each real page's results, since it could
 /// otherwise appear among "newest" on its own page. Rendered as a
 /// real 2-column, lazy-loading vertical grid (confirmed via a
