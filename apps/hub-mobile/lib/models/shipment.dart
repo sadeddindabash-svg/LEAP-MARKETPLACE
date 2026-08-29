@@ -15,11 +15,11 @@ class ShipmentSummary {
   });
 
   factory ShipmentSummary.fromJson(Map<String, dynamic> json) => ShipmentSummary(
-        id: json['id'] as String,
+        id: json['id'].toString(),
         status: json['status'] as String,
         createdAt: DateTime.parse(json['createdAt'] as String),
         updatedAt: DateTime.parse(json['updatedAt'] as String),
-        subOrderId: json['subOrderId'] as String,
+        subOrderId: json['subOrderId'].toString(),
         orderId: json['orderId'] as String,
         supplierName: json['supplierName'] as String,
       );
@@ -86,7 +86,7 @@ class ShipmentDetail {
   });
 
   factory ShipmentDetail.fromJson(Map<String, dynamic> json) => ShipmentDetail(
-        id: json['id'] as String,
+        id: json['id'].toString(),
         status: json['status'] as String,
         createdAt: DateTime.parse(json['createdAt'] as String),
         updatedAt: DateTime.parse(json['updatedAt'] as String),
