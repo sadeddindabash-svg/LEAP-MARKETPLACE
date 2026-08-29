@@ -320,6 +320,19 @@ export const updateFeeComponent = (token, id, updates) => fitmentMutate("PATCH",
 export const deleteFeeComponent = (token, id) => fitmentMutate("DELETE", `/pricing/fee-components/${id}`, token);
 export const moveFeeComponent = (token, id, direction) => fitmentMutate("POST", `/pricing/fee-components/${id}/move`, token, { direction });
 
+// Confirmed with the person through several rounds of design (formula
+// structure, wildcard rules, overlap semantics) -- the admin-
+// controlled bulk discount-rules engine.
+export async function fetchDiscountRules(token) {
+  const response = await fetch(`${API_BASE_URL}/catalog/discount-rules`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) throw new Error(`Failed to load discount rules (${response.status})`);
+  return response.json();
+}
+export const createDiscountRule = (token, rule) => fitmentMutate("POST", "/catalog/admin/discount-rules", token, rule);
+export const updateDiscountRule = (token, id, rule) => fitmentMutate("PATCH", `/catalog/admin/discount-rules/${id}`, token, rule);
+export const deleteDiscountRule = (token, id) => fitmentMutate("DELETE", `/catalog/admin/discount-rules/${id}`, token);
+
 export async function fetchFxRate(token) {
   const response = await fetch(`${API_BASE_URL}/pricing/fx-rate`, { headers: { Authorization: `Bearer ${token}` } });
   if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");

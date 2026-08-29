@@ -12,6 +12,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   createBrand, deleteBrand, createModel, deleteModel, createGeneration, deleteGeneration, createEngine, deleteEngine, createTransmission, deleteTransmission,
   fetchHubLocations, createHubLocation, deleteHubLocation, assignHubToSubOrder,
   fetchFeeComponents, createFeeComponent, updateFeeComponent, deleteFeeComponent, moveFeeComponent, fetchFxRate, updateFxRate, fetchFxRateMode, updateFxRateMode, previewPricing,
+  fetchDiscountRules, createDiscountRule, updateDiscountRule, deleteDiscountRule,
   fetchFlaggedShipments,
   fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart, uploadImage, updateCategoryPhoto, updatePartPhoto, moveCategory, movePart, moveBrand, moveModel, moveGeneration, moveEngine, moveTransmission, updateBrandPhoto, updateModelPhoto,
   updateCategory, updatePart, updateBrand, updateModel, updateGeneration, updateEngine, updateTransmission,
@@ -3552,7 +3553,190 @@ function PricingPage({ onSessionExpired }) {
           </div>
         </Card>
       </div>
+      <DiscountRulesSection onSessionExpired={onSessionExpired} />
     </div>
+  );
+}
+
+// Confirmed with the person through several full rounds of design
+// (formula structure -- brand required, model and year range
+// optional refinements; strict, structural overlap blocking,
+// confirmed explicitly after walking through the real practical
+// implications) -- the admin-controlled bulk discount-rules engine.
+function DiscountRulesSection({ onSessionExpired }) {
+  const [rules, setRules] = useState([]);
+  const [brands, setBrands] = useState([]);
+  const [models, setModels] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  const [selectedBrandId, setSelectedBrandId] = useState("");
+  const [selectedModelId, setSelectedModelId] = useState("");
+  const [yearFrom, setYearFrom] = useState("");
+  const [yearTo, setYearTo] = useState("");
+  const [discountPercentage, setDiscountPercentage] = useState("");
+  const [editingId, setEditingId] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState(null);
+
+  const load = () => {
+    setLoadState("loading");
+    Promise.all([fetchDiscountRules(getStoredToken()), fetchBrands()])
+      .then(([r, b]) => { setRules(r); setBrands(b); setLoadState("ready"); })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!selectedBrandId) { setModels([]); return; }
+    fetchModelsForBrand(selectedBrandId).then(setModels).catch(() => {});
+  }, [selectedBrandId]);
+
+  // Once this brand's real models have actually loaded (the effect
+  // above), re-select whichever real model the rule being edited had
+  // -- the model dropdown is genuinely empty until that load
+  // completes, so this can't happen any earlier.
+  useEffect(() => {
+    if (!editingId) return;
+    const rule = rules.find((r) => r.id === editingId);
+    if (rule) setSelectedModelId(rule.modelId || "");
+  }, [models]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const resetForm = () => {
+    setSelectedBrandId(""); setSelectedModelId(""); setYearFrom(""); setYearTo(""); setDiscountPercentage("");
+    setEditingId(null); setFormError(null);
+  };
+
+  const handleSubmit = async () => {
+    if (!selectedBrandId) { setFormError("Select a brand -- every rule needs at least one."); return; }
+    if (!discountPercentage) { setFormError("Enter a discount percentage."); return; }
+    setIsSubmitting(true);
+    setFormError(null);
+    const payload = {
+      brandId: selectedBrandId,
+      modelId: selectedModelId || null,
+      yearFrom: yearFrom ? parseInt(yearFrom, 10) : null,
+      yearTo: yearTo ? parseInt(yearTo, 10) : null,
+      discountPercentage: parseFloat(discountPercentage),
+    };
+    try {
+      if (editingId) {
+        await updateDiscountRule(getStoredToken(), editingId, payload);
+      } else {
+        await createDiscountRule(getStoredToken(), payload);
+      }
+      resetForm();
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setFormError(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleEdit = (rule) => {
+    setEditingId(rule.id);
+    setSelectedBrandId(rule.brandId);
+    setYearFrom(rule.yearFrom ? String(rule.yearFrom) : "");
+    setYearTo(rule.yearTo ? String(rule.yearTo) : "");
+    setDiscountPercentage(String(rule.discountPercentage));
+    setFormError(null);
+  };
+
+  const handleDelete = async (id) => {
+    try {
+      await deleteDiscountRule(getStoredToken(), id);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
+  const inputStyle = { ...body, fontSize: 13, border: `1px solid ${C.line}`, borderRadius: 6, padding: "6px 10px" };
+
+  return (
+    <Card title="Discount rules" style={{ marginTop: 20 }}>
+      <div style={{ padding: 16 }}>
+        {loadState === "loading" && <div style={{ ...body, fontSize: 13, color: C.muted }}>Loading…</div>}
+        {loadState === "error" && <div style={{ ...body, fontSize: 13, color: C.red }}>{errorMessage}</div>}
+        {loadState === "ready" && (
+          <>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end", marginBottom: 16 }}>
+              <div>
+                <div style={{ ...body, fontSize: 11, color: C.muted, marginBottom: 4 }}>Brand</div>
+                <select style={inputStyle} value={selectedBrandId} onChange={(e) => { setSelectedBrandId(e.target.value); setSelectedModelId(""); }}>
+                  <option value="">Select…</option>
+                  {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <div style={{ ...body, fontSize: 11, color: C.muted, marginBottom: 4 }}>Model (optional)</div>
+                <select style={inputStyle} value={selectedModelId} onChange={(e) => setSelectedModelId(e.target.value)} disabled={!selectedBrandId}>
+                  <option value="">Any model</option>
+                  {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <div style={{ ...body, fontSize: 11, color: C.muted, marginBottom: 4 }}>Year from (optional)</div>
+                <input type="number" style={{ ...inputStyle, width: 90 }} value={yearFrom} onChange={(e) => setYearFrom(e.target.value)} placeholder="e.g. 2015" />
+              </div>
+              <div>
+                <div style={{ ...body, fontSize: 11, color: C.muted, marginBottom: 4 }}>Year to (optional)</div>
+                <input type="number" style={{ ...inputStyle, width: 90 }} value={yearTo} onChange={(e) => setYearTo(e.target.value)} placeholder="e.g. 2019" />
+              </div>
+              <div>
+                <div style={{ ...body, fontSize: 11, color: C.muted, marginBottom: 4 }}>Discount %</div>
+                <input type="number" style={{ ...inputStyle, width: 80 }} value={discountPercentage} onChange={(e) => setDiscountPercentage(e.target.value)} placeholder="e.g. 20" />
+              </div>
+              <button onClick={handleSubmit} disabled={isSubmitting} style={{ ...body, fontSize: 12.5, fontWeight: 700, color: "#fff", background: isSubmitting ? "#D1D5DB" : C.signal, border: "none", borderRadius: 8, padding: "8px 16px", cursor: isSubmitting ? "default" : "pointer" }}>
+                {isSubmitting ? "Saving…" : editingId ? "Update rule" : "Add rule"}
+              </button>
+              {editingId && (
+                <button onClick={resetForm} style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.ink, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 16px", cursor: "pointer" }}>
+                  Cancel
+                </button>
+              )}
+            </div>
+            {formError && <div style={{ ...body, fontSize: 12.5, color: C.red, marginBottom: 12 }}>{formError}</div>}
+
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <Th>Brand</Th>
+                  <Th>Model</Th>
+                  <Th>Years</Th>
+                  <Th>Discount</Th>
+                  <Th></Th>
+                </tr>
+              </thead>
+              <tbody>
+                {rules.length === 0 && (
+                  <tr><td colSpan={5} style={{ ...body, fontSize: 13, color: C.muted, padding: "13px 16px" }}>No discount rules yet.</td></tr>
+                )}
+                {rules.map((rule) => (
+                  <tr key={rule.id}>
+                    <Td>{rule.brandName}</Td>
+                    <Td>{rule.modelName || "Any"}</Td>
+                    <Td>{rule.yearFrom || rule.yearTo ? `${rule.yearFrom || "…"}–${rule.yearTo || "…"}` : "Any"}</Td>
+                    <Td>{rule.discountPercentage}%</Td>
+                    <Td>
+                      <button onClick={() => handleEdit(rule)} style={{ background: "none", border: "none", cursor: "pointer", color: C.torque, fontSize: 12.5, marginRight: 8 }}>Edit</button>
+                      <button onClick={() => handleDelete(rule.id)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red, fontSize: 12.5 }}>Delete</button>
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+      </div>
+    </Card>
   );
 }
 
