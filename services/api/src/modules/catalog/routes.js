@@ -96,6 +96,34 @@ function toBuyerProductDto(row, lang) {
 // existing price/currency unchanged; only real RMB-priced products (the
 // only kind submitted going forward — see the supplier module's
 // currencyCode lock) go through the real equation.
+// Confirmed with the person through several rounds of design: the
+// admin-controlled discount-rules engine (migration 074) replacing
+// the earlier, removed per-product original_price approach entirely.
+// A product's real discount comes from matching ANY of its own real
+// fitment entries (not just its primary one) against a rule's real
+// brand (required) + optional model + optional year range. If more
+// than one of a product's own real, different fitments happens to
+// match a different rule (a real, genuinely possible edge case, e.g.
+// a universal part fitting two different real cars each covered by
+// their own real rule), the highest real discount_percentage wins --
+// a sensible, deterministic default for a case not explicitly
+// specified otherwise.
+async function findMatchingDiscountRule(productId) {
+  const { rows } = await db.query(
+    `SELECT MAX(dr.discount_percentage) AS discount_percentage
+     FROM product_fitment_entries pfe
+     JOIN vehicle_generations vg ON vg.id = pfe.generation_id
+     JOIN vehicle_models vm ON vm.id = vg.model_id
+     JOIN discount_rules dr ON dr.brand_id = vm.brand_id
+       AND (dr.model_id IS NULL OR dr.model_id = vm.id)
+       AND (dr.year_from IS NULL OR pfe.year >= dr.year_from)
+       AND (dr.year_to IS NULL OR pfe.year <= dr.year_to)
+     WHERE pfe.product_id = $1`,
+    [productId]
+  );
+  return rows[0]?.discount_percentage === null ? null : Number(rows[0].discount_percentage);
+}
+
 async function attachBuyerPrice(dto, row) {
   // Real, previously-internal-only price snapshot (#59) -- exposes
   // the same real last_known_buyer_price_usd already recorded by the
@@ -103,22 +131,17 @@ async function attachBuyerPrice(dto, row) {
   // app show a genuine "price dropped" comparison using real,
   // already-existing data, not a fabricated price history.
   const lastKnownPrice = row.last_known_buyer_price_usd === null ? null : Number(row.last_known_buyer_price_usd);
-
-  // Confirmed with the person through several rounds of design
-  // (migration 073): a real discount only genuinely exists when
-  // original_price is set AND actually greater than the real current
-  // price -- defensive re-check here even though the same is already
-  // validated at submission/edit time, since price could theoretically
-  // be lowered later without clearing original_price.
-  const hasDiscount = row.original_price !== null && Number(row.original_price) > Number(row.price);
+  const discountPercentage = await findMatchingDiscountRule(row.id);
 
   if (row.currency_code !== 'CNY') {
+    const basePrice = Number(row.price);
+    const finalPrice = discountPercentage !== null ? basePrice * (1 - discountPercentage / 100) : basePrice;
     return {
       ...dto,
-      price: Number(row.price),
+      price: finalPrice,
       currencyCode: row.currency_code,
       lastKnownPrice,
-      originalPrice: hasDiscount ? Number(row.original_price) : null,
+      originalPrice: discountPercentage !== null ? basePrice : null,
     };
   }
   const result = await calculateBuyerPriceUsd({
@@ -128,22 +151,19 @@ async function attachBuyerPrice(dto, row) {
     widthCm: row.width_cm === null ? null : Number(row.width_cm),
     heightCm: row.height_cm === null ? null : Number(row.height_cm),
   });
-  let originalPrice = null;
-  if (hasDiscount) {
-    // Real, same conversion (shipping cost included, not just a plain
-    // currency exchange) applied to original_price too -- otherwise
-    // the displayed discount percentage would be wrong, comparing a
-    // real converted price against a real unconverted one.
-    const originalResult = await calculateBuyerPriceUsd({
-      supplierCostCny: Number(row.original_price),
-      weightKg: row.weight_kg === null ? null : Number(row.weight_kg),
-      lengthCm: row.length_cm === null ? null : Number(row.length_cm),
-      widthCm: row.width_cm === null ? null : Number(row.width_cm),
-      heightCm: row.height_cm === null ? null : Number(row.height_cm),
-    });
-    originalPrice = originalResult.buyerPriceUsd;
-  }
-  return { ...dto, price: result.buyerPriceUsd, lastKnownPrice, originalPrice };
+  // Confirmed simplest, most predictable interpretation: the real
+  // discount applies to the final, all-in real buyer price (already
+  // including real shipping cost), not just the raw real supplier
+  // cost before shipping is added -- "20% off the listed price" means
+  // 20% off whatever the buyer would have actually paid, period.
+  const basePriceUsd = result.buyerPriceUsd;
+  const finalPriceUsd = discountPercentage !== null ? basePriceUsd * (1 - discountPercentage / 100) : basePriceUsd;
+  return {
+    ...dto,
+    price: finalPriceUsd,
+    lastKnownPrice,
+    originalPrice: discountPercentage !== null ? basePriceUsd : null,
+  };
 }
 
 async function attachBuyerImages(dto, productId) {
@@ -1022,7 +1042,6 @@ router.get('/admin/products/:id', requireAuth, requireRole('admin'), requirePage
       position: row.position,
       oemNumber: row.oem_number,
       price: Number(row.price),
-      originalPrice: row.original_price === null ? null : Number(row.original_price),
       currencyCode: row.currency_code,
       stockQuantity: row.stock_quantity,
       lowStockThreshold: row.low_stock_threshold,
@@ -1346,6 +1365,145 @@ router.patch('/admin/product-requirements', requireAuth, requireRole('admin'), r
       [minPhotos ?? null, photosRequired ?? null, videoRequired ?? null, maxVideoDurationSeconds ?? null]
     );
     res.json(toProductRequirementsDto(rows[0]));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Confirmed with the person through several full rounds of design
+// (formula structure, wildcard rules, overlap semantics) before
+// building: the admin-controlled bulk discount-rules engine
+// (migration 074). A rule requires a real vehicle brand at minimum,
+// optionally narrowed by a specific model within that brand,
+// optionally narrowed further by a real year range.
+function toDiscountRuleDto(row) {
+  return {
+    id: row.id,
+    brandId: row.brand_id,
+    brandName: row.brand_name,
+    modelId: row.model_id,
+    modelName: row.model_name,
+    yearFrom: row.year_from,
+    yearTo: row.year_to,
+    discountPercentage: Number(row.discount_percentage),
+  };
+}
+
+const DISCOUNT_RULE_SELECT = `
+  SELECT dr.*, vb.name AS brand_name, vm.name AS model_name
+  FROM discount_rules dr
+  JOIN vehicle_brands vb ON vb.id = dr.brand_id
+  LEFT JOIN vehicle_models vm ON vm.id = dr.model_id
+`;
+
+router.get('/discount-rules', async (req, res, next) => {
+  try {
+    const { rows } = await db.query(`${DISCOUNT_RULE_SELECT} ORDER BY vb.name ASC, vm.name ASC NULLS FIRST`);
+    res.json(rows.map(toDiscountRuleDto));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Confirmed explicitly with the person, after walking through the
+// real practical implications: genuinely strict, structural overlap
+// blocking -- rejects if there's ANY theoretical real vehicle
+// (brand/model/year combination) that could satisfy both this rule
+// and an existing one, not just a check against real products that
+// currently exist. Two rules structurally overlap only when all
+// three real dimensions (brand, model, year range) are pairwise
+// compatible -- since brand is always required and non-null here,
+// a differing real brand alone already rules out any real overlap.
+async function findOverlappingRule(brandId, modelId, yearFrom, yearTo, excludeId) {
+  const { rows } = await db.query(
+    `SELECT id FROM discount_rules
+     WHERE brand_id = $1
+       AND (model_id IS NULL OR $2::text IS NULL OR model_id = $2)
+       AND (year_from IS NULL OR $4::int IS NULL OR year_from <= $4)
+       AND ($3::int IS NULL OR year_to IS NULL OR $3 <= year_to)
+       AND ($5::int IS NULL OR id != $5)`,
+    [brandId, modelId ?? null, yearFrom ?? null, yearTo ?? null, excludeId ?? null]
+  );
+  return rows.length > 0 ? rows[0].id : null;
+}
+
+function validateDiscountRuleInput(body) {
+  const { brandId, modelId, yearFrom, yearTo, discountPercentage } = body || {};
+  if (!brandId) return { error: 'brandId is required -- every real rule needs at least a vehicle brand' };
+  if (discountPercentage === undefined || discountPercentage === null || Number(discountPercentage) <= 0 || Number(discountPercentage) >= 100) {
+    return { error: 'discountPercentage must be a number greater than 0 and less than 100' };
+  }
+  if (yearFrom !== undefined && yearFrom !== null && yearTo !== undefined && yearTo !== null && Number(yearFrom) > Number(yearTo)) {
+    return { error: 'yearFrom must not be greater than yearTo' };
+  }
+  return { brandId, modelId: modelId ?? null, yearFrom: yearFrom ?? null, yearTo: yearTo ?? null, discountPercentage: Number(discountPercentage) };
+}
+
+router.post('/admin/discount-rules', requireAuth, requireRole('admin'), requirePageAccess('products'), async (req, res, next) => {
+  try {
+    const validated = validateDiscountRuleInput(req.body);
+    if (validated.error) return res.status(400).json({ error: validated.error });
+    const { brandId, modelId, yearFrom, yearTo, discountPercentage } = validated;
+
+    if (modelId) {
+      const { rows: modelCheck } = await db.query('SELECT brand_id FROM vehicle_models WHERE id = $1', [modelId]);
+      if (modelCheck.length === 0) return res.status(400).json({ error: 'modelId not found' });
+      if (modelCheck[0].brand_id !== brandId) return res.status(400).json({ error: 'modelId does not belong to brandId' });
+    }
+
+    const overlapId = await findOverlappingRule(brandId, modelId, yearFrom, yearTo);
+    if (overlapId) {
+      return res.status(400).json({ error: `This rule overlaps with existing rule #${overlapId} -- a vehicle could match both. Adjust the brand, model, or year range so they don't conflict.` });
+    }
+
+    const { rows } = await db.query(
+      `INSERT INTO discount_rules (brand_id, model_id, year_from, year_to, discount_percentage)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [brandId, modelId, yearFrom, yearTo, discountPercentage]
+    );
+    const { rows: full } = await db.query(`${DISCOUNT_RULE_SELECT} WHERE dr.id = $1`, [rows[0].id]);
+    res.status(201).json(toDiscountRuleDto(full[0]));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/admin/discount-rules/:id', requireAuth, requireRole('admin'), requirePageAccess('products'), async (req, res, next) => {
+  try {
+    const validated = validateDiscountRuleInput(req.body);
+    if (validated.error) return res.status(400).json({ error: validated.error });
+    const { brandId, modelId, yearFrom, yearTo, discountPercentage } = validated;
+
+    if (modelId) {
+      const { rows: modelCheck } = await db.query('SELECT brand_id FROM vehicle_models WHERE id = $1', [modelId]);
+      if (modelCheck.length === 0) return res.status(400).json({ error: 'modelId not found' });
+      if (modelCheck[0].brand_id !== brandId) return res.status(400).json({ error: 'modelId does not belong to brandId' });
+    }
+
+    const overlapId = await findOverlappingRule(brandId, modelId, yearFrom, yearTo, Number(req.params.id));
+    if (overlapId) {
+      return res.status(400).json({ error: `This rule overlaps with existing rule #${overlapId} -- a vehicle could match both. Adjust the brand, model, or year range so they don't conflict.` });
+    }
+
+    const { rows } = await db.query(
+      `UPDATE discount_rules SET
+         brand_id = $1, model_id = $2, year_from = $3, year_to = $4, discount_percentage = $5, updated_at = now()
+       WHERE id = $6 RETURNING id`,
+      [brandId, modelId, yearFrom, yearTo, discountPercentage, req.params.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Discount rule not found' });
+    const { rows: full } = await db.query(`${DISCOUNT_RULE_SELECT} WHERE dr.id = $1`, [rows[0].id]);
+    res.json(toDiscountRuleDto(full[0]));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/admin/discount-rules/:id', requireAuth, requireRole('admin'), requirePageAccess('products'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query('DELETE FROM discount_rules WHERE id = $1 RETURNING id', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Discount rule not found' });
+    res.json({ id: rows[0].id, deleted: true });
   } catch (err) {
     next(err);
   }

@@ -153,7 +153,6 @@ function toProductDto(row) {
     position: row.position,
     oemNumber: row.oem_number,
     price: Number(row.price),
-    originalPrice: row.original_price === null ? null : Number(row.original_price),
     currencyCode: row.currency_code,
     stockQuantity: row.stock_quantity,
     lowStockThreshold: row.low_stock_threshold,
@@ -333,7 +332,7 @@ const { ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS, validateSupplierNameLength } = re
 router.post('/me/products', requireAuth, requireRole('supplier'), async (req, res, next) => {
   const {
     nameZh, descriptionZh, category, part, position, oemNumber,
-    price, originalPrice, currencyCode, stockQuantity,
+    price, currencyCode, stockQuantity,
     fitment, images, videoUrl, weightKg, lengthCm, widthCm, heightCm,
     fulfillsRequestItemId,
   } = req.body || {};
@@ -387,9 +386,6 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
   const nameLengthError = validateSupplierNameLength(nameZh, 'nameZh');
   if (nameLengthError) {
     return res.status(400).json({ error: nameLengthError });
-  }
-  if (originalPrice !== undefined && originalPrice !== null && Number(originalPrice) <= Number(price)) {
-    return res.status(400).json({ error: 'originalPrice must be greater than price (it represents the pre-discount price)' });
   }
   if (weightKg !== undefined && weightKg !== null && weightKg <= 0) {
     return res.status(400).json({ error: 'weightKg must be a positive number' });
@@ -484,11 +480,11 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
     await client.query(
       `INSERT INTO products
          (id, supplier_id, name, name_zh, description, description_zh, category, part, position, oem_number,
-          price, original_price, currency_code, stock_quantity, status,
+          price, currency_code, stock_quantity, status,
           weight_kg, length_cm, width_cm, height_cm, video_url)
-       VALUES ($1, $2, $3, $3, NULL, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'translating', $13, $14, $15, $16, $17)`,
+       VALUES ($1, $2, $3, $3, NULL, $4, $5, $6, $7, $8, $9, $10, $11, 'translating', $12, $13, $14, $15, $16)`,
       [id, req.user.supplierId, nameZh, descriptionZh || null, category, part, position, oemNumber,
-        price, originalPrice || null, currencyCode, stockQuantity || 0,
+        price, currencyCode, stockQuantity || 0,
         weightKg, lengthCm, widthCm, heightCm, videoUrl || null]
     );
 
@@ -772,9 +768,9 @@ router.patch('/me/products/bulk-price-update', requireAuth, requireRole('supplie
 
 router.patch('/me/products/:id', requireAuth, requireRole('supplier'), async (req, res, next) => {
   try {
-    const { price, originalPrice, stockQuantity, lowStockThreshold } = req.body || {};
-    if (price === undefined && originalPrice === undefined && stockQuantity === undefined && lowStockThreshold === undefined) {
-      return res.status(400).json({ error: 'Provide at least one of: price, originalPrice, stockQuantity, lowStockThreshold' });
+    const { price, stockQuantity, lowStockThreshold } = req.body || {};
+    if (price === undefined && stockQuantity === undefined && lowStockThreshold === undefined) {
+      return res.status(400).json({ error: 'Provide at least one of: price, stockQuantity, lowStockThreshold' });
     }
     if (lowStockThreshold !== undefined && (!Number.isInteger(lowStockThreshold) || lowStockThreshold < 0)) {
       return res.status(400).json({ error: 'lowStockThreshold must be a whole number of 0 or more' });
@@ -783,34 +779,21 @@ router.patch('/me/products/:id', requireAuth, requireRole('supplier'), async (re
     // Real back-in-stock detection (new, migration 045) -- captures
     // the real stock level BEFORE this update so a genuine 0 ->
     // positive transition can be detected after it. Only relevant
-    // when stockQuantity is actually part of this request. Also
-    // fetches the real current price here when originalPrice is being
-    // set, so it can be validated against whichever price will
-    // actually be effective after this update -- the new price if
-    // that's also changing in this same request, otherwise the
-    // existing stored one.
+    // when stockQuantity is actually part of this request.
     let previousStock = null;
-    let effectivePrice = price;
-    if (stockQuantity !== undefined || (originalPrice !== undefined && price === undefined)) {
-      const { rows: beforeRows } = await db.query('SELECT price, stock_quantity FROM products WHERE id = $1 AND supplier_id = $2', [req.params.id, req.user.supplierId]);
-      if (beforeRows.length > 0) {
-        previousStock = beforeRows[0].stock_quantity;
-        if (effectivePrice === undefined) effectivePrice = Number(beforeRows[0].price);
-      }
-    }
-    if (originalPrice !== undefined && originalPrice !== null && effectivePrice !== undefined && Number(originalPrice) <= Number(effectivePrice)) {
-      return res.status(400).json({ error: 'originalPrice must be greater than price (it represents the pre-discount price)' });
+    if (stockQuantity !== undefined) {
+      const { rows: beforeRows } = await db.query('SELECT stock_quantity FROM products WHERE id = $1 AND supplier_id = $2', [req.params.id, req.user.supplierId]);
+      if (beforeRows.length > 0) previousStock = beforeRows[0].stock_quantity;
     }
 
     const { rows } = await db.query(
       `UPDATE products SET
          price = COALESCE($1, price),
-         original_price = COALESCE($2, original_price),
-         stock_quantity = COALESCE($3, stock_quantity),
-         low_stock_threshold = COALESCE($4, low_stock_threshold)
-       WHERE id = $5 AND supplier_id = $6
+         stock_quantity = COALESCE($2, stock_quantity),
+         low_stock_threshold = COALESCE($3, low_stock_threshold)
+       WHERE id = $4 AND supplier_id = $5
        RETURNING *`,
-      [price ?? null, originalPrice ?? null, stockQuantity ?? null, lowStockThreshold ?? null, req.params.id, req.user.supplierId]
+      [price ?? null, stockQuantity ?? null, lowStockThreshold ?? null, req.params.id, req.user.supplierId]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
 
