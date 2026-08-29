@@ -103,8 +103,23 @@ async function attachBuyerPrice(dto, row) {
   // app show a genuine "price dropped" comparison using real,
   // already-existing data, not a fabricated price history.
   const lastKnownPrice = row.last_known_buyer_price_usd === null ? null : Number(row.last_known_buyer_price_usd);
+
+  // Confirmed with the person through several rounds of design
+  // (migration 073): a real discount only genuinely exists when
+  // original_price is set AND actually greater than the real current
+  // price -- defensive re-check here even though the same is already
+  // validated at submission/edit time, since price could theoretically
+  // be lowered later without clearing original_price.
+  const hasDiscount = row.original_price !== null && Number(row.original_price) > Number(row.price);
+
   if (row.currency_code !== 'CNY') {
-    return { ...dto, price: Number(row.price), currencyCode: row.currency_code, lastKnownPrice };
+    return {
+      ...dto,
+      price: Number(row.price),
+      currencyCode: row.currency_code,
+      lastKnownPrice,
+      originalPrice: hasDiscount ? Number(row.original_price) : null,
+    };
   }
   const result = await calculateBuyerPriceUsd({
     supplierCostCny: Number(row.price),
@@ -113,7 +128,22 @@ async function attachBuyerPrice(dto, row) {
     widthCm: row.width_cm === null ? null : Number(row.width_cm),
     heightCm: row.height_cm === null ? null : Number(row.height_cm),
   });
-  return { ...dto, price: result.buyerPriceUsd, lastKnownPrice };
+  let originalPrice = null;
+  if (hasDiscount) {
+    // Real, same conversion (shipping cost included, not just a plain
+    // currency exchange) applied to original_price too -- otherwise
+    // the displayed discount percentage would be wrong, comparing a
+    // real converted price against a real unconverted one.
+    const originalResult = await calculateBuyerPriceUsd({
+      supplierCostCny: Number(row.original_price),
+      weightKg: row.weight_kg === null ? null : Number(row.weight_kg),
+      lengthCm: row.length_cm === null ? null : Number(row.length_cm),
+      widthCm: row.width_cm === null ? null : Number(row.width_cm),
+      heightCm: row.height_cm === null ? null : Number(row.height_cm),
+    });
+    originalPrice = originalResult.buyerPriceUsd;
+  }
+  return { ...dto, price: result.buyerPriceUsd, lastKnownPrice, originalPrice };
 }
 
 async function attachBuyerImages(dto, productId) {
@@ -992,6 +1022,7 @@ router.get('/admin/products/:id', requireAuth, requireRole('admin'), requirePage
       position: row.position,
       oemNumber: row.oem_number,
       price: Number(row.price),
+      originalPrice: row.original_price === null ? null : Number(row.original_price),
       currencyCode: row.currency_code,
       stockQuantity: row.stock_quantity,
       lowStockThreshold: row.low_stock_threshold,
