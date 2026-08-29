@@ -78,7 +78,35 @@ class _ScanScreenState extends State<ScanScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          MobileScanner(controller: _controller, onDetect: _handleDetection),
+          MobileScanner(
+            controller: _controller,
+            onDetect: _handleDetection,
+            placeholderBuilder: (context, child) {
+              return const ColoredBox(
+                color: Colors.black,
+                child: Center(child: CircularProgressIndicator(color: Colors.white)),
+              );
+            },
+            errorBuilder: (context, error, child) {
+              return Container(
+                color: Colors.black,
+                padding: const EdgeInsets.all(24),
+                alignment: Alignment.center,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.no_photography_outlined, color: Colors.white, size: 40),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Camera error: ${error.errorCode.name}${error.errorDetails?.message != null ? '\n${error.errorDetails!.message}' : ''}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white, fontSize: 13),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
           // Real, simple viewfinder frame -- purely visual guidance,
           // has no effect on the actual real detection logic above.
           Center(

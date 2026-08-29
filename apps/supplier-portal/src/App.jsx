@@ -1,4 +1,4 @@
-import React, { useState, useEffect, createContext, useContext } from "react";
+import React, { useState, useEffect, useRef, createContext, useContext } from "react";
 import { FONT_IMPORT, C, disp, mono, useBodyFont } from "./theme";
 import { exportToExcel } from "./exportToExcel";
 import { STATUS_COLOR, PlateChip, Badge, KpiCard, Card, Th, Td } from "./components/ui";
@@ -16,6 +16,7 @@ import { LangContext, useLang } from "./langContext";
 import { SupplierContext, useSupplier } from "./supplierContext";
 import LoginPage from "./LoginPage";
 import ExcelJS from "exceljs";
+import { QRCodeSVG } from "qrcode.react";
 import {
   getStoredToken, saveToken, clearToken, getCurrentUser, SessionExpiredError,
   fetchMySupplierProfile, fetchMyProducts, createProduct, updateProduct, bulkUpdateProductPrices,
@@ -96,6 +97,8 @@ const STRINGS = {
       carrierLabel: "选择物流公司", carriers: ["顺丰国际 (SF International)", "中国邮政国际 (China Post)", "DHL Express", "第三方海外仓专线"],
       trackingLabel: "运单号", trackingPlaceholder: "请输入运单号", markShipped: "标记已发货",
       actionsTitle: "操作", acceptOrder: "确认接单", contactPlatform: "联系平台客服", markOOS: "标记缺货",
+      labelTitle: "质检中心运单标签", labelHint: "打印此标签并贴在包裹上，质检中心员工到货后扫描即可直接调出此运单记录。",
+      labelRecipient: "收件方（质检中心）", labelOrder: "订单编号", printLabel: "打印标签",
     },
     returns: {
       title: "退货 / 售后", subtitle: "所有售后案例均由平台受理并转达，供应商无需直接联系买家",
@@ -188,6 +191,8 @@ const STRINGS = {
       carrierLabel: "Carrier", carriers: ["SF International", "China Post International", "DHL Express", "Third-party overseas warehouse line"],
       trackingLabel: "Tracking number", trackingPlaceholder: "Enter tracking number", markShipped: "Mark as shipped",
       actionsTitle: "Actions", acceptOrder: "Accept order", contactPlatform: "Contact Platform Support", markOOS: "Mark out of stock",
+      labelTitle: "Inspection hub shipping label", labelHint: "Print this and attach it to the package \u2014 hub staff can scan it on arrival to jump straight to this shipment.",
+      labelRecipient: "Recipient (inspection hub)", labelOrder: "Order reference", printLabel: "Print label",
     },
     returns: {
       title: "Returns / Warranty", subtitle: "All cases are handled and relayed by the Platform \u2014 no direct buyer contact needed",
@@ -2044,6 +2049,7 @@ function OrderDetailPanel({ order, onBack, onUpdated }) {
   const font = useBodyFont();
   const inputStyle = useInputStyle();
   const o = t.orders;
+  const labelRef = useRef(null);
 
   const handleUpdate = async (updates) => {
     setIsSaving(true);
@@ -2057,6 +2063,37 @@ function OrderDetailPanel({ order, onBack, onUpdated }) {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  // Real, standard pattern for printing one specific section without a
+  // real PDF-generation dependency: the label's own real content
+  // (including the already-rendered real QR code SVG markup) is
+  // cloned via innerHTML into a real, separate blank window with its
+  // own minimal real print-friendly styling, then window.print() is
+  // called on that real window specifically -- the main app's own
+  // real UI never enters the print dialog at all.
+  const handlePrintLabel = () => {
+    if (!labelRef.current) return;
+    const printWindow = window.open('', '_blank', 'width=420,height=560');
+    if (!printWindow) return;
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>${order.orderId}</title>
+          <style>
+            body { font-family: 'Inter', sans-serif; padding: 24px; }
+            .label-row { margin-bottom: 14px; }
+            .label-caps { font-size: 11px; font-weight: 700; color: #6B7280; letter-spacing: 0.03em; margin-bottom: 4px; }
+            .label-value { font-size: 15px; font-weight: 700; }
+            .qr-wrap { display: flex; justify-content: center; margin: 20px 0; }
+          </style>
+        </head>
+        <body>${labelRef.current.innerHTML}</body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
   };
 
   // CONFIRMED (migration 027): a supplier's own real leg ends at
@@ -2102,6 +2139,33 @@ function OrderDetailPanel({ order, onBack, onUpdated }) {
               </button>
             </div>
           </Card>
+          {order.hubShipmentId && (
+            <Card title={o.labelTitle}>
+              <div style={{ padding: 16 }}>
+                <div style={{ ...font, fontSize: 12, color: C.muted, marginBottom: 14 }}>{o.labelHint}</div>
+                <div ref={labelRef}>
+                  <div className="label-row" style={{ marginBottom: 14 }}>
+                    <div className="label-caps" style={{ ...font, fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.03em", marginBottom: 4 }}>{o.labelRecipient}</div>
+                    <div className="label-value" style={{ ...font, fontSize: 15, fontWeight: 700, color: C.ink }}>{order.hubName}</div>
+                    <div style={{ ...font, fontSize: 13, color: C.ink }}>{order.hubAddress}</div>
+                  </div>
+                  <div className="label-row" style={{ marginBottom: 14 }}>
+                    <div className="label-caps" style={{ ...font, fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.03em", marginBottom: 4 }}>{o.labelOrder}</div>
+                    <div className="label-value" style={{ ...font, fontSize: 15, fontWeight: 700, color: C.ink }}>{order.orderId}</div>
+                  </div>
+                  <div className="qr-wrap" style={{ display: "flex", justifyContent: "center", margin: "20px 0" }}>
+                    <QRCodeSVG value={String(order.hubShipmentId)} size={160} level="M" />
+                  </div>
+                </div>
+                <button
+                  onClick={handlePrintLabel}
+                  style={{ ...font, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: 11, borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+                >
+                  {o.printLabel}
+                </button>
+              </div>
+            </Card>
+          )}
         </div>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
           <Card title={o.actionsTitle}>
