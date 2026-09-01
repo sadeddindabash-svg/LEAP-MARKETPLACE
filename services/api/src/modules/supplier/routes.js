@@ -334,7 +334,7 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
     nameZh, descriptionZh, category, part, position, oemNumber,
     price, currencyCode, stockQuantity,
     fitment, images, videoUrl, weightKg, lengthCm, widthCm, heightCm,
-    fulfillsRequestItemId,
+    fulfillsRequestItemId, attributes,
   } = req.body || {};
 
   // Real, confirmed integration point for the "request a part we
@@ -492,6 +492,22 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
       `INSERT INTO product_fitment_entries (product_id, generation_id, year, engine_id, transmission_id) VALUES ($1, $2, $3, $4, $5)`,
       [id, generationId, year, engineId || null, transmissionId || null]
     );
+
+    // Confirmed with the person: a fully flexible attribute list --
+    // different real part types need different real specs (color,
+    // material, side, etc.), not one fixed set. Skips any genuinely
+    // empty/malformed entry rather than crashing on it.
+    if (Array.isArray(attributes)) {
+      for (const attr of attributes) {
+        const name = (attr?.name || '').trim();
+        const value = (attr?.value || '').trim();
+        if (!name || !value) continue;
+        await client.query(
+          'INSERT INTO product_attributes (product_id, attribute_name, attribute_value) VALUES ($1, $2, $3)',
+          [id, name, value]
+        );
+      }
+    }
 
     for (let i = 0; i < images.length; i++) {
       await client.query('INSERT INTO product_images (product_id, url, sort_order) VALUES ($1, $2, $3)', [id, images[i], i]);

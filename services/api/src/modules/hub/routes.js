@@ -320,19 +320,86 @@ router.get('/me/shipments/:id', requireAuth, requireRole('hub_staff'), async (re
     if (rows.length === 0) return res.status(404).json({ error: 'Shipment not found' });
 
     const { rows: items } = await db.query(
-      `SELECT oli.product_id, oli.quantity, p.name
+      `SELECT oli.product_id, oli.quantity, oli.received_quantity, p.name, p.part, p.position, p.oem_number
        FROM order_line_items oli JOIN products p ON p.id = oli.product_id
        WHERE oli.sub_order_id = $1`,
       [rows[0].sub_order_id]
     );
+    // Confirmed with the person: a fully flexible attribute list per
+    // real item -- fetched separately since product_attributes is
+    // its own one-to-many table, not columns on products itself.
+    const itemsWithAttributes = await Promise.all(items.map(async (i) => {
+      const { rows: attrRows } = await db.query(
+        'SELECT attribute_name, attribute_value FROM product_attributes WHERE product_id = $1 ORDER BY attribute_name',
+        [i.product_id]
+      );
+      return {
+        productId: i.product_id,
+        name: i.name,
+        quantity: i.quantity,
+        receivedQuantity: i.received_quantity,
+        part: i.part,
+        position: i.position,
+        oemNumber: i.oem_number,
+        attributes: attrRows.map((a) => ({ name: a.attribute_name, value: a.attribute_value })),
+      };
+    }));
+
+    // Confirmed with the person: real "shipment X of Y" context --
+    // every real hub_shipment sharing this same real order_id
+    // (across every real supplier that order split into), ordered
+    // consistently by id so the index is deterministic across
+    // real requests.
+    const { rows: siblingRows } = await db.query(
+      `SELECT hs2.id, hs2.status, s2.name AS supplier_name
+       FROM hub_shipments hs2
+       JOIN supplier_sub_orders so2 ON so2.id = hs2.sub_order_id
+       JOIN suppliers s2 ON s2.id = so2.supplier_id
+       WHERE so2.order_id = $1
+       ORDER BY hs2.id ASC`,
+      [rows[0].order_id]
+    );
+    const shipmentIndex = siblingRows.findIndex((s) => String(s.id) === String(rows[0].id)) + 1;
+    const totalShipments = siblingRows.length;
+    const otherShipments = siblingRows
+      .filter((s) => String(s.id) !== String(rows[0].id))
+      .map((s) => ({ supplierName: s.supplier_name, status: s.status }));
+
     const events = await attachEventsAndPhotos(rows[0]);
 
     res.json({
       id: rows[0].id, status: rows[0].status, createdAt: rows[0].created_at, updatedAt: rows[0].updated_at,
       orderId: rows[0].order_id, supplierName: rows[0].supplier_name,
-      items: items.map((i) => ({ productId: i.product_id, name: i.name, quantity: i.quantity })),
+      shipmentIndex, totalShipments, otherShipments,
+      items: itemsWithAttributes,
       events,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /me/shipments/:id/items/:productId/received  { receivedQuantity }
+// Confirmed with the person: records the real, actual quantity a hub
+// worker counted on arrival for this specific item, separate from
+// the real quantity that was originally ordered. Deliberately does
+// NOT auto-flag on a real mismatch -- explicitly confirmed, the
+// worker decides for themselves whether to actually flag the
+// shipment; this just records the real count.
+router.patch('/me/shipments/:id/items/:productId/received', requireAuth, requireRole('hub_staff'), async (req, res, next) => {
+  try {
+    const { receivedQuantity } = req.body || {};
+    if (!Number.isInteger(receivedQuantity) || receivedQuantity < 0) {
+      return res.status(400).json({ error: 'receivedQuantity must be a whole number of 0 or more' });
+    }
+    const { rows } = await db.query('SELECT sub_order_id FROM hub_shipments WHERE id = $1 AND hub_id = $2', [req.params.id, req.user.hubId]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Shipment not found' });
+    const { rows: updated } = await db.query(
+      'UPDATE order_line_items SET received_quantity = $1 WHERE sub_order_id = $2 AND product_id = $3 RETURNING id',
+      [receivedQuantity, rows[0].sub_order_id, req.params.productId]
+    );
+    if (updated.length === 0) return res.status(404).json({ error: 'Item not found on this shipment' });
+    res.json({ productId: req.params.productId, receivedQuantity });
   } catch (err) {
     next(err);
   }
