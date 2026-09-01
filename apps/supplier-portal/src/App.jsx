@@ -2165,7 +2165,7 @@ function EditProductModal({ product, onClose, onSaved }) {
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{product.name}</div>
         <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>{lang === "zh" ? "编辑价格、库存与库存预警阈值" : "Edit price, stock, and low-stock alert threshold"}</div>
 
-        <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>{lang === "zh" ? "价格 (USD)" : "Price (USD)"}</label>
+        <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>{lang === "zh" ? "价格 (¥ 人民币)" : "Price (¥ RMB)"}</label>
         <input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)}
           style={{ width: "100%", padding: "8px 11px", borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13, marginBottom: 12, boxSizing: "border-box" }} />
 
