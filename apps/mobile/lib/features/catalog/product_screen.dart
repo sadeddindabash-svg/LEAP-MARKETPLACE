@@ -199,7 +199,6 @@ class _ProductDetailBody extends StatelessWidget {
   // The exact field labels requested, bilingual. Only these product-page
   // labels are translated in this pass — see LanguageState's header
   // comment for the honest scope boundary on the rest of the app's UI.
-  String get _lPartName => _isAr ? 'تصنيف المنتج' : 'Part Class.';
   String get _lBrand => _isAr ? 'الماركة' : 'Brand';
   String get _lModel => _isAr ? 'الموديل' : 'Model';
   String get _lYear => _isAr ? 'السنة' : 'Year';
@@ -382,22 +381,35 @@ class _ProductDetailBody extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 14),
                     child: Column(
-                      children: [
-                        _SpecRow(index: 0, label: _lPartName, value: product.part ?? _lNotSpecified),
-                        _SpecRow(index: 1, label: _lBrand, value: product.brand ?? _lNotSpecified),
-                        _SpecRow(index: 2, label: _lModel, value: product.model ?? _lNotSpecified),
-                        _SpecRow(index: 3, label: _lYear, value: product.year?.toString() ?? _lNotSpecified),
-                        _SpecRow(index: 4, label: _lPartNo, value: product.oemNumber ?? _lNotSpecified),
-                        _SpecRow(
-                          index: 5,
+                      children: (() {
+                        final rows = <_SpecRow>[
+                          _SpecRow(index: 0, label: _lBrand, value: product.brand ?? _lNotSpecified),
+                          _SpecRow(index: 1, label: _lModel, value: product.model ?? _lNotSpecified),
+                          _SpecRow(index: 2, label: _lYear, value: product.year?.toString() ?? _lNotSpecified),
+                          _SpecRow(index: 3, label: _lPartNo, value: product.oemNumber ?? _lNotSpecified),
+                        ];
+                        // Confirmed with the person, seeded from their
+                        // own real spreadsheet: every real attribute
+                        // that's been added, listed right here.
+                        for (final attr in product.attributes) {
+                          rows.add(_SpecRow(index: rows.length, label: attr.name, value: attr.value));
+                        }
+                        rows.add(_SpecRow(
+                          index: rows.length,
                           label: _lDimensions,
                           value: (product.lengthCm != null && product.widthCm != null && product.heightCm != null)
                               ? '${product.lengthCm} × ${product.widthCm} × ${product.heightCm} ${_isAr ? "سم" : "cm"}'
                               : _lNotSpecified,
-                        ),
-                        _SpecRow(index: 6, label: _lWeight, value: product.weightKg != null ? '${product.weightKg} ${_isAr ? "كغم" : "kg"}' : _lNotSpecified),
-                        _SpecRow(index: 7, label: _lDescription, value: (product.description?.isNotEmpty ?? false) ? product.description! : _lNotSpecified, isLast: true),
-                      ],
+                        ));
+                        rows.add(_SpecRow(index: rows.length, label: _lWeight, value: product.weightKg != null ? '${product.weightKg} ${_isAr ? "كغم" : "kg"}' : _lNotSpecified));
+                        rows.add(_SpecRow(
+                          index: rows.length,
+                          label: _lDescription,
+                          value: (product.description?.isNotEmpty ?? false) ? product.description! : _lNotSpecified,
+                          isLast: true,
+                        ));
+                        return rows;
+                      })(),
                     ),
                   ),
                 ],

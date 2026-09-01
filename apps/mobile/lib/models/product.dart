@@ -55,6 +55,11 @@ class Product {
   final double? widthCm;
   final double? heightCm;
   final List<String> fitsVehicleIds; // BUY-013: fitment-confirmed vehicles
+  // Confirmed with the person, seeded from their own real
+  // spreadsheet: the product's own flexible, admin/supplier-set
+  // attributes (Color, Camera, Position, etc.), shown in Technical
+  // Specifications.
+  final List<ProductAttribute> attributes;
 
   const Product({
     required this.id,
@@ -84,6 +89,7 @@ class Product {
     this.widthCm,
     this.heightCm,
     required this.fitsVehicleIds,
+    this.attributes = const [],
   });
 
   bool fitsVehicle(String vehicleId) => fitsVehicleIds.contains(vehicleId);
@@ -116,6 +122,10 @@ class Product {
         widthCm: (json['widthCm'] as num?)?.toDouble(),
         heightCm: (json['heightCm'] as num?)?.toDouble(),
         fitsVehicleIds: (json['fitsVehicleIds'] as List?)?.cast<String>() ?? const [],
+        attributes: (json['attributes'] as List?)
+                ?.map((a) => ProductAttribute.fromJson(a as Map<String, dynamic>))
+                .toList() ??
+            const [],
       );
 
   // Real, confirmed replacement for the previous relative "in X days"
@@ -134,4 +144,16 @@ class Product {
     if (isAr) return '${date.day} ${_monthNamesAr[date.month - 1]}';
     return '${_monthNamesEn[date.month - 1]} ${date.day}';
   }
+}
+
+/// Confirmed with the person, seeded from their own real spreadsheet:
+/// a flexible product attribute (Color, Camera, Position, etc.).
+class ProductAttribute {
+  final String name;
+  final String value;
+
+  const ProductAttribute({required this.name, required this.value});
+
+  factory ProductAttribute.fromJson(Map<String, dynamic> json) =>
+      ProductAttribute(name: json['name'] as String, value: json['value'] as String);
 }
