@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../core/auth_state.dart';
 import '../../core/language_state.dart';
 import '../../core/hub_strings.dart';
@@ -77,6 +80,10 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
   // clarification: which spec labels have been actively confirmed
   // against the physical part, per item.
   final Map<String, Set<String>> _checkedSpecs = {};
+  // Confirmed with the person via mockup: loading state for the
+  // delivery-address share action, so the button shows real progress
+  // while the PDF is being downloaded and prepared.
+  bool _isSharingAddress = false;
 
   @override
   void initState() {
@@ -111,6 +118,36 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _errorMessage = e.message);
+    }
+  }
+
+  /// Confirmed with the person via mockup: downloads the real PDF
+  /// bytes, saves them to a real temp file (share_plus shares by file
+  /// path, not raw bytes), then opens the device's real native share
+  /// sheet -- the worker picks WhatsApp, email, a PDF viewer with its
+  /// own print option, etc.
+  Future<void> _shareAddressLabel() async {
+    final auth = context.read<AuthState>();
+    setState(() => _isSharingAddress = true);
+    try {
+      final bytes = await ApiClient().fetchAddressLabelPdf(auth.token!, widget.shipmentId);
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/LEAP-address-${widget.shipmentId}.pdf');
+      await file.writeAsBytes(bytes);
+      if (!mounted) return;
+      // Confirmed working for this exact share_plus version
+      // (^10.1.2) -- see apps/mobile's own product_screen.dart for
+      // the real compile-error history behind this choice:
+      // SharePlus.instance/ShareParams does not exist in this real
+      // installed version at all.
+      await Share.shareXFiles([XFile(file.path)], text: 'Delivery address');
+    } on SessionExpiredError {
+      auth.handleSessionExpired();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMessage = e.message);
+    } finally {
+      if (mounted) setState(() => _isSharingAddress = false);
     }
   }
 
@@ -274,6 +311,10 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
         padding: const EdgeInsets.all(20),
         children: [
           _buildItemsCard(t, shipment, nextStatus),
+          if (_deliveryAddressVisibleFor(shipment.status) && shipment.deliveryAddress != null) ...[
+            const SizedBox(height: 12),
+            _buildDeliveryAddressCard(shipment.deliveryAddress!),
+          ],
           if (shipment.otherShipments.isNotEmpty) ...[
             const SizedBox(height: 8),
             ...shipment.otherShipments.map((s) => Padding(
@@ -310,6 +351,47 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
           ],
           const SizedBox(height: 16),
           _buildHistory(t, shipment),
+        ],
+      ),
+    );
+  }
+
+  /// Confirmed with the person via mockup: the real delivery address
+  /// card shows from the moment inspection is genuinely done onward
+  /// -- an explicit set rather than index arithmetic on kStatusOrder,
+  /// since 'delivered' is a genuine terminal status not present in
+  /// that list at all and would otherwise be silently excluded.
+  bool _deliveryAddressVisibleFor(String status) =>
+      const {'inspected', 'packed', 'shipped_to_buyer', 'delivered'}.contains(status);
+
+  Widget _buildDeliveryAddressCard(DeliveryAddress address) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: HubColors.card, border: Border.all(color: HubColors.line), borderRadius: BorderRadius.circular(10)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('DELIVERY ADDRESS', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: HubColors.muted)),
+          const SizedBox(height: 10),
+          Text(address.recipientName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: HubColors.ink)),
+          const SizedBox(height: 4),
+          Text(address.phone, style: const TextStyle(fontSize: 12.5, color: HubColors.muted)),
+          const SizedBox(height: 6),
+          Text(address.streetAddress, style: const TextStyle(fontSize: 12.5, color: HubColors.muted)),
+          Text('${address.city}, ${address.country}', style: const TextStyle(fontSize: 12.5, color: HubColors.muted)),
+          if (address.postalCode != null) Text(address.postalCode!, style: const TextStyle(fontSize: 12.5, color: HubColors.muted)),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _isSharingAddress ? null : _shareAddressLabel,
+              icon: _isSharingAddress
+                  ? const SizedBox(height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.share_outlined, size: 16),
+              label: Text(_isSharingAddress ? 'Preparing…' : 'Share / print address'),
+              style: OutlinedButton.styleFrom(side: const BorderSide(color: HubColors.signal), foregroundColor: HubColors.signal),
+            ),
+          ),
         ],
       ),
     );

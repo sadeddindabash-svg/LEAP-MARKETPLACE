@@ -116,12 +116,16 @@ class ShipmentDetail {
   final List<SiblingShipment> otherShipments;
   final List<ShipmentItem> items;
   final List<ShipmentEvent> events;
+  // Confirmed with the person via mockup: the real, permanent
+  // delivery address snapshot for this order, shown once inspection
+  // is done. Null when genuinely no address is on file.
+  final DeliveryAddress? deliveryAddress;
 
   ShipmentDetail({
     required this.id, required this.status, required this.createdAt, required this.updatedAt,
     required this.orderId, required this.supplierName,
     this.shipmentIndex = 1, this.totalShipments = 1, this.otherShipments = const [],
-    required this.items, required this.events,
+    required this.items, required this.events, this.deliveryAddress,
   });
 
   factory ShipmentDetail.fromJson(Map<String, dynamic> json) => ShipmentDetail(
@@ -138,6 +142,30 @@ class ShipmentDetail {
             .toList(),
         items: (json['items'] as List<dynamic>).map((i) => ShipmentItem.fromJson(i as Map<String, dynamic>)).toList(),
         events: (json['events'] as List<dynamic>).map((e) => ShipmentEvent.fromJson(e as Map<String, dynamic>)).toList(),
+        deliveryAddress: json['deliveryAddress'] == null ? null : DeliveryAddress.fromJson(json['deliveryAddress'] as Map<String, dynamic>),
+      );
+}
+
+class DeliveryAddress {
+  final String recipientName;
+  final String phone;
+  final String country;
+  final String city;
+  final String streetAddress;
+  final String? postalCode;
+
+  DeliveryAddress({
+    required this.recipientName, required this.phone, required this.country,
+    required this.city, required this.streetAddress, this.postalCode,
+  });
+
+  factory DeliveryAddress.fromJson(Map<String, dynamic> json) => DeliveryAddress(
+        recipientName: json['recipientName'] as String,
+        phone: json['phone'] as String,
+        country: json['country'] as String,
+        city: json['city'] as String,
+        streetAddress: json['streetAddress'] as String,
+        postalCode: json['postalCode'] as String?,
       );
 }
 

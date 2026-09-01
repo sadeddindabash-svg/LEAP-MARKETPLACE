@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
@@ -144,6 +145,19 @@ class ApiClient {
     await _authedMutate('PATCH', '/hub/me/shipments/$shipmentId/items/$productId/received', token, {
       'receivedQuantity': receivedQuantity,
     });
+  }
+
+  /// Confirmed with the person via mockup: fetches the real, raw PDF
+  /// bytes for the delivery address label -- a separate method from
+  /// _authedGet, since that helper always JSON-decodes the response,
+  /// which would fail on this genuine binary PDF data.
+  Future<Uint8List> fetchAddressLabelPdf(String token, String shipmentId) async {
+    final response = await _client.get(Uri.parse('$baseUrl/hub/me/shipments/$shipmentId/address-label'), headers: _authHeaders(token));
+    if (response.statusCode == 401) throw SessionExpiredError();
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ApiException('Could not load the delivery address label (${response.statusCode})');
+    }
+    return response.bodyBytes;
   }
 
   Future<void> recordShipmentEvent(

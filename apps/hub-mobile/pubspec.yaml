@@ -28,6 +28,8 @@ dependencies:
   # library to use, matching what a real device build can verify.
   mobile_scanner: ^6.0.2
   cached_network_image: ^3.4.1   # same real reasoning as apps/mobile: evidence/product photos re-fetched from the network on every scroll otherwise
+  share_plus: ^10.1.2            # real native share sheet for the delivery-address PDF, same package already used in apps/mobile
+  path_provider: ^2.1.4          # real temp dir to save the downloaded PDF bytes to before share_plus can share it (shares by file path, not raw bytes)
 
 dev_dependencies:
   flutter_test:
