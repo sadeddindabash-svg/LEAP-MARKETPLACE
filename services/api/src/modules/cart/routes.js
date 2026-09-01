@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../../../db/pool');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
+const { findMatchingDiscountRule } = require('../pricing/discountRules');
 const { buildSupplierLabelMap } = require('../shared/supplierAnonymize');
 
 /**
@@ -46,11 +47,14 @@ async function getFullCart(cartId) {
   // deliberately NOT locked in yet; that happens at order placement
   // (see the order module) — see migration 014's header comment for why.
   const items = await Promise.all(rows.map(async (r) => {
-    let price, currencyCode;
+    let price, originalPrice, currencyCode;
+    const discountPercentage = await findMatchingDiscountRule(r.product_id);
     if (r.currency_code !== 'CNY') {
       // Legacy pre-pricing-engine product — pass through unchanged (see
       // the same handling in the catalog module for why).
-      price = Number(r.price);
+      const basePrice = Number(r.price);
+      price = discountPercentage !== null ? basePrice * (1 - discountPercentage / 100) : basePrice;
+      originalPrice = discountPercentage !== null ? basePrice : null;
       currencyCode = r.currency_code;
     } else {
       const result = await calculateBuyerPriceUsd({
@@ -60,7 +64,9 @@ async function getFullCart(cartId) {
         widthCm: r.width_cm === null ? null : Number(r.width_cm),
         heightCm: r.height_cm === null ? null : Number(r.height_cm),
       });
-      price = result.buyerPriceUsd;
+      const basePriceUsd = result.buyerPriceUsd;
+      price = discountPercentage !== null ? basePriceUsd * (1 - discountPercentage / 100) : basePriceUsd;
+      originalPrice = discountPercentage !== null ? basePriceUsd : null;
       currencyCode = 'USD';
     }
     // Real primary product image (new) -- closes a real gap: no image
@@ -77,6 +83,7 @@ async function getFullCart(cartId) {
       quantity: r.quantity,
       name: r.name,
       price,
+      originalPrice,
       currencyCode,
       imageUrl: imageRows[0]?.url || null,
       // Real stock quantity (new) -- lets the client warn/clamp a

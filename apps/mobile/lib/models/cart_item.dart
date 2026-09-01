@@ -6,6 +6,9 @@ class CartItem {
   final int quantity;
   final String name;
   final double price;
+  // Confirmed with the person: mirrors Product's own originalPrice --
+  // null means no real discount rule currently matches this item.
+  final double? originalPrice;
   final String currencyCode;
   final String? supplierName;
   // Real primary product image (new) -- closes a real gap: no image
@@ -27,6 +30,7 @@ class CartItem {
     required this.quantity,
     required this.name,
     required this.price,
+    this.originalPrice,
     required this.currencyCode,
     required this.stockQuantity,
     this.supplierName,
@@ -35,12 +39,18 @@ class CartItem {
   });
 
   double get lineTotal => price * quantity;
+  // Confirmed with the person: pre-discount total for this line --
+  // falls back to price when no real discount applies, so summing
+  // this across every item always gives a correct "before discount"
+  // total regardless of which items are actually discounted.
+  double get lineOriginalTotal => (originalPrice ?? price) * quantity;
 
   factory CartItem.fromJson(Map<String, dynamic> json) => CartItem(
         productId: json['productId'] as String,
         quantity: json['quantity'] as int,
         name: json['name'] as String,
         price: (json['price'] as num).toDouble(),
+        originalPrice: json['originalPrice'] == null ? null : (json['originalPrice'] as num).toDouble(),
         currencyCode: json['currencyCode'] as String? ?? 'USD',
         stockQuantity: json['stockQuantity'] as int? ?? 0,
         supplierName: json['supplierName'] as String?,

@@ -32,6 +32,11 @@ class CartState extends ChangeNotifier {
   String? get cartId => _cartId;
 
   double get total => _items.fold(0.0, (sum, i) => sum + i.lineTotal);
+  // Confirmed with the person: sum of every real item's own
+  // pre-discount total -- what the cart would cost with no product
+  // discounts applied at all.
+  double get totalBeforeDiscount => _items.fold(0.0, (sum, i) => sum + i.lineOriginalTotal);
+  double get totalSaved => totalBeforeDiscount - total;
   int get itemCount => _items.fold(0, (sum, i) => sum + i.quantity);
   bool get isEmpty => _items.isEmpty;
 

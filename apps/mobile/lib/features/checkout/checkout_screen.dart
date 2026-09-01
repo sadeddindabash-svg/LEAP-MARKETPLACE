@@ -841,6 +841,24 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             decoration: BoxDecoration(border: Border.all(color: LeapPalette.of(context).line), borderRadius: BorderRadius.circular(10)),
             child: Column(
               children: [
+                // Confirmed with the person via mockup: shown only
+                // when there's a genuine real difference to show --
+                // no product-level discount currently active means
+                // this line and "You saved" below it are both
+                // pointless noise, not just zero.
+                if (cart.totalSaved > 0) ...[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(tr(context, 'total_before_discount'), style: TextStyle(color: LeapPalette.of(context).muted, fontSize: 12.5)),
+                      Text(
+                        formatPrice(context, cart.totalBeforeDiscount),
+                        style: TextStyle(color: LeapPalette.of(context).muted, fontSize: 12.5, decoration: TextDecoration.lineThrough),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                ],
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -848,6 +866,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     Text(formatPrice(context, cart.total), style: const TextStyle(fontWeight: FontWeight.w700)),
                   ],
                 ),
+                if (cart.totalSaved > 0) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(tr(context, 'you_saved'), style: TextStyle(color: LeapPalette.of(context).gauge, fontSize: 12.5, fontWeight: FontWeight.w600)),
+                      Text(formatPrice(context, cart.totalSaved), style: TextStyle(color: LeapPalette.of(context).gauge, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ],
                 if (_appliedPromoCode != null) ...[
                   const SizedBox(height: 6),
                   Row(

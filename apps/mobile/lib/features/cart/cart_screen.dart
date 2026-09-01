@@ -456,7 +456,21 @@ class _CartItemRowState extends State<_CartItemRow> {
                         ],
                       ),
                     ),
-                    Text(formatPrice(context, item.lineTotal), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: palette.signal)),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(formatPrice(context, item.lineTotal), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: palette.signal)),
+                        // Confirmed with the person: before/after
+                        // price only here, deliberately no discount
+                        // percentage tag (unlike the product card).
+                        if (item.originalPrice != null && item.originalPrice! > item.price)
+                          Text(
+                            formatPrice(context, item.lineOriginalTotal),
+                            style: TextStyle(fontSize: 11, color: palette.muted, decoration: TextDecoration.lineThrough),
+                          ),
+                      ],
+                    ),
                   ],
                 ),
               ],

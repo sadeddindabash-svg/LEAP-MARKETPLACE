@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
+const { findMatchingDiscountRule } = require('../pricing/discountRules');
 const { resolveDestinationIsoCode, calculateDeliveryDays } = require('../deliveryEstimate/engine');
 const { ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS, validateNameLength, validateDescriptionLength } = require('../shared/productValidation');
 const { logAdminAction } = require('../audit/helpers');
@@ -99,30 +100,9 @@ function toBuyerProductDto(row, lang) {
 // Confirmed with the person through several rounds of design: the
 // admin-controlled discount-rules engine (migration 074) replacing
 // the earlier, removed per-product original_price approach entirely.
-// A product's real discount comes from matching ANY of its own real
-// fitment entries (not just its primary one) against a rule's real
-// brand (required) + optional model + optional year range. If more
-// than one of a product's own real, different fitments happens to
-// match a different rule (a real, genuinely possible edge case, e.g.
-// a universal part fitting two different real cars each covered by
-// their own real rule), the highest real discount_percentage wins --
-// a sensible, deterministic default for a case not explicitly
-// specified otherwise.
-async function findMatchingDiscountRule(productId) {
-  const { rows } = await db.query(
-    `SELECT MAX(dr.discount_percentage) AS discount_percentage
-     FROM product_fitment_entries pfe
-     JOIN vehicle_generations vg ON vg.id = pfe.generation_id
-     JOIN vehicle_models vm ON vm.id = vg.model_id
-     JOIN discount_rules dr ON dr.brand_id = vm.brand_id
-       AND (dr.model_id IS NULL OR dr.model_id = vm.id)
-       AND (dr.year_from IS NULL OR pfe.year >= dr.year_from)
-       AND (dr.year_to IS NULL OR pfe.year <= dr.year_to)
-     WHERE pfe.product_id = $1`,
-    [productId]
-  );
-  return rows[0]?.discount_percentage === null ? null : Number(rows[0].discount_percentage);
-}
+// findMatchingDiscountRule now lives in the shared pricing/discountRules
+// module (imported below), since the cart endpoint needs this exact
+// same real matching logic too.
 
 async function attachBuyerPrice(dto, row) {
   // Real, previously-internal-only price snapshot (#59) -- exposes
