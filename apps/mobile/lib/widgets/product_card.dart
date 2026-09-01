@@ -6,6 +6,7 @@ import '../core/app_strings.dart';
 import '../core/currency_state.dart';
 import '../core/auth_state.dart';
 import '../core/cart_state.dart';
+import '../core/discount_display.dart';
 import '../core/language_state.dart';
 import '../models/cart_item.dart';
 import '../models/product.dart';
@@ -58,24 +59,10 @@ double productCardHeightFor(double cardWidth) {
 }
 
 // Confirmed with the person via a full mockup showing all 4 tiers in
-// both light and dark mode before implementing: discount tag color
-// is tiered by magnitude, not fixed -- a bigger real discount stands
-// out with a genuinely distinct hue, not just a shade variation of
-// one color.
-Color _discountTagColor(int percent) {
-  if (percent <= 10) return const Color(0xFF791F1F); // dark red
-  if (percent <= 20) return const Color(0xFF0C447C); // dark blue
-  if (percent <= 30) return const Color(0xFF27500A); // dark green
-  return const Color(0xFFEF9F27); // golden yellow
-}
-
-Color _discountTagTextColor(int percent) {
-  // Real, confirmed contrast fix -- golden yellow is too light for
-  // white text to read well against (the same real white-on-gold
-  // issue already found and fixed elsewhere in this app's own
-  // add-to-cart button), so this one tier alone uses dark text.
-  return percent > 30 ? const Color(0xFF412402) : Colors.white;
-}
+// both light and dark mode before implementing: discountTagColor and
+// discountTagTextColor now live in the shared
+// core/discount_display.dart module (imported above), since
+// product_screen.dart needs this exact same real logic too.
 
 /// Real product card for feeds (home "Newest"/"My car", eventually
 /// category/search lists too) — shows exactly what was asked for:
@@ -422,10 +409,10 @@ class _ProductCardState extends State<ProductCard> {
                                 // magnitude, not fixed.
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                  decoration: BoxDecoration(color: _discountTagColor(discountPercent), borderRadius: BorderRadius.circular(4)),
+                                  decoration: BoxDecoration(color: discountTagColor(discountPercent), borderRadius: BorderRadius.circular(4)),
                                   child: Text(
                                     '-$discountPercent% off',
-                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, fontStyle: FontStyle.italic, color: _discountTagTextColor(discountPercent)),
+                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, fontStyle: FontStyle.italic, color: discountTagTextColor(discountPercent)),
                                   ),
                                 ),
                               ],

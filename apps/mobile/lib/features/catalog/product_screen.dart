@@ -8,6 +8,7 @@ import '../../core/app_strings.dart';
 import '../../core/currency_state.dart';
 import '../../core/auth_state.dart';
 import '../../core/cart_state.dart';
+import '../../core/discount_display.dart';
 import '../../core/config/app_config.dart';
 import '../../core/language_state.dart';
 import '../../models/product.dart';
@@ -227,6 +228,11 @@ class _ProductDetailBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = LeapPalette.of(context);
+    // Confirmed with the person's own design (already established for
+    // ProductCard): a genuine discount only exists when originalPrice
+    // is set AND actually greater than the real current price.
+    final hasDiscount = product.originalPrice != null && product.originalPrice! > product.price;
+    final discountPercent = hasDiscount ? (((product.originalPrice! - product.price) / product.originalPrice!) * 100).round() : 0;
     // Real fitment confirmation check (new) -- only ever true when a
     // real default vehicle exists AND this real product's own real
     // fitsVehicleIds genuinely includes it.
@@ -328,7 +334,28 @@ class _ProductDetailBody extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 20),
-            Text(formatPrice(context, product.price), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 26, color: palette.signal)),
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 10,
+              runSpacing: 4,
+              children: [
+                Text(formatPrice(context, product.price), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 26, color: palette.signal)),
+                if (hasDiscount) ...[
+                  Text(
+                    formatPrice(context, product.originalPrice!),
+                    style: TextStyle(fontSize: 15, color: palette.muted, decoration: TextDecoration.lineThrough),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(color: discountTagColor(discountPercent), borderRadius: BorderRadius.circular(5)),
+                    child: Text(
+                      '-$discountPercent% off',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, fontStyle: FontStyle.italic, color: discountTagTextColor(discountPercent)),
+                    ),
+                  ),
+                ],
+              ],
+            ),
             const SizedBox(height: 24),
             Container(
               decoration: BoxDecoration(
