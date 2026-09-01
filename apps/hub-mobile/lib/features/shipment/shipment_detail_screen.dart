@@ -73,6 +73,10 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
   // lazily as each item's card builds, for the interactive
   // received-quantity input.
   final Map<String, TextEditingController> _receivedControllers = {};
+  // Confirmed with the person through several rounds of
+  // clarification: which spec labels have been actively confirmed
+  // against the physical part, per item.
+  final Map<String, Set<String>> _checkedSpecs = {};
 
   @override
   void initState() {
@@ -219,6 +223,13 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
     // here. Only "delivered" and "flagged" are genuinely final.
     final isTerminal = shipment.status == 'delivered' || shipment.status == 'flagged';
     final needsDeliveryConfirmation = shipment.status == 'shipped_to_buyer';
+    // Confirmed with the person through several rounds of
+    // clarification: can't mark a shipment as received until every
+    // real spec on every real item has been actively confirmed
+    // against the physical part -- only relevant for this specific
+    // real status transition.
+    final allChecksConfirmed = nextStatus != 'received' ||
+        shipment.items.every((item) => (_checkedSpecs[item.productId]?.length ?? 0) >= _specLabelsFor(item).length);
     // Deliberate, noted fix from the web app's own real behavior: also
     // gated on nextStatus != null, so this card doesn't render at the
     // shipped_to_buyer status with an empty title/hint/button label --
@@ -282,7 +293,7 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
           ],
           if (showMainStepForm) ...[
             const SizedBox(height: 16),
-            _buildMainStepForm(t, stepText!, nextStatus!),
+            _buildMainStepForm(t, stepText!, nextStatus!, allChecksConfirmed),
           ],
           if (!isTerminal && _showFlagForm) ...[
             const SizedBox(height: 16),
@@ -318,16 +329,22 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
     );
   }
 
+  /// Confirmed with the person: the same spec set already shown, now
+  /// as individually-labeled entries rather than one joined string,
+  /// since each one needs its own real, tappable checkbox.
+  List<String> _specLabelsFor(ShipmentItem item) => [
+        if (item.part != null) 'Part: ${item.part}',
+        if (item.position != null) 'Position: ${item.position}',
+        if (item.oemNumber != null) 'OEM: ${item.oemNumber}',
+        ...item.attributes.map((a) => '${a.name}: ${a.value}'),
+      ];
+
   Widget _buildItemVerificationRow(ShipmentItem item) {
     // Confirmed with the person: a genuine mismatch is a visual
     // warning only -- never auto-flags the shipment.
     final hasMismatch = item.receivedQuantity != null && item.receivedQuantity != item.quantity;
-    final specs = [
-      if (item.part != null) 'Part: ${item.part}',
-      if (item.position != null) 'Position: ${item.position}',
-      if (item.oemNumber != null) 'OEM: ${item.oemNumber}',
-      ...item.attributes.map((a) => '${a.name}: ${a.value}'),
-    ].join(' · ');
+    final specs = _specLabelsFor(item);
+    final checked = _checkedSpecs.putIfAbsent(item.productId, () => <String>{});
     final controller = _receivedControllers.putIfAbsent(
       item.productId,
       () => TextEditingController(text: item.receivedQuantity?.toString() ?? ''),
@@ -345,8 +362,45 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
         children: [
           Text(item.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: HubColors.ink)),
           if (specs.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            ...specs.map((label) {
+              final isChecked = checked.contains(label);
+              return InkWell(
+                onTap: () => setState(() {
+                  if (isChecked) {
+                    checked.remove(label);
+                  } else {
+                    checked.add(label);
+                  }
+                }),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
+                    children: [
+                      Icon(
+                        isChecked ? Icons.check_box : Icons.check_box_outline_blank,
+                        size: 18,
+                        color: isChecked ? HubColors.gauge : HubColors.muted,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(label, style: TextStyle(fontSize: 12.5, color: isChecked ? HubColors.ink : HubColors.muted)),
+                    ],
+                  ),
+                ),
+              );
+            }),
+            if (checked.length < specs.length) ...[
+              const SizedBox(height: 2),
+              InkWell(
+                onTap: () => setState(() => checked.addAll(specs)),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 3),
+                  child: Text('Check all', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: HubColors.torque)),
+                ),
+              ),
+            ],
             const SizedBox(height: 2),
-            Text(specs, style: const TextStyle(fontSize: 11, color: HubColors.muted)),
+            Text('${checked.length} of ${specs.length} checks confirmed', style: const TextStyle(fontSize: 10.5, color: HubColors.muted)),
           ],
           const SizedBox(height: 6),
           Row(
@@ -386,7 +440,7 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
     );
   }
 
-  Widget _buildMainStepForm(HubText t, StepText stepText, String nextStatus) {
+  Widget _buildMainStepForm(HubText t, StepText stepText, String nextStatus, bool allChecksConfirmed) {
     final auth = context.read<AuthState>();
     return Container(
       padding: const EdgeInsets.all(18),
@@ -419,12 +473,16 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
             const SizedBox(height: 8),
             TextField(controller: _trackingController),
           ],
+          if (!allChecksConfirmed) ...[
+            const SizedBox(height: 8),
+            const Text('Confirm every checklist item above before marking as received.', style: TextStyle(fontSize: 11.5, color: HubColors.red)),
+          ],
           const SizedBox(height: 18),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _isSubmitting ? null : () => _submitStep(nextStatus),
-              style: ElevatedButton.styleFrom(backgroundColor: _isSubmitting ? const Color(0xFFD1D5DB) : HubColors.signal),
+              onPressed: (_isSubmitting || !allChecksConfirmed) ? null : () => _submitStep(nextStatus),
+              style: ElevatedButton.styleFrom(backgroundColor: (_isSubmitting || !allChecksConfirmed) ? const Color(0xFFD1D5DB) : HubColors.signal),
               child: Text(_isSubmitting ? t.detail.saving : (stepText.actionLabel ?? '')),
             ),
           ),
