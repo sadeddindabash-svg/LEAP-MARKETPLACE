@@ -25,13 +25,50 @@ async function ensureCartExists(cartId) {
   await db.query('INSERT INTO carts (id) VALUES ($1) ON CONFLICT (id) DO NOTHING', [cartId]);
 }
 
+// Confirmed with the person through several rounds of clarification:
+// extracted from getFullCart's own original inline logic so the new
+// /lock-prices endpoint below can compute this exact same real,
+// live price too, when snapshotting it at the moment checkout
+// genuinely begins.
+async function computeLivePrice(r) {
+  const discountPercentage = await findMatchingDiscountRule(r.product_id);
+  if (r.currency_code !== 'CNY') {
+    // Legacy pre-pricing-engine product — pass through unchanged (see
+    // the same handling in the catalog module for why).
+    const basePrice = Number(r.price);
+    const price = discountPercentage !== null ? basePrice * (1 - discountPercentage / 100) : basePrice;
+    const originalPrice = discountPercentage !== null ? basePrice : null;
+    return { price, originalPrice, currencyCode: r.currency_code };
+  }
+  const result = await calculateBuyerPriceUsd({
+    supplierCostCny: Number(r.price),
+    weightKg: r.weight_kg === null ? null : Number(r.weight_kg),
+    lengthCm: r.length_cm === null ? null : Number(r.length_cm),
+    widthCm: r.width_cm === null ? null : Number(r.width_cm),
+    heightCm: r.height_cm === null ? null : Number(r.height_cm),
+  });
+  const basePriceUsd = result.buyerPriceUsd;
+  const price = discountPercentage !== null ? basePriceUsd * (1 - discountPercentage / 100) : basePriceUsd;
+  const originalPrice = discountPercentage !== null ? basePriceUsd : null;
+  return { price, originalPrice, currencyCode: 'USD' };
+}
+
+const CHECKOUT_LOCK_DURATION_MS = 60 * 60 * 1000; // confirmed with the person: 60 real minutes
+
 async function getFullCart(cartId) {
-  const { rows: cartRows } = await db.query('SELECT buyer_id, applied_promo_code FROM carts WHERE id = $1', [cartId]);
+  const { rows: cartRows } = await db.query('SELECT buyer_id, applied_promo_code, checkout_locked_at FROM carts WHERE id = $1', [cartId]);
   const buyerId = cartRows[0]?.buyer_id || null;
   let appliedPromoCode = cartRows[0]?.applied_promo_code || null;
+  const checkoutLockedAt = cartRows[0]?.checkout_locked_at || null;
+  // Confirmed with the person: explicitly re-derived on every real
+  // read (not trusted from a stale client-side timer) -- a lock is
+  // only genuinely still active if checkout_locked_at is set AND
+  // within the real last 60 minutes.
+  const lockActive = checkoutLockedAt !== null && (Date.now() - new Date(checkoutLockedAt).getTime()) < CHECKOUT_LOCK_DURATION_MS;
+  const lockExpiresAt = lockActive ? new Date(new Date(checkoutLockedAt).getTime() + CHECKOUT_LOCK_DURATION_MS).toISOString() : null;
 
   const { rows } = await db.query(
-    `SELECT ci.product_id, ci.quantity, p.name, p.price, p.currency_code, p.weight_kg, p.length_cm, p.width_cm, p.height_cm, p.stock_quantity, p.supplier_id
+    `SELECT ci.product_id, ci.quantity, ci.locked_price, p.name, p.price, p.currency_code, p.weight_kg, p.length_cm, p.width_cm, p.height_cm, p.stock_quantity, p.supplier_id
      FROM cart_items ci
      JOIN products p ON p.id = ci.product_id
      WHERE ci.cart_id = $1`,
@@ -51,28 +88,28 @@ async function getFullCart(cartId) {
   // a fee/rate change immediately, same as browsing. This is
   // deliberately NOT locked in yet; that happens at order placement
   // (see the order module) — see migration 014's header comment for why.
+  //
+  // Confirmed with the person through several rounds of clarification
+  // (migration 076): EXCEPT during an active real checkout price lock
+  // -- while lockActive, the real, live-computed price is still
+  // computed here (needed to detect and flag a genuine change), but
+  // the real, DISPLAYED/CHARGED price is the real locked_price
+  // snapshot instead, frozen at whatever it was the moment checkout
+  // genuinely began.
   const items = await Promise.all(rows.map(async (r) => {
-    let price, originalPrice, currencyCode;
-    const discountPercentage = await findMatchingDiscountRule(r.product_id);
-    if (r.currency_code !== 'CNY') {
-      // Legacy pre-pricing-engine product — pass through unchanged (see
-      // the same handling in the catalog module for why).
-      const basePrice = Number(r.price);
-      price = discountPercentage !== null ? basePrice * (1 - discountPercentage / 100) : basePrice;
-      originalPrice = discountPercentage !== null ? basePrice : null;
-      currencyCode = r.currency_code;
-    } else {
-      const result = await calculateBuyerPriceUsd({
-        supplierCostCny: Number(r.price),
-        weightKg: r.weight_kg === null ? null : Number(r.weight_kg),
-        lengthCm: r.length_cm === null ? null : Number(r.length_cm),
-        widthCm: r.width_cm === null ? null : Number(r.width_cm),
-        heightCm: r.height_cm === null ? null : Number(r.height_cm),
-      });
-      const basePriceUsd = result.buyerPriceUsd;
-      price = discountPercentage !== null ? basePriceUsd * (1 - discountPercentage / 100) : basePriceUsd;
-      originalPrice = discountPercentage !== null ? basePriceUsd : null;
-      currencyCode = 'USD';
+    const live = await computeLivePrice(r);
+    let price = live.price;
+    let originalPrice = live.originalPrice;
+    let priceChanged = false;
+    if (lockActive && r.locked_price !== null) {
+      const lockedPrice = Number(r.locked_price);
+      priceChanged = Math.abs(lockedPrice - live.price) > 0.001;
+      price = lockedPrice;
+      // Confirmed simplest, most consistent interpretation: the real
+      // locked amount is the single, final number that matters --
+      // originalPrice (the struck-through discount display) stays
+      // live even during a real lock, since it's purely informational
+      // and never what's actually charged.
     }
     // Real primary product image (new) -- closes a real gap: no image
     // at all was returned for a cart item before, so neither the cart
@@ -89,7 +126,8 @@ async function getFullCart(cartId) {
       name: r.name,
       price,
       originalPrice,
-      currencyCode,
+      priceChanged,
+      currencyCode: live.currencyCode,
       imageUrl: imageRows[0]?.url || null,
       // Real stock quantity (new) -- lets the client warn/clamp a
       // buyer BEFORE they hit checkout, rather than the only real
@@ -132,7 +170,7 @@ async function getFullCart(cartId) {
     }
   }
 
-  return { cartId, items, appliedPromoCode, appliedPromoDetails, promoDiscountUsd };
+  return { cartId, items, appliedPromoCode, appliedPromoDetails, promoDiscountUsd, lockActive, lockExpiresAt };
 }
 
 // Real, honest note on the check below: stock isn't reserved per-cart
@@ -153,6 +191,41 @@ async function checkStockAvailable(productId, requestedQuantity) {
 
 router.get('/:cartId', async (req, res, next) => {
   try {
+    res.json(await getFullCart(req.params.cartId));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /:cartId/lock-prices -- confirmed with the person through
+// several rounds of clarification: called when the buyer genuinely
+// enters checkout, not when an item is added to the cart. If a real,
+// still-active lock already exists (checkout_locked_at within the
+// real last 60 minutes), this does nothing and just returns the
+// current cart -- explicitly confirmed: going back to the basket
+// mid-countdown and returning to checkout before it expires keeps
+// the SAME real countdown running, not a reset one. Otherwise starts
+// a brand new real 60-minute lock, snapshotting every item's own
+// real live price at this exact moment.
+router.post('/:cartId/lock-prices', async (req, res, next) => {
+  try {
+    await ensureCartExists(req.params.cartId);
+    const { rows: cartRows } = await db.query('SELECT checkout_locked_at FROM carts WHERE id = $1', [req.params.cartId]);
+    const existingLockedAt = cartRows[0]?.checkout_locked_at || null;
+    const alreadyActive = existingLockedAt !== null && (Date.now() - new Date(existingLockedAt).getTime()) < CHECKOUT_LOCK_DURATION_MS;
+
+    if (!alreadyActive) {
+      const { rows } = await db.query(
+        `SELECT ci.product_id, p.price, p.currency_code, p.weight_kg, p.length_cm, p.width_cm, p.height_cm
+         FROM cart_items ci JOIN products p ON p.id = ci.product_id WHERE ci.cart_id = $1`,
+        [req.params.cartId]
+      );
+      await Promise.all(rows.map(async (r) => {
+        const live = await computeLivePrice(r);
+        await db.query('UPDATE cart_items SET locked_price = $1 WHERE cart_id = $2 AND product_id = $3', [live.price, req.params.cartId, r.product_id]);
+      }));
+      await db.query('UPDATE carts SET checkout_locked_at = now() WHERE id = $1', [req.params.cartId]);
+    }
     res.json(await getFullCart(req.params.cartId));
   } catch (err) {
     next(err);
