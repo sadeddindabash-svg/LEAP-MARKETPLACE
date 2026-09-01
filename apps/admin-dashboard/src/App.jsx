@@ -75,6 +75,24 @@ function getOrderStatusMeta(status) {
   return ORDER_STATUS_META[status] || { label: status || "Unknown", color: C.muted, bg: "#EEEFF1" };
 }
 
+// Confirmed with the person: the real, detailed hub_shipments
+// workflow's own labels/colors -- a genuinely separate, more
+// granular set from ORDER_STATUS_META above, which stays the coarse
+// buyer-facing bucket.
+const HUB_STATUS_META = {
+  awaiting_receipt: { label: "Awaiting receipt", color: C.muted, bg: "#EEEFF1" },
+  received: { label: "Received", color: C.torque, bg: C.torqueBg },
+  opened: { label: "Opened", color: C.torque, bg: C.torqueBg },
+  inspected: { label: "Inspected", color: C.amber, bg: C.amberBg },
+  packed: { label: "Packed", color: C.amber, bg: C.amberBg },
+  shipped_to_buyer: { label: "Shipped to buyer", color: C.gauge, bg: C.gaugeBg },
+  delivered: { label: "Delivered", color: C.gauge, bg: C.gaugeBg },
+  flagged: { label: "Flagged", color: C.red, bg: C.redBg },
+};
+function getHubStatusMeta(status) {
+  return HUB_STATUS_META[status] || { label: "—", color: C.muted, bg: "#EEEFF1" };
+}
+
 /* ---------------- shared bits ---------------- */
 
 
@@ -640,6 +658,7 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
               { header: "Currency", key: "currencyCode", width: 10 },
               { header: "Placed", key: "placedAt", width: 18 },
               { header: "Status", key: "status", width: 14 },
+              { header: "Hub status", key: "hubStatus", width: 16 },
             ],
             rows: filtered.map((o) => ({
               id: o.id,
@@ -648,6 +667,7 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
               currencyCode: o.currencyCode,
               placedAt: new Date(o.placedAt).toLocaleDateString(),
               status: getOrderStatusMeta(o.status).label,
+              hubStatus: getHubStatusMeta(o.hubStatus).label,
             })),
           })}
           style={{ ...body, display: "flex", alignItems: "center", gap: 6, padding: "7px 13px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, border: `1px solid ${C.line}`, background: "#fff", cursor: filtered.length === 0 ? "default" : "pointer", opacity: filtered.length === 0 ? 0.5 : 1 }}
@@ -668,14 +688,15 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
           <Card>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
-                <tr><Th>Order</Th><Th>Buyer</Th><Th align="right">Total</Th><Th>Placed</Th><Th>Status</Th><Th></Th></tr>
+                <tr><Th>Order</Th><Th>Buyer</Th><Th align="right">Total</Th><Th>Placed</Th><Th>Status</Th><Th>Hub status</Th><Th></Th></tr>
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={6} style={{ ...body, textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>No orders match this filter.</td></tr>
+                  <tr><td colSpan={7} style={{ ...body, textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>No orders match this filter.</td></tr>
                 )}
                 {filtered.map(o => {
                   const meta = getOrderStatusMeta(o.status);
+                  const hubMeta = getHubStatusMeta(o.hubStatus);
                   return (
                     <tr key={o.id} onClick={() => onOpenOrder(o.id)} style={{ cursor: "pointer" }}>
                       <Td><PlateChip small>{o.id}</PlateChip></Td>
@@ -683,6 +704,7 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
                       <Td align="right" style={{ fontWeight: 700 }}>${Number(o.total).toFixed(2)} {o.currencyCode}</Td>
                       <Td style={{ color: C.muted }}>{new Date(o.placedAt).toLocaleDateString()}</Td>
                       <Td><Badge label={meta.label} color={meta.color} bg={meta.bg} /></Td>
+                      <Td><Badge label={hubMeta.label} color={hubMeta.color} bg={hubMeta.bg} /></Td>
                       <Td align="right"><ChevronRight size={15} color={C.muted} /></Td>
                     </tr>
                   );
