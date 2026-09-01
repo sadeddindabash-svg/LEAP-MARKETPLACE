@@ -3,6 +3,7 @@ const db = require('../../../db/pool');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
 const { findMatchingDiscountRule } = require('../pricing/discountRules');
 const { buildSupplierLabelMap } = require('../shared/supplierAnonymize');
+const { validatePromoCode, calculateDiscountUsd } = require('../promotions/helpers');
 
 /**
  * Cart module — BUY-030–032. Cart holds items from multiple suppliers; the
@@ -25,6 +26,10 @@ async function ensureCartExists(cartId) {
 }
 
 async function getFullCart(cartId) {
+  const { rows: cartRows } = await db.query('SELECT buyer_id, applied_promo_code FROM carts WHERE id = $1', [cartId]);
+  const buyerId = cartRows[0]?.buyer_id || null;
+  let appliedPromoCode = cartRows[0]?.applied_promo_code || null;
+
   const { rows } = await db.query(
     `SELECT ci.product_id, ci.quantity, p.name, p.price, p.currency_code, p.weight_kg, p.length_cm, p.width_cm, p.height_cm, p.stock_quantity, p.supplier_id
      FROM cart_items ci
@@ -100,7 +105,34 @@ async function getFullCart(cartId) {
       weightKg: r.weight_kg === null ? null : Number(r.weight_kg),
     };
   }));
-  return { cartId, items };
+  // Confirmed with the person: an applied promo code persists on the
+  // cart itself (not just in-memory app state), but is re-validated
+  // fresh on every real read here -- if it's expired or hit its
+  // real usage limit since being applied, it's automatically cleared
+  // from the cart record rather than shown as if still valid.
+  let promoDiscountUsd = 0;
+  let appliedPromoDetails = null;
+  if (appliedPromoCode) {
+    const validation = await validatePromoCode(appliedPromoCode, buyerId);
+    if (validation.valid) {
+      appliedPromoDetails = { code: appliedPromoCode, type: validation.promoCode.type, value: validation.promoCode.value === null ? null : Number(validation.promoCode.value) };
+      const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+      // Matches the existing client-side _previewDiscount's own real,
+      // established behavior: free_shipping's real amount depends on
+      // a real server-side shipping breakdown this cart response
+      // doesn't compute -- not guessed at here either, left for real
+      // order-placement time where the real figure is already
+      // correctly computed.
+      if (validation.promoCode.type !== 'free_shipping') {
+        promoDiscountUsd = calculateDiscountUsd(validation.promoCode, subtotal, 0);
+      }
+    } else {
+      await db.query('UPDATE carts SET applied_promo_code = NULL WHERE id = $1', [cartId]);
+      appliedPromoCode = null;
+    }
+  }
+
+  return { cartId, items, appliedPromoCode, appliedPromoDetails, promoDiscountUsd };
 }
 
 // Real, honest note on the check below: stock isn't reserved per-cart
@@ -121,6 +153,32 @@ async function checkStockAvailable(productId, requestedQuantity) {
 
 router.get('/:cartId', async (req, res, next) => {
   try {
+    res.json(await getFullCart(req.params.cartId));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /:cartId/promo-code  { code: string | null } -- applies or
+// clears the real, persisted promo code on this cart (migration 075).
+// Confirmed with the person: this survives the buyer leaving the
+// checkout screen entirely, even closing and reopening the app,
+// since it's stored on the real cart record itself, not just
+// in-memory app state.
+router.patch('/:cartId/promo-code', async (req, res, next) => {
+  try {
+    const { code } = req.body || {};
+    await ensureCartExists(req.params.cartId);
+    if (!code) {
+      await db.query('UPDATE carts SET applied_promo_code = NULL WHERE id = $1', [req.params.cartId]);
+      return res.json(await getFullCart(req.params.cartId));
+    }
+    const { rows: cartRows } = await db.query('SELECT buyer_id FROM carts WHERE id = $1', [req.params.cartId]);
+    const validation = await validatePromoCode(code, cartRows[0]?.buyer_id || null);
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.reason });
+    }
+    await db.query('UPDATE carts SET applied_promo_code = $1 WHERE id = $2', [code, req.params.cartId]);
     res.json(await getFullCart(req.params.cartId));
   } catch (err) {
     next(err);
