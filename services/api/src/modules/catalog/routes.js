@@ -680,6 +680,10 @@ router.get('/moderation-queue', requireAuth, requireRole('admin'), requirePageAc
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const withImages = await Promise.all(rows.map(async (r) => {
       const { rows: images } = await db.query('SELECT url FROM product_images WHERE product_id = $1 ORDER BY sort_order', [r.id]);
+      const { rows: attrRows } = await db.query(
+        'SELECT attribute_name, attribute_value FROM product_attributes WHERE product_id = $1 ORDER BY attribute_name',
+        [r.id]
+      );
       const flags = [];
       if (Number(r.fitment_count) === 0) flags.push('Missing fitment data');
       if (r.supplier_created_at && new Date(r.supplier_created_at) > thirtyDaysAgo) flags.push('New supplier');
@@ -694,6 +698,7 @@ router.get('/moderation-queue', requireAuth, requireRole('admin'), requirePageAc
         oemNumber: r.oem_number,
         images: images.map((i) => i.url),
         videoUrl: r.video_url,
+        attributes: attrRows.map((a) => ({ name: a.attribute_name, value: a.attribute_value })),
         supplierName: r.supplier_name,
         submittedAt: r.created_at,
         flags,
@@ -714,9 +719,13 @@ router.get('/moderation-queue', requireAuth, requireRole('admin'), requirePageAc
 // translation, since the listing never goes live either way.
 router.patch('/products/:id/moderate', requireAuth, requireRole('admin'), requirePageAccess('moderation'), async (req, res, next) => {
   try {
-    const { action, nameEn, descriptionEn, nameAr, descriptionAr } = req.body || {};
+    const { action, nameEn, descriptionEn, nameAr, descriptionAr, attributes } = req.body || {};
     if (!['approve', 'reject'].includes(action)) {
       return res.status(400).json({ error: "action must be 'approve' or 'reject'" });
+    }
+    const attributesError = await validateProductAttributes(attributes);
+    if (attributesError) {
+      return res.status(400).json({ error: attributesError });
     }
     // Both required, not just English — the confirmed 40-country launch
     // list includes the entire GCC plus Jordan, real markets where
@@ -771,6 +780,15 @@ router.patch('/products/:id/moderate', requireAuth, requireRole('admin'), requir
       ]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
+    if (attributes !== undefined) {
+      await db.query('DELETE FROM product_attributes WHERE product_id = $1', [req.params.id]);
+      for (const attr of attributes) {
+        await db.query(
+          'INSERT INTO product_attributes (product_id, attribute_name, attribute_value) VALUES ($1, $2, $3)',
+          [req.params.id, attr.name.trim(), attr.value.trim()]
+        );
+      }
+    }
     await logAdminAction(req, action === 'approve' ? 'product_approved' : 'product_rejected', 'product', req.params.id, { name: rows[0].name });
     res.json(rows[0]);
   } catch (err) {
@@ -1018,6 +1036,10 @@ router.get('/admin/products/:id', requireAuth, requireRole('admin'), requirePage
        WHERE pfe.product_id = $1`,
       [row.id]
     );
+    const { rows: attrRows } = await db.query(
+      'SELECT attribute_name, attribute_value FROM product_attributes WHERE product_id = $1 ORDER BY attribute_name',
+      [row.id]
+    );
 
     res.json({
       id: row.id,
@@ -1043,6 +1065,7 @@ router.get('/admin/products/:id', requireAuth, requireRole('admin'), requirePage
         generationId: f.generation_id, year: f.year, engineId: f.engine_id, transmissionId: f.transmission_id,
         label: `${f.brand_name} ${f.model_name} (${f.generation_name}) · ${f.year}`,
       })),
+      attributes: attrRows.map((a) => ({ name: a.attribute_name, value: a.attribute_value })),
     });
   } catch (err) {
     next(err);
