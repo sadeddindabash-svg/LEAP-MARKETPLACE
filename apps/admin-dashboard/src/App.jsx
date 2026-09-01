@@ -6,7 +6,7 @@ import { PlateChip, Badge, Stars, KpiCard, Card, Th, Td, ConfirmDialog, EditDial
 import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, fetchSupplierById, verifySupplier, updateSupplierCountry, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
   fetchCountriesList, fetchWarehouseCountries, fetchCountryGroups, createCountryGroup, deleteCountryGroup, addCountryGroupMember, removeCountryGroupMember,
   fetchAdminProducts, fetchAdminProductDetail, updateAdminProduct,
-  fetchProductRequirements, updateProductRequirements,
+  fetchProductRequirements, updateProductRequirements, fetchAttributeDefinitions,
   fetchDeliveryRules, createDeliveryRule, updateDeliveryRule, deleteDeliveryRule, reorderDeliveryRules,
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
   createBrand, deleteBrand, createModel, deleteModel, createGeneration, deleteGeneration, createEngine, deleteEngine, createTransmission, deleteTransmission,
@@ -1172,6 +1172,19 @@ function ModerationPage({ onSessionExpired }) {
   const [descriptionEn, setDescriptionEn] = useState("");
   const [nameAr, setNameAr] = useState("");
   const [descriptionAr, setDescriptionAr] = useState("");
+  // Confirmed with the person, seeded from their own real
+  // spreadsheet: attribute editing during moderation review,
+  // matching the exact same real pattern already established in the
+  // supplier portal.
+  const [attributeDefinitions, setAttributeDefinitions] = useState([]);
+  const [reviewAttributes, setReviewAttributes] = useState([]);
+  const [isAddingAttribute, setIsAddingAttribute] = useState(false);
+  const [newAttrName, setNewAttrName] = useState("");
+  const [newAttrValue, setNewAttrValue] = useState("");
+
+  useEffect(() => {
+    fetchAttributeDefinitions().then((data) => setAttributeDefinitions(Array.isArray(data) ? data : [])).catch(() => {});
+  }, []);
 
   // Real bulk actions (new). Bulk reject is simple (no review needed,
   // matching the single-item reject flow). Bulk approve deliberately
@@ -1203,8 +1216,13 @@ function ModerationPage({ onSessionExpired }) {
     setDescriptionEn(m.descriptionZh || "");
     setNameAr("");
     setDescriptionAr("");
+    setReviewAttributes(m.attributes || []);
+    setIsAddingAttribute(false); setNewAttrName(""); setNewAttrValue("");
   };
-  const cancelReview = () => { setReviewingId(null); setNameEn(""); setDescriptionEn(""); setNameAr(""); setDescriptionAr(""); };
+  const cancelReview = () => {
+    setReviewingId(null); setNameEn(""); setDescriptionEn(""); setNameAr(""); setDescriptionAr("");
+    setReviewAttributes([]); setIsAddingAttribute(false); setNewAttrName(""); setNewAttrValue("");
+  };
 
   const confirmApproval = async (productId) => {
     // Both required, not just English — the confirmed 40-country launch
@@ -1222,6 +1240,7 @@ function ModerationPage({ onSessionExpired }) {
       await moderateProduct(getStoredToken(), productId, "approve", {
         nameEn: nameEn.trim(), descriptionEn: descriptionEn.trim() || undefined,
         nameAr: nameAr.trim(), descriptionAr: descriptionAr.trim() || undefined,
+        attributes: reviewAttributes,
       });
       cancelReview();
       load();
@@ -1500,6 +1519,52 @@ function ModerationPage({ onSessionExpired }) {
                         />
                         <span style={{ ...body, fontSize: 10.5, color: descriptionAr.length > 0 && (descriptionAr.length < 100 || descriptionAr.length > 150) ? C.red : C.muted }}>{descriptionAr.length}/150 (min 100)</span>
                       </div>
+                    </div>
+                    <div style={{ marginTop: 14 }}>
+                      <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 6 }}>Attributes</div>
+                      {reviewAttributes.map((attr) => (
+                        <div key={attr.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", border: `1px solid ${C.line}`, borderRadius: 8, padding: "7px 10px", marginBottom: 6, background: "#fff" }}>
+                          <span style={{ ...body, fontSize: 12.5, color: C.ink }}>{attr.name}: <strong>{attr.value}</strong></span>
+                          <button onClick={() => setReviewAttributes((prev) => prev.filter((a) => a.name !== attr.name))} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
+                            <X size={14} color={C.muted} />
+                          </button>
+                        </div>
+                      ))}
+                      {(() => {
+                        const availableNames = attributeDefinitions.filter((def) => !reviewAttributes.some((a) => a.name === def.name));
+                        if (reviewAttributes.length >= 5 || availableNames.length === 0) return null;
+                        if (!isAddingAttribute) {
+                          return (
+                            <button onClick={() => setIsAddingAttribute(true)} style={{ ...body, width: "100%", border: `1px dashed ${C.line}`, borderRadius: 8, padding: 7, fontSize: 12, color: C.muted, background: "none", cursor: "pointer" }}>
+                              + Add attribute
+                            </button>
+                          );
+                        }
+                        const valuesForName = attributeDefinitions.find((def) => def.name === newAttrName)?.values || [];
+                        return (
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <select style={{ ...body, flex: 1, border: `1px solid ${C.line}`, borderRadius: 8, padding: "7px 9px", fontSize: 12.5 }} value={newAttrName} onChange={(e) => { setNewAttrName(e.target.value); setNewAttrValue(""); }}>
+                              <option value="">Choose attribute</option>
+                              {availableNames.map((def) => <option key={def.name} value={def.name}>{def.name}</option>)}
+                            </select>
+                            <select style={{ ...body, flex: 1, border: `1px solid ${C.line}`, borderRadius: 8, padding: "7px 9px", fontSize: 12.5 }} value={newAttrValue} onChange={(e) => setNewAttrValue(e.target.value)} disabled={!newAttrName}>
+                              <option value="">Choose value</option>
+                              {valuesForName.map((v) => <option key={v} value={v}>{v}</option>)}
+                            </select>
+                            <button
+                              onClick={() => {
+                                if (!newAttrName || !newAttrValue) return;
+                                setReviewAttributes((prev) => [...prev, { name: newAttrName, value: newAttrValue }]);
+                                setIsAddingAttribute(false); setNewAttrName(""); setNewAttrValue("");
+                              }}
+                              disabled={!newAttrName || !newAttrValue}
+                              style={{ padding: "0 12px", borderRadius: 8, border: "none", background: C.ink, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                            >
+                              Add
+                            </button>
+                          </div>
+                        );
+                      })()}
                     </div>
                     <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
                       <button onClick={cancelReview} style={{ ...body, padding: "9px 16px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
@@ -2132,6 +2197,19 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
   const [heightCm, setHeightCm] = useState("");
   const [images, setImages] = useState([]);
   const [fitment, setFitment] = useState([]);
+  // Confirmed with the person, seeded from their own real
+  // spreadsheet: attribute editing in the All Products edit form,
+  // matching the exact same real pattern already established in the
+  // supplier portal and the moderation review form.
+  const [attributeDefinitions, setAttributeDefinitions] = useState([]);
+  const [selectedAttributes, setSelectedAttributes] = useState([]);
+  const [isAddingAttribute, setIsAddingAttribute] = useState(false);
+  const [newAttrName, setNewAttrName] = useState("");
+  const [newAttrValue, setNewAttrValue] = useState("");
+
+  useEffect(() => {
+    fetchAttributeDefinitions().then((data) => setAttributeDefinitions(Array.isArray(data) ? data : [])).catch(() => {});
+  }, []);
 
   const [categories, setCategories] = useState([]);
   const [parts, setParts] = useState([]);
@@ -2171,6 +2249,7 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
         setHeightCm(detail.heightCm != null ? String(detail.heightCm) : "");
         setImages(detail.images || []);
         setFitment(detail.fitment || []);
+        setSelectedAttributes(detail.attributes || []);
         setCategories(cats);
         setBrands(brandList);
         if (detail.category) setParts(await fetchPartsForCategory(detail.category));
@@ -2305,6 +2384,7 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
         heightCm: heightCm === "" ? null : Number(heightCm),
         images,
         fitment: fitment.map((f) => ({ generationId: f.generationId, year: f.year, engineId: f.engineId, transmissionId: f.transmissionId })),
+        attributes: selectedAttributes,
       };
       if (nameEn !== (product.name || "")) payload.nameEn = nameEn;
       if (nameAr !== (product.nameAr || "")) payload.nameAr = nameAr;
@@ -2386,6 +2466,52 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
             <label style={labelStyle}>OEM number</label>
             <input style={inputStyle} value={oemNumber} onChange={(e) => setOemNumber(e.target.value)} />
           </div>
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <label style={labelStyle}>Attributes</label>
+          {selectedAttributes.map((attr) => (
+            <div key={attr.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", border: `1px solid ${C.line}`, borderRadius: 8, padding: "7px 10px", marginBottom: 6 }}>
+              <span style={{ fontSize: 12.5, color: C.ink }}>{attr.name}: <strong>{attr.value}</strong></span>
+              <button onClick={() => setSelectedAttributes((prev) => prev.filter((a) => a.name !== attr.name))} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
+                <X size={14} color={C.muted} />
+              </button>
+            </div>
+          ))}
+          {(() => {
+            const availableNames = attributeDefinitions.filter((def) => !selectedAttributes.some((a) => a.name === def.name));
+            if (selectedAttributes.length >= 5 || availableNames.length === 0) return null;
+            if (!isAddingAttribute) {
+              return (
+                <button onClick={() => setIsAddingAttribute(true)} style={{ width: "100%", border: `1px dashed ${C.line}`, borderRadius: 8, padding: 7, fontSize: 12, color: C.muted, background: "none", cursor: "pointer" }}>
+                  + Add attribute
+                </button>
+              );
+            }
+            const valuesForName = attributeDefinitions.find((def) => def.name === newAttrName)?.values || [];
+            return (
+              <div style={{ display: "flex", gap: 6 }}>
+                <select style={{ ...inputStyle, flex: 1 }} value={newAttrName} onChange={(e) => { setNewAttrName(e.target.value); setNewAttrValue(""); }}>
+                  <option value="">Choose attribute</option>
+                  {availableNames.map((def) => <option key={def.name} value={def.name}>{def.name}</option>)}
+                </select>
+                <select style={{ ...inputStyle, flex: 1 }} value={newAttrValue} onChange={(e) => setNewAttrValue(e.target.value)} disabled={!newAttrName}>
+                  <option value="">Choose value</option>
+                  {valuesForName.map((v) => <option key={v} value={v}>{v}</option>)}
+                </select>
+                <button
+                  onClick={() => {
+                    if (!newAttrName || !newAttrValue) return;
+                    setSelectedAttributes((prev) => [...prev, { name: newAttrName, value: newAttrValue }]);
+                    setIsAddingAttribute(false); setNewAttrName(""); setNewAttrValue("");
+                  }}
+                  disabled={!newAttrName || !newAttrValue}
+                  style={{ padding: "0 12px", borderRadius: 8, border: "none", background: C.ink, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                >
+                  Add
+                </button>
+              </div>
+            );
+          })()}
         </div>
       </Card>
 

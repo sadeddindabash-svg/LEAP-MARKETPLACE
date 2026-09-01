@@ -90,7 +90,7 @@ export async function moderateProduct(token, productId, action, translation = {}
   const response = await fetch(`${API_BASE_URL}/catalog/products/${productId}/moderate`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ action, nameEn: translation.nameEn, descriptionEn: translation.descriptionEn, nameAr: translation.nameAr, descriptionAr: translation.descriptionAr }),
+    body: JSON.stringify({ action, nameEn: translation.nameEn, descriptionEn: translation.descriptionEn, nameAr: translation.nameAr, descriptionAr: translation.descriptionAr, attributes: translation.attributes }),
   });
   if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
   const data = await response.json();
@@ -428,6 +428,13 @@ export async function updateAdminProduct(token, id, patch) {
 // matching the backend's own real design), PATCH is admin-only.
 export async function fetchProductRequirements() {
   const response = await fetch(`${API_BASE_URL}/catalog/product-requirements`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
+export async function fetchAttributeDefinitions() {
+  const response = await fetch(`${API_BASE_URL}/catalog/attribute-definitions`);
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
   return data;
