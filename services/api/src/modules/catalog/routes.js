@@ -4,7 +4,7 @@ const { requireAuth, requireRole, requirePageAccess } = require('../auth/middlew
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
 const { findMatchingDiscountRule } = require('../pricing/discountRules');
 const { resolveDestinationIsoCode, calculateDeliveryDays } = require('../deliveryEstimate/engine');
-const { ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS, validateNameLength, validateDescriptionLength } = require('../shared/productValidation');
+const { ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS, validateNameLength, validateDescriptionLength, validateProductAttributes } = require('../shared/productValidation');
 const { logAdminAction } = require('../audit/helpers');
 const { moveItem } = require('../../lib/reorder');
 
@@ -447,7 +447,15 @@ router.get('/products/:id', async (req, res, next) => {
     dto = await attachBuyerPrice(dto, rows[0]);
     dto = await attachSupplierSignals(dto, rows[0].supplier_id);
     dto = await attachDeliveryEstimate(dto, await resolveDestinationIsoCode(req));
-    res.json({ ...dto, fitsVehicleIds: fitmentResult.rows.map((r) => r.vehicle_id) });
+    const { rows: attrRows } = await db.query(
+      'SELECT attribute_name, attribute_value FROM product_attributes WHERE product_id = $1 ORDER BY attribute_name',
+      [req.params.id]
+    );
+    res.json({
+      ...dto,
+      fitsVehicleIds: fitmentResult.rows.map((r) => r.vehicle_id),
+      attributes: attrRows.map((a) => ({ name: a.attribute_name, value: a.attribute_value })),
+    });
   } catch (err) {
     next(err);
   }
@@ -1053,11 +1061,15 @@ router.patch('/admin/products/:id', requireAuth, requireRole('admin'), requirePa
     const {
       nameEn, nameAr, descriptionEn, descriptionAr, category, part, position, oemNumber,
       stockQuantity, lowStockThreshold, weightKg, lengthCm, widthCm, heightCm,
-      images, videoUrl, fitment,
+      images, videoUrl, fitment, attributes,
     } = req.body || {};
 
     if (position !== undefined && position !== null && !ALLOWED_POSITIONS.includes(position)) {
       return res.status(400).json({ error: `position must be one of: ${ALLOWED_POSITIONS.join(', ')}` });
+    }
+    const attributesError = await validateProductAttributes(attributes);
+    if (attributesError) {
+      return res.status(400).json({ error: attributesError });
     }
     if (nameEn !== undefined) {
       const nameEnError = validateNameLength(nameEn, 'nameEn');
@@ -1193,6 +1205,15 @@ router.patch('/admin/products/:id', requireAuth, requireRole('admin'), requirePa
       await client.query('DELETE FROM product_images WHERE product_id = $1', [req.params.id]);
       for (let i = 0; i < images.length; i++) {
         await client.query('INSERT INTO product_images (product_id, url, sort_order) VALUES ($1, $2, $3)', [req.params.id, images[i], i]);
+      }
+    }
+    if (attributes !== undefined) {
+      await client.query('DELETE FROM product_attributes WHERE product_id = $1', [req.params.id]);
+      for (const attr of attributes) {
+        await client.query(
+          'INSERT INTO product_attributes (product_id, attribute_name, attribute_value) VALUES ($1, $2, $3)',
+          [req.params.id, attr.name.trim(), attr.value.trim()]
+        );
       }
     }
     if (fitment !== undefined) {
@@ -1375,6 +1396,29 @@ const DISCOUNT_RULE_SELECT = `
   JOIN vehicle_brands vb ON vb.id = dr.brand_id
   LEFT JOIN vehicle_models vm ON vm.id = dr.model_id
 `;
+
+// Confirmed with the person, seeded from their own real spreadsheet
+// (migration 078): every real attribute definition and its own real
+// allowed values, grouped for easy dropdown population -- every
+// portal reads this same real list rather than each hardcoding its
+// own copy.
+router.get('/attribute-definitions', async (req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT ad.name, adv.value
+       FROM attribute_definitions ad
+       LEFT JOIN attribute_definition_values adv ON adv.attribute_name = ad.name
+       ORDER BY ad.name ASC, adv.value ASC`
+    );
+    const grouped = {};
+    for (const row of rows) {
+      (grouped[row.name] ||= []).push(row.value);
+    }
+    res.json(Object.entries(grouped).map(([name, values]) => ({ name, values })));
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.get('/discount-rules', async (req, res, next) => {
   try {

@@ -3,6 +3,38 @@
 // submission endpoint (supplier/routes.js) and the real admin product-
 // edit endpoint (catalog/routes.js) need the exact same real rules.
 
+const db = require('../../../db/pool');
+
+const MAX_PRODUCT_ATTRIBUTES = 5;
+
+// Confirmed with the person, seeded from their own real spreadsheet
+// (migration 078): every real attribute must be one of the genuinely
+// defined names, with a genuinely defined value for that name -- not
+// free text. Rejects the entire real submission with a clear error
+// on the first invalid entry, rather than silently dropping it (which
+// could mask a real bug or mismatch).
+async function validateProductAttributes(attributes) {
+  if (attributes === undefined || attributes === null) return null;
+  if (!Array.isArray(attributes)) return 'attributes must be an array';
+  if (attributes.length > MAX_PRODUCT_ATTRIBUTES) {
+    return `A product can have at most ${MAX_PRODUCT_ATTRIBUTES} attributes`;
+  }
+  const seenNames = new Set();
+  for (const attr of attributes) {
+    const name = (attr?.name || '').trim();
+    const value = (attr?.value || '').trim();
+    if (!name || !value) return 'Each attribute needs both a name and a value';
+    if (seenNames.has(name)) return `Attribute "${name}" was provided more than once`;
+    seenNames.add(name);
+    const { rows } = await db.query(
+      'SELECT 1 FROM attribute_definition_values WHERE attribute_name = $1 AND value = $2',
+      [name, value]
+    );
+    if (rows.length === 0) return `"${value}" is not a valid value for the attribute "${name}"`;
+  }
+  return null;
+}
+
 const ALLOWED_POSITIONS = ['Front', 'Rear', 'Left', 'Right', 'Front-Left', 'Front-Right', 'Rear-Left', 'Rear-Right', 'Universal'];
 const MIN_PRODUCT_PHOTOS = 3;
 
@@ -56,4 +88,5 @@ module.exports = {
   MIN_SUPPLIER_NAME_LENGTH, MAX_SUPPLIER_NAME_LENGTH, validateSupplierNameLength,
   MIN_NAME_LENGTH, MAX_NAME_LENGTH, validateNameLength,
   MIN_DESCRIPTION_LENGTH, MAX_DESCRIPTION_LENGTH, validateDescriptionLength,
+  MAX_PRODUCT_ATTRIBUTES, validateProductAttributes,
 };

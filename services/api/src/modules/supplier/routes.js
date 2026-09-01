@@ -327,7 +327,7 @@ router.get('/me/products', requireAuth, requireRole('supplier'), async (req, res
 // A fixed, real list rather than free text — "Position" in the SRS
 // cascade (Brand -> ... -> Category -> Part -> Position -> OEM Number)
 // means where on the vehicle the part sits, not a free-form description.
-const { ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS, validateSupplierNameLength } = require('../shared/productValidation');
+const { ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS, validateSupplierNameLength, validateProductAttributes } = require('../shared/productValidation');
 
 router.post('/me/products', requireAuth, requireRole('supplier'), async (req, res, next) => {
   const {
@@ -386,6 +386,10 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
   const nameLengthError = validateSupplierNameLength(nameZh, 'nameZh');
   if (nameLengthError) {
     return res.status(400).json({ error: nameLengthError });
+  }
+  const attributesError = await validateProductAttributes(attributes);
+  if (attributesError) {
+    return res.status(400).json({ error: attributesError });
   }
   if (weightKg !== undefined && weightKg !== null && weightKg <= 0) {
     return res.status(400).json({ error: 'weightKg must be a positive number' });
@@ -493,18 +497,15 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
       [id, generationId, year, engineId || null, transmissionId || null]
     );
 
-    // Confirmed with the person: a fully flexible attribute list --
-    // different real part types need different real specs (color,
-    // material, side, etc.), not one fixed set. Skips any genuinely
-    // empty/malformed entry rather than crashing on it.
+    // Confirmed with the person, seeded from their own real
+    // spreadsheet (migration 078): already validated upfront (name
+    // and value both genuinely defined, max 5, no duplicates) before
+    // this transaction began.
     if (Array.isArray(attributes)) {
       for (const attr of attributes) {
-        const name = (attr?.name || '').trim();
-        const value = (attr?.value || '').trim();
-        if (!name || !value) continue;
         await client.query(
           'INSERT INTO product_attributes (product_id, attribute_name, attribute_value) VALUES ($1, $2, $3)',
-          [id, name, value]
+          [id, attr.name.trim(), attr.value.trim()]
         );
       }
     }
