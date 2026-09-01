@@ -155,7 +155,19 @@ class ApiClient {
     final response = await _client.get(Uri.parse('$baseUrl/hub/me/shipments/$shipmentId/address-label'), headers: _authHeaders(token));
     if (response.statusCode == 401) throw SessionExpiredError();
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ApiException('Could not load the delivery address label (${response.statusCode})');
+      // Confirmed: a non-2xx response here is a real JSON error body
+      // (not binary PDF data), so the backend's own real reason can
+      // be decoded and surfaced instead of a generic message.
+      String reason = 'Request failed (${response.statusCode})';
+      try {
+        final data = jsonDecode(response.body);
+        if (data is Map && data['error'] is String) reason = data['error'] as String;
+      } catch (_) {
+        // Real fallback -- response wasn't valid JSON at all (e.g. a
+        // proxy/404 HTML page if the real endpoint route itself isn't
+        // deployed yet), keep the generic reason above.
+      }
+      throw ApiException('Could not load the delivery address label: $reason');
     }
     return response.bodyBytes;
   }
