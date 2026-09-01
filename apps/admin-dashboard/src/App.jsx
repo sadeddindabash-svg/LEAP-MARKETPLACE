@@ -631,7 +631,20 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
     return () => { cancelled = true; };
   }, [onSessionExpired]);
 
-  const filtered = filter === "all" ? orders : orders.filter(o => o.status === filter);
+  // Confirmed with the person: the filter now follows the real,
+  // live hubStatus instead of the disconnected raw orders.status
+  // field. An order with no real hub shipment yet (too early) shows
+  // only under "All" -- excluded from every specific real filter.
+  const TO_SHIP_HUB_STATUSES = ["awaiting_receipt", "received", "opened", "inspected", "packed"];
+  const filtered = orders.filter((o) => {
+    if (filter === "all") return true;
+    if (o.hubStatus == null) return false;
+    if (filter === "to_ship") return TO_SHIP_HUB_STATUSES.includes(o.hubStatus);
+    if (filter === "shipped") return o.hubStatus === "shipped_to_buyer";
+    if (filter === "delivered") return o.hubStatus === "delivered";
+    if (filter === "dispute") return o.hubStatus === "flagged";
+    return false;
+  });
   const filters = [["all", "All"], ["to_ship", "To ship"], ["shipped", "Shipped"], ["delivered", "Delivered"], ["dispute", "Disputes"]];
 
   return (
