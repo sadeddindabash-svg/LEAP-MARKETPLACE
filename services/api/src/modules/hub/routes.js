@@ -426,6 +426,22 @@ router.get('/me/shipments/:id/address-label', requireAuth, requireRole('hub_staf
 
     const PDFDocument = require('pdfkit');
     const path = require('path');
+    const fs = require('fs');
+
+    // Confirmed critical fix, found via the person's own real server
+    // crash log: doc.font() only reads a font file lazily on first
+    // use -- if that happened AFTER res.setHeader/doc.pipe(res) had
+    // already started the real response stream, a genuinely missing
+    // file would crash the ENTIRE server process (a second, different
+    // response can't be sent on an already-streaming one). Validated
+    // here, before any header is set or the stream begins, so a
+    // missing font cleanly returns a real 500 JSON error instead.
+    const regularFontPath = path.join(__dirname, '../../../assets/noto-sans-arabic-regular.ttf');
+    const boldFontPath = path.join(__dirname, '../../../assets/noto-sans-arabic-bold.ttf');
+    if (!fs.existsSync(regularFontPath) || !fs.existsSync(boldFontPath)) {
+      return res.status(500).json({ error: 'Server is missing a required font file -- contact support' });
+    }
+
     const doc = new PDFDocument({ margin: 50, size: 'A5' });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="LEAP-address-${rows[0].order_id}.pdf"`);
@@ -434,8 +450,8 @@ router.get('/me/shipments/:id/address-label', requireAuth, requireRole('hub_staf
     // Real, registered so a real Arabic recipient name/address renders
     // correctly -- same real font already used by order/routes.js's
     // own receipt for the identical reason.
-    doc.registerFont('ArabicCapable', path.join(__dirname, '../../../assets/noto-sans-arabic-regular.ttf'));
-    doc.registerFont('ArabicCapable-Bold', path.join(__dirname, '../../../assets/noto-sans-arabic-bold.ttf'));
+    doc.registerFont('ArabicCapable', regularFontPath);
+    doc.registerFont('ArabicCapable-Bold', boldFontPath);
 
     doc.font('ArabicCapable-Bold').fontSize(10).fillColor('#888').text('DELIVERY ADDRESS', { characterSpacing: 1 });
     doc.moveDown(0.5);
