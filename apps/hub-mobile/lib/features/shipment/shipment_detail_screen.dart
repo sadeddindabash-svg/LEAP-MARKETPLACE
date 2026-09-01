@@ -224,11 +224,12 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
     final isTerminal = shipment.status == 'delivered' || shipment.status == 'flagged';
     final needsDeliveryConfirmation = shipment.status == 'shipped_to_buyer';
     // Confirmed with the person through several rounds of
-    // clarification: can't mark a shipment as received until every
+    // clarification: can't mark a shipment as inspected until every
     // real spec on every real item has been actively confirmed
     // against the physical part -- only relevant for this specific
-    // real status transition.
-    final allChecksConfirmed = nextStatus != 'received' ||
+    // real status transition (receiving and opening the package stay
+    // ungated; the detailed real verification belongs at inspection).
+    final allChecksConfirmed = nextStatus != 'inspected' ||
         shipment.items.every((item) => (_checkedSpecs[item.productId]?.length ?? 0) >= _specLabelsFor(item).length);
     // Deliberate, noted fix from the web app's own real behavior: also
     // gated on nextStatus != null, so this card doesn't render at the
@@ -474,7 +475,7 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
           ],
           if (!allChecksConfirmed) ...[
             const SizedBox(height: 8),
-            const Text('Confirm every checklist item above before marking as received.', style: TextStyle(fontSize: 11.5, color: HubColors.red)),
+            const Text('Confirm every checklist item above before marking as inspected.', style: TextStyle(fontSize: 11.5, color: HubColors.red)),
           ],
           const SizedBox(height: 18),
           SizedBox(
