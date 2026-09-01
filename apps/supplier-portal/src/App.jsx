@@ -1001,6 +1001,12 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
             </Field>
             <div>
               <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 8 }}>{cascadeLabel("属性", "Attributes")}</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: `1px solid ${C.line}`, borderRadius: 6, padding: '7px 10px', marginBottom: 6 }}>
+                <span style={{ ...font, fontSize: 12.5, color: C.ink, flexShrink: 0, marginRight: 8 }}>{cascadeLabel("安装位置", "Position")}:</span>
+                <select style={{ ...selectStyle, flex: 1 }} value={position} onChange={(e) => setPosition(e.target.value)}>
+                  {POSITION_OPTIONS.map(p => <option key={p.id} value={p.id}>{p[lang]}</option>)}
+                </select>
+              </div>
               {selectedAttributes.map((attr) => (
                 <div key={attr.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: `1px solid ${C.line}`, borderRadius: 6, padding: '7px 10px', marginBottom: 6 }}>
                   <span style={{ ...font, fontSize: 12.5, color: C.ink }}>{attr.name}: <strong>{attr.value}</strong></span>
@@ -1045,11 +1051,6 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
                 );
               })()}
             </div>
-            <Field label={cascadeLabel("安装位置", "Position")}>
-              <select style={selectStyle} value={position} onChange={(e) => setPosition(e.target.value)}>
-                {POSITION_OPTIONS.map(p => <option key={p.id} value={p.id}>{p[lang]}</option>)}
-              </select>
-            </Field>
             <Field label={cascadeLabel("OEM 编号", "OEM Number")}>
               <input style={inputStyle} placeholder="e.g. 34116792217" value={oemNumber} onChange={(e) => setOemNumber(e.target.value)} />
             </Field>
