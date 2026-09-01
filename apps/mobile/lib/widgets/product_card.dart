@@ -41,6 +41,12 @@ double productCardHeightFor(double cardWidth) {
   // afterward (confirmed real cause of a real, reported "overflowed
   // by 0.200 pixels" this same session -- that padding was never
   // reflected here). ~154px real total, some margin added.
+  // Real, deliberately height-neutral addition (the discount tag) --
+  // confirmed via careful measurement before adding it that it sits
+  // well within the existing price row's height, already dominated by
+  // the row's own 15px/weight-800 price text. No change needed here,
+  // unlike the low-stock countdown addition documented above, which
+  // genuinely did grow the card's real content height.
   return imageHeight + 175;
 }
 
@@ -159,6 +165,12 @@ class _ProductCardState extends State<ProductCard> {
     final p = widget.product;
     final palette = LeapPalette.of(context);
     final inStock = p.stockQuantity > 0;
+    // Confirmed with the person's own design: a genuine discount only
+    // exists when originalPrice is set AND actually greater than the
+    // real current price -- same defensive check already applied
+    // server-side, repeated here since this is real, independent
+    // client-side rendering logic.
+    final hasDiscount = p.originalPrice != null && p.originalPrice! > p.price;
     final isAr = context.watch<LanguageState>().isArabic;
     final isLoggedIn = context.watch<AuthState>().isLoggedIn;
     return UnconstrainedBox(
@@ -347,12 +359,51 @@ class _ProductCardState extends State<ProductCard> {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        // Real price-drop comparison (new) -- same real
-                        // hasPriceDrop pattern already used in
-                        // wishlist_screen.dart, using the real
-                        // lastKnownPrice snapshot field, not a
-                        // fabricated sale price.
-                        if (p.lastKnownPrice != null && p.lastKnownPrice! > p.price) ...[
+                        // Confirmed with the person's own design: a
+                        // real, deliberate supplier-set discount takes
+                        // priority over the automatic lastKnownPrice
+                        // price-drop signal below it, when both happen
+                        // to exist -- the deliberate discount is the
+                        // more intentional, meaningful signal.
+                        if (hasDiscount) ...[
+                          const SizedBox(width: 5),
+                          Flexible(
+                            child: Text(
+                              formatPrice(context, p.originalPrice!),
+                              style: TextStyle(fontSize: 11, color: palette.muted, decoration: TextDecoration.lineThrough),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          // Deliberately NOT wrapped in Flexible -- this
+                          // small, fixed-width tag should never itself
+                          // shrink or truncate; the two Text widgets
+                          // above it already handle space pressure via
+                          // their own overflow: ellipsis. Height-
+                          // neutral by design -- this tag sits well
+                          // within the row's existing height, already
+                          // dominated by the 15px/weight-800 price
+                          // text (~18px), confirmed via careful
+                          // measurement given this exact widget's own
+                          // documented history of overflow bugs.
+                          // Confirmed with the person via a complete,
+                          // full-card mockup before implementing:
+                          // design #2 -- medium-weight italic text,
+                          // warm coral #D85A30, "off" appended to the
+                          // percentage. Same height-neutral reasoning
+                          // as before still holds -- fontSize 10 sits
+                          // well within the row's existing height,
+                          // dominated by the 15px/weight-800 price
+                          // text (~18px).
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                            decoration: BoxDecoration(color: const Color(0xFFD85A30), borderRadius: BorderRadius.circular(4)),
+                            child: Text(
+                              '-${(((p.originalPrice! - p.price) / p.originalPrice!) * 100).round()}% off',
+                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w500, fontStyle: FontStyle.italic, color: Colors.white),
+                            ),
+                          ),
+                        ] else if (p.lastKnownPrice != null && p.lastKnownPrice! > p.price) ...[
                           const SizedBox(width: 5),
                           Flexible(
                             child: Text(
