@@ -23,7 +23,7 @@ const { deliveryNotificationEmail } = require('../email/templates');
  */
 const router = express.Router();
 
-const STATUS_ORDER = ['awaiting_receipt', 'received', 'opened', 'inspected', 'packed', 'shipped_to_buyer'];
+const { STATUS_ORDER } = require('../shared/hubStatusOrder');
 
 function toHubDto(row) {
   return { id: row.id, name: row.name, region: row.region, address: row.address, dailyCapacity: row.daily_capacity, createdAt: row.created_at };

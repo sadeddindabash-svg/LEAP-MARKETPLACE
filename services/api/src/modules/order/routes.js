@@ -8,6 +8,7 @@ const { orderConfirmationEmail, wrapEmailBody } = require('../email/templates');
 const { createNotification } = require('../notifications/helpers');
 const { buildTrackingTimeline } = require('../tracking/liveTracking');
 const { buildSupplierLabelMap } = require('../shared/supplierAnonymize');
+const { STATUS_ORDER } = require('../shared/hubStatusOrder');
 const ArabicReshaper = require('arabic-reshaper');
 const bidiFactory = require('bidi-js');
 const bidi = bidiFactory();
@@ -639,6 +640,42 @@ async function computeDisplayStatus(orderId) {
   return anyShippedOrFurther ? 'shipped' : 'to_ship';
 }
 
+// Confirmed with the person: a genuinely separate, more granular
+// status from computeDisplayStatus above -- that one stays untouched
+// (still used by the buyer-facing app, which correctly only needs
+// the coarse to_ship/shipped/delivered/returns buckets). This one
+// exposes the real, detailed hub_shipments workflow specifically for
+// the admin portal. When an order has real shipments from multiple
+// suppliers at different real stages, shows the least-advanced one
+// -- the order genuinely isn't done with a stage until every part
+// catches up. Null when no real hub shipment exists yet for this
+// order at all (too early -- not a fabricated default).
+async function computeHubStatus(orderId) {
+  const { rows } = await db.query(
+    `SELECT hs.status
+     FROM hub_shipments hs
+     JOIN supplier_sub_orders so ON so.id = hs.sub_order_id
+     WHERE so.order_id = $1`,
+    [orderId]
+  );
+  if (rows.length === 0) return null;
+  let leastAdvanced = null;
+  let leastAdvancedIdx = Infinity;
+  for (const row of rows) {
+    // Real terminal statuses ('delivered', 'flagged') aren't in
+    // STATUS_ORDER at all -- treated as maximally advanced here, so
+    // they never incorrectly win as the "least advanced" one over a
+    // real, still-in-progress sibling shipment.
+    const idx = STATUS_ORDER.indexOf(row.status);
+    const effectiveIdx = idx === -1 ? STATUS_ORDER.length : idx;
+    if (effectiveIdx < leastAdvancedIdx) {
+      leastAdvancedIdx = effectiveIdx;
+      leastAdvanced = row.status;
+    }
+  }
+  return leastAdvanced;
+}
+
 router.get('/', requireAuth, requirePageAccessIfAdmin('orders'), async (req, res, next) => {
   try {
     const isAdmin = req.user.role === 'admin';
@@ -683,6 +720,7 @@ router.get('/', requireAuth, requirePageAccessIfAdmin('orders'), async (req, res
         guestEmail: o.guest_email,
         status: o.status,
         displayStatus: await computeDisplayStatus(o.id),
+        hubStatus: isAdmin ? await computeHubStatus(o.id) : null,
         total: Number(o.total),
         currencyCode: o.currency_code,
         placedAt: o.placed_at,
