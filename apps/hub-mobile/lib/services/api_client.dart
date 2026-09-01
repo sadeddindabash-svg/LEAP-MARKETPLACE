@@ -136,6 +136,16 @@ class ApiClient {
     return ShipmentDetail.fromJson(data);
   }
 
+  /// Confirmed with the person: records the real, actual quantity
+  /// counted on arrival -- separate from what was originally
+  /// ordered. Never auto-flags a mismatch; the worker decides for
+  /// themselves whether to actually flag the shipment.
+  Future<void> recordReceivedQuantity(String token, String shipmentId, String productId, int receivedQuantity) async {
+    await _authedMutate('PATCH', '/hub/me/shipments/$shipmentId/items/$productId/received', token, {
+      'receivedQuantity': receivedQuantity,
+    });
+  }
+
   Future<void> recordShipmentEvent(
     String token,
     String shipmentId, {

@@ -69,6 +69,10 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
   bool _isUploadingPhoto = false;
   bool _isSubmitting = false;
   bool _showFlagForm = false;
+  // Confirmed with the person: one controller per item, initialized
+  // lazily as each item's card builds, for the interactive
+  // received-quantity input.
+  final Map<String, TextEditingController> _receivedControllers = {};
 
   @override
   void initState() {
@@ -81,7 +85,29 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
     _notesController.dispose();
     _trackingController.dispose();
     _deliveryNoteController.dispose();
+    for (final c in _receivedControllers.values) {
+      c.dispose();
+    }
     super.dispose();
+  }
+
+  /// Confirmed with the person: records the real, actual quantity
+  /// counted on arrival. Deliberately does NOT auto-flag on a real
+  /// mismatch -- purely informational, the worker decides for
+  /// themselves whether to actually flag the shipment.
+  Future<void> _saveReceivedQuantity(String productId, String rawValue) async {
+    final parsed = int.tryParse(rawValue.trim());
+    if (parsed == null || parsed < 0) return;
+    final auth = context.read<AuthState>();
+    try {
+      await ApiClient().recordReceivedQuantity(auth.token!, widget.shipmentId, productId, parsed);
+      await _load();
+    } on SessionExpiredError {
+      auth.handleSessionExpired();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMessage = e.message);
+    }
   }
 
   Future<void> _load() async {
@@ -206,7 +232,27 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(shipment.orderId, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(shipment.orderId, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                // Confirmed with the person: shown only when this
+                // real order genuinely has more than one shipment --
+                // a single-supplier order (the common case) shows
+                // nothing extra here.
+                if (shipment.totalShipments > 1) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(color: HubColors.card, borderRadius: BorderRadius.circular(999), border: Border.all(color: HubColors.line)),
+                    child: Text(
+                      '${shipment.shipmentIndex} / ${shipment.totalShipments}',
+                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: HubColors.ink),
+                    ),
+                  ),
+                ],
+              ],
+            ),
             Text(shipment.supplierName, style: const TextStyle(fontSize: 11.5, color: HubColors.muted)),
           ],
         ),
@@ -216,6 +262,16 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
         padding: const EdgeInsets.all(20),
         children: [
           _buildItemsCard(t, shipment),
+          if (shipment.otherShipments.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            ...shipment.otherShipments.map((s) => Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: Text(
+                    'Other shipment: ${s.supplierName} — ${s.status.replaceAll('_', ' ')}',
+                    style: const TextStyle(fontSize: 11.5, color: HubColors.muted),
+                  ),
+                )),
+          ],
           if (_errorMessage != null) ...[
             const SizedBox(height: 16),
             Container(
@@ -256,10 +312,75 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
         children: [
           Text(t.detail.items.toUpperCase(), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: HubColors.muted)),
           const SizedBox(height: 8),
-          ...shipment.items.map((item) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Text('${item.name} × ${item.quantity}', style: const TextStyle(fontSize: 13, color: HubColors.ink)),
-              )),
+          ...shipment.items.map((item) => _buildItemVerificationRow(item)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildItemVerificationRow(ShipmentItem item) {
+    // Confirmed with the person: a genuine mismatch is a visual
+    // warning only -- never auto-flags the shipment.
+    final hasMismatch = item.receivedQuantity != null && item.receivedQuantity != item.quantity;
+    final specs = [
+      if (item.part != null) 'Part: ${item.part}',
+      if (item.position != null) 'Position: ${item.position}',
+      if (item.oemNumber != null) 'OEM: ${item.oemNumber}',
+      ...item.attributes.map((a) => '${a.name}: ${a.value}'),
+    ].join(' · ');
+    final controller = _receivedControllers.putIfAbsent(
+      item.productId,
+      () => TextEditingController(text: item.receivedQuantity?.toString() ?? ''),
+    );
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: hasMismatch ? HubColors.redBg : HubColors.card,
+        border: Border.all(color: hasMismatch ? HubColors.red : HubColors.line),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(item.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: HubColors.ink)),
+          if (specs.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(specs, style: const TextStyle(fontSize: 11, color: HubColors.muted)),
+          ],
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Text('Ordered: ${item.quantity}', style: const TextStyle(fontSize: 12, color: HubColors.muted)),
+              const Spacer(),
+              Text(
+                'Received:',
+                style: TextStyle(fontSize: 12, fontWeight: hasMismatch ? FontWeight.w700 : FontWeight.w400, color: hasMismatch ? HubColors.red : HubColors.muted),
+              ),
+              const SizedBox(width: 6),
+              SizedBox(
+                width: 44,
+                height: 30,
+                child: TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: hasMismatch ? HubColors.red : HubColors.ink),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: hasMismatch ? HubColors.red : HubColors.line)),
+                  ),
+                  onSubmitted: (value) => _saveReceivedQuantity(item.productId, value),
+                  onEditingComplete: () => _saveReceivedQuantity(item.productId, controller.text),
+                ),
+              ),
+            ],
+          ),
+          if (hasMismatch) ...[
+            const SizedBox(height: 6),
+            const Text('Quantity mismatch — decide whether to flag this shipment below.', style: TextStyle(fontSize: 10.5, color: HubColors.red)),
+          ],
         ],
       ),
     );
