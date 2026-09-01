@@ -153,6 +153,13 @@ export async function fetchProductRequirements() {
   return data;
 }
 
+export async function fetchAttributeDefinitions() {
+  const response = await fetch(`${API_BASE_URL}/catalog/attribute-definitions`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
 export function updateProduct(token, productId, updates) {
   return authedMutate("PATCH", `/supplier/me/products/${productId}`, token, updates);
 }
