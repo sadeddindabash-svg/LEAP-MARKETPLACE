@@ -126,6 +126,28 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
     }
   }
 
+  /// Confirmed with the person: fixes a real gap where a received-
+  /// quantity value only ever saved on the TextField's own
+  /// onSubmitted/onEditingComplete -- a worker who typed a value then
+  /// tapped straight to "mark as inspected" without first dismissing
+  /// the keyboard would silently lose it. Called before advancing any
+  /// step, flushing every real controller's current value so nothing
+  /// typed is ever lost regardless of how the field was left.
+  Future<void> _flushPendingReceivedQuantities() async {
+    final auth = context.read<AuthState>();
+    for (final entry in _receivedControllers.entries) {
+      final parsed = int.tryParse(entry.value.text.trim());
+      if (parsed == null || parsed < 0) continue;
+      try {
+        await ApiClient().recordReceivedQuantity(auth.token!, widget.shipmentId, entry.key, parsed);
+      } on ApiException {
+        // Real, deliberate: a single item's flush failing shouldn't
+        // block the whole step submission -- the main save below
+        // still runs, and any genuine issue surfaces from there.
+      }
+    }
+  }
+
   /// Confirmed with the person via mockup: downloads the real PDF
   /// bytes, saves them to a real temp file (share_plus shares by file
   /// path, not raw bytes), then opens the device's real native share
@@ -191,6 +213,7 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
       _isSubmitting = true;
       _errorMessage = null;
     });
+    await _flushPendingReceivedQuantities();
     final auth = context.read<AuthState>();
     try {
       await ApiClient().recordShipmentEvent(
