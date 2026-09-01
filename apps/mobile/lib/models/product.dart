@@ -23,6 +23,12 @@ class Product {
   // scheduled price-drop check, now exposed so Wishlist can show a
   // genuine "price dropped" comparison. Null means never checked yet.
   final double? lastKnownPrice;
+  // Confirmed with the person through several rounds of design (5
+  // label options, colors, dark mode) before building -- a real,
+  // deliberate supplier-set discount, distinct from lastKnownPrice's
+  // own automatic price-drop signal above. Null means no discount is
+  // currently active on this product at all.
+  final double? originalPrice;
   // Real, anonymous supplier signals (#73, #74) -- never the
   // supplier's own name or identity, matching this platform's own
   // deliberate anonymization design.
@@ -59,6 +65,7 @@ class Product {
     this.oemNumber,
     required this.price,
     this.lastKnownPrice,
+    this.originalPrice,
     this.isVerifiedSeller = false,
     this.shipsFromCountry,
     this.shipsFromCountryAr,
@@ -90,6 +97,7 @@ class Product {
         oemNumber: json['oemNumber'] as String?,
         price: (json['price'] as num).toDouble(),
         lastKnownPrice: json['lastKnownPrice'] == null ? null : (json['lastKnownPrice'] as num).toDouble(),
+        originalPrice: json['originalPrice'] == null ? null : (json['originalPrice'] as num).toDouble(),
         isVerifiedSeller: json['isVerifiedSeller'] as bool? ?? false,
         shipsFromCountry: json['shipsFromCountry'] as String?,
         shipsFromCountryAr: json['shipsFromCountryAr'] as String?,
