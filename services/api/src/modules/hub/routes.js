@@ -365,6 +365,25 @@ router.get('/me/shipments/:id', requireAuth, requireRole('hub_staff'), async (re
       .filter((s) => String(s.id) !== String(rows[0].id))
       .map((s) => ({ supplierName: s.supplier_name, status: s.status }));
 
+    // Confirmed with the person: the real, permanent delivery address
+    // snapshot for this order (migration 030) -- captured once at
+    // order confirmation, never a live reference to a buyer's saved
+    // address that could silently change later.
+    const { rows: addressRows } = await db.query(
+      'SELECT recipient_name, phone, country, city, street_address, postal_code FROM order_addresses WHERE order_id = $1',
+      [rows[0].order_id]
+    );
+    const deliveryAddress = addressRows.length > 0
+      ? {
+          recipientName: addressRows[0].recipient_name,
+          phone: addressRows[0].phone,
+          country: addressRows[0].country,
+          city: addressRows[0].city,
+          streetAddress: addressRows[0].street_address,
+          postalCode: addressRows[0].postal_code,
+        }
+      : null;
+
     const events = await attachEventsAndPhotos(rows[0]);
 
     res.json({
@@ -372,8 +391,65 @@ router.get('/me/shipments/:id', requireAuth, requireRole('hub_staff'), async (re
       orderId: rows[0].order_id, supplierName: rows[0].supplier_name,
       shipmentIndex, totalShipments, otherShipments,
       items: itemsWithAttributes,
+      deliveryAddress,
       events,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /me/shipments/:id/address-label -- confirmed with the person
+// via mockup before implementing: a real, focused PDF containing
+// just the delivery address (recipient, phone, full address, order
+// ID) -- deliberately NOT the existing full itemized order receipt
+// (a different real document for a different real audience). Mirrors
+// the exact same real pdfkit/Arabic-font pattern already established
+// in order/routes.js's own receipt generator.
+router.get('/me/shipments/:id/address-label', requireAuth, requireRole('hub_staff'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT hs.id, so.order_id
+       FROM hub_shipments hs
+       JOIN supplier_sub_orders so ON so.id = hs.sub_order_id
+       WHERE hs.id = $1 AND hs.hub_id = $2`,
+      [req.params.id, req.user.hubId]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Shipment not found' });
+
+    const { rows: addressRows } = await db.query(
+      'SELECT recipient_name, phone, country, city, street_address, postal_code FROM order_addresses WHERE order_id = $1',
+      [rows[0].order_id]
+    );
+    if (addressRows.length === 0) return res.status(404).json({ error: 'No delivery address on file for this order' });
+    const addr = addressRows[0];
+
+    const PDFDocument = require('pdfkit');
+    const path = require('path');
+    const doc = new PDFDocument({ margin: 50, size: 'A5' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="LEAP-address-${rows[0].order_id}.pdf"`);
+    doc.pipe(res);
+
+    // Real, registered so a real Arabic recipient name/address renders
+    // correctly -- same real font already used by order/routes.js's
+    // own receipt for the identical reason.
+    doc.registerFont('ArabicCapable', path.join(__dirname, '../../../assets/noto-sans-arabic-regular.ttf'));
+    doc.registerFont('ArabicCapable-Bold', path.join(__dirname, '../../../assets/noto-sans-arabic-bold.ttf'));
+
+    doc.font('ArabicCapable-Bold').fontSize(10).fillColor('#888').text('DELIVERY ADDRESS', { characterSpacing: 1 });
+    doc.moveDown(0.5);
+    doc.font('ArabicCapable-Bold').fontSize(18).fillColor('#000').text(addr.recipient_name);
+    doc.moveDown(0.3);
+    doc.font('ArabicCapable').fontSize(13).fillColor('#333').text(addr.phone);
+    doc.moveDown(0.6);
+    doc.font('ArabicCapable').fontSize(13).fillColor('#000').text(addr.street_address);
+    doc.text(`${addr.city}, ${addr.country}`);
+    if (addr.postal_code) doc.text(addr.postal_code);
+    doc.moveDown(1.2);
+    doc.font('ArabicCapable').fontSize(10).fillColor('#888').text(`Order ${rows[0].order_id}`);
+
+    doc.end();
   } catch (err) {
     next(err);
   }
