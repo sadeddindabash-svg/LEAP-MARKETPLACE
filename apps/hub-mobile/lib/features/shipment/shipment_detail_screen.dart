@@ -273,7 +273,7 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          _buildItemsCard(t, shipment),
+          _buildItemsCard(t, shipment, nextStatus),
           if (shipment.otherShipments.isNotEmpty) ...[
             const SizedBox(height: 8),
             ...shipment.otherShipments.map((s) => Padding(
@@ -315,7 +315,7 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
     );
   }
 
-  Widget _buildItemsCard(HubText t, ShipmentDetail shipment) {
+  Widget _buildItemsCard(HubText t, ShipmentDetail shipment, String? nextStatus) {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(color: HubColors.card, border: Border.all(color: HubColors.line), borderRadius: BorderRadius.circular(10)),
@@ -324,7 +324,7 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
         children: [
           Text(t.detail.items.toUpperCase(), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: HubColors.muted)),
           const SizedBox(height: 8),
-          ...shipment.items.map((item) => _buildItemVerificationRow(item)),
+          ...shipment.items.map((item) => _buildItemVerificationRow(item, nextStatus)),
         ],
       ),
     );
@@ -339,7 +339,7 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
         ...item.attributes.map((a) => '${a.name}: ${a.value}'),
       ];
 
-  Widget _buildItemVerificationRow(ShipmentItem item) {
+  Widget _buildItemVerificationRow(ShipmentItem item, String? nextStatus) {
     // Confirmed with the person: a genuine mismatch is a visual
     // warning only -- never auto-flags the shipment.
     final hasMismatch = item.receivedQuantity != null && item.receivedQuantity != item.quantity;
@@ -349,6 +349,10 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
       item.productId,
       () => TextEditingController(text: item.receivedQuantity?.toString() ?? ''),
     );
+    // Confirmed with the person: the real checklist only shows once
+    // the shipment has genuinely reached the inspect stage -- not
+    // visible during receive/open, or any stage after inspection.
+    final showChecklist = nextStatus == 'inspected';
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(10),
@@ -361,7 +365,7 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(item.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: HubColors.ink)),
-          if (specs.isNotEmpty) ...[
+          if (showChecklist && specs.isNotEmpty) ...[
             const SizedBox(height: 6),
             ...specs.map((label) {
               final isChecked = checked.contains(label);
