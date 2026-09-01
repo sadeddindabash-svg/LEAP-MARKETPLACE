@@ -334,7 +334,6 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
   /// since each one needs its own real, tappable checkbox.
   List<String> _specLabelsFor(ShipmentItem item) => [
         if (item.part != null) 'Part: ${item.part}',
-        if (item.position != null) 'Position: ${item.position}',
         if (item.oemNumber != null) 'OEM: ${item.oemNumber}',
         ...item.attributes.map((a) => '${a.name}: ${a.value}'),
       ];
