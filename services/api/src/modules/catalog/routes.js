@@ -1174,6 +1174,11 @@ router.patch('/admin/products/:id', requireAuth, requireRole('admin'), requirePa
       }
     }
 
+    // Confirmed with the person: same real derivation already
+    // established in the supplier submission endpoint -- Position
+    // can be set purely via the attributes array now.
+    const derivedPosition = position ?? (Array.isArray(attributes) ? attributes.find((a) => a.name === 'Position')?.value : null) ?? null;
+
     await client.query('BEGIN');
     const { rows } = await client.query(
       `UPDATE products SET
@@ -1189,7 +1194,7 @@ router.patch('/admin/products/:id', requireAuth, requireRole('admin'), requirePa
        RETURNING id`,
       [
         nameEn ?? null, nameAr ?? null, descriptionEn ?? null, descriptionAr ?? null,
-        category ?? null, part ?? null, position ?? null, oemNumber ?? null,
+        category ?? null, part ?? null, derivedPosition, oemNumber ?? null,
         stockQuantity ?? null, lowStockThreshold ?? null,
         weightKg ?? null, lengthCm ?? null, widthCm ?? null, heightCm ?? null,
         videoUrl ?? null,

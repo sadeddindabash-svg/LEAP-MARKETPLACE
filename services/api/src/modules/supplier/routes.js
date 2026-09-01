@@ -367,7 +367,6 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
   if (!nameZh) missing.push('nameZh');
   if (!category) missing.push('category');
   if (!part) missing.push('part');
-  if (!position) missing.push('position');
   if (!oemNumber) missing.push('oemNumber');
   if (!price) missing.push('price');
   if (!currencyCode) missing.push('currencyCode');
@@ -414,7 +413,7 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
     const { rows: allParts } = await db.query('SELECT name_en FROM category_parts WHERE category_id = $1 ORDER BY sort_order ASC', [category]);
     return res.status(400).json({ error: `part must be one of: ${allParts.map((p) => p.name_en).join(', ')}` });
   }
-  if (!ALLOWED_POSITIONS.includes(position)) {
+  if (position !== undefined && position !== null && !ALLOWED_POSITIONS.includes(position)) {
     return res.status(400).json({ error: `position must be one of: ${ALLOWED_POSITIONS.join(', ')}` });
   }
   // CONFIRMED: suppliers price in RMB. The buyer-facing USD price is
@@ -481,13 +480,20 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
     // commonly show the untranslated original in the interim rather than
     // a blank placeholder. ----
     const id = `p_${Date.now()}`;
+    // Confirmed with the person: Position is now a fully optional,
+    // selectable attribute like the others -- derived from the real
+    // attributes array when picked there (the normal path now). The
+    // separate top-level position field is kept only as a fallback
+    // for backward compatibility with anything still sending it that
+    // way directly.
+    const derivedPosition = position || (Array.isArray(attributes) ? attributes.find((a) => a.name === 'Position')?.value : null) || null;
     await client.query(
       `INSERT INTO products
          (id, supplier_id, name, name_zh, description, description_zh, category, part, position, oem_number,
           price, currency_code, stock_quantity, status,
           weight_kg, length_cm, width_cm, height_cm, video_url)
        VALUES ($1, $2, $3, $3, NULL, $4, $5, $6, $7, $8, $9, $10, $11, 'translating', $12, $13, $14, $15, $16)`,
-      [id, req.user.supplierId, nameZh, descriptionZh || null, category, part, position, oemNumber,
+      [id, req.user.supplierId, nameZh, descriptionZh || null, category, part, derivedPosition, oemNumber,
         price, currencyCode, stockQuantity || 0,
         weightKg, lengthCm, widthCm, heightCm, videoUrl || null]
     );
