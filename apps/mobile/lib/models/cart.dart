@@ -11,12 +11,21 @@ class Cart {
   final String? appliedPromoCode;
   final PromoDetails? appliedPromoDetails;
   final double promoDiscountUsd;
+  // Confirmed with the person: whole-basket checkout price lock --
+  // starts when the buyer genuinely enters checkout (not when an
+  // item is added), lasts 60 real minutes, and keeps counting down
+  // even if the buyer leaves and returns to checkout before it
+  // expires (explicitly confirmed: not reset by re-entering).
+  final bool lockActive;
+  final DateTime? lockExpiresAt;
 
   const Cart({
     required this.items,
     this.appliedPromoCode,
     this.appliedPromoDetails,
     this.promoDiscountUsd = 0,
+    this.lockActive = false,
+    this.lockExpiresAt,
   });
 
   factory Cart.fromJson(Map<String, dynamic> json) {
@@ -28,6 +37,8 @@ class Cart {
           ? null
           : PromoDetails.fromJson(json['appliedPromoDetails'] as Map<String, dynamic>),
       promoDiscountUsd: (json['promoDiscountUsd'] as num?)?.toDouble() ?? 0,
+      lockActive: json['lockActive'] as bool? ?? false,
+      lockExpiresAt: json['lockExpiresAt'] == null ? null : DateTime.parse(json['lockExpiresAt'] as String),
     );
   }
 }

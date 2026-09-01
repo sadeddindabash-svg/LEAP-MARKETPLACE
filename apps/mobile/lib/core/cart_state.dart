@@ -27,6 +27,11 @@ class CartState extends ChangeNotifier {
   String? _appliedPromoCode;
   PromoDetails? _appliedPromoDetails;
   double _promoDiscountUsd = 0;
+  // Confirmed with the person: whole-basket checkout price lock,
+  // starts when checkout genuinely begins (not when an item is
+  // added).
+  bool _lockActive = false;
+  DateTime? _lockExpiresAt;
   bool _isLoading = true;
   String? _errorMessage;
 
@@ -41,6 +46,8 @@ class CartState extends ChangeNotifier {
   String? get appliedPromoCode => _appliedPromoCode;
   PromoDetails? get appliedPromoDetails => _appliedPromoDetails;
   double get promoDiscountUsd => _promoDiscountUsd;
+  bool get lockActive => _lockActive;
+  DateTime? get lockExpiresAt => _lockExpiresAt;
 
   double get total => _items.fold(0.0, (sum, i) => sum + i.lineTotal);
   // Confirmed with the person: sum of every real item's own
@@ -72,6 +79,8 @@ class CartState extends ChangeNotifier {
     _appliedPromoCode = cart.appliedPromoCode;
     _appliedPromoDetails = cart.appliedPromoDetails;
     _promoDiscountUsd = cart.promoDiscountUsd;
+    _lockActive = cart.lockActive;
+    _lockExpiresAt = cart.lockExpiresAt;
   }
 
   Future<void> _init() async {
@@ -138,6 +147,18 @@ class CartState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Confirmed with the person: called when the buyer genuinely
+  /// enters checkout, not when an item is added to the cart. Starts
+  /// a fresh 60-minute lock, or does nothing (continues the existing
+  /// countdown) if one's already active -- explicitly confirmed:
+  /// leaving checkout and returning before it expires does NOT reset
+  /// it.
+  Future<void> lockPrices() async {
+    if (_cartId == null) return;
+    _applyCart(await _apiClient.lockPrices(_cartId!));
+    notifyListeners();
+  }
+
   /// Called after a successful order placement — clears the local view of
   /// the cart. Doesn't need to call the backend again per item since
   /// placing an order doesn't automatically empty the cart server-side
@@ -159,6 +180,8 @@ class CartState extends ChangeNotifier {
     _appliedPromoCode = null;
     _appliedPromoDetails = null;
     _promoDiscountUsd = 0;
+    _lockActive = false;
+    _lockExpiresAt = null;
     notifyListeners();
   }
 }

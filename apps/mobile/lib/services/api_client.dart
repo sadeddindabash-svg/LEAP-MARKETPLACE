@@ -710,6 +710,15 @@ class ApiClient {
     return _decodeCart(response);
   }
 
+  /// Confirmed with the person: called when the buyer genuinely
+  /// enters checkout, not when an item is added to the cart. Starts
+  /// a fresh 60-minute price lock, or does nothing (continues the
+  /// existing countdown) if one's already active.
+  Future<Cart> lockPrices(String cartId) async {
+    final response = await _client.post(Uri.parse('$baseUrl/cart/$cartId/lock-prices'));
+    return _decodeCart(response);
+  }
+
   // ---------------- Order placement (BUY-031, guest checkout) ----------------
 
   /// Places an order for the given cart items. Exactly one of [userId] or

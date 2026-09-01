@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
@@ -103,6 +104,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // screen-local here.
   String? _promoMessage;
   bool _isValidatingPromo = false;
+  // Confirmed with the person through several rounds of clarification:
+  // ticks every second purely to force the ring's display to
+  // re-render (the real remaining time is always computed fresh from
+  // cart.lockExpiresAt, never tracked separately here). _hasHandledExpiry
+  // guards the auto-navigate-back-to-basket behavior below so it only
+  // fires once per lock, not repeatedly every second after it fires.
+  Timer? _countdownTimer;
+  bool _hasHandledExpiry = false;
 
   @override
   void initState() {
@@ -120,6 +129,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     // Real saved addresses, fetched once on load -- only meaningful
     // for a real logged-in buyer (migration 030).
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadSavedAddresses());
+    // Confirmed with the person: starts (or continues) the real
+    // 60-minute checkout price lock the moment this screen loads.
+    WidgetsBinding.instance.addPostFrameCallback((_) => context.read<CartState>().lockPrices());
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      final cart = context.read<CartState>();
+      final expiresAt = cart.lockExpiresAt;
+      if (expiresAt != null && DateTime.now().isAfter(expiresAt) && !_hasHandledExpiry) {
+        _hasHandledExpiry = true;
+        // Confirmed with the person: send the buyer back to the
+        // basket and auto-refresh prices the moment the lock
+        // genuinely expires, rather than leaving them on checkout
+        // staring at a frozen 00:00.
+        Navigator.of(context).pop();
+        cart.refresh();
+        return;
+      }
+      setState(() {}); // real tick -- forces the ring to re-render each second
+    });
     _scrollController.addListener(_updateCurrentStepFromScroll);
   }
 
@@ -219,10 +247,45 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   void dispose() {
+    _countdownTimer?.cancel();
     _scrollController.dispose();
     _guestEmailController.dispose();
     _promoCodeController.dispose();
     super.dispose();
+  }
+
+  Widget _buildLockCountdown(CartState cart) {
+    final expiresAt = cart.lockExpiresAt;
+    if (!cart.lockActive || expiresAt == null) return const SizedBox.shrink();
+    final remaining = expiresAt.difference(DateTime.now());
+    if (remaining.isNegative) return const SizedBox.shrink();
+    final minutes = remaining.inMinutes;
+    final seconds = remaining.inSeconds % 60;
+    final progress = (remaining.inSeconds / 3600).clamp(0.0, 1.0);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final palette = LeapPalette.of(context);
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(end: 10),
+      child: SizedBox(
+        width: 54,
+        height: 54,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            CircularProgressIndicator(
+              value: progress,
+              strokeWidth: 5,
+              backgroundColor: isDark ? palette.line : const Color(0xFFF0997B),
+              valueColor: AlwaysStoppedAnimation(isDark ? const Color(0xFFF0997B) : const Color(0xFFD85A30)),
+            ),
+            Text(
+              '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: palette.ink),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _applyPromoCode() async {
@@ -724,49 +787,67 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       type: MaterialType.transparency,
                       child: InkWell(
                         onTap: () => context.push('/product/${item.productId}'),
-                        child: Row(
-                      children: [
-                        // Real product thumbnail (new) -- closes a
-                        // real gap: only the product's name was shown
-                        // as plain text before, no real photo at all.
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
-                          child: item.imageUrl != null
-                              ? CachedNetworkImage(
-                                  fadeInDuration: const Duration(milliseconds: 300),
-                                  imageUrl: ApiClient.resolveMediaUrl(item.imageUrl!),
-                                  width: 56,
-                                  height: 56,
-                                  fit: BoxFit.cover,
-                                  placeholder: (context, url) => Container(width: 56, height: 56, color: Colors.white),
-                                  errorWidget: (context, url, error) => Container(
-                                    width: 36,
-                                    height: 36,
-                                    color: Colors.white,
-                                    child: Icon(Icons.broken_image_outlined, size: 14, color: LeapPalette.of(context).muted),
-                                  ),
-                                )
-                              : Container(
-                                  width: 56,
-                                  height: 56,
-                                  color: Colors.white,
-                                  child: Icon(Icons.inventory_2_outlined, size: 14, color: LeapPalette.of(context).muted),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                          children: [
+                            // Real product thumbnail (new) -- closes a
+                            // real gap: only the product's name was shown
+                            // as plain text before, no real photo at all.
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: item.imageUrl != null
+                                  ? CachedNetworkImage(
+                                      fadeInDuration: const Duration(milliseconds: 300),
+                                      imageUrl: ApiClient.resolveMediaUrl(item.imageUrl!),
+                                      width: 56,
+                                      height: 56,
+                                      fit: BoxFit.cover,
+                                      placeholder: (context, url) => Container(width: 56, height: 56, color: Colors.white),
+                                      errorWidget: (context, url, error) => Container(
+                                        width: 36,
+                                        height: 36,
+                                        color: Colors.white,
+                                        child: Icon(Icons.broken_image_outlined, size: 14, color: LeapPalette.of(context).muted),
+                                      ),
+                                    )
+                                  : Container(
+                                      width: 56,
+                                      height: 56,
+                                      color: Colors.white,
+                                      child: Icon(Icons.inventory_2_outlined, size: 14, color: LeapPalette.of(context).muted),
+                                    ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                '${item.quantity} × ${item.name}',
+                                style: const TextStyle(fontSize: 12.5),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(formatPrice(context, item.price * item.quantity), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                            const SizedBox(width: 4),
+                            Icon(Icons.chevron_right, size: 16, color: LeapPalette.of(context).muted),
+                          ],
+                            ),
+                            // Confirmed with the person: shown only for
+                            // this specific item, only while its own
+                            // real live price has genuinely diverged
+                            // from the real locked one -- the charged
+                            // amount doesn't change, purely informational.
+                            if (item.priceChanged)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 66, top: 2),
+                                child: Text(
+                                  tr(context, 'price_updated_since_added'),
+                                  style: TextStyle(fontSize: 10.5, fontStyle: FontStyle.italic, color: LeapPalette.of(context).muted),
                                 ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            '${item.quantity} × ${item.name}',
-                            style: const TextStyle(fontSize: 12.5),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(formatPrice(context, item.price * item.quantity), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
-                        const SizedBox(width: 4),
-                        Icon(Icons.chevron_right, size: 16, color: LeapPalette.of(context).muted),
-                      ],
+                              ),
+                          ],
                         ),
                       ),
                     ),
@@ -875,14 +956,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       ),
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.all(16),
-        child: ElevatedButton(
-          onPressed: (cart.isEmpty || _isPlacingOrder || _stockChangedItemNames.isNotEmpty) ? null : _placeOrder,
-          child: _isPlacingOrder
-              ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text('${tr(context, 'place_order')} · ${formatPriceWithUsd(context, cart.total - cart.promoDiscountUsd)}'),
-                ),
+        child: Row(
+          children: [
+            _buildLockCountdown(cart),
+            Expanded(
+              child: ElevatedButton(
+                onPressed: (cart.isEmpty || _isPlacingOrder || _stockChangedItemNames.isNotEmpty) ? null : _placeOrder,
+                child: _isPlacingOrder
+                    ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text('${tr(context, 'place_order')} · ${formatPriceWithUsd(context, cart.total - cart.promoDiscountUsd)}'),
+                      ),
+              ),
+            ),
+          ],
         ),
       ),
     );

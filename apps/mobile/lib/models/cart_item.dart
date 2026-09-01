@@ -9,6 +9,11 @@ class CartItem {
   // Confirmed with the person: mirrors Product's own originalPrice --
   // null means no real discount rule currently matches this item.
   final double? originalPrice;
+  // Confirmed with the person: true only while a checkout price lock
+  // is active AND the real, live price has genuinely diverged from
+  // the real locked snapshot -- the displayed price stays the
+  // locked one regardless; this is purely an informational flag.
+  final bool priceChanged;
   final String currencyCode;
   final String? supplierName;
   // Real primary product image (new) -- closes a real gap: no image
@@ -31,6 +36,7 @@ class CartItem {
     required this.name,
     required this.price,
     this.originalPrice,
+    this.priceChanged = false,
     required this.currencyCode,
     required this.stockQuantity,
     this.supplierName,
@@ -51,6 +57,7 @@ class CartItem {
         name: json['name'] as String,
         price: (json['price'] as num).toDouble(),
         originalPrice: json['originalPrice'] == null ? null : (json['originalPrice'] as num).toDouble(),
+        priceChanged: json['priceChanged'] as bool? ?? false,
         currencyCode: json['currencyCode'] as String? ?? 'USD',
         stockQuantity: json['stockQuantity'] as int? ?? 0,
         supplierName: json['supplierName'] as String?,

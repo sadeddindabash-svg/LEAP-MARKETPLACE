@@ -98,6 +98,7 @@ class AppStrings {
     'remove': {'en': 'Remove', 'ar': 'إزالة'},
     'promo_applied': {'en': 'Applied!', 'ar': 'تم التطبيق!'},
     'you_saved': {'en': 'You saved', 'ar': 'وفّرت'},
+    'price_updated_since_added': {'en': 'Price updated since you added this.', 'ar': 'تم تحديث السعر منذ إضافة هذا العنصر.'},
     'subtotal': {'en': 'Subtotal', 'ar': 'المجموع الفرعي'},
     'total_before_discount': {'en': 'Total before discount', 'ar': 'الإجمالي قبل الخصم'},
     'estimated_weight': {'en': 'Estimated weight', 'ar': 'الوزن التقديري'},
