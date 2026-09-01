@@ -100,7 +100,6 @@ class AppStrings {
     'you_saved': {'en': 'You saved', 'ar': 'وفّرت'},
     'subtotal': {'en': 'Subtotal', 'ar': 'المجموع الفرعي'},
     'total_before_discount': {'en': 'Total before discount', 'ar': 'الإجمالي قبل الخصم'},
-    'you_saved': {'en': 'You saved', 'ar': 'وفرت'},
     'estimated_weight': {'en': 'Estimated weight', 'ar': 'الوزن التقديري'},
     'kg_unit': {'en': 'kg', 'ar': 'كغم'},
     'discount': {'en': 'Discount', 'ar': 'الخصم'},
