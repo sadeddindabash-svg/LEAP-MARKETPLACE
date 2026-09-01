@@ -1574,7 +1574,7 @@ function CompleteDraftForm({ draft, onCancel, onCompleted }) {
       <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
         {error && <div style={{ ...font, fontSize: 12, color: C.red, background: '#FBE7E5', borderRadius: 8, padding: 10 }}>{error}</div>}
         <div style={{ ...font, fontSize: 12, color: C.muted }}>
-          {draft.oemNumber} · ${Number(draft.price).toFixed(2)}
+          {draft.oemNumber} · ¥{Number(draft.price).toFixed(2)}
         </div>
 
         {needsCategory && (
@@ -2062,7 +2062,7 @@ function ProductsPage() {
                     </Td>
                     <Td style={{ fontWeight: 700 }}>{p.name}</Td>
                     <Td style={{ color: C.muted }}>{p.category}</Td>
-                    <Td align="right" style={{ fontWeight: 700 }}>${Number(p.price).toFixed(2)} {p.currencyCode}</Td>
+                    <Td align="right" style={{ fontWeight: 700 }}>{p.currencyCode === 'CNY' ? '¥' : '$'}{Number(p.price).toFixed(2)} {p.currencyCode}</Td>
                     {/* REAL BUG FOUND AND FIXED HERE: this used to hardcode
                         `< 20` for every product, ignoring each product's own
                         real, configurable lowStockThreshold (migration 037,
