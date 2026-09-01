@@ -26,6 +26,11 @@ String _formatEventTimestamp(DateTime dt) {
 
 enum _LoadState { loading, ready, error }
 
+/// Confirmed with the person: the items section's 3 confirmed states
+/// -- hidden before inspection, fully interactive only during
+/// inspection, read-only afterward.
+enum _ItemsCardMode { hidden, interactive, readOnly }
+
 /// Maps a step to its history-timeline icon -- Material equivalents
 /// of the web app's own real Lucide icon choices (STEP_INFO, App.jsx
 /// lines 119-128).
@@ -268,6 +273,18 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
     // ungated; the detailed real verification belongs at inspection).
     final allChecksConfirmed = nextStatus != 'inspected' ||
         shipment.items.every((item) => (_checkedSpecs[item.productId]?.length ?? 0) >= _specLabelsFor(item).length);
+    // Confirmed with the person through several rounds of
+    // clarification: the items section is hidden before inspection
+    // (nothing to verify yet), fully interactive (checklist + real
+    // editable received-quantity input) only during the real
+    // inspection stage itself, then read-only afterward -- so a
+    // shipping worker can still see what's actually being shipped
+    // without re-editing already-confirmed real data.
+    final itemsCardMode = nextStatus == 'inspected'
+        ? _ItemsCardMode.interactive
+        : (shipment.status == 'awaiting_receipt' || shipment.status == 'received')
+            ? _ItemsCardMode.hidden
+            : _ItemsCardMode.readOnly;
     // Deliberate, noted fix from the web app's own real behavior: also
     // gated on nextStatus != null, so this card doesn't render at the
     // shipped_to_buyer status with an empty title/hint/button label --
@@ -310,7 +327,7 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          _buildItemsCard(t, shipment, nextStatus),
+          if (itemsCardMode != _ItemsCardMode.hidden) _buildItemsCard(t, shipment, itemsCardMode),
           if (_deliveryAddressVisibleFor(shipment.status) && shipment.deliveryAddress != null) ...[
             const SizedBox(height: 12),
             _buildDeliveryAddressCard(shipment.deliveryAddress!),
@@ -397,7 +414,7 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
     );
   }
 
-  Widget _buildItemsCard(HubText t, ShipmentDetail shipment, String? nextStatus) {
+  Widget _buildItemsCard(HubText t, ShipmentDetail shipment, _ItemsCardMode mode) {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(color: HubColors.card, border: Border.all(color: HubColors.line), borderRadius: BorderRadius.circular(10)),
@@ -406,7 +423,7 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
         children: [
           Text(t.detail.items.toUpperCase(), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: HubColors.muted)),
           const SizedBox(height: 8),
-          ...shipment.items.map((item) => _buildItemVerificationRow(item, nextStatus)),
+          ...shipment.items.map((item) => _buildItemVerificationRow(item, mode)),
         ],
       ),
     );
@@ -421,7 +438,7 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
         ...item.attributes.map((a) => '${a.name}: ${a.value}'),
       ];
 
-  Widget _buildItemVerificationRow(ShipmentItem item, String? nextStatus) {
+  Widget _buildItemVerificationRow(ShipmentItem item, _ItemsCardMode mode) {
     // Confirmed with the person: a genuine mismatch is a visual
     // warning only -- never auto-flags the shipment.
     final hasMismatch = item.receivedQuantity != null && item.receivedQuantity != item.quantity;
@@ -431,10 +448,10 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
       item.productId,
       () => TextEditingController(text: item.receivedQuantity?.toString() ?? ''),
     );
-    // Confirmed with the person: the real checklist only shows once
-    // the shipment has genuinely reached the inspect stage -- not
-    // visible during receive/open, or any stage after inspection.
-    final showChecklist = nextStatus == 'inspected';
+    // Confirmed with the person: the real checklist only shows during
+    // the real interactive (inspection) mode -- not visible hidden or
+    // read-only.
+    final showChecklist = mode == _ItemsCardMode.interactive;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(10),
@@ -498,23 +515,33 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
                 style: TextStyle(fontSize: 12, fontWeight: hasMismatch ? FontWeight.w700 : FontWeight.w400, color: hasMismatch ? HubColors.red : HubColors.muted),
               ),
               const SizedBox(width: 6),
-              SizedBox(
-                width: 44,
-                height: 30,
-                child: TextField(
-                  controller: controller,
-                  keyboardType: TextInputType.number,
-                  textAlign: TextAlign.center,
+              if (mode == _ItemsCardMode.readOnly)
+                // Confirmed with the person: already-confirmed data,
+                // shown as plain text here -- a shipping worker can
+                // see what's actually being shipped without being
+                // able to re-edit it at this later stage.
+                Text(
+                  item.receivedQuantity?.toString() ?? '—',
                   style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: hasMismatch ? HubColors.red : HubColors.ink),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 4),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: hasMismatch ? HubColors.red : HubColors.line)),
+                )
+              else
+                SizedBox(
+                  width: 44,
+                  height: 30,
+                  child: TextField(
+                    controller: controller,
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: hasMismatch ? HubColors.red : HubColors.ink),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: hasMismatch ? HubColors.red : HubColors.line)),
+                    ),
+                    onSubmitted: (value) => _saveReceivedQuantity(item.productId, value),
+                    onEditingComplete: () => _saveReceivedQuantity(item.productId, controller.text),
                   ),
-                  onSubmitted: (value) => _saveReceivedQuantity(item.productId, value),
-                  onEditingComplete: () => _saveReceivedQuantity(item.productId, controller.text),
                 ),
-              ),
             ],
           ),
           if (hasMismatch) ...[
