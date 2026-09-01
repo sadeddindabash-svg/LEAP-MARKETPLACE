@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:uuid/uuid.dart';
 import '../models/cart_item.dart';
+import '../models/cart.dart';
 import '../services/api_client.dart';
 
 /// Holds the buyer's cart and syncs every change to services/api/cart in
@@ -19,6 +20,13 @@ class CartState extends ChangeNotifier {
 
   String? _cartId;
   List<CartItem> _items = [];
+  // Confirmed with the person: a real, persisted promo code -- lives
+  // on the real backend cart record itself (not just this in-memory
+  // state), so it survives navigating away from checkout entirely,
+  // even closing and reopening the app.
+  String? _appliedPromoCode;
+  PromoDetails? _appliedPromoDetails;
+  double _promoDiscountUsd = 0;
   bool _isLoading = true;
   String? _errorMessage;
 
@@ -30,6 +38,9 @@ class CartState extends ChangeNotifier {
   List<CartItem> get items => List.unmodifiable(_items);
   String? get errorMessage => _errorMessage;
   String? get cartId => _cartId;
+  String? get appliedPromoCode => _appliedPromoCode;
+  PromoDetails? get appliedPromoDetails => _appliedPromoDetails;
+  double get promoDiscountUsd => _promoDiscountUsd;
 
   double get total => _items.fold(0.0, (sum, i) => sum + i.lineTotal);
   // Confirmed with the person: sum of every real item's own
@@ -51,6 +62,18 @@ class CartState extends ChangeNotifier {
     return map;
   }
 
+  // Confirmed with the person: single, shared place every real cart
+  // response gets applied from, so every method (refresh, add,
+  // remove, quantity change, promo apply/clear) consistently updates
+  // the real, full state -- items AND the real, persisted promo
+  // fields together, never one without the other.
+  void _applyCart(Cart cart) {
+    _items = cart.items;
+    _appliedPromoCode = cart.appliedPromoCode;
+    _appliedPromoDetails = cart.appliedPromoDetails;
+    _promoDiscountUsd = cart.promoDiscountUsd;
+  }
+
   Future<void> _init() async {
     var cartId = await _secureStorage.read(key: _cartIdKey);
     if (cartId == null) {
@@ -66,7 +89,7 @@ class CartState extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
     try {
-      _items = await _apiClient.fetchCart(_cartId!);
+      _applyCart(await _apiClient.fetchCart(_cartId!));
       _errorMessage = null;
     } catch (e) {
       _errorMessage = 'Could not load your basket. Check your connection and try again.';
@@ -78,7 +101,7 @@ class CartState extends ChangeNotifier {
 
   Future<void> addItem(String productId, int quantity) async {
     if (_cartId == null) return;
-    _items = await _apiClient.addCartItem(_cartId!, productId, quantity);
+    _applyCart(await _apiClient.addCartItem(_cartId!, productId, quantity));
     _errorMessage = null;
     notifyListeners();
   }
@@ -87,13 +110,31 @@ class CartState extends ChangeNotifier {
   /// the +/- stepper). A quantity of 0 or less removes the item.
   Future<void> setQuantity(String productId, int quantity) async {
     if (_cartId == null) return;
-    _items = await _apiClient.setCartItemQuantity(_cartId!, productId, quantity);
+    _applyCart(await _apiClient.setCartItemQuantity(_cartId!, productId, quantity));
     notifyListeners();
   }
 
   Future<void> removeItem(String productId) async {
     if (_cartId == null) return;
-    _items = await _apiClient.removeCartItem(_cartId!, productId);
+    _applyCart(await _apiClient.removeCartItem(_cartId!, productId));
+    notifyListeners();
+  }
+
+  /// Confirmed with the person: applies a real promo code, persisted
+  /// on the real backend cart -- throws ApiException with the real
+  /// backend's own reason (e.g. expired, already used) on an invalid
+  /// code, leaving whatever was already applied untouched, matching
+  /// the real, already-confirmed and tested backend behavior.
+  Future<void> applyPromoCode(String code) async {
+    if (_cartId == null) return;
+    _applyCart(await _apiClient.applyPromoCode(_cartId!, code));
+    notifyListeners();
+  }
+
+  /// Clears the real, currently-applied promo code.
+  Future<void> removePromoCode() async {
+    if (_cartId == null) return;
+    _applyCart(await _apiClient.applyPromoCode(_cartId!, null));
     notifyListeners();
   }
 
@@ -102,12 +143,22 @@ class CartState extends ChangeNotifier {
   /// placing an order doesn't automatically empty the cart server-side
   /// (carts and orders are intentionally decoupled — see the data model);
   /// this removes each item explicitly so server state matches.
+  ///
+  /// Confirmed with the person: a placed order also ends the real
+  /// promo code's own applied lifetime, same as items -- cleared here
+  /// too, matching the real "until he place the order" boundary.
   Future<void> clearAfterOrder() async {
     if (_cartId == null) return;
     for (final item in List<CartItem>.from(_items)) {
       await _apiClient.removeCartItem(_cartId!, item.productId);
     }
+    if (_appliedPromoCode != null) {
+      await _apiClient.applyPromoCode(_cartId!, null);
+    }
     _items = [];
+    _appliedPromoCode = null;
+    _appliedPromoDetails = null;
+    _promoDiscountUsd = 0;
     notifyListeners();
   }
 }

@@ -96,11 +96,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String? _selectedAddressId;
   bool _isLoadingAddresses = false;
 
-  // Real promo code state -- validated live against the real backend
-  // before checkout, then re-validated server-side again at real order
-  // placement (never trust a client-side check alone).
-  String? _appliedPromoCode;
-  Map<String, dynamic>? _appliedPromoDetails;
+  // Real promo code UI state -- the applied code itself now lives in
+  // CartState (persisted on the real backend cart), confirmed with
+  // the person: survives leaving this screen entirely. Only the
+  // in-progress spinner and the transient success/error message stay
+  // screen-local here.
   String? _promoMessage;
   bool _isValidatingPromo = false;
 
@@ -230,66 +230,35 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (code.isEmpty) return;
     setState(() { _isValidatingPromo = true; _promoMessage = null; });
     try {
-      final token = context.read<AuthState>().token;
-      final result = await ApiClient().validatePromoCode(token, code);
-      if (result['valid'] == true) {
-        final details = result['promoCode'] as Map<String, dynamic>;
-        setState(() {
-          _appliedPromoCode = code;
-          _appliedPromoDetails = details;
-        });
-        // Real, specific "you saved $X" confirmation (new) -- closes a
-        // real gap: only a generic "Promo applied" message existed
-        // before, even though the exact real amount is already
-        // computable. Correctly avoids guessing an amount for
-        // free_shipping, matching the same honest boundary
-        // _previewDiscount already respects (that real amount depends
-        // on server-side shipping calculation).
-        final type = details['type'] as String?;
-        if (mounted && type != 'free_shipping') {
-          final cart = context.read<CartState>();
-          final saved = _previewDiscount(cart.total);
-          setState(() => _promoMessage = '${trRead(context, 'you_saved')} ${formatPrice(context, saved)}!');
-        } else if (mounted) {
-          setState(() => _promoMessage = trRead(context, 'promo_applied'));
-        }
-      } else {
-        setState(() {
-          _appliedPromoCode = null;
-          _appliedPromoDetails = null;
-          _promoMessage = result['reason'] as String? ?? trRead(context, 'something_went_wrong');
-        });
+      final cart = context.read<CartState>();
+      await cart.applyPromoCode(code);
+      // Real, specific "you saved $X" confirmation -- closes a real
+      // gap: only a generic "Promo applied" message existed before,
+      // even though the exact real amount is already computable.
+      // Correctly avoids guessing an amount for free_shipping (that
+      // real amount depends on server-side shipping calculation,
+      // computed only at real order placement).
+      if (mounted) {
+        final saved = cart.promoDiscountUsd;
+        setState(() => _promoMessage = saved > 0
+            ? '${trRead(context, 'you_saved')} ${formatPrice(context, saved)}!'
+            : trRead(context, 'promo_applied'));
       }
     } on ApiException catch (e) {
-      setState(() { _appliedPromoCode = null; _appliedPromoDetails = null; _promoMessage = e.message; });
+      setState(() => _promoMessage = e.message);
     } finally {
       if (mounted) setState(() => _isValidatingPromo = false);
     }
   }
 
-  void _removePromoCode() {
-    setState(() {
-      _appliedPromoCode = null;
-      _appliedPromoDetails = null;
-      _promoMessage = null;
-      _promoCodeController.clear();
-    });
-  }
-
-  /// Real, honest client-side preview of the discount, purely for
-  /// display before the real order is placed — the ACTUAL charged
-  /// amount is always whatever the real backend computes at real order
-  /// placement (see POST /order's server-side recalculation), which is
-  /// the only real source of truth. This is just so a buyer isn't
-  /// staring at a blank "???" between applying a code and placing the
-  /// order.
-  double _previewDiscount(double subtotal) {
-    final details = _appliedPromoDetails;
-    if (details == null) return 0;
-    final type = details['type'] as String?;
-    if (type == 'percentage') return subtotal * ((details['value'] as num? ?? 0) / 100);
-    if (type == 'flat') return (details['value'] as num? ?? 0).toDouble().clamp(0, subtotal);
-    return 0; // free_shipping's real amount depends on server-side shipping calculation -- not previewed client-side to avoid showing a guessed number
+  Future<void> _removePromoCode() async {
+    await context.read<CartState>().removePromoCode();
+    if (mounted) {
+      setState(() {
+        _promoMessage = null;
+        _promoCodeController.clear();
+      });
+    }
   }
 
   Future<void> _placeOrder() async {
@@ -340,7 +309,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         items: cart.items,
         userId: auth.isLoggedIn ? auth.user!['id'] as String : null,
         guestEmail: auth.isLoggedIn ? null : _guestEmailController.text.trim(),
-        promoCode: _appliedPromoCode,
+        promoCode: cart.appliedPromoCode,
         addressId: addressId,
         address: inlineAddress,
         waitForAllShipments: _waitForAllShipments,
@@ -424,7 +393,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             items: cart.items,
             userId: auth.isLoggedIn ? auth.user!['id'] as String : null,
             guestEmail: auth.isLoggedIn ? null : _guestEmailController.text.trim(),
-            promoCode: _appliedPromoCode,
+            promoCode: cart.appliedPromoCode,
             addressId: addressId,
             address: inlineAddress,
             waitForAllShipments: _waitForAllShipments,
@@ -811,13 +780,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               Expanded(
                 child: TextField(
                   controller: _promoCodeController,
-                  enabled: _appliedPromoCode == null,
+                  enabled: cart.appliedPromoCode == null,
                   textCapitalization: TextCapitalization.characters,
                   decoration: InputDecoration(labelText: tr(context, 'promo_code_field')),
                 ),
               ),
               const SizedBox(width: 8),
-              if (_appliedPromoCode == null)
+              if (cart.appliedPromoCode == null)
                 ElevatedButton(
                   onPressed: _isValidatingPromo ? null : _applyPromoCode,
                   child: _isValidatingPromo
@@ -832,7 +801,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             const SizedBox(height: 6),
             Text(
               _promoMessage!,
-              style: TextStyle(fontSize: 12, color: _appliedPromoCode != null ? LeapPalette.of(context).gauge : Colors.red),
+              style: TextStyle(fontSize: 12, color: cart.appliedPromoCode != null ? LeapPalette.of(context).gauge : Colors.red),
             ),
           ],
           const SizedBox(height: 12),
@@ -866,23 +835,29 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     Text(formatPrice(context, cart.total), style: const TextStyle(fontWeight: FontWeight.w700)),
                   ],
                 ),
-                if (cart.totalSaved > 0) ...[
+                // Confirmed with the person: when a promo IS applied,
+                // this real discount line now sits BEFORE the final
+                // "You saved" line below it, not after -- and "You
+                // saved" becomes the real, combined total (product
+                // discount + promo discount together), not just the
+                // product-level portion alone.
+                if (cart.appliedPromoCode != null) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('${tr(context, 'discount')} (${cart.appliedPromoCode})', style: TextStyle(color: LeapPalette.of(context).gauge, fontSize: 12.5)),
+                      Text('-${formatPrice(context, cart.promoDiscountUsd)}', style: TextStyle(color: LeapPalette.of(context).gauge, fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ],
+                if (cart.totalSaved + cart.promoDiscountUsd > 0) ...[
                   const SizedBox(height: 6),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(tr(context, 'you_saved'), style: TextStyle(color: LeapPalette.of(context).gauge, fontSize: 12.5, fontWeight: FontWeight.w600)),
-                      Text(formatPrice(context, cart.totalSaved), style: TextStyle(color: LeapPalette.of(context).gauge, fontSize: 12.5, fontWeight: FontWeight.w700)),
-                    ],
-                  ),
-                ],
-                if (_appliedPromoCode != null) ...[
-                  const SizedBox(height: 6),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('${tr(context, 'discount')} ($_appliedPromoCode)', style: TextStyle(color: LeapPalette.of(context).gauge, fontSize: 12.5)),
-                      Text('-${formatPrice(context, _previewDiscount(cart.total))}', style: TextStyle(color: LeapPalette.of(context).gauge, fontWeight: FontWeight.w700)),
+                      Text(formatPrice(context, cart.totalSaved + cart.promoDiscountUsd), style: TextStyle(color: LeapPalette.of(context).gauge, fontSize: 12.5, fontWeight: FontWeight.w700)),
                     ],
                   ),
                 ],
@@ -906,7 +881,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
               : FittedBox(
                   fit: BoxFit.scaleDown,
-                  child: Text('${tr(context, 'place_order')} · ${formatPriceWithUsd(context, cart.total - _previewDiscount(cart.total))}'),
+                  child: Text('${tr(context, 'place_order')} · ${formatPriceWithUsd(context, cart.total - cart.promoDiscountUsd)}'),
                 ),
         ),
       ),
