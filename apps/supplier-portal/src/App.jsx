@@ -650,7 +650,6 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
   const [isAddingAttribute, setIsAddingAttribute] = useState(false);
   const [newAttrName, setNewAttrName] = useState("");
   const [newAttrValue, setNewAttrValue] = useState("");
-  const [position, setPosition] = useState(POSITION_OPTIONS[0].id);
   const [oemNumber, setOemNumber] = useState("");
   const [price, setPrice] = useState("");
   const [stock, setStock] = useState("");
@@ -844,7 +843,6 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
         descriptionZh: descriptionZh.trim() || undefined,
         category,
         part: part.trim(),
-        position,
         oemNumber: oemNumber.trim(),
         price: parseFloat(price),
         currencyCode: "CNY",
@@ -873,7 +871,6 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
         setNameZh(""); setDescriptionZh("");
         setOemNumber(""); setPrice(""); setStock("");
         setWeightKg(""); setLengthCm(""); setWidthCm(""); setHeightCm("");
-        setPosition(POSITION_OPTIONS[0].id);
         setPhotos([]);
         setVideo(null);
         setPart(parts.length > 0 ? parts[0].nameEn : "");
@@ -1001,12 +998,6 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
             </Field>
             <div>
               <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 8 }}>{cascadeLabel("属性", "Attributes")}</div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: `1px solid ${C.line}`, borderRadius: 6, padding: '7px 10px', marginBottom: 6 }}>
-                <span style={{ ...font, fontSize: 12.5, color: C.ink, flexShrink: 0, marginRight: 8 }}>{cascadeLabel("安装位置", "Position")}:</span>
-                <select style={{ ...selectStyle, flex: 1 }} value={position} onChange={(e) => setPosition(e.target.value)}>
-                  {POSITION_OPTIONS.map(p => <option key={p.id} value={p.id}>{p[lang]}</option>)}
-                </select>
-              </div>
               {selectedAttributes.map((attr) => (
                 <div key={attr.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: `1px solid ${C.line}`, borderRadius: 6, padding: '7px 10px', marginBottom: 6 }}>
                   <span style={{ ...font, fontSize: 12.5, color: C.ink }}>{attr.name}: <strong>{attr.value}</strong></span>
