@@ -237,15 +237,15 @@ router.post('/', async (req, res, next) => {
       }
       const saved = savedRows[0];
       await client.query(
-        `INSERT INTO order_addresses (order_id, recipient_name, phone, country, city, street_address, postal_code, source)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'saved_address')`,
-        [orderId, saved.recipient_name, saved.phone, saved.country, saved.city, saved.street_address, saved.postal_code]
+        `INSERT INTO order_addresses (order_id, recipient_name, phone, country, city, street_address, postal_code, state, national_address, source)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'saved_address')`,
+        [orderId, saved.recipient_name, saved.phone, saved.country, saved.city, saved.street_address, saved.postal_code, saved.state, saved.national_address]
       );
     } else if (address) {
       await client.query(
-        `INSERT INTO order_addresses (order_id, recipient_name, phone, country, city, street_address, postal_code, source)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'manual')`,
-        [orderId, address.recipientName, address.phone, address.country, address.city, address.streetAddress, address.postalCode || null]
+        `INSERT INTO order_addresses (order_id, recipient_name, phone, country, city, street_address, postal_code, state, national_address, source)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'manual')`,
+        [orderId, address.recipientName, address.phone, address.country, address.city, address.streetAddress, address.postalCode || null, address.state || null, address.nationalAddress || null]
       );
     }
 
@@ -844,11 +844,11 @@ router.patch('/:id/address', optionalAuth, async (req, res, next) => {
     }
 
     await db.query(
-      `INSERT INTO order_addresses (order_id, recipient_name, phone, country, city, street_address, postal_code, source)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO order_addresses (order_id, recipient_name, phone, country, city, street_address, postal_code, state, national_address, source)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        ON CONFLICT (order_id) DO UPDATE SET
-         recipient_name = $2, phone = $3, country = $4, city = $5, street_address = $6, postal_code = $7, source = $8, confirmed_at = now()`,
-      [req.params.id, address.recipientName, address.phone, address.country, address.city, address.streetAddress, address.postalCode || null, realSource]
+         recipient_name = $2, phone = $3, country = $4, city = $5, street_address = $6, postal_code = $7, state = $8, national_address = $9, source = $10, confirmed_at = now()`,
+      [req.params.id, address.recipientName, address.phone, address.country, address.city, address.streetAddress, address.postalCode || null, address.state || null, address.nationalAddress || null, realSource]
     );
 
     res.json({ id: req.params.id, addressConfirmed: true });

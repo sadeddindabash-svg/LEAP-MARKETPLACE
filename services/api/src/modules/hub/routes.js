@@ -370,7 +370,7 @@ router.get('/me/shipments/:id', requireAuth, requireRole('hub_staff'), async (re
     // order confirmation, never a live reference to a buyer's saved
     // address that could silently change later.
     const { rows: addressRows } = await db.query(
-      'SELECT recipient_name, phone, country, city, street_address, postal_code FROM order_addresses WHERE order_id = $1',
+      'SELECT recipient_name, phone, country, city, street_address, postal_code, state, national_address FROM order_addresses WHERE order_id = $1',
       [rows[0].order_id]
     );
     const deliveryAddress = addressRows.length > 0
@@ -381,6 +381,8 @@ router.get('/me/shipments/:id', requireAuth, requireRole('hub_staff'), async (re
           city: addressRows[0].city,
           streetAddress: addressRows[0].street_address,
           postalCode: addressRows[0].postal_code,
+          state: addressRows[0].state,
+          nationalAddress: addressRows[0].national_address,
         }
       : null;
 
@@ -418,11 +420,27 @@ router.get('/me/shipments/:id/address-label', requireAuth, requireRole('hub_staf
     if (rows.length === 0) return res.status(404).json({ error: 'Shipment not found' });
 
     const { rows: addressRows } = await db.query(
-      'SELECT recipient_name, phone, country, city, street_address, postal_code FROM order_addresses WHERE order_id = $1',
+      'SELECT recipient_name, phone, country, city, street_address, postal_code, state, national_address FROM order_addresses WHERE order_id = $1',
       [rows[0].order_id]
     );
     if (addressRows.length === 0) return res.status(404).json({ error: 'No delivery address on file for this order' });
     const addr = addressRows[0];
+
+    // Confirmed with the person: the real "Shipment: 1 of 2" field --
+    // same real sibling-shipment query/ordering already established
+    // in the main shipment detail endpoint above, for a real,
+    // deterministic index across every real supplier this order split
+    // into.
+    const { rows: siblingRows } = await db.query(
+      `SELECT hs2.id
+       FROM hub_shipments hs2
+       JOIN supplier_sub_orders so2 ON so2.id = hs2.sub_order_id
+       WHERE so2.order_id = $1
+       ORDER BY hs2.id ASC`,
+      [rows[0].order_id]
+    );
+    const shipmentIndex = siblingRows.findIndex((s) => String(s.id) === String(rows[0].id)) + 1;
+    const totalShipments = siblingRows.length;
 
     const PDFDocument = require('pdfkit');
     const path = require('path');
@@ -438,32 +456,79 @@ router.get('/me/shipments/:id/address-label', requireAuth, requireRole('hub_staf
     // missing font cleanly returns a real 500 JSON error instead.
     const regularFontPath = path.join(__dirname, '../../../assets/noto-sans-arabic-regular.ttf');
     const boldFontPath = path.join(__dirname, '../../../assets/noto-sans-arabic-bold.ttf');
-    if (!fs.existsSync(regularFontPath) || !fs.existsSync(boldFontPath)) {
-      return res.status(500).json({ error: 'Server is missing a required font file -- contact support' });
+    const logoPath = path.join(__dirname, '../../../assets/leap-logo.png');
+    if (!fs.existsSync(regularFontPath) || !fs.existsSync(boldFontPath) || !fs.existsSync(logoPath)) {
+      return res.status(500).json({ error: 'Server is missing a required asset file -- contact support' });
     }
 
-    const doc = new PDFDocument({ margin: 50, size: 'A5' });
+    const doc = new PDFDocument({ margin: 40, size: 'A5' });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="LEAP-address-${rows[0].order_id}.pdf"`);
     doc.pipe(res);
 
-    // Real, registered so a real Arabic recipient name/address renders
-    // correctly -- same real font already used by order/routes.js's
-    // own receipt for the identical reason.
     doc.registerFont('ArabicCapable', regularFontPath);
     doc.registerFont('ArabicCapable-Bold', boldFontPath);
 
-    doc.font('ArabicCapable-Bold').fontSize(10).fillColor('#888').text('DELIVERY ADDRESS', { characterSpacing: 1 });
-    doc.moveDown(0.5);
-    doc.font('ArabicCapable-Bold').fontSize(18).fillColor('#000').text(addr.recipient_name);
-    doc.moveDown(0.3);
-    doc.font('ArabicCapable').fontSize(13).fillColor('#333').text(addr.phone);
-    doc.moveDown(0.6);
-    doc.font('ArabicCapable').fontSize(13).fillColor('#000').text(addr.street_address);
-    doc.text(`${addr.city}, ${addr.country}`);
-    if (addr.postal_code) doc.text(addr.postal_code);
-    doc.moveDown(1.2);
-    doc.font('ArabicCapable').fontSize(10).fillColor('#888').text(`Order ${rows[0].order_id}`);
+    const pageLeft = doc.page.margins.left;
+    const pageRight = doc.page.width - doc.page.margins.right;
+    const pageWidth = pageRight - pageLeft;
+
+    // Confirmed with the person, design #3: logo + brand name header,
+    // same real positioning pattern already established in
+    // order/routes.js's own receipt (doc.image() doesn't advance
+    // doc.y the way doc.text() does, so the brand name is positioned
+    // relative to a captured real headerTop, not doc.y afterward).
+    const headerTop = doc.y;
+    doc.image(logoPath, pageLeft, headerTop, { width: 32, height: 32 });
+    doc.font('ArabicCapable-Bold').fontSize(16).fillColor('#000').text('Leap Auto Parts', pageLeft + 40, headerTop + 6, { width: pageWidth - 40 });
+    doc.y = headerTop + 32 + 14;
+
+    // Confirmed with the person, design #3: the whole card in a
+    // bordered box -- height reserved up front since pdfkit can't
+    // stroke a rect sized to content added after it.
+    const cardTop = doc.y;
+    const rowHeight = 28;
+    const col1Rows = 4;
+    const col2Rows = addr.country === 'Saudi Arabia' && addr.national_address ? 6 : 5;
+    const cardHeight = 20 + Math.max(col1Rows, col2Rows) * rowHeight;
+    doc.rect(pageLeft, cardTop, pageWidth, cardHeight).lineWidth(1.5).strokeColor('#000').stroke();
+
+    const colPad = 14;
+    const col1X = pageLeft + colPad;
+    const dividerX = pageLeft + pageWidth / 2;
+    const col2X = dividerX + colPad;
+    const colWidth = pageWidth / 2 - colPad * 1.5;
+    doc.moveTo(dividerX, cardTop + 10).lineTo(dividerX, cardTop + cardHeight - 10).strokeColor('#E4E6EA').lineWidth(1).stroke();
+
+    // Confirmed with the person, design #3: label above value, same
+    // real column pair repeated per field -- keeps every row's real
+    // baseline aligned across both columns regardless of value length.
+    function fieldRow(x, y, label, value) {
+      doc.font('ArabicCapable').fontSize(8).fillColor('#888').text(label, x, y, { width: colWidth });
+      doc.font('ArabicCapable-Bold').fontSize(10).fillColor('#000').text(value || '—', x, y + 10, { width: colWidth });
+    }
+
+    let y = cardTop + 12;
+    fieldRow(col1X, y, 'ORDER', rows[0].order_id);
+    fieldRow(col2X, y, 'COUNTRY', addr.country);
+    y += rowHeight;
+    fieldRow(col1X, y, 'SHIPMENT', `${shipmentIndex} of ${totalShipments}`);
+    fieldRow(col2X, y, 'STATE', addr.state);
+    y += rowHeight;
+    fieldRow(col1X, y, 'CONSIGNEE', addr.recipient_name);
+    fieldRow(col2X, y, 'CITY', addr.city);
+    y += rowHeight;
+    fieldRow(col1X, y, 'PHONE', addr.phone);
+    fieldRow(col2X, y, 'STREET', addr.street_address);
+    y += rowHeight;
+    fieldRow(col2X, y, 'POSTAL CODE', addr.postal_code);
+    // Confirmed with the person: Address Code (Saudi National
+    // Address) only ever shown for a genuine Saudi Arabia address --
+    // never a fabricated row for anywhere else.
+    if (addr.country === 'Saudi Arabia' && addr.national_address) {
+      y += rowHeight;
+      fieldRow(col2X, y, 'ADDRESS CODE', addr.national_address);
+    }
 
     doc.end();
   } catch (err) {
