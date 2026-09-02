@@ -448,13 +448,17 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
 /// instance state at all, only its own parameter.
 String _buyerFacingStage(Map<String, dynamic> subOrder) {
   final rawStatus = subOrder['status'] as String;
-  if (rawStatus == 'dispute' || rawStatus == 'pending') return rawStatus;
+  if (rawStatus == 'dispute' || rawStatus == 'pending' || rawStatus == 'preparing') return rawStatus;
   final hubShipment = subOrder['hubShipment'] as Map<String, dynamic>?;
   if (hubShipment == null) {
-    // No real hub shipment yet at all -- either still with the
-    // supplier, or (backward compatibility) an older real order
-    // that never went through a real hub. Trust the real raw
-    // status here.
+    // Confirmed with the person: rawStatus 'shipped' here
+    // specifically means shipped to the hub, not the buyer -- with
+    // no real hub shipment record at all, the package definitely
+    // hasn't reached the buyer yet, regardless of the supplier's own
+    // real status. Only a genuinely different real status (e.g.
+    // 'delivered' on an older real order from before the hub
+    // workflow existed) falls through to the raw value below.
+    if (rawStatus == 'shipped') return 'preparing';
     return rawStatus;
   }
   final hubStatus = hubShipment['status'] as String;
