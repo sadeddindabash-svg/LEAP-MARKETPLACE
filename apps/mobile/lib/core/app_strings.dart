@@ -205,6 +205,7 @@ class AppStrings {
     'shipped_by': {'en': 'Shipped by', 'ar': 'تم الشحن بواسطة'},
     'tracking_label': {'en': 'Tracking:', 'ar': 'رقم التتبع:'},
     'request_a_return': {'en': 'Request a return', 'ar': 'طلب إرجاع'},
+    'cancel_this_part': {'en': 'Cancel this part', 'ar': 'إلغاء هذا الجزء'},
     'return_goes_to_leap': {'en': "This goes to the Leap team, who will coordinate with the supplier — you won't be contacting them directly.", 'ar': 'يذهب هذا إلى فريق Leap، الذي سينسق مع المورد — لن تتواصل معه مباشرة.'},
     'reason_label': {'en': 'Reason (e.g. wrong item, damaged)', 'ar': 'السبب (مثال: منتج خاطئ، تالف)'},
     'details_label': {'en': 'Details', 'ar': 'التفاصيل'},

@@ -239,14 +239,26 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
   }
 
   bool _isCancellable() {
-    // CONFIRMED (migration 029): cancellable only while every real
-    // sub-order is still pending/preparing -- matches the real
-    // backend's own check exactly, so this button only ever appears
-    // when the real cancel call would actually succeed.
+    // Confirmed with the person: matches the real backend's own
+    // whole-order check exactly -- cancellable only while every real
+    // sub-order is still cancellable by real hub status, not the old
+    // disconnected supplier_sub_orders.status field.
     if (_order == null) return false;
     if (_order!['status'] == 'cancelled') return false;
     final subOrders = (_order!['supplierSubOrders'] as List).cast<Map<String, dynamic>>();
-    return subOrders.every((so) => ['pending', 'preparing'].contains(so['status']));
+    return subOrders.every(isSubOrderCancellable);
+  }
+
+  /// Confirmed with the person: true when the order is a genuine mix
+  /// -- some real parts still cancellable, others already shipped --
+  /// the case where the whole-order button is replaced by individual
+  /// per-supplier ones instead.
+  bool _isPartiallyCancellable() {
+    if (_order == null) return false;
+    if (_order!['status'] == 'cancelled') return false;
+    final subOrders = (_order!['supplierSubOrders'] as List).cast<Map<String, dynamic>>();
+    final cancellableCount = subOrders.where(isSubOrderCancellable).length;
+    return cancellableCount > 0 && cancellableCount < subOrders.length;
   }
 
   Future<void> _confirmAndCancelOrder() async {
@@ -270,6 +282,40 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(isAr ? 'تم إلغاء الطلب.' : 'Order cancelled.')),
+        );
+        _load();
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    }
+  }
+
+  /// Confirmed with the person: cancels just one real supplier's
+  /// part -- same real confirm-dialog and feedback pattern as
+  /// _confirmAndCancelOrder above, scoped to a single sub-order.
+  Future<void> _confirmAndCancelSubOrder(int subOrderId, String supplierLabel) async {
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(isAr ? 'إلغاء هذا الجزء؟' : 'Cancel this part?'),
+        content: Text(isAr ? 'لا يمكن التراجع عن هذا الإجراء.' : 'This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: Text(isAr ? 'رجوع' : 'Back')),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: Text(isAr ? 'إلغاء' : 'Cancel')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final auth = context.read<AuthState>();
+    try {
+      await ApiClient().cancelSubOrder(auth.token!, widget.orderId, subOrderId.toString());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(isAr ? 'تم الإلغاء.' : 'Cancelled.')),
         );
         _load();
       }
@@ -376,7 +422,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
           const SizedBox(height: 20),
           Text(tr(context, 'shipped_by'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
           const SizedBox(height: 8),
-          for (final so in subOrders) _SupplierSubOrderCard(subOrder: so, onRequestReturn: _openReturnRequest),
+          for (final so in subOrders) _SupplierSubOrderCard(
+            subOrder: so,
+            onRequestReturn: _openReturnRequest,
+            onCancelSubOrder: _confirmAndCancelSubOrder,
+            showCancelButton: _isPartiallyCancellable() && isSubOrderCancellable(so),
+          ),
           const SizedBox(height: 8),
           // Real fix (confirmed directly): don't show "Track your
           // package" once every real sub-order has genuinely been
@@ -468,10 +519,24 @@ String _buyerFacingStage(Map<String, dynamic> subOrder) {
   return 'preparing';
 }
 
+/// Confirmed with the person: matches the real backend's own
+/// isSubOrderCancellable exactly -- no real hub shipment yet, or any
+/// real hub stage before 'shipped_to_buyer' (including 'flagged'),
+/// counts as cancellable.
+bool isSubOrderCancellable(Map<String, dynamic> subOrder) {
+  if (subOrder['status'] == 'cancelled') return false;
+  final hubShipment = subOrder['hubShipment'] as Map<String, dynamic>?;
+  final hubStatus = hubShipment?['status'] as String?;
+  if (hubStatus == 'shipped_to_buyer' || hubStatus == 'delivered') return false;
+  return true;
+}
+
 class _SupplierSubOrderCard extends StatelessWidget {
   final Map<String, dynamic> subOrder;
   final void Function(int subOrderId, String supplierLabel) onRequestReturn;
-  const _SupplierSubOrderCard({required this.subOrder, required this.onRequestReturn});
+  final void Function(int subOrderId, String supplierLabel)? onCancelSubOrder;
+  final bool showCancelButton;
+  const _SupplierSubOrderCard({required this.subOrder, required this.onRequestReturn, this.onCancelSubOrder, this.showCancelButton = false});
 
   @override
   Widget build(BuildContext context) {
@@ -538,6 +603,15 @@ class _SupplierSubOrderCard extends StatelessWidget {
                 ),
               ),
             const SizedBox(height: 8),
+            if (showCancelButton && onCancelSubOrder != null)
+              Align(
+                alignment: Alignment.centerRight,
+                child: OutlinedButton(
+                  onPressed: () => onCancelSubOrder!(subOrder['subOrderId'] as int, supplierName),
+                  style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
+                  child: Text(tr(context, 'cancel_this_part'), style: const TextStyle(fontSize: 12.5)),
+                ),
+              ),
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
