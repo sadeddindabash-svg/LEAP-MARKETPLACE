@@ -137,6 +137,50 @@ router.post('/tickets/:id/messages', requireAuth, requireRole('admin'), requireP
   }
 });
 
+// POST /support/tickets/for-order/:orderId — admin-only. Powers the
+// order detail page's "Message buyer" action. Confirmed with the
+// person: reuses an existing open ticket for this order if one
+// exists, rather than always starting a fresh one.
+router.post('/tickets/for-order/:orderId', requireAuth, requireRole('admin'), requirePageAccess('tickets'), async (req, res, next) => {
+  try {
+    const orderCheck = await db.query('SELECT id, buyer_id, guest_email FROM orders WHERE id = $1', [req.params.orderId]);
+    if (orderCheck.rows.length === 0) return res.status(404).json({ error: 'Order not found' });
+    const order = orderCheck.rows[0];
+
+    const existing = await db.query(
+      `SELECT id FROM support_tickets WHERE order_id = $1 AND status IN ('open', 'in_progress') ORDER BY updated_at DESC LIMIT 1`,
+      [req.params.orderId]
+    );
+    if (existing.rows.length > 0) {
+      return res.json({ id: existing.rows[0].id, isNew: false });
+    }
+
+    const client = await db.getPool().connect();
+    try {
+      await client.query('BEGIN');
+      const id = await nextTicketId(client);
+      await client.query(
+        `INSERT INTO support_tickets (id, buyer_id, guest_email, order_id, subject) VALUES ($1, $2, $3, $4, $5)`,
+        [id, order.buyer_id, order.buyer_id ? null : order.guest_email, req.params.orderId, `Regarding order ${req.params.orderId}`]
+      );
+      await client.query('COMMIT');
+      // Deliberate: no initial message or notification sent here --
+      // the admin's real first message happens through the existing
+      // POST /tickets/:id/messages endpoint once they're navigated
+      // into this thread, which already triggers the real buyer
+      // notification. This endpoint just finds-or-creates the shell.
+      res.status(201).json({ id, isNew: true });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
 // PATCH /support/tickets/:id  { status: 'open' | 'in_progress' | 'resolved' }
 router.patch('/tickets/:id', requireAuth, requireRole('admin'), requirePageAccess('tickets'), async (req, res, next) => {
   try {

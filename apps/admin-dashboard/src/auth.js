@@ -166,6 +166,10 @@ export function replyToReturnCaseSupplier(token, caseId, message) {
   return authedMutate("POST", `/returns/${caseId}/supplier-messages`, token, { message });
 }
 
+export function createTicketForOrder(token, orderId) {
+  return authedMutate("POST", `/support/tickets/for-order/${orderId}`, token, {});
+}
+
 export function updateReturnCaseStatus(token, caseId, status) {
   return authedMutate("PATCH", `/returns/${caseId}`, token, { status });
 }

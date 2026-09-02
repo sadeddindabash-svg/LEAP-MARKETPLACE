@@ -18,7 +18,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   updateCategory, updatePart, updateBrand, updateModel, updateGeneration, updateEngine, updateTransmission,
   fetchPaymentMethods, fetchAvailableCountries, fetchAvailableProviders, createPaymentMethod, updatePaymentMethod, updatePaymentMethodPhoto, movePaymentMethod, activatePaymentMethodCountry, deactivatePaymentMethodCountry, deletePaymentMethod, setPaymentMethodActive, bulkSetPaymentMethodCountries,
   fetchPaymentProviders, savePaymentProviderCredentials, deletePaymentProviderCredentials,
-  fetchSupplierMessagesInbox, fetchSupplierMessageThread, sendSupplierMessage,
+  fetchSupplierMessagesInbox, fetchSupplierMessageThread, sendSupplierMessage, createTicketForOrder,
   fetchPromoCodes, createPromoCode, updatePromoCode, deletePromoCode,
   fetchAdminUsers, createAdminUser, updateAdminPermissions, deleteAdminUser,
   fetchPayoutsOwed, fetchPayoutHistory, recordPayout, fetchSupplierPayoutMethod, fetchReturnWindow, updateReturnWindow, fetchReceiptFooter, updateReceiptFooter, updateCategoryCommission, sendTestEmail,
@@ -972,10 +972,12 @@ function SupplierDetailPage({ supplierId, onBack, onSessionExpired }) {
   );
 }
 
-function OrderDetailPage({ orderId, onBack, onSessionExpired }) {
+function OrderDetailPage({ orderId, onBack, onSessionExpired, onOpenTicket, onOpenSupplierMessages }) {
   const [order, setOrder] = useState(null);
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
+  const [isMessagingBuyer, setIsMessagingBuyer] = useState(false);
+  const [supplierPickerOpen, setSupplierPickerOpen] = useState(false);
 
   const load = () => {
     fetchOrderById(getStoredToken(), orderId)
@@ -993,6 +995,44 @@ function OrderDetailPage({ orderId, onBack, onSessionExpired }) {
       });
   };
   useEffect(load, [orderId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Confirmed with the person: reuses an existing open ticket for
+  // this real order if one exists, rather than always starting a
+  // fresh one -- then navigates straight into that real thread.
+  const handleMessageBuyer = async () => {
+    setIsMessagingBuyer(true);
+    try {
+      const { id } = await createTicketForOrder(getStoredToken(), orderId);
+      onOpenTicket(id);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsMessagingBuyer(false);
+    }
+  };
+
+  // Confirmed with the person: a single-supplier order jumps
+  // straight into that real supplier's existing thread; a
+  // multi-supplier order shows a quick real picker first, since the
+  // real supplier inbox is one-supplier-at-a-time by design.
+  const handleMessageSupplier = () => {
+    if (!order) return;
+    const uniqueSuppliers = [];
+    const seenIds = new Set();
+    for (const so of order.supplierSubOrders) {
+      if (!seenIds.has(so.supplierId)) {
+        seenIds.add(so.supplierId);
+        uniqueSuppliers.push({ id: so.supplierId, name: so.supplierName });
+      }
+    }
+    if (uniqueSuppliers.length === 0) return;
+    if (uniqueSuppliers.length === 1) {
+      onOpenSupplierMessages(uniqueSuppliers[0].id, uniqueSuppliers[0].name);
+    } else {
+      setSupplierPickerOpen(true);
+    }
+  };
 
   if (loadState === "loading") {
     return (
@@ -1070,13 +1110,25 @@ function OrderDetailPage({ orderId, onBack, onSessionExpired }) {
           </Card>
           <Card title="Actions">
             <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-              <button style={{ ...body, padding: 10, borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 600, cursor: "pointer", textAlign: "left" }}>Message buyer</button>
-              <button style={{ ...body, padding: 10, borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 600, cursor: "pointer", textAlign: "left" }}>Message supplier(s)</button>
+              <button onClick={handleMessageBuyer} disabled={isMessagingBuyer} style={{ ...body, padding: 10, borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 600, cursor: isMessagingBuyer ? "default" : "pointer", textAlign: "left", opacity: isMessagingBuyer ? 0.6 : 1 }}>{isMessagingBuyer ? "Opening…" : "Message buyer"}</button>
+              <button onClick={handleMessageSupplier} style={{ ...body, padding: 10, borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 600, cursor: "pointer", textAlign: "left" }}>Message supplier(s)</button>
               <button style={{ ...body, padding: 10, borderRadius: 8, border: `1px solid ${C.red}`, background: C.redBg, color: C.red, fontSize: 12.5, fontWeight: 700, cursor: "pointer", textAlign: "left" }}>Issue refund</button>
             </div>
           </Card>
         </div>
       </div>
+      {supplierPickerOpen && (
+        <div onClick={() => setSupplierPickerOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 12, padding: 16, width: 280, boxShadow: "0 12px 32px rgba(0,0,0,0.18)" }}>
+            <div style={{ ...body, fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Message which supplier?</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {Array.from(new Map(order.supplierSubOrders.map((so) => [so.supplierId, so.supplierName])).entries()).map(([id, name]) => (
+                <button key={id} onClick={() => { setSupplierPickerOpen(false); onOpenSupplierMessages(id, name); }} style={{ ...body, padding: 10, borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 600, cursor: "pointer", textAlign: "left" }}>{name}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -4932,11 +4984,11 @@ function CategoryPartsPage({ category, onBack, onSessionExpired }) {
 // buyer Support Tickets page -- that system exists specifically to
 // enforce buyers never contacting suppliers directly; this is a
 // genuinely different relationship.
-function SupplierMessagesPage({ onSessionExpired }) {
+function SupplierMessagesPage({ onSessionExpired, initialSupplier }) {
   const [inbox, setInbox] = useState([]);
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
-  const [openSupplier, setOpenSupplier] = useState(null); // {supplierId, supplierName}
+  const [openSupplier, setOpenSupplier] = useState(initialSupplier || null); // {supplierId, supplierName}
 
   const load = () => {
     setLoadState("loading");
@@ -6887,6 +6939,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   });
   const [openOrder, setOpenOrder] = useState(null);
   const [openTicket, setOpenTicket] = useState(null);
+  const [messageSupplier, setMessageSupplier] = useState(null); // {supplierId, supplierName} -- confirmed with the person, for the order detail page's "Message supplier(s)" action
   const [openCase, setOpenCase] = useState(null);
   // Real supplier detail deep-link (new) -- lifted to the shell the
   // same way orders/tickets/cases already are, so GlobalSearch's
@@ -6917,7 +6970,10 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   }, [page]); // refetch whenever navigating, so acting on something reflects in the badge soon after
 
   let content;
-  if (openOrder) content = <OrderDetailPage orderId={openOrder} onBack={() => setOpenOrder(null)} onSessionExpired={onLogout} />;
+  if (openOrder) content = <OrderDetailPage orderId={openOrder} onBack={() => setOpenOrder(null)} onSessionExpired={onLogout}
+    onOpenTicket={(ticketId) => { setOpenOrder(null); setOpenTicket(ticketId); }}
+    onOpenSupplierMessages={(supplierId, supplierName) => { setOpenOrder(null); setMessageSupplier({ supplierId, supplierName }); setPage("supplierMessages"); }}
+  />;
   else if (openTicket) content = <TicketDetailPage ticketId={openTicket} onBack={() => setOpenTicket(null)} onSessionExpired={onLogout} />;
   else if (openCase) content = <ReturnCaseDetailPage caseId={openCase} onBack={() => setOpenCase(null)} onSessionExpired={onLogout} />;
   else if (openSupplier) content = <SupplierDetailPage supplierId={openSupplier} onBack={() => setOpenSupplier(null)} onSessionExpired={onLogout} />;
@@ -6930,7 +6986,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   else if (page === "vehicleData") content = <VehicleDataPage onSessionExpired={onLogout} />;
   else if (page === "deliveryRules") content = <DeliveryRulesPage onSessionExpired={onLogout} />;
   else if (page === "categories") content = <CategoriesPage onSessionExpired={onLogout} />;
-  else if (page === "supplierMessages") content = <SupplierMessagesPage onSessionExpired={onLogout} />;
+  else if (page === "supplierMessages") content = <SupplierMessagesPage onSessionExpired={onLogout} initialSupplier={messageSupplier} />;
   else if (page === "promoCodes") content = <PromoCodesPage onSessionExpired={onLogout} />;
   else if (page === "hubs") content = <HubsPage onSessionExpired={onLogout} />;
   else if (page === "pricing") content = <PricingPage onSessionExpired={onLogout} />;
@@ -6949,7 +7005,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
       onOpenTicket: setOpenTicket,
       onOpenCase: setOpenCase,
       onOpenSupplier: setOpenSupplier,
-      onNavigateToPage: (p) => { setPage(p); setOpenOrder(null); setOpenTicket(null); setOpenCase(null); setOpenSupplier(null); },
+      onNavigateToPage: (p) => { setPage(p); setOpenOrder(null); setOpenTicket(null); setOpenCase(null); setOpenSupplier(null); setMessageSupplier(null); },
       pendingCounts,
       flaggedCount,
     }}>
@@ -6966,7 +7022,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
             const Icon = n.icon;
             const active = page === n.id && !openOrder && !openTicket && !openCase;
             return (
-              <button key={n.id} onClick={() => { setPage(n.id); setOpenOrder(null); setOpenTicket(null); setOpenCase(null); }} style={{
+              <button key={n.id} onClick={() => { setPage(n.id); setOpenOrder(null); setOpenTicket(null); setOpenCase(null); setMessageSupplier(null); }} style={{
                 width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", marginBottom: 2, borderRadius: 8,
                 border: "none", cursor: "pointer", textAlign: "left",
                 background: active ? C.signal : "transparent", color: active ? C.onSignal : "#B8BEC9",
