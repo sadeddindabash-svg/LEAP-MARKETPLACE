@@ -6,9 +6,15 @@ const { moveItem } = require('../../lib/reorder');
 
 /**
  * Fitment module — Year/Make/Model/Trim reference data (Phase 1, BUY-010).
- * VIN decoding (Phase 2, BUY-014) depends on a licensed data provider — see
- * SRS Section 11, Appendix item 3 — and is intentionally not implemented
- * here yet.
+ *
+ * Basic VIN decoding (make + model year only, confirmed with the person):
+ * checks the real vin_wmi_codes table first (manually-curated, covers
+ * Chinese brands NHTSA has little to no data for), falls back to NHTSA's
+ * free vPIC API for everything else. Full model/trim/engine decoding
+ * (Phase 2, BUY-014) still genuinely depends on a licensed data provider
+ * — see SRS Section 11, Appendix item 3 — and remains intentionally not
+ * implemented; the buyer confirms the exact model/generation/trim through
+ * the existing picker below instead.
  *
  * Backed by a real PostgreSQL database (see db/migrations/001_init.sql).
  */
@@ -500,6 +506,147 @@ router.delete('/transmissions/:id', requireAuth, requireRole('admin'), requirePa
     if (isForeignKeyViolation(err)) {
       return res.status(409).json({ error: 'Cannot delete — one or more real products reference this transmission. Remove those first.' });
     }
+    next(err);
+  }
+});
+
+// Confirmed with the person: real ISO 3779 VIN check-digit validation --
+// a global standard, not US-specific, works for any real VIN regardless
+// of brand. Position 9 (0-indexed 8) is the check digit.
+const VIN_TRANSLITERATION = {
+  A: 1, B: 2, C: 3, D: 4, E: 5, F: 6, G: 7, H: 8,
+  J: 1, K: 2, L: 3, M: 4, N: 5, P: 7, R: 9,
+  S: 2, T: 3, U: 4, V: 5, W: 6, X: 7, Y: 8, Z: 9,
+};
+const VIN_WEIGHTS = [8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2];
+
+function vinCheckDigitIsValid(vin) {
+  let sum = 0;
+  for (let i = 0; i < 17; i++) {
+    const ch = vin[i];
+    const value = /[0-9]/.test(ch) ? Number(ch) : VIN_TRANSLITERATION[ch];
+    if (value === undefined) return false; // a real invalid character (I, O, Q, or anything non-alphanumeric)
+    sum += value * VIN_WEIGHTS[i];
+  }
+  const remainder = sum % 11;
+  const expected = remainder === 10 ? 'X' : String(remainder);
+  return vin[8] === expected;
+}
+
+// Confirmed with the person: real, standard model-year decoding
+// (position 10, 0-indexed 9) -- also global, not US-specific. The
+// code cycles every 30 years, disambiguated by whether position 7
+// (0-indexed 6) is a digit (1980-2009 cycle) or a letter (2010-2039
+// cycle) -- the standard, widely-used heuristic, though not
+// universally perfect for every real manufacturer's own real VIN
+// assignment practice.
+const VIN_YEAR_CODES = {
+  A: 1980, B: 1981, C: 1982, D: 1983, E: 1984, F: 1985, G: 1986, H: 1987,
+  J: 1988, K: 1989, L: 1990, M: 1991, N: 1992, P: 1993, R: 1994, S: 1995,
+  T: 1996, V: 1997, W: 1998, X: 1999, Y: 2000,
+  1: 2001, 2: 2002, 3: 2003, 4: 2004, 5: 2005, 6: 2006, 7: 2007, 8: 2008, 9: 2009,
+};
+function decodeVinModelYear(vin) {
+  const yearChar = vin[9];
+  const baseYear = VIN_YEAR_CODES[yearChar];
+  if (baseYear === undefined) return null;
+  const isLaterCycle = /[A-HJ-NPR-Z]/.test(vin[6]); // position 7, letter = 2010-2039 cycle
+  return isLaterCycle ? baseYear + 30 : baseYear;
+}
+
+// GET /fitment/vin-decode/:vin — real, basic decode: make + model year
+// only. Confirmed with the person: hands off to the existing Year/
+// Make/Model picker for the exact model/generation/trim, since that
+// part genuinely needs a licensed data provider this doesn't have.
+router.get('/vin-decode/:vin', async (req, res, next) => {
+  try {
+    const vin = (req.params.vin || '').toUpperCase().trim();
+    if (vin.length !== 17 || /[IOQ]/.test(vin)) {
+      return res.status(400).json({ error: 'That doesn\'t look like a valid 17-character VIN' });
+    }
+    const isValid = vinCheckDigitIsValid(vin);
+    const modelYear = decodeVinModelYear(vin);
+    const wmi = vin.slice(0, 3);
+
+    const { rows: localRows } = await db.query('SELECT make, country FROM vin_wmi_codes WHERE wmi_prefix = $1', [wmi]);
+    if (localRows.length > 0) {
+      return res.json({ vin, isValidCheckDigit: isValid, make: localRows[0].make, modelYear, source: 'local' });
+    }
+
+    // Confirmed with the person: NHTSA's free vPIC API as a fallback
+    // for non-Chinese brands, since NHTSA's own real data has little
+    // to no coverage for Chinese manufacturers. Like this project's
+    // other three external payment integrations, this call has NOT
+    // had an actual live test against NHTSA's real API -- this
+    // sandbox has no network access to vpic.nhtsa.dot.gov, confirmed
+    // directly rather than assumed.
+    try {
+      const nhtsaRes = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/decodevin/${vin}?format=json`);
+      if (nhtsaRes.ok) {
+        const data = await nhtsaRes.json();
+        const results = data.Results || [];
+        const make = results.find((r) => r.Variable === 'Make')?.Value || null;
+        const nhtsaYear = results.find((r) => r.Variable === 'Model Year')?.Value;
+        return res.json({
+          vin,
+          isValidCheckDigit: isValid,
+          make: make || null,
+          modelYear: nhtsaYear ? Number(nhtsaYear) : modelYear,
+          source: make ? 'nhtsa' : 'unrecognized',
+        });
+      }
+    } catch (fetchErr) {
+      console.error('[vin-decode] NHTSA lookup failed (non-fatal, falling back to local-only result):', fetchErr.message);
+    }
+
+    res.json({ vin, isValidCheckDigit: isValid, make: null, modelYear, source: 'unrecognized' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ============================================================
+// Admin: manage the vin_wmi_codes lookup table (Vehicle Data page).
+// ============================================================
+
+router.get('/vin-wmi-codes', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT * FROM vin_wmi_codes ORDER BY make ASC, wmi_prefix ASC');
+    res.json(rows.map((r) => ({ wmiPrefix: r.wmi_prefix, make: r.make, country: r.country })));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/vin-wmi-codes', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const { wmiPrefix, make, country } = req.body || {};
+    const normalizedPrefix = (wmiPrefix || '').toUpperCase().trim();
+    if (normalizedPrefix.length !== 3) {
+      return res.status(400).json({ error: 'wmiPrefix must be exactly 3 characters' });
+    }
+    if (!make) {
+      return res.status(400).json({ error: 'make is required' });
+    }
+    await db.query(
+      `INSERT INTO vin_wmi_codes (wmi_prefix, make, country) VALUES ($1, $2, $3)
+       ON CONFLICT (wmi_prefix) DO UPDATE SET make = EXCLUDED.make, country = EXCLUDED.country, updated_at = now()`,
+      [normalizedPrefix, make, country || null]
+    );
+    await logAdminAction(req, 'vin_wmi_code_saved', 'vin_wmi_code', normalizedPrefix, { make });
+    res.status(201).json({ wmiPrefix: normalizedPrefix, make, country: country || null });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/vin-wmi-codes/:wmiPrefix', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const { rowCount } = await db.query('DELETE FROM vin_wmi_codes WHERE wmi_prefix = $1', [req.params.wmiPrefix.toUpperCase()]);
+    if (rowCount === 0) return res.status(404).json({ error: 'WMI code not found' });
+    await logAdminAction(req, 'vin_wmi_code_deleted', 'vin_wmi_code', req.params.wmiPrefix, {});
+    res.status(204).end();
+  } catch (err) {
     next(err);
   }
 });
