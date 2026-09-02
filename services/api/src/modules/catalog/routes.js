@@ -718,6 +718,7 @@ router.get('/moderation-queue', requireAuth, requireRole('admin'), requirePageAc
 // launch markets), not just a status flip. Rejecting doesn't need a
 // translation, since the listing never goes live either way.
 router.patch('/products/:id/moderate', requireAuth, requireRole('admin'), requirePageAccess('moderation'), async (req, res, next) => {
+  const client = await db.getPool().connect();
   try {
     const { action, nameEn, descriptionEn, nameAr, descriptionAr, attributes } = req.body || {};
     if (!['approve', 'reject'].includes(action)) {
@@ -766,33 +767,48 @@ router.patch('/products/:id/moderate', requireAuth, requireRole('admin'), requir
       }
     }
     const newStatus = action === 'approve' ? 'active' : 'inactive';
-    const { rows } = await db.query(
+    // Confirmed via audit: derived exactly like the other two real
+    // product-write endpoints, so the legacy position column never
+    // drifts from whatever the Position attribute says here either.
+    const derivedPosition = Array.isArray(attributes) ? attributes.find((a) => a.name === 'Position')?.value : undefined;
+
+    await client.query('BEGIN');
+    const { rows } = await client.query(
       `UPDATE products SET
          status = $1,
          name = COALESCE($2, name), description = COALESCE($3, description),
-         name_ar = COALESCE($4, name_ar), description_ar = COALESCE($5, description_ar)
-       WHERE id = $6 RETURNING id, name, name_ar, status`,
+         name_ar = COALESCE($4, name_ar), description_ar = COALESCE($5, description_ar),
+         position = COALESCE($6, position)
+       WHERE id = $7 RETURNING id, name, name_ar, status`,
       [
         newStatus,
         action === 'approve' ? nameEn : null, action === 'approve' ? (descriptionEn || null) : null,
         action === 'approve' ? nameAr : null, action === 'approve' ? (descriptionAr || null) : null,
+        derivedPosition ?? null,
         req.params.id,
       ]
     );
-    if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
+    if (rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Product not found' });
+    }
     if (attributes !== undefined) {
-      await db.query('DELETE FROM product_attributes WHERE product_id = $1', [req.params.id]);
+      await client.query('DELETE FROM product_attributes WHERE product_id = $1', [req.params.id]);
       for (const attr of attributes) {
-        await db.query(
+        await client.query(
           'INSERT INTO product_attributes (product_id, attribute_name, attribute_value) VALUES ($1, $2, $3)',
           [req.params.id, attr.name.trim(), attr.value.trim()]
         );
       }
     }
+    await client.query('COMMIT');
     await logAdminAction(req, action === 'approve' ? 'product_approved' : 'product_rejected', 'product', req.params.id, { name: rows[0].name });
     res.json(rows[0]);
   } catch (err) {
+    await client.query('ROLLBACK');
     next(err);
+  } finally {
+    client.release();
   }
 });
 

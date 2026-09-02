@@ -271,6 +271,7 @@ router.post('/:id/cancel', requireAuth, async (req, res, next) => {
 // cart_items table and checkout flow every other real product already
 // uses, so payment/shipping/supplier-split logic is never duplicated.
 router.post('/:id/place-order', requireAuth, async (req, res, next) => {
+  const client = await db.getPool().connect();
   try {
     const { cartId } = req.body || {};
     if (!cartId) return res.status(400).json({ error: 'cartId is required' });
@@ -289,18 +290,23 @@ router.post('/:id/place-order', requireAuth, async (req, res, next) => {
     );
     if (items.length === 0) return res.status(400).json({ error: 'No items are ready to order yet -- they may still be pending review' });
 
-    await db.query('INSERT INTO carts (id) VALUES ($1) ON CONFLICT (id) DO NOTHING', [cartId]);
+    await client.query('BEGIN');
+    await client.query('INSERT INTO carts (id) VALUES ($1) ON CONFLICT (id) DO NOTHING', [cartId]);
     for (const item of items) {
-      await db.query(
+      await client.query(
         `INSERT INTO cart_items (cart_id, product_id, quantity) VALUES ($1, $2, $3)
          ON CONFLICT (cart_id, product_id) DO UPDATE SET quantity = EXCLUDED.quantity`,
         [cartId, item.product_id, item.quantity]
       );
     }
+    await client.query('COMMIT');
     const { rows } = await db.query('SELECT * FROM quote_requests WHERE id = $1', [req.params.id]);
     res.json(await toRequestDto(rows[0]));
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     next(err);
+  } finally {
+    client.release();
   }
 });
 
