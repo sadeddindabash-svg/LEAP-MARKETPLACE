@@ -238,30 +238,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
     );
   }
 
-  /// Confirmed with the person: the real buyer-facing timeline stage
-  /// -- "shipped" now genuinely means the hub shipped to the buyer
-  /// (hub_shipments.status == 'shipped_to_buyer'), not just the
-  /// supplier shipping to the hub, which is an internal step the
-  /// buyer has no way to know happened and would otherwise wrongly
-  /// read as their package already being on its way to them.
-  String _buyerFacingStage(Map<String, dynamic> subOrder) {
-    final rawStatus = subOrder['status'] as String;
-    if (rawStatus == 'dispute' || rawStatus == 'pending') return rawStatus;
-    final hubShipment = subOrder['hubShipment'] as Map<String, dynamic>?;
-    if (hubShipment == null) {
-      // No real hub shipment yet at all -- either still with the
-      // supplier, or (backward compatibility) an older real order
-      // that never went through a real hub. Trust the real raw
-      // status here.
-      return rawStatus;
-    }
-    final hubStatus = hubShipment['status'] as String;
-    if (hubStatus == 'shipped_to_buyer') return 'shipped';
-    if (hubStatus == 'delivered') return 'delivered';
-    if (hubStatus == 'flagged') return 'dispute';
-    return 'preparing';
-  }
-
   bool _isCancellable() {
     // CONFIRMED (migration 029): cancellable only while every real
     // sub-order is still pending/preparing -- matches the real
@@ -459,6 +435,33 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
       ),
     );
   }
+}
+
+/// Confirmed with the person: the real buyer-facing timeline stage
+/// -- "shipped" now genuinely means the hub shipped to the buyer
+/// (hub_shipments.status == 'shipped_to_buyer'), not just the
+/// supplier shipping to the hub, which is an internal step the
+/// buyer has no way to know happened and would otherwise wrongly
+/// read as their package already being on its way to them. A real,
+/// genuine top-level function (not a class method) since it's used
+/// from _SupplierSubOrderCard below and doesn't depend on any
+/// instance state at all, only its own parameter.
+String _buyerFacingStage(Map<String, dynamic> subOrder) {
+  final rawStatus = subOrder['status'] as String;
+  if (rawStatus == 'dispute' || rawStatus == 'pending') return rawStatus;
+  final hubShipment = subOrder['hubShipment'] as Map<String, dynamic>?;
+  if (hubShipment == null) {
+    // No real hub shipment yet at all -- either still with the
+    // supplier, or (backward compatibility) an older real order
+    // that never went through a real hub. Trust the real raw
+    // status here.
+    return rawStatus;
+  }
+  final hubStatus = hubShipment['status'] as String;
+  if (hubStatus == 'shipped_to_buyer') return 'shipped';
+  if (hubStatus == 'delivered') return 'delivered';
+  if (hubStatus == 'flagged') return 'dispute';
+  return 'preparing';
 }
 
 class _SupplierSubOrderCard extends StatelessWidget {
