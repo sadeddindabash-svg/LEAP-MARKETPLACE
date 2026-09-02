@@ -613,7 +613,22 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
 // services/api/README.md for the fuller discussion. Only 'to_ship',
 // 'shipped', and 'returns' are computed and filterable today.
 async function computeDisplayStatus(orderId) {
-  const { rows: subOrders } = await db.query('SELECT status FROM supplier_sub_orders WHERE order_id = $1', [orderId]);
+  // Confirmed via a real, systematic audit: the previous version here
+  // checked supplier_sub_orders.status directly, but nothing in the
+  // entire real codebase ever sets that field to 'delivered' -- only
+  // hub_shipments.status is, when the hub genuinely confirms delivery.
+  // This meant the function could never actually return 'delivered'
+  // at all, and 'shipped' fired the moment a supplier shipped to the
+  // hub (an internal step), not when the hub actually shipped to the
+  // buyer. Now joins each real sub-order to its own real hub shipment
+  // status instead.
+  const { rows: subOrders } = await db.query(
+    `SELECT so.status,
+            (SELECT hs.status FROM hub_shipments hs WHERE hs.sub_order_id = so.id) AS hub_status
+     FROM supplier_sub_orders so
+     WHERE so.order_id = $1`,
+    [orderId]
+  );
   const { rows: returnCases } = await db.query('SELECT id FROM return_cases WHERE order_id = $1 LIMIT 1', [orderId]);
 
   // A real return case in progress is what a buyer cares about most for
@@ -621,22 +636,24 @@ async function computeDisplayStatus(orderId) {
   // -- takes priority over shipped/to_ship/delivered.
   if (returnCases.length > 0) return 'returns';
 
-  // REAL BUG FOUND AND FIXED HERE (confirmed directly while
-  // implementing a real, related mobile fix that had to work around
-  // this): this function could never actually return 'delivered', even
-  // once every real sub-order genuinely reached that status -- it just
-  // stayed 'shipped' forever after that point. Checked first, since an
-  // order with zero real sub-orders yet (a real edge case -- rows can
-  // be empty right after checkout, before supplier sub-orders are
+  // An order with zero real sub-orders yet (a real edge case -- rows
+  // can be empty right after checkout, before supplier sub-orders are
   // created) must NOT be treated as "every sub-order delivered" by an
   // Array.every() on an empty array vacuously returning true.
-  if (subOrders.length > 0 && subOrders.every((so) => so.status === 'delivered')) return 'delivered';
+  if (subOrders.length > 0 && subOrders.every((so) => so.hub_status === 'delivered')) return 'delivered';
 
-  // Multi-supplier orders can have genuinely MIXED real sub-order
-  // progress (one shipped, one still preparing) -- if ANY real part has
-  // shipped or been delivered, the order counts as real progress having
-  // happened, so it shows as 'shipped' rather than still 'to_ship'.
-  const anyShippedOrFurther = subOrders.some((so) => ['shipped', 'delivered'].includes(so.status));
+  // Confirmed with the person: a real flagged hub shipment (a quality
+  // issue caught before it ever reached the buyer) surfaces as a real
+  // dispute -- matches the mobile app's own already-confirmed
+  // _buyerFacingStage logic exactly.
+  if (subOrders.some((so) => so.hub_status === 'flagged')) return 'dispute';
+
+  // Multi-supplier orders can have genuinely MIXED real progress (one
+  // hub-shipped, one still at the hub) -- if ANY real part has
+  // genuinely shipped to the buyer or been delivered, the order counts
+  // as real progress having happened, so it shows as 'shipped' rather
+  // than still 'to_ship'.
+  const anyShippedOrFurther = subOrders.some((so) => ['shipped_to_buyer', 'delivered'].includes(so.hub_status));
   return anyShippedOrFurther ? 'shipped' : 'to_ship';
 }
 
@@ -740,13 +757,58 @@ router.get('/', requireAuth, requirePageAccessIfAdmin('orders'), async (req, res
   }
 });
 
-// POST /:id/cancel { guestEmail? } — real, buyer-initiated cancellation.
-// CONFIRMED SCOPE: only allowed while every real sub-order is still
-// 'pending' or 'preparing' -- the moment even one genuinely ships,
-// this is rejected and becomes a real support conversation instead.
-// Real payment capture isn't built yet, so cancelling is purely a real
-// status change right now -- there's no real captured payment to
-// refund.
+// Confirmed with the person through several rounds of clarification:
+// a real sub-order is cancellable based on whether the hub has
+// actually shipped it to the buyer yet, not the supplier's own
+// separate status (same root cause already fixed for the buyer's
+// order timeline). No real hub shipment yet at all, or any hub stage
+// before 'shipped_to_buyer' (including 'flagged' -- a real quality
+// issue caught at the hub still hasn't left for the buyer), counts
+// as cancellable. Already-cancelled stays excluded.
+function isSubOrderCancellable(subOrderStatus, hubStatus) {
+  if (subOrderStatus === 'cancelled') return false;
+  if (hubStatus === 'shipped_to_buyer' || hubStatus === 'delivered') return false;
+  return true;
+}
+
+async function fetchSubOrdersWithHubStatus(client, orderId) {
+  const { rows } = await client.query(
+    `SELECT so.id, so.supplier_id, so.status,
+            (SELECT hs.status FROM hub_shipments hs WHERE hs.sub_order_id = so.id) AS hub_status
+     FROM supplier_sub_orders so
+     WHERE so.order_id = $1`,
+    [orderId]
+  );
+  return rows;
+}
+
+async function notifySupplierOfCancellation(orderId, supplierId) {
+  try {
+    const { rows: supplierUserRows } = await db.query('SELECT id FROM users WHERE supplier_id = $1 AND role = $2', [supplierId, 'supplier']);
+    if (supplierUserRows.length > 0) {
+      await createNotification({
+        userId: supplierUserRows[0].id,
+        type: 'order_status',
+        title: 'An order was cancelled',
+        body: `Order ${orderId} was cancelled by the buyer before it shipped.`,
+        linkType: 'order',
+        linkId: orderId,
+      });
+    }
+  } catch (err) {
+    console.error('Cancellation supplier notification failed (non-fatal):', err.message);
+  }
+}
+
+// POST /:id/cancel { guestEmail? } — real, buyer-initiated
+// cancellation of the WHOLE order. CONFIRMED SCOPE: only allowed
+// while every real sub-order is still cancellable by real hub
+// status -- if even one part has already shipped, this real
+// whole-order action is rejected; the buyer uses the new per-
+// sub-order endpoint below to cancel just what's still cancellable.
+// Real payment capture isn't built yet, so cancelling is purely a
+// real status change right now -- there's no real captured payment
+// to refund.
 router.post('/:id/cancel', optionalAuth, async (req, res, next) => {
   const client = await db.getPool().connect();
   try {
@@ -770,8 +832,8 @@ router.post('/:id/cancel', optionalAuth, async (req, res, next) => {
       return res.status(400).json({ error: 'This order is already cancelled.' });
     }
 
-    const { rows: subOrders } = await client.query('SELECT id, supplier_id, status FROM supplier_sub_orders WHERE order_id = $1', [req.params.id]);
-    const alreadyShipped = subOrders.some((so) => !['pending', 'preparing'].includes(so.status));
+    const subOrders = await fetchSubOrdersWithHubStatus(client, req.params.id);
+    const alreadyShipped = subOrders.some((so) => !isSubOrderCancellable(so.status, so.hub_status));
     if (alreadyShipped) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'This order can no longer be cancelled — at least one part has already shipped. Contact support for help instead.' });
@@ -786,25 +848,74 @@ router.post('/:id/cancel', optionalAuth, async (req, res, next) => {
     // same reasoning as every other real transactional trigger: a
     // cancelled order concerns every real supplier whose sub-order was
     // just cancelled, not just the buyer.
-    try {
-      for (const so of subOrders) {
-        const { rows: supplierUserRows } = await db.query('SELECT id FROM users WHERE supplier_id = $1 AND role = $2', [so.supplier_id, 'supplier']);
-        if (supplierUserRows.length > 0) {
-          await createNotification({
-            userId: supplierUserRows[0].id,
-            type: 'order_status',
-            title: 'An order was cancelled',
-            body: `Order ${req.params.id} was cancelled by the buyer before it shipped.`,
-            linkType: 'order',
-            linkId: req.params.id,
-          });
-        }
-      }
-    } catch (err) {
-      console.error('Cancellation supplier notification failed (non-fatal):', err.message);
+    for (const so of subOrders) {
+      await notifySupplierOfCancellation(req.params.id, so.supplier_id);
     }
 
     res.json({ id: req.params.id, status: 'cancelled' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+// POST /:id/sub-orders/:subOrderId/cancel { guestEmail? } — real,
+// buyer-initiated cancellation of a SINGLE supplier's part.
+// Confirmed with the person: supports the real partial scenario --
+// one supplier's part already shipped to the buyer, another hasn't.
+// If this cancellation happens to leave every real sub-order on this
+// order cancelled, the real parent order is also marked cancelled.
+router.post('/:id/sub-orders/:subOrderId/cancel', optionalAuth, async (req, res, next) => {
+  const client = await db.getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: orderRows } = await client.query('SELECT * FROM orders WHERE id = $1 FOR UPDATE', [req.params.id]);
+    if (orderRows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    const order = orderRows[0];
+
+    const isOwningBuyer = req.user && order.buyer_id && req.user.sub === order.buyer_id;
+    const guestEmailMatches = order.guest_email && req.body?.guestEmail && req.body.guestEmail === order.guest_email;
+    if (!isOwningBuyer && !guestEmailMatches) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (order.status === 'cancelled') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'This order is already cancelled.' });
+    }
+
+    const subOrders = await fetchSubOrdersWithHubStatus(client, req.params.id);
+    const target = subOrders.find((so) => String(so.id) === String(req.params.subOrderId));
+    if (!target) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Sub-order not found on this order' });
+    }
+    if (!isSubOrderCancellable(target.status, target.hub_status)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'This part has already shipped and can no longer be cancelled. Contact support for help instead.' });
+    }
+
+    await client.query(`UPDATE supplier_sub_orders SET status = 'cancelled' WHERE id = $1`, [req.params.subOrderId]);
+
+    // Confirmed with the person: if every real sub-order on this
+    // order is now cancelled (this one plus any already cancelled
+    // before it), the real parent order is cancelled too.
+    const everyoneCancelled = subOrders.every((so) => String(so.id) === String(req.params.subOrderId) || so.status === 'cancelled');
+    if (everyoneCancelled) {
+      await client.query(`UPDATE orders SET status = 'cancelled' WHERE id = $1`, [req.params.id]);
+    }
+
+    await client.query('COMMIT');
+
+    await notifySupplierOfCancellation(req.params.id, target.supplier_id);
+
+    res.json({ id: req.params.id, subOrderId: req.params.subOrderId, status: 'cancelled', orderStatus: everyoneCancelled ? 'cancelled' : order.status });
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);

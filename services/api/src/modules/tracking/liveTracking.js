@@ -210,7 +210,13 @@ async function buildTrackingTimeline(orderId) {
     // one would be a real, confirmed lie about why something is slow.
     const mostRecentEventTime = timeline[0]?.time || orderPlacedAt;
     const daysSinceLastUpdate = mostRecentEventTime ? (Date.now() - new Date(mostRecentEventTime).getTime()) / (24 * 60 * 60 * 1000) : null;
-    const isDelayed = so.supplier_status !== 'delivered' && daysSinceLastUpdate !== null && daysSinceLastUpdate >= 5;
+    // Confirmed via a real, systematic audit: so.supplier_status never
+    // actually reaches 'delivered' anywhere in the entire real
+    // codebase -- only the real hub_shipments.status does, when the
+    // hub genuinely confirms delivery. This condition was always
+    // true, so an already-delivered real order could still get
+    // falsely flagged as delayed. Checks the real hub status instead.
+    const isDelayed = shipment?.status !== 'delivered' && daysSinceLastUpdate !== null && daysSinceLastUpdate >= 5;
 
     results.push({
       subOrderId: so.id,

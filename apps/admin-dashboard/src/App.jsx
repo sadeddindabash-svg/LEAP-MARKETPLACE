@@ -1081,7 +1081,7 @@ function OrderDetailPage({ orderId, onBack, onSessionExpired, onOpenTicket, onOp
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       {so.trackingNumber && <PlateChip small>{so.trackingNumber}</PlateChip>}
-                      <Badge label={getOrderStatusMeta(so.status).label} color={getOrderStatusMeta(so.status).color} bg={getOrderStatusMeta(so.status).bg} />
+                      <Badge label={getHubStatusMeta(so.hubShipment?.status).label} color={getHubStatusMeta(so.hubShipment?.status).color} bg={getHubStatusMeta(so.hubShipment?.status).bg} />
                     </div>
                   </div>
                   {so.items?.map((item, j) => (

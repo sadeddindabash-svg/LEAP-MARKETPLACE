@@ -432,12 +432,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
           // Real fix (confirmed directly): don't show "Track your
           // package" once every real sub-order has genuinely been
           // delivered -- there's nothing left to actively track.
-          // Checks each real sub-order's own status directly, not the
-          // order-level displayStatus, which can never actually equal
-          // 'delivered' (see computeDisplayStatus's own real logic --
-          // a separate, real backend gap, not something this fix
-          // should paper over).
-          if (subOrders.isNotEmpty && !subOrders.every((so) => so['status'] == 'delivered'))
+          // Uses the same real _buyerFacingStage already confirmed for
+          // the timeline above, which correctly checks the real
+          // hubShipment status -- the backend's own computeDisplayStatus
+          // gap this comment used to flag is now fixed too (separate
+          // real commit), so this no longer needs its own workaround.
+          if (subOrders.isNotEmpty && !subOrders.every((so) => _buyerFacingStage(so) == 'delivered'))
             OutlinedButton.icon(
               onPressed: () => context.push('/orders/${widget.orderId}/tracking'),
               icon: const Icon(Icons.local_shipping_outlined, size: 18),

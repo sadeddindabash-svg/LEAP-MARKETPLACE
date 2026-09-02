@@ -13,11 +13,22 @@ const { createNotification } = require('../notifications/helpers');
  * this same real logic.
  */
 async function checkForDelayedShipments() {
+  // Confirmed via a real, systematic audit: so.status never actually
+  // reaches 'delivered' anywhere in the entire real codebase -- only
+  // hub_shipments.status does, when the hub genuinely confirms
+  // delivery. The old WHERE clause here always matched every real
+  // sub-order, so this daily job kept sending buyers "taking longer
+  // than expected" notifications for orders that had already been
+  // genuinely delivered. Now excludes a sub-order whose own real hub
+  // shipment has actually reached 'delivered'.
   const { rows: subOrders } = await db.query(
     `SELECT so.id, so.order_id, o.buyer_id, o.guest_email
      FROM supplier_sub_orders so
      JOIN orders o ON o.id = so.order_id
-     WHERE so.status NOT IN ('delivered') AND so.delay_notified = false`
+     WHERE so.delay_notified = false
+       AND NOT EXISTS (
+         SELECT 1 FROM hub_shipments hs WHERE hs.sub_order_id = so.id AND hs.status = 'delivered'
+       )`
   );
 
   for (const so of subOrders) {
