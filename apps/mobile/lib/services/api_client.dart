@@ -271,22 +271,29 @@ class ApiClient {
   /// headers -- genuinely untested here, since this sandbox has no
   /// real Flutter/Dart SDK to run it against. Worth confirming
   /// directly the first time this is tested for real.
+  /// Real VIN decode (make + model year only) -- calls the real
+  /// backend endpoint (GET /fitment/vin-decode/:vin), which checks
+  /// the real vin_wmi_codes table (Chinese brands) first, then falls
+  /// back to NHTSA's free API server-side. Deliberately does NOT
+  /// return a model -- that genuinely needs a licensed provider this
+  /// doesn't have, discussed directly with the person; the caller
+  /// hands off to the brand/model/generation picker from here.
   Future<Map<String, String>> decodeVin(String vin) async {
     final trimmed = vin.trim().toUpperCase();
     if (trimmed.length != 17) {
       throw ApiException('A VIN is always 17 characters — please check and try again.');
     }
-    final response = await _client.get(Uri.parse('https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/$trimmed?format=json'));
-    if (response.statusCode != 200) throw ApiException('Could not reach the VIN decoder (${response.statusCode})');
+    final response = await _client.get(Uri.parse('$baseUrl/fitment/vin-decode/$trimmed'));
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    final results = (body['Results'] as List?)?.cast<Map<String, dynamic>>();
-    if (results == null || results.isEmpty) throw ApiException('Could not decode this VIN.');
-    final result = results.first;
-    final make = result['Make'] as String?;
-    final model = result['Model'] as String?;
-    final year = result['ModelYear'] as String?;
-    if (make == null || make.isEmpty) throw ApiException('This VIN could not be recognized. Try entering your vehicle manually instead.');
-    return {'make': make, 'model': model ?? '', 'year': year ?? ''};
+    if (response.statusCode != 200) {
+      throw ApiException(body['error'] as String? ?? 'Could not reach the VIN decoder (${response.statusCode})');
+    }
+    final make = body['make'] as String?;
+    if (make == null || make.isEmpty) {
+      throw ApiException('This VIN could not be recognized. Try entering your vehicle manually instead.');
+    }
+    final modelYear = body['modelYear'];
+    return {'make': make, 'year': modelYear == null ? '' : modelYear.toString()};
   }
 
   /// Real address autocomplete via OpenStreetMap's own free, public
