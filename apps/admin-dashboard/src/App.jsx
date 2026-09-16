@@ -2723,6 +2723,126 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
   );
 }
 
+// Confirmed with the person: admin CRUD for the real vin_wmi_codes
+// table -- lets the WMI codes powering the basic VIN decoder be
+// corrected and expanded over time as real VINs are actually
+// checked, since the seeded starting set is a best-effort list, not
+// a claim of completeness.
+function VinWmiCodesSettings({ onSessionExpired }) {
+  const [codes, setCodes] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [newPrefix, setNewPrefix] = useState("");
+  const [newMake, setNewMake] = useState("");
+  const [newCountry, setNewCountry] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [deletingPrefix, setDeletingPrefix] = useState(null);
+
+  const load = () => {
+    setIsLoading(true);
+    fetchVinWmiCodes(getStoredToken())
+      .then((c) => { setCodes(c); setIsLoading(false); })
+      .catch((e) => {
+        if (e instanceof SessionExpiredError) return onSessionExpired();
+        setError(e.message); setIsLoading(false);
+      });
+  };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleAdd = async () => {
+    if (newPrefix.trim().length !== 3 || !newMake.trim()) {
+      setError("A 3-character WMI prefix and a make are both required.");
+      return;
+    }
+    setIsSaving(true);
+    setError(null);
+    try {
+      await saveVinWmiCode(getStoredToken(), newPrefix.trim(), newMake.trim(), newCountry.trim() || undefined);
+      setNewPrefix(""); setNewMake(""); setNewCountry("");
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async (wmiPrefix) => {
+    setDeletingPrefix(wmiPrefix);
+    setError(null);
+    try {
+      await deleteVinWmiCode(getStoredToken(), wmiPrefix);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setError(err.message);
+    } finally {
+      setDeletingPrefix(null);
+    }
+  };
+
+  const cellStyle = { ...body, fontSize: 12.5, padding: "8px 10px", borderBottom: `1px solid ${C.line}` };
+  const inputStyle = { ...body, fontSize: 12.5, border: `1px solid ${C.line}`, borderRadius: 6, padding: "6px 10px" };
+
+  return (
+    <Card title="VIN WMI codes (basic VIN decoder)" style={{ marginBottom: 20 }}>
+      <div style={{ padding: 16 }}>
+        <div style={{ ...body, fontSize: 12, color: C.muted, marginBottom: 14 }}>
+          Powers the basic VIN decoder's make lookup (used before falling back to NHTSA). This is a best-effort starting list, not a claim of completeness — correct or add codes here as real VINs are checked.
+        </div>
+        {isLoading ? (
+          <div style={{ ...body, fontSize: 13, color: C.muted }}>Loading…</div>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ ...cellStyle, textAlign: "left", color: C.muted, fontWeight: 600 }}>WMI prefix</th>
+                <th style={{ ...cellStyle, textAlign: "left", color: C.muted, fontWeight: 600 }}>Make</th>
+                <th style={{ ...cellStyle, textAlign: "left", color: C.muted, fontWeight: 600 }}>Country</th>
+                <th style={cellStyle}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {codes.map((c) => (
+                <tr key={c.wmiPrefix}>
+                  <td style={cellStyle}>{c.wmiPrefix}</td>
+                  <td style={cellStyle}>{c.make}</td>
+                  <td style={{ ...cellStyle, color: C.muted }}>{c.country || "—"}</td>
+                  <td style={{ ...cellStyle, textAlign: "right" }}>
+                    <button
+                      onClick={() => handleDelete(c.wmiPrefix)}
+                      disabled={deletingPrefix === c.wmiPrefix}
+                      style={{ ...body, fontSize: 12, color: C.red, background: "none", border: "none", cursor: "pointer" }}
+                    >
+                      {deletingPrefix === c.wmiPrefix ? "Removing…" : "Remove"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              <tr>
+                <td style={cellStyle}><input value={newPrefix} onChange={(e) => setNewPrefix(e.target.value.toUpperCase())} maxLength={3} placeholder="e.g. LSJ" style={{ ...inputStyle, width: 60 }} /></td>
+                <td style={cellStyle}><input value={newMake} onChange={(e) => setNewMake(e.target.value)} placeholder="e.g. Geely" style={{ ...inputStyle, width: 140 }} /></td>
+                <td style={cellStyle}><input value={newCountry} onChange={(e) => setNewCountry(e.target.value)} placeholder="e.g. China" style={{ ...inputStyle, width: 120 }} /></td>
+                <td style={{ ...cellStyle, textAlign: "right" }}>
+                  <button
+                    onClick={handleAdd}
+                    disabled={isSaving}
+                    style={{ ...body, fontSize: 12, fontWeight: 700, color: "#fff", background: isSaving ? "#D1D5DB" : C.signal, border: "none", borderRadius: 6, padding: "6px 14px", cursor: isSaving ? "default" : "pointer" }}
+                  >
+                    {isSaving ? "Adding…" : "Add"}
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        )}
+        {error && <div style={{ ...body, fontSize: 12.5, color: C.red, marginTop: 10 }}>{error}</div>}
+      </div>
+    </Card>
+  );
+}
+
 function VehicleDataPage({ onSessionExpired }) {
   const [brands, setBrands] = useState([]);
   const [selectedBrand, setSelectedBrand] = useState(null);
@@ -3207,6 +3327,9 @@ function VehicleDataPage({ onSessionExpired }) {
         errorMessage={errorMessage}
         isSaving={isSavingEdit}
       />
+      <div style={{ padding: "0 24px 24px" }}>
+        <VinWmiCodesSettings onSessionExpired={onSessionExpired} />
+      </div>
     </div>
   );
 }

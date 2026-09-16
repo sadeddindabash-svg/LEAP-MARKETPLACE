@@ -276,6 +276,9 @@ async function fitmentMutate(method, path, token, body) {
 
 export const createBrand = (token, name, nameAr, photoUrl) => fitmentMutate("POST", "/fitment/brands", token, { name, nameAr, photoUrl });
 export const deleteBrand = (token, id) => fitmentMutate("DELETE", `/fitment/brands/${id}`, token);
+export const fetchVinWmiCodes = (token) => authedGet("/fitment/vin-wmi-codes", token);
+export const saveVinWmiCode = (token, wmiPrefix, make, country) => fitmentMutate("POST", "/fitment/vin-wmi-codes", token, { wmiPrefix, make, country });
+export const deleteVinWmiCode = (token, wmiPrefix) => fitmentMutate("DELETE", `/fitment/vin-wmi-codes/${wmiPrefix}`, token);
 export const createModel = (token, brandId, name, nameAr, photoUrl) => fitmentMutate("POST", `/fitment/brands/${brandId}/models`, token, { name, nameAr, photoUrl });
 export const deleteModel = (token, id) => fitmentMutate("DELETE", `/fitment/models/${id}`, token);
 export const updateModelPhoto = (token, id, photoUrl) => fitmentMutate("PATCH", `/fitment/models/${id}/photo`, token, { photoUrl });
