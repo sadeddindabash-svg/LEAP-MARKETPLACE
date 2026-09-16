@@ -570,7 +570,24 @@ router.get('/vin-decode/:vin', async (req, res, next) => {
 
     const { rows: localRows } = await db.query('SELECT make, country FROM vin_wmi_codes WHERE wmi_prefix = $1', [wmi]);
     if (localRows.length > 0) {
-      return res.json({ vin, isValidCheckDigit: isValid, make: localRows[0].make, model: null, modelYear, source: 'local' });
+      // Confirmed with the person: checks the real, model-specific
+      // pattern table (the person's own real, provided dataset) on
+      // the full 8-character prefix -- only trusted when a single
+      // real model was consistently observed for this exact prefix
+      // (is_ambiguous = FALSE). The same real 8-character prefix can
+      // genuinely be shared across several related, platform-sharing
+      // real models (confirmed directly in the person's own data,
+      // e.g. one real Changan prefix covers CS75, CS75 PHEV, and
+      // CS85 COUPE across several real model years) -- an ambiguous
+      // match stays honestly unresolved here rather than silently
+      // guessing one.
+      const prefix8 = vin.slice(0, 8);
+      const { rows: modelRows } = await db.query(
+        'SELECT model FROM vin_model_patterns WHERE prefix = $1 AND is_ambiguous = FALSE',
+        [prefix8]
+      );
+      const model = modelRows.length > 0 ? modelRows[0].model : null;
+      return res.json({ vin, isValidCheckDigit: isValid, make: localRows[0].make, model, modelYear, source: 'local' });
     }
 
     // Confirmed with the person: NHTSA's free vPIC API as a fallback
