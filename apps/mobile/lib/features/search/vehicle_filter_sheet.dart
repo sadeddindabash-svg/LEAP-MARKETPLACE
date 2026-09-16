@@ -78,21 +78,23 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
   }
 
   /// Real VIN lookup and resolution (new). Decodes the real VIN via
-  /// the real backend (see ApiClient.decodeVin's own header comment),
-  /// which returns make + model year only -- model/trim decoding
-  /// genuinely needs a licensed provider this doesn't have, an
-  /// honest, deliberate limitation discussed directly with the
-  /// person. Resolves as far as a real brand match, then hands off to
-  /// that brand's own real model list for the person to pick from,
-  /// carrying the real decoded year forward to pre-narrow the
-  /// generation once they do.
+  /// the real backend (see ApiClient.decodeVin's own header comment).
+  /// For a non-Chinese brand, the real backend's NHTSA fallback often
+  /// includes a real model too -- resolves as far down as brand ->
+  /// model -> generation when all three genuinely match, using the
+  /// real decoded year to pick the right generation. For a Chinese
+  /// brand (the real local WMI table), there's genuinely no model
+  /// data at all -- an honest, deliberate limitation discussed
+  /// directly with the person -- so this correctly stops at brand and
+  /// hands off to that brand's own model list instead.
   ///
-  /// Degrades gracefully when even the brand doesn't match: shows a
-  /// clear real message and leaves the picker exactly where it was,
-  /// rather than failing outright. Fuzzy-matched by a simple
-  /// case-insensitive substring check -- the real backend's own
+  /// Degrades gracefully at whichever real step doesn't find a match,
+  /// rather than failing outright: a real brand match with no real
+  /// model match still pre-selects the brand and lets the person pick
+  /// the model themselves from there, and so on. Fuzzy-matched by a
+  /// simple case-insensitive substring check -- the real backend's own
   /// naming (WMI table or NHTSA) won't always exactly match this
-  /// app's own real brand names character-for-character (e.g.
+  /// app's own real brand/model names character-for-character (e.g.
   /// "Mercedes-Benz" vs "Mercedes").
   Future<void> _lookupByVin() async {
     final vin = await showDialog<String>(
@@ -121,33 +123,68 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
     try {
       final decoded = await ApiClient().decodeVin(vin);
       final decodedMake = decoded['make']!;
+      final decodedModel = decoded['model'] ?? '';
       final decodedYear = int.tryParse(decoded['year'] ?? '');
+      final decodedLabel = [decodedMake, if (decodedModel.isNotEmpty) decodedModel, if (decodedYear != null) '($decodedYear)'].join(' ');
 
       final brands = await ApiClient().fetchVehicleBrands();
       final matchedBrand = _firstMatch(brands.cast<Map<String, dynamic>>().where(
             (b) => (b['name'] as String).toLowerCase().contains(decodedMake.toLowerCase()) || decodedMake.toLowerCase().contains((b['name'] as String).toLowerCase()),
           ));
       if (matchedBrand == null || !mounted) {
-        _showVinResultMessage(decodedYear == null
-            ? 'Decoded: $decodedMake — but this brand isn\'t in our catalog yet. Please select your vehicle manually.'
-            : 'Decoded: $decodedMake ($decodedYear) — but this brand isn\'t in our catalog yet. Please select your vehicle manually.');
+        _showVinResultMessage('Decoded: $decodedLabel — but this brand isn\'t in our catalog yet. Please select your vehicle manually.');
         return;
       }
 
-      // Real, honest handoff: the backend only decodes make + year,
-      // not model, so this lands on the matched brand's own model
-      // list rather than pretending to resolve further. _pendingVinYear
-      // carries the real decoded year forward so _selectModel's own
-      // generation fetch can pre-narrow once the person picks a model.
-      _pendingVinYear = decodedYear;
-      _showVinResultMessage(decodedYear == null
-          ? 'Decoded: $decodedMake. Please pick your model below.'
-          : 'Decoded: $decodedMake ($decodedYear). Please pick your model below.');
-      setState(() {
-        _selectedBrand = matchedBrand;
-        _modelsFuture = ApiClient().fetchModelsForBrand(matchedBrand['id'] as String);
-        _step = _Step.model;
-      });
+      final models = await ApiClient().fetchModelsForBrand(matchedBrand['id'] as String);
+      final matchedModel = decodedModel.isEmpty
+          ? null
+          : _firstMatch(models.cast<Map<String, dynamic>>().where(
+                (m) => (m['name'] as String).toLowerCase().contains(decodedModel.toLowerCase()) || decodedModel.toLowerCase().contains((m['name'] as String).toLowerCase()),
+              ));
+      if (matchedModel == null || !mounted) {
+        // Real, honest handoff: no real model to match (Chinese-brand
+        // local-table lookup), or the real decoded model didn't match
+        // anything in this brand's own real model list. Lands on the
+        // matched brand's own model list rather than pretending to
+        // resolve further. _pendingVinYear carries the real decoded
+        // year forward so _selectModel's own generation fetch can
+        // pre-narrow once the person picks a model.
+        _pendingVinYear = decodedYear;
+        _showVinResultMessage('Decoded: $decodedLabel. Please pick your model below.');
+        setState(() {
+          _selectedBrand = matchedBrand;
+          _modelsFuture = Future.value(models);
+          _step = _Step.model;
+        });
+        return;
+      }
+
+      final generations = await ApiClient().fetchGenerationsForModel(matchedModel['id'] as String);
+      final matchedGeneration = decodedYear == null
+          ? null
+          : _firstMatch(generations.cast<Map<String, dynamic>>().where((g) {
+              final yearStart = g['yearStart'] as int;
+              final yearEnd = g['yearEnd'] as int?;
+              return decodedYear >= yearStart && (yearEnd == null || decodedYear <= yearEnd);
+            }));
+      if (matchedGeneration == null || !mounted) {
+        _showVinResultMessage('Decoded: $decodedLabel — found the brand and model, but not the exact generation for that year. Please continue from here.');
+        setState(() {
+          _selectedBrand = matchedBrand;
+          _selectedModel = matchedModel;
+          _generationsFuture = Future.value(generations);
+          _step = _Step.generation;
+        });
+        return;
+      }
+
+      // Full real resolution succeeded -- brand, model, and year all
+      // genuinely matched. Same real completion path _selectGeneration
+      // itself uses for a matched generation.
+      _selectedBrand = matchedBrand;
+      _selectedModel = matchedModel;
+      _selectGeneration(matchedGeneration);
     } on ApiException catch (e) {
       _showVinResultMessage(e.message);
     } catch (e) {

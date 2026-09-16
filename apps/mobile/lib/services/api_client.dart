@@ -292,8 +292,9 @@ class ApiClient {
     if (make == null || make.isEmpty) {
       throw ApiException('This VIN could not be recognized. Try entering your vehicle manually instead.');
     }
+    final model = body['model'] as String?;
     final modelYear = body['modelYear'];
-    return {'make': make, 'year': modelYear == null ? '' : modelYear.toString()};
+    return {'make': make, 'model': model ?? '', 'year': modelYear == null ? '' : modelYear.toString()};
   }
 
   /// Real address autocomplete via OpenStreetMap's own free, public

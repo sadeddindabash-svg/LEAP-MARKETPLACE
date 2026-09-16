@@ -570,7 +570,7 @@ router.get('/vin-decode/:vin', async (req, res, next) => {
 
     const { rows: localRows } = await db.query('SELECT make, country FROM vin_wmi_codes WHERE wmi_prefix = $1', [wmi]);
     if (localRows.length > 0) {
-      return res.json({ vin, isValidCheckDigit: isValid, make: localRows[0].make, modelYear, source: 'local' });
+      return res.json({ vin, isValidCheckDigit: isValid, make: localRows[0].make, model: null, modelYear, source: 'local' });
     }
 
     // Confirmed with the person: NHTSA's free vPIC API as a fallback
@@ -586,11 +586,13 @@ router.get('/vin-decode/:vin', async (req, res, next) => {
         const data = await nhtsaRes.json();
         const results = data.Results || [];
         const make = results.find((r) => r.Variable === 'Make')?.Value || null;
+        const model = results.find((r) => r.Variable === 'Model')?.Value || null;
         const nhtsaYear = results.find((r) => r.Variable === 'Model Year')?.Value;
         return res.json({
           vin,
           isValidCheckDigit: isValid,
           make: make || null,
+          model: model || null,
           modelYear: nhtsaYear ? Number(nhtsaYear) : modelYear,
           source: make ? 'nhtsa' : 'unrecognized',
         });
@@ -599,7 +601,7 @@ router.get('/vin-decode/:vin', async (req, res, next) => {
       console.error('[vin-decode] NHTSA lookup failed (non-fatal, falling back to local-only result):', fetchErr.message);
     }
 
-    res.json({ vin, isValidCheckDigit: isValid, make: null, modelYear, source: 'unrecognized' });
+    res.json({ vin, isValidCheckDigit: isValid, make: null, model: null, modelYear, source: 'unrecognized' });
   } catch (err) {
     next(err);
   }
