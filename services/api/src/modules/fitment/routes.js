@@ -554,6 +554,20 @@ function decodeVinModelYear(vin) {
   return isLaterCycle ? baseYear + 30 : baseYear;
 }
 
+// Confirmed with the person: real bug found and fixed via testing
+// against real VIN examples before shipping -- the standard
+// position-7 cycle heuristic above does NOT reliably hold for every
+// real manufacturer (confirmed directly: a real Changan prefix
+// decoded 3 real, known-2015-2018 vehicles as 1984-1986 instead).
+// Returns both possible years for a year-code character so the
+// caller can pick whichever one actually falls within a real, known
+// production range from vin_model_patterns, when one exists.
+function vinYearCodeBothCycles(yearChar) {
+  const baseYear = VIN_YEAR_CODES[yearChar];
+  if (baseYear === undefined) return null;
+  return { earlier: baseYear, later: baseYear + 30 };
+}
+
 // GET /fitment/vin-decode/:vin — real, basic decode: make + model year
 // only. Confirmed with the person: hands off to the existing Year/
 // Make/Model picker for the exact model/generation/trim, since that
@@ -583,11 +597,31 @@ router.get('/vin-decode/:vin', async (req, res, next) => {
       // guessing one.
       const prefix8 = vin.slice(0, 8);
       const { rows: modelRows } = await db.query(
-        'SELECT model FROM vin_model_patterns WHERE prefix = $1 AND is_ambiguous = FALSE',
+        'SELECT model, year_min, year_max FROM vin_model_patterns WHERE prefix = $1 AND is_ambiguous = FALSE',
         [prefix8]
       );
+      let finalYear = modelYear;
       const model = modelRows.length > 0 ? modelRows[0].model : null;
-      return res.json({ vin, isValidCheckDigit: isValid, make: localRows[0].make, model, modelYear, source: 'local' });
+      if (modelRows.length > 0) {
+        // Real bug found and fixed here: tested against 3 real VIN
+        // examples for a real Changan prefix before trusting this --
+        // the standard cycle heuristic above picked 1984-1986 for
+        // real vehicles genuinely built in 2014-2016 (known real
+        // range 2015-2018 for this exact prefix). Re-disambiguates
+        // using the real known range whenever one exists, rather than
+        // trusting the generic position-7 heuristic blindly for a
+        // manufacturer it doesn't reliably hold for.
+        const both = vinYearCodeBothCycles(vin[9]);
+        const { year_min: yearMin, year_max: yearMax } = modelRows[0];
+        if (both && yearMin != null && yearMax != null) {
+          const earlierFits = both.earlier >= yearMin - 1 && both.earlier <= yearMax + 1;
+          const laterFits = both.later >= yearMin - 1 && both.later <= yearMax + 1;
+          if (laterFits && !earlierFits) finalYear = both.later;
+          else if (earlierFits && !laterFits) finalYear = both.earlier;
+          // if both or neither fit, the generic heuristic's own result stands unchanged
+        }
+      }
+      return res.json({ vin, isValidCheckDigit: isValid, make: localRows[0].make, model, modelYear: finalYear, source: 'local' });
     }
 
     // Confirmed with the person: NHTSA's free vPIC API as a fallback
