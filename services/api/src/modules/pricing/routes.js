@@ -271,4 +271,99 @@ router.get('/display-rates', async (req, res, next) => {
   }
 });
 
+function toLoyaltyTierDto(row) {
+  return {
+    id: row.id, name: row.name, nameAr: row.name_ar,
+    spendThreshold: Number(row.spend_threshold), discountPercentage: Number(row.discount_percentage),
+    icon: row.icon, color: row.color, sortOrder: row.sort_order,
+  };
+}
+
+// GET /pricing/loyalty-tiers — public (the mobile app needs this to
+// show every buyer their own real progress and the full real tier
+// list, logged in or not yet).
+router.get('/loyalty-tiers', async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT * FROM loyalty_tiers ORDER BY sort_order ASC, spend_threshold ASC');
+    res.json(rows.map(toLoyaltyTierDto));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Confirmed with the person: a real spend_threshold must be unique
+// across tiers (two tiers unlocking at the exact same real spend is
+// always a real mistake, not a legitimate design) -- checked here
+// rather than left to a database constraint, so the real error
+// message can actually say which existing tier collides.
+async function validateLoyaltyTierInput(body, excludeId) {
+  const { name, nameAr, spendThreshold, discountPercentage, icon, color } = body || {};
+  if (!name || !String(name).trim()) return { error: 'name is required' };
+  if (spendThreshold === undefined || spendThreshold === null || Number(spendThreshold) < 0) {
+    return { error: 'spendThreshold is required and must be 0 or greater' };
+  }
+  if (discountPercentage === undefined || discountPercentage === null || Number(discountPercentage) < 0 || Number(discountPercentage) >= 100) {
+    return { error: 'discountPercentage is required and must be between 0 and 100' };
+  }
+  const { rows: collision } = await db.query(
+    `SELECT id, name FROM loyalty_tiers WHERE spend_threshold = $1 AND id != $2`,
+    [Number(spendThreshold), excludeId || 0]
+  );
+  if (collision.length > 0) {
+    return { error: `The tier "${collision[0].name}" already unlocks at this exact spend threshold. Choose a different amount.` };
+  }
+  return {
+    name: String(name).trim(), nameAr: nameAr || null,
+    spendThreshold: Number(spendThreshold), discountPercentage: Number(discountPercentage),
+    icon: icon || 'medal', color: color || 'gray',
+  };
+}
+
+router.post('/loyalty-tiers', requireAuth, requireRole('admin'), requirePageAccess('pricing'), async (req, res, next) => {
+  try {
+    const validated = await validateLoyaltyTierInput(req.body);
+    if (validated.error) return res.status(400).json({ error: validated.error });
+    const { name, nameAr, spendThreshold, discountPercentage, icon, color } = validated;
+    const { rows: maxSort } = await db.query('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM loyalty_tiers');
+    const { rows } = await db.query(
+      `INSERT INTO loyalty_tiers (name, name_ar, spend_threshold, discount_percentage, icon, color, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [name, nameAr, spendThreshold, discountPercentage, icon, color, maxSort[0].next]
+    );
+    res.status(201).json(toLoyaltyTierDto(rows[0]));
+  } catch (err) {
+    if (err.code === '23505') return res.status(400).json({ error: 'A tier with this name already exists' });
+    next(err);
+  }
+});
+
+router.patch('/loyalty-tiers/:id', requireAuth, requireRole('admin'), requirePageAccess('pricing'), async (req, res, next) => {
+  try {
+    const validated = await validateLoyaltyTierInput(req.body, Number(req.params.id));
+    if (validated.error) return res.status(400).json({ error: validated.error });
+    const { name, nameAr, spendThreshold, discountPercentage, icon, color } = validated;
+    const { rows } = await db.query(
+      `UPDATE loyalty_tiers SET
+         name = $1, name_ar = $2, spend_threshold = $3, discount_percentage = $4, icon = $5, color = $6, updated_at = now()
+       WHERE id = $7 RETURNING *`,
+      [name, nameAr, spendThreshold, discountPercentage, icon, color, req.params.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Loyalty tier not found' });
+    res.json(toLoyaltyTierDto(rows[0]));
+  } catch (err) {
+    if (err.code === '23505') return res.status(400).json({ error: 'A tier with this name already exists' });
+    next(err);
+  }
+});
+
+router.delete('/loyalty-tiers/:id', requireAuth, requireRole('admin'), requirePageAccess('pricing'), async (req, res, next) => {
+  try {
+    const { rowCount } = await db.query('DELETE FROM loyalty_tiers WHERE id = $1', [req.params.id]);
+    if (rowCount === 0) return res.status(404).json({ error: 'Loyalty tier not found' });
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
