@@ -811,7 +811,7 @@ router.post('/vin-model-patterns/bulk-upload', requireAuth, requireRole('admin')
         await db.query('INSERT INTO vin_wmi_codes (wmi_prefix, make, country) VALUES ($1, $2, $3)', [wmi, brand, null]);
         newWmiCount += 1;
       } else if (existingWmi[0].make.toLowerCase() !== brand.toLowerCase()) {
-        needsReview.push({ wmi, existingBrand: existingWmi[0].make, uploadedBrand: brand, prefix });
+        needsReview.push({ wmi, existingBrand: existingWmi[0].make, uploadedBrand: brand, prefix, model, year, type });
         continue; // real conflict -- the real 8-character pattern below is held back too, since its own brand is in question
       }
 
@@ -829,6 +829,41 @@ router.post('/vin-model-patterns/bulk-upload', requireAuth, requireRole('admin')
 
     await logAdminAction(req, 'vin_model_patterns_bulk_uploaded', 'vin_model_pattern', 'bulk', { newWmiCount, patternCount, skippedCount: skipped.length, reviewCount: needsReview.length });
     res.json({ newWmiCount, patternCount, skipped, needsReview });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /vin-model-patterns/resolve-conflict { wmi, chosenBrand, prefix, model, year, type }
+// Confirmed with the person: one-click resolution for a row a bulk
+// upload held back due to a real WMI brand conflict -- the admin
+// picks "keep old" or "use new" (chosenBrand is whichever real value
+// they picked), and this applies the real WMI brand and completes
+// the real, held-back model-pattern insert together, without needing
+// to re-upload the original file.
+router.post('/vin-model-patterns/resolve-conflict', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const { wmi, chosenBrand, prefix, model, year, type } = req.body || {};
+    const normalizedWmi = (wmi || '').toUpperCase().trim();
+    const normalizedPrefix = (prefix || '').toUpperCase().trim();
+    if (normalizedWmi.length !== 3 || normalizedPrefix.length !== 8 || !chosenBrand || !model) {
+      return res.status(400).json({ error: 'wmi (3 chars), prefix (8 chars), chosenBrand, and model are all required' });
+    }
+    const validTypes = ['PHEV', 'Electric', 'Hybrid'];
+    const normalizedType = validTypes.includes(type) ? type : null;
+
+    await db.query('UPDATE vin_wmi_codes SET make = $1, updated_at = now() WHERE wmi_prefix = $2', [chosenBrand, normalizedWmi]);
+    await db.query(
+      `INSERT INTO vin_model_patterns (prefix, brand, model, type, is_ambiguous, year_min, year_max, example_count, source)
+       VALUES ($1, $2, $3, $4, FALSE, $5, $5, 1, 'Bulk upload (Vehicle Data page) - conflict resolved')
+       ON CONFLICT (prefix) DO UPDATE SET
+         brand = EXCLUDED.brand, model = EXCLUDED.model, type = EXCLUDED.type,
+         is_ambiguous = FALSE, year_min = LEAST(vin_model_patterns.year_min, EXCLUDED.year_min),
+         year_max = GREATEST(vin_model_patterns.year_max, EXCLUDED.year_max), updated_at = now()`,
+      [normalizedPrefix, chosenBrand, model, normalizedType, year || null]
+    );
+    await logAdminAction(req, 'vin_model_pattern_conflict_resolved', 'vin_model_pattern', normalizedPrefix, { wmi: normalizedWmi, chosenBrand });
+    res.json({ wmi: normalizedWmi, prefix: normalizedPrefix, brand: chosenBrand, model });
   } catch (err) {
     next(err);
   }

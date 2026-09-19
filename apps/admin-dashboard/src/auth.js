@@ -284,6 +284,8 @@ export const saveVinModelPattern = (token, prefix, brand, model, type, yearMin, 
   fitmentMutate("POST", "/fitment/vin-model-patterns", token, { prefix, brand, model, type, yearMin, yearMax });
 export const deleteVinModelPattern = (token, prefix) => fitmentMutate("DELETE", `/fitment/vin-model-patterns/${prefix}`, token);
 export const bulkUploadVinModelPatterns = (token, rows) => fitmentMutate("POST", "/fitment/vin-model-patterns/bulk-upload", token, { rows });
+export const resolveVinModelPatternConflict = (token, wmi, chosenBrand, prefix, model, year, type) =>
+  fitmentMutate("POST", "/fitment/vin-model-patterns/resolve-conflict", token, { wmi, chosenBrand, prefix, model, year, type });
 export const createModel = (token, brandId, name, nameAr, photoUrl) => fitmentMutate("POST", `/fitment/brands/${brandId}/models`, token, { name, nameAr, photoUrl });
 export const deleteModel = (token, id) => fitmentMutate("DELETE", `/fitment/models/${id}`, token);
 export const updateModelPhoto = (token, id, photoUrl) => fitmentMutate("PATCH", `/fitment/models/${id}/photo`, token, { photoUrl });

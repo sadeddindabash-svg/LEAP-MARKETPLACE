@@ -12,7 +12,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
   createBrand, deleteBrand, createModel, deleteModel, createGeneration, deleteGeneration, createEngine, deleteEngine, createTransmission, deleteTransmission,
   fetchVinWmiCodes, saveVinWmiCode, deleteVinWmiCode,
-  fetchVinModelPatterns, saveVinModelPattern, deleteVinModelPattern, bulkUploadVinModelPatterns,
+  fetchVinModelPatterns, saveVinModelPattern, deleteVinModelPattern, bulkUploadVinModelPatterns, resolveVinModelPatternConflict,
   fetchHubLocations, createHubLocation, deleteHubLocation, assignHubToSubOrder,
   fetchFeeComponents, createFeeComponent, updateFeeComponent, deleteFeeComponent, moveFeeComponent, fetchFxRate, updateFxRate, fetchFxRateMode, updateFxRateMode, previewPricing,
   fetchDiscountRules, createDiscountRule, updateDiscountRule, deleteDiscountRule,
@@ -2751,6 +2751,7 @@ function VinModelPatternsSettings({ onSessionExpired }) {
   const [deletingPrefix, setDeletingPrefix] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadSummary, setUploadSummary] = useState(null);
+  const [resolvingKey, setResolvingKey] = useState(null);
 
   const load = () => {
     setIsLoading(true);
@@ -2856,6 +2857,24 @@ function VinModelPatternsSettings({ onSessionExpired }) {
     }
   };
 
+  const handleResolveConflict = async (conflict, chosenBrand) => {
+    const key = conflict.prefix;
+    setResolvingKey(key);
+    setError(null);
+    try {
+      await resolveVinModelPatternConflict(
+        getStoredToken(), conflict.wmi, chosenBrand, conflict.prefix, conflict.model, conflict.year, conflict.type
+      );
+      setUploadSummary((prev) => prev && ({ ...prev, needsReview: prev.needsReview.filter((r) => r.prefix !== key) }));
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setError(err.message);
+    } finally {
+      setResolvingKey(null);
+    }
+  };
+
   const cellStyle = { ...body, fontSize: 12.5, padding: "8px 10px", borderBottom: `1px solid ${C.line}` };
   const inputStyle = { ...body, fontSize: 12.5, border: `1px solid ${C.line}`, borderRadius: 6, padding: "6px 10px" };
 
@@ -2886,11 +2905,29 @@ function VinModelPatternsSettings({ onSessionExpired }) {
             {uploadSummary.needsReview.length > 0 && (
               <div style={{ marginTop: 6, color: C.red }}>
                 {uploadSummary.needsReview.length} row(s) need your review — the brand disagrees with what's already saved for that code:
-                <ul style={{ margin: "4px 0 0 18px", padding: 0 }}>
+                <div style={{ marginTop: 6 }}>
                   {uploadSummary.needsReview.map((r) => (
-                    <li key={r.prefix}>{r.wmi}: already "{r.existingBrand}", this file says "{r.uploadedBrand}" ({r.prefix})</li>
+                    <div key={r.prefix} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 0", borderBottom: `1px solid ${C.line}` }}>
+                      <span>{r.wmi}: already "{r.existingBrand}", this file says "{r.uploadedBrand}" ({r.prefix})</span>
+                      <span style={{ display: "flex", gap: 6, flexShrink: 0, marginLeft: 12 }}>
+                        <button
+                          onClick={() => handleResolveConflict(r, r.existingBrand)}
+                          disabled={resolvingKey === r.prefix}
+                          style={{ ...body, fontSize: 11.5, border: `1px solid ${C.line}`, background: "#fff", borderRadius: 6, padding: "4px 10px", cursor: resolvingKey === r.prefix ? "default" : "pointer" }}
+                        >
+                          Keep old ("{r.existingBrand}")
+                        </button>
+                        <button
+                          onClick={() => handleResolveConflict(r, r.uploadedBrand)}
+                          disabled={resolvingKey === r.prefix}
+                          style={{ ...body, fontSize: 11.5, fontWeight: 700, color: "#fff", background: resolvingKey === r.prefix ? "#D1D5DB" : C.signal, border: "none", borderRadius: 6, padding: "4px 10px", cursor: resolvingKey === r.prefix ? "default" : "pointer" }}
+                        >
+                          Use new ("{r.uploadedBrand}")
+                        </button>
+                      </span>
+                    </div>
                   ))}
-                </ul>
+                </div>
               </div>
             )}
           </div>
