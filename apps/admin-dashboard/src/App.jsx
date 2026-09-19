@@ -16,6 +16,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchHubLocations, createHubLocation, deleteHubLocation, assignHubToSubOrder,
   fetchFeeComponents, createFeeComponent, updateFeeComponent, deleteFeeComponent, moveFeeComponent, fetchFxRate, updateFxRate, fetchFxRateMode, updateFxRateMode, previewPricing,
   fetchDiscountRules, createDiscountRule, updateDiscountRule, deleteDiscountRule,
+  fetchLoyaltyTiers, createLoyaltyTier, updateLoyaltyTier, deleteLoyaltyTier,
   fetchFlaggedShipments,
   fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart, uploadImage, updateCategoryPhoto, updatePartPhoto, moveCategory, movePart, moveBrand, moveModel, moveGeneration, moveEngine, moveTransmission, updateBrandPhoto, updateModelPhoto,
   updateCategory, updatePart, updateBrand, updateModel, updateGeneration, updateEngine, updateTransmission,
@@ -4191,6 +4192,7 @@ function PricingPage({ onSessionExpired }) {
         </Card>
       </div>
       <DiscountRulesSection onSessionExpired={onSessionExpired} />
+      <LoyaltyTiersSection onSessionExpired={onSessionExpired} />
     </div>
   );
 }
@@ -4200,6 +4202,187 @@ function PricingPage({ onSessionExpired }) {
 // optional refinements; strict, structural overlap blocking,
 // confirmed explicitly after walking through the real practical
 // implications) -- the admin-controlled bulk discount-rules engine.
+// Confirmed with the person: admin CRUD for the real loyalty_tiers
+// table -- every threshold, discount percentage, name, and icon is
+// set here, nothing hardcoded in the app. Lives on the Pricing page
+// alongside discount rules, confirmed directly with the person.
+function LoyaltyTiersSection({ onSessionExpired }) {
+  const [tiers, setTiers] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  const [name, setName] = useState("");
+  const [nameAr, setNameAr] = useState("");
+  const [spendThreshold, setSpendThreshold] = useState("");
+  const [discountPercentage, setDiscountPercentage] = useState("");
+  const [icon, setIcon] = useState("medal");
+  const [color, setColor] = useState("gray");
+  const [editingId, setEditingId] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState(null);
+
+  const load = () => {
+    setLoadState("loading");
+    fetchLoyaltyTiers(getStoredToken())
+      .then((t) => { setTiers(t); setLoadState("ready"); })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const resetForm = () => {
+    setName(""); setNameAr(""); setSpendThreshold(""); setDiscountPercentage("");
+    setIcon("medal"); setColor("gray"); setEditingId(null); setFormError(null);
+  };
+
+  const handleSubmit = async () => {
+    if (!name.trim()) { setFormError("Enter a tier name."); return; }
+    if (spendThreshold === "") { setFormError("Enter a spend threshold."); return; }
+    if (discountPercentage === "") { setFormError("Enter a discount percentage."); return; }
+    setIsSubmitting(true);
+    setFormError(null);
+    const payload = {
+      name: name.trim(), nameAr: nameAr.trim() || null,
+      spendThreshold: parseFloat(spendThreshold), discountPercentage: parseFloat(discountPercentage),
+      icon, color,
+    };
+    try {
+      if (editingId) {
+        await updateLoyaltyTier(getStoredToken(), editingId, payload);
+      } else {
+        await createLoyaltyTier(getStoredToken(), payload);
+      }
+      resetForm();
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setFormError(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleEdit = (tier) => {
+    setEditingId(tier.id);
+    setName(tier.name);
+    setNameAr(tier.nameAr || "");
+    setSpendThreshold(String(tier.spendThreshold));
+    setDiscountPercentage(String(tier.discountPercentage));
+    setIcon(tier.icon);
+    setColor(tier.color);
+    setFormError(null);
+  };
+
+  const handleDelete = async (id) => {
+    try {
+      await deleteLoyaltyTier(getStoredToken(), id);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
+  const inputStyle = { ...body, fontSize: 13, border: `1px solid ${C.line}`, borderRadius: 6, padding: "6px 10px" };
+
+  return (
+    <Card title="Loyalty tiers" style={{ marginTop: 20 }}>
+      <div style={{ padding: 16 }}>
+        <div style={{ ...body, fontSize: 12, color: C.muted, marginBottom: 14 }}>
+          Every threshold and discount here is what buyers see in the app — sorted automatically by spend amount, lowest to highest.
+        </div>
+        {loadState === "loading" && <div style={{ ...body, fontSize: 13, color: C.muted }}>Loading…</div>}
+        {loadState === "error" && <div style={{ ...body, fontSize: 13, color: C.red }}>{errorMessage}</div>}
+        {loadState === "ready" && (
+          <>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end", marginBottom: 16 }}>
+              <div>
+                <div style={{ ...body, fontSize: 11, color: C.muted, marginBottom: 4 }}>Name</div>
+                <input style={{ ...inputStyle, width: 110 }} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Gold" />
+              </div>
+              <div>
+                <div style={{ ...body, fontSize: 11, color: C.muted, marginBottom: 4 }}>Arabic name (optional)</div>
+                <input style={{ ...inputStyle, width: 110 }} dir="rtl" value={nameAr} onChange={(e) => setNameAr(e.target.value)} placeholder="ذهبي" />
+              </div>
+              <div>
+                <div style={{ ...body, fontSize: 11, color: C.muted, marginBottom: 4 }}>Spend threshold ($)</div>
+                <input type="number" style={{ ...inputStyle, width: 100 }} value={spendThreshold} onChange={(e) => setSpendThreshold(e.target.value)} placeholder="e.g. 1500" />
+              </div>
+              <div>
+                <div style={{ ...body, fontSize: 11, color: C.muted, marginBottom: 4 }}>Discount %</div>
+                <input type="number" style={{ ...inputStyle, width: 80 }} value={discountPercentage} onChange={(e) => setDiscountPercentage(e.target.value)} placeholder="e.g. 6" />
+              </div>
+              <div>
+                <div style={{ ...body, fontSize: 11, color: C.muted, marginBottom: 4 }}>Icon</div>
+                <select style={inputStyle} value={icon} onChange={(e) => setIcon(e.target.value)}>
+                  <option value="medal">Medal</option>
+                  <option value="award">Award</option>
+                  <option value="diamond">Diamond</option>
+                  <option value="crown">Crown</option>
+                  <option value="star">Star</option>
+                </select>
+              </div>
+              <div>
+                <div style={{ ...body, fontSize: 11, color: C.muted, marginBottom: 4 }}>Color</div>
+                <select style={inputStyle} value={color} onChange={(e) => setColor(e.target.value)}>
+                  <option value="gray">Gray</option>
+                  <option value="amber">Amber</option>
+                  <option value="blue">Blue</option>
+                  <option value="purple">Purple</option>
+                  <option value="teal">Teal</option>
+                </select>
+              </div>
+              <button onClick={handleSubmit} disabled={isSubmitting} style={{ ...body, fontSize: 12.5, fontWeight: 700, color: "#fff", background: isSubmitting ? "#D1D5DB" : C.signal, border: "none", borderRadius: 8, padding: "8px 16px", cursor: isSubmitting ? "default" : "pointer" }}>
+                {isSubmitting ? "Saving…" : editingId ? "Update tier" : "Add tier"}
+              </button>
+              {editingId && (
+                <button onClick={resetForm} style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.ink, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 16px", cursor: "pointer" }}>
+                  Cancel
+                </button>
+              )}
+            </div>
+            {formError && <div style={{ ...body, fontSize: 12.5, color: C.red, marginBottom: 12 }}>{formError}</div>}
+
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <Th>Name</Th>
+                  <Th>Spend threshold</Th>
+                  <Th>Discount</Th>
+                  <Th>Icon</Th>
+                  <Th>Color</Th>
+                  <Th></Th>
+                </tr>
+              </thead>
+              <tbody>
+                {tiers.length === 0 && (
+                  <tr><td colSpan={6} style={{ ...body, fontSize: 13, color: C.muted, padding: "13px 16px" }}>No loyalty tiers yet.</td></tr>
+                )}
+                {tiers.map((tier) => (
+                  <tr key={tier.id}>
+                    <Td>{tier.name}</Td>
+                    <Td>${tier.spendThreshold.toLocaleString()}+</Td>
+                    <Td>{tier.discountPercentage}%</Td>
+                    <Td>{tier.icon}</Td>
+                    <Td>{tier.color}</Td>
+                    <Td>
+                      <button onClick={() => handleEdit(tier)} style={{ background: "none", border: "none", cursor: "pointer", color: C.torque, fontSize: 12.5, marginRight: 8 }}>Edit</button>
+                      <button onClick={() => handleDelete(tier.id)} style={{ background: "none", border: "none", cursor: "pointer", color: C.red, fontSize: 12.5 }}>Delete</button>
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function DiscountRulesSection({ onSessionExpired }) {
   const [rules, setRules] = useState([]);
   const [brands, setBrands] = useState([]);

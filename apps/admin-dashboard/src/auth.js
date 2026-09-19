@@ -346,6 +346,15 @@ export async function fetchDiscountRules(token) {
 export const createDiscountRule = (token, rule) => fitmentMutate("POST", "/catalog/admin/discount-rules", token, rule);
 export const updateDiscountRule = (token, id, rule) => fitmentMutate("PATCH", `/catalog/admin/discount-rules/${id}`, token, rule);
 export const deleteDiscountRule = (token, id) => fitmentMutate("DELETE", `/catalog/admin/discount-rules/${id}`, token);
+export async function fetchLoyaltyTiers(token) {
+  const response = await fetch(`${API_BASE_URL}/pricing/loyalty-tiers`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) throw new Error(`Failed to load loyalty tiers (${response.status})`);
+  return response.json();
+}
+export const createLoyaltyTier = (token, tier) => fitmentMutate("POST", "/pricing/loyalty-tiers", token, tier);
+export const updateLoyaltyTier = (token, id, tier) => fitmentMutate("PATCH", `/pricing/loyalty-tiers/${id}`, token, tier);
+export const deleteLoyaltyTier = (token, id) => fitmentMutate("DELETE", `/pricing/loyalty-tiers/${id}`, token);
 
 export async function fetchFxRate(token) {
   const response = await fetch(`${API_BASE_URL}/pricing/fx-rate`, { headers: { Authorization: `Bearer ${token}` } });
