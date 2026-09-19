@@ -3119,6 +3119,7 @@ function VinWmiCodesSettings({ onSessionExpired }) {
 }
 
 function VehicleDataPage({ onSessionExpired }) {
+  const [activeTab, setActiveTab] = useState("brands");
   const [brands, setBrands] = useState([]);
   const [selectedBrand, setSelectedBrand] = useState(null);
   const [models, setModels] = useState([]);
@@ -3425,8 +3426,25 @@ function VehicleDataPage({ onSessionExpired }) {
 
   return (
     <div>
-      <TopBar title="Vehicle Data" subtitle="Manage the Brand → Model → Generation → Engine/Transmission cascade the supplier product form uses" />
-      <div style={{ padding: 24 }}>
+      <TopBar title="Vehicle Data" subtitle="Manage the Brand → Model → Generation → Engine/Transmission cascade, and the VIN decoder's own data tables" />
+      <div style={{ padding: "24px 24px 0" }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          <button
+            onClick={() => setActiveTab("brands")}
+            style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: activeTab === "brands" ? C.ink : C.line, color: activeTab === "brands" ? "#fff" : C.muted, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}
+          >Brands</button>
+          <button
+            onClick={() => setActiveTab("wmi")}
+            style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: activeTab === "wmi" ? C.ink : C.line, color: activeTab === "wmi" ? "#fff" : C.muted, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}
+          >VIN WMI</button>
+          <button
+            onClick={() => setActiveTab("patterns")}
+            style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: activeTab === "patterns" ? C.ink : C.line, color: activeTab === "patterns" ? "#fff" : C.muted, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}
+          >VIN model patterns</button>
+        </div>
+      </div>
+      {activeTab === "brands" && (
+      <div style={{ padding: "0 24px 24px" }}>
         <Card>
           <div style={{ padding: 18 }}>
             {breadcrumb}
@@ -3573,6 +3591,7 @@ function VehicleDataPage({ onSessionExpired }) {
           </div>
         </Card>
       </div>
+      )}
       <ConfirmDialog
         isOpen={!!pendingDelete}
         title={`Delete "${pendingDelete?.label}"?`}
@@ -3602,10 +3621,16 @@ function VehicleDataPage({ onSessionExpired }) {
         errorMessage={errorMessage}
         isSaving={isSavingEdit}
       />
+      {activeTab === "wmi" && (
       <div style={{ padding: "0 24px 24px" }}>
         <VinWmiCodesSettings onSessionExpired={onSessionExpired} />
+      </div>
+      )}
+      {activeTab === "patterns" && (
+      <div style={{ padding: "0 24px 24px" }}>
         <VinModelPatternsSettings onSessionExpired={onSessionExpired} />
       </div>
+      )}
     </div>
   );
 }
