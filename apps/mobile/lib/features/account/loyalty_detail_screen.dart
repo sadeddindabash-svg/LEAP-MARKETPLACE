@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../core/theme.dart';
+import '../../core/language_state.dart';
+import '../../core/app_strings.dart';
 import 'loyalty_card.dart';
 
 /// Real "My Tier" full detail screen (new) -- confirmed with the
@@ -15,12 +18,13 @@ class LoyaltyDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = LeapPalette.of(context);
+    final isAr = context.watch<LanguageState>().isArabic;
     final currentTier = status['currentTier'] as Map<String, dynamic>?;
     final allTiers = (status['allTiers'] as List).cast<Map<String, dynamic>>();
     final lifetimeSpend = (status['lifetimeSpend'] as num).toDouble();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('My tier')),
+      appBar: AppBar(title: Text(tr(context, 'loyalty_my_tier_title'))),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -36,23 +40,26 @@ class LoyaltyDetailScreen extends StatelessWidget {
                     child: Icon(resolveLoyaltyIcon(currentTier['icon'] as String), color: resolveLoyaltyColor(currentTier['color'] as String, palette), size: 28),
                   ),
                   const SizedBox(height: 10),
-                  Text('${currentTier['name']} member', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: palette.ink)),
+                  Text('${resolveLoyaltyName(currentTier, isAr)} ${tr(context, 'loyalty_member_suffix')}', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: palette.ink)),
                   const SizedBox(height: 4),
                   Text(
-                    (currentTier['discountPercentage'] as num) > 0 ? '${currentTier['discountPercentage']}% off every order' : 'Spend more to unlock a discount',
+                    (currentTier['discountPercentage'] as num) > 0
+                        ? '${currentTier['discountPercentage']}% ${tr(context, 'loyalty_off_every_order')}'
+                        : tr(context, 'loyalty_spend_more'),
                     style: TextStyle(fontSize: 13, color: palette.muted),
                   ),
                   const SizedBox(height: 6),
-                  Text('Lifetime spend: \$${lifetimeSpend.toStringAsFixed(2)}', style: TextStyle(fontSize: 12, color: palette.muted)),
+                  Text('${tr(context, 'loyalty_lifetime_spend')}: \$${lifetimeSpend.toStringAsFixed(2)}', style: TextStyle(fontSize: 12, color: palette.muted)),
                 ],
               ),
             ),
           const SizedBox(height: 20),
-          Text('ALL TIERS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: palette.signalDark, letterSpacing: 1)),
+          Text(tr(context, 'loyalty_all_tiers'), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: palette.signalDark, letterSpacing: 1)),
           const SizedBox(height: 8),
           ...allTiers.map((tier) {
             final isCurrent = currentTier != null && tier['id'] == currentTier['id'];
             final tierColor = resolveLoyaltyColor(tier['color'] as String, palette);
+            final tierName = resolveLoyaltyName(tier, isAr);
             return Container(
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.all(14),
@@ -70,11 +77,11 @@ class LoyaltyDetailScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${tier['name']}${(tier['discountPercentage'] as num) > 0 ? ' — ${tier['discountPercentage']}% off' : ''}',
+                          '$tierName${(tier['discountPercentage'] as num) > 0 ? ' — ${tier['discountPercentage']}% ${tr(context, 'loyalty_off_suffix')}' : ''}',
                           style: TextStyle(fontSize: 14, fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500, color: isCurrent ? tierColor : palette.ink),
                         ),
                         const SizedBox(height: 2),
-                        Text('Unlocked at \$${(tier['spendThreshold'] as num).toStringAsFixed(0)}+', style: TextStyle(fontSize: 12, color: palette.muted)),
+                        Text('${tr(context, 'loyalty_unlocked_at')} \$${(tier['spendThreshold'] as num).toStringAsFixed(0)}+', style: TextStyle(fontSize: 12, color: palette.muted)),
                       ],
                     ),
                   ),

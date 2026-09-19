@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/auth_state.dart';
+import '../../core/language_state.dart';
+import '../../core/app_strings.dart';
 import '../../services/api_client.dart';
 
 /// Real loyalty tier card (new) -- confirmed with the person through
@@ -49,12 +51,14 @@ class _LoyaltyCardState extends State<LoyaltyCard> {
   Widget build(BuildContext context) {
     if (_isLoading || _status == null || _status!['currentTier'] == null) return const SizedBox.shrink();
     final palette = LeapPalette.of(context);
+    final isAr = context.watch<LanguageState>().isArabic;
     final currentTier = _status!['currentTier'] as Map<String, dynamic>;
     final nextTier = _status!['nextTier'] as Map<String, dynamic>?;
     final progressPercent = (_status!['progressPercent'] as num).toDouble() / 100;
     final lifetimeSpend = (_status!['lifetimeSpend'] as num).toDouble();
     final amountToNextTier = _status!['amountToNextTier'] as num?;
     final tierColor = resolveLoyaltyColor(currentTier['color'] as String, palette);
+    final tierName = resolveLoyaltyName(currentTier, isAr);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -81,12 +85,12 @@ class _LoyaltyCardState extends State<LoyaltyCard> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('${currentTier['name']} member', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: palette.ink)),
+                            Text('$tierName ${tr(context, 'loyalty_member_suffix')}', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: palette.ink)),
                             const SizedBox(height: 2),
                             Text(
                               (currentTier['discountPercentage'] as num) > 0
-                                  ? '${currentTier['discountPercentage']}% off every order'
-                                  : 'Keep spending to unlock a discount',
+                                  ? '${currentTier['discountPercentage']}% ${tr(context, 'loyalty_off_every_order')}'
+                                  : tr(context, 'loyalty_keep_spending'),
                               style: TextStyle(fontSize: 12.5, color: palette.muted),
                             ),
                           ],
@@ -105,8 +109,8 @@ class _LoyaltyCardState extends State<LoyaltyCard> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text('\$${lifetimeSpend.toStringAsFixed(0)} spent', style: TextStyle(fontSize: 11.5, color: palette.muted)),
-                            Text('\$${amountToNextTier!.toStringAsFixed(0)} to ${nextTier['name']}', style: TextStyle(fontSize: 11.5, color: palette.muted)),
+                            Text('\$${lifetimeSpend.toStringAsFixed(0)} ${tr(context, 'loyalty_spent')}', style: TextStyle(fontSize: 11.5, color: palette.muted)),
+                            Text('\$${amountToNextTier!.toStringAsFixed(0)} ${tr(context, 'loyalty_to_next_tier')} ${resolveLoyaltyName(nextTier, isAr)}', style: TextStyle(fontSize: 11.5, color: palette.muted)),
                           ],
                         ),
                         const SizedBox(height: 6),
@@ -129,6 +133,20 @@ class _LoyaltyCardState extends State<LoyaltyCard> {
       ),
     );
   }
+}
+
+/// Confirmed with the person: resolves the admin-set tier name in the
+/// current app language -- falls back to the English name if no
+/// Arabic name was set, matching the same nameAr-fallback pattern
+/// already established elsewhere in the app for admin-set bilingual
+/// content (brands, categories, etc.). Public since both this file
+/// and loyalty_detail_screen.dart share it.
+String resolveLoyaltyName(Map<String, dynamic> tier, bool isAr) {
+  if (isAr) {
+    final nameAr = tier['nameAr'] as String?;
+    if (nameAr != null && nameAr.trim().isNotEmpty) return nameAr;
+  }
+  return tier['name'] as String;
 }
 
 /// Confirmed with the person: maps the admin-set color name (see the

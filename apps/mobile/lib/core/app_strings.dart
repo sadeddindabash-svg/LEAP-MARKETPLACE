@@ -105,6 +105,22 @@ class AppStrings {
     'kg_unit': {'en': 'kg', 'ar': 'كغم'},
     'discount': {'en': 'Discount', 'ar': 'الخصم'},
 
+    // ---- Loyalty tiers (new) ----
+    'loyalty_member_suffix': {'en': 'member', 'ar': 'عضو'},
+    'loyalty_off_every_order': {'en': 'off every order', 'ar': 'خصم على كل طلب'},
+    'loyalty_keep_spending': {'en': 'Keep spending to unlock a discount', 'ar': 'واصل الشراء لفتح خصم'},
+    'loyalty_spent': {'en': 'spent', 'ar': 'تم إنفاقه'},
+    'loyalty_to_next_tier': {'en': 'to', 'ar': 'حتى'},
+    'loyalty_my_tier_title': {'en': 'My tier', 'ar': 'مستوى عضويتي'},
+    'loyalty_spend_more': {'en': 'Spend more to unlock a discount', 'ar': 'أنفق أكثر لفتح خصم'},
+    'loyalty_lifetime_spend': {'en': 'Lifetime spend', 'ar': 'إجمالي الإنفاق'},
+    'loyalty_all_tiers': {'en': 'ALL TIERS', 'ar': 'جميع المستويات'},
+    'loyalty_off_suffix': {'en': 'off', 'ar': 'خصم'},
+    'loyalty_unlocked_at': {'en': 'Unlocked at', 'ar': 'يُفتح عند'},
+    'loyalty_beats_promo': {'en': 'Your loyalty discount', 'ar': 'خصم الولاء الخاص بك'},
+    'loyalty_beats_promo_suffix': {'en': 'already beats this code — applied automatically.', 'ar': 'أفضل بالفعل من هذا الرمز — تم تطبيقه تلقائيًا.'},
+    'loyalty_discount_label': {'en': 'Loyalty discount', 'ar': 'خصم الولاء'},
+
     // ---- Referrals (new) ----
     'referrals': {'en': 'Refer a friend', 'ar': 'ادعُ صديقًا'},
     'your_referral_code': {'en': 'Your referral code', 'ar': 'رمز الإحالة الخاص بك'},

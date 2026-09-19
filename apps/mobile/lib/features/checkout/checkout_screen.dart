@@ -305,7 +305,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         final saved = cart.appliedDiscountUsd;
         final wonByLoyalty = cart.appliedDiscountSource == 'loyalty';
         setState(() => _promoMessage = wonByLoyalty
-            ? 'Your loyalty discount (${formatPrice(context, saved)}) already beats this code — applied automatically.'
+            ? '${trRead(context, 'loyalty_beats_promo')} (${formatPrice(context, saved)}) ${trRead(context, 'loyalty_beats_promo_suffix')}'
             : saved > 0
                 ? '${trRead(context, 'you_saved')} ${formatPrice(context, saved)}!'
                 : trRead(context, 'promo_applied'));
@@ -945,7 +945,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Loyalty discount (${cart.loyaltyDiscountPercentage.toStringAsFixed(0)}% off)', style: TextStyle(color: LeapPalette.of(context).gauge, fontSize: 12.5)),
+                      Text('${tr(context, 'loyalty_discount_label')} (${cart.loyaltyDiscountPercentage.toStringAsFixed(0)}% ${tr(context, 'loyalty_off_suffix')})', style: TextStyle(color: LeapPalette.of(context).gauge, fontSize: 12.5)),
                       Text('-${formatPrice(context, cart.appliedDiscountUsd)}', style: TextStyle(color: LeapPalette.of(context).gauge, fontWeight: FontWeight.w700)),
                     ],
                   ),
