@@ -40,7 +40,7 @@ class LoyaltyDetailScreen extends StatelessWidget {
                     child: Icon(resolveLoyaltyIcon(currentTier['icon'] as String), color: resolveLoyaltyColor(currentTier['color'] as String, palette), size: 28),
                   ),
                   const SizedBox(height: 10),
-                  Text('${resolveLoyaltyName(currentTier, isAr)} ${tr(context, 'loyalty_member_suffix')}', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: palette.ink)),
+                  Text(buildMemberLabel(context, resolveLoyaltyName(currentTier, isAr), isAr), style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: palette.ink)),
                   const SizedBox(height: 4),
                   Text(
                     (currentTier['discountPercentage'] as num) > 0

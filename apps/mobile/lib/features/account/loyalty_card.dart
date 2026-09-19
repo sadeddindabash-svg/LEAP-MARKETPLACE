@@ -85,7 +85,7 @@ class _LoyaltyCardState extends State<LoyaltyCard> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('$tierName ${tr(context, 'loyalty_member_suffix')}', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: palette.ink)),
+                            Text(buildMemberLabel(context, tierName, isAr), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: palette.ink)),
                             const SizedBox(height: 2),
                             Text(
                               (currentTier['discountPercentage'] as num) > 0
@@ -147,6 +147,17 @@ String resolveLoyaltyName(Map<String, dynamic> tier, bool isAr) {
     if (nameAr != null && nameAr.trim().isNotEmpty) return nameAr;
   }
   return tier['name'] as String;
+}
+
+/// Confirmed with the person's exact specification: Arabic reads
+/// "العضوية / برونزي" (membership word first, then the tier name,
+/// joined with a slash) -- the reverse order from English's
+/// "Bronze Member". Built here rather than as a single tr() key
+/// since the word order itself differs by language, not just the
+/// words.
+String buildMemberLabel(BuildContext context, String tierName, bool isAr) {
+  final membershipWord = tr(context, 'loyalty_membership_word');
+  return isAr ? '$membershipWord / $tierName' : '$tierName $membershipWord';
 }
 
 /// Confirmed with the person: maps the admin-set color name (see the

@@ -106,14 +106,14 @@ class AppStrings {
     'discount': {'en': 'Discount', 'ar': 'الخصم'},
 
     // ---- Loyalty tiers (new) ----
-    'loyalty_member_suffix': {'en': 'member', 'ar': 'عضو'},
+    'loyalty_membership_word': {'en': 'Member', 'ar': 'العضوية'},
     'loyalty_off_every_order': {'en': 'off every order', 'ar': 'خصم على كل طلب'},
     'loyalty_keep_spending': {'en': 'Keep spending to unlock a discount', 'ar': 'واصل الشراء لفتح خصم'},
     'loyalty_spent': {'en': 'spent', 'ar': 'تم إنفاقه'},
     'loyalty_to_next_tier': {'en': 'to', 'ar': 'حتى'},
-    'loyalty_my_tier_title': {'en': 'My tier', 'ar': 'مستوى عضويتي'},
+    'loyalty_my_tier_title': {'en': 'My tier', 'ar': 'عضويتي'},
     'loyalty_spend_more': {'en': 'Spend more to unlock a discount', 'ar': 'أنفق أكثر لفتح خصم'},
-    'loyalty_lifetime_spend': {'en': 'Lifetime spend', 'ar': 'إجمالي الإنفاق'},
+    'loyalty_lifetime_spend': {'en': 'Lifetime spend', 'ar': 'أجمالي المشتريات'},
     'loyalty_all_tiers': {'en': 'ALL TIERS', 'ar': 'جميع المستويات'},
     'loyalty_off_suffix': {'en': 'off', 'ar': 'خصم'},
     'loyalty_unlocked_at': {'en': 'Unlocked at', 'ar': 'يُفتح عند'},
