@@ -698,17 +698,22 @@ class ApiClient {
     return Cart.fromJson(body);
   }
 
-  Future<Cart> fetchCart(String cartId) async {
-    final response = await _client.get(Uri.parse('$baseUrl/cart/$cartId'));
+  Map<String, String> _authHeaders(String? token, [Map<String, String>? extra]) => {
+    if (extra != null) ...extra,
+    if (token != null) 'Authorization': 'Bearer $token',
+  };
+
+  Future<Cart> fetchCart(String cartId, {String? token}) async {
+    final response = await _client.get(Uri.parse('$baseUrl/cart/$cartId'), headers: _authHeaders(token));
     return _decodeCart(response);
   }
 
   /// Adds to whatever quantity is already in the cart for this product
   /// (the backend merges quantities on repeat adds — see that module).
-  Future<Cart> addCartItem(String cartId, String productId, int quantity) async {
+  Future<Cart> addCartItem(String cartId, String productId, int quantity, {String? token}) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/cart/$cartId/items'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _authHeaders(token, {'Content-Type': 'application/json'}),
       body: jsonEncode({'productId': productId, 'quantity': quantity}),
     );
     return _decodeCart(response);
@@ -717,17 +722,17 @@ class ApiClient {
   /// Sets the EXACT quantity (unlike addCartItem, which adds to the
   /// existing amount) — used by a +/- quantity stepper. quantity <= 0
   /// removes the item entirely.
-  Future<Cart> setCartItemQuantity(String cartId, String productId, int quantity) async {
+  Future<Cart> setCartItemQuantity(String cartId, String productId, int quantity, {String? token}) async {
     final response = await _client.patch(
       Uri.parse('$baseUrl/cart/$cartId/items/$productId'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _authHeaders(token, {'Content-Type': 'application/json'}),
       body: jsonEncode({'quantity': quantity}),
     );
     return _decodeCart(response);
   }
 
-  Future<Cart> removeCartItem(String cartId, String productId) async {
-    final response = await _client.delete(Uri.parse('$baseUrl/cart/$cartId/items/$productId'));
+  Future<Cart> removeCartItem(String cartId, String productId, {String? token}) async {
+    final response = await _client.delete(Uri.parse('$baseUrl/cart/$cartId/items/$productId'), headers: _authHeaders(token));
     return _decodeCart(response);
   }
 
@@ -735,10 +740,10 @@ class ApiClient {
   /// null) a persisted promo code on this cart -- survives leaving
   /// the checkout screen entirely, even closing and reopening the
   /// app, since it's stored on the real cart record itself.
-  Future<Cart> applyPromoCode(String cartId, String? code) async {
+  Future<Cart> applyPromoCode(String cartId, String? code, {String? token}) async {
     final response = await _client.patch(
       Uri.parse('$baseUrl/cart/$cartId/promo-code'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _authHeaders(token, {'Content-Type': 'application/json'}),
       body: jsonEncode({'code': code}),
     );
     return _decodeCart(response);
@@ -748,8 +753,8 @@ class ApiClient {
   /// enters checkout, not when an item is added to the cart. Starts
   /// a fresh 60-minute price lock, or does nothing (continues the
   /// existing countdown) if one's already active.
-  Future<Cart> lockPrices(String cartId) async {
-    final response = await _client.post(Uri.parse('$baseUrl/cart/$cartId/lock-prices'));
+  Future<Cart> lockPrices(String cartId, {String? token}) async {
+    final response = await _client.post(Uri.parse('$baseUrl/cart/$cartId/lock-prices'), headers: _authHeaders(token));
     return _decodeCart(response);
   }
 

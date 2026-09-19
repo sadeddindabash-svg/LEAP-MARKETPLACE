@@ -5,6 +5,7 @@ const { findMatchingDiscountRule } = require('../pricing/discountRules');
 const { buildSupplierLabelMap } = require('../shared/supplierAnonymize');
 const { validatePromoCode, calculateDiscountUsd } = require('../promotions/helpers');
 const { getLoyaltyDiscountPercentage } = require('../loyalty/helpers');
+const { optionalAuth } = require('../auth/middleware');
 
 /**
  * Cart module — BUY-030–032. Cart holds items from multiple suppliers; the
@@ -56,9 +57,21 @@ async function computeLivePrice(r) {
 
 const CHECKOUT_LOCK_DURATION_MS = 60 * 60 * 1000; // confirmed with the person: 60 real minutes
 
-async function getFullCart(cartId) {
+async function getFullCart(cartId, tokenBuyerId) {
   const { rows: cartRows } = await db.query('SELECT buyer_id, applied_promo_code, checkout_locked_at FROM carts WHERE id = $1', [cartId]);
-  const buyerId = cartRows[0]?.buyer_id || null;
+  let buyerId = cartRows[0]?.buyer_id || null;
+  // Confirmed with the person through direct diagnosis of a real,
+  // broken loyalty discount: a real cart is created anonymously
+  // (correct -- guest checkout must work), but nothing previously
+  // ever linked it to the buyer once they logged in, so every real
+  // cart's buyer_id stayed null forever. Claims the cart for this
+  // real buyer, once, the first time a real logged-in request for it
+  // arrives -- a lasting link, not re-derived fresh (and forgotten)
+  // on every request.
+  if (!buyerId && tokenBuyerId) {
+    await db.query('UPDATE carts SET buyer_id = $1 WHERE id = $2', [tokenBuyerId, cartId]);
+    buyerId = tokenBuyerId;
+  }
   let appliedPromoCode = cartRows[0]?.applied_promo_code || null;
   const checkoutLockedAt = cartRows[0]?.checkout_locked_at || null;
   // Confirmed with the person: explicitly re-derived on every real
@@ -212,9 +225,9 @@ async function checkStockAvailable(productId, requestedQuantity) {
   return { ok: true };
 }
 
-router.get('/:cartId', async (req, res, next) => {
+router.get('/:cartId', optionalAuth, async (req, res, next) => {
   try {
-    res.json(await getFullCart(req.params.cartId));
+    res.json(await getFullCart(req.params.cartId, req.user?.sub));
   } catch (err) {
     next(err);
   }
@@ -230,7 +243,7 @@ router.get('/:cartId', async (req, res, next) => {
 // the SAME real countdown running, not a reset one. Otherwise starts
 // a brand new real 60-minute lock, snapshotting every item's own
 // real live price at this exact moment.
-router.post('/:cartId/lock-prices', async (req, res, next) => {
+router.post('/:cartId/lock-prices', optionalAuth, async (req, res, next) => {
   try {
     await ensureCartExists(req.params.cartId);
     const { rows: cartRows } = await db.query('SELECT checkout_locked_at FROM carts WHERE id = $1', [req.params.cartId]);
@@ -249,7 +262,7 @@ router.post('/:cartId/lock-prices', async (req, res, next) => {
       }));
       await db.query('UPDATE carts SET checkout_locked_at = now() WHERE id = $1', [req.params.cartId]);
     }
-    res.json(await getFullCart(req.params.cartId));
+    res.json(await getFullCart(req.params.cartId, req.user?.sub));
   } catch (err) {
     next(err);
   }
@@ -261,27 +274,27 @@ router.post('/:cartId/lock-prices', async (req, res, next) => {
 // checkout screen entirely, even closing and reopening the app,
 // since it's stored on the real cart record itself, not just
 // in-memory app state.
-router.patch('/:cartId/promo-code', async (req, res, next) => {
+router.patch('/:cartId/promo-code', optionalAuth, async (req, res, next) => {
   try {
     const { code } = req.body || {};
     await ensureCartExists(req.params.cartId);
     if (!code) {
       await db.query('UPDATE carts SET applied_promo_code = NULL WHERE id = $1', [req.params.cartId]);
-      return res.json(await getFullCart(req.params.cartId));
+      return res.json(await getFullCart(req.params.cartId, req.user?.sub));
     }
     const { rows: cartRows } = await db.query('SELECT buyer_id FROM carts WHERE id = $1', [req.params.cartId]);
-    const validation = await validatePromoCode(code, cartRows[0]?.buyer_id || null);
+    const validation = await validatePromoCode(code, req.user?.sub || cartRows[0]?.buyer_id || null);
     if (!validation.valid) {
       return res.status(400).json({ error: validation.reason });
     }
     await db.query('UPDATE carts SET applied_promo_code = $1 WHERE id = $2', [code, req.params.cartId]);
-    res.json(await getFullCart(req.params.cartId));
+    res.json(await getFullCart(req.params.cartId, req.user?.sub));
   } catch (err) {
     next(err);
   }
 });
 
-router.post('/:cartId/items', async (req, res, next) => {
+router.post('/:cartId/items', optionalAuth, async (req, res, next) => {
   try {
     const { productId, quantity } = req.body || {};
     if (!productId || !quantity) {
@@ -302,7 +315,7 @@ router.post('/:cartId/items', async (req, res, next) => {
        ON CONFLICT (cart_id, product_id) DO UPDATE SET quantity = cart_items.quantity + EXCLUDED.quantity`,
       [req.params.cartId, productId, quantity]
     );
-    res.status(201).json(await getFullCart(req.params.cartId));
+    res.status(201).json(await getFullCart(req.params.cartId, req.user?.sub));
   } catch (err) {
     next(err);
   }
@@ -312,7 +325,7 @@ router.post('/:cartId/items', async (req, res, next) => {
 // (unlike POST above, which adds to whatever's already there). Needed for
 // a quantity stepper UI (+/- buttons) where the client knows the target
 // count rather than a delta. quantity <= 0 removes the item entirely.
-router.patch('/:cartId/items/:productId', async (req, res, next) => {
+router.patch('/:cartId/items/:productId', optionalAuth, async (req, res, next) => {
   try {
     const { quantity } = req.body || {};
     if (typeof quantity !== 'number') {
@@ -334,16 +347,16 @@ router.patch('/:cartId/items/:productId', async (req, res, next) => {
         [req.params.cartId, req.params.productId, quantity]
       );
     }
-    res.json(await getFullCart(req.params.cartId));
+    res.json(await getFullCart(req.params.cartId, req.user?.sub));
   } catch (err) {
     next(err);
   }
 });
 
-router.delete('/:cartId/items/:productId', async (req, res, next) => {
+router.delete('/:cartId/items/:productId', optionalAuth, async (req, res, next) => {
   try {
     await db.query('DELETE FROM cart_items WHERE cart_id = $1 AND product_id = $2', [req.params.cartId, req.params.productId]);
-    res.json(await getFullCart(req.params.cartId));
+    res.json(await getFullCart(req.params.cartId, req.user?.sub));
   } catch (err) {
     next(err);
   }

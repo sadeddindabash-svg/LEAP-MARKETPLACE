@@ -263,7 +263,13 @@ class LeapApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthState()),
-        ChangeNotifierProvider(create: (_) => CartState()),
+        ChangeNotifierProxyProvider<AuthState, CartState>(
+          create: (_) => CartState(),
+          update: (_, auth, cart) {
+            cart!.updateToken(auth.token);
+            return cart;
+          },
+        ),
         ChangeNotifierProvider(create: (_) => LanguageState()),
         ChangeNotifierProvider(create: (_) => CurrencyState()),
         ChangeNotifierProvider(create: (_) => AppLockState()),

@@ -41,9 +41,29 @@ class CartState extends ChangeNotifier {
   DateTime? _lockExpiresAt;
   bool _isLoading = true;
   String? _errorMessage;
+  // Confirmed with the person through direct diagnosis of a real,
+  // broken loyalty discount: no real cart ever had a real owner
+  // recorded, so the backend had no way to know which real buyer's
+  // tier to check. Kept in sync with the real logged-in buyer's own
+  // token (see app.dart's provider wiring) and sent with every real
+  // cart request, so the backend can resolve and permanently link
+  // the real buyer the first time a real authenticated request for
+  // this cart arrives.
+  String? _token;
 
   CartState({ApiClient? apiClient}) : _apiClient = apiClient ?? ApiClient() {
     _init();
+  }
+
+  /// Confirmed with the person: called whenever the real login state
+  /// changes (see app.dart's ChangeNotifierProxyProvider wiring) --
+  /// refreshes the real cart immediately so the loyalty discount
+  /// reflects the real, current buyer right away, not just whenever
+  /// the next unrelated cart action happens to run.
+  void updateToken(String? token) {
+    if (_token == token) return;
+    _token = token;
+    refresh();
   }
 
   bool get isLoading => _isLoading;
@@ -113,7 +133,7 @@ class CartState extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
     try {
-      _applyCart(await _apiClient.fetchCart(_cartId!));
+      _applyCart(await _apiClient.fetchCart(_cartId!, token: _token));
       _errorMessage = null;
     } catch (e) {
       _errorMessage = 'Could not load your basket. Check your connection and try again.';
@@ -125,7 +145,7 @@ class CartState extends ChangeNotifier {
 
   Future<void> addItem(String productId, int quantity) async {
     if (_cartId == null) return;
-    _applyCart(await _apiClient.addCartItem(_cartId!, productId, quantity));
+    _applyCart(await _apiClient.addCartItem(_cartId!, productId, quantity, token: _token));
     _errorMessage = null;
     notifyListeners();
   }
@@ -134,13 +154,13 @@ class CartState extends ChangeNotifier {
   /// the +/- stepper). A quantity of 0 or less removes the item.
   Future<void> setQuantity(String productId, int quantity) async {
     if (_cartId == null) return;
-    _applyCart(await _apiClient.setCartItemQuantity(_cartId!, productId, quantity));
+    _applyCart(await _apiClient.setCartItemQuantity(_cartId!, productId, quantity, token: _token));
     notifyListeners();
   }
 
   Future<void> removeItem(String productId) async {
     if (_cartId == null) return;
-    _applyCart(await _apiClient.removeCartItem(_cartId!, productId));
+    _applyCart(await _apiClient.removeCartItem(_cartId!, productId, token: _token));
     notifyListeners();
   }
 
@@ -151,14 +171,14 @@ class CartState extends ChangeNotifier {
   /// the real, already-confirmed and tested backend behavior.
   Future<void> applyPromoCode(String code) async {
     if (_cartId == null) return;
-    _applyCart(await _apiClient.applyPromoCode(_cartId!, code));
+    _applyCart(await _apiClient.applyPromoCode(_cartId!, code, token: _token));
     notifyListeners();
   }
 
   /// Clears the real, currently-applied promo code.
   Future<void> removePromoCode() async {
     if (_cartId == null) return;
-    _applyCart(await _apiClient.applyPromoCode(_cartId!, null));
+    _applyCart(await _apiClient.applyPromoCode(_cartId!, null, token: _token));
     notifyListeners();
   }
 
@@ -170,7 +190,7 @@ class CartState extends ChangeNotifier {
   /// it.
   Future<void> lockPrices() async {
     if (_cartId == null) return;
-    _applyCart(await _apiClient.lockPrices(_cartId!));
+    _applyCart(await _apiClient.lockPrices(_cartId!, token: _token));
     notifyListeners();
   }
 
@@ -186,10 +206,10 @@ class CartState extends ChangeNotifier {
   Future<void> clearAfterOrder() async {
     if (_cartId == null) return;
     for (final item in List<CartItem>.from(_items)) {
-      await _apiClient.removeCartItem(_cartId!, item.productId);
+      await _apiClient.removeCartItem(_cartId!, item.productId, token: _token);
     }
     if (_appliedPromoCode != null) {
-      await _apiClient.applyPromoCode(_cartId!, null);
+      await _apiClient.applyPromoCode(_cartId!, null, token: _token);
     }
     _items = [];
     _appliedPromoCode = null;
