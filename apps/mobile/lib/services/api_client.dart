@@ -698,11 +698,6 @@ class ApiClient {
     return Cart.fromJson(body);
   }
 
-  Map<String, String> _authHeaders(String? token, [Map<String, String>? extra]) => {
-    if (extra != null) ...extra,
-    if (token != null) 'Authorization': 'Bearer $token',
-  };
-
   Future<Cart> fetchCart(String cartId, {String? token}) async {
     final response = await _client.get(Uri.parse('$baseUrl/cart/$cartId'), headers: _authHeaders(token));
     return _decodeCart(response);
@@ -713,7 +708,7 @@ class ApiClient {
   Future<Cart> addCartItem(String cartId, String productId, int quantity, {String? token}) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/cart/$cartId/items'),
-      headers: _authHeaders(token, {'Content-Type': 'application/json'}),
+      headers: _authHeaders(token),
       body: jsonEncode({'productId': productId, 'quantity': quantity}),
     );
     return _decodeCart(response);
@@ -725,7 +720,7 @@ class ApiClient {
   Future<Cart> setCartItemQuantity(String cartId, String productId, int quantity, {String? token}) async {
     final response = await _client.patch(
       Uri.parse('$baseUrl/cart/$cartId/items/$productId'),
-      headers: _authHeaders(token, {'Content-Type': 'application/json'}),
+      headers: _authHeaders(token),
       body: jsonEncode({'quantity': quantity}),
     );
     return _decodeCart(response);
@@ -743,7 +738,7 @@ class ApiClient {
   Future<Cart> applyPromoCode(String cartId, String? code, {String? token}) async {
     final response = await _client.patch(
       Uri.parse('$baseUrl/cart/$cartId/promo-code'),
-      headers: _authHeaders(token, {'Content-Type': 'application/json'}),
+      headers: _authHeaders(token),
       body: jsonEncode({'code': code}),
     );
     return _decodeCart(response);
