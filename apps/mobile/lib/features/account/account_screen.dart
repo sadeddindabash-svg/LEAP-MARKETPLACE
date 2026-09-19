@@ -14,6 +14,7 @@ import '../../core/app_lock_state.dart';
 import '../../core/push_state.dart';
 import '../../core/theme_state.dart';
 import '../../services/api_client.dart';
+import 'loyalty_card.dart';
 
 class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key});
@@ -207,6 +208,7 @@ class _AccountScreenState extends State<AccountScreen> {
                 ],
               ),
             ),
+          if (auth.isLoggedIn) const LoyaltyCard(),
           const Divider(height: 24),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),

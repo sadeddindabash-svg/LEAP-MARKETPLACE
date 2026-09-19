@@ -302,10 +302,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       // real amount depends on server-side shipping calculation,
       // computed only at real order placement).
       if (mounted) {
-        final saved = cart.promoDiscountUsd;
-        setState(() => _promoMessage = saved > 0
-            ? '${trRead(context, 'you_saved')} ${formatPrice(context, saved)}!'
-            : trRead(context, 'promo_applied'));
+        final saved = cart.appliedDiscountUsd;
+        final wonByLoyalty = cart.appliedDiscountSource == 'loyalty';
+        setState(() => _promoMessage = wonByLoyalty
+            ? 'Your loyalty discount (${formatPrice(context, saved)}) already beats this code — applied automatically.'
+            : saved > 0
+                ? '${trRead(context, 'you_saved')} ${formatPrice(context, saved)}!'
+                : trRead(context, 'promo_applied'));
       }
     } on ApiException catch (e) {
       setState(() => _promoMessage = e.message);
@@ -922,23 +925,38 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 // saved" becomes the real, combined total (product
                 // discount + promo discount together), not just the
                 // product-level portion alone.
-                if (cart.appliedPromoCode != null) ...[
+                if (cart.appliedDiscountSource == 'promo') ...[
                   const SizedBox(height: 6),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text('${tr(context, 'discount')} (${cart.appliedPromoCode})', style: TextStyle(color: LeapPalette.of(context).gauge, fontSize: 12.5)),
-                      Text('-${formatPrice(context, cart.promoDiscountUsd)}', style: TextStyle(color: LeapPalette.of(context).gauge, fontWeight: FontWeight.w700)),
+                      Text('-${formatPrice(context, cart.appliedDiscountUsd)}', style: TextStyle(color: LeapPalette.of(context).gauge, fontWeight: FontWeight.w700)),
                     ],
                   ),
                 ],
-                if (cart.totalSaved + cart.promoDiscountUsd > 0) ...[
+                // Confirmed with the person: shown whenever the real
+                // loyalty discount is the one actually applied --
+                // whether or not a promo code is also present, so a
+                // buyer always sees exactly which real discount their
+                // order is getting, not just an unlabeled total.
+                if (cart.appliedDiscountSource == 'loyalty') ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Loyalty discount (${cart.loyaltyDiscountPercentage.toStringAsFixed(0)}% off)', style: TextStyle(color: LeapPalette.of(context).gauge, fontSize: 12.5)),
+                      Text('-${formatPrice(context, cart.appliedDiscountUsd)}', style: TextStyle(color: LeapPalette.of(context).gauge, fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ],
+                if (cart.totalSaved + cart.appliedDiscountUsd > 0) ...[
                   const SizedBox(height: 6),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(tr(context, 'you_saved'), style: TextStyle(color: LeapPalette.of(context).gauge, fontSize: 12.5, fontWeight: FontWeight.w600)),
-                      Text(formatPrice(context, cart.totalSaved + cart.promoDiscountUsd), style: TextStyle(color: LeapPalette.of(context).gauge, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                      Text(formatPrice(context, cart.totalSaved + cart.appliedDiscountUsd), style: TextStyle(color: LeapPalette.of(context).gauge, fontSize: 12.5, fontWeight: FontWeight.w700)),
                     ],
                   ),
                 ],
@@ -966,7 +984,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : FittedBox(
                         fit: BoxFit.scaleDown,
-                        child: Text('${tr(context, 'place_order')} · ${formatPriceWithUsd(context, cart.total - cart.promoDiscountUsd)}'),
+                        child: Text('${tr(context, 'place_order')} · ${formatPriceWithUsd(context, cart.total - cart.appliedDiscountUsd)}'),
                       ),
               ),
             ),

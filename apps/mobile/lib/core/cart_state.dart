@@ -27,6 +27,13 @@ class CartState extends ChangeNotifier {
   String? _appliedPromoCode;
   PromoDetails? _appliedPromoDetails;
   double _promoDiscountUsd = 0;
+  // Confirmed with the person: the real loyalty discount only ever
+  // competes with the real promo discount above -- appliedDiscountSource
+  // says which of the two actually won ('loyalty', 'promo', 'none').
+  double _loyaltyDiscountPercentage = 0;
+  double _loyaltyDiscountUsd = 0;
+  String _appliedDiscountSource = 'none';
+  double _appliedDiscountUsd = 0;
   // Confirmed with the person: whole-basket checkout price lock,
   // starts when checkout genuinely begins (not when an item is
   // added).
@@ -46,6 +53,10 @@ class CartState extends ChangeNotifier {
   String? get appliedPromoCode => _appliedPromoCode;
   PromoDetails? get appliedPromoDetails => _appliedPromoDetails;
   double get promoDiscountUsd => _promoDiscountUsd;
+  double get loyaltyDiscountPercentage => _loyaltyDiscountPercentage;
+  double get loyaltyDiscountUsd => _loyaltyDiscountUsd;
+  String get appliedDiscountSource => _appliedDiscountSource;
+  double get appliedDiscountUsd => _appliedDiscountUsd;
   bool get lockActive => _lockActive;
   DateTime? get lockExpiresAt => _lockExpiresAt;
 
@@ -79,6 +90,10 @@ class CartState extends ChangeNotifier {
     _appliedPromoCode = cart.appliedPromoCode;
     _appliedPromoDetails = cart.appliedPromoDetails;
     _promoDiscountUsd = cart.promoDiscountUsd;
+    _loyaltyDiscountPercentage = cart.loyaltyDiscountPercentage;
+    _loyaltyDiscountUsd = cart.loyaltyDiscountUsd;
+    _appliedDiscountSource = cart.appliedDiscountSource;
+    _appliedDiscountUsd = cart.appliedDiscountUsd;
     _lockActive = cart.lockActive;
     _lockExpiresAt = cart.lockExpiresAt;
   }
@@ -180,6 +195,10 @@ class CartState extends ChangeNotifier {
     _appliedPromoCode = null;
     _appliedPromoDetails = null;
     _promoDiscountUsd = 0;
+    _loyaltyDiscountPercentage = 0;
+    _loyaltyDiscountUsd = 0;
+    _appliedDiscountSource = 'none';
+    _appliedDiscountUsd = 0;
     _lockActive = false;
     _lockExpiresAt = null;
     notifyListeners();

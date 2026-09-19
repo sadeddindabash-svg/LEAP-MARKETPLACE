@@ -38,6 +38,7 @@ import 'features/orders/tracking_screen.dart';
 import 'features/orders/returns_screen.dart';
 import 'features/orders/return_case_detail_screen.dart';
 import 'features/account/account_screen.dart';
+import 'features/account/loyalty_detail_screen.dart';
 import 'features/account/addresses_screen.dart';
 import 'features/account/wishlist_screen.dart';
 import 'features/saved_searches/saved_searches_screen.dart';
@@ -95,6 +96,10 @@ final GoRouter appRouter = GoRouter(
     GoRoute(path: '/addresses/add', builder: (context, state) => const AddressFormScreen()),
     GoRoute(path: '/account/change-email', builder: (context, state) => const ChangeEmailScreen()),
     GoRoute(path: '/account/two-factor', builder: (context, state) => const TwoFactorSetupScreen()),
+    GoRoute(
+      path: '/account/loyalty',
+      builder: (context, state) => LoyaltyDetailScreen(status: state.extra as Map<String, dynamic>),
+    ),
     GoRoute(
       path: '/addresses/edit',
       builder: (context, state) => AddressFormScreen(existing: state.extra as Map<String, dynamic>?),

@@ -11,6 +11,16 @@ class Cart {
   final String? appliedPromoCode;
   final PromoDetails? appliedPromoDetails;
   final double promoDiscountUsd;
+  // Confirmed with the person: the real loyalty discount only ever
+  // competes with the real promo discount above, never with the
+  // vehicle-based discount (already baked into each item's own real
+  // price). appliedDiscountSource says which of the two real
+  // discounts actually won ('loyalty', 'promo', or 'none') --
+  // appliedDiscountUsd is that real winning amount.
+  final double loyaltyDiscountPercentage;
+  final double loyaltyDiscountUsd;
+  final String appliedDiscountSource;
+  final double appliedDiscountUsd;
   // Confirmed with the person: whole-basket checkout price lock --
   // starts when the buyer genuinely enters checkout (not when an
   // item is added), lasts 60 real minutes, and keeps counting down
@@ -24,6 +34,10 @@ class Cart {
     this.appliedPromoCode,
     this.appliedPromoDetails,
     this.promoDiscountUsd = 0,
+    this.loyaltyDiscountPercentage = 0,
+    this.loyaltyDiscountUsd = 0,
+    this.appliedDiscountSource = 'none',
+    this.appliedDiscountUsd = 0,
     this.lockActive = false,
     this.lockExpiresAt,
   });
@@ -37,6 +51,10 @@ class Cart {
           ? null
           : PromoDetails.fromJson(json['appliedPromoDetails'] as Map<String, dynamic>),
       promoDiscountUsd: (json['promoDiscountUsd'] as num?)?.toDouble() ?? 0,
+      loyaltyDiscountPercentage: (json['loyaltyDiscountPercentage'] as num?)?.toDouble() ?? 0,
+      loyaltyDiscountUsd: (json['loyaltyDiscountUsd'] as num?)?.toDouble() ?? 0,
+      appliedDiscountSource: json['appliedDiscountSource'] as String? ?? 'none',
+      appliedDiscountUsd: (json['appliedDiscountUsd'] as num?)?.toDouble() ?? 0,
       lockActive: json['lockActive'] as bool? ?? false,
       lockExpiresAt: json['lockExpiresAt'] == null ? null : DateTime.parse(json['lockExpiresAt'] as String),
     );

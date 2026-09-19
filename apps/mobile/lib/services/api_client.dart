@@ -393,6 +393,16 @@ class ApiClient {
     return list.map((v) => Vehicle.fromJson(v as Map<String, dynamic>)).toList();
   }
 
+  /// Real loyalty status (new) -- confirmed with the person through
+  /// several rounds of design: the buyer's own real lifetime spend,
+  /// current tier, next tier, and the full real tier list, all
+  /// admin-editable server-side, nothing hardcoded here.
+  Future<Map<String, dynamic>> fetchLoyaltyStatus(String token) async {
+    final response = await _client.get(Uri.parse('$baseUrl/loyalty/me'), headers: {'Authorization': 'Bearer $token'});
+    if (response.statusCode != 200) throw ApiException('Failed to load your loyalty status (${response.statusCode})');
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   Future<List<Vehicle>> addVehicleToGarage(String token, String generationId, int year) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/garage/me'),
