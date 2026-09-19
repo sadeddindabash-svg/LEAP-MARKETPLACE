@@ -279,6 +279,10 @@ export const deleteBrand = (token, id) => fitmentMutate("DELETE", `/fitment/bran
 export const fetchVinWmiCodes = (token) => authedGet("/fitment/vin-wmi-codes", token);
 export const saveVinWmiCode = (token, wmiPrefix, make, country) => fitmentMutate("POST", "/fitment/vin-wmi-codes", token, { wmiPrefix, make, country });
 export const deleteVinWmiCode = (token, wmiPrefix) => fitmentMutate("DELETE", `/fitment/vin-wmi-codes/${wmiPrefix}`, token);
+export const fetchVinModelPatterns = (token) => authedGet("/fitment/vin-model-patterns", token);
+export const saveVinModelPattern = (token, prefix, brand, model, type, yearMin, yearMax) =>
+  fitmentMutate("POST", "/fitment/vin-model-patterns", token, { prefix, brand, model, type, yearMin, yearMax });
+export const deleteVinModelPattern = (token, prefix) => fitmentMutate("DELETE", `/fitment/vin-model-patterns/${prefix}`, token);
 export const createModel = (token, brandId, name, nameAr, photoUrl) => fitmentMutate("POST", `/fitment/brands/${brandId}/models`, token, { name, nameAr, photoUrl });
 export const deleteModel = (token, id) => fitmentMutate("DELETE", `/fitment/models/${id}`, token);
 export const updateModelPhoto = (token, id, photoUrl) => fitmentMutate("PATCH", `/fitment/models/${id}/photo`, token, { photoUrl });

@@ -11,6 +11,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
   createBrand, deleteBrand, createModel, deleteModel, createGeneration, deleteGeneration, createEngine, deleteEngine, createTransmission, deleteTransmission,
   fetchVinWmiCodes, saveVinWmiCode, deleteVinWmiCode,
+  fetchVinModelPatterns, saveVinModelPattern, deleteVinModelPattern,
   fetchHubLocations, createHubLocation, deleteHubLocation, assignHubToSubOrder,
   fetchFeeComponents, createFeeComponent, updateFeeComponent, deleteFeeComponent, moveFeeComponent, fetchFxRate, updateFxRate, fetchFxRateMode, updateFxRateMode, previewPricing,
   fetchDiscountRules, createDiscountRule, updateDiscountRule, deleteDiscountRule,
@@ -2729,6 +2730,154 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
 // corrected and expanded over time as real VINs are actually
 // checked, since the seeded starting set is a best-effort list, not
 // a claim of completeness.
+// Confirmed with the person: admin CRUD for the real vin_model_patterns
+// table -- the combined Brand/Model/Year/Type data built from the
+// person's own real, provided vehicle dataset. Only ever shows/adds
+// unambiguous (single, confident model) rows -- the ambiguous ones
+// stay backend-only, used purely for the decoder's own honest
+// fallback, never surfaced here for editing.
+function VinModelPatternsSettings({ onSessionExpired }) {
+  const [patterns, setPatterns] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [newPrefix, setNewPrefix] = useState("");
+  const [newBrand, setNewBrand] = useState("");
+  const [newModel, setNewModel] = useState("");
+  const [newType, setNewType] = useState("");
+  const [newYearMin, setNewYearMin] = useState("");
+  const [newYearMax, setNewYearMax] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [deletingPrefix, setDeletingPrefix] = useState(null);
+
+  const load = () => {
+    setIsLoading(true);
+    fetchVinModelPatterns(getStoredToken())
+      .then((p) => { setPatterns(p); setIsLoading(false); })
+      .catch((e) => {
+        if (e instanceof SessionExpiredError) return onSessionExpired();
+        setError(e.message); setIsLoading(false);
+      });
+  };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleAdd = async () => {
+    if (newPrefix.trim().length !== 8 || !newBrand.trim() || !newModel.trim()) {
+      setError("An 8-character VIN prefix, brand, and model are all required.");
+      return;
+    }
+    setIsSaving(true);
+    setError(null);
+    try {
+      await saveVinModelPattern(
+        getStoredToken(), newPrefix.trim(), newBrand.trim(), newModel.trim(),
+        newType || undefined,
+        newYearMin ? Number(newYearMin) : undefined,
+        newYearMax ? Number(newYearMax) : undefined
+      );
+      setNewPrefix(""); setNewBrand(""); setNewModel(""); setNewType(""); setNewYearMin(""); setNewYearMax("");
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async (prefix) => {
+    setDeletingPrefix(prefix);
+    setError(null);
+    try {
+      await deleteVinModelPattern(getStoredToken(), prefix);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setError(err.message);
+    } finally {
+      setDeletingPrefix(null);
+    }
+  };
+
+  const cellStyle = { ...body, fontSize: 12.5, padding: "8px 10px", borderBottom: `1px solid ${C.line}` };
+  const inputStyle = { ...body, fontSize: 12.5, border: `1px solid ${C.line}`, borderRadius: 6, padding: "6px 10px" };
+
+  return (
+    <Card title="VIN model patterns (brand + model + year)" style={{ marginBottom: 20 }}>
+      <div style={{ padding: 16 }}>
+        <div style={{ ...body, fontSize: 12, color: C.muted, marginBottom: 14 }}>
+          Matches the full 8-character VIN prefix to an exact model and year range, resolving a VIN all the way to a specific vehicle. Only confirmed, unambiguous matches are listed here — correct or add rows as more real VINs are checked.
+        </div>
+        {isLoading ? (
+          <div style={{ ...body, fontSize: 13, color: C.muted }}>Loading…</div>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ ...cellStyle, textAlign: "left", color: C.muted, fontWeight: 600 }}>VIN prefix (8 chars)</th>
+                <th style={{ ...cellStyle, textAlign: "left", color: C.muted, fontWeight: 600 }}>Brand</th>
+                <th style={{ ...cellStyle, textAlign: "left", color: C.muted, fontWeight: 600 }}>Model</th>
+                <th style={{ ...cellStyle, textAlign: "left", color: C.muted, fontWeight: 600 }}>Year range</th>
+                <th style={{ ...cellStyle, textAlign: "left", color: C.muted, fontWeight: 600 }}>Type</th>
+                <th style={cellStyle}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {patterns.map((p) => (
+                <tr key={p.prefix}>
+                  <td style={cellStyle}>{p.prefix}</td>
+                  <td style={cellStyle}>{p.brand}</td>
+                  <td style={cellStyle}>{p.model}</td>
+                  <td style={{ ...cellStyle, color: C.muted }}>
+                    {p.yearMin && p.yearMax ? (p.yearMin === p.yearMax ? p.yearMin : `${p.yearMin}–${p.yearMax}`) : "—"}
+                  </td>
+                  <td style={{ ...cellStyle, color: C.muted }}>{p.type || "—"}</td>
+                  <td style={{ ...cellStyle, textAlign: "right" }}>
+                    <button
+                      onClick={() => handleDelete(p.prefix)}
+                      disabled={deletingPrefix === p.prefix}
+                      style={{ ...body, fontSize: 12, color: C.red, background: "none", border: "none", cursor: "pointer" }}
+                    >
+                      {deletingPrefix === p.prefix ? "Removing…" : "Remove"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              <tr>
+                <td style={cellStyle}><input value={newPrefix} onChange={(e) => setNewPrefix(e.target.value.toUpperCase())} maxLength={8} placeholder="e.g. LS4ASE2W" style={{ ...inputStyle, width: 100 }} /></td>
+                <td style={cellStyle}><input value={newBrand} onChange={(e) => setNewBrand(e.target.value)} placeholder="e.g. Changan" style={{ ...inputStyle, width: 100 }} /></td>
+                <td style={cellStyle}><input value={newModel} onChange={(e) => setNewModel(e.target.value)} placeholder="e.g. CS75" style={{ ...inputStyle, width: 110 }} /></td>
+                <td style={cellStyle}>
+                  <input value={newYearMin} onChange={(e) => setNewYearMin(e.target.value)} placeholder="2015" style={{ ...inputStyle, width: 55 }} />
+                  {" – "}
+                  <input value={newYearMax} onChange={(e) => setNewYearMax(e.target.value)} placeholder="2018" style={{ ...inputStyle, width: 55 }} />
+                </td>
+                <td style={cellStyle}>
+                  <select value={newType} onChange={(e) => setNewType(e.target.value)} style={{ ...inputStyle, width: 100 }}>
+                    <option value="">—</option>
+                    <option value="Electric">Electric</option>
+                    <option value="Hybrid">Hybrid</option>
+                    <option value="PHEV">PHEV</option>
+                  </select>
+                </td>
+                <td style={{ ...cellStyle, textAlign: "right" }}>
+                  <button
+                    onClick={handleAdd}
+                    disabled={isSaving}
+                    style={{ ...body, fontSize: 12, fontWeight: 700, color: "#fff", background: isSaving ? "#D1D5DB" : C.signal, border: "none", borderRadius: 6, padding: "6px 14px", cursor: isSaving ? "default" : "pointer" }}
+                  >
+                    {isSaving ? "Adding…" : "Add"}
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        )}
+        {error && <div style={{ ...body, fontSize: 12.5, color: C.red, marginTop: 10 }}>{error}</div>}
+      </div>
+    </Card>
+  );
+}
+
 function VinWmiCodesSettings({ onSessionExpired }) {
   const [codes, setCodes] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -3330,6 +3479,7 @@ function VehicleDataPage({ onSessionExpired }) {
       />
       <div style={{ padding: "0 24px 24px" }}>
         <VinWmiCodesSettings onSessionExpired={onSessionExpired} />
+        <VinModelPatternsSettings onSessionExpired={onSessionExpired} />
       </div>
     </div>
   );

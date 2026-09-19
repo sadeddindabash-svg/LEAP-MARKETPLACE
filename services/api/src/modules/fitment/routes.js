@@ -704,4 +704,65 @@ router.delete('/vin-wmi-codes/:wmiPrefix', requireAuth, requireRole('admin'), re
   }
 });
 
+// ============================================================
+// Admin: manage the vin_model_patterns table (Vehicle Data page).
+// Confirmed with the person: only ever shows/creates real,
+// unambiguous (is_ambiguous = FALSE) rows here -- a manually-added
+// row is, by construction, the admin vouching for one confident
+// model for that prefix.
+// ============================================================
+
+router.get('/vin-model-patterns', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT prefix, brand, model, type, year_min, year_max FROM vin_model_patterns
+       WHERE is_ambiguous = FALSE ORDER BY brand ASC, model ASC, prefix ASC`
+    );
+    res.json(rows.map((r) => ({
+      prefix: r.prefix, brand: r.brand, model: r.model, type: r.type,
+      yearMin: r.year_min, yearMax: r.year_max,
+    })));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/vin-model-patterns', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const { prefix, brand, model, type, yearMin, yearMax } = req.body || {};
+    const normalizedPrefix = (prefix || '').toUpperCase().trim();
+    if (normalizedPrefix.length !== 8) {
+      return res.status(400).json({ error: 'prefix must be exactly 8 characters' });
+    }
+    if (!brand || !model) {
+      return res.status(400).json({ error: 'brand and model are required' });
+    }
+    const validTypes = ['PHEV', 'Electric', 'Hybrid'];
+    const normalizedType = type && validTypes.includes(type) ? type : null;
+    await db.query(
+      `INSERT INTO vin_model_patterns (prefix, brand, model, type, is_ambiguous, year_min, year_max, example_count, source)
+       VALUES ($1, $2, $3, $4, FALSE, $5, $6, 0, 'Admin-entered (Vehicle Data page)')
+       ON CONFLICT (prefix) DO UPDATE SET
+         brand = EXCLUDED.brand, model = EXCLUDED.model, type = EXCLUDED.type,
+         is_ambiguous = FALSE, year_min = EXCLUDED.year_min, year_max = EXCLUDED.year_max, updated_at = now()`,
+      [normalizedPrefix, brand, model, normalizedType, yearMin || null, yearMax || null]
+    );
+    await logAdminAction(req, 'vin_model_pattern_saved', 'vin_model_pattern', normalizedPrefix, { brand, model });
+    res.status(201).json({ prefix: normalizedPrefix, brand, model, type: normalizedType, yearMin: yearMin || null, yearMax: yearMax || null });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/vin-model-patterns/:prefix', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const { rowCount } = await db.query('DELETE FROM vin_model_patterns WHERE prefix = $1', [req.params.prefix.toUpperCase()]);
+    if (rowCount === 0) return res.status(404).json({ error: 'VIN model pattern not found' });
+    await logAdminAction(req, 'vin_model_pattern_deleted', 'vin_model_pattern', req.params.prefix, {});
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
