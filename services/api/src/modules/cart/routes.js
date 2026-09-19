@@ -4,6 +4,7 @@ const { calculateBuyerPriceUsd } = require('../pricing/engine');
 const { findMatchingDiscountRule } = require('../pricing/discountRules');
 const { buildSupplierLabelMap } = require('../shared/supplierAnonymize');
 const { validatePromoCode, calculateDiscountUsd } = require('../promotions/helpers');
+const { getLoyaltyDiscountPercentage } = require('../loyalty/helpers');
 
 /**
  * Cart module — BUY-030–032. Cart holds items from multiple suppliers; the
@@ -150,11 +151,11 @@ async function getFullCart(cartId) {
   // from the cart record rather than shown as if still valid.
   let promoDiscountUsd = 0;
   let appliedPromoDetails = null;
+  const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
   if (appliedPromoCode) {
     const validation = await validatePromoCode(appliedPromoCode, buyerId);
     if (validation.valid) {
       appliedPromoDetails = { code: appliedPromoCode, type: validation.promoCode.type, value: validation.promoCode.value === null ? null : Number(validation.promoCode.value) };
-      const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
       // Matches the existing client-side _previewDiscount's own real,
       // established behavior: free_shipping's real amount depends on
       // a real server-side shipping breakdown this cart response
@@ -170,7 +171,29 @@ async function getFullCart(cartId) {
     }
   }
 
-  return { cartId, items, appliedPromoCode, appliedPromoDetails, promoDiscountUsd, lockActive, lockExpiresAt };
+  // Confirmed with the person: real loyalty discount only ever
+  // competes with a real promo code, never with the real vehicle-
+  // based discount above (already applied, unconditional). Whichever
+  // of these two saves the buyer more real money wins -- never both
+  // stacked together.
+  const loyaltyDiscountPercentage = await getLoyaltyDiscountPercentage(buyerId);
+  const loyaltyDiscountUsd = Number((subtotal * (loyaltyDiscountPercentage / 100)).toFixed(2));
+  let appliedDiscountSource = 'none';
+  let appliedDiscountUsd = 0;
+  if (loyaltyDiscountUsd > promoDiscountUsd) {
+    appliedDiscountSource = 'loyalty';
+    appliedDiscountUsd = loyaltyDiscountUsd;
+  } else if (promoDiscountUsd > 0) {
+    appliedDiscountSource = 'promo';
+    appliedDiscountUsd = promoDiscountUsd;
+  }
+
+  return {
+    cartId, items, appliedPromoCode, appliedPromoDetails,
+    promoDiscountUsd, loyaltyDiscountPercentage, loyaltyDiscountUsd,
+    appliedDiscountSource, appliedDiscountUsd,
+    lockActive, lockExpiresAt,
+  };
 }
 
 // Real, honest note on the check below: stock isn't reserved per-cart

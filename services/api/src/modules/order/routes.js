@@ -3,6 +3,7 @@ const db = require('../../../db/pool');
 const { requireAuth, optionalAuth, requirePageAccessIfAdmin } = require('../auth/middleware');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
 const { validatePromoCode, calculateDiscountUsd, recordRedemption, checkAndGrantReferralReward } = require('../promotions/helpers');
+const { getLoyaltyDiscountPercentage } = require('../loyalty/helpers');
 const { sendTransactionalEmail } = require('../email/client');
 const { orderConfirmationEmail, wrapEmailBody } = require('../email/templates');
 const { createNotification } = require('../notifications/helpers');
@@ -208,6 +209,21 @@ router.post('/', async (req, res, next) => {
       }
       discountUsd = calculateDiscountUsd(validation.promoCode, subtotal, totalShippingPortionUsd);
       appliedPromoCode = promoCode;
+    }
+    // Confirmed with the person: the real loyalty discount only ever
+    // competes with the real promo discount above, never with the
+    // real vehicle-based discount (already baked into buyerUnitPrices,
+    // unconditional, first). Whichever of these two genuinely saves
+    // the buyer more real money is what actually gets charged -- never
+    // both stacked together. A real free_shipping promo's own
+    // discountUsd naturally stays 0 here (it never touches real item
+    // pricing at all), so loyalty simply wins that comparison on its
+    // own, with no special-casing needed.
+    const loyaltyDiscountPercentage = await getLoyaltyDiscountPercentage(userId || null);
+    const loyaltyDiscountUsd = Number((subtotal * (loyaltyDiscountPercentage / 100)).toFixed(2));
+    if (loyaltyDiscountUsd > discountUsd) {
+      discountUsd = loyaltyDiscountUsd;
+      appliedPromoCode = null; // the real loyalty discount won -- no real promo code is actually being redeemed on this order
     }
     const total = Math.max(0, Number((subtotal - discountUsd).toFixed(2)));
 
