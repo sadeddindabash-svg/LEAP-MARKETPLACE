@@ -1,4 +1,5 @@
 import React, { useState, useEffect, createContext, useContext } from "react";
+import ExcelJS from "exceljs";
 import LoginPage from "./LoginPage";
 import { exportToExcel } from "./exportToExcel";
 import { FONT_IMPORT, C, disp, body, mono } from "./theme";
@@ -11,7 +12,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
   createBrand, deleteBrand, createModel, deleteModel, createGeneration, deleteGeneration, createEngine, deleteEngine, createTransmission, deleteTransmission,
   fetchVinWmiCodes, saveVinWmiCode, deleteVinWmiCode,
-  fetchVinModelPatterns, saveVinModelPattern, deleteVinModelPattern,
+  fetchVinModelPatterns, saveVinModelPattern, deleteVinModelPattern, bulkUploadVinModelPatterns,
   fetchHubLocations, createHubLocation, deleteHubLocation, assignHubToSubOrder,
   fetchFeeComponents, createFeeComponent, updateFeeComponent, deleteFeeComponent, moveFeeComponent, fetchFxRate, updateFxRate, fetchFxRateMode, updateFxRateMode, previewPricing,
   fetchDiscountRules, createDiscountRule, updateDiscountRule, deleteDiscountRule,
@@ -2748,6 +2749,8 @@ function VinModelPatternsSettings({ onSessionExpired }) {
   const [newYearMax, setNewYearMax] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [deletingPrefix, setDeletingPrefix] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadSummary, setUploadSummary] = useState(null);
 
   const load = () => {
     setIsLoading(true);
@@ -2798,6 +2801,61 @@ function VinModelPatternsSettings({ onSessionExpired }) {
     }
   };
 
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setIsUploading(true);
+    setError(null);
+    setUploadSummary(null);
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const buffer = await file.arrayBuffer();
+      await workbook.xlsx.load(buffer);
+      const sheet = workbook.worksheets[0];
+      if (!sheet) throw new Error("This file has no worksheet to read.");
+
+      const columnIndex = {};
+      sheet.getRow(1).eachCell((cell, colNumber) => {
+        const h = String(cell.value || "").trim().toLowerCase();
+        if (h.includes("vin") || h.includes("prefix")) columnIndex.prefix = colNumber;
+        else if (h.includes("brand")) columnIndex.brand = colNumber;
+        else if (h.includes("model")) columnIndex.model = colNumber;
+        else if (h.includes("year")) columnIndex.year = colNumber;
+        else if (h.includes("type")) columnIndex.type = colNumber;
+      });
+
+      const rows = [];
+      sheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return;
+        const get = (key) => (columnIndex[key] ? row.getCell(columnIndex[key]).value : undefined);
+        const prefix = get("prefix");
+        if (!prefix) return; // a genuinely blank row
+        rows.push({
+          prefix: String(prefix).trim(),
+          brand: String(get("brand") || "").trim(),
+          model: String(get("model") || "").trim(),
+          year: get("year") || null,
+          type: String(get("type") || "").trim(),
+        });
+      });
+
+      if (rows.length === 0) {
+        setError("Couldn't recognize any rows in this file — check the column headers match VIN Prefix / Brand / Model / Year / Type.");
+        return;
+      }
+
+      const summary = await bulkUploadVinModelPatterns(getStoredToken(), rows);
+      setUploadSummary(summary);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setError(err.message || "Couldn't read this file — make sure it's a valid .xlsx file.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const cellStyle = { ...body, fontSize: 12.5, padding: "8px 10px", borderBottom: `1px solid ${C.line}` };
   const inputStyle = { ...body, fontSize: 12.5, border: `1px solid ${C.line}`, borderRadius: 6, padding: "6px 10px" };
 
@@ -2807,6 +2865,36 @@ function VinModelPatternsSettings({ onSessionExpired }) {
         <div style={{ ...body, fontSize: 12, color: C.muted, marginBottom: 14 }}>
           Matches the full 8-character VIN prefix to an exact model and year range, resolving a VIN all the way to a specific vehicle. Only confirmed, unambiguous matches are listed here — correct or add rows as more real VINs are checked.
         </div>
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ ...body, fontSize: 12.5, fontWeight: 700, color: "#fff", background: isUploading ? "#D1D5DB" : C.signal, borderRadius: 6, padding: "8px 16px", cursor: isUploading ? "default" : "pointer", display: "inline-block" }}>
+            {isUploading ? "Uploading…" : "Upload Excel (.xlsx)"}
+            <input type="file" accept=".xlsx" style={{ display: "none" }} onChange={handleFileUpload} disabled={isUploading} />
+          </label>
+          <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 10 }}>
+            Columns: VIN Prefix (8 chars), Brand, Model, Year, Type
+          </span>
+        </div>
+        {uploadSummary && (
+          <div style={{ ...body, fontSize: 12.5, background: "#F0F9F4", border: `1px solid ${C.line}`, borderRadius: 8, padding: 12, marginBottom: 14 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Upload complete</div>
+            <div>{uploadSummary.newWmiCount} new brand code(s) added, {uploadSummary.patternCount} model pattern(s) added or updated.</div>
+            {uploadSummary.skipped.length > 0 && (
+              <div style={{ marginTop: 6, color: C.muted }}>
+                {uploadSummary.skipped.length} row(s) skipped (missing required data): {uploadSummary.skipped.map((s) => s.prefix || "(blank)").join(", ")}
+              </div>
+            )}
+            {uploadSummary.needsReview.length > 0 && (
+              <div style={{ marginTop: 6, color: C.red }}>
+                {uploadSummary.needsReview.length} row(s) need your review — the brand disagrees with what's already saved for that code:
+                <ul style={{ margin: "4px 0 0 18px", padding: 0 }}>
+                  {uploadSummary.needsReview.map((r) => (
+                    <li key={r.prefix}>{r.wmi}: already "{r.existingBrand}", this file says "{r.uploadedBrand}" ({r.prefix})</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
         {isLoading ? (
           <div style={{ ...body, fontSize: 13, color: C.muted }}>Loading…</div>
         ) : (

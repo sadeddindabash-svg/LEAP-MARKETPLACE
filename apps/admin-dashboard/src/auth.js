@@ -283,6 +283,7 @@ export const fetchVinModelPatterns = (token) => authedGet("/fitment/vin-model-pa
 export const saveVinModelPattern = (token, prefix, brand, model, type, yearMin, yearMax) =>
   fitmentMutate("POST", "/fitment/vin-model-patterns", token, { prefix, brand, model, type, yearMin, yearMax });
 export const deleteVinModelPattern = (token, prefix) => fitmentMutate("DELETE", `/fitment/vin-model-patterns/${prefix}`, token);
+export const bulkUploadVinModelPatterns = (token, rows) => fitmentMutate("POST", "/fitment/vin-model-patterns/bulk-upload", token, { rows });
 export const createModel = (token, brandId, name, nameAr, photoUrl) => fitmentMutate("POST", `/fitment/brands/${brandId}/models`, token, { name, nameAr, photoUrl });
 export const deleteModel = (token, id) => fitmentMutate("DELETE", `/fitment/models/${id}`, token);
 export const updateModelPhoto = (token, id, photoUrl) => fitmentMutate("PATCH", `/fitment/models/${id}/photo`, token, { photoUrl });

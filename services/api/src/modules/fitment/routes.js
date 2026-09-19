@@ -765,4 +765,73 @@ router.delete('/vin-model-patterns/:prefix', requireAuth, requireRole('admin'), 
   }
 });
 
+// POST /vin-model-patterns/bulk-upload { rows: [{ prefix, brand, model, year, type }] }
+// Confirmed with the person: rows are already parsed client-side
+// (matching the existing established pattern -- the supplier
+// portal's own real bulk-import already parses .xlsx with exceljs
+// in the browser before sending JSON here, rather than uploading the
+// raw file for server-side parsing).
+//
+// Confirmed with the person: a malformed row (missing a required
+// field, or a prefix that isn't exactly 8 characters) is skipped
+// individually, not treated as a reason to fail the whole real
+// upload.
+//
+// Confirmed with the person: for the real 3-character WMI code,
+// disagreement with an existing real brand is never silently
+// overwritten -- automates exactly how the real LFP/Hongqi conflict
+// was handled directly with the person earlier. The full 8-character
+// model pattern itself is always safely upserted, since a person
+// re-uploading the same real prefix is presumed to be correcting or
+// confirming it, not introducing a genuine ambiguity.
+router.post('/vin-model-patterns/bulk-upload', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    const validTypes = ['PHEV', 'Electric', 'Hybrid'];
+    let newWmiCount = 0;
+    let patternCount = 0;
+    const skipped = [];
+    const needsReview = [];
+
+    for (const row of rows) {
+      const prefix = (row.prefix || '').toUpperCase().trim();
+      const brand = (row.brand || '').trim();
+      const model = (row.model || '').trim();
+      const year = row.year ? Number(row.year) : null;
+      const type = validTypes.includes(row.type) ? row.type : null;
+
+      if (prefix.length !== 8 || !brand || !model) {
+        skipped.push({ prefix: row.prefix, reason: 'Missing prefix (must be 8 characters), brand, or model' });
+        continue;
+      }
+
+      const wmi = prefix.slice(0, 3);
+      const { rows: existingWmi } = await db.query('SELECT make FROM vin_wmi_codes WHERE wmi_prefix = $1', [wmi]);
+      if (existingWmi.length === 0) {
+        await db.query('INSERT INTO vin_wmi_codes (wmi_prefix, make, country) VALUES ($1, $2, $3)', [wmi, brand, null]);
+        newWmiCount += 1;
+      } else if (existingWmi[0].make.toLowerCase() !== brand.toLowerCase()) {
+        needsReview.push({ wmi, existingBrand: existingWmi[0].make, uploadedBrand: brand, prefix });
+        continue; // real conflict -- the real 8-character pattern below is held back too, since its own brand is in question
+      }
+
+      await db.query(
+        `INSERT INTO vin_model_patterns (prefix, brand, model, type, is_ambiguous, year_min, year_max, example_count, source)
+         VALUES ($1, $2, $3, $4, FALSE, $5, $5, 1, 'Bulk upload (Vehicle Data page)')
+         ON CONFLICT (prefix) DO UPDATE SET
+           brand = EXCLUDED.brand, model = EXCLUDED.model, type = EXCLUDED.type,
+           is_ambiguous = FALSE, year_min = LEAST(vin_model_patterns.year_min, EXCLUDED.year_min),
+           year_max = GREATEST(vin_model_patterns.year_max, EXCLUDED.year_max), updated_at = now()`,
+        [prefix, brand, model, type, year]
+      );
+      patternCount += 1;
+    }
+
+    await logAdminAction(req, 'vin_model_patterns_bulk_uploaded', 'vin_model_pattern', 'bulk', { newWmiCount, patternCount, skippedCount: skipped.length, reviewCount: needsReview.length });
+    res.json({ newWmiCount, patternCount, skipped, needsReview });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
