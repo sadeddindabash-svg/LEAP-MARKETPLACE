@@ -57,7 +57,11 @@ async function computeLivePrice(r) {
 
 const CHECKOUT_LOCK_DURATION_MS = 60 * 60 * 1000; // confirmed with the person: 60 real minutes
 
-async function getFullCart(cartId, tokenBuyerId) {
+// `lang` ('ar' | anything else) picks which approved product name to return --
+// same rule as catalog's resolveLanguage(): Arabic name when requested AND one
+// exists, otherwise the default name. Without this a basket always showed the
+// English name even for products with an approved Arabic translation.
+async function getFullCart(cartId, tokenBuyerId, lang) {
   const { rows: cartRows } = await db.query('SELECT buyer_id, applied_promo_code, checkout_locked_at FROM carts WHERE id = $1', [cartId]);
   let buyerId = cartRows[0]?.buyer_id || null;
   // Confirmed with the person through direct diagnosis of a real,
@@ -82,7 +86,7 @@ async function getFullCart(cartId, tokenBuyerId) {
   const lockExpiresAt = lockActive ? new Date(new Date(checkoutLockedAt).getTime() + CHECKOUT_LOCK_DURATION_MS).toISOString() : null;
 
   const { rows } = await db.query(
-    `SELECT ci.product_id, ci.quantity, ci.locked_price, p.name, p.price, p.currency_code, p.weight_kg, p.length_cm, p.width_cm, p.height_cm, p.stock_quantity, p.supplier_id
+    `SELECT ci.product_id, ci.quantity, ci.locked_price, p.name, p.name_ar, p.price, p.currency_code, p.weight_kg, p.length_cm, p.width_cm, p.height_cm, p.stock_quantity, p.supplier_id
      FROM cart_items ci
      JOIN products p ON p.id = ci.product_id
      WHERE ci.cart_id = $1`,
@@ -137,7 +141,7 @@ async function getFullCart(cartId, tokenBuyerId) {
     return {
       productId: r.product_id,
       quantity: r.quantity,
-      name: r.name,
+      name: lang === 'ar' && r.name_ar ? r.name_ar : r.name,
       price,
       originalPrice,
       priceChanged,
@@ -227,7 +231,7 @@ async function checkStockAvailable(productId, requestedQuantity) {
 
 router.get('/:cartId', optionalAuth, async (req, res, next) => {
   try {
-    res.json(await getFullCart(req.params.cartId, req.user?.sub));
+    res.json(await getFullCart(req.params.cartId, req.user?.sub, req.query.lang));
   } catch (err) {
     next(err);
   }
@@ -262,7 +266,7 @@ router.post('/:cartId/lock-prices', optionalAuth, async (req, res, next) => {
       }));
       await db.query('UPDATE carts SET checkout_locked_at = now() WHERE id = $1', [req.params.cartId]);
     }
-    res.json(await getFullCart(req.params.cartId, req.user?.sub));
+    res.json(await getFullCart(req.params.cartId, req.user?.sub, req.query.lang));
   } catch (err) {
     next(err);
   }
@@ -280,7 +284,7 @@ router.patch('/:cartId/promo-code', optionalAuth, async (req, res, next) => {
     await ensureCartExists(req.params.cartId);
     if (!code) {
       await db.query('UPDATE carts SET applied_promo_code = NULL WHERE id = $1', [req.params.cartId]);
-      return res.json(await getFullCart(req.params.cartId, req.user?.sub));
+      return res.json(await getFullCart(req.params.cartId, req.user?.sub, req.query.lang));
     }
     const { rows: cartRows } = await db.query('SELECT buyer_id FROM carts WHERE id = $1', [req.params.cartId]);
     const validation = await validatePromoCode(code, req.user?.sub || cartRows[0]?.buyer_id || null);
@@ -288,7 +292,7 @@ router.patch('/:cartId/promo-code', optionalAuth, async (req, res, next) => {
       return res.status(400).json({ error: validation.reason });
     }
     await db.query('UPDATE carts SET applied_promo_code = $1 WHERE id = $2', [code, req.params.cartId]);
-    res.json(await getFullCart(req.params.cartId, req.user?.sub));
+    res.json(await getFullCart(req.params.cartId, req.user?.sub, req.query.lang));
   } catch (err) {
     next(err);
   }
@@ -315,7 +319,7 @@ router.post('/:cartId/items', optionalAuth, async (req, res, next) => {
        ON CONFLICT (cart_id, product_id) DO UPDATE SET quantity = cart_items.quantity + EXCLUDED.quantity`,
       [req.params.cartId, productId, quantity]
     );
-    res.status(201).json(await getFullCart(req.params.cartId, req.user?.sub));
+    res.status(201).json(await getFullCart(req.params.cartId, req.user?.sub, req.query.lang));
   } catch (err) {
     next(err);
   }
@@ -347,7 +351,7 @@ router.patch('/:cartId/items/:productId', optionalAuth, async (req, res, next) =
         [req.params.cartId, req.params.productId, quantity]
       );
     }
-    res.json(await getFullCart(req.params.cartId, req.user?.sub));
+    res.json(await getFullCart(req.params.cartId, req.user?.sub, req.query.lang));
   } catch (err) {
     next(err);
   }
@@ -356,7 +360,7 @@ router.patch('/:cartId/items/:productId', optionalAuth, async (req, res, next) =
 router.delete('/:cartId/items/:productId', optionalAuth, async (req, res, next) => {
   try {
     await db.query('DELETE FROM cart_items WHERE cart_id = $1 AND product_id = $2', [req.params.cartId, req.params.productId]);
-    res.json(await getFullCart(req.params.cartId, req.user?.sub));
+    res.json(await getFullCart(req.params.cartId, req.user?.sub, req.query.lang));
   } catch (err) {
     next(err);
   }

@@ -698,16 +698,16 @@ class ApiClient {
     return Cart.fromJson(body);
   }
 
-  Future<Cart> fetchCart(String cartId, {String? token}) async {
-    final response = await _client.get(Uri.parse('$baseUrl/cart/$cartId'), headers: _authHeaders(token));
+  Future<Cart> fetchCart(String cartId, {String? token, String lang = 'en'}) async {
+    final response = await _client.get(Uri.parse('$baseUrl/cart/$cartId?lang=$lang'), headers: _authHeaders(token));
     return _decodeCart(response);
   }
 
   /// Adds to whatever quantity is already in the cart for this product
   /// (the backend merges quantities on repeat adds — see that module).
-  Future<Cart> addCartItem(String cartId, String productId, int quantity, {String? token}) async {
+  Future<Cart> addCartItem(String cartId, String productId, int quantity, {String? token, String lang = 'en'}) async {
     final response = await _client.post(
-      Uri.parse('$baseUrl/cart/$cartId/items'),
+      Uri.parse('$baseUrl/cart/$cartId/items?lang=$lang'),
       headers: _authHeaders(token),
       body: jsonEncode({'productId': productId, 'quantity': quantity}),
     );
@@ -717,17 +717,17 @@ class ApiClient {
   /// Sets the EXACT quantity (unlike addCartItem, which adds to the
   /// existing amount) — used by a +/- quantity stepper. quantity <= 0
   /// removes the item entirely.
-  Future<Cart> setCartItemQuantity(String cartId, String productId, int quantity, {String? token}) async {
+  Future<Cart> setCartItemQuantity(String cartId, String productId, int quantity, {String? token, String lang = 'en'}) async {
     final response = await _client.patch(
-      Uri.parse('$baseUrl/cart/$cartId/items/$productId'),
+      Uri.parse('$baseUrl/cart/$cartId/items/$productId?lang=$lang'),
       headers: _authHeaders(token),
       body: jsonEncode({'quantity': quantity}),
     );
     return _decodeCart(response);
   }
 
-  Future<Cart> removeCartItem(String cartId, String productId, {String? token}) async {
-    final response = await _client.delete(Uri.parse('$baseUrl/cart/$cartId/items/$productId'), headers: _authHeaders(token));
+  Future<Cart> removeCartItem(String cartId, String productId, {String? token, String lang = 'en'}) async {
+    final response = await _client.delete(Uri.parse('$baseUrl/cart/$cartId/items/$productId?lang=$lang'), headers: _authHeaders(token));
     return _decodeCart(response);
   }
 
@@ -735,9 +735,9 @@ class ApiClient {
   /// null) a persisted promo code on this cart -- survives leaving
   /// the checkout screen entirely, even closing and reopening the
   /// app, since it's stored on the real cart record itself.
-  Future<Cart> applyPromoCode(String cartId, String? code, {String? token}) async {
+  Future<Cart> applyPromoCode(String cartId, String? code, {String? token, String lang = 'en'}) async {
     final response = await _client.patch(
-      Uri.parse('$baseUrl/cart/$cartId/promo-code'),
+      Uri.parse('$baseUrl/cart/$cartId/promo-code?lang=$lang'),
       headers: _authHeaders(token),
       body: jsonEncode({'code': code}),
     );
@@ -748,8 +748,8 @@ class ApiClient {
   /// enters checkout, not when an item is added to the cart. Starts
   /// a fresh 60-minute price lock, or does nothing (continues the
   /// existing countdown) if one's already active.
-  Future<Cart> lockPrices(String cartId, {String? token}) async {
-    final response = await _client.post(Uri.parse('$baseUrl/cart/$cartId/lock-prices'), headers: _authHeaders(token));
+  Future<Cart> lockPrices(String cartId, {String? token, String lang = 'en'}) async {
+    final response = await _client.post(Uri.parse('$baseUrl/cart/$cartId/lock-prices?lang=$lang'), headers: _authHeaders(token));
     return _decodeCart(response);
   }
 
@@ -1207,7 +1207,7 @@ class ApiClient {
       }),
     );
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    if (response.statusCode != 201) throw ApiException(body['error'] as String? ?? 'Failed to submit review (${response.statusCode})');
+    if (response.statusCode != 201) throw ApiException(body['error'] as String? ?? 'Failed to submit review (${response.statusCode})', code: body['code'] as String?);
     return MyReview.fromJson(body);
   }
 
@@ -1444,7 +1444,12 @@ class ApiException implements Exception {
   // to distinguish a real network failure from a real business-logic
   // error (e.g. "items is required").
   final bool isNetworkError;
-  ApiException(this.message, {this.isNetworkError = false});
+  // Stable, machine-readable backend error code (e.g. 'review_requires_purchase')
+  // -- lets the UI show its own translated text instead of the backend's
+  // English message, without string-matching that message. Null when the
+  // backend didn't send one.
+  final String? code;
+  ApiException(this.message, {this.isNetworkError = false, this.code});
   @override
   String toString() => 'ApiException: $message';
 }

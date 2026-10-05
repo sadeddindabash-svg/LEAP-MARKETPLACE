@@ -263,14 +263,18 @@ class LeapApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthState()),
-        ChangeNotifierProxyProvider<AuthState, CartState>(
+        // LanguageState must be declared BEFORE CartState: the cart now needs
+        // the current language (to fetch Arabic product names), and a provider
+        // can only read providers declared above it.
+        ChangeNotifierProvider(create: (_) => LanguageState()),
+        ChangeNotifierProxyProvider2<AuthState, LanguageState, CartState>(
           create: (_) => CartState(),
-          update: (_, auth, cart) {
+          update: (_, auth, language, cart) {
             cart!.updateToken(auth.token);
+            cart.updateLanguage(language.language);
             return cart;
           },
         ),
-        ChangeNotifierProvider(create: (_) => LanguageState()),
         ChangeNotifierProvider(create: (_) => CurrencyState()),
         ChangeNotifierProvider(create: (_) => AppLockState()),
         ChangeNotifierProvider(create: (_) => ThemeState()),

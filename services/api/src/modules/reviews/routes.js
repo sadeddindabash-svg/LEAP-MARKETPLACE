@@ -90,7 +90,7 @@ router.post('/', requireAuth, async (req, res, next) => {
     // separate, always-real concern.
     const isVerifiedPurchase = await hasVerifiedPurchase(client, req.user.sub, productId);
     if (needsVerified && !isVerifiedPurchase) {
-      return res.status(403).json({ error: 'Only buyers who have received this product can leave a review.' });
+      return res.status(403).json({ error: 'Only buyers who have received this product can leave a review.', code: 'review_requires_purchase' });
     }
 
     await client.query('BEGIN');

@@ -50,6 +50,10 @@ class CartState extends ChangeNotifier {
   // the real buyer the first time a real authenticated request for
   // this cart arrives.
   String? _token;
+  // 'en' or 'ar' -- sent with every cart request so the backend returns each
+  // item's approved Arabic name when the app is in Arabic mode. Kept in sync
+  // by updateLanguage() (see app.dart's provider wiring).
+  String _language = 'en';
 
   CartState({ApiClient? apiClient}) : _apiClient = apiClient ?? ApiClient() {
     _init();
@@ -63,6 +67,15 @@ class CartState extends ChangeNotifier {
   void updateToken(String? token) {
     if (_token == token) return;
     _token = token;
+    refresh();
+  }
+
+  /// Called whenever the app language changes (see app.dart) -- refetches
+  /// the basket so already-added items switch to their Arabic/English name
+  /// immediately, instead of keeping the old language until the next action.
+  void updateLanguage(String language) {
+    if (_language == language) return;
+    _language = language;
     refresh();
   }
 
@@ -133,7 +146,7 @@ class CartState extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
     try {
-      _applyCart(await _apiClient.fetchCart(_cartId!, token: _token));
+      _applyCart(await _apiClient.fetchCart(_cartId!, token: _token, lang: _language));
       _errorMessage = null;
     } catch (e) {
       _errorMessage = 'Could not load your basket. Check your connection and try again.';
@@ -145,7 +158,7 @@ class CartState extends ChangeNotifier {
 
   Future<void> addItem(String productId, int quantity) async {
     if (_cartId == null) return;
-    _applyCart(await _apiClient.addCartItem(_cartId!, productId, quantity, token: _token));
+    _applyCart(await _apiClient.addCartItem(_cartId!, productId, quantity, token: _token, lang: _language));
     _errorMessage = null;
     notifyListeners();
   }
@@ -154,13 +167,13 @@ class CartState extends ChangeNotifier {
   /// the +/- stepper). A quantity of 0 or less removes the item.
   Future<void> setQuantity(String productId, int quantity) async {
     if (_cartId == null) return;
-    _applyCart(await _apiClient.setCartItemQuantity(_cartId!, productId, quantity, token: _token));
+    _applyCart(await _apiClient.setCartItemQuantity(_cartId!, productId, quantity, token: _token, lang: _language));
     notifyListeners();
   }
 
   Future<void> removeItem(String productId) async {
     if (_cartId == null) return;
-    _applyCart(await _apiClient.removeCartItem(_cartId!, productId, token: _token));
+    _applyCart(await _apiClient.removeCartItem(_cartId!, productId, token: _token, lang: _language));
     notifyListeners();
   }
 
@@ -171,14 +184,14 @@ class CartState extends ChangeNotifier {
   /// the real, already-confirmed and tested backend behavior.
   Future<void> applyPromoCode(String code) async {
     if (_cartId == null) return;
-    _applyCart(await _apiClient.applyPromoCode(_cartId!, code, token: _token));
+    _applyCart(await _apiClient.applyPromoCode(_cartId!, code, token: _token, lang: _language));
     notifyListeners();
   }
 
   /// Clears the real, currently-applied promo code.
   Future<void> removePromoCode() async {
     if (_cartId == null) return;
-    _applyCart(await _apiClient.applyPromoCode(_cartId!, null, token: _token));
+    _applyCart(await _apiClient.applyPromoCode(_cartId!, null, token: _token, lang: _language));
     notifyListeners();
   }
 
@@ -190,7 +203,7 @@ class CartState extends ChangeNotifier {
   /// it.
   Future<void> lockPrices() async {
     if (_cartId == null) return;
-    _applyCart(await _apiClient.lockPrices(_cartId!, token: _token));
+    _applyCart(await _apiClient.lockPrices(_cartId!, token: _token, lang: _language));
     notifyListeners();
   }
 
@@ -206,10 +219,10 @@ class CartState extends ChangeNotifier {
   Future<void> clearAfterOrder() async {
     if (_cartId == null) return;
     for (final item in List<CartItem>.from(_items)) {
-      await _apiClient.removeCartItem(_cartId!, item.productId, token: _token);
+      await _apiClient.removeCartItem(_cartId!, item.productId, token: _token, lang: _language);
     }
     if (_appliedPromoCode != null) {
-      await _apiClient.applyPromoCode(_cartId!, null, token: _token);
+      await _apiClient.applyPromoCode(_cartId!, null, token: _token, lang: _language);
     }
     _items = [];
     _appliedPromoCode = null;

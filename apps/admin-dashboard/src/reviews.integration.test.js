@@ -140,6 +140,9 @@ describe.runIf(backendUp)('real product reviews (admin moderation, verified-purc
       body: JSON.stringify({ productId: 'p1', rating: 5 }),
     });
     expect(withoutPurchase.status).toBe(403);
+    // Stable machine-readable code (not just English text) -- the mobile app shows its own
+    // translated message for this code, so Arabic mode doesn't see the English wording.
+    expect((await withoutPurchase.json()).code).toBe('review_requires_purchase');
 
     await deliverProductToBuyer(adminToken, buyer.user.id, 'p1');
     const withPurchase = await fetch(`${BACKEND_URL}/reviews`, {

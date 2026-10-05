@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import '../core/theme.dart';
 import '../core/auth_state.dart';
+import '../core/app_strings.dart';
 import '../models/review.dart';
 import '../services/api_client.dart';
 import '../core/config/app_config.dart';
@@ -34,6 +35,10 @@ class _ReviewsSectionState extends State<ReviewsSection> {
   final _commentController = TextEditingController();
   bool _isSubmitting = false;
   String? _errorMessage;
+  // Stable backend error code for the last submit error (e.g. 'review_requires_purchase').
+  // Kept next to the English message so the UI can show its own translated text
+  // at render time -- tr() must only be called from build, not from this async handler.
+  String? _errorCode;
   String? _loadedForProductId;
 
   // Real -- confirmed via a rendered mockup: show only the newest 3
@@ -72,7 +77,7 @@ class _ReviewsSectionState extends State<ReviewsSection> {
   }
 
   Future<void> _submit(String token) async {
-    setState(() { _isSubmitting = true; _errorMessage = null; });
+    setState(() { _isSubmitting = true; _errorMessage = null; _errorCode = null; });
     try {
       final result = await ApiClient().submitReview(
         token,
@@ -89,7 +94,7 @@ class _ReviewsSectionState extends State<ReviewsSection> {
       });
       _ensureLoaded(token);
     } on ApiException catch (e) {
-      if (mounted) setState(() => _errorMessage = e.message);
+      if (mounted) setState(() { _errorMessage = e.message; _errorCode = e.code; });
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
@@ -106,12 +111,12 @@ class _ReviewsSectionState extends State<ReviewsSection> {
       final url = await ApiClient().uploadReviewPhoto(token, picked);
       if (mounted) setState(() => _selectedPhotos.add(url));
     } on ApiException catch (e) {
-      if (mounted) setState(() => _errorMessage = e.message);
+      if (mounted) setState(() { _errorMessage = e.message; _errorCode = null; });
     } catch (e) {
       // Defense in depth -- see uploadReturnPhoto's identical fix for
       // the real bug this guards against (a non-ApiException failure
       // silently vanishing with no visible error at all).
-      if (mounted) setState(() => _errorMessage = 'Could not upload photo: $e');
+      if (mounted) setState(() { _errorMessage = 'Could not upload photo: $e'; _errorCode = null; });
     } finally {
       if (mounted) setState(() => _isUploadingPhoto = false);
     }
@@ -375,7 +380,10 @@ class _ReviewsSectionState extends State<ReviewsSection> {
                 ),
                 if (_errorMessage != null) ...[
                   const SizedBox(height: 8),
-                  Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 12.5)),
+                  Text(
+                    _errorCode == 'review_requires_purchase' ? tr(context, 'review_requires_purchase') : _errorMessage!,
+                    style: const TextStyle(color: Colors.red, fontSize: 12.5),
+                  ),
                 ],
                 const SizedBox(height: 10),
                 Row(

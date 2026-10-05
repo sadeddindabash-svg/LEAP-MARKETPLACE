@@ -122,7 +122,7 @@ class _SignupScreenState extends State<SignupScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const SizedBox(height: 12),
-            Text('LEAP', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 28, color: palette.ink)),
+            Text(tr(context, 'brand_name'), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 28, color: palette.ink)),
             const SizedBox(height: 6),
             Text(tr(context, 'signup_subtitle'), style: TextStyle(color: palette.muted, fontSize: 13)),
             const SizedBox(height: 24),

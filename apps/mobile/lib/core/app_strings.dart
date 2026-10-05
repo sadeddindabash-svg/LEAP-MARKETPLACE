@@ -356,6 +356,15 @@ class AppStrings {
 
     // ---- Wishlist (new) ----
     'wishlist': {'en': 'Wishlist', 'ar': 'المفضلة'},
+    // Brand wordmark shown on the sign-in / sign-up screens. Arabic mode shows
+    // the Arabic spelling instead of the Latin "LEAP".
+    'brand_name': {'en': 'LEAP', 'ar': 'ليب'},
+    // Shown when a buyer tries to review a product they haven't received (the
+    // backend sends the stable code 'review_requires_purchase' for this).
+    'review_requires_purchase': {
+      'en': 'Only buyers who have received this product can leave a review.',
+      'ar': 'يمكن فقط للمشترين الذين استلموا هذا المنتج كتابة تقييم.',
+    },
     'saved_searches': {'en': 'Saved Searches', 'ar': 'عمليات البحث المحفوظة'},
     'no_wishlist_items_yet': {'en': 'Nothing saved yet. Tap the heart on a product to save it here.', 'ar': 'لا شيء محفوظ بعد. اضغط على القلب في أي منتج لحفظه هنا.'},
     'added_to_wishlist': {'en': 'Added to wishlist', 'ar': 'أُضيف إلى المفضلة'},
