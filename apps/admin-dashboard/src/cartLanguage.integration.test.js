@@ -17,11 +17,11 @@ const backendUp = await isBackendUp();
 
 const newCartId = () => `cart-lang-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-async function addToCart(cartId, productId, lang) {
+async function addToCart(cartId, productId, lang, quantity = 1) {
   const qs = lang ? `?lang=${lang}` : '';
   return fetch(`${BACKEND_URL}/cart/${cartId}/items${qs}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ productId, quantity: 1 }),
+    body: JSON.stringify({ productId, quantity }),
   });
 }
 
@@ -82,5 +82,83 @@ describe.runIf(backendUp)('cart item names follow the requested language (real b
       break;
     }
     expect(checked).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Stock-shortfall errors carry a stable code + the numbers, so the mobile app can show
+// its own Arabic sentence instead of the backend's English one.
+// ---------------------------------------------------------------------------
+describe.runIf(backendUp)('stock shortfall errors are machine-readable and language-aware (real backend)', () => {
+  const WAY_MORE_THAN_EXISTS = 50_000_000;
+
+  async function ensureArabicName() {
+    const { token } = await login('admin@leap.dev', 'admin_dev_password_123');
+    const res = await fetch(`${BACKEND_URL}/catalog/admin/products/p4`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ nameAr: ARABIC_NAME }),
+    });
+    expect(res.status).toBe(200);
+  }
+
+  it('CRITICAL: adding too many to the basket returns code + available + product name, and keeps the English message', async () => {
+    await ensureArabicName();
+    const res = await addToCart(newCartId(), 'p4', undefined, WAY_MORE_THAN_EXISTS);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.code).toBe('insufficient_stock');
+    expect(typeof body.available).toBe('number');
+    expect(body.error).toBe(`Only ${body.available} of "${body.productName}" left in stock`); // English text unchanged
+    expect(body.productName).not.toBe(ARABIC_NAME);
+  });
+
+  it('with lang=ar the product is named in Arabic, on BOTH basket paths (add and change quantity)', async () => {
+    await ensureArabicName();
+    const added = await (await addToCart(newCartId(), 'p4', 'ar', WAY_MORE_THAN_EXISTS)).json();
+    expect(added.code).toBe('insufficient_stock');
+    expect(added.productName).toBe(ARABIC_NAME);
+
+    const cartId = newCartId();
+    expect((await addToCart(cartId, 'p4', 'ar')).status).toBe(201);
+    const patched = await fetch(`${BACKEND_URL}/cart/${cartId}/items/p4?lang=ar`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quantity: WAY_MORE_THAN_EXISTS }),
+    });
+    expect(patched.status).toBe(400);
+    const body = await patched.json();
+    expect(body.code).toBe('insufficient_stock');
+    expect(body.productName).toBe(ARABIC_NAME);
+  });
+
+  it('CRITICAL: placing an order for too many returns the same code + numbers, named in the requested language', async () => {
+    await ensureArabicName();
+    const buyer = await fetch(`${BACKEND_URL}/auth/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `stock-code-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@example.com`, password: 'test_password_123' }),
+    }).then((r) => r.json());
+    const order = (lang) => fetch(`${BACKEND_URL}/order${lang ? `?lang=${lang}` : ''}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: [{ productId: 'p4', quantity: WAY_MORE_THAN_EXISTS }], userId: buyer.user.id,
+        address: { recipientName: 'Test Buyer', phone: '555-0100', country: 'USA', city: 'Springfield', streetAddress: '123 Test St' },
+      }),
+    });
+
+    const en = await order();
+    expect(en.status).toBe(400);
+    const enBody = await en.json();
+    expect(enBody.code).toBe('insufficient_stock');
+    expect(typeof enBody.available).toBe('number');
+    expect(enBody.error).toContain('reduce the quantity and try again'); // original English text unchanged
+    expect(enBody.productName).not.toBe(ARABIC_NAME);
+
+    expect((await (await order('ar')).json()).productName).toBe(ARABIC_NAME);
+  });
+
+  it('an unrelated basket error has no code (nothing else changed shape)', async () => {
+    const res = await addToCart(newCartId(), 'definitely-not-a-product');
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe('Product not found');
+    expect(body.code).toBeUndefined();
   });
 });

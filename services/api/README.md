@@ -3173,6 +3173,27 @@ itself (request construction, success response, and failure handling)
 was separately verified directly against a mocked S3 client, since no
 real cloud credentials exist to test the actual live call end-to-end.
 
+## Arabic mode: basket names and translatable errors
+
+Three things the mobile app needed from the backend to be fully usable in Arabic. None of them changes what an English client sees.
+
+- **Basket item names.** Every `/cart/...` endpoint accepts `?lang=ar` and returns each item's approved Arabic name (falling back to the
+  default name when a product has none) — the same rule as the catalog's `resolveLanguage`. Previously the basket always returned the English
+  name. The mobile app sends the language on every basket call and re-fetches the basket when the language is switched.
+- **Stable error codes.** Errors the app should show in its own words carry a machine-readable `code` next to the English `error` text
+  (the text is unchanged). Currently:
+  - `review_requires_purchase` (`POST /reviews`, 403) — a buyer who hasn't received the product.
+  - `insufficient_stock` (`POST` / `PATCH /cart/:id/items`, and `POST /order`, 400) — also carries `available` (units left) and
+    `productName` (Arabic when `?lang=ar` is sent and the product has an Arabic name). Replaces matching on the English sentence.
+- **`?lang=ar` on `POST /order`** exists only so the stock error above can name the product in Arabic.
+
+**Convention for the next error:** add a `code` (and any numbers it needs) to the backend response, add a string under that same key in the
+mobile `app_strings.dart`, and show it with `apiErrorText(context, e)`. An error with no code, or no translation, falls back to the backend's
+English message — it is never blank.
+
+**Tested:** `apps/admin-dashboard/src/cartLanguage.integration.test.js` (7, real backend) and the extended
+`reviews.integration.test.js`. The stock tests were verified to fail against the previous cart and order routes.
+
 ## Hub staff accounts (migration 089)
 
 **The gap this closes:** until now nothing could create a hub staff login. Public sign-up only makes buyers, the admin "Team" feature

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
+import '../../core/currency_state.dart';
 import '../../models/product.dart';
 
 /// Real side-by-side product comparison (#101) -- 2 to 4 real
@@ -19,7 +20,7 @@ class ProductComparisonScreen extends StatelessWidget {
     final isAr = Localizations.localeOf(context).languageCode == 'ar';
 
     final rows = <(String, String Function(Product))>[
-      (isAr ? 'السعر' : 'Price', (p) => '\$${p.price.toStringAsFixed(2)}'),
+      (isAr ? 'السعر' : 'Price', (p) => formatPrice(context, p.price.toDouble())),
       (isAr ? 'التقييم' : 'Rating', (p) => p.reviewCount > 0 ? '${p.rating.toStringAsFixed(1)} (${p.reviewCount})' : (isAr ? 'لا يوجد' : 'No reviews yet')),
       (isAr ? 'المخزون' : 'Stock', (p) => p.stockQuantity > 0 ? (isAr ? '${p.stockQuantity} متوفر' : '${p.stockQuantity} in stock') : (isAr ? 'غير متوفر' : 'Out of stock')),
       (isAr ? 'التسليم' : 'Delivery', (p) => p.deliveryDateLabel(isAr)),

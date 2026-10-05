@@ -149,7 +149,9 @@ class CartState extends ChangeNotifier {
       _applyCart(await _apiClient.fetchCart(_cartId!, token: _token, lang: _language));
       _errorMessage = null;
     } catch (e) {
-      _errorMessage = 'Could not load your basket. Check your connection and try again.';
+      // A string-table KEY, not a sentence: CartState has no BuildContext to translate with,
+      // so cart_screen translates it with tr() where it is drawn.
+      _errorMessage = 'cart_load_failed';
     } finally {
       _isLoading = false;
       notifyListeners();

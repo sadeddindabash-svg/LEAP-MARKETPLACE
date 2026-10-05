@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
+import '../../core/api_error_text.dart';
 import '../../core/currency_state.dart';
 import '../../core/auth_state.dart';
 import '../../core/cart_state.dart';
@@ -126,7 +127,7 @@ class _ProductScreenState extends State<ProductScreen> {
       }
     } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorText(context, e))));
       }
     } finally {
       if (mounted) setState(() => _isAdding = false);

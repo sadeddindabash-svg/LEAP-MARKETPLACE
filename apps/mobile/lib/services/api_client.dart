@@ -692,7 +692,7 @@ class ApiClient {
   Cart _decodeCart(http.Response response) {
     if (response.statusCode >= 400) {
       final body = jsonDecode(response.body) as Map<String, dynamic>;
-      throw ApiException(body['error'] as String? ?? 'Cart request failed (${response.statusCode})');
+      throw ApiException(body['error'] as String? ?? 'Cart request failed (${response.statusCode})', code: body['code'] as String?, details: body);
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     return Cart.fromJson(body);
@@ -774,9 +774,12 @@ class ApiClient {
     // duplicate order if an earlier attempt already succeeded
     // server-side.
     String? idempotencyKey,
+    // 'ar' makes the backend name a product in a stock error in Arabic (when it has an
+    // Arabic name); anything else keeps the default name.
+    String lang = 'en',
   }) async {
     final response = await _client.post(
-      Uri.parse('$baseUrl/order'),
+      Uri.parse('$baseUrl/order?lang=$lang'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'items': items.map((i) => {'productId': i.productId, 'quantity': i.quantity}).toList(),
@@ -791,7 +794,7 @@ class ApiClient {
     );
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode >= 400) {
-      throw ApiException(body['error'] as String? ?? 'Failed to place order (${response.statusCode})');
+      throw ApiException(body['error'] as String? ?? 'Failed to place order (${response.statusCode})', code: body['code'] as String?, details: body);
     }
     return body;
   }
@@ -1449,7 +1452,11 @@ class ApiException implements Exception {
   // English message, without string-matching that message. Null when the
   // backend didn't send one.
   final String? code;
-  ApiException(this.message, {this.isNetworkError = false, this.code});
+  // The full error body the backend sent (e.g. { available: 3, productName: "..." } alongside
+  // code 'insufficient_stock'), so a translated sentence can fill in its blanks. Null when
+  // the error didn't come from a backend response.
+  final Map<String, dynamic>? details;
+  ApiException(this.message, {this.isNetworkError = false, this.code, this.details});
   @override
   String toString() => 'ApiException: $message';
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../core/theme.dart';
+import '../core/currency_state.dart';
 import '../models/product.dart';
 import '../services/api_client.dart';
 
@@ -60,7 +61,7 @@ class _OemComparisonSectionState extends State<OemComparisonSection> {
                     margin: const EdgeInsets.only(bottom: 8),
                     child: ListTile(
                       onTap: () => context.push('/product/${m.id}'),
-                      title: Text('\$${m.price.toStringAsFixed(2)}', style: TextStyle(fontWeight: FontWeight.w800, color: palette.ink, fontSize: 15)),
+                      title: Text(formatPrice(context, m.price.toDouble()), style: TextStyle(fontWeight: FontWeight.w800, color: palette.ink, fontSize: 15)),
                       subtitle: Wrap(
                         spacing: 10,
                         children: [

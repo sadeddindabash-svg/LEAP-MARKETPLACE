@@ -8,6 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/config/app_config.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
+import '../../core/api_error_text.dart';
 import '../../core/currency_state.dart';
 import '../../core/auth_state.dart';
 import '../../core/language_state.dart';
@@ -372,6 +373,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     try {
       final result = await ApiClient().placeOrder(
+        lang: context.read<LanguageState>().isArabic ? 'ar' : 'en',
         items: cart.items,
         userId: auth.isLoggedIn ? auth.user!['id'] as String : null,
         guestEmail: auth.isLoggedIn ? null : _guestEmailController.text.trim(),
@@ -436,7 +438,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         }
       }
     } on ApiException catch (e) {
-      setState(() => _errorMessage = e.message);
+      setState(() => _errorMessage = apiErrorText(context, e));
       // Real draft-order queue offer (#60) -- only for a genuine
       // real network failure (the new typed isNetworkError flag),
       // never for a real validation error or any other real problem

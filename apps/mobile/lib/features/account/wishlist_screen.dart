@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
+import '../../core/currency_state.dart';
 import '../../core/language_state.dart';
 import '../../models/product.dart';
 import '../../services/api_client.dart';
@@ -176,7 +177,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(color: LeapPalette.of(context).gauge, borderRadius: BorderRadius.circular(20)),
                           child: Text(
-                            '\$${p.lastKnownPrice!.toStringAsFixed(0)} → \$${p.price.toStringAsFixed(0)}',
+                            '${formatPrice(context, p.lastKnownPrice!.toDouble())} → ${formatPrice(context, p.price.toDouble())}',
                             style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800),
                           ),
                         ),

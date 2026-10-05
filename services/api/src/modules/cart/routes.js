@@ -220,13 +220,30 @@ async function getFullCart(cartId, tokenBuyerId, lang) {
 // unit; only one of THEM will actually get it at real order placement,
 // where the atomic guard lives. This check is a real, honest
 // early-warning for the common case, not a promise of a reservation.
-async function checkStockAvailable(productId, requestedQuantity) {
-  const { rows } = await db.query('SELECT stock_quantity, name FROM products WHERE id = $1', [productId]);
+//
+// A failed check carries a stable `code` ('insufficient_stock') plus the numbers
+// (`available`, `productName` -- in the requested language, like the basket's item
+// names) so a client can show its OWN translated sentence instead of this English
+// one. `error` stays for older clients and for logs.
+async function checkStockAvailable(productId, requestedQuantity, lang) {
+  const { rows } = await db.query('SELECT stock_quantity, name, name_ar FROM products WHERE id = $1', [productId]);
   if (rows.length === 0) return { ok: false, error: 'Product not found' };
   if (requestedQuantity > rows[0].stock_quantity) {
-    return { ok: false, error: `Only ${rows[0].stock_quantity} of "${rows[0].name}" left in stock` };
+    const productName = lang === 'ar' && rows[0].name_ar ? rows[0].name_ar : rows[0].name;
+    return {
+      ok: false,
+      error: `Only ${rows[0].stock_quantity} of "${rows[0].name}" left in stock`,
+      code: 'insufficient_stock',
+      available: rows[0].stock_quantity,
+      productName,
+    };
   }
   return { ok: true };
+}
+
+// The JSON body for a failed stock check (fields that are undefined are simply omitted).
+function stockErrorBody(stockCheck) {
+  return { error: stockCheck.error, code: stockCheck.code, available: stockCheck.available, productName: stockCheck.productName };
 }
 
 router.get('/:cartId', optionalAuth, async (req, res, next) => {
@@ -310,8 +327,8 @@ router.post('/:cartId/items', optionalAuth, async (req, res, next) => {
     // just the newly-requested amount, since POST adds rather than sets.
     const { rows: existingRows } = await db.query('SELECT quantity FROM cart_items WHERE cart_id = $1 AND product_id = $2', [req.params.cartId, productId]);
     const existingQuantity = existingRows[0]?.quantity || 0;
-    const stockCheck = await checkStockAvailable(productId, existingQuantity + quantity);
-    if (!stockCheck.ok) return res.status(400).json({ error: stockCheck.error });
+    const stockCheck = await checkStockAvailable(productId, existingQuantity + quantity, req.query.lang);
+    if (!stockCheck.ok) return res.status(400).json(stockErrorBody(stockCheck));
 
     await ensureCartExists(req.params.cartId);
     await db.query(
@@ -341,8 +358,8 @@ router.patch('/:cartId/items/:productId', optionalAuth, async (req, res, next) =
       // Real stock check (new) -- see checkStockAvailable's own
       // comment. PATCH sets the exact quantity, so the requested
       // amount IS the real resulting total (unlike POST above).
-      const stockCheck = await checkStockAvailable(req.params.productId, quantity);
-      if (!stockCheck.ok) return res.status(400).json({ error: stockCheck.error });
+      const stockCheck = await checkStockAvailable(req.params.productId, quantity, req.query.lang);
+      if (!stockCheck.ok) return res.status(400).json(stockErrorBody(stockCheck));
 
       await ensureCartExists(req.params.cartId);
       await db.query(

@@ -116,7 +116,7 @@ class _ReviewsSectionState extends State<ReviewsSection> {
       // Defense in depth -- see uploadReturnPhoto's identical fix for
       // the real bug this guards against (a non-ApiException failure
       // silently vanishing with no visible error at all).
-      if (mounted) setState(() { _errorMessage = 'Could not upload photo: $e'; _errorCode = null; });
+      if (mounted) setState(() { _errorMessage = 'Could not upload photo: $e'; _errorCode = 'photo_upload_failed'; });
     } finally {
       if (mounted) setState(() => _isUploadingPhoto = false);
     }
@@ -381,7 +381,7 @@ class _ReviewsSectionState extends State<ReviewsSection> {
                 if (_errorMessage != null) ...[
                   const SizedBox(height: 8),
                   Text(
-                    _errorCode == 'review_requires_purchase' ? tr(context, 'review_requires_purchase') : _errorMessage!,
+                    _errorCode != null ? tr(context, _errorCode!) : _errorMessage!,
                     style: const TextStyle(color: Colors.red, fontSize: 12.5),
                   ),
                 ],

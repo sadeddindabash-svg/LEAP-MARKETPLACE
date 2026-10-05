@@ -141,11 +141,14 @@ router.post('/', async (req, res, next) => {
         [item.quantity, item.productId]
       );
       if (stockRows.length === 0) {
-        const { rows: currentRows } = await client.query('SELECT stock_quantity, name FROM products WHERE id = $1', [item.productId]);
+        const { rows: currentRows } = await client.query('SELECT stock_quantity, name, name_ar FROM products WHERE id = $1', [item.productId]);
         const available = currentRows[0]?.stock_quantity ?? 0;
+        // apiCode/apiDetails (not `code`, which pg uses for its own error codes) are sent to the
+        // client alongside the English message, so an Arabic-mode client can show its own sentence.
+        const productName = req.query.lang === 'ar' && currentRows[0]?.name_ar ? currentRows[0].name_ar : (currentRows[0]?.name || item.productId);
         throw Object.assign(
           new Error(`Only ${available} left in stock for ${currentRows[0]?.name || item.productId} — reduce the quantity and try again.`),
-          { status: 400 }
+          { status: 400, apiCode: 'insufficient_stock', apiDetails: { available, productName } }
         );
       }
       const { stock_quantity: newStock, low_stock_threshold: threshold, name, supplier_id: supplierId } = stockRows[0];
@@ -432,7 +435,7 @@ router.post('/', async (req, res, next) => {
     })();
   } catch (err) {
     await client.query('ROLLBACK');
-    if (err.status) return res.status(err.status).json({ error: err.message });
+    if (err.status) return res.status(err.status).json({ error: err.message, ...(err.apiCode ? { code: err.apiCode, ...err.apiDetails } : {}) });
     next(err);
   } finally {
     client.release();

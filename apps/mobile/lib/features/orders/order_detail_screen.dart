@@ -782,7 +782,7 @@ class _ReturnRequestSheetState extends State<_ReturnRequestSheet> {
       // was never caught anywhere, so the picker silently did nothing.
       // A future failure of this same class should at least surface
       // something, not repeat that silence.
-      if (mounted) setState(() => _errorMessage = 'Could not upload photo: $e');
+      if (mounted) setState(() => _errorMessage = trRead(context, 'photo_upload_failed'));
     } finally {
       if (mounted) setState(() => _isUploadingPhoto = false);
     }

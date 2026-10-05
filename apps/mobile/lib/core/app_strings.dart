@@ -365,6 +365,23 @@ class AppStrings {
       'en': 'Only buyers who have received this product can leave a review.',
       'ar': 'يمكن فقط للمشترين الذين استلموا هذا المنتج كتابة تقييم.',
     },
+    // Stock shortfall in the basket / at checkout. The backend sends the stable code
+    // 'insufficient_stock' plus `available` and `productName`; {available} and
+    // {productName} are filled in from those (see apiErrorText).
+    'insufficient_stock': {
+      'en': 'Only {available} of "{productName}" left in stock',
+      'ar': 'لم يتبق في المخزون سوى {available} من "{productName}"',
+    },
+    // Shown by the basket when it can't load (CartState stores this KEY, not a sentence,
+    // because CartState has no BuildContext to translate with).
+    'cart_load_failed': {
+      'en': 'Could not load your basket. Check your connection and try again.',
+      'ar': 'تعذر تحميل سلتك. تحقق من اتصالك بالإنترنت وحاول مرة أخرى.',
+    },
+    'photo_upload_failed': {
+      'en': 'Could not upload the photo. Please try again.',
+      'ar': 'تعذر رفع الصورة. يرجى المحاولة مرة أخرى.',
+    },
     'saved_searches': {'en': 'Saved Searches', 'ar': 'عمليات البحث المحفوظة'},
     'no_wishlist_items_yet': {'en': 'Nothing saved yet. Tap the heart on a product to save it here.', 'ar': 'لا شيء محفوظ بعد. اضغط على القلب في أي منتج لحفظه هنا.'},
     'added_to_wishlist': {'en': 'Added to wishlist', 'ar': 'أُضيف إلى المفضلة'},

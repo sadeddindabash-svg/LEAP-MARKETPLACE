@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
+import '../../core/api_error_text.dart';
 import '../../core/currency_state.dart';
 import '../../core/cart_state.dart';
 import '../../models/cart_item.dart';
@@ -91,7 +92,8 @@ class CartScreen extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(cart.errorMessage!, textAlign: TextAlign.center, style: TextStyle(color: palette.muted)),
+              // tr() returns its input unchanged when it isn't a known key, so any other message passes through.
+              Text(tr(context, cart.errorMessage!), textAlign: TextAlign.center, style: TextStyle(color: palette.muted)),
               const SizedBox(height: 12),
               ElevatedButton(onPressed: cart.refresh, child: Text(tr(context, 'retry'))),
             ],
@@ -243,7 +245,7 @@ class _CartItemRowState extends State<_CartItemRow> {
       await cart.setQuantity(item.productId, newQuantity);
     } on ApiException catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorText(context, e))));
       }
     }
   }
@@ -295,7 +297,7 @@ class _CartItemRowState extends State<_CartItemRow> {
     try {
       await cart.removeItem(item.productId);
     } on ApiException catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      messenger.showSnackBar(SnackBar(content: Text(mounted ? apiErrorText(context, e) : e.message)));
       return;
     } finally {
       if (mounted) setState(() => _isRemoving = false);
@@ -323,7 +325,7 @@ class _CartItemRowState extends State<_CartItemRow> {
             try {
               await cart.addItem(item.productId, removedQuantity);
             } on ApiException catch (e) {
-              messenger.showSnackBar(SnackBar(content: Text(e.message)));
+              messenger.showSnackBar(SnackBar(content: Text(mounted ? apiErrorText(context, e) : e.message)));
             }
           },
         ),

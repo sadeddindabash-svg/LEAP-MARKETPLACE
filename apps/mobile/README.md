@@ -3456,6 +3456,30 @@ Account, lists and removes a buyer's own real saved searches.
 README — no Flutter SDK in this sandbox, so this could not be run or
 tested here beyond careful manual review and bracket-balance checks.
 
+## Arabic mode: prices, errors and the basket
+
+Rules this app now follows, after a pass that found English text and dollar signs leaking into Arabic mode:
+
+- **Never print a typed `$`.** Money goes through `formatPrice(context, usdAmount)` (core/currency_state.dart), which converts to the buyer's
+  chosen currency, uses the Arabic symbol in Arabic mode, and rounds to whole units like the rest of the app. Fixed this way: "My Tier"
+  (card and detail screen), the product comparison table, the OEM comparison list, and the wishlist price-drop badge. Two places keep USD on
+  purpose: an order's own total (it shows the currency the order was placed in) and the min/max price filter (it filters in USD).
+- **Server errors are translated by code, not by matching English text.** `apiErrorText(context, e)` (core/api_error_text.dart) turns an
+  `ApiException` into the right sentence: in Arabic mode it looks the backend's `code` up in `app_strings.dart` and fills in `{available}`,
+  `{productName}`, etc.; in English mode it returns the backend's message untouched. Used for the stock-shortfall warning (basket stepper,
+  add-to-basket on the product page, remove/undo, and checkout) and for the "only buyers who received this product can review" message.
+- **State classes that have no `BuildContext` store a string-table KEY, not a sentence.** `CartState` stores `'cart_load_failed'` and
+  `cart_screen` translates it where it is drawn (`tr()` returns an unknown key unchanged, so ordinary messages pass straight through).
+- **`tr()` only inside `build`; `trRead()` / `apiErrorText()` in handlers and async callbacks.** `tr()` listens to the language and throws if
+  called anywhere else.
+- **Basket names follow the language.** `CartState` is wired to `LanguageState` in `app.dart` (`ChangeNotifierProxyProvider2`), sends the language
+  with every basket call, and re-fetches the basket when the language changes. `LanguageState` must stay declared above it.
+- The "LEAP" wordmark on sign-in / sign-up is the string-table key `brand_name` ("ليب" in Arabic).
+
+**HONEST LIMITATION:** like every other section here, none of this could be compiled or run in the sandbox (no Flutter SDK). It was checked
+by reading the code, bracket balance, and — for the server half — real integration tests. Not yet translated: the many other backend
+error messages that carry no `code` (they still show the backend's English text), such as promo-code rejection reasons.
+
 ## Setup
 
 1. Install Flutter: https://docs.flutter.dev/get-started/install
