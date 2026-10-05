@@ -30,10 +30,36 @@ function requireAuth(req, res, next) {
   }
   try {
     req.user = jwt.verify(token, env.jwtSecret);
-    next();
+    // Everyone except hub staff: unchanged -- the token alone is trusted.
+    if (req.user.role !== 'hub_staff') return next();
   } catch (err) {
     return res.status(401).json({ error: `Invalid or expired token: ${err.message}` });
   }
+  checkHubStaffAccount(req, res, next);
+}
+
+/**
+ * Live account check for hub staff, on every request (hub staff only -- buyers,
+ * suppliers and admins are untouched). Same principle as requirePageAccess
+ * below: a real database check, not a JWT claim trusted for up to 7 days.
+ *
+ *  - A DISABLED (or removed) account is refused immediately with 401 and
+ *    code 'account_disabled' -- the hub portal/app already treat any 401 as
+ *    "log out", so the person lands back on the login screen at once.
+ *  - The hub is read from the database, not the token, so an admin moving
+ *    someone to another hub takes effect on their very next request instead
+ *    of leaving them on the old hub's shipments until the token expires.
+ */
+function checkHubStaffAccount(req, res, next) {
+  db.query('SELECT disabled_at, hub_id FROM users WHERE id = $1', [req.user.sub])
+    .then(({ rows }) => {
+      if (rows.length === 0 || rows[0].disabled_at) {
+        return res.status(401).json({ error: 'This account has been disabled. Contact your administrator.', code: 'account_disabled' });
+      }
+      req.user.hubId = rows[0].hub_id;
+      next();
+    })
+    .catch(next);
 }
 
 /** Optional auth — attaches req.user if a valid token is present, but doesn't reject if absent. Useful for routes that behave differently for guests vs. logged-in users without requiring login. */

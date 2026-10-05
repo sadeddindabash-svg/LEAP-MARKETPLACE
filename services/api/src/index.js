@@ -21,6 +21,7 @@ const { router: paymentProvidersRoutes } = require('./modules/paymentProviders/r
 const overviewRoutes = require('./modules/overview/routes');
 const uploadsRoutes = require('./modules/uploads/routes');
 const hubRoutes = require('./modules/hub/routes');
+const hubStaffRoutes = require('./modules/hub-staff/routes');
 const supplierMessagesRoutes = require('./modules/supplier-messages/routes');
 const addressesRoutes = require('./modules/addresses/routes');
 const wishlistRoutes = require('./modules/wishlist/routes');
@@ -146,6 +147,7 @@ app.use('/payment-providers', paymentProvidersRoutes);
 app.use('/overview', overviewRoutes);
 app.use('/uploads', uploadsRoutes);
 app.use('/hub', hubRoutes);
+app.use('/hub-staff', hubStaffRoutes);
 app.use('/supplier-messages', supplierMessagesRoutes);
 app.use('/addresses', addressesRoutes);
 app.use('/wishlist', wishlistRoutes);

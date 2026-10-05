@@ -1,0 +1,17 @@
+-- Migration 089: hub staff account management (admin "Hub staff" screen).
+--
+-- Until now the only way to get a hub staff login was the dev seed's
+-- hub@leap.dev -- no API or screen created them. This adds the one column
+-- the new admin screen needs.
+--
+-- `disabled_at` (NULL = active) is a deliberate SOFT disable, not a delete:
+-- every hub shipment event points at the user who performed it
+-- (hub_shipment_events.performed_by), so a staff member who has done any work
+-- can never be deleted without breaking that history. A disabled account is
+-- refused at login AND on every request it makes (see requireAuth), so it
+-- takes effect immediately rather than when its 7-day token expires.
+--
+-- Separate from the existing `deleted_at` on purpose: that column belongs to
+-- buyer account deletion, and "disabled" (reversible, by an admin) is a
+-- different thing from "deleted" (the person's own request).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS disabled_at TIMESTAMPTZ;

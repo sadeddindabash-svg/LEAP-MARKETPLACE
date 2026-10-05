@@ -3173,6 +3173,48 @@ itself (request construction, success response, and failure handling)
 was separately verified directly against a mocked S3 client, since no
 real cloud credentials exist to test the actual live call end-to-end.
 
+## Hub staff accounts (migration 089)
+
+**The gap this closes:** until now nothing could create a hub staff login. Public sign-up only makes buyers, the admin "Team" feature
+only makes admins, and the only hub login was the dev seed's `hub@leap.dev`. The admin dashboard's Hubs page now has a "Hub staff"
+section backed by `/hub-staff` (`src/modules/hub-staff/routes.js`).
+
+**Who can use it:** any admin with access to the **Hubs** page (`requirePageAccess('hubs')`) — the same people who already create hubs
+and assign shipments to them. Hub staff, suppliers, buyers and admins without that permission get 403. Hub staff can mark shipments
+received and shipped, which feeds payouts, so every action is written to the audit log (`hub_staff_created`, `_updated`, `_disabled`,
+`_enabled`, `_password_reset`). The temporary password is never in the audit details.
+
+| Endpoint | What it does |
+|---|---|
+| `GET /hub-staff` | List all hub staff: name, email, hub, active/disabled, last activity (their most recent shipment action). Never returns a password or hash. |
+| `POST /hub-staff` `{ email, name, hubId }` | Create. Returns `{ staff, temporaryPassword }`. Duplicate email (any letter case) → 409. |
+| `PATCH /hub-staff/:id` `{ name?, hubId? }` | Rename, or move to another hub. |
+| `POST /hub-staff/:id/disable` / `/enable` | Soft, reversible, idempotent. |
+| `POST /hub-staff/:id/reset-password` | New random temporary password, returned once. The old one stops working. |
+
+Every query is restricted to `role = 'hub_staff'`, so these routes cannot touch an admin, supplier or buyer account (a non-hub-staff id is a 404).
+
+**Design decisions (and why):**
+- **Disable, never delete.** Every `hub_shipment_events.performed_by` references the user who did the work.
+- **Disabling is immediate.** Logins last 7 days and `requireAuth` used to trust the token alone. For `hub_staff` only, `requireAuth` now does a
+  live database check each request (the same principle `requirePageAccess` already uses for admin permissions). A disabled or removed account
+  gets **401** `account_disabled`, which the hub portal and hub app already treat as "log out". Buyers, suppliers and admins are unchanged.
+  Login itself answers a disabled account with **403** `account_disabled` — but only *after* the password checks out, so a wrong password
+  never reveals that an account exists or is disabled.
+- **Moving a person to another hub is immediate too.** The hub is read from the database on each request rather than from the token, so an
+  existing session follows the move on its next action instead of staying on the old hub's shipments for up to 7 days.
+- **The server generates the temporary password** (14 characters from an unambiguous alphabet — no 0/O or 1/l/I). It is returned once, stored
+  only as a bcrypt hash, and never returned by `GET`. Email isn't configured in every environment, so an emailed reset link can't be the only way in.
+
+**Known limits:** a password reset does **not** end a login the person already has open (up to 7 days); disabling does. There is no forced
+password change on first login, and I have not checked whether the hub portal or hub app has a change-password screen. One account belongs
+to one hub. `optionalAuth` does not run the live check: it is used only by buyer/guest-facing routes (orders, cart, returns, support, bug
+reports — none of them hub routes), so a disabled person's old token is still accepted there until it expires. I have not audited what that
+allows on those routes.
+
+**Tested:** `apps/admin-dashboard/src/hubStaff.integration.test.js` (9, real backend) and `HubStaffFlow.test.jsx` (8, mocked fetch, real
+component tree). The immediate-cutoff and hub-move tests were verified to FAIL when the live check is removed from `requireAuth`.
+
 ## Setup
 
 ```bash

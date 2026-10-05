@@ -386,6 +386,12 @@ shipment's raw timestamps directly, not by assuming the number was
 wrong. The exact same mocked-test fix pattern from the workload
 section above applied here too, for the same real reason.
 
+**New (migration 089)**: a "Hub staff" section at the bottom of this page — who can log in to the hub portal and hub app, and which hub
+they belong to. Add staff (name, email, hub), edit or move them, reset their password, disable or re-enable them. Creating someone or
+resetting a password shows a **temporary password once** in a box with a Copy button; it can't be shown again. Disabling logs the person out on
+their very next action. Visible to admins with access to the Hubs page; every action is audit-logged (the five `hub_staff_*` actions are in the
+Settings page's audit filter). See `services/api/README.md`'s "Hub staff accounts" section for the full rules and limits.
+
 ## Hub assignment on the Order detail page (new)
 
 Each supplier sub-order on the Order detail page (see "Orders page"
@@ -1194,6 +1200,25 @@ Sixty-six test files, 409 tests total, all passing:
   pre-existing rapid test samples to assert on directly); a hub with
   no real shipment activity shows null stage times, not zero or a
   fabricated number; a non-admin cannot view performance metrics.
+- `src/hubStaff.integration.test.js` (9, REAL backend, new, migration 089) —
+  create returns a one-time temporary password that works for login, and the
+  list never exposes a password or hash; disabling refuses an ALREADY-ISSUED
+  token immediately (401 `account_disabled`) and a fresh login (403), and
+  re-enabling restores both; a wrong password on a disabled account does not
+  reveal it is disabled; reset gives a new working password and kills the old
+  one; moving staff to another hub changes what their existing session sees on
+  the next request; bad input and duplicate emails (any letter case) are
+  rejected; an admin or supplier id is a 404 and is left untouched; only an
+  admin with the Hubs page permission can use it; every action is audit-logged
+  and no password appears in the log. The cutoff and hub-move tests were
+  verified to fail when the live check is removed from `requireAuth`.
+- `src/HubStaffFlow.test.jsx` (8, mocked fetch, real component tree, new) — the
+  staff list shows hub and status; adding staff sends the right request and
+  shows the temporary password once (gone after Done); a duplicate-email error
+  appears inside the open dialog; disabling asks first and says "Disable" (not
+  "Delete") before calling the endpoint; enabling; reset shows a new password
+  once; editing moves someone to another hub; "Add staff" is disabled when no
+  hub exists.
 - `src/recentlyViewed.integration.test.js` (4, REAL backend, new,
   migration 032) — recording a view and fetching the list shows it,
   most recent first; re-viewing a product moves it back to the front

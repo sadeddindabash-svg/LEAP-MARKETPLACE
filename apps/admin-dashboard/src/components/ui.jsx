@@ -80,7 +80,9 @@ export function Td({ children, align, style }) {
 // engines, and transmissions, so this exact same confirmation UI
 // isn't rebuilt 7 separate times. Confirmed against a real rendered
 // mockup before building this.
-export function ConfirmDialog({ isOpen, title, message, onConfirm, onCancel }) {
+// confirmLabel defaults to "Delete" so every existing use is unchanged; pass another
+// word (e.g. "Disable", "Reset password") for non-delete confirmations.
+export function ConfirmDialog({ isOpen, title, message, onConfirm, onCancel, confirmLabel = "Delete" }) {
   if (!isOpen) return null;
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={onCancel}>
@@ -89,7 +91,7 @@ export function ConfirmDialog({ isOpen, title, message, onConfirm, onCancel }) {
         <p style={{ ...body, fontSize: 12.5, color: C.muted, margin: "0 0 16px" }}>{message || "This can't be undone."}</p>
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button onClick={onCancel} style={{ ...body, fontSize: 12.5, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "none", cursor: "pointer" }}>Cancel</button>
-          <button onClick={onConfirm} style={{ ...body, fontSize: 12.5, padding: "7px 14px", borderRadius: 8, border: "none", background: C.red, color: "#fff", fontWeight: 600, cursor: "pointer" }}>Delete</button>
+          <button onClick={onConfirm} style={{ ...body, fontSize: 12.5, padding: "7px 14px", borderRadius: 8, border: "none", background: C.red, color: "#fff", fontWeight: 600, cursor: "pointer" }}>{confirmLabel}</button>
         </div>
       </div>
     </div>

@@ -969,3 +969,26 @@ export const bulkSetPaymentMethodCountries = (token, id, action) => fitmentMutat
 export const fetchPaymentProviders = (token) => fitmentMutate("GET", "/payment-providers", token);
 export const savePaymentProviderCredentials = (token, providerId, values) => fitmentMutate("PUT", `/payment-providers/${providerId}`, token, values);
 export const deletePaymentProviderCredentials = (token, providerId) => fitmentMutate("DELETE", `/payment-providers/${providerId}`, token);
+
+// ---------------- Hub staff accounts (migration 089) ----------------
+// Backs the "Hub staff" section on the Hubs page. See
+// services/api/src/modules/hub-staff/routes.js for the rules.
+
+async function hubStaffRequest(method, path, token, body) {
+  const response = await fetch(`${API_BASE_URL}/hub-staff${path}`, {
+    method,
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `Hub staff request failed (${response.status})`);
+  return data;
+}
+
+export const fetchHubStaff = (token) => hubStaffRequest("GET", "", token);
+// Create / reset return { staff, temporaryPassword } -- the password is shown once.
+export const createHubStaff = (token, { email, name, hubId }) => hubStaffRequest("POST", "", token, { email, name, hubId });
+export const updateHubStaff = (token, id, changes) => hubStaffRequest("PATCH", `/${id}`, token, changes);
+export const setHubStaffDisabled = (token, id, disabled) => hubStaffRequest("POST", `/${id}/${disabled ? "disable" : "enable"}`, token);
+export const resetHubStaffPassword = (token, id) => hubStaffRequest("POST", `/${id}/reset-password`, token);

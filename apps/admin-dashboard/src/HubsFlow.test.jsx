@@ -33,6 +33,8 @@ function mockFetchRouter() {
         stageTimes: { toOpened: null, toInspected: null, toPacked: null, toShippedToBuyer: null },
       })) });
     }
+    // The Hub staff section (migration 089) loads its own list.
+    if (u.endsWith('/hub-staff')) return Promise.resolve({ ok: true, json: async () => [] });
     return Promise.resolve({ ok: true, json: async () => ({}) });
   });
 }

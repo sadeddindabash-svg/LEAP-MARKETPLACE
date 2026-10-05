@@ -23,6 +23,10 @@ const { passwordResetEmail, welcomeEmail } = require('../email/templates');
  * still just creates a passwordless user row).
  */
 const router = express.Router();
+
+// Shown on the login screen of every client (hub portal, hub app, ...) when an admin has
+// disabled the account -- see migration 089 and the admin "Hub staff" screen.
+const DISABLED_ACCOUNT_ERROR = { error: 'This account has been disabled. Contact your administrator.', code: 'account_disabled' };
 const SALT_ROUNDS = 10;
 
 function isValidEmail(email) {
@@ -100,7 +104,7 @@ router.post('/login', async (req, res, next) => {
       return res.status(400).json({ error: 'email and password are required' });
     }
 
-    const { rows } = await db.query('SELECT id, email, name, role, password_hash, supplier_id, hub_id, is_owner, two_factor_enabled FROM users WHERE email = $1', [email]);
+    const { rows } = await db.query('SELECT id, email, name, role, password_hash, supplier_id, hub_id, is_owner, two_factor_enabled, disabled_at FROM users WHERE email = $1', [email]);
     // Deliberately identical error for "no such user" and "wrong password"
     // — do not reveal which one it was, that leaks whether an email is registered.
     const genericError = { error: 'Invalid email or password' };
@@ -114,6 +118,11 @@ router.post('/login', async (req, res, next) => {
 
     const passwordMatches = await bcrypt.compare(password, user.password_hash);
     if (!passwordMatches) return res.status(401).json(genericError);
+
+    // A disabled account (migration 089) is refused only AFTER the password has
+    // been verified, so this message never reveals whether an email exists to
+    // someone who doesn't know the password.
+    if (user.disabled_at) return res.status(403).json(DISABLED_ACCOUNT_ERROR);
 
     // Real two-factor check (migration 051) -- when enabled, the real
     // password check above is only the FIRST real factor. Withholds
@@ -153,7 +162,7 @@ router.post('/login/2fa', async (req, res, next) => {
       return res.status(400).json({ error: 'userId and code are required' });
     }
     const { rows } = await db.query(
-      'SELECT id, email, name, role, supplier_id, hub_id, is_owner, two_factor_enabled, two_factor_secret FROM users WHERE id = $1',
+      'SELECT id, email, name, role, supplier_id, hub_id, is_owner, two_factor_enabled, two_factor_secret, disabled_at FROM users WHERE id = $1',
       [userId]
     );
     if (rows.length === 0 || !rows[0].two_factor_enabled || !rows[0].two_factor_secret) {
@@ -165,6 +174,7 @@ router.post('/login/2fa', async (req, res, next) => {
     if (!result.valid) {
       return res.status(401).json({ error: 'Incorrect authenticator code. Please try again.' });
     }
+    if (user.disabled_at) return res.status(403).json(DISABLED_ACCOUNT_ERROR);
     const accessInfo = await getAdminAccessInfo(user.id, user.role, user.is_owner);
     res.json({
       token: signToken(user),

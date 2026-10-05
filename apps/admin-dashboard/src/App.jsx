@@ -30,6 +30,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchAuditLog,
   fetchSupplierAnalytics,
   fetchHubWorkload, updateHubCapacity,
+  fetchHubStaff, createHubStaff, updateHubStaff, setHubStaffDisabled, resetHubStaffPassword,
   fetchHubPerformance,
   fetchFlaggedReviews, dismissReviewFlags,
   searchAdmin,
@@ -3806,6 +3807,221 @@ function HubPerformanceSection({ onSessionExpired }) {
   );
 }
 
+// Hub staff accounts (migration 089) -- who can log in to the hub portal / hub
+// app, and which hub they belong to. See services/api/src/modules/hub-staff/
+// routes.js for the rules: staff are DISABLED (never deleted, since every
+// shipment event points at who did it), a disabled person is refused on their
+// very next request, and the server generates the temporary password -- it is
+// returned once and shown once, here.
+function HubStaffSection({ hubs, onSessionExpired }) {
+  const [staff, setStaff] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [dialog, setDialog] = useState(null);   // { mode: "add" } | { mode: "edit", member }
+  const [dialogError, setDialogError] = useState(null);
+  const [confirm, setConfirm] = useState(null); // { action: "disable" | "enable" | "reset", member }
+  const [reveal, setReveal] = useState(null);   // { member, temporaryPassword, reason: "created" | "reset" }
+  const [copyState, setCopyState] = useState(null); // null | "copied" | "failed"
+  const [isSaving, setIsSaving] = useState(false);
+
+  const load = () => {
+    fetchHubStaff(getStoredToken())
+      .then((data) => { setStaff(data); setLoadState("ready"); })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setErrorMessage(err.message);
+        setLoadState("error");
+      });
+  };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // EditDialog resets its form whenever `fields` changes identity, so these MUST be
+  // memoised -- a fresh array every render would wipe what the person is typing.
+  const hubOptions = React.useMemo(() => hubs.map((h) => ({ value: h.id, label: h.name })), [hubs]);
+  const dialogFields = React.useMemo(() => {
+    if (!dialog) return null;
+    if (dialog.mode === "add") {
+      return [
+        { key: "name", label: "Full name", value: "" },
+        { key: "email", label: "Email (they log in with this)", value: "", type: "email" },
+        { key: "hubId", label: "Hub", value: "", options: hubOptions, placeholder: "Choose a hub…" },
+      ];
+    }
+    return [
+      { key: "name", label: "Full name", value: dialog.member.name || "" },
+      { key: "hubId", label: "Hub", value: dialog.member.hubId || "", options: hubOptions, placeholder: "Choose a hub…" },
+    ];
+  }, [dialog, hubOptions]);
+
+  const handleSaveDialog = async (values) => {
+    setIsSaving(true);
+    setDialogError(null);
+    try {
+      if (dialog.mode === "add") {
+        const result = await createHubStaff(getStoredToken(), {
+          email: (values.email || "").trim(), name: (values.name || "").trim(), hubId: values.hubId,
+        });
+        setDialog(null);
+        setCopyState(null);
+        setReveal({ member: result.staff, temporaryPassword: result.temporaryPassword, reason: "created" });
+      } else {
+        await updateHubStaff(getStoredToken(), dialog.member.id, { name: (values.name || "").trim(), hubId: values.hubId });
+        setDialog(null);
+      }
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setDialogError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleConfirm = async () => {
+    const { action, member } = confirm;
+    setConfirm(null);
+    setErrorMessage(null);
+    try {
+      if (action === "reset") {
+        const result = await resetHubStaffPassword(getStoredToken(), member.id);
+        setCopyState(null);
+        setReveal({ member, temporaryPassword: result.temporaryPassword, reason: "reset" });
+      } else {
+        await setHubStaffDisabled(getStoredToken(), member.id, action === "disable");
+      }
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    }
+  };
+
+  const copyPassword = async () => {
+    try {
+      await navigator.clipboard.writeText(reveal.temporaryPassword);
+      setCopyState("copied");
+    } catch {
+      // e.g. a plain-http page on a LAN address has no clipboard API -- the password
+      // is still selectable, so say so instead of failing silently.
+      setCopyState("failed");
+    }
+  };
+
+  const CONFIRM_TEXT = {
+    disable: (m) => ({ title: `Disable ${m.name}?`, label: "Disable", message: "They'll be logged out immediately and can't log in until you enable them again. Their past work stays on record." }),
+    enable: (m) => ({ title: `Enable ${m.name}?`, label: "Enable", message: "They'll be able to log in again with their current password." }),
+    reset: (m) => ({ title: `Reset ${m.name}'s password?`, label: "Reset password", message: "A new temporary password will be shown once. Their current password stops working immediately." }),
+  };
+  const confirmText = confirm ? CONFIRM_TEXT[confirm.action](confirm.member) : null;
+
+  const smallBtn = { ...body, fontSize: 11.5, fontWeight: 600, padding: "5px 10px", borderRadius: 7, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, cursor: "pointer" };
+
+  return (
+    <Card
+      title="Hub staff"
+      action={
+        <button
+          onClick={() => { setDialogError(null); setDialog({ mode: "add" }); }}
+          disabled={hubs.length === 0}
+          title={hubs.length === 0 ? "Create a hub first" : undefined}
+          style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "7px 13px", borderRadius: 8, border: "none", background: C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: hubs.length === 0 ? "not-allowed" : "pointer", opacity: hubs.length === 0 ? 0.5 : 1 }}
+        >
+          <Plus size={13} /> Add staff
+        </button>
+      }
+    >
+      <div style={{ padding: 16 }}>
+        <p style={{ ...body, fontSize: 12, color: C.muted, margin: "0 0 12px" }}>
+          People who can log in to the hub portal and hub app. Each belongs to one hub and sees only that hub&apos;s shipments.
+        </p>
+        {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 12 }}>{errorMessage}</div>}
+        {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}
+        {loadState === "ready" && staff.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>No hub staff yet. Use “Add staff” to create the first login.</div>}
+        {loadState === "ready" && staff.length > 0 && (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr><Th>Name</Th><Th>Hub</Th><Th>Status</Th><Th>Last activity</Th><Th align="right">Actions</Th></tr>
+            </thead>
+            <tbody>
+              {staff.map((m) => (
+                <tr key={m.id} style={{ opacity: m.isDisabled ? 0.6 : 1 }}>
+                  <Td>
+                    <div style={{ fontWeight: 700 }}>{m.name}</div>
+                    <div style={{ fontSize: 11.5, color: C.muted }}>{m.email}</div>
+                  </Td>
+                  <Td>{m.hubName || "—"}</Td>
+                  <Td>
+                    <span style={{ ...body, fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 6, background: m.isDisabled ? C.redBg : C.gaugeBg, color: m.isDisabled ? C.red : C.gauge }}>
+                      {m.isDisabled ? "Disabled" : "Active"}
+                    </span>
+                  </Td>
+                  <Td style={{ color: C.muted, fontSize: 12 }}>{m.lastActivityAt ? new Date(m.lastActivityAt).toLocaleString() : "No activity yet"}</Td>
+                  <Td align="right">
+                    <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                      <button style={smallBtn} onClick={() => { setDialogError(null); setDialog({ mode: "edit", member: m }); }}>Edit</button>
+                      <button style={smallBtn} onClick={() => setConfirm({ action: "reset", member: m })}>Reset password</button>
+                      <button
+                        style={{ ...smallBtn, color: m.isDisabled ? C.gauge : C.red }}
+                        onClick={() => setConfirm({ action: m.isDisabled ? "enable" : "disable", member: m })}
+                      >
+                        {m.isDisabled ? "Enable" : "Disable"}
+                      </button>
+                    </div>
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <EditDialog
+        isOpen={Boolean(dialog)}
+        title={dialog?.mode === "add" ? "Add hub staff" : "Edit hub staff"}
+        fields={dialogFields}
+        onSave={handleSaveDialog}
+        onCancel={() => setDialog(null)}
+        errorMessage={dialogError}
+        isSaving={isSaving}
+      />
+
+      <ConfirmDialog
+        isOpen={Boolean(confirm)}
+        title={confirmText?.title}
+        message={confirmText?.message}
+        confirmLabel={confirmText?.label}
+        onConfirm={handleConfirm}
+        onCancel={() => setConfirm(null)}
+      />
+
+      {reveal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div role="dialog" aria-label="Temporary password" style={{ background: "#fff", borderRadius: 12, padding: 20, maxWidth: 380, width: "90%", boxShadow: "0 12px 32px rgba(0,0,0,0.2)" }}>
+            <p style={{ ...disp, fontSize: 15, fontWeight: 700, color: C.ink, margin: "0 0 6px" }}>
+              {reveal.reason === "created" ? "Account created" : "Password reset"} — {reveal.member.name}
+            </p>
+            <p style={{ ...body, fontSize: 12.5, color: C.muted, margin: "0 0 12px" }}>
+              Give them this temporary password and their login email (<strong>{reveal.member.email}</strong>). Share it privately.
+              {reveal.reason === "reset" && " Their old password no longer works."}
+            </p>
+            <div style={{ ...mono, fontSize: 18, fontWeight: 700, letterSpacing: "0.04em", color: C.ink, background: C.canvas, border: `1px dashed ${C.line}`, borderRadius: 8, padding: "12px 14px", textAlign: "center", userSelect: "all" }}>
+              {reveal.temporaryPassword}
+            </div>
+            <p style={{ ...body, fontSize: 11.5, color: C.amber, margin: "10px 0 14px" }}>
+              This is the only time it is shown. If it's lost, use “Reset password” to make a new one.
+            </p>
+            {copyState === "failed" && <p style={{ ...body, fontSize: 11.5, color: C.red, margin: "0 0 10px" }}>Couldn&apos;t copy automatically — select the password above and copy it by hand.</p>}
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={copyPassword} style={smallBtn}>{copyState === "copied" ? "Copied ✓" : "Copy password"}</button>
+              <button onClick={() => setReveal(null)} style={{ ...body, fontSize: 12.5, fontWeight: 700, padding: "7px 14px", borderRadius: 8, border: "none", background: C.ink, color: "#fff", cursor: "pointer" }}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function HubsPage({ onSessionExpired }) {
   const [hubs, setHubs] = useState([]);
   const [loadState, setLoadState] = useState("loading");
@@ -3882,6 +4098,7 @@ function HubsPage({ onSessionExpired }) {
             ))}
           </div>
         </Card>
+        <HubStaffSection hubs={hubs} onSessionExpired={onSessionExpired} />
       </div>
     </div>
   );
@@ -7298,6 +7515,8 @@ const AUDIT_ACTION_TYPES = [
   'payout_recorded', 'promo_code_created', 'require_verified_purchase_toggled',
   'return_window_changed', 'review_approve', 'review_dismiss_flags', 'review_reject',
   'supplier_verification',
+  // Hub staff account management (migration 089)
+  'hub_staff_created', 'hub_staff_updated', 'hub_staff_disabled', 'hub_staff_enabled', 'hub_staff_password_reset',
   // Real catalog/fitment reference-data and product-listing moderation
   // actions (new) -- confirmed genuinely missing from the audit trail
   // entirely before this, despite this page's own scope already
