@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/language_state.dart';
 import '../../core/app_strings.dart';
+import '../../core/currency_state.dart';
 import 'loyalty_card.dart';
 
 /// Real "My Tier" full detail screen (new) -- confirmed with the
@@ -49,7 +50,7 @@ class LoyaltyDetailScreen extends StatelessWidget {
                     style: TextStyle(fontSize: 13, color: palette.muted),
                   ),
                   const SizedBox(height: 6),
-                  Text('${tr(context, 'loyalty_lifetime_spend')}: \$${lifetimeSpend.toStringAsFixed(2)}', style: TextStyle(fontSize: 12, color: palette.muted)),
+                  Text('${tr(context, 'loyalty_lifetime_spend')}: ${formatPrice(context, lifetimeSpend)}', style: TextStyle(fontSize: 12, color: palette.muted)),
                 ],
               ),
             ),
@@ -81,7 +82,7 @@ class LoyaltyDetailScreen extends StatelessWidget {
                           style: TextStyle(fontSize: 14, fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500, color: isCurrent ? tierColor : palette.ink),
                         ),
                         const SizedBox(height: 2),
-                        Text('${tr(context, 'loyalty_unlocked_at')} \$${(tier['spendThreshold'] as num).toStringAsFixed(0)}+', style: TextStyle(fontSize: 12, color: palette.muted)),
+                        Text('${tr(context, 'loyalty_unlocked_at')} ${formatPrice(context, (tier['spendThreshold'] as num).toDouble())}+', style: TextStyle(fontSize: 12, color: palette.muted)),
                       ],
                     ),
                   ),

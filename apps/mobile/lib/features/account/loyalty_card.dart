@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../core/auth_state.dart';
 import '../../core/language_state.dart';
 import '../../core/app_strings.dart';
+import '../../core/currency_state.dart';
 import '../../services/api_client.dart';
 
 /// Real loyalty tier card (new) -- confirmed with the person through
@@ -109,8 +110,8 @@ class _LoyaltyCardState extends State<LoyaltyCard> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text('\$${lifetimeSpend.toStringAsFixed(0)} ${tr(context, 'loyalty_spent')}', style: TextStyle(fontSize: 11.5, color: palette.muted)),
-                            Text('\$${amountToNextTier!.toStringAsFixed(0)} ${tr(context, 'loyalty_to_next_tier')} ${resolveLoyaltyName(nextTier, isAr)}', style: TextStyle(fontSize: 11.5, color: palette.muted)),
+                            Text('${formatPrice(context, lifetimeSpend)} ${tr(context, 'loyalty_spent')}', style: TextStyle(fontSize: 11.5, color: palette.muted)),
+                            Text('${formatPrice(context, amountToNextTier!.toDouble())} ${tr(context, 'loyalty_to_next_tier')} ${resolveLoyaltyName(nextTier, isAr)}', style: TextStyle(fontSize: 11.5, color: palette.muted)),
                           ],
                         ),
                         const SizedBox(height: 6),
