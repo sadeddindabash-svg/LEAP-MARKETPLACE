@@ -1,6 +1,7 @@
 const db = require('../../../db/pool');
 const { createNotification } = require('../notifications/helpers');
 const { getReturnAddress } = require('../supplierReturnAddress/helpers');
+const messages = require('../notifications/messages');
 
 /**
  * Fault cases (migration 091): what happens after an admin confirms that a flagged hub shipment is REALLY
@@ -26,23 +27,25 @@ class FaultCaseError extends Error {
 
 // Buyer-facing text is stored as ONE string (a return-case message / a notification body), so it carries
 // both languages: English first, then Arabic, on separate lines. A stopgap until messages are keyed.
-const bi = (en, ar) => `${en}\n${ar}`;
+const pair = (en, ar) => ({ en, ar });
+// The return-case THREAD shows both languages together, English first, then Arabic. (A notification keeps them in separate fields.)
+const both = ({ en, ar }) => `${en}\n${ar}`;
 const money = (n) => Number(n).toFixed(2);
 
 const BUYER_TEXT = {
-  faultConfirmed: (itemCount) => bi(
+  faultConfirmed: (itemCount) => pair(
     `Our inspection confirmed a problem with ${itemCount === 1 ? 'an item' : 'some items'} in this shipment. We are arranging a replacement or a refund and will update you shortly.`,
     `أكد الفحص وجود مشكلة في ${itemCount === 1 ? 'أحد المنتجات' : 'بعض المنتجات'} ضمن هذه الشحنة. نعمل على ترتيب استبدال أو استرداد المبلغ وسنوافيك بالمستجدات قريبًا.`
   ),
-  refundConfirmed: (amount) => bi(
+  refundConfirmed: (amount) => pair(
     `We are refunding $${money(amount)}. It is being processed and we will confirm once it has been issued.`,
     `سيتم استرداد مبلغ ${money(amount)}$. جارٍ معالجته وسنؤكد لك عند إصداره.`
   ),
-  refundIssued: (amount, reference) => bi(
+  refundIssued: (amount, reference) => pair(
     `Your refund of $${money(amount)} has been issued (reference: ${reference}). It may take a few days to appear with your payment provider.`,
     `تم إصدار استرداد مبلغ ${money(amount)}$ (المرجع: ${reference}). قد يستغرق ظهوره لدى مزوّد الدفع بضعة أيام.`
   ),
-  closed: () => bi('This case is now closed. Thank you for your patience.', 'تم إغلاق هذه الحالة. شكرًا لصبرك.'),
+  closed: () => pair('This case is now closed. Thank you for your patience.', 'تم إغلاق هذه الحالة. شكرًا لصبرك.'),
 };
 
 // Return-case states an automated update may move between. A case an admin has already finalised by hand
@@ -62,18 +65,15 @@ async function findReturnCase(client, subOrderId) {
   return rows[0] || null;
 }
 
-// Moves the linked return case to `status`, posts `message` to the buyer's thread, and queues the buyer's
+// Moves the linked return case to `status`, posts `message` ({ en, ar }) to the buyer's thread, and queues the buyer's
 // notification. Returns { id, status, updated } (or null when there is no case).
 async function advanceReturnCase(client, rc, status, message, notifications) {
   if (!rc) return null;
   if (!AUTO_UPDATABLE.includes(rc.status)) return { id: rc.id, status: rc.status, updated: false };
   await client.query('UPDATE return_cases SET status = $1, updated_at = now() WHERE id = $2', [status, rc.id]);
-  await client.query(`INSERT INTO return_case_buyer_messages (case_id, sender_role, message) VALUES ($1, 'admin', $2)`, [rc.id, message]);
+  await client.query(`INSERT INTO return_case_buyer_messages (case_id, sender_role, message) VALUES ($1, 'admin', $2)`, [rc.id, both(message)]);
   if (rc.buyer_id) { // a guest buyer has no account to notify
-    notifications.push({
-      userId: rc.buyer_id, type: 'return_status', title: 'Your return request was updated\nتم تحديث طلب الإرجاع الخاص بك',
-      body: message, linkType: 'order', linkId: rc.order_id,
-    });
+    notifications.push({ userId: rc.buyer_id, type: 'return_status', ...messages.returnCaseMessage(message), linkType: 'order', linkId: rc.order_id });
   }
   return { id: rc.id, status, updated: true };
 }

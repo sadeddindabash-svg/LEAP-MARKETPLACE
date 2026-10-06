@@ -40,6 +40,7 @@ function getFirebaseApp() {
 }
 
 const db = require('../../../db/pool');
+const { localize } = require('../notifications/i18n');
 
 /**
  * Sends a real push to every real device token this real user has
@@ -86,13 +87,23 @@ function channelIdForType(type) {
   return ORDERS_CHANNEL_TYPES.has(type) ? 'orders' : 'updates';
 }
 
-async function sendPushToUser({ userId, type, title, body, linkType, linkId, imageUrl }) {
+async function sendPushToUser({ userId, type, title, body, titleAr, bodyAr, linkType, linkId, imageUrl }) {
   if (!isPushConfigured()) {
     console.log(`[push] Not configured (no FIREBASE_SERVICE_ACCOUNT_JSON) -- would have sent "${title}" to user ${userId}.`);
     return;
   }
   const { rows: tokens } = await db.query('SELECT token FROM device_tokens WHERE user_id = $1', [userId]);
   if (tokens.length === 0) return;
+
+  // A push is sent at the moment an event happens, with no app request to ask which language to use, so it uses the language the
+  // user's app last reported (migration 093: users.language, kept up to date whenever the app loads notifications). A notification
+  // with no Arabic text, or a user who has never reported one, is sent in English.
+  if (titleAr || bodyAr) {
+    const { rows: userRows } = await db.query('SELECT language FROM users WHERE id = $1', [userId]);
+    const chosen = localize({ title, body, titleAr, bodyAr }, userRows[0]?.language);
+    title = chosen.title;
+    body = chosen.body;
+  }
 
   const admin = require('firebase-admin');
   getFirebaseApp();

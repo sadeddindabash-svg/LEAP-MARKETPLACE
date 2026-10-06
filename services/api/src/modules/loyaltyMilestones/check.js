@@ -1,5 +1,6 @@
 const db = require('../../../db/pool');
 const { createNotification } = require('../notifications/helpers');
+const messages = require('../notifications/messages');
 
 /**
  * Real account-anniversary check (#58). Uses the real, already-
@@ -47,8 +48,7 @@ async function checkAccountAnniversaries() {
       await createNotification({
         userId: user.id,
         type: 'account_anniversary',
-        title: `Happy ${yearsSinceSignup} year${yearsSinceSignup === 1 ? '' : 's'} with LEAP!`,
-        body: `Thanks for being with us for ${yearsSinceSignup} year${yearsSinceSignup === 1 ? '' : 's'}. We appreciate you.`,
+        ...messages.accountAnniversary(yearsSinceSignup),
       });
       await db.query('UPDATE users SET last_anniversary_notified_year = $1 WHERE id = $2', [yearsSinceSignup, user.id]);
     } catch (err) {

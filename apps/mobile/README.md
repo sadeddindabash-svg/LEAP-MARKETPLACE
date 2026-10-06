@@ -3492,6 +3492,17 @@ error messages that carry no `code` (they still show the backend's English text)
 - **HONEST LIMITATION:** like every section here, this was checked by reading the code and bracket balance, **not compiled or run** (no Flutter SDK in the sandbox). I
   also added `test/buyer_facing_status_test.dart`, which has not been run either — please run `flutter test` once, and try the back arrow on a freshly placed order.
 
+## Notifications in the app's language (new)
+
+The app now tells the server which language it is showing when it loads notifications and the unread count (`?lang=ar` / `?lang=en`: `fetchNotifications` and
+`fetchUnreadNotificationCount` in `api_client.dart`, called from the notifications screen, the account screen and the bottom-bar badge). The server returns each notification's text in
+that language, and also remembers it so a push notification, sent when an event happens, uses it too. A notification with no Arabic text (an old one) shows in English.
+
+- Needs the backend's migration 093 and a **rebuilt app** — an app built before this keeps asking for no language and keeps showing English.
+- **HONEST LIMITATION:** read and bracket-checked, **not compiled or run** (no Flutter SDK in the sandbox). Please try it: open the app in Arabic, trigger a notification (e.g. have the hub ship an
+  order), and check it reads in Arabic; switch to English and it should read in English.
+- The language shown in the list follows the app's language when the screen opens; an open notifications screen does not re-translate by itself if the language is changed from elsewhere.
+
 ## Setup
 
 1. Install Flutter: https://docs.flutter.dev/get-started/install

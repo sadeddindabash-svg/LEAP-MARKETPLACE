@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, optionalAuth, requirePageAccess } = require('../auth/middleware');
 const { createNotification } = require('../notifications/helpers');
+const messages = require('../notifications/messages');
 
 /**
  * Support module — BUY-060/061 (buyer <-> Platform support, logged and
@@ -125,8 +126,7 @@ router.post('/tickets/:id/messages', requireAuth, requireRole('admin'), requireP
     await createNotification({
       userId: ticketCheck.rows[0].buyer_id,
       type: 'ticket_reply',
-      title: 'New reply on your support ticket',
-      body: `"${ticketCheck.rows[0].subject}": ${message}`,
+      ...messages.ticketReply(ticketCheck.rows[0].subject, message),
       linkType: 'ticket',
       linkId: req.params.id,
     });

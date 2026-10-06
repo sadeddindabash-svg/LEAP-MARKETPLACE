@@ -21,7 +21,7 @@ router.post('/register-device', requireAuth, async (req, res, next) => {
     await db.query(
       `INSERT INTO device_tokens (user_id, token, platform) VALUES ($1, $2, $3)
        ON CONFLICT (user_id, token) DO UPDATE SET created_at = now()`,
-      [req.user.id, token, platform]
+      [req.user.sub, token, platform] // the login token stores the user's id as `sub` (req.user.id was always undefined: every registration failed)
     );
     res.status(204).end();
   } catch (err) {
@@ -38,7 +38,7 @@ router.delete('/register-device', requireAuth, async (req, res, next) => {
   try {
     const { token } = req.body || {};
     if (!token) return res.status(400).json({ error: 'token is required' });
-    await db.query('DELETE FROM device_tokens WHERE user_id = $1 AND token = $2', [req.user.id, token]);
+    await db.query('DELETE FROM device_tokens WHERE user_id = $1 AND token = $2', [req.user.sub, token]); // same fix: with `id` this deleted nothing, so a logged-out phone kept receiving the previous user's pushes
     res.status(204).end();
   } catch (err) {
     next(err);

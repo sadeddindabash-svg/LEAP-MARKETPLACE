@@ -5,6 +5,7 @@ const { createNotification } = require('../notifications/helpers');
 const { sendTransactionalEmail } = require('../email/client');
 const { logAdminAction } = require('../audit/helpers');
 const faultCases = require('../faultCases/helpers');
+const messages = require('../notifications/messages');
 const { getReturnAddress } = require('../supplierReturnAddress/helpers');
 
 const DAMAGE_TYPES = ['physical_damage', 'water_damage', 'missing_parts', 'wrong_item', 'other'];
@@ -298,8 +299,7 @@ router.patch('/flagged/:id/resolve', requireAuth, requireRole('admin'), requireP
         await createNotification({
           userId: notify.userId,
           type: 'return_status',
-          title: 'Your return request was updated',
-          body: notify.statusChanged ? `Return ${notify.caseId} is now ${notify.status}.` : `There is an update on return ${notify.caseId}.`,
+          ...messages.returnUpdated(notify.caseId, notify.statusChanged ? notify.status : null),
           linkType: 'order',
           linkId: notify.orderId,
         });
@@ -829,8 +829,7 @@ router.post('/me/shipments/:id/events', requireAuth, requireRole('hub_staff'), a
       );
       shippedOrderId = orderRows[0].order_id;
       await createNotification({
-        userId: orderRows[0].buyer_id, type: 'order_status', title: 'Your order has shipped',
-        body: `Order ${shippedOrderId} is on its way to you. Tracking number: ${trackingNumber}`,
+        userId: orderRows[0].buyer_id, type: 'order_status', ...messages.orderShipped(shippedOrderId, trackingNumber),
         linkType: 'order', linkId: shippedOrderId,
       }, client);
     }
@@ -921,8 +920,7 @@ router.patch('/me/shipments/:id/confirm-delivery', requireAuth, requireRole('hub
     await createNotification({
       userId: orderRows[0]?.buyer_id,
       type: 'order_status',
-      title: 'Your order has been delivered',
-      body: `Order ${orderId} is now delivered.`,
+      ...messages.orderDelivered(orderId),
       linkType: 'order',
       linkId: orderId,
     }, client);

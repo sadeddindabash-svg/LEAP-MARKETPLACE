@@ -3286,6 +3286,46 @@ apps (they will show the new statuses unlabelled), supplier reminders, automatic
 builds its own hub and hub-staff login (using the Hub staff feature) so workload checks are exact. Verified to fail when completion stops needing
 both conditions, when supplier isolation is removed, when the buyer-cancel block is removed, or when the hub workload keeps counting returned units.
 
+## Notifications in the buyer's language (migration 093)
+
+**The gap:** every notification was stored as ONE English string, so a buyer using the app in Arabic still got English notifications, and the app never told the
+server which language it was in.
+
+**How it works now**
+- A notification stores an English text (`title`, `body`, unchanged) and an optional Arabic text (`title_ar`, `body_ar`). `createNotification()` accepts `titleAr` / `bodyAr`.
+- `GET /notifications/me?lang=ar` returns the Arabic text. No `lang`, or anything other than exactly `ar` (including `AR`, `fr`, empty), is English. A notification with no
+  Arabic text — an older one, or one meant for a supplier — falls back to English **field by field**, so a missing Arabic body never shows blank (`notifications/i18n.js`,
+  `localize()`). `PATCH /notifications/me/:id/read` answers in the same language.
+- **Every buyer notification lives in `notifications/messages.js`** as an English + Arabic pair, and call sites spread the result into `createNotification()`:
+  order shipped / delivered / on its way to the inspection hub / delayed, return updated (with the app's own Arabic status words), the fault-case messages, account
+  anniversary, price drop, back in stock, saved search, referral reward, and support replies. Because each builder returns both languages, a new notification cannot forget
+  its Arabic, and the whole set is unit-tested without triggering each event. Arabic number forms are handled (عام / عامين / 3–10 أعوام / 11+ عامًا, and the same for "new results").
+  Text a person typed (a support reply's body, a saved search's label) is passed through unchanged, because it cannot be translated.
+- **Fault-case messages:** the buyer's return-case THREAD still shows English and Arabic together (it is a conversation, not a notification), but the NOTIFICATION now carries each
+  language in its own field instead of one mixed string.
+- **Not translated:** notifications sent to SUPPLIERS (low stock, a cancelled order, messages from Leap, verification, "can you replace?") stay English-only — the supplier portal is
+  Chinese / English — and so do emails. Both are separate follow-ups.
+
+**Push:** a push is sent at the moment an event happens, with no app request to ask which language to use. So the server remembers the language the app last reported
+(`users.language`, set when the app loads notifications or the unread count with `?lang=`; only a clear `ar` or `en` is stored) and `sendPushToUser` picks that language, falling
+back to English when there is no Arabic text or no known language. Tested with a fake Firebase, because a real one is not configured here.
+
+**Bug fixed on the way:** `POST` / `DELETE /notifications/register-device` read the user's id as `req.user.id`, but the login token stores it as `sub`, so the id was always empty:
+**every device registration failed (500)**, and removing a device on logout silently deleted nothing, so a logged-out phone would have kept receiving the previous user's pushes.
+Both now use `req.user.sub`. (The same mistake exists in `supplier-messages/routes.js`, where it only leaves a message's sender blank; not changed here.)
+
+**Existing notifications (the migration's backfill):** notifications that already exist are English-only. Where an old one followed a fixed pattern (shipped, delivered, on its way to
+the hub, delayed, return updates, anniversary, referral reward, support reply, back in stock, price drop), the migration works out its Arabic text, and it splits the old
+"English⏎Arabic" fault-case messages into their own fields. Anything matching no known pattern stays English. The backfill is the part of the migration file after the
+`===== BACKFILL` line; it only touches rows that still have no Arabic text, so it is safe to run again.
+
+**HONEST LIMITATIONS:** the Arabic wording was written by the developer and has not been reviewed by a native speaker; the mobile change was read and bracket-checked, not compiled (see
+`apps/mobile/README.md`); the language is remembered per USER, not per device (two phones with different languages will share the last one reported, for push only).
+
+**Tested:** `apps/admin-dashboard/src/notificationMessages.test.js` (14, pure), `notificationLanguage.integration.test.js` (7, real backend), `pushLanguage.integration.test.js` (5, real
+database + fake Firebase), `notificationBackfill.integration.test.js` (4, real database); `faultCases.integration.test.js` was updated for the one-language-per-notification behaviour.
+Verified to fail when the language choice is ignored, when the app's language is not remembered, when push ignores it, and when an Arabic text is replaced by English.
+
 ## Supplier return addresses (migration 092)
 
 **The gap:** a confirmed real fault (migration 091) tells the hub to send the faulty unit back to the supplier, but `suppliers` held only a name,

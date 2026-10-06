@@ -7,6 +7,7 @@ const { validateFitment, tryMatchCategoryAndPart, tryMatchPosition, tryMatchDime
 const { getSupplierAnalytics } = require('../supplierAnalytics/queries');
 const { getSupplierFinance } = require('../supplierFinance/queries');
 const { validateReturnAddress, getReturnAddress, saveReturnAddress } = require('../supplierReturnAddress/helpers');
+const messages = require('../notifications/messages');
 const { notifyRestock } = require('../restockAlerts/notify');
 
 /**
@@ -1018,8 +1019,7 @@ router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), asy
         // The SUPPLIER shipping is only the leg to our inspection hub -- the buyer's "shipped" notice (with the hub's own
         // tracking number) is sent when the HUB ships it to them (see hub/routes.js). Saying "shipped" here, and
         // emailing the supplier's domestic tracking number, was wrong on both counts.
-        title: 'Your order is on its way to our inspection hub',
-        body: `Order ${rows[0].order_id} has been sent by the supplier to our inspection hub. We will tell you when it ships to you.`,
+        ...messages.orderToInspectionHub(rows[0].order_id),
         linkType: 'order',
         linkId: rows[0].order_id,
       }, client);

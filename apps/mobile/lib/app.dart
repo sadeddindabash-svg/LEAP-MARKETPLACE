@@ -236,7 +236,7 @@ class RootShell extends StatelessWidget {
             icon: !auth.isLoggedIn
                 ? const Icon(Icons.person_outline)
                 : FutureBuilder<int>(
-                    future: ApiClient().fetchUnreadNotificationCount(auth.token!),
+                    future: ApiClient().fetchUnreadNotificationCount(auth.token!, lang: context.read<LanguageState>().language),
                     builder: (context, snapshot) {
                       final count = snapshot.data ?? 0;
                       return count > 0

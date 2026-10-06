@@ -1,5 +1,6 @@
 const db = require('../../../db/pool');
 const { createNotification } = require('../notifications/helpers');
+const messages = require('../notifications/messages');
 const { sendTransactionalEmail } = require('../email/client');
 const { wrapEmailBody } = require('../email/templates');
 
@@ -30,8 +31,7 @@ async function notifyRestock(product) {
       await createNotification({
         userId: buyerId,
         type: 'back_in_stock',
-        title: 'Back in stock',
-        body: `${product.name} is back in stock.`,
+        ...messages.backInStock({ name: product.name, nameAr: product.name_ar }),
         linkType: 'product',
         linkId: product.id,
       });

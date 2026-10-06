@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
+import '../../core/language_state.dart';
 import '../../services/api_client.dart';
 import '../../widgets/skeleton.dart';
 
@@ -36,8 +37,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Future<void> _load() async {
     final token = context.read<AuthState>().token;
     if (token == null) return;
+    // The notification texts come back in the app's language (Arabic notifications in Arabic mode, English in English mode).
+    final lang = context.read<LanguageState>().language;
     try {
-      final notifications = await ApiClient().fetchNotifications(token);
+      final notifications = await ApiClient().fetchNotifications(token, lang: lang);
       if (mounted) setState(() { _notifications = notifications; _errorMessage = null; });
     } on ApiException catch (e) {
       if (mounted) setState(() => _errorMessage = e.message);

@@ -55,7 +55,7 @@ class _AccountScreenState extends State<AccountScreen> {
     final token = context.read<AuthState>().token;
     if (token == null) return;
     try {
-      final count = await ApiClient().fetchUnreadNotificationCount(token);
+      final count = await ApiClient().fetchUnreadNotificationCount(token, lang: context.read<LanguageState>().language);
       if (mounted) setState(() => _unreadCount = count);
     } catch (_) {} // non-critical -- the badge just stays at 0 rather than breaking the page
   }

@@ -1,5 +1,6 @@
 const db = require('../../../db/pool');
 const { createNotification } = require('../notifications/helpers');
+const messages = require('../notifications/messages');
 
 /**
  * Real, automatic shipment-delay check (#57). Purely time-based (no
@@ -62,8 +63,7 @@ async function checkForDelayedShipments() {
       await createNotification({
         userId: so.buyer_id,
         type: 'order_status',
-        title: 'Your order is taking longer than expected',
-        body: `Order ${so.order_id} hasn't had an update in a while. We're keeping an eye on it.`,
+        ...messages.orderDelayed(so.order_id),
         linkType: 'order',
         linkId: so.order_id,
       });

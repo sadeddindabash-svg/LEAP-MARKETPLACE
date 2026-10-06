@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth } = require('../auth/middleware');
+const { localize, normalizeLanguage, isSupportedLanguage } = require('./i18n');
 
 /**
  * Real notifications (migration 019, extended by 020/037/038/039/045).
@@ -14,12 +15,14 @@ const { requireAuth } = require('../auth/middleware');
  */
 const router = express.Router();
 
-function toNotificationDto(row) {
+// `lang` is 'ar' or 'en' (anything else is English). A notification with no Arabic text is shown in English, field by field.
+function toNotificationDto(row, lang) {
+  const { title, body } = localize({ title: row.title, body: row.body, titleAr: row.title_ar, bodyAr: row.body_ar }, lang);
   return {
     id: row.id,
     type: row.type,
-    title: row.title,
-    body: row.body,
+    title,
+    body,
     linkType: row.link_type,
     linkId: row.link_id,
     isRead: row.is_read,
@@ -27,13 +30,22 @@ function toNotificationDto(row) {
   };
 }
 
+// The app says which language it is showing (?lang=ar|en). Remembering it on the user lets a PUSH notification, which is sent when an
+  // event happens with no app request to ask, still be sent in that language. Only a clear 'ar' or 'en' is stored; anything else is ignored.
+async function rememberLanguage(userId, lang) {
+  if (!isSupportedLanguage(lang)) return;
+  await db.query('UPDATE users SET language = $1 WHERE id = $2 AND language IS DISTINCT FROM $1', [lang, userId]);
+}
+
 router.get('/me', requireAuth, async (req, res, next) => {
   try {
+    const lang = normalizeLanguage(req.query.lang);
+    await rememberLanguage(req.user.sub, req.query.lang);
     const { rows } = await db.query(
       'SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50',
       [req.user.sub]
     );
-    res.json(rows.map(toNotificationDto));
+    res.json(rows.map((r) => toNotificationDto(r, lang)));
   } catch (err) {
     next(err);
   }
@@ -44,6 +56,7 @@ router.get('/me', requireAuth, async (req, res, next) => {
 // show a number.
 router.get('/me/unread-count', requireAuth, async (req, res, next) => {
   try {
+    await rememberLanguage(req.user.sub, req.query.lang); // the app polls this often, so it keeps the remembered language current
     const { rows } = await db.query(
       'SELECT COUNT(*) AS count FROM notifications WHERE user_id = $1 AND is_read = false',
       [req.user.sub]
@@ -61,7 +74,7 @@ router.patch('/me/:id/read', requireAuth, async (req, res, next) => {
       [req.params.id, req.user.sub]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Notification not found' });
-    res.json(toNotificationDto(rows[0]));
+    res.json(toNotificationDto(rows[0], normalizeLanguage(req.query.lang)));
   } catch (err) {
     next(err);
   }

@@ -59,11 +59,13 @@ const db = require('../../../db/pool');
  */
 const { sendPushToUser } = require('../push/client');
 
-async function createNotification({ userId, type, title, body, linkType, linkId, imageUrl }, client = db) {
+// `titleAr` / `bodyAr` (migration 093) are the Arabic text; leave them out for a notification that is English-only (e.g. one for a supplier).
+// Whoever reads the notification gets the language they ask for, falling back to English -- see notifications/i18n.js.
+async function createNotification({ userId, type, title, body, titleAr, bodyAr, linkType, linkId, imageUrl }, client = db) {
   if (!userId) return; // e.g. a guest ticket has no real account to notify -- silently skip, not an error
   await client.query(
-    `INSERT INTO notifications (user_id, type, title, body, link_type, link_id) VALUES ($1, $2, $3, $4, $5, $6)`,
-    [userId, type, title, body, linkType || null, linkId || null]
+    `INSERT INTO notifications (user_id, type, title, body, title_ar, body_ar, link_type, link_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [userId, type, title, body, titleAr || null, bodyAr || null, linkType || null, linkId || null]
   );
   // Real push, wired in here once (new) so every one of the 10+ real
   // trigger points already calling this function gets it for free,
@@ -73,7 +75,7 @@ async function createNotification({ userId, type, title, body, linkType, linkId,
   // delivery failure (or push simply not being configured yet, see
   // push/client.js's own isPushConfigured()) must never block or fail
   // the real in-app notification this is layered on top of.
-  sendPushToUser({ userId, type, title, body, linkType, linkId, imageUrl }).catch((err) => {
+  sendPushToUser({ userId, type, title, body, titleAr, bodyAr, linkType, linkId, imageUrl }).catch((err) => {
     console.error('[push] sendPushToUser failed:', err.message);
   });
 }

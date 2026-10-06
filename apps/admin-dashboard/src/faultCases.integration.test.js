@@ -57,12 +57,12 @@ const returnCaseFor = async (shipmentId) => {
   const entry = await queueEntry(shipmentId);
   return entry?.returnCaseId ? fetch(`${BACKEND_URL}/returns/${entry.returnCaseId}`, { headers: auth(await adminToken()) }).then((r) => r.json()) : null;
 };
-const notificationsOf = async (token) => fetch(`${BACKEND_URL}/notifications/me`, { headers: auth(token) }).then((r) => r.json());
+const notificationsOf = async (token, lang) => fetch(`${BACKEND_URL}/notifications/me${lang ? `?lang=${lang}` : ''}`, { headers: auth(token) }).then((r) => r.json());
 const workloadFor = async (hubId) => (await fetch(`${BACKEND_URL}/hub/workload`, { headers: auth(await adminToken()) }).then((r) => r.json())).find((h) => h.id === hubId);
 const ARABIC = /[\u0600-\u06FF]/;
 
 describe.runIf(backendUp)('fault cases: a real fault on a flagged shipment, against a REAL running backend', () => {
-  it('CRITICAL: confirming a real fault opens a case, asks the supplier, and tells the buyer in both languages', async () => {
+  it('CRITICAL: confirming a real fault opens a case, asks the supplier, and tells the buyer: the thread shows both languages, the notification one language at a time', async () => {
     const f = await createFlaggedShipment();
     const res = await openCase(f);
     expect(res.status).toBe(201);
@@ -76,14 +76,21 @@ describe.runIf(backendUp)('fault cases: a real fault on a flagged shipment, agai
     const entry = await queueEntry(f.shipmentId);
     expect(entry.faultCase.id).toBe(faultCase.id);
 
-    // the buyer's case thread and notification explain it in English AND Arabic
+    // the buyer's case THREAD shows English AND Arabic together...
     const rc = await returnCaseFor(f.shipmentId);
     const message = rc.buyerMessages.at(-1).message;
     expect(message).toContain('Our inspection confirmed a problem');
     expect(message).toMatch(ARABIC);
-    const buyerNote = (await notificationsOf(f.buyerToken)).find((n) => n.type === 'return_status' && n.linkId === f.orderId);
-    expect(buyerNote).toBeTruthy();
-    expect(buyerNote.body).toMatch(ARABIC);
+
+    // ...but the NOTIFICATION is in one language at a time: English by default, Arabic only when the app asks for Arabic
+    const english = (await notificationsOf(f.buyerToken)).find((n) => n.type === 'return_status' && n.linkId === f.orderId);
+    expect(english.title).toBe('Your return request was updated');
+    expect(english.body).toContain('Our inspection confirmed a problem');
+    expect(english.title + english.body).not.toMatch(ARABIC);
+    const arabic = (await notificationsOf(f.buyerToken, 'ar')).find((n) => n.type === 'return_status' && n.linkId === f.orderId);
+    expect(arabic.title).toBe('تم تحديث طلب الإرجاع الخاص بك');
+    expect(arabic.body).toMatch(ARABIC);
+    expect(arabic.body).not.toContain('Our inspection');
 
     // the supplier is asked the replacement question
     const supplierNote = (await notificationsOf(await supplierToken())).find((n) => n.type === 'supplier_message' && n.linkId === f.orderId);

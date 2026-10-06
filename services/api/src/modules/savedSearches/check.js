@@ -1,6 +1,7 @@
 const db = require('../../../db/pool');
 const { buildProductMatchQuery } = require('../catalog/routes');
 const { createNotification } = require('../notifications/helpers');
+const messages = require('../notifications/messages');
 const { sendTransactionalEmail } = require('../email/client');
 const { wrapEmailBody } = require('../email/templates');
 
@@ -38,8 +39,7 @@ async function checkOneSavedSearch(savedSearch) {
       await createNotification({
         userId: savedSearch.buyer_id,
         type: 'saved_search_match',
-        title: 'New results for a saved search',
-        body: `"${savedSearch.label}" has ${newMatches.length} new match${newMatches.length === 1 ? '' : 'es'}: ${newMatches.slice(0, 3).map((m) => m.name).join(', ')}${newMatches.length > 3 ? '…' : ''}`,
+        ...messages.savedSearchMatch({ label: savedSearch.label, total: newMatches.length, matchNames: newMatches.slice(0, 3).map((m) => m.name) }),
         linkType: 'saved_search',
         linkId: savedSearch.id,
       });

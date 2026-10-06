@@ -1,5 +1,6 @@
 const db = require('../../../db/pool');
 const { createNotification } = require('../notifications/helpers');
+const messages = require('../notifications/messages');
 
 /**
  * The general promotions engine (migration 020). CONFIRMED SCOPE: what
@@ -82,8 +83,7 @@ async function checkAndGrantReferralReward(buyerId, client = db) {
   await createNotification({
     userId: referral.referrer_id,
     type: 'referral_reward',
-    title: 'You earned a referral reward!',
-    body: `Someone you referred placed their first order. Use code ${rewardCode} for ${REFERRAL_REWARD_VALUE}% off your next order.`,
+    ...messages.referralReward(rewardCode, REFERRAL_REWARD_VALUE),
     linkType: 'promo_code',
     linkId: rewardCode,
   }, client);

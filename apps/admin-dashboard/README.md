@@ -1245,7 +1245,7 @@ Sixty-six test files, 409 tests total, all passing:
   kind rejected); "continue processing" puts the shipment back in the flow so the hub can genuinely carry on, closes the case as rejected and
   notifies the buyer; a case an admin already finalised by hand is left alone; guest buyers work; an unknown outcome, the old terminal outcomes
   (now fault cases), resolving twice and an unknown id are rejected; only an admin with the Flagged page can resolve; the audit log records it.
-- `src/faultCases.integration.test.js` (18, REAL backend, migration 091) — the refund default is what the buyer PAID (verified on a discounted order, including an order split across suppliers, and to fail with the old list-price default); the hub sees a neutral stage, never money; a real fault: opening a case asks the supplier and tells the buyer in
+- `src/faultCases.integration.test.js` (18, the buyer's notification is now ONE language at a time while the thread shows both; REAL backend, migration 091) — the refund default is what the buyer PAID (verified on a discounted order, including an order split across suppliers, and to fail with the old list-price default); the hub sees a neutral stage, never money; a real fault: opening a case asks the supplier and tells the buyer in
   English AND Arabic; bad requests (cost bearer, no items, an item not in the shipment, unknown shipment, a second case); only an admin with the
   Flagged page can act; only the supplier whose order it is can answer (another supplier gets 404), a "yes" needs a valid date, an answer is
   final; the supplier never sees money, the cost bearer or private notes; the refund default, bounds and manual "issued" with a required
@@ -1264,6 +1264,16 @@ Sixty-six test files, 409 tests total, all passing:
 - `src/buyerStatus.integration.test.js` (2, REAL backend) — buyers are never shown "dispute": a flagged order shows `returns` while its return case is open; an OLD
   flag (the return case is removed to simulate one from before they were automatic) shows the buyer `to_ship` in both the order page and the orders list, while admin
   still sees `dispute` and its `?status=dispute` filter still finds it. Verified to fail when buyers get `dispute` again.
+- `src/notificationMessages.test.js` (14, pure — no backend) — every buyer notification has an English AND an Arabic text; the English wording is exactly what it said before Arabic
+  existed; the Arabic has no English template words left in it; order numbers, tracking numbers, case ids, codes and labels are in both; Arabic number forms (years, "new results"); the
+  return statuses use the app's own Arabic words; the language-choice rule (an unknown language is English; a missing Arabic text falls back to English field by field).
+- `src/notificationLanguage.integration.test.js` (7, REAL backend) — a buyer's order journey (supplier ships, hub ships, delivered) reads in Arabic when asked and English otherwise, the same
+  notifications either way; no or unsupported language is English; the app's language is remembered per user and only from a clear `ar`/`en`; return status changes say the status in Arabic;
+  a support reply translates only its title; mark-as-read answers in the language asked for; a fault case sends one language per notification while the supplier's notice stays English.
+- `src/pushLanguage.integration.test.js` (5, real database + a FAKE Firebase) — device registration stores the device for that user and removal really removes it (this used to fail for
+  everyone); an Arabic user gets an Arabic push and an English one an English push; a notification with no Arabic text is sent in English; every registered device gets it.
+- `src/notificationBackfill.integration.test.js` (4, real database) — the migration's backfill gives every old patterned notification correct Arabic and never alters the English; unknown
+  patterns are left alone; running it again changes nothing; it never overwrites an Arabic text that is already there.
 - `src/trackingNumbers.integration.test.js` (5, REAL backend) — the buyer (and a guest) sees the HUB's tracking number, empty until the hub ships, and
   never the supplier's; admin sees both, labelled apart (Order detail shows "Supplier → hub" and "Hub → buyer"); the buyer is not told "shipped" when
   the supplier ships to the hub, only when the hub ships, with the hub's number; a faulty unit's return step and return tracking number are

@@ -1263,14 +1263,20 @@ class ApiClient {
 
   /// Real notifications — triggered by real order changes and message/
   /// ticket replies (see services/api/src/modules/notifications/).
-  Future<List<dynamic>> fetchNotifications(String token) async {
-    final response = await _client.get(Uri.parse('$baseUrl/notifications/me'), headers: _authHeaders(token));
+  ///
+  /// [lang] is the app's current language ('en' or 'ar'): the server returns each notification's text in that language (falling back to
+  /// English for one that has no Arabic text), and remembers it so a push notification, which is sent when an event happens, uses it too.
+  Future<List<dynamic>> fetchNotifications(String token, {String? lang}) async {
+    final query = lang == null ? '' : '?lang=$lang';
+    final response = await _client.get(Uri.parse('$baseUrl/notifications/me$query'), headers: _authHeaders(token));
     if (response.statusCode != 200) throw ApiException('Failed to load notifications (${response.statusCode})');
     return jsonDecode(response.body) as List<dynamic>;
   }
 
-  Future<int> fetchUnreadNotificationCount(String token) async {
-    final response = await _client.get(Uri.parse('$baseUrl/notifications/me/unread-count'), headers: _authHeaders(token));
+  /// [lang] keeps the server's remembered language current (this is called often), see [fetchNotifications].
+  Future<int> fetchUnreadNotificationCount(String token, {String? lang}) async {
+    final query = lang == null ? '' : '?lang=$lang';
+    final response = await _client.get(Uri.parse('$baseUrl/notifications/me/unread-count$query'), headers: _authHeaders(token));
     if (response.statusCode != 200) throw ApiException('Failed to load unread count (${response.statusCode})');
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     return body['count'] as int;

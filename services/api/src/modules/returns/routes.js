@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, optionalAuth, requirePageAccess } = require('../auth/middleware');
 const { createNotification } = require('../notifications/helpers');
+const messages = require('../notifications/messages');
 
 /**
  * Returns/disputes module — BUY-053, SUP-030, and the admin arbitration
@@ -373,8 +374,7 @@ router.patch('/:id', requireAuth, requireRole('admin'), requirePageAccess('retur
     await createNotification({
       userId: rows[0].buyer_id,
       type: 'return_status',
-      title: 'Your return request was updated',
-      body: `Return ${rows[0].id} is now ${status}.`,
+      ...messages.returnUpdated(rows[0].id, status),
       linkType: 'order',
       linkId: rows[0].order_id,
     });

@@ -1,6 +1,7 @@
 const db = require('../../../db/pool');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
 const { createNotification } = require('../notifications/helpers');
+const messages = require('../notifications/messages');
 const { sendTransactionalEmail } = require('../email/client');
 const { wrapEmailBody } = require('../email/templates');
 
@@ -56,8 +57,7 @@ async function checkProductForPriceDrop(product) {
         await createNotification({
           userId: buyerId,
           type: 'price_drop',
-          title: 'Price drop on a wishlist item',
-          body: `${product.name} dropped to $${currentPriceUsd.toFixed(2)} (was $${lastKnown.toFixed(2)}).`,
+          ...messages.priceDrop({ name: product.name, nameAr: product.name_ar, price: currentPriceUsd, was: lastKnown }),
           linkType: 'product',
           linkId: product.id,
           imageUrl: imageRows[0]?.url || null,
