@@ -171,3 +171,63 @@ export function EditDialog({ isOpen, title, fields, onSave, onCancel, errorMessa
     </div>
   );
 }
+
+// Click-to-enlarge photo, used for evidence photos (hub inspection and flag photos). The thumbnail opens
+// a full-screen view; Escape, the close button, or a click outside the picture closes it; "Open original"
+// opens the file itself in a new tab. Keyboard users can open it with Enter or Space.
+export function EnlargeablePhoto({ src, alt = "", style }) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  return (
+    <>
+      <img
+        src={src}
+        alt={alt}
+        role="button"
+        tabIndex={0}
+        title="Click to enlarge"
+        onClick={() => setOpen(true)}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(true); } }}
+        style={{ cursor: "zoom-in", ...style }}
+      />
+      {open && (
+        <div
+          role="dialog"
+          aria-label="Photo"
+          onClick={() => setOpen(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
+        >
+          <img
+            src={src}
+            alt={alt || "Enlarged photo"}
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 8, background: "#111" }}
+          />
+          <button
+            aria-label="Close"
+            onClick={(e) => { e.stopPropagation(); setOpen(false); }}
+            style={{ ...body, position: "absolute", top: 16, right: 16, width: 36, height: 36, borderRadius: 18, border: "none", background: "#fff", color: C.ink, fontSize: 20, lineHeight: "36px", cursor: "pointer" }}
+          >
+            ×
+          </button>
+          <a
+            href={src}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            style={{ ...body, position: "absolute", bottom: 16, left: "50%", transform: "translateX(-50%)", padding: "8px 16px", borderRadius: 8, background: "#fff", color: C.ink, fontSize: 12.5, fontWeight: 700, textDecoration: "none" }}
+          >
+            Open original
+          </a>
+        </div>
+      )}
+    </>
+  );
+}

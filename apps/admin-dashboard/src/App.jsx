@@ -3,7 +3,7 @@ import ExcelJS from "exceljs";
 import LoginPage from "./LoginPage";
 import { exportToExcel } from "./exportToExcel";
 import { FONT_IMPORT, C, disp, body, mono } from "./theme";
-import { PlateChip, Badge, Stars, KpiCard, Card, Th, Td, ConfirmDialog, EditDialog } from "./components/ui";
+import { PlateChip, Badge, Stars, KpiCard, Card, Th, Td, ConfirmDialog, EditDialog, EnlargeablePhoto } from "./components/ui";
 import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, fetchSupplierById, verifySupplier, updateSupplierCountry, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
   fetchCountriesList, fetchWarehouseCountries, fetchCountryGroups, createCountryGroup, deleteCountryGroup, addCountryGroupMember, removeCountryGroupMember,
   fetchAdminProducts, fetchAdminProductDetail, updateAdminProduct,
@@ -827,7 +827,7 @@ function HubAssignmentPanel({ subOrder, onAssigned, onSessionExpired }) {
               {e.trackingNumber && <div style={{ ...body, fontSize: 11.5, color: C.muted, marginBottom: 6 }}>Tracking: {e.trackingNumber}</div>}
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {e.photos.map((url, i) => (
-                  <img key={i} src={`${API_BASE_URL}${url}`} alt="" style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 6, border: `1px solid ${C.line}` }} />
+                  <EnlargeablePhoto key={i} src={`${API_BASE_URL}${url}`} style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 6, border: `1px solid ${C.line}` }} />
                 ))}
               </div>
               <div style={{ ...body, fontSize: 10.5, color: C.muted, marginTop: 6 }}>by {e.performedBy}</div>
@@ -5383,7 +5383,7 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
                   {s.flagPhotos.length > 0 && (
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       {s.flagPhotos.map((url, i) => (
-                        <img key={i} src={`${API_BASE_URL}${url}`} alt="" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.line}` }} />
+                        <EnlargeablePhoto key={i} src={`${API_BASE_URL}${url}`} style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.line}` }} />
                       ))}
                     </div>
                   )}

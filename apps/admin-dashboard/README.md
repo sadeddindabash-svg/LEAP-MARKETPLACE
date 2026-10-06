@@ -527,6 +527,10 @@ page is the real fix:
   the buyer is notified (a case already finalised by hand is left alone, and the page says so). The flag then leaves the queue, and the sidebar
   badge drops straight away (it used to refresh only on navigation). The queue also shows the kind of problem hub staff chose and the linked
   return case. See `services/api/README.md`, "Resolving flagged hub shipments", for the rules and limits.
+- **Evidence photos open full size.** Clicking a photo on a flag — and a photo in the hub timeline on the Order detail page ("View evidence") —
+  opens it enlarged (`EnlargeablePhoto` in `components/ui.jsx`). Escape, the × button, or a click outside the picture closes it; clicking the
+  picture itself doesn't; "Open original" opens the file in a new tab; Enter / Space open it from the keyboard. The Return Case page already
+  opened its photos as links, and review / moderation / product photos were not changed.
 
 ## Categories page (new — a supplier now picks from a real list instead of typing free text)
 
@@ -1282,7 +1286,7 @@ Sixty-six test files, 409 tests total, all passing:
   (confirmed via direct `curl -F` testing that the actual endpoint
   itself works correctly) — switched to the well-established
   `form-data` package for reliable real multipart encoding instead.
-- `src/FlaggedShipmentsFlow.test.jsx` (10, mocked, full component tree) —
+- `src/FlaggedShipmentsFlow.test.jsx` (12, mocked, full component tree) —
   the sidebar shows a real count badge when something is flagged and
   shows no badge at all when nothing is (not a stray "0"), the queue
   page renders a real flagged entry with its real note and supplier
@@ -1293,6 +1297,12 @@ Sixty-six test files, 409 tests total, all passing:
   to the case, and the flag leaves the list AND the sidebar badge; every outcome says what it
   does; a server error shows inside the dialog; a case already finalised by hand is reported as
   left alone. The badge test was verified to fail when the page stops reporting its count.
+  Also: clicking a flag photo, and a photo in the order-detail hub timeline, opens it enlarged
+  (verified to fail when both go back to plain images).
+- `src/EnlargeablePhoto.test.jsx` (6, component) — a clickable thumbnail first and nothing enlarged;
+  clicking opens the same photo full size with an "Open original" link (new tab); × / Escape / clicking
+  the backdrop close it; clicking the enlarged picture itself doesn't; Enter and Space open it; several
+  photos on a page each open their own. (This test also caught that the enlarged image had no alt text.)
 - `src/categoryParts.integration.test.js` (8, REAL backend) — real
   seeded categories/parts are publicly readable with no auth required;
   a category outside the real list is rejected; a part that isn't real

@@ -8,7 +8,7 @@ const MOCK_FLAGGED = [
   { id: 335, subOrderId: 2222, orderId: 'LP-900555', supplierName: 'Guangzhou AutoParts Co.', hubName: 'Guangzhou Inspection Hub', flaggedAt: '2026-07-15T15:17:45.581Z', flagNote: 'Wrong part received', flagPhotos: ['/uploads/flag-evidence.jpg'] },
 ];
 
-function mockFetchRouter({ flagged = MOCK_FLAGGED, resolveResponse, resolveCalls = [] } = {}) {
+function mockFetchRouter({ flagged = MOCK_FLAGGED, resolveResponse, resolveCalls = [], hubEvents = [] } = {}) {
   let queue = [...flagged];
   return vi.fn((url, options) => {
     const u = String(url);
@@ -41,7 +41,7 @@ function mockFetchRouter({ flagged = MOCK_FLAGGED, resolveResponse, resolveCalls
       return Promise.resolve({
         ok: true, json: async () => ({
           id: 'LP-900555', userId: null, guestEmail: 'g@example.com', isGuestOrder: true, status: 'to_ship', total: 50, currencyCode: 'USD', placedAt: '2026-07-15T00:00:00.000Z',
-          supplierSubOrders: [{ subOrderId: 2222, supplierId: 's1', supplierName: 'Guangzhou AutoParts Co.', status: 'shipped', trackingNumber: null, hubId: 'hub_guangzhou', hubName: 'Guangzhou Inspection Hub', hubShipment: { status: 'flagged', events: [] }, items: [] }],
+          supplierSubOrders: [{ subOrderId: 2222, supplierId: 's1', supplierName: 'Guangzhou AutoParts Co.', status: 'shipped', trackingNumber: null, hubId: 'hub_guangzhou', hubName: 'Guangzhou Inspection Hub', hubShipment: { status: 'flagged', events: hubEvents }, items: [] }],
         }),
       });
     }
@@ -194,5 +194,43 @@ describe('Flagged Shipments — resolving a flag (mocked fetch, real component t
     fireEvent.change(fieldIn(panel, 'Outcome'), { target: { value: 'discard' } });
     fireEvent.click(within(panel).getByRole('button', { name: /^save$/i }));
     await waitFor(() => expect(screen.getByText(/Return case RC-7 was already completed, so it was left as it is\./)).toBeInTheDocument());
+  });
+});
+
+describe('Evidence photos open full size (mocked fetch, real component tree)', () => {
+  it('CRITICAL: clicking a flag photo on the Flagged page opens it enlarged, and it can be closed', async () => {
+    globalThis.fetch = mockFetchRouter();
+    render(<LeapAdminApp />);
+    await login();
+    fireEvent.click(screen.getByRole('button', { name: /flagged shipments/i }));
+    await waitFor(() => expect(screen.getByText('LP-900555')).toBeInTheDocument());
+
+    expect(screen.queryByRole('dialog', { name: 'Photo' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTitle('Click to enlarge'));
+
+    const viewer = await screen.findByRole('dialog', { name: 'Photo' });
+    expect(within(viewer).getByRole('img').getAttribute('src')).toContain('/uploads/flag-evidence.jpg');
+    expect(within(viewer).getByRole('link', { name: 'Open original' }).getAttribute('href')).toContain('/uploads/flag-evidence.jpg');
+
+    fireEvent.click(within(viewer).getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog', { name: 'Photo' })).not.toBeInTheDocument();
+  });
+
+  it('the hub timeline on the order detail page enlarges its photos the same way', async () => {
+    const hubEvents = [{ id: 1, step: 'flagged', createdAt: '2026-07-15T15:17:45.581Z', notes: 'Wrong part received', trackingNumber: null, photos: ['/uploads/timeline-evidence.jpg'], performedBy: 'u_hub' }];
+    globalThis.fetch = mockFetchRouter({ hubEvents });
+    render(<LeapAdminApp />);
+    await login();
+    fireEvent.click(screen.getByRole('button', { name: /flagged shipments/i }));
+    await waitFor(() => expect(screen.getByText('LP-900555')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /view order/i }));
+
+    fireEvent.click(await screen.findByRole('button', { name: /view evidence \(1\)/i }));
+    const photos = await screen.findAllByTitle('Click to enlarge');
+    const timelinePhoto = photos.find((el) => el.getAttribute('src').includes('timeline-evidence.jpg'));
+    expect(timelinePhoto).toBeTruthy();
+    fireEvent.click(timelinePhoto);
+    const viewer = await screen.findByRole('dialog', { name: 'Photo' });
+    expect(within(viewer).getByRole('img').getAttribute('src')).toContain('timeline-evidence.jpg');
   });
 });
