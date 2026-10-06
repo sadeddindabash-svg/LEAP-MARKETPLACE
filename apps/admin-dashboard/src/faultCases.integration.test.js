@@ -206,6 +206,26 @@ describe.runIf(backendUp)('fault cases: a real fault on a flagged shipment, agai
     return Number(order.supplierSubOrders.flatMap((so) => so.items).reduce((sum, i) => sum + i.unitPrice * i.quantity, 0).toFixed(2));
   };
 
+  it('CRITICAL: the supplier sees WHY it was flagged (the inspector\'s note, the kind of problem and the photos) -- but not the platform\'s private note', async () => {
+    const f = await createFlaggedShipment();
+    await openCase(f, { notes: 'PRIVATE: repeat offender, push for a refund' });
+    const mine = (await fetch(`${BACKEND_URL}/fault-cases/supplier/me`, { headers: auth(await supplierToken()) }).then((r) => r.json())).find((c) => c.orderId === f.orderId);
+    expect(mine.evidence).toMatchObject({ note: 'Cracked housing', damageType: 'physical_damage', photos: ['/uploads/test.jpg'] });
+    expect(mine.evidence.flaggedAt).toBeTruthy();
+    expect(JSON.stringify(mine)).not.toContain('PRIVATE');
+  }, 40000);
+
+  it('another supplier cannot see this evidence, and a case with no photos still returns a (possibly empty) evidence list', async () => {
+    const f = await createFlaggedShipment();
+    await openCase(f);
+    const others = await fetch(`${BACKEND_URL}/fault-cases/supplier/me`, { headers: auth(await otherSupplierToken()) }).then((r) => r.json());
+    expect(others.some((c) => c.orderId === f.orderId)).toBe(false);
+    // the admin view carries the same evidence
+    const entry = (await fetch(`${BACKEND_URL}/hub/flagged`, { headers: auth(await adminToken()) }).then((r) => r.json())).find((q) => q.id === f.shipmentId);
+    expect(entry.faultCase.evidence).toMatchObject({ note: 'Cracked housing', damageType: 'physical_damage' });
+    expect(Array.isArray(entry.faultCase.evidence.photos)).toBe(true);
+  }, 40000);
+
   it('CRITICAL: the refund default is what the buyer actually PAID, so it works on a discounted order (a list-price default was refused as "more than the order total")', async () => {
     // A $5 promo code makes the order total LOWER than the sum of its item prices.
     const code = `FAULTREFUND${Date.now()}`;

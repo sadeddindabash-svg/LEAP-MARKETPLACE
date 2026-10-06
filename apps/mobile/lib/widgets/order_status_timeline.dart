@@ -9,6 +9,11 @@ import '../core/app_strings.dart';
 /// sub-order status values the backend actually uses (see migration
 /// 001's own CHECK constraint on supplier_sub_orders.status) -- not
 /// a guessed or approximated set of stages.
+/// A buyer is never shown "dispute". A shipment the inspection hub flagged is a quality check Leap is handling, and the buyer
+/// already sees the return request that was opened for them on the order page -- a red "Dispute" banner on top of that reads like
+/// a quarrel with them. So a 'dispute' status is shown as the ordinary in-progress stage instead.
+String buyerFacingStatus(String status) => status == 'dispute' ? 'preparing' : status;
+
 class OrderStatusTimeline extends StatelessWidget {
   final String status;
   const OrderStatusTimeline({super.key, required this.status});
@@ -17,25 +22,7 @@ class OrderStatusTimeline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Real, deliberately separate handling for a real dispute -- not
-    // a stage on the normal linear timeline at all, since a dispute
-    // doesn't represent "further along" than any other real stage,
-    // just a real, different situation entirely.
-    if (status == 'dispute') {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(color: const Color(0xFFFBE7DE), borderRadius: BorderRadius.circular(8)),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline, size: 14, color: Color(0xFFC0362C)),
-            const SizedBox(width: 6),
-            Text(trStatus(context, 'dispute'), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFFC0362C))),
-          ],
-        ),
-      );
-    }
-
+    final status = buyerFacingStatus(this.status);
     final currentIndex = _stages.indexOf(status);
     // A real, unrecognized status (shouldn't happen against the real
     // backend's own CHECK constraint, but a client should never crash

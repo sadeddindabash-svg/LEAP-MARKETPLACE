@@ -605,7 +605,7 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
       guestEmail: order.guest_email,
       isGuestOrder: !order.buyer_id,
       status: order.status,
-      displayStatus: await computeDisplayStatus(order.id),
+      displayStatus: buyerSafeDisplayStatus(await computeDisplayStatus(order.id), isAdmin),
       total: Number(order.total),
       discountAmount: Number(order.discount_amount || 0),
       promoCode: order.promo_code,
@@ -642,6 +642,14 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
 // system exists). Both real gaps, not silently faked here -- see
 // services/api/README.md for the fuller discussion. Only 'to_ship',
 // 'shipped', and 'returns' are computed and filterable today.
+// Buyers are never shown "dispute": a flagged shipment is a quality check Leap is handling (the buyer sees the return case
+// that was opened for them), not a quarrel with them. Admin keeps the real value so its Dispute filter still works.
+// This only matters for flags from before return cases were opened automatically; any order with a return case already
+// displays as 'returns'. 'to_ship' is the neutral "still being prepared" status.
+function buyerSafeDisplayStatus(status, isAdmin) {
+  return !isAdmin && status === 'dispute' ? 'to_ship' : status;
+}
+
 async function computeDisplayStatus(orderId) {
   // Confirmed via a real, systematic audit: the previous version here
   // checked supplier_sub_orders.status directly, but nothing in the
@@ -768,7 +776,7 @@ router.get('/', requireAuth, requirePageAccessIfAdmin('orders'), async (req, res
         userId: o.buyer_id,
         guestEmail: o.guest_email,
         status: o.status,
-        displayStatus: await computeDisplayStatus(o.id),
+        displayStatus: buyerSafeDisplayStatus(await computeDisplayStatus(o.id), isAdmin),
         hubStatus: isAdmin ? await computeHubStatus(o.id) : null,
         total: Number(o.total),
         currencyCode: o.currency_code,

@@ -141,6 +141,40 @@ describe('Supplier Returns page — replacement requests (mocked fetch, real com
     expect(screen.getAllByText(/退回运单号/)).toHaveLength(1); // only the unit that was actually sent back
   });
 
+  it('CRITICAL: the supplier sees WHY it was flagged: the kind of problem, the inspector\'s note and the photos', async () => {
+    await openReturnsPage({ cases: [faultCase({ evidence: { note: 'Housing cracked on arrival', damageType: 'physical_damage', flaggedAt: '2026-07-20T00:00:00Z', photos: ['/uploads/crack-1.jpg', '/uploads/crack-2.jpg'] } })] });
+    expect(await screen.findByText('质检证据')).toBeInTheDocument();
+    expect(screen.getByText('外观损坏')).toBeInTheDocument();                       // the kind of problem, translated
+    expect(screen.getByText('Housing cracked on arrival')).toBeInTheDocument();     // the inspector's note
+    const thumbs = screen.getAllByTitle('点击放大');
+    expect(thumbs).toHaveLength(2);
+    expect(thumbs[0].getAttribute('src')).toContain('/uploads/crack-1.jpg');
+  });
+
+  it('clicking an evidence photo opens it full size, with a link to the original; it closes again', async () => {
+    await openReturnsPage({ cases: [faultCase({ evidence: { note: null, damageType: null, flaggedAt: '2026-07-20T00:00:00Z', photos: ['/uploads/crack-1.jpg'] } })] });
+    fireEvent.click(await screen.findByTitle('点击放大'));
+    const viewer = await screen.findByRole('dialog', { name: 'Photo' });
+    expect(within(viewer).getByRole('img').getAttribute('src')).toContain('/uploads/crack-1.jpg');
+    expect(within(viewer).getByRole('link', { name: '打开原图' }).getAttribute('href')).toContain('/uploads/crack-1.jpg');
+    fireEvent.click(within(viewer).getByRole('button', { name: '关闭' }));
+    expect(screen.queryByRole('dialog', { name: 'Photo' })).not.toBeInTheDocument();
+  });
+
+  it('the evidence stays visible after the supplier has answered, and says so plainly when the inspector uploaded no photos', async () => {
+    await openReturnsPage({ cases: [faultCase({ status: 'awaiting_admin', answered: true, canReplace: false, evidence: { note: 'Wrong part received', damageType: 'wrong_item', flaggedAt: '2026-07-20T00:00:00Z', photos: [] } })] });
+    expect(await screen.findByText('Wrong part received')).toBeInTheDocument();
+    expect(screen.getByText('商品错发')).toBeInTheDocument();
+    expect(screen.getByText('质检员没有上传照片。')).toBeInTheDocument();
+    expect(screen.queryByTitle('点击放大')).not.toBeInTheDocument();
+  });
+
+  it('a request with no evidence at all (an older case) still renders normally, without an empty evidence box', async () => {
+    await openReturnsPage({ cases: [faultCase({ evidence: null })] });
+    expect(await screen.findByText('换货请求')).toBeInTheDocument();
+    expect(screen.queryByText('质检证据')).not.toBeInTheDocument();
+  });
+
   it('never shows money or the platform\'s private details to the supplier', async () => {
     await openReturnsPage({ cases: [faultCase({ status: 'refund_pending', answered: true, canReplace: false })] });
     await screen.findByText('换货请求');

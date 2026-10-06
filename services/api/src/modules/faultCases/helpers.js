@@ -127,6 +127,18 @@ async function computeRefundSuggestion(client, row, items) {
   return { orderedValue, discountShare: Number((orderedValue - suggested).toFixed(2)), suggested, orderTotal };
 }
 
+// The hub's evidence for the flag that started this case: what kind of problem, the inspector's note, and the photos. This is what
+// tells a supplier WHY a replacement is being asked for. (The admin's own private notes are a different field and never go here.)
+async function loadFlagEvidence(client, shipmentId) {
+  const { rows } = await client.query(
+    `SELECT id, notes, damage_type, created_at FROM hub_shipment_events WHERE shipment_id = $1 AND step = 'flagged' ORDER BY created_at DESC, id DESC LIMIT 1`,
+    [shipmentId]
+  );
+  if (rows.length === 0) return null;
+  const { rows: photos } = await client.query('SELECT url FROM hub_shipment_photos WHERE event_id = $1 ORDER BY sort_order', [rows[0].id]);
+  return { note: rows[0].notes, damageType: rows[0].damage_type, flaggedAt: rows[0].created_at, photos: photos.map((p) => p.url) };
+}
+
 async function supplierIdOf(client, subOrderId) {
   const { rows } = await client.query('SELECT supplier_id FROM supplier_sub_orders WHERE id = $1', [subOrderId]);
   return rows[0].supplier_id;
@@ -169,6 +181,7 @@ async function toAdminDto(client, row) {
     hubReturnedAt: row.hub_returned_at,
     hubReturnTracking: row.hub_return === 'returned' ? await returnTrackingOf(client, row.shipment_id) : null,
     returnAddressOnFile: (await getReturnAddress(await supplierIdOf(client, row.sub_order_id), client)) !== null,
+    evidence: await loadFlagEvidence(client, row.shipment_id),
     completedAt: row.completed_at,
   };
 }

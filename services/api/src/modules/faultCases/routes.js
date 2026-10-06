@@ -66,6 +66,8 @@ router.get('/supplier/me', ...supplierOnly, async (req, res, next) => {
         id: dto.id, orderId: r.order_id, status: dto.status, createdAt: dto.createdAt, items: dto.items.map(({ productId, name, quantity }) => ({ productId, name, quantity })),
         answered: dto.supplier.answered, canReplace: dto.supplier.canReplace, eta: dto.supplier.eta, note: dto.supplier.note,
         outcome: dto.outcome, hubReturn: dto.hubReturn, returnTrackingNumber: dto.hubReturnTracking,
+        // WHY it was flagged: the inspector's note, the kind of problem and the photos (not the platform's private notes)
+        evidence: dto.evidence,
       };
     })));
   } catch (err) {

@@ -463,12 +463,16 @@ at the top of the **Returns / 退货售后** page (and as a notification): the o
 send it is required) or **No, I can't**, with an optional note. The answer is final. Afterwards the card shows the answer, whether Leap is still
 deciding or refunding the buyer, and whether the faulty unit has been sent back to the supplier or discarded at the hub.
 
+- **Each request shows the inspection evidence — WHY it was flagged:** the kind of problem (translated), the inspector's note, and the photos, which open full
+  size when clicked (with an "open original" link). Without it a supplier was asked to replace something with no way to see the fault. It stays visible after they
+  answer, says so plainly when the inspector uploaded no photos, and an older request with no evidence just renders without the box. The platform's private notes
+  are never part of it.
 - A supplier with no requests sees **no change** to the Returns page.
 - Once the hub has sent the faulty unit back, the card shows the **return tracking number** (not for a discarded unit).
 - The supplier **never sees** the refund amount, who bears the cost, or the platform's private notes (the server doesn't send them).
 - **Not done yet:** the replacement itself — Leap confirming "replace", the new order appearing in the supplier's orders, and being paid for it.
   Today the answer informs the admin's decision; the replacement order arrives in a later update.
-- Tested in `src/ReplacementFlow.test.jsx` (8, mocked fetch): no section for suppliers without requests; the question and items; a "yes" needs a
+- Tested in `src/ReplacementFlow.test.jsx` (12, mocked fetch): no section for suppliers without requests; the question and items; a "yes" needs a
   date; "no" needs none; a server refusal shows on the card; answered cards show the answer and the hub's progress; no money is ever shown.
   Verified to fail when the date requirement is removed or the empty section is shown.
 

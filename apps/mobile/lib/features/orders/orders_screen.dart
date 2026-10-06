@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
+import '../../widgets/order_status_timeline.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../core/language_state.dart';
@@ -348,7 +349,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                       // frozen at 'to_ship' forever and never reflects
                       // actual real progress, so it is deliberately NOT
                       // used for display here.
-                      final displayStatus = (o['displayStatus'] as String?) ?? (o['status'] as String);
+                      final displayStatus = buyerFacingStatus((o['displayStatus'] as String?) ?? (o['status'] as String));
                       // Real supplier names (new) -- closes a real gap:
                       // no supplier info was shown at all on this list
                       // before, only after opening an order's own

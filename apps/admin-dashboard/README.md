@@ -1245,7 +1245,7 @@ Sixty-six test files, 409 tests total, all passing:
   kind rejected); "continue processing" puts the shipment back in the flow so the hub can genuinely carry on, closes the case as rejected and
   notifies the buyer; a case an admin already finalised by hand is left alone; guest buyers work; an unknown outcome, the old terminal outcomes
   (now fault cases), resolving twice and an unknown id are rejected; only an admin with the Flagged page can resolve; the audit log records it.
-- `src/faultCases.integration.test.js` (16, REAL backend, migration 091) — the refund default is what the buyer PAID (verified on a discounted order, including an order split across suppliers, and to fail with the old list-price default); the hub sees a neutral stage, never money; a real fault: opening a case asks the supplier and tells the buyer in
+- `src/faultCases.integration.test.js` (18, REAL backend, migration 091) — the refund default is what the buyer PAID (verified on a discounted order, including an order split across suppliers, and to fail with the old list-price default); the hub sees a neutral stage, never money; a real fault: opening a case asks the supplier and tells the buyer in
   English AND Arabic; bad requests (cost bearer, no items, an item not in the shipment, unknown shipment, a second case); only an admin with the
   Flagged page can act; only the supplier whose order it is can answer (another supplier gets 404), a "yes" needs a valid date, an answer is
   final; the supplier never sees money, the cost bearer or private notes; the refund default, bounds and manual "issued" with a required
@@ -1261,6 +1261,9 @@ Sixty-six test files, 409 tests total, all passing:
 - `src/SupplierReturnAddressFlow.test.jsx` (5, mocked) — the supplier page's "Return address" card: the warning with an "Add" button when nothing is entered; an
   address on file shown with "Edit"; adding sends exactly what was typed and then shows it; editing starts from what is on file; a server refusal shows inside
   the dialog and leaves the card unchanged.
+- `src/buyerStatus.integration.test.js` (2, REAL backend) — buyers are never shown "dispute": a flagged order shows `returns` while its return case is open; an OLD
+  flag (the return case is removed to simulate one from before they were automatic) shows the buyer `to_ship` in both the order page and the orders list, while admin
+  still sees `dispute` and its `?status=dispute` filter still finds it. Verified to fail when buyers get `dispute` again.
 - `src/trackingNumbers.integration.test.js` (5, REAL backend) — the buyer (and a guest) sees the HUB's tracking number, empty until the hub ships, and
   never the supplier's; admin sees both, labelled apart (Order detail shows "Supplier → hub" and "Hub → buyer"); the buyer is not told "shipped" when
   the supplier ships to the hub, only when the hub ships, with the hub's number; a faulty unit's return step and return tracking number are

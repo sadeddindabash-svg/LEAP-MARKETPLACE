@@ -117,6 +117,9 @@ const STRINGS = {
       answeredYes: (d) => `您已回复：可以补发，预计 ${d} 发出`, answeredNo: "您已回复：无法补发",
       statusLabels: { awaiting_supplier: "等待您的回复", awaiting_admin: "等待平台决定", refund_pending: "平台正在为买家退款", completed: "已结案" },
       hubNone: "问题商品尚未退回", hubReturned: "问题商品已退回给您", hubDiscarded: "问题商品已在仓库销毁", returnTracking: "退回运单号",
+      evidenceTitle: "质检证据", evidenceKind: "问题类型", evidenceNote: "质检员备注", evidenceNoPhotos: "质检员没有上传照片。",
+      photoOpen: "点击放大", photoClose: "关闭", photoOriginal: "打开原图",
+      damageTypes: { physical_damage: "外观损坏", water_damage: "进水损坏", missing_parts: "缺少配件", wrong_item: "商品错发", other: "其他" },
       loadError: "无法加载换货请求：",
     },
     messages: {
@@ -232,6 +235,9 @@ const STRINGS = {
       answeredYes: (d) => `You answered: yes, you can replace it by ${d}`, answeredNo: "You answered: no, you can't replace it",
       statusLabels: { awaiting_supplier: "Waiting for your answer", awaiting_admin: "Waiting for Leap's decision", refund_pending: "Leap is refunding the buyer", completed: "Closed" },
       hubNone: "The faulty unit has not been sent back yet", hubReturned: "The faulty unit was sent back to you", hubDiscarded: "The faulty unit was discarded at the hub", returnTracking: "Return tracking number",
+      evidenceTitle: "Inspection evidence", evidenceKind: "Kind of problem", evidenceNote: "Inspector's note", evidenceNoPhotos: "The inspector did not upload photos.",
+      photoOpen: "Click to enlarge", photoClose: "Close", photoOriginal: "Open original",
+      damageTypes: { physical_damage: "Physical damage", water_damage: "Water damage", missing_parts: "Missing parts", wrong_item: "Wrong item", other: "Other" },
       loadError: "Could not load replacement requests: ",
     },
     messages: {
@@ -2599,6 +2605,44 @@ function OrdersPage({ onOpen }) {
 // One fault case, as the SUPPLIER sees it (migration 091): an unanswered "can you replace this?" question with its
 // form, or - once answered - their answer and how the case is progressing. They never see the platform's private
 // notes, who bears the cost, or any refund amount (the server doesn't send them).
+// A click-to-enlarge evidence photo: a thumbnail that opens full size. Escape, the close button, or a click outside the picture
+// closes it; "Open original" opens the file in a new tab.
+function EvidencePhoto({ url }) {
+  const { t } = useLang();
+  const font = useBodyFont();
+  const [open, setOpen] = useState(false);
+  const src = `${API_BASE_URL}${url}`;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  return (
+    <>
+      <img
+        src={src}
+        alt=""
+        role="button"
+        tabIndex={0}
+        title={t.replacement.photoOpen}
+        onClick={() => setOpen(true)}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(true); } }}
+        style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.line}`, cursor: "zoom-in" }}
+      />
+      {open && (
+        <div role="dialog" aria-label="Photo" onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <img src={src} alt="Evidence photo" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 8, background: "#111" }} />
+          <button aria-label={t.replacement.photoClose} onClick={(e) => { e.stopPropagation(); setOpen(false); }} style={{ ...font, position: "absolute", top: 16, right: 16, width: 36, height: 36, borderRadius: 18, border: "none", background: "#fff", color: C.ink, fontSize: 20, lineHeight: "36px", cursor: "pointer" }}>×</button>
+          <a href={src} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ ...font, position: "absolute", bottom: 16, left: "50%", transform: "translateX(-50%)", padding: "8px 16px", borderRadius: 8, background: "#fff", color: C.ink, fontSize: 12.5, fontWeight: 700, textDecoration: "none" }}>{t.replacement.photoOriginal}</a>
+        </div>
+      )}
+    </>
+  );
+}
+
 function ReplacementCard({ faultCase, onAnswered }) {
   const { t } = useLang();
   const { onSessionExpired } = useSupplier();
@@ -2649,6 +2693,26 @@ function ReplacementCard({ faultCase, onAnswered }) {
         <div style={{ ...font, fontSize: 12.5, color: C.ink }}>
           <strong>{r.itemsLabel}:</strong> {faultCase.items.map((i) => `${i.name || i.productId} × ${i.quantity}`).join(", ")}
         </div>
+
+        {/* WHY it was flagged: what the inspector found. Without this a supplier is asked to replace something with no way to see the fault. */}
+        {faultCase.evidence && (
+          <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: C.canvas, border: `1px solid ${C.line}` }}>
+            <div style={{ ...font, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 6 }}>{r.evidenceTitle}</div>
+            {faultCase.evidence.damageType && (
+              <div style={{ ...font, fontSize: 12.5, color: C.ink }}><strong>{r.evidenceKind}:</strong> {r.damageTypes[faultCase.evidence.damageType] || faultCase.evidence.damageType}</div>
+            )}
+            {faultCase.evidence.note && (
+              <div style={{ ...font, fontSize: 12.5, color: C.ink, marginTop: 2 }}><strong>{r.evidenceNote}:</strong> {faultCase.evidence.note}</div>
+            )}
+            {faultCase.evidence.photos.length > 0 ? (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                {faultCase.evidence.photos.map((url) => <EvidencePhoto key={url} url={url} />)}
+              </div>
+            ) : (
+              <div style={{ ...font, fontSize: 12, color: C.muted, marginTop: 6 }}>{r.evidenceNoPhotos}</div>
+            )}
+          </div>
+        )}
 
         {unanswered ? (
           <div style={{ marginTop: 12 }}>

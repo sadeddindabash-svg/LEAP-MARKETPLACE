@@ -3480,6 +3480,18 @@ Rules this app now follows, after a pass that found English text and dollar sign
 by reading the code, bracket balance, and — for the server half — real integration tests. Not yet translated: the many other backend
 error messages that carry no `code` (they still show the backend's English text), such as promo-code rejection reasons.
 
+## Order page: a way out, and no "Dispute" (new)
+
+- **A way out of the order page.** After checkout the app opens the order page with `context.go()`, which REPLACES the navigation history, so there was nothing to go
+  back to and no back arrow was drawn — the buyer was stranded on the page they had just landed on. The page's app bar now has a **back arrow** (goes back when
+  there is somewhere to go, otherwise **Home**) and a **Home** button, on the loading, error and loaded versions of the page (`_orderAppBar`).
+- **Buyers are never shown "Dispute".** The app turned a hub status of `flagged` into a red "Dispute (نزاع)" banner on the sub-order. A flagged shipment is a quality
+  check Leap is handling, and the buyer already sees the return request opened for them on the same page, so it now shows the ordinary in-progress stage.
+  `buyerFacingStatus()` (in `widgets/order_status_timeline.dart`) is the one rule, used by the timeline, the order page and the orders list; the backend also never sends
+  buyers `dispute` (see `services/api/README.md`).
+- **HONEST LIMITATION:** like every section here, this was checked by reading the code and bracket balance, **not compiled or run** (no Flutter SDK in the sandbox). I
+  also added `test/buyer_facing_status_test.dart`, which has not been run either — please run `flutter test` once, and try the back arrow on a freshly placed order.
+
 ## Setup
 
 1. Install Flutter: https://docs.flutter.dev/get-started/install

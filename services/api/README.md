@@ -3250,7 +3250,7 @@ refund_pending --(admin marks refunded)--+
 | `POST /fault-cases` `{ shipmentId, items:[productId], costBearer, notes? }` | admin (Flagged page) | Opens the case for the **ticked items** (whole lines), records who bears the cost (`supplier` or `leap`), moves the buyer's return case to `in_progress`, tells the buyer, and asks the supplier whether they can replace. |
 | `POST /fault-cases/:id/confirm-refund` `{ amount? }` | admin | Records a refund. Default amount = **what the buyer actually paid for those items**: their share of `orders.total` (their list value, minus their share of any promo/loyalty discount). The admin may enter less, never more than the order total. Return case → `approved`, buyer told. Allowed before the supplier answers (an override). |
 | `POST /fault-cases/:id/mark-refunded` `{ reference }` | admin | The refund was made **manually** in Stripe/PayPal; records the provider's reference (required, so it can be traced). Buyer told. |
-| `GET /fault-cases/supplier/me` | supplier | Their own cases, unanswered first. Shows the question, their answer and how it ended — **never** the refund amount, who bears the cost, or the platform's private notes. |
+| `GET /fault-cases/supplier/me` | supplier | Their own cases, unanswered first. Shows the question, their answer and how it ended, plus **`evidence`** — WHY it was flagged: the hub inspector's `note`, the `damageType` and the `photos` (URLs) from the flag. **Never** the refund amount, who bears the cost, or the platform's private notes. |
 | `POST /fault-cases/supplier/me/:id/answer` `{ canReplace, eta?, note? }` | supplier (own cases) | A "yes" needs a date (not in the past). Final: it can't be changed. Another supplier's case is a 404. |
 | `POST /hub/me/shipments/:id/events` with `step: "returned_to_supplier"` (tracking number + photo) or `"discarded_at_hub"` (photo) | hub staff | The unit physically leaves the hub. Only for a flagged shipment that has a fault case, once. |
 
@@ -3267,8 +3267,9 @@ refund_pending --(admin marks refunded)--+
 - **The two new hub statuses leave the hub's workload** (the unit physically left) and are excluded from the stage-timing metric. The buyer **cannot
   cancel** a part once its unit has been returned/discarded (the refund is handled as a fault case; cancelling too would double-handle it).
 - **What the buyer sees:** an order with a return case always displays as `returns` (a return case takes priority over every other status), so
-  that is what a flagged order shows — not "dispute". The `dispute` rule in `computeDisplayStatus` now also covers the two new statuses, but only
-  matters for old flags from before return cases were opened automatically.
+  that is what a flagged order shows. **Buyers are never shown "dispute" at all:** `computeDisplayStatus` still returns `dispute` for an OLD flag from
+  before return cases were opened automatically (and for the two new hub statuses), but for a buyer or guest `buyerSafeDisplayStatus` turns it into
+  `to_ship` ("still being prepared") in both `GET /order/:id` and `GET /order`. Admin keeps the real value, so its Dispute filter still works.
 - Buyer messages and notifications are stored as **one string**, so they carry English first, then Arabic, on separate lines. A stopgap until
   they are keyed and translated per language.
 - Audit log: `flagged_shipment_resolved`, `fault_case_created`, `fault_case_refund_confirmed`, `fault_case_refund_issued` (the refund reference is
@@ -3276,10 +3277,12 @@ refund_pending --(admin marks refunded)--+
 - `GET /hub/flagged` returns each unresolved flag with its `items`, `damageType`, `hubStatus` and `faultCase`. Hub staff can also tag a flag with an
   optional kind of problem (`damageType`).
 
+**Also tested:** `apps/admin-dashboard/src/buyerStatus.integration.test.js` (2, real backend) — a flagged order shows the buyer `returns`, an OLD flag with no return case shows `to_ship` (never `dispute`), and admin still sees `dispute` and can filter by it. Verified to fail when buyers get `dispute` again.
+
 **Not built yet:** creating the **replacement order** (the next patch — the admin button is shown disabled until then), the Flutter buyer and hub
 apps (they will show the new statuses unlabelled), supplier reminders, automatic payout deductions, and real Stripe/PayPal refunds.
 
-**Tested:** `apps/admin-dashboard/src/faultCases.integration.test.js` (16), `trackingNumbers.integration.test.js` (5) and `flaggedResolution.integration.test.js` (7), real backend. Each test
+**Tested:** `apps/admin-dashboard/src/faultCases.integration.test.js` (18), `trackingNumbers.integration.test.js` (5) and `flaggedResolution.integration.test.js` (7), real backend. Each test
 builds its own hub and hub-staff login (using the Hub staff feature) so workload checks are exact. Verified to fail when completion stops needing
 both conditions, when supplier isolation is removed, when the buyer-cancel block is removed, or when the hub workload keeps counting returned units.
 

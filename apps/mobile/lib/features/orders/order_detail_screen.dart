@@ -393,15 +393,15 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Scaffold(appBar: AppBar(title: Text(tr(context, 'order'))), body: const Center(child: CircularProgressIndicator()));
+      return Scaffold(appBar: _orderAppBar(context, tr(context, 'order')), body: const Center(child: CircularProgressIndicator()));
     }
     if (_errorMessage != null || _order == null) {
-      return Scaffold(appBar: AppBar(title: Text(tr(context, 'order'))), body: Center(child: Text(_errorMessage ?? tr(context, 'not_found'), style: TextStyle(color: LeapPalette.of(context).muted))));
+      return Scaffold(appBar: _orderAppBar(context, tr(context, 'order')), body: Center(child: Text(_errorMessage ?? tr(context, 'not_found'), style: TextStyle(color: LeapPalette.of(context).muted))));
     }
 
     final subOrders = (_order!['supplierSubOrders'] as List).cast<Map<String, dynamic>>();
     return Scaffold(
-      appBar: AppBar(title: Text(_order!['id'] as String)),
+      appBar: _orderAppBar(context, _order!['id'] as String),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -488,6 +488,31 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
   }
 }
 
+/// The order page's app bar, with a way OUT of the page.
+///
+/// After checkout the app opens this page with context.go(), which REPLACES the navigation history -- so there is nothing to go
+/// back to, Flutter draws no back arrow, and the buyer was stranded on the page they had just landed on. The arrow goes back when
+/// there is somewhere to go back to, and otherwise to Home; a Home button is always there as well.
+PreferredSizeWidget _orderAppBar(BuildContext context, String title) {
+  return AppBar(
+    title: Text(title),
+    leading: BackButton(onPressed: () {
+      if (context.canPop()) {
+        context.pop();
+      } else {
+        context.go('/home');
+      }
+    }),
+    actions: [
+      IconButton(
+        icon: const Icon(Icons.home_outlined),
+        tooltip: tr(context, 'nav_home'),
+        onPressed: () => context.go('/home'),
+      ),
+    ],
+  );
+}
+
 /// Confirmed with the person: the real buyer-facing timeline stage
 /// -- "shipped" now genuinely means the hub shipped to the buyer
 /// (hub_shipments.status == 'shipped_to_buyer'), not just the
@@ -499,7 +524,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
 /// instance state at all, only its own parameter.
 String _buyerFacingStage(Map<String, dynamic> subOrder) {
   final rawStatus = subOrder['status'] as String;
-  if (rawStatus == 'dispute' || rawStatus == 'pending' || rawStatus == 'preparing') return rawStatus;
+  // Never "dispute" for a buyer (see buyerFacingStatus): the supplier-side 'dispute' value is just "still in progress" here.
+  if (rawStatus == 'dispute') return 'preparing';
+  if (rawStatus == 'pending' || rawStatus == 'preparing') return rawStatus;
   final hubShipment = subOrder['hubShipment'] as Map<String, dynamic>?;
   if (hubShipment == null) {
     // Confirmed with the person: rawStatus 'shipped' here
@@ -515,7 +542,8 @@ String _buyerFacingStage(Map<String, dynamic> subOrder) {
   final hubStatus = hubShipment['status'] as String;
   if (hubStatus == 'shipped_to_buyer') return 'shipped';
   if (hubStatus == 'delivered') return 'delivered';
-  if (hubStatus == 'flagged') return 'dispute';
+  // A flagged shipment (or one whose faulty unit was sent back) is still "being prepared" as far as the buyer's timeline goes;
+  // the return request on this page is what explains the issue. It used to be shown as a red "Dispute" banner.
   return 'preparing';
 }
 
