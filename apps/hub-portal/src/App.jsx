@@ -42,6 +42,8 @@ const STRINGS = {
       shipped_to_buyer: { label: "已发货给买家" },
       delivered: { label: "已送达" },
       flagged: { label: "已标记问题" },
+      returned_to_supplier: { label: "已退回供应商" },
+      discarded_at_hub: { label: "已销毁" },
     },
     filters: { all: "全部", awaiting_receipt: "待接收", in_progress: "处理中", shipped_to_buyer: "已发货", delivered: "已送达", flagged: "已标记" },
     queue: {
@@ -60,6 +62,11 @@ const STRINGS = {
       deliveryNotePlaceholder: "例如：物流轨迹未更新，买家已通过聊天确认收货",
       confirming: "确认中…", confirmDelivered: "确认已送达",
       flaggedBanner: "此包裹已标记问题，等待平台审核。",
+      faultTitle: "平台已确认存在质量问题——请处理问题商品",
+      faultDesc: "平台已确认下列商品确有质量问题。请将其退回供应商（填写运单号并拍照），或在仓库销毁（拍照留证）。",
+      faultItems: "问题商品", returnOption: "退回供应商", discardOption: "在仓库销毁",
+      returnTracking: "退回运单号", submitReturn: "确认已退回供应商", submitDiscard: "确认已销毁",
+      returnedBanner: "此包裹已退回供应商，等待平台结案。", discardedBanner: "此包裹已在仓库销毁，等待平台结案。",
       damageTypeLabel: "问题类型（可选）", damageTypePlaceholder: "— 请选择 —",
       damageTypes: { physical_damage: "外观损坏", water_damage: "进水损坏", missing_parts: "缺少配件", wrong_item: "商品错发", other: "其他" },
       resolvedBanners: {
@@ -73,6 +80,7 @@ const STRINGS = {
       tracking: (n) => `运单号：${n}`, by: (name) => `操作人：${name}`,
       errPhotoRequired: "此步骤至少需要 1 张凭证照片。",
       errTrackingRequired: "最后的发货步骤需要填写运单号。",
+      errReturnTrackingRequired: "退回供应商需要填写退回运单号。",
       errDeliveryNoteRequired: "需填写简短说明（例如为何真实物流轨迹未确认送达）。",
     },
   },
@@ -93,6 +101,8 @@ const STRINGS = {
       shipped_to_buyer: { label: "Shipped to buyer" },
       delivered: { label: "Delivered" },
       flagged: { label: "Flagged" },
+      returned_to_supplier: { label: "Returned to supplier" },
+      discarded_at_hub: { label: "Discarded" },
     },
     filters: { all: "All", awaiting_receipt: "Awaiting receipt", in_progress: "In progress", shipped_to_buyer: "Shipped", delivered: "Delivered", flagged: "Flagged" },
     queue: {
@@ -111,6 +121,11 @@ const STRINGS = {
       deliveryNotePlaceholder: "e.g. tracking never updated, buyer confirmed receipt via chat",
       confirming: "Confirming…", confirmDelivered: "Confirm delivered",
       flaggedBanner: "This shipment is flagged and awaiting platform review.",
+      faultTitle: "A real fault was confirmed — deal with the faulty unit",
+      faultDesc: "The platform confirmed a real quality problem with the items below. Send them back to the supplier (enter the tracking number and photograph the parcel), or discard them at the hub (photograph them as evidence).",
+      faultItems: "Faulty items", returnOption: "Return to supplier", discardOption: "Discard at the hub",
+      returnTracking: "Return tracking number", submitReturn: "Confirm returned to supplier", submitDiscard: "Confirm discarded",
+      returnedBanner: "This shipment was returned to the supplier. The platform will close the case.", discardedBanner: "This shipment was discarded at the hub. The platform will close the case.",
       damageTypeLabel: "Kind of problem (optional)", damageTypePlaceholder: "— Select —",
       damageTypes: { physical_damage: "Physical damage", water_damage: "Water damage", missing_parts: "Missing parts", wrong_item: "Wrong item", other: "Other" },
       resolvedBanners: {
@@ -124,6 +139,7 @@ const STRINGS = {
       tracking: (n) => `Tracking: ${n}`, by: (name) => `by ${name}`,
       errPhotoRequired: "At least 1 evidence photo is required for this step.",
       errTrackingRequired: "A tracking number is required for the final shipping step.",
+      errReturnTrackingRequired: "A tracking number is required to return the unit to the supplier.",
       errDeliveryNoteRequired: "A short note is required (e.g. why real carrier tracking didn't confirm it).",
     },
   },
@@ -141,12 +157,14 @@ const STEP_INFO = {
   shipped_to_buyer: { next: null, icon: ClipboardCheck },
   delivered: { next: null, icon: PackageCheck },
   flagged: { next: null, icon: AlertTriangle },
+  returned_to_supplier: { next: null, icon: AlertTriangle },
+  discarded_at_hub: { next: null, icon: AlertTriangle },
 };
 const STATUS_COLOR = {
   awaiting_receipt: [C.amber, C.amberBg], received: [C.torque, C.torqueBg], opened: [C.torque, C.torqueBg],
   inspected: [C.torque, C.torqueBg], packed: [C.torque, C.torqueBg], shipped_to_buyer: [C.gauge, C.gaugeBg],
   delivered: [C.gauge, C.gaugeBg],
-  flagged: [C.red, C.redBg],
+  flagged: [C.red, C.redBg], returned_to_supplier: [C.red, C.redBg], discarded_at_hub: [C.red, C.redBg],
 };
 
 function Badge({ status }) {
@@ -199,6 +217,8 @@ function TopBar() {
 
 const FILTER_IDS = ["all", "awaiting_receipt", "in_progress", "shipped_to_buyer", "delivered", "flagged"];
 const IN_PROGRESS_STATUSES = ["received", "opened", "inspected", "packed"];
+// A confirmed fault whose unit has already left the hub still belongs under "Flagged" until the platform closes it.
+const FLAGGED_STATUSES = ["flagged", "returned_to_supplier", "discarded_at_hub"];
 
 function QueueScreen({ onOpenShipment }) {
   const { onSessionExpired } = useHub();
@@ -246,6 +266,7 @@ function QueueScreen({ onOpenShipment }) {
   const filtered = shipments.filter((s) => {
     if (filter === "all") { /* no status filter */ }
     else if (filter === "in_progress") { if (!IN_PROGRESS_STATUSES.includes(s.status)) return false; }
+    else if (filter === "flagged") { if (!FLAGGED_STATUSES.includes(s.status)) return false; }
     else if (s.status !== filter) return false;
 
     if (searchQuery.trim()) {
@@ -350,6 +371,7 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showFlagForm, setShowFlagForm] = useState(false);
   const [damageType, setDamageType] = useState("");
+  const [returnMode, setReturnMode] = useState("return"); // "return" (to the supplier) or "discard" (at the hub)
   const [deliveryNote, setDeliveryNote] = useState("");
 
   const load = () => {
@@ -383,8 +405,8 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
       setErrorMessage(t.detail.errPhotoRequired);
       return;
     }
-    if (step === "shipped_to_buyer" && !trackingNumber.trim()) {
-      setErrorMessage(t.detail.errTrackingRequired);
+    if ((step === "shipped_to_buyer" || step === "returned_to_supplier") && !trackingNumber.trim()) {
+      setErrorMessage(step === "returned_to_supplier" ? t.detail.errReturnTrackingRequired : t.detail.errTrackingRequired);
       return;
     }
     setIsSubmitting(true);
@@ -392,7 +414,7 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
     try {
       await recordShipmentEvent(getStoredToken(), shipmentId, {
         step, notes: notes.trim() || undefined, photos: photos.map((p) => p.url),
-        trackingNumber: step === "shipped_to_buyer" ? trackingNumber.trim() : undefined,
+        trackingNumber: (step === "shipped_to_buyer" || step === "returned_to_supplier") ? trackingNumber.trim() : undefined,
         damageType: step === "flagged" && damageType ? damageType : undefined,
       });
       setNotes(""); setTrackingNumber(""); setPhotos([]); setDamageType(""); setShowFlagForm(false);
@@ -437,7 +459,9 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
   // terminal state -- a real "Confirm Delivered" action (or real
   // carrier tracking) still needs to happen from here. Only "delivered"
   // and "flagged" are genuinely final now.
-  const isTerminal = shipment.status === "delivered" || shipment.status === "flagged";
+  const isTerminal = shipment.status === "delivered" || FLAGGED_STATUSES.includes(shipment.status);
+  // A real fault has been confirmed and the faulty unit is still at this hub: it must be sent back or discarded.
+  const needsFaultReturn = shipment.status === "flagged" && Boolean(shipment.faultCase && shipment.faultCase.needsReturn);
   const needsDeliveryConfirmation = shipment.status === "shipped_to_buyer";
 
   return (
@@ -572,9 +596,62 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
           </div>
         )}
 
-        {isTerminal && (
-          <div style={{ background: shipment.status === "flagged" ? C.redBg : C.gaugeBg, borderRadius: 10, padding: 14, ...body, fontSize: 13, color: shipment.status === "flagged" ? C.red : C.gauge, fontWeight: 700 }}>
-            {shipment.status === "flagged" ? (shipment.resolution ? t.detail.resolvedBanners[shipment.resolution] : t.detail.flaggedBanner) : t.detail.completedBanner}
+        {isTerminal && !needsFaultReturn && (
+          <div style={{ background: shipment.status === "delivered" ? C.gaugeBg : C.redBg, borderRadius: 10, padding: 14, ...body, fontSize: 13, color: shipment.status === "delivered" ? C.gauge : C.red, fontWeight: 700 }}>
+            {shipment.status === "delivered" ? t.detail.completedBanner
+              : shipment.status === "returned_to_supplier" ? t.detail.returnedBanner
+              : shipment.status === "discarded_at_hub" ? t.detail.discardedBanner
+              : shipment.resolution ? t.detail.resolvedBanners[shipment.resolution] : t.detail.flaggedBanner}
+          </div>
+        )}
+
+        {/* A real fault was confirmed by the platform: this hub has to deal with the faulty unit (migration 091). */}
+        {needsFaultReturn && (
+          <div style={{ background: C.redBg, border: `1px solid ${C.red}44`, borderRadius: 12, padding: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <AlertTriangle size={17} color={C.red} />
+              <div style={{ ...disp, fontSize: 17, fontWeight: 700, color: C.ink }}>{t.detail.faultTitle}</div>
+            </div>
+            <div style={{ ...body, fontSize: 12.5, color: C.muted, marginBottom: 12 }}>{t.detail.faultDesc}</div>
+            <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 6 }}>{t.detail.faultItems.toUpperCase()}</div>
+            {shipment.faultCase.items.map((i) => (
+              <div key={i.productId} style={{ ...body, fontSize: 13, color: C.ink, padding: "2px 0" }}>{i.name || i.productId} × {i.quantity}</div>
+            ))}
+
+            <div style={{ display: "flex", gap: 8, margin: "16px 0 12px" }}>
+              {[["return", t.detail.returnOption], ["discard", t.detail.discardOption]].map(([mode, label]) => (
+                <button
+                  key={mode}
+                  onClick={() => { setReturnMode(mode); setErrorMessage(null); }}
+                  style={{ ...body, flex: 1, padding: "10px 12px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: `1px solid ${returnMode === mode ? C.ink : C.line}`, background: returnMode === mode ? C.ink : "#fff", color: returnMode === mode ? "#fff" : C.ink }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 8 }}>{t.detail.evidencePhotos.toUpperCase()}</div>
+            <EvidencePhotoPicker photos={photos} onAdd={handleAddPhoto} onRemove={removePhoto} isUploading={isUploadingPhoto} />
+
+            {returnMode === "return" && (
+              <>
+                <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, margin: "16px 0 8px" }}>{t.detail.returnTracking.toUpperCase()}</div>
+                <input
+                  aria-label={t.detail.returnTracking}
+                  value={trackingNumber}
+                  onChange={(e) => setTrackingNumber(e.target.value)}
+                  style={{ ...body, width: "100%", boxSizing: "border-box", borderRadius: 8, border: `1px solid ${C.line}`, padding: "10px 12px", fontSize: 13 }}
+                />
+              </>
+            )}
+
+            <button
+              onClick={() => submitStep(returnMode === "return" ? "returned_to_supplier" : "discarded_at_hub")}
+              disabled={isSubmitting}
+              style={{ ...body, width: "100%", marginTop: 16, padding: "13px 16px", borderRadius: 9, border: "none", background: isSubmitting ? "#D1D5DB" : C.red, color: "#fff", fontWeight: 700, fontSize: 14, cursor: isSubmitting ? "default" : "pointer" }}
+            >
+              {isSubmitting ? t.detail.saving : returnMode === "return" ? t.detail.submitReturn : t.detail.submitDiscard}
+            </button>
           </div>
         )}
 

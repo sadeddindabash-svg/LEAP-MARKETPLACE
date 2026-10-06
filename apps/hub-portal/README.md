@@ -198,16 +198,22 @@ shipment, confirmed searching by a real supplier name does the same,
 and confirmed a search matching nothing shows the real empty state
 rather than an error. 16/16 passing across the full suite.
 
-## Flagging with a kind of problem, and seeing the outcome (new, migration 090)
+## Flagging, seeing the verdict, and returning a faulty unit (new, migrations 090–091)
 
 - The "flag a quality issue" form has an **optional** "kind of problem" dropdown (physical damage, water damage, missing parts, wrong item,
-  other), sent as `damageType`; the admin's Flagged Shipments page shows it. It stays optional: a flag with none chosen works exactly as before.
-- Before this, a flagged shipment said "awaiting platform review" **forever**. Now, once an admin resolves it, hub staff see the outcome:
-  false alarm (**the shipment goes back into the flow** and a banner says why it is moving again), returned to the supplier, discarded, or
-  replacement requested. Hub staff see the outcome but **not the admin's internal note**.
-- Tested in `src/FlagFlow.test.jsx` (7, mocked fetch); the kind-sent and resolved-banner tests were verified to fail when the behavior is removed.
-- **Not done:** the Flutter hub app (`apps/hub-mobile`) was not changed — it has no kind-of-problem picker, and for a terminal outcome it still
-  shows its old "awaiting platform review" banner.
+  other), sent as `damageType`. A flag with none chosen works exactly as before.
+- Before this, a flagged shipment said "awaiting platform review" **forever**. Now it shows what the platform decided:
+  - **No fault** (the hub's data was wrong): the shipment goes back into the flow and a banner says why it is moving again. Hub staff see the
+    outcome but **not the admin's internal note**.
+  - **Real fault confirmed:** a red panel lists the faulty items and offers two ways to deal with them — **Return to supplier** (a return tracking
+    number and an evidence photo are required) or **Discard at the hub** (a photo only). The shipment then shows "Returned to supplier" /
+    "Discarded", with a note that the platform will close the case. Hub staff are never shown the refund, who bears the cost, or any note.
+  - Shipments whose unit has left the hub still appear under the **Flagged** filter until the platform closes the case.
+- Tested in `src/FlagFlow.test.jsx` (13, mocked fetch): the dropdown and that the kind is sent (and is optional); the resolved and no-fault banners;
+  the fault panel, the tracking-number and photo requirements for a return, discarding without tracking, and the banners after each. Verified to fail
+  when the kind stops being sent, the banner ignores the verdict, or the return stops requiring a tracking number.
+- **Not done:** the Flutter hub app (`apps/hub-mobile`) was not changed — it has no kind-of-problem picker, no return/discard screen, and does not
+  know the new statuses.
 
 ## Real bilingual support (new) — closes this portal's own #1 flagged gap
 

@@ -20,7 +20,7 @@ import { QRCodeSVG } from "qrcode.react";
 import {
   getStoredToken, saveToken, clearToken, getCurrentUser, SessionExpiredError,
   fetchMySupplierProfile, fetchMyProducts, createProduct, updateProduct, bulkUpdateProductPrices,
-  fetchMyOrders, updateSubOrder, fetchMyReturnCases, fetchMyReturnCaseById, replyToReturnCase,
+  fetchMyOrders, updateSubOrder, fetchMyReturnCases, fetchMyReturnCaseById, replyToReturnCase, fetchMyFaultCases, answerFaultCase,
   fetchMyOverview,
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
   uploadProductImage, uploadProductVideo, fetchProductRequirements, fetchAttributeDefinitions, API_BASE_URL,
@@ -107,6 +107,17 @@ const STRINGS = {
       relatedOrder: (o) => `关联订单 ${o}`, noteLabel: "平台备注",
       replyPlaceholder: "请输入回复内容，例如是否同意退货、补发或说明原因…",
       cancel: "取消", submitReply: "提交回复", replyButton: "回复平台",
+    },
+    replacement: {
+      title: "换货请求", subtitle: "平台质检确认部分商品存在质量问题，请告知您能否补发替换件。",
+      orderLabel: (o) => `订单 ${o}`, itemsLabel: "问题商品",
+      question: "您能否补发替换件？", yes: "可以补发", no: "无法补发",
+      etaLabel: "预计发出日期", noteLabel: "备注（可选）", notePlaceholder: "例如：库存充足 / 需要等待生产……",
+      submit: "提交回复", submitting: "提交中…", errEta: "请选择预计发出日期。", errChoose: "请先选择“可以补发”或“无法补发”。",
+      answeredYes: (d) => `您已回复：可以补发，预计 ${d} 发出`, answeredNo: "您已回复：无法补发",
+      statusLabels: { awaiting_supplier: "等待您的回复", awaiting_admin: "等待平台决定", refund_pending: "平台正在为买家退款", completed: "已结案" },
+      hubNone: "问题商品尚未退回", hubReturned: "问题商品已退回给您", hubDiscarded: "问题商品已在仓库销毁",
+      loadError: "无法加载换货请求：",
     },
     messages: {
       title: "消息中心", subtitle: "仅可与 Leap 平台沟通，系统不提供与买家的直接聊天渠道",
@@ -206,6 +217,17 @@ const STRINGS = {
       relatedOrder: (o) => `Related order ${o}`, noteLabel: "Platform note",
       replyPlaceholder: "Enter your reply \u2014 e.g. whether you accept the return, a replacement, or an explanation…",
       cancel: "Cancel", submitReply: "Submit reply", replyButton: "Reply to Platform",
+    },
+    replacement: {
+      title: "Replacement requests", subtitle: "Leap's inspection confirmed a fault. Please tell us whether you can send a replacement.",
+      orderLabel: (o) => `Order ${o}`, itemsLabel: "Faulty items",
+      question: "Can you send a replacement?", yes: "Yes, I can replace it", no: "No, I can't",
+      etaLabel: "Date you can send it", noteLabel: "Note (optional)", notePlaceholder: "e.g. We have stock / Needs to be produced…",
+      submit: "Send answer", submitting: "Sending…", errEta: "Choose the date you can send the replacement.", errChoose: "Choose “Yes, I can replace it” or “No, I can't” first.",
+      answeredYes: (d) => `You answered: yes, you can replace it by ${d}`, answeredNo: "You answered: no, you can't replace it",
+      statusLabels: { awaiting_supplier: "Waiting for your answer", awaiting_admin: "Waiting for Leap's decision", refund_pending: "Leap is refunding the buyer", completed: "Closed" },
+      hubNone: "The faulty unit has not been sent back yet", hubReturned: "The faulty unit was sent back to you", hubDiscarded: "The faulty unit was discarded at the hub",
+      loadError: "Could not load replacement requests: ",
     },
     messages: {
       title: "Messages", subtitle: "You can only message the Leap platform team \u2014 there is no direct buyer chat",
@@ -2564,6 +2586,132 @@ function OrdersPage({ onOpen }) {
     </div>
   );
 }
+// One fault case, as the SUPPLIER sees it (migration 091): an unanswered "can you replace this?" question with its
+// form, or - once answered - their answer and how the case is progressing. They never see the platform's private
+// notes, who bears the cost, or any refund amount (the server doesn't send them).
+function ReplacementCard({ faultCase, onAnswered }) {
+  const { t } = useLang();
+  const { onSessionExpired } = useSupplier();
+  const font = useBodyFont();
+  const inputStyle = useInputStyle();
+  const r = t.replacement;
+  const [canReplace, setCanReplace] = useState(null); // null = not chosen yet
+  const [eta, setEta] = useState("");
+  const [note, setNote] = useState("");
+  const [error, setError] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const unanswered = faultCase.status === "awaiting_supplier";
+  const today = new Date().toISOString().slice(0, 10);
+
+  const submit = async () => {
+    if (canReplace === null) { setError(r.errChoose); return; }
+    if (canReplace && !eta) { setError(r.errEta); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      await answerFaultCase(getStoredToken(), faultCase.id, { canReplace, eta: canReplace ? eta : undefined, note: note.trim() || undefined });
+      onAnswered();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const choice = (value, label) => (
+    <button
+      type="button"
+      onClick={() => { setCanReplace(value); setError(null); }}
+      style={{ ...font, flex: 1, padding: "9px 12px", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", border: `1px solid ${canReplace === value ? C.ink : C.line}`, background: canReplace === value ? C.ink : "#fff", color: canReplace === value ? "#fff" : C.ink }}
+    >
+      {label}
+    </button>
+  );
+
+  return (
+    <Card>
+      <div style={{ padding: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <span style={{ ...font, fontSize: 14, fontWeight: 700, color: C.ink }}>{r.orderLabel(faultCase.orderId)}</span>
+          <Badge label={r.statusLabels[faultCase.status] || faultCase.status} statusKey={faultCase.status === "completed" ? "active" : "pending"} />
+        </div>
+        <div style={{ ...font, fontSize: 12.5, color: C.ink }}>
+          <strong>{r.itemsLabel}:</strong> {faultCase.items.map((i) => `${i.name || i.productId} × ${i.quantity}`).join(", ")}
+        </div>
+
+        {unanswered ? (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ ...font, fontSize: 12.5, fontWeight: 700, color: C.muted, marginBottom: 8 }}>{r.question}</div>
+            <div style={{ display: "flex", gap: 8 }}>{choice(true, r.yes)}{choice(false, r.no)}</div>
+            {canReplace === true && (
+              <div style={{ marginTop: 12 }}>
+                <label style={{ ...font, display: "block", fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 6 }} htmlFor={`eta-${faultCase.id}`}>{r.etaLabel}</label>
+                <input id={`eta-${faultCase.id}`} type="date" min={today} value={eta} onChange={(e) => setEta(e.target.value)} style={inputStyle} />
+              </div>
+            )}
+            {canReplace !== null && (
+              <div style={{ marginTop: 12 }}>
+                <label style={{ ...font, display: "block", fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 6 }} htmlFor={`note-${faultCase.id}`}>{r.noteLabel}</label>
+                <input id={`note-${faultCase.id}`} value={note} placeholder={r.notePlaceholder} onChange={(e) => setNote(e.target.value)} style={inputStyle} />
+              </div>
+            )}
+            {error && <div style={{ ...font, fontSize: 12, color: C.red, marginTop: 10 }}>{error}</div>}
+            <button
+              onClick={submit}
+              disabled={saving}
+              style={{ ...font, marginTop: 14, padding: "9px 16px", borderRadius: 8, border: "none", background: saving ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 13, fontWeight: 700, cursor: saving ? "default" : "pointer" }}
+            >
+              {saving ? r.submitting : r.submit}
+            </button>
+          </div>
+        ) : (
+          <div style={{ marginTop: 10, ...font, fontSize: 12.5, color: C.ink }}>
+            <div>{faultCase.canReplace ? r.answeredYes(faultCase.eta) : r.answeredNo}{faultCase.note ? ` — “${faultCase.note}”` : ""}</div>
+            <div style={{ color: C.muted, marginTop: 4 }}>
+              {faultCase.hubReturn === "returned" ? r.hubReturned : faultCase.hubReturn === "discarded" ? r.hubDiscarded : r.hubNone}
+            </div>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+// "Replacement requests": the questions Leap has sent this supplier about faulty items. Renders nothing at all for a
+// supplier with none, so most suppliers see no change to the Returns page.
+function ReplacementRequests() {
+  const { t } = useLang();
+  const { onSessionExpired } = useSupplier();
+  const font = useBodyFont();
+  const [cases, setCases] = useState(null);
+  const [error, setError] = useState(null);
+
+  const load = () => {
+    fetchMyFaultCases(getStoredToken())
+      .then(setCases)
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setError(err.message);
+      });
+  };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (error) {
+    return <div style={{ padding: "16px 24px 0" }}><div style={{ ...font, fontSize: 12.5, color: C.red }}>{t.replacement.loadError}{error}</div></div>;
+  }
+  if (!cases || cases.length === 0) return null;
+  return (
+    <div style={{ padding: "16px 24px 0" }}>
+      <div style={{ ...font, fontSize: 15, fontWeight: 700, color: C.ink }}>{t.replacement.title}</div>
+      <div style={{ ...font, fontSize: 12.5, color: C.muted, margin: "2px 0 12px" }}>{t.replacement.subtitle}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {cases.map((c) => <ReplacementCard key={c.id} faultCase={c} onAnswered={load} />)}
+      </div>
+    </div>
+  );
+}
+
 function ReturnsPage() {
   const [cases, setCases] = useState([]);
   const [detailCache, setDetailCache] = useState({});
@@ -2622,6 +2770,7 @@ function ReturnsPage() {
   return (
     <div>
       <TopBar title={t.returns.title} subtitle={t.returns.subtitle} />
+      <ReplacementRequests />
       <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
         {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", fontSize: 13, color: C.muted }}>{lang === "zh" ? "加载中…" : "Loading…"}</div></Card>}
         {loadState === "error" && <Card><div style={{ padding: 32, textAlign: "center", fontSize: 13, color: C.red }}>{errorMessage}</div></Card>}

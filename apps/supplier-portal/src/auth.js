@@ -183,6 +183,14 @@ export function updateSubOrder(token, subOrderId, updates) {
   return authedMutate("PATCH", `/supplier/me/orders/${subOrderId}`, token, updates);
 }
 
+// Fault cases (migration 091): "can you replace this faulty item?" -- the supplier's own cases only.
+export function fetchMyFaultCases(token) {
+  return authedGet("/fault-cases/supplier/me", token);
+}
+export function answerFaultCase(token, id, { canReplace, eta, note }) {
+  return authedMutate("POST", `/fault-cases/supplier/me/${id}/answer`, token, { canReplace, eta, note });
+}
+
 export function fetchMyReturnCases(token) {
   return authedGet("/returns/supplier/me", token);
 }

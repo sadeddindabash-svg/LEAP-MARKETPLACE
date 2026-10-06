@@ -8,18 +8,22 @@ const MOCK_FLAGGED = [
   { id: 335, subOrderId: 2222, orderId: 'LP-900555', supplierName: 'Guangzhou AutoParts Co.', hubName: 'Guangzhou Inspection Hub', flaggedAt: '2026-07-15T15:17:45.581Z', flagNote: 'Wrong part received', flagPhotos: ['/uploads/flag-evidence.jpg'] },
 ];
 
-function mockFetchRouter({ flagged = MOCK_FLAGGED, resolveResponse, resolveCalls = [], hubEvents = [] } = {}) {
+function mockFetchRouter({ flagged = MOCK_FLAGGED, handlers = [], calls = [], hubEvents = [] } = {}) {
   let queue = [...flagged];
+  const ctx = { getQueue: () => queue, setQueue: (next) => { queue = next; } };
   return vi.fn((url, options) => {
     const u = String(url);
-    // PATCH /hub/flagged/:id/resolve (migration 090)
-    const resolveMatch = u.match(/\/hub\/flagged\/(\d+)\/resolve$/);
-    if (resolveMatch && options?.method === 'PATCH') {
-      const body = JSON.parse(options.body);
-      resolveCalls.push({ id: Number(resolveMatch[1]), ...body });
-      if (resolveResponse) return Promise.resolve(resolveResponse);
-      queue = queue.filter((q) => q.id !== Number(resolveMatch[1]));
-      return Promise.resolve({ ok: true, json: async () => ({ id: Number(resolveMatch[1]), status: 'flagged', resolution: body.resolution, returnCase: { id: 'RC-7', status: body.resolution === 'continue_processing' ? 'rejected' : 'approved', updated: true } }) });
+    const method = options?.method || 'GET';
+    // Test-scripted endpoints: { method, match: RegExp, respond(body, ctx, match) -> { status?, body } }.
+    // Every call they answer is recorded in `calls`, so a test can check exactly what was sent.
+    for (const h of handlers) {
+      const m = h.method === method && u.match(h.match);
+      if (m) {
+        const body = options?.body ? JSON.parse(options.body) : undefined;
+        calls.push({ method, url: u, body });
+        const out = h.respond(body, ctx, m);
+        return Promise.resolve({ ok: (out.status || 200) < 400, status: out.status || 200, json: async () => out.body });
+      }
     }
     if (u.includes('/auth/login')) return Promise.resolve({ ok: true, json: async () => ({ token: 'fake.jwt.token', user: ADMIN_USER }) });
     if (u.includes('/auth/me')) return Promise.resolve({ ok: true, json: async () => ADMIN_USER });
@@ -119,8 +123,16 @@ describe('Flagged Shipments — the real queue and sidebar badge (mocked fetch, 
   });
 });
 
-describe('Flagged Shipments — resolving a flag (mocked fetch, real component tree)', () => {
-  const FLAG_WITH_DETAILS = [{ ...MOCK_FLAGGED[0], damageType: 'water_damage', returnCaseId: 'RC-7' }];
+describe('Flagged Shipments — the two verdicts: no fault, or a real fault (mocked fetch, real component tree)', () => {
+  const ITEMS = [
+    { productId: 'p1', name: 'RIDEX Front Brake Disc', quantity: 2, unitPrice: 15 },
+    { productId: 'p4', name: 'MAHLE Oil Filter', quantity: 1, unitPrice: 8.5 },
+  ];
+  const flag = (over = {}) => ({ ...MOCK_FLAGGED[0], returnCaseId: 'RC-7', damageType: 'water_damage', hubStatus: 'flagged', items: ITEMS, faultCase: null, ...over });
+  const faultCase = (over = {}) => ({
+    id: 9, shipmentId: 335, status: 'awaiting_supplier', costBearer: 'supplier', adminNotes: null, items: [ITEMS[0]],
+    supplier: { answered: false, canReplace: null, eta: null, note: null }, outcome: null, refund: null, hubReturn: null, ...over,
+  });
 
   async function openFlaggedPage(options) {
     globalThis.fetch = mockFetchRouter(options);
@@ -129,70 +141,178 @@ describe('Flagged Shipments — resolving a flag (mocked fetch, real component t
     fireEvent.click(screen.getByRole('button', { name: /flagged shipments/i }));
     await waitFor(() => expect(screen.getByText('LP-900555')).toBeInTheDocument());
   }
-  const dialogPanel = () => screen.getByText(/^Resolve flag — LP-900555$/).parentElement;
+  const dialogTitled = (title) => screen.getByText(title).parentElement;
   const fieldIn = (panel, label) => within(panel).getByText(label).parentElement.querySelector('input, select');
+  const REFUND_LABEL = "Refund amount (USD) — defaults to the faulty items' value";
 
   it('shows the kind of problem and the linked return case on the flag', async () => {
-    await openFlaggedPage({ flagged: FLAG_WITH_DETAILS });
+    await openFlaggedPage({ flagged: [flag()] });
     expect(screen.getByText('Water damage')).toBeInTheDocument();
     expect(screen.getByText(/Return case RC-7/)).toBeInTheDocument();
   });
 
-  it('CRITICAL: resolving needs an outcome; with one it sends the right request, tells the admin what happened to the case, and the flag leaves the list and the sidebar badge', async () => {
-    const resolveCalls = [];
-    await openFlaggedPage({ flagged: FLAG_WITH_DETAILS, resolveCalls });
-    // "Flagged Shipments" is now both the sidebar item and the page title, so pick the sidebar button.
+  it('a flag still waiting for a verdict offers "No fault" and "Real fault…", and no fault panel', async () => {
+    await openFlaggedPage({ flagged: [flag()] });
+    expect(screen.getByRole('button', { name: /^no fault$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^real fault…$/i })).toBeInTheDocument();
+    expect(screen.queryByText('REAL FAULT')).not.toBeInTheDocument();
+  });
+
+  it('CRITICAL: "No fault" explains what happens, then records it; the flag leaves the list and the sidebar badge', async () => {
+    const calls = [];
+    const handlers = [{
+      method: 'PATCH', match: /\/hub\/flagged\/335\/resolve$/,
+      respond: (body, ctx) => { ctx.setQueue([]); return { body: { id: 335, returnCase: { id: 'RC-7', status: 'rejected', updated: true } } }; },
+    }];
+    await openFlaggedPage({ flagged: [flag()], handlers, calls });
     const sidebarItem = screen.getAllByText('Flagged Shipments').map((el) => el.closest('button')).find(Boolean);
     await waitFor(() => expect(within(sidebarItem).getByText('1')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: /^resolve$/i }));
-    const panel = dialogPanel();
+    fireEvent.click(screen.getByRole('button', { name: /^no fault$/i }));
+    expect(screen.getByText(/hub's data was wrong/i)).toBeInTheDocument();
+    expect(calls).toHaveLength(0); // nothing sent before confirming
+    fireEvent.click(screen.getByRole('button', { name: /confirm: no fault/i }));
 
-    // saving with no outcome is refused, and nothing is sent
-    fireEvent.click(within(panel).getByRole('button', { name: /^save$/i }));
-    expect(within(panel).getByText('Choose an outcome.')).toBeInTheDocument();
-    expect(resolveCalls).toHaveLength(0);
-
-    fireEvent.change(fieldIn(panel, 'Outcome'), { target: { value: 'discard' } });
-    fireEvent.change(fieldIn(panel, 'Internal note (optional — the buyer does not see this)'), { target: { value: '  crushed beyond use ' } });
-    fireEvent.click(within(panel).getByRole('button', { name: /^save$/i }));
-
-    await waitFor(() => expect(screen.getByText(/Return case RC-7 is now approved and the buyer was told\./)).toBeInTheDocument());
-    expect(resolveCalls).toEqual([{ id: 335, resolution: 'discard', resolutionNotes: 'crushed beyond use' }]);
+    await waitFor(() => expect(screen.getByText(/Recorded as no fault\. Return case RC-7 is now rejected and the buyer was told\./)).toBeInTheDocument());
+    expect(calls).toEqual([{ method: 'PATCH', url: expect.stringContaining('/hub/flagged/335/resolve'), body: { resolution: 'continue_processing' } }]);
     await waitFor(() => expect(screen.getByText(/nothing flagged right now/i)).toBeInTheDocument());
-    // the badge on the sidebar dropped straight away (it used to refresh only when navigating)
     expect(within(sidebarItem).queryByText('1')).not.toBeInTheDocument();
   });
 
-  it('every outcome is offered, and each says what happens to the buyer or the case', async () => {
-    await openFlaggedPage({ flagged: FLAG_WITH_DETAILS });
-    fireEvent.click(screen.getByRole('button', { name: /^resolve$/i }));
-    const select = fieldIn(dialogPanel(), 'Outcome');
-    const labels = Array.from(select.querySelectorAll('option')).map((o) => o.textContent);
-    expect(labels).toEqual(expect.arrayContaining([
-      expect.stringMatching(/False alarm.*no problem was found/),
-      expect.stringMatching(/Return to supplier.*won't be shipped/),
-      expect.stringMatching(/Discard.*won't be shipped/),
-      expect.stringMatching(/replacement.*stays open/),
-    ]));
+  it('CRITICAL: "Real fault…" lists every item (all ticked), needs at least one, and sends only the ticked ones with the cost bearer', async () => {
+    const calls = [];
+    const handlers = [{
+      method: 'POST', match: /\/fault-cases$/,
+      respond: (body, ctx) => { ctx.setQueue([flag({ faultCase: faultCase({ costBearer: body.costBearer }) })]); return { status: 201, body: { faultCase: {} } }; },
+    }];
+    await openFlaggedPage({ flagged: [flag()], handlers, calls });
+    fireEvent.click(screen.getByRole('button', { name: /^real fault…$/i }));
+    const dialog = screen.getByRole('dialog', { name: 'Confirm a real fault' });
+
+    const boxes = within(dialog).getAllByRole('checkbox');
+    expect(boxes).toHaveLength(2);
+    expect(boxes.every((b) => b.checked)).toBe(true);
+    expect(within(dialog).getByText(/RIDEX Front Brake Disc × 2/)).toBeInTheDocument();
+
+    // nothing ticked -> cannot confirm
+    fireEvent.click(boxes[0]); fireEvent.click(boxes[1]);
+    expect(within(dialog).getByRole('button', { name: /confirm real fault/i })).toBeDisabled();
+
+    fireEvent.click(boxes[0]); // only the brake disc is faulty
+    fireEvent.change(within(dialog).getByLabelText(/who bears the cost/i), { target: { value: 'leap' } });
+    fireEvent.change(within(dialog).getByLabelText(/internal note/i), { target: { value: ' crushed ' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /confirm real fault/i }));
+
+    await waitFor(() => expect(screen.getByText(/Real fault confirmed\. The hub has been asked/)).toBeInTheDocument());
+    expect(calls).toEqual([{ method: 'POST', url: expect.stringContaining('/fault-cases'), body: { shipmentId: 335, items: ['p1'], costBearer: 'leap', notes: 'crushed' } }]);
+    // the page now shows the case, and the "No fault" / "Real fault" buttons are gone
+    expect(await screen.findByText('REAL FAULT')).toBeInTheDocument();
+    expect(screen.getByText('Waiting for the supplier')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^no fault$/i })).not.toBeInTheDocument();
   });
 
-  it('a server error is shown inside the open dialog and the flag stays in the list', async () => {
-    await openFlaggedPage({ resolveResponse: { ok: false, status: 400, json: async () => ({ error: 'This shipment is not an unresolved flag.' }) } });
-    fireEvent.click(screen.getByRole('button', { name: /^resolve$/i }));
-    const panel = dialogPanel();
-    fireEvent.change(fieldIn(panel, 'Outcome'), { target: { value: 'continue_processing' } });
-    fireEvent.click(within(panel).getByRole('button', { name: /^save$/i }));
-    expect(await within(panel).findByText('This shipment is not an unresolved flag.')).toBeInTheDocument();
-    expect(screen.getByText('LP-900555')).toBeInTheDocument();
+  it('the fault panel shows the items, who pays, what the supplier said, and what the hub has done', async () => {
+    await openFlaggedPage({ flagged: [flag({ faultCase: faultCase({
+      status: 'awaiting_admin', costBearer: 'leap', adminNotes: 'repeat issue',
+      supplier: { answered: true, canReplace: true, eta: '2026-08-20', note: 'Stock arrives Monday' }, hubReturn: 'returned',
+    }) })] });
+    expect(screen.getByText('Supplier answered — your decision')).toBeInTheDocument();
+    expect(screen.getByText(/RIDEX Front Brake Disc × 2/)).toBeInTheDocument();
+    expect(screen.getByText(/can replace — by 2026-08-20 \(“Stock arrives Monday”\)/)).toBeInTheDocument();
+    expect(screen.getByText('Leap')).toBeInTheDocument(); // cost borne by
+    expect(screen.getByText('Returned to the supplier')).toBeInTheDocument();
+    expect(screen.getByText(/Note: repeat issue/)).toBeInTheDocument();
   });
 
-  it('says so when a return case was already finalised by hand and was left alone', async () => {
-    await openFlaggedPage({ resolveResponse: { ok: true, json: async () => ({ id: 335, status: 'flagged', returnCase: { id: 'RC-7', status: 'completed', updated: false } }) } });
-    fireEvent.click(screen.getByRole('button', { name: /^resolve$/i }));
-    const panel = dialogPanel();
-    fireEvent.change(fieldIn(panel, 'Outcome'), { target: { value: 'discard' } });
+  it('says plainly when the supplier cannot replace, and when they have not answered yet', async () => {
+    await openFlaggedPage({ flagged: [flag({ faultCase: faultCase({ status: 'awaiting_admin', supplier: { answered: true, canReplace: false, eta: null, note: null } }) })] });
+    expect(screen.getByText(/cannot replace/)).toBeInTheDocument();
+  });
+
+  it('the replacement button is shown but disabled until replacements are built', async () => {
+    await openFlaggedPage({ flagged: [flag({ faultCase: faultCase() })] });
+    expect(screen.getByRole('button', { name: /send a replacement/i })).toBeDisabled();
+  });
+
+  it('CRITICAL: "Refund the buyer…" is pre-filled with the faulty items\' value, and sends the amount the admin settles on', async () => {
+    const calls = [];
+    const handlers = [{
+      method: 'POST', match: /\/fault-cases\/9\/confirm-refund$/,
+      respond: (body, ctx) => {
+        ctx.setQueue([flag({ faultCase: faultCase({ status: 'refund_pending', refund: { amount: body.amount, status: 'pending', reference: null } }) })]);
+        return { body: { faultCase: { refund: { amount: body.amount } }, returnCase: { id: 'RC-7', status: 'approved' } } };
+      },
+    }];
+    await openFlaggedPage({ flagged: [flag({ faultCase: faultCase() })], handlers, calls });
+    fireEvent.click(screen.getByRole('button', { name: /refund the buyer…/i }));
+    const panel = dialogTitled('Refund the buyer — LP-900555');
+    const amount = fieldIn(panel, REFUND_LABEL);
+    expect(amount.value).toBe('30.00'); // 2 × $15.00
+
+    fireEvent.change(amount, { target: { value: '25' } });
     fireEvent.click(within(panel).getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => expect(screen.getByText(/Refund of \$25\.00 recorded as pending and the buyer was told/)).toBeInTheDocument());
+    expect(calls[0].body).toEqual({ amount: 25 });
+    // the page moved on to the next step
+    expect(await screen.findByRole('button', { name: /mark as refunded…/i })).toBeInTheDocument();
+    expect(screen.getByText('Refund to issue')).toBeInTheDocument();
+    expect(screen.getByText(/\$25\.00 — recorded, not yet issued/)).toBeInTheDocument();
+  });
+
+  it('CRITICAL: "Mark as refunded…" records the Stripe/PayPal reference; the case closes once the hub has returned the unit', async () => {
+    const calls = [];
+    const handlers = [{
+      method: 'POST', match: /\/fault-cases\/9\/mark-refunded$/,
+      respond: (body, ctx) => { ctx.setQueue([]); return { body: { faultCase: { status: 'completed' } } }; },
+    }];
+    const pending = faultCase({ status: 'refund_pending', hubReturn: 'returned', refund: { amount: 30, status: 'pending', reference: null } });
+    await openFlaggedPage({ flagged: [flag({ faultCase: pending })], handlers, calls });
+    fireEvent.click(screen.getByRole('button', { name: /mark as refunded…/i }));
+    const panel = dialogTitled('Mark as refunded — LP-900555');
+    fireEvent.change(fieldIn(panel, 'Stripe / PayPal refund reference (or a note)'), { target: { value: ' re_3PxABC ' } });
+    fireEvent.click(within(panel).getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => expect(screen.getByText('Refund recorded and the case is closed.')).toBeInTheDocument());
+    expect(calls[0].body).toEqual({ reference: 're_3PxABC' });
+    await waitFor(() => expect(screen.getByText(/nothing flagged right now/i)).toBeInTheDocument());
+  });
+
+  it('if the hub has not sent the unit back yet, it says the case will close once they do', async () => {
+    const handlers = [{
+      method: 'POST', match: /\/fault-cases\/9\/mark-refunded$/,
+      respond: () => ({ body: { faultCase: { status: 'refund_pending' } } }),
+    }];
+    await openFlaggedPage({ flagged: [flag({ faultCase: faultCase({ status: 'refund_pending', refund: { amount: 30, status: 'pending', reference: null } }) })], handlers });
+    fireEvent.click(screen.getByRole('button', { name: /mark as refunded…/i }));
+    const panel = dialogTitled('Mark as refunded — LP-900555');
+    fireEvent.change(fieldIn(panel, 'Stripe / PayPal refund reference (or a note)'), { target: { value: 're_999' } });
+    fireEvent.click(within(panel).getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(screen.getByText(/closes once the hub has sent the faulty unit back/)).toBeInTheDocument());
+  });
+
+  it('a server refusal (e.g. refund larger than the order) is shown inside the open dialog and nothing changes', async () => {
+    const handlers = [{
+      method: 'POST', match: /\/fault-cases\/9\/confirm-refund$/,
+      respond: () => ({ status: 400, body: { error: 'The refund cannot be more than the order total ($50.00).' } }),
+    }];
+    await openFlaggedPage({ flagged: [flag({ faultCase: faultCase() })], handlers });
+    fireEvent.click(screen.getByRole('button', { name: /refund the buyer…/i }));
+    const panel = dialogTitled('Refund the buyer — LP-900555');
+    fireEvent.change(fieldIn(panel, REFUND_LABEL), { target: { value: '999' } });
+    fireEvent.click(within(panel).getByRole('button', { name: /^save$/i }));
+    expect(await within(panel).findByText('The refund cannot be more than the order total ($50.00).')).toBeInTheDocument();
+    expect(screen.getByText('Waiting for the supplier')).toBeInTheDocument();
+  });
+
+  it('says so when "no fault" finds the return case already finalised by hand', async () => {
+    const handlers = [{
+      method: 'PATCH', match: /\/hub\/flagged\/335\/resolve$/,
+      respond: () => ({ body: { id: 335, returnCase: { id: 'RC-7', status: 'completed', updated: false } } }),
+    }];
+    await openFlaggedPage({ flagged: [flag()], handlers });
+    fireEvent.click(screen.getByRole('button', { name: /^no fault$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirm: no fault/i }));
     await waitFor(() => expect(screen.getByText(/Return case RC-7 was already completed, so it was left as it is\./)).toBeInTheDocument());
   });
 });

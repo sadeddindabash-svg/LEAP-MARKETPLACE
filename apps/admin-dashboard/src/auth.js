@@ -993,6 +993,22 @@ export const updateHubStaff = (token, id, changes) => hubStaffRequest("PATCH", `
 export const setHubStaffDisabled = (token, id, disabled) => hubStaffRequest("POST", `/${id}/${disabled ? "disable" : "enable"}`, token);
 export const resetHubStaffPassword = (token, id) => hubStaffRequest("POST", `/${id}/reset-password`, token);
 
+// Fault cases (migration 091): a REAL fault on a flagged shipment. See services/api/src/modules/faultCases.
+async function faultCaseRequest(path, token, body) {
+  const response = await fetch(`${API_BASE_URL}/fault-cases${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body || {}),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+export const openFaultCase = (token, { shipmentId, items, costBearer, notes }) => faultCaseRequest("", token, { shipmentId, items, costBearer, notes });
+export const confirmFaultRefund = (token, caseId, amount) => faultCaseRequest(`/${caseId}/confirm-refund`, token, { amount });
+export const markFaultRefunded = (token, caseId, reference) => faultCaseRequest(`/${caseId}/mark-refunded`, token, { reference });
+
 // Resolving a flagged hub shipment (migration 090). Returns the updated shipment plus what happened
 // to the linked return case: { returnCase: { id, status, updated } | null }.
 export async function resolveFlaggedShipment(token, id, { resolution, resolutionNotes }) {

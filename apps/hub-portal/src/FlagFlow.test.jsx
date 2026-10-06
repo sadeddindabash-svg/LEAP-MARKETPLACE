@@ -130,3 +130,75 @@ describe('Hub Portal — what hub staff see after an admin resolves their flag (
     expect(await screen.findByText('平台已审核：未发现问题，请继续处理此包裹。')).toBeInTheDocument();
   });
 });
+
+describe('Hub Portal — dealing with a faulty unit after the platform confirms a real fault (mocked fetch, real component tree)', () => {
+  const FAULT = (over = {}) => ({ id: 9, items: [{ productId: 'p1', name: 'RIDEX Front Brake Disc', quantity: 2 }], hubReturn: null, needsReturn: true, ...over });
+
+  async function openFaultShipment(detailOver, options = {}) {
+    globalThis.fetch = mockBackend({ detail: DETAIL({ status: 'flagged', faultCase: FAULT(), ...detailOver }), ...options });
+    render(<LeapHubPortalApp />);
+    await loginAndOpenShipment();
+  }
+  async function attachPhoto() {
+    const file = new File(['x'], 'evidence.jpg', { type: 'image/jpeg' });
+    fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [file] } });
+    await waitFor(() => expect(document.querySelector('img[src*="evidence.jpg"]')).toBeInTheDocument());
+  }
+
+  it('CRITICAL: shows what to send back and both ways to deal with it, instead of "awaiting platform review"', async () => {
+    await openFaultShipment();
+    expect(await screen.findByText('平台已确认存在质量问题——请处理问题商品')).toBeInTheDocument();
+    expect(screen.getByText(/RIDEX Front Brake Disc × 2/)).toBeInTheDocument();
+    expect(screen.getByText('退回供应商')).toBeInTheDocument();
+    expect(screen.getByText('在仓库销毁')).toBeInTheDocument();
+    expect(screen.queryByText('此包裹已标记问题，等待平台审核。')).not.toBeInTheDocument();
+  });
+
+  it('CRITICAL: returning to the supplier needs a tracking number and a photo, then sends both', async () => {
+    const eventCalls = [];
+    await openFaultShipment({}, { eventCalls });
+    await screen.findByText('平台已确认存在质量问题——请处理问题商品');
+
+    fireEvent.click(screen.getByText('确认已退回供应商'));
+    expect(await screen.findByText(/至少需要 1 张凭证照片/)).toBeInTheDocument(); // no photo yet
+    await attachPhoto();
+    fireEvent.click(screen.getByText('确认已退回供应商'));
+    expect(await screen.findByText('退回供应商需要填写退回运单号。')).toBeInTheDocument(); // no tracking yet
+    expect(eventCalls).toHaveLength(0);
+
+    fireEvent.change(screen.getByLabelText('退回运单号'), { target: { value: 'RET-554433' } });
+    fireEvent.click(screen.getByText('确认已退回供应商'));
+    await waitFor(() => expect(eventCalls).toHaveLength(1));
+    expect(eventCalls[0]).toMatchObject({ step: 'returned_to_supplier', trackingNumber: 'RET-554433', photos: ['/uploads/evidence.jpg'] });
+  });
+
+  it('discarding at the hub needs a photo but no tracking number', async () => {
+    const eventCalls = [];
+    await openFaultShipment({}, { eventCalls });
+    await screen.findByText('平台已确认存在质量问题——请处理问题商品');
+    fireEvent.click(screen.getByRole('button', { name: '在仓库销毁' }));
+    expect(screen.queryByLabelText('退回运单号')).not.toBeInTheDocument();
+    await attachPhoto();
+    fireEvent.click(screen.getByText('确认已销毁'));
+    await waitFor(() => expect(eventCalls).toHaveLength(1));
+    expect(eventCalls[0]).toMatchObject({ step: 'discarded_at_hub' });
+    expect(eventCalls[0].trackingNumber).toBeUndefined();
+  });
+
+  it('once the unit has been sent back, the panel is gone and a banner says the platform will close the case', async () => {
+    await openFaultShipment({ status: 'returned_to_supplier', faultCase: FAULT({ hubReturn: 'returned', needsReturn: false }) });
+    expect(await screen.findByText('此包裹已退回供应商，等待平台结案。')).toBeInTheDocument();
+    expect(screen.queryByText('平台已确认存在质量问题——请处理问题商品')).not.toBeInTheDocument();
+  });
+
+  it('a discarded unit gets its own banner', async () => {
+    await openFaultShipment({ status: 'discarded_at_hub', faultCase: FAULT({ hubReturn: 'discarded', needsReturn: false }) });
+    expect(await screen.findByText('此包裹已在仓库销毁，等待平台结案。')).toBeInTheDocument();
+  });
+
+  it('a flag with NO confirmed fault yet still just says it is awaiting platform review', async () => {
+    await openFaultShipment({ faultCase: null });
+    expect(await screen.findByText('此包裹已标记问题，等待平台审核。')).toBeInTheDocument();
+    expect(screen.queryByText('平台已确认存在质量问题——请处理问题商品')).not.toBeInTheDocument();
+  });
+});

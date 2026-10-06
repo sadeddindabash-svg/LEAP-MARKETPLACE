@@ -31,7 +31,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchSupplierAnalytics,
   fetchHubWorkload, updateHubCapacity,
   fetchHubStaff, createHubStaff, updateHubStaff, setHubStaffDisabled, resetHubStaffPassword,
-  resolveFlaggedShipment,
+  resolveFlaggedShipment, openFaultCase, confirmFaultRefund, markFaultRefunded,
   fetchHubPerformance,
   fetchFlaggedReviews, dismissReviewFlags,
   searchAdmin,
@@ -94,6 +94,9 @@ const HUB_STATUS_META = {
   shipped_to_buyer: { label: "Shipped to buyer", color: C.gauge, bg: C.gaugeBg },
   delivered: { label: "Delivered", color: C.gauge, bg: C.gaugeBg },
   flagged: { label: "Flagged", color: C.red, bg: C.redBg },
+  // A confirmed real fault whose unit has left the hub (migration 091).
+  returned_to_supplier: { label: "Returned to supplier", color: C.red, bg: C.redBg },
+  discarded_at_hub: { label: "Discarded at hub", color: C.red, bg: C.redBg },
 };
 function getHubStatusMeta(status) {
   return HUB_STATUS_META[status] || { label: "—", color: C.muted, bg: "#EEEFF1" };
@@ -5243,26 +5246,121 @@ function PaymentProvidersPage({ onSessionExpired }) {
 // actual answer to "where do I find a flagged issue," which before this
 // existed had no answer at all beyond already knowing which order to
 // open. See services/api/src/modules/hub/routes.js's GET /hub/flagged.
-// What an admin can decide about a flagged shipment (migration 090). Each label says what it does to
-// the buyer-facing return case, because that is what the admin is really choosing. Module-level so the
-// dialog's `fields` keep one identity (EditDialog resets its form whenever `fields` changes).
-const FLAG_OUTCOME_OPTIONS = [
-  { value: "continue_processing", label: "False alarm — send it on (buyer told no problem was found)" },
-  { value: "return_to_supplier", label: "Return to supplier (buyer told it won't be shipped)" },
-  { value: "discard", label: "Discard — damaged beyond use (buyer told it won't be shipped)" },
-  { value: "replacement_requested", label: "Request a replacement (case stays open)" },
-];
-const FLAG_RESOLVE_FIELDS = [
-  { key: "resolution", label: "Outcome", value: "", options: FLAG_OUTCOME_OPTIONS, placeholder: "Choose an outcome…" },
-  { key: "resolutionNotes", label: "Internal note (optional — the buyer does not see this)", value: "" },
-];
 const DAMAGE_TYPE_LABELS = { physical_damage: "Physical damage", water_damage: "Water damage", missing_parts: "Missing parts", wrong_item: "Wrong item", other: "Other" };
+
+// Fault cases (migration 091): where a confirmed real fault currently is, and who has to act next.
+const FAULT_STATUS = {
+  awaiting_supplier: { label: "Waiting for the supplier", color: C.amber, bg: C.amberBg },
+  awaiting_admin: { label: "Supplier answered — your decision", color: C.torque, bg: C.torqueBg },
+  refund_pending: { label: "Refund to issue", color: C.red, bg: C.redBg },
+  completed: { label: "Completed", color: C.gauge, bg: C.gaugeBg },
+};
+const HUB_RETURN_LABELS = { returned: "Returned to the supplier", discarded: "Discarded at the hub" };
+const COST_BEARER_LABELS = { supplier: "The supplier", leap: "Leap" };
+const usd2 = (n) => `$${Number(n).toFixed(2)}`;
+const faultItemsTotal = (faultCase) => faultCase.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+
+// "Real fault" dialog: which items are faulty, and who bears the cost. (Custom rather than EditDialog,
+// which has no checkboxes.) Everything defaults to the safe choice: all items ticked, supplier pays.
+function FaultCaseDialog({ shipment, onCancel, onSubmit, isSaving, errorMessage }) {
+  const [selected, setSelected] = useState(() => new Set(shipment.items.map((i) => i.productId)));
+  const [costBearer, setCostBearer] = useState("supplier");
+  const [notes, setNotes] = useState("");
+  const toggle = (id) => setSelected((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  const label = { ...body, display: "block", fontSize: 11.5, fontWeight: 700, color: C.muted, margin: "14px 0 6px" };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+      <div role="dialog" aria-label="Confirm a real fault" style={{ background: "#fff", borderRadius: 12, padding: 20, width: 460, maxWidth: "92%", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 12px 32px rgba(0,0,0,0.2)" }}>
+        <p style={{ ...disp, fontSize: 16, fontWeight: 700, color: C.ink, margin: "0 0 4px" }}>Real fault — {shipment.orderId}</p>
+        <p style={{ ...body, fontSize: 12.5, color: C.muted, margin: 0 }}>
+          The hub will be told to send the unit back to the supplier, and the supplier will be asked whether they can replace it. The buyer is told a problem was confirmed.
+        </p>
+
+        <span style={label}>WHICH ITEMS ARE FAULTY?</span>
+        {shipment.items.map((i) => (
+          <label key={i.productId} style={{ ...body, display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.ink, padding: "4px 0", cursor: "pointer" }}>
+            <input type="checkbox" checked={selected.has(i.productId)} onChange={() => toggle(i.productId)} />
+            <span>{i.name || i.productId} × {i.quantity}</span>
+            <span style={{ marginLeft: "auto", color: C.muted }}>{usd2(i.unitPrice * i.quantity)}</span>
+          </label>
+        ))}
+
+        <label style={label} htmlFor="fault-cost-bearer">WHO BEARS THE COST? (refund and return shipping)</label>
+        <select id="fault-cost-bearer" value={costBearer} onChange={(e) => setCostBearer(e.target.value)} style={{ ...body, width: "100%", boxSizing: "border-box", padding: 9, borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13, background: "#fff" }}>
+          <option value="supplier">The supplier</option>
+          <option value="leap">Leap</option>
+        </select>
+        <p style={{ ...body, fontSize: 11.5, color: C.muted, margin: "6px 0 0" }}>Recorded for your accounts. Nothing is deducted from a payout automatically.</p>
+
+        <label style={label} htmlFor="fault-notes">INTERNAL NOTE (optional — the buyer does not see this)</label>
+        <textarea id="fault-notes" value={notes} onChange={(e) => setNotes(e.target.value)} style={{ ...body, width: "100%", boxSizing: "border-box", height: 56, padding: 9, borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13 }} />
+
+        {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginTop: 12 }}>{errorMessage}</div>}
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
+          <button onClick={onCancel} style={{ ...body, fontSize: 12.5, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", cursor: "pointer" }}>Cancel</button>
+          <button
+            disabled={isSaving || selected.size === 0}
+            onClick={() => onSubmit({ items: [...selected], costBearer, notes: notes.trim() })}
+            style={{ ...body, fontSize: 12.5, fontWeight: 700, padding: "8px 14px", borderRadius: 8, border: "none", background: isSaving || selected.size === 0 ? "#D1D5DB" : C.red, color: "#fff", cursor: isSaving || selected.size === 0 ? "default" : "pointer" }}
+          >
+            {isSaving ? "Saving…" : "Confirm real fault"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// What has happened so far on a confirmed fault, and the next thing the admin can do.
+function FaultCasePanel({ faultCase, onRefund, onMarkRefunded }) {
+  const st = FAULT_STATUS[faultCase.status] || FAULT_STATUS.awaiting_supplier;
+  const sup = faultCase.supplier;
+  const row = { ...body, fontSize: 12.5, color: C.ink, marginTop: 4 };
+  const btn = { ...body, fontSize: 12, fontWeight: 700, padding: "7px 12px", borderRadius: 7, cursor: "pointer" };
+  return (
+    <div style={{ marginTop: 12, padding: 12, borderRadius: 10, background: C.canvas, border: `1px solid ${C.line}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ ...body, fontSize: 12, fontWeight: 700, color: C.muted }}>REAL FAULT</span>
+        <Badge label={st.label} color={st.color} bg={st.bg} />
+      </div>
+      <div style={row}><strong>Faulty items:</strong> {faultCase.items.map((i) => `${i.name || i.productId} × ${i.quantity}`).join(", ")}</div>
+      <div style={row}><strong>Cost borne by:</strong> {COST_BEARER_LABELS[faultCase.costBearer]}</div>
+      <div style={row}>
+        <strong>Supplier:</strong>{" "}
+        {!sup.answered ? "has not answered yet"
+          : sup.canReplace ? `can replace — by ${sup.eta}${sup.note ? ` (“${sup.note}”)` : ""}`
+          : `cannot replace${sup.note ? ` (“${sup.note}”)` : ""}`}
+      </div>
+      <div style={row}><strong>Hub:</strong> {faultCase.hubReturn ? HUB_RETURN_LABELS[faultCase.hubReturn] : "the unit has not been sent back yet"}</div>
+      {faultCase.refund && (
+        <div style={row}>
+          <strong>Refund:</strong> {usd2(faultCase.refund.amount)} — {faultCase.refund.status === "issued" ? `issued (${faultCase.refund.reference})` : "recorded, not yet issued"}
+        </div>
+      )}
+      {faultCase.adminNotes && <div style={{ ...row, color: C.muted }}>Note: {faultCase.adminNotes}</div>}
+
+      {["awaiting_supplier", "awaiting_admin"].includes(faultCase.status) && (
+        <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+          <button onClick={onRefund} style={{ ...btn, border: "none", background: C.signal, color: C.onSignal }}>Refund the buyer…</button>
+          <button disabled title="Creating the replacement order arrives in the next update" style={{ ...btn, border: `1px solid ${C.line}`, background: "#fff", color: C.muted, cursor: "not-allowed" }}>Send a replacement (next update)</button>
+        </div>
+      )}
+      {faultCase.status === "refund_pending" && (
+        <div style={{ marginTop: 12 }}>
+          <p style={{ ...body, fontSize: 12, color: C.muted, margin: "0 0 8px" }}>Refund the buyer in Stripe or PayPal, then record it here.</p>
+          <button onClick={onMarkRefunded} style={{ ...btn, border: "none", background: C.signal, color: C.onSignal }}>Mark as refunded…</button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) {
   const [shipments, setShipments] = useState([]);
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
-  const [resolving, setResolving] = useState(null); // the shipment whose Resolve dialog is open
+  const [action, setAction] = useState(null); // { type: "nofault" | "fault" | "refund" | "issued", shipment }
   const [dialogError, setDialogError] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [notice, setNotice] = useState(null);
@@ -5270,7 +5368,7 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
   const load = () => {
     fetchFlaggedShipments(getStoredToken())
       // Tell the sidebar the fresh count too: its badge is otherwise refreshed only on navigation, so it
-      // would stay stale right after an admin resolves a flag on this very page.
+      // would stay stale right after an admin closes a flag on this very page.
       .then((data) => { setShipments(data); setLoadState("ready"); if (onCountChange) onCountChange(data.length); })
       .catch((err) => {
         if (err instanceof SessionExpiredError) return onSessionExpired();
@@ -5280,19 +5378,17 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
   };
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleResolve = async (values) => {
-    if (!values.resolution) { setDialogError("Choose an outcome."); return; }
+  const open = (type, shipment) => { setDialogError(null); setNotice(null); setAction({ type, shipment }); };
+  const close = () => setAction(null);
+
+  // One wrapper for every step: run it, show a notice, refresh the list, or show the error in the dialog.
+  const run = async (work) => {
     setIsSaving(true);
     setDialogError(null);
     try {
-      const result = await resolveFlaggedShipment(getStoredToken(), resolving.id, { resolution: values.resolution, resolutionNotes: (values.resolutionNotes || "").trim() });
-      const rc = result.returnCase;
-      setNotice(
-        !rc ? `Resolved. ${resolving.orderId} had no linked return case.`
-          : rc.updated ? `Resolved. Return case ${rc.id} is now ${rc.status} and the buyer was told.`
-          : `Resolved. Return case ${rc.id} was already ${rc.status}, so it was left as it is.`
-      );
-      setResolving(null);
+      const message = await work();
+      setNotice(message);
+      close();
       load();
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
@@ -5302,13 +5398,48 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
     }
   };
 
+  const handleNoFault = () => run(async () => {
+    const result = await resolveFlaggedShipment(getStoredToken(), action.shipment.id, { resolution: "continue_processing" });
+    const rc = result.returnCase;
+    return !rc ? `Recorded as no fault. ${action.shipment.orderId} had no linked return case.`
+      : rc.updated ? `Recorded as no fault. Return case ${rc.id} is now ${rc.status} and the buyer was told.`
+      : `Recorded as no fault. Return case ${rc.id} was already ${rc.status}, so it was left as it is.`;
+  });
+
+  const handleOpenFault = ({ items, costBearer, notes }) => run(async () => {
+    await openFaultCase(getStoredToken(), { shipmentId: action.shipment.id, items, costBearer, notes });
+    return "Real fault confirmed. The hub has been asked to send the unit back, the supplier has been asked whether they can replace it, and the buyer has been told.";
+  });
+
+  const handleRefund = (values) => run(async () => {
+    const amount = values.amount === "" ? undefined : Number(values.amount);
+    const result = await confirmFaultRefund(getStoredToken(), action.shipment.faultCase.id, amount);
+    return `Refund of ${usd2(result.faultCase.refund.amount)} recorded as pending and the buyer was told. Refund them in Stripe or PayPal, then mark it as refunded here.`;
+  });
+
+  const handleIssued = (values) => run(async () => {
+    const result = await markFaultRefunded(getStoredToken(), action.shipment.faultCase.id, (values.reference || "").trim());
+    return result.faultCase.status === "completed"
+      ? "Refund recorded and the case is closed."
+      : "Refund recorded. The case closes once the hub has sent the faulty unit back.";
+  });
+
+  // EditDialog resets its form whenever `fields` changes identity, so these are memoised on the open action.
+  const editFields = React.useMemo(() => {
+    if (!action) return null;
+    if (action.type === "refund") {
+      return [{ key: "amount", label: "Refund amount (USD) — defaults to the faulty items' value", value: String(faultItemsTotal(action.shipment.faultCase).toFixed(2)), type: "number" }];
+    }
+    if (action.type === "issued") {
+      return [{ key: "reference", label: "Stripe / PayPal refund reference (or a note)", value: "" }];
+    }
+    return null;
+  }, [action]);
+
   return (
     <div>
       <TopBar title="Flagged Shipments" subtitle="Quality issues hub staff have flagged during inspection, across every order" />
       <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "flex-end" }}>
-        {/* Real export (new) -- same reusable exportToExcel() util
-            already used across most other list pages, just never
-            added here. */}
         <button
           disabled={shipments.length === 0}
           onClick={() => exportToExcel({
@@ -5320,12 +5451,14 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
               { header: "Hub", key: "hubName", width: 22 },
               { header: "Flagged at", key: "flaggedAt", width: 18 },
               { header: "Return case", key: "returnCaseId", width: 14 },
+              { header: "Fault case", key: "faultStatus", width: 26 },
               { header: "Note", key: "flagNote", width: 50 },
             ],
             rows: shipments.map((s) => ({
               orderId: s.orderId, supplierName: s.supplierName, hubName: s.hubName || "No hub",
               flaggedAt: new Date(s.flaggedAt).toLocaleString(),
               returnCaseId: s.returnCaseId || "—", flagNote: s.flagNote || "",
+              faultStatus: s.faultCase ? (FAULT_STATUS[s.faultCase.status]?.label || s.faultCase.status) : "Awaiting a verdict",
             })),
           })}
           style={{ display: "flex", alignItems: "center", gap: 6, ...body, fontSize: 12.5, fontWeight: 700, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, cursor: shipments.length === 0 ? "default" : "pointer", opacity: shipments.length === 0 ? 0.5 : 1 }}
@@ -5365,12 +5498,22 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
-                      <button
-                        onClick={() => { setDialogError(null); setNotice(null); setResolving(s); }}
-                        style={{ ...body, padding: "7px 14px", borderRadius: 7, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
-                      >
-                        Resolve
-                      </button>
+                      {!s.faultCase && (
+                        <>
+                          <button
+                            onClick={() => open("nofault", s)}
+                            style={{ ...body, padding: "7px 14px", borderRadius: 7, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
+                          >
+                            No fault
+                          </button>
+                          <button
+                            onClick={() => open("fault", s)}
+                            style={{ ...body, padding: "7px 14px", borderRadius: 7, border: "none", background: C.red, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
+                          >
+                            Real fault…
+                          </button>
+                        </>
+                      )}
                       <button
                         onClick={() => onOpenOrder(s.orderId)}
                         style={{ ...body, padding: "7px 14px", borderRadius: 7, border: "none", background: C.signal, color: C.onSignal, fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
@@ -5387,18 +5530,33 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
                       ))}
                     </div>
                   )}
+                  {s.faultCase && (
+                    <FaultCasePanel faultCase={s.faultCase} onRefund={() => open("refund", s)} onMarkRefunded={() => open("issued", s)} />
+                  )}
                 </div>
               </Card>
             ))}
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        isOpen={action?.type === "nofault"}
+        title={action ? `No fault — ${action.shipment.orderId}` : ""}
+        message="The hub's data was wrong. The shipment goes back into the normal flow so the hub can carry on, and the buyer is told no problem was found."
+        confirmLabel="Confirm: no fault"
+        onConfirm={handleNoFault}
+        onCancel={close}
+      />
+      {action?.type === "fault" && (
+        <FaultCaseDialog shipment={action.shipment} onCancel={close} onSubmit={handleOpenFault} isSaving={isSaving} errorMessage={dialogError} />
+      )}
       <EditDialog
-        isOpen={Boolean(resolving)}
-        title={resolving ? `Resolve flag — ${resolving.orderId}` : "Resolve flag"}
-        fields={FLAG_RESOLVE_FIELDS}
-        onSave={handleResolve}
-        onCancel={() => setResolving(null)}
+        isOpen={action?.type === "refund" || action?.type === "issued"}
+        title={action?.type === "refund" ? `Refund the buyer — ${action.shipment.orderId}` : action?.type === "issued" ? `Mark as refunded — ${action.shipment.orderId}` : ""}
+        fields={editFields}
+        onSave={action?.type === "refund" ? handleRefund : handleIssued}
+        onCancel={close}
         errorMessage={dialogError}
         isSaving={isSaving}
       />
@@ -5406,12 +5564,6 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
   );
 }
 
-// Real, admin-managed category + part reference lists (migration 015).
-// Confirmed requirement: a supplier picks a real Part from a real list
-// scoped to the Category they picked, rather than typing free text.
-// Two-level drill-down, same structural idea as Vehicle Data's fitment
-// cascade (just two levels instead of four) and the same real-
-// protection-on-delete pattern as Vehicle Data and Hubs.
 function CategoriesPage({ onSessionExpired }) {
   const [categories, setCategories] = useState([]);
   const [loadState, setLoadState] = useState("loading");
@@ -7585,7 +7737,7 @@ const AUDIT_ACTION_TYPES = [
   // Hub staff account management (migration 089)
   'hub_staff_created', 'hub_staff_updated', 'hub_staff_disabled', 'hub_staff_enabled', 'hub_staff_password_reset',
   // Resolving a flagged hub shipment (migration 090)
-  'flagged_shipment_resolved',
+  'flagged_shipment_resolved', 'fault_case_created', 'fault_case_refund_confirmed', 'fault_case_refund_issued',
   // Real catalog/fitment reference-data and product-listing moderation
   // actions (new) -- confirmed genuinely missing from the audit trail
   // entirely before this, despite this page's own scope already

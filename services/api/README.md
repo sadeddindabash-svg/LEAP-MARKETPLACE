@@ -3223,46 +3223,65 @@ same supplier at the same time, the tests look a payout up by its own id and che
 the admin figure, retried to tolerate a concurrent payout) instead of exact running totals. Verified to fail when the ready / in-window
 buckets are swapped.
 
-## Resolving flagged hub shipments (migration 090)
+## Flagged shipments: the two verdicts, and fault cases (migrations 090–091)
 
-**The gap:** a hub staff member flagging a shipment already opened a return case automatically, and an admin could work that case (messages,
-statuses, buyer notifications). But the hub *shipment* stayed `flagged` forever, whatever the admin decided. A false alarm therefore blocked
-the order permanently (it could never be delivered, so the supplier was never paid), the Flagged Shipments queue never shrank, and the hub's
-workload kept counting handled shipments.
+**The gap this closes:** a hub staff member flagging a shipment already opened a return case automatically, but the hub *shipment* then stayed
+`flagged` forever, whatever the admin decided. A false alarm blocked the order for good (it could never be delivered, so the supplier was never
+paid), the Flagged Shipments queue never shrank, and the hub's workload kept counting handled shipments.
 
-**`PATCH /hub/flagged/:id/resolve` `{ resolution, resolutionNotes? }`** — admin only, needs access to the Flagged page. Outcomes:
+An admin now gives every flag one of two **verdicts**:
 
-| `resolution` | The shipment | The linked return case (the buyer sees this) |
+### 1. No fault (the hub's data was wrong) — `PATCH /hub/flagged/:id/resolve { "resolution": "continue_processing" }`
+The shipment goes back to the last real step it completed, so the hub carries on. The linked return case is closed as `rejected` and the buyer
+is told (English and Arabic) that no problem was found. Admin only; needs access to the Flagged page. This endpoint accepts **only**
+`continue_processing`: a real fault is a fault case. It is refused (400) for a shipment that already has a fault case, and for a flag that is
+already resolved. A return case an admin already finalised by hand is left alone (`returnCase.updated: false`).
+
+### 2. Real fault — a **fault case** (`POST /fault-cases`, migration 091)
+```
+awaiting_supplier --(supplier answers)--> awaiting_admin
+awaiting_supplier / awaiting_admin --(admin confirms refund)--> refund_pending
+refund_pending --(admin marks refunded)--+
+(hub returns or discards the unit) ------+--> completed        (needs BOTH, in either order)
+```
+
+| Endpoint | Who | What it does |
 |---|---|---|
-| `continue_processing` (false alarm) | goes back to the last real step it completed, so the hub carries on | `rejected` — "no problem found, your order continues" |
-| `return_to_supplier` | stays `flagged`; leaves the queue and the workload | `approved` — "sent back to the supplier, won't be shipped to you" |
-| `discard` | stays `flagged`; leaves the queue and the workload | `approved` — "damaged beyond use, won't be shipped to you" |
-| `replacement_requested` | stays `flagged`; leaves the queue and the workload | `in_progress` — "a replacement has been requested" (not closed) |
+| `POST /fault-cases` `{ shipmentId, items:[productId], costBearer, notes? }` | admin (Flagged page) | Opens the case for the **ticked items** (whole lines), records who bears the cost (`supplier` or `leap`), moves the buyer's return case to `in_progress`, tells the buyer, and asks the supplier whether they can replace. |
+| `POST /fault-cases/:id/confirm-refund` `{ amount? }` | admin | Records a refund. Default amount = the faulty items' value; the admin may enter less, never more than the order total. Return case → `approved`, buyer told. Allowed before the supplier answers (an override). |
+| `POST /fault-cases/:id/mark-refunded` `{ reference }` | admin | The refund was made **manually** in Stripe/PayPal; records the provider's reference (required, so it can be traced). Buyer told. |
+| `GET /fault-cases/supplier/me` | supplier | Their own cases, unanswered first. Shows the question, their answer and how it ended — **never** the refund amount, who bears the cost, or the platform's private notes. |
+| `POST /fault-cases/supplier/me/:id/answer` `{ canReplace, eta?, note? }` | supplier (own cases) | A "yes" needs a date (not in the past). Final: it can't be changed. Another supplier's case is a 404. |
+| `POST /hub/me/shipments/:id/events` with `step: "returned_to_supplier"` (tracking number + photo) or `"discarded_at_hub"` (photo) | hub staff | The unit physically leaves the hub. Only for a flagged shipment that has a fault case, once. |
 
-The mapping and the buyer-facing wording are the `FLAG_RESOLUTIONS` table in `src/modules/hub/routes.js` — edit the text there. The wording
-promises nothing the system can't do: **there is no automated refund**, so the problem outcomes only say the team will follow up.
+**Rules and why:**
+- **A refund is only recorded.** No refund API is integrated (Stripe and PayPal are wired for taking payment only), so the admin refunds manually
+  and marks it issued. Nothing is deducted from a supplier's payout: `cost_bearer` is recorded and shown, no more.
+- **Completion needs both** the refund issued **and** the unit back from the hub. Completing closes the flag (it leaves the admin queue and the hub
+  workload; `resolution = 'fault_refund'`) and the buyer's return case (`completed`).
+- **Each step is one database transaction**; notices to buyers and suppliers go out only after the commit, best-effort, and can never undo or
+  block a decision. A guest buyer has no account to notify and is skipped.
+- **A return case an admin already finalised by hand is left alone** — no status change, no message, no second notification.
+- **The hub sees what to send back, never the money:** `faultCase` on `GET /hub/me/shipments/:id` has the items and whether the return is still
+  needed — no refund, no cost bearer, no notes. Hub staff also see the outcome of a no-fault verdict, but not the admin's internal note.
+- **The two new hub statuses leave the hub's workload** (the unit physically left) and are excluded from the stage-timing metric. The buyer **cannot
+  cancel** a part once its unit has been returned/discarded (the refund is handled as a fault case; cancelling too would double-handle it).
+- **What the buyer sees:** an order with a return case always displays as `returns` (a return case takes priority over every other status), so
+  that is what a flagged order shows — not "dispute". The `dispute` rule in `computeDisplayStatus` now also covers the two new statuses, but only
+  matters for old flags from before return cases were opened automatically.
+- Buyer messages and notifications are stored as **one string**, so they carry English first, then Arabic, on separate lines. A stopgap until
+  they are keyed and translated per language.
+- Audit log: `flagged_shipment_resolved`, `fault_case_created`, `fault_case_refund_confirmed`, `fault_case_refund_issued` (the refund reference is
+  recorded).
+- `GET /hub/flagged` returns each unresolved flag with its `items`, `damageType`, `hubStatus` and `faultCase`. Hub staff can also tag a flag with an
+  optional kind of problem (`damageType`).
 
-**How it behaves (and why):**
-- **One decision, one place.** Resolving the shipment also closes the case and tells the buyer (a `return_status` notification, plus the
-  explanation posted to the case's buyer thread). Everything that must agree happens in a single database transaction; the notification goes out
-  after the commit, best-effort, and can never undo or block the resolution. A guest buyer has no account to notify and is skipped.
-- **A case an admin already finalised by hand is left alone.** The case is only updated while it is still `awaiting` / `in_progress`; otherwise
-  its status and the admin's own message stand, nothing is posted, and the response says `returnCase.updated: false`.
-- **Terminal outcomes deliberately stay `flagged`.** An honest record of where the shipment stopped; `resolved_at` is what removes it from
-  `GET /hub/flagged` and from `GET /hub/workload`. `discard` changes no stock numbers.
-- **Hub staff see the outcome** (`resolution` on `GET /hub/me/shipments/:id`) but **not the admin's internal note** (`resolution_notes`), which
-  is private to the platform.
-- Resolving twice, resolving a shipment that isn't an unresolved flag, or an unknown outcome is a 400; an unknown id is a 404.
-- Written to the audit log as `flagged_shipment_resolved` (outcome + the case it touched).
+**Not built yet:** creating the **replacement order** (the next patch — the admin button is shown disabled until then), the Flutter buyer and hub
+apps (they will show the new statuses unlabelled), supplier reminders, automatic payout deductions, and real Stripe/PayPal refunds.
 
-**Optional kind of problem:** `POST /hub/me/shipments/:id/events` accepts `damageType` on a `flagged` step; `GET /hub/flagged` returns it.
-
-**Known limits:** the order still shows as a "dispute" for the three terminal outcomes (the shipment never ships); there is no refund or
-re-shipment automation; the buyer messages are English only. The Flutter hub app (`hub-mobile`) was NOT changed: it can't pick a kind of
-problem, and for a terminal outcome it still shows its old "awaiting platform review" banner.
-
-**Tested:** `apps/admin-dashboard/src/flaggedResolution.integration.test.js` (9, real backend). Each test builds its own hub and hub-staff
-login (using the Hub staff feature) so the workload checks are exact. Verified to fail when the workload exclusion or the status revert is removed.
+**Tested:** `apps/admin-dashboard/src/faultCases.integration.test.js` (12) and `flaggedResolution.integration.test.js` (7), real backend. Each test
+builds its own hub and hub-staff login (using the Hub staff feature) so workload checks are exact. Verified to fail when completion stops needing
+both conditions, when supplier isolation is removed, when the buyer-cancel block is removed, or when the hub workload keeps counting returned units.
 
 ## Hub staff accounts (migration 089)
 

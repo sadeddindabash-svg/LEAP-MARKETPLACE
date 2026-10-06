@@ -445,6 +445,21 @@ are not shown as verified and the placeholder license is gone — both were chec
 `FinanceFlow` mock returned an empty `{}` for the Overview page, which crashed that page whenever it loaded before the test clicked Finance;
 it now returns a realistic overview.
 
+## Replacement requests (new, migration 091)
+
+When an admin confirms that a flagged shipment is **really faulty**, the supplier is asked whether they can send a replacement. The question appears
+at the top of the **Returns / 退货售后** page (and as a notification): the order, the faulty items, and **Yes, I can replace it** (a date you can
+send it is required) or **No, I can't**, with an optional note. The answer is final. Afterwards the card shows the answer, whether Leap is still
+deciding or refunding the buyer, and whether the faulty unit has been sent back to the supplier or discarded at the hub.
+
+- A supplier with no requests sees **no change** to the Returns page.
+- The supplier **never sees** the refund amount, who bears the cost, or the platform's private notes (the server doesn't send them).
+- **Not done yet:** the replacement itself — Leap confirming "replace", the new order appearing in the supplier's orders, and being paid for it.
+  Today the answer informs the admin's decision; the replacement order arrives in a later update.
+- Tested in `src/ReplacementFlow.test.jsx` (7, mocked fetch): no section for suppliers without requests; the question and items; a "yes" needs a
+  date; "no" needs none; a server refusal shows on the card; answered cards show the answer and the hub's progress; no money is ever shown.
+  Verified to fail when the date requirement is removed or the empty section is shown.
+
 ## Setup
 
 ```bash

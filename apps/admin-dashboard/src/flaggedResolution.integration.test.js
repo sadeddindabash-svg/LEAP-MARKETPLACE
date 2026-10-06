@@ -114,47 +114,12 @@ describe.runIf(backendUp)('resolving a flagged hub shipment against a REAL runni
     expect(note.body).toBe(`Return ${f.returnCaseId} is now rejected.`);
   }, 40000);
 
-  it('CRITICAL: "discard" ends the shipment: it leaves the queue AND the hub\'s workload, stays flagged, and the case is approved', async () => {
-    const f = await createFlaggedShipment({ damageType: 'physical_damage' });
-    const before = await workloadFor(f.hubId);
-    expect(before.totalWorkload).toBe(1);
-    expect(before.stageCounts.flagged).toBe(1);
-
-    const res = await resolve(f.shipmentId, { resolution: 'discard' });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.status).toBe('flagged'); // an honest record of where it stopped
-    expect(body.returnCase.status).toBe('approved');
-
-    expect(await queueIds()).not.toContain(f.shipmentId);
-    const after = await workloadFor(f.hubId);
-    expect(after.totalWorkload).toBe(0);
-    expect(after.stageCounts.flagged).toBe(0);
-
-    const detail = await hubDetail(f.shipmentId, f.hubToken);
-    expect(detail.status).toBe('flagged');
-    expect(detail.resolution).toBe('discard'); // hub staff can see what was decided
-    expect((await getCase(f.returnCaseId)).buyerMessages.at(-1).message).toContain('damaged beyond use');
-  }, 40000);
-
-  it('each outcome sets the case status and tells the buyer the matching thing', async () => {
-    const returned = await createFlaggedShipment();
-    const r1 = await (await resolve(returned.shipmentId, { resolution: 'return_to_supplier' })).json();
-    expect(r1.returnCase.status).toBe('approved');
-    expect((await getCase(returned.returnCaseId)).buyerMessages.at(-1).message).toContain('sent back to the supplier');
-
-    const replacement = await createFlaggedShipment();
-    const r2 = await (await resolve(replacement.shipmentId, { resolution: 'replacement_requested' })).json();
-    expect(r2.returnCase.status).toBe('in_progress'); // a replacement is still being arranged: not closed
-    expect((await getCase(replacement.returnCaseId)).buyerMessages.at(-1).message).toContain('replacement');
-  }, 60000);
-
   it('CRITICAL: a case an admin already finalised by hand is left alone: no status change, no extra message, no second notification', async () => {
     const f = await createFlaggedShipment();
     await fetch(`${BACKEND_URL}/returns/${f.returnCaseId}`, { method: 'PATCH', headers: auth(await adminToken()), body: JSON.stringify({ status: 'completed' }) });
     const messagesBefore = (await getCase(f.returnCaseId)).buyerMessages.length;
 
-    const res = await resolve(f.shipmentId, { resolution: 'discard' });
+    const res = await resolve(f.shipmentId, { resolution: 'continue_processing' });
     expect(res.status).toBe(200);
     expect((await res.json()).returnCase).toEqual({ id: f.returnCaseId, status: 'completed', updated: false });
 
@@ -165,43 +130,45 @@ describe.runIf(backendUp)('resolving a flagged hub shipment against a REAL runni
 
   it('works for a guest buyer (no account to notify) and still closes the case', async () => {
     const f = await createFlaggedShipment({ guest: true });
-    const res = await resolve(f.shipmentId, { resolution: 'return_to_supplier' });
+    const res = await resolve(f.shipmentId, { resolution: 'continue_processing' });
     expect(res.status).toBe(200);
-    expect((await res.json()).returnCase.status).toBe('approved');
-    expect((await getCase(f.returnCaseId)).status).toBe('approved');
+    expect((await res.json()).returnCase.status).toBe('rejected');
+    expect((await getCase(f.returnCaseId)).status).toBe('rejected');
   }, 40000);
 
   it('rejects an unknown outcome, resolving twice, a shipment that is not flagged, and an unknown id', async () => {
     const f = await createFlaggedShipment();
     expect((await resolve(f.shipmentId, { resolution: 'make_it_vanish' })).status).toBe(400);
     expect((await resolve(f.shipmentId, {})).status).toBe(400);
-    expect((await resolve(f.shipmentId, { resolution: 'discard' })).status).toBe(200);
-    expect((await resolve(f.shipmentId, { resolution: 'discard' })).status).toBe(400); // already resolved
 
-    // after "continue processing" the shipment is back in the flow: not a flag any more, so it can't be resolved again
-    const g = await createFlaggedShipment();
-    await resolve(g.shipmentId, { resolution: 'continue_processing' });
-    expect((await resolve(g.shipmentId, { resolution: 'discard' })).status).toBe(400);
+    // the old terminal outcomes are gone from this endpoint: a REAL fault is a fault case now
+    const old = await resolve(f.shipmentId, { resolution: 'discard' });
+    expect(old.status).toBe(400);
+    expect((await old.json()).error).toContain('fault case');
 
-    expect((await resolve(99999999, { resolution: 'discard' })).status).toBe(404);
+    expect((await resolve(f.shipmentId, { resolution: 'continue_processing' })).status).toBe(200);
+    // after "no fault" the shipment is back in the flow: not a flag any more, so it can't be resolved again
+    expect((await resolve(f.shipmentId, { resolution: 'continue_processing' })).status).toBe(400);
+
+    expect((await resolve(99999999, { resolution: 'continue_processing' })).status).toBe(404);
   }, 60000);
 
   it('only an admin with access to the Flagged page can resolve; hub staff, buyers and anonymous callers cannot', async () => {
     const f = await createFlaggedShipment();
-    expect((await resolve(f.shipmentId, { resolution: 'discard' }, f.hubToken)).status).toBe(403);
-    expect((await resolve(f.shipmentId, { resolution: 'discard' }, f.buyerToken)).status).toBe(403);
-    const anon = await fetch(`${BACKEND_URL}/hub/flagged/${f.shipmentId}/resolve`, { method: 'PATCH', headers: json, body: JSON.stringify({ resolution: 'discard' }) });
+    expect((await resolve(f.shipmentId, { resolution: 'continue_processing' }, f.hubToken)).status).toBe(403);
+    expect((await resolve(f.shipmentId, { resolution: 'continue_processing' }, f.buyerToken)).status).toBe(403);
+    const anon = await fetch(`${BACKEND_URL}/hub/flagged/${f.shipmentId}/resolve`, { method: 'PATCH', headers: json, body: JSON.stringify({ resolution: 'continue_processing' }) });
     expect(anon.status).toBe(401);
     expect(await queueIds()).toContain(f.shipmentId); // none of those changed anything
   }, 40000);
 
   it('every resolution is in the audit log with its outcome', async () => {
     const f = await createFlaggedShipment();
-    await resolve(f.shipmentId, { resolution: 'replacement_requested' });
+    await resolve(f.shipmentId, { resolution: 'continue_processing' });
     const log = await fetch(`${BACKEND_URL}/admin/audit-log?action=flagged_shipment_resolved`, { headers: auth(await adminToken()) }).then((r) => r.json());
     const entry = (Array.isArray(log) ? log : log.entries).find((e) => String(e.targetId) === String(f.shipmentId));
     expect(entry).toBeTruthy();
-    expect(entry.details.resolution).toBe('replacement_requested');
+    expect(entry.details.resolution).toBe('continue_processing');
     expect(entry.details.returnCaseId).toBe(f.returnCaseId);
   }, 40000);
 });

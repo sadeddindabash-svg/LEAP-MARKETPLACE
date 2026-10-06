@@ -521,12 +521,15 @@ page is the real fix:
   page itself uses), so an admin doesn't have to search for it manually.
 - A real empty state ("Nothing flagged right now") rather than a blank
   page when there's genuinely nothing to review.
-- **Resolve (new, migration 090)**: each flag has a **Resolve** button. The dialog asks for an outcome — false alarm (send it on),
-  return to supplier, discard, or request a replacement — and an optional internal note the buyer never sees. Each outcome's label says what
-  it does to the buyer-facing return case, because that is what the admin is really choosing: the case is closed with a matching status and
-  the buyer is notified (a case already finalised by hand is left alone, and the page says so). The flag then leaves the queue, and the sidebar
-  badge drops straight away (it used to refresh only on navigation). The queue also shows the kind of problem hub staff chose and the linked
-  return case. See `services/api/README.md`, "Resolving flagged hub shipments", for the rules and limits.
+- **Two verdicts per flag (migrations 090–091).** Every flag offers **No fault** (the hub's data was wrong: the shipment goes back into the flow,
+  the return case is closed and the buyer told) and **Real fault…**. A real fault opens a dialog to tick which items are faulty and choose who
+  bears the cost (the supplier or Leap — recorded only, nothing is deducted automatically), then shows a **fault panel** on the flag: the items,
+  who pays, what the supplier answered to "can you replace?", whether the hub has sent the unit back, and the refund. The next action is offered
+  on the panel: **Refund the buyer…** (pre-filled with the faulty items' value, editable, never above the order total) and then **Mark as
+  refunded…** once you have refunded in Stripe/PayPal (a reference is required). The case closes — and the flag leaves the queue — when the
+  refund is issued AND the hub has returned or discarded the unit. **Send a replacement** is shown but disabled until a later update. The
+  sidebar badge drops straight away (it used to refresh only on navigation). See `services/api/README.md`, "Flagged shipments: the two verdicts,
+  and fault cases", for the rules and limits.
 - **Evidence photos open full size.** Clicking a photo on a flag — and a photo in the hub timeline on the Order detail page ("View evidence") —
   opens it enlarged (`EnlargeablePhoto` in `components/ui.jsx`). Escape, the × button, or a click outside the picture closes it; clicking the
   picture itself doesn't; "Open original" opens the file in a new tab; Enter / Space open it from the keyboard. The Return Case page already
@@ -1238,16 +1241,18 @@ Sixty-six test files, 409 tests total, all passing:
   a freshly delivered order counts as "in return window", not ready to pay;
   commission rates are per category. Verified to fail when the ready /
   in-window buckets are swapped.
-- `src/flaggedResolution.integration.test.js` (9, REAL backend, new, migration 090) —
-  resolving a flagged shipment: a flag carries an optional kind of problem (invalid
-  kind rejected); "continue processing" puts the shipment back in the flow so the hub
-  can genuinely carry on, closes the case as rejected and notifies the buyer; "discard"
-  leaves the queue AND the hub's workload (exact, using an isolated hub), stays flagged,
-  approves the case; each outcome sets the right case status and buyer message; a case
-  an admin already finalised by hand is left alone; guest buyers work; unknown outcome /
-  resolving twice / not-a-flag / unknown id are rejected; only an admin with the Flagged
-  page can resolve; the audit log records it. Verified to fail when the workload
-  exclusion or the status revert is removed.
+- `src/flaggedResolution.integration.test.js` (7, REAL backend, migration 090) — the "no fault" verdict: a flag can carry a kind of problem (invalid
+  kind rejected); "continue processing" puts the shipment back in the flow so the hub can genuinely carry on, closes the case as rejected and
+  notifies the buyer; a case an admin already finalised by hand is left alone; guest buyers work; an unknown outcome, the old terminal outcomes
+  (now fault cases), resolving twice and an unknown id are rejected; only an admin with the Flagged page can resolve; the audit log records it.
+- `src/faultCases.integration.test.js` (12, REAL backend, migration 091) — a real fault: opening a case asks the supplier and tells the buyer in
+  English AND Arabic; bad requests (cost bearer, no items, an item not in the shipment, unknown shipment, a second case); only an admin with the
+  Flagged page can act; only the supplier whose order it is can answer (another supplier gets 404), a "yes" needs a valid date, an answer is
+  final; the supplier never sees money, the cost bearer or private notes; the refund default, bounds and manual "issued" with a required
+  reference; the hub needs tracking + photo to return a unit, can discard instead, sees the items but no money, and the unit leaves the hub's
+  workload; the buyer sees "returns" and can't cancel the part; the case completes only when BOTH the refund is issued and the unit is back (in
+  either order) and then the flag is closed; a confirmed fault can't be recorded as "no fault"; every step is audit-logged. Verified to fail when
+  each of: completion stops needing both, supplier isolation, the cancel block, or the workload exclusion is removed.
 - `src/recentlyViewed.integration.test.js` (4, REAL backend, new,
   migration 032) — recording a view and fetching the list shows it,
   most recent first; re-viewing a product moves it back to the front
@@ -1286,19 +1291,13 @@ Sixty-six test files, 409 tests total, all passing:
   (confirmed via direct `curl -F` testing that the actual endpoint
   itself works correctly) — switched to the well-established
   `form-data` package for reliable real multipart encoding instead.
-- `src/FlaggedShipmentsFlow.test.jsx` (12, mocked, full component tree) —
-  the sidebar shows a real count badge when something is flagged and
-  shows no badge at all when nothing is (not a stray "0"), the queue
-  page renders a real flagged entry with its real note and supplier
-  name, a real empty state shows when nothing is flagged, and clicking
-  "View order" genuinely navigates into that order's real detail page.
-  Added with migration 090 (resolving a flag): the kind of problem and return case show on the
-  flag; resolving needs an outcome, then sends the right request, tells the admin what happened
-  to the case, and the flag leaves the list AND the sidebar badge; every outcome says what it
-  does; a server error shows inside the dialog; a case already finalised by hand is reported as
-  left alone. The badge test was verified to fail when the page stops reporting its count.
-  Also: clicking a flag photo, and a photo in the order-detail hub timeline, opens it enlarged
-  (verified to fail when both go back to plain images).
+- `src/FlaggedShipmentsFlow.test.jsx` (19, mocked, full component tree) — the sidebar badge and queue; the kind of problem and return case on a
+  flag; "No fault" explains then records it and the flag leaves the list AND the sidebar badge; "Real fault…" lists every item (all ticked),
+  needs at least one, and sends only the ticked ones with the cost bearer; the fault panel shows items, who pays, the supplier's answer (yes with a
+  date, no, not yet) and the hub's progress; "Refund the buyer…" is pre-filled with the faulty items' value and sends the amount the admin settles
+  on; "Mark as refunded…" records the reference and says the case will close once the hub has sent the unit back; a server refusal shows inside the
+  dialog; the replacement button is disabled; flag photos and the order-detail hub timeline open full size. Verified to fail when the replacement
+  button is enabled, when the default refund is wrong, when the page stops reporting its count, and when photos go back to plain images.
 - `src/EnlargeablePhoto.test.jsx` (6, component) — a clickable thumbnail first and nothing enlarged;
   clicking opens the same photo full size with an "Open original" link (new tab); × / Escape / clicking
   the backdrop close it; clicking the enlarged picture itself doesn't; Enter and Space open it; several

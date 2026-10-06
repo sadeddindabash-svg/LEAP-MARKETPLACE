@@ -665,7 +665,9 @@ async function computeDisplayStatus(orderId) {
   // issue caught before it ever reached the buyer) surfaces as a real
   // dispute -- matches the mobile app's own already-confirmed
   // _buyerFacingStage logic exactly.
-  if (subOrders.some((so) => so.hub_status === 'flagged')) return 'dispute';
+  // 'returned_to_supplier' / 'discarded_at_hub' (migration 091) are a confirmed fault whose unit has left the hub:
+  // still a dispute for the buyer until the case is closed.
+  if (subOrders.some((so) => ['flagged', 'returned_to_supplier', 'discarded_at_hub'].includes(so.hub_status))) return 'dispute';
 
   // Multi-supplier orders can have genuinely MIXED real progress (one
   // hub-shipped, one still at the hub) -- if ANY real part has
@@ -787,6 +789,9 @@ router.get('/', requireAuth, requirePageAccessIfAdmin('orders'), async (req, res
 function isSubOrderCancellable(subOrderStatus, hubStatus) {
   if (subOrderStatus === 'cancelled') return false;
   if (hubStatus === 'shipped_to_buyer' || hubStatus === 'delivered') return false;
+  // The faulty unit has already left the hub and a refund is being handled as a fault case (migration 091):
+  // cancelling here too would double-handle the same money.
+  if (hubStatus === 'returned_to_supplier' || hubStatus === 'discarded_at_hub') return false;
   return true;
 }
 
