@@ -67,8 +67,8 @@ export function fetchMyShipmentById(token, shipmentId) {
   return authedGet(`/hub/me/shipments/${shipmentId}`, token);
 }
 
-export function recordShipmentEvent(token, shipmentId, { step, notes, photos, trackingNumber }) {
-  return authedMutate("POST", `/hub/me/shipments/${shipmentId}/events`, token, { step, notes, photos, trackingNumber });
+export function recordShipmentEvent(token, shipmentId, { step, notes, photos, trackingNumber, damageType }) {
+  return authedMutate("POST", `/hub/me/shipments/${shipmentId}/events`, token, { step, notes, photos, trackingNumber, damageType });
 }
 
 // Real manual delivery confirmation (migration 027, new) -- the real,

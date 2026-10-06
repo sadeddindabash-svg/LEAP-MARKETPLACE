@@ -3,6 +3,9 @@ const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { createNotification } = require('../notifications/helpers');
 const { sendTransactionalEmail } = require('../email/client');
+const { logAdminAction } = require('../audit/helpers');
+
+const DAMAGE_TYPES = ['physical_damage', 'water_damage', 'missing_parts', 'wrong_item', 'other'];
 const { deliveryNotificationEmail } = require('../email/templates');
 
 /**
@@ -109,6 +112,7 @@ router.get('/workload', requireAuth, requireRole('admin'), requirePageAccess('hu
       `SELECT hub_id, status, COUNT(*) AS n
        FROM hub_shipments
        WHERE status NOT IN ('shipped_to_buyer', 'delivered')
+         AND NOT (status = 'flagged' AND resolved_at IS NOT NULL)
        GROUP BY hub_id, status`
     );
     const byHub = {};
@@ -194,6 +198,131 @@ router.get('/performance', requireAuth, requireRole('admin'), requirePageAccess(
   }
 });
 
+// What each outcome does to the buyer-facing RETURN CASE that the flag opened automatically.
+// Chosen by the platform owner: resolving the shipment closes the case with a matching status and
+// tells the buyer, so there is one decision and one place to make it.
+//   - A false alarm ("continue_processing") is `rejected`: the quality concern was not upheld.
+//   - A confirmed problem that ends the shipment (return to supplier / discard) is `approved`.
+//   - A replacement is still being arranged, so the case stays `in_progress`.
+// The wording is deliberately plain and promises nothing the system can't do: it has no automated
+// refund, so the problem outcomes only say the team will follow up. Edit the text here.
+const FLAG_RESOLUTIONS = {
+  continue_processing: {
+    caseStatus: 'rejected',
+    buyerMessage: 'We inspected your item and found no problem with it, so no return is needed. Your order will continue on its way to you as normal.',
+  },
+  return_to_supplier: {
+    caseStatus: 'approved',
+    buyerMessage: 'Our inspection found a problem with your item, so it has been sent back to the supplier and will not be shipped to you. Our team will contact you about next steps.',
+  },
+  discard: {
+    caseStatus: 'approved',
+    buyerMessage: 'Our inspection found that your item was damaged beyond use, so it will not be shipped to you. Our team will contact you about next steps.',
+  },
+  replacement_requested: {
+    caseStatus: 'in_progress',
+    buyerMessage: 'Our inspection found a problem with your item. We have asked the supplier for a replacement and will update you when it is on its way.',
+  },
+};
+
+// PATCH /hub/flagged/:id/resolve { resolution, resolutionNotes? } — admin-only (migration 090).
+//
+// - continue_processing: the shipment goes back to the last real step it completed, so the hub can
+//   carry on and the order can finally be delivered (and the supplier paid).
+// - return_to_supplier / discard / replacement_requested: the shipment deliberately STAYS 'flagged'
+//   (an honest record of where it stopped); `resolved_at` is what removes it from the queue and from
+//   the hub's workload.
+// The linked return case is updated only while it is still open (awaiting / in_progress): if an admin
+// has already finalised it by hand, their decision and message stand and nothing is sent twice.
+// Everything that must agree happens in ONE transaction; the buyer notification goes out after the
+// commit and can never undo or block the resolution.
+router.patch('/flagged/:id/resolve', requireAuth, requireRole('admin'), requirePageAccess('flagged'), async (req, res, next) => {
+  const client = await db.getPool().connect();
+  try {
+    const { resolution, resolutionNotes } = req.body || {};
+    const outcome = FLAG_RESOLUTIONS[resolution];
+    if (!outcome) {
+      return res.status(400).json({ error: `resolution must be one of: ${Object.keys(FLAG_RESOLUTIONS).join(', ')}` });
+    }
+    const notes = typeof resolutionNotes === 'string' && resolutionNotes.trim() ? resolutionNotes.trim() : null;
+
+    await client.query('BEGIN');
+    const { rows } = await client.query('SELECT * FROM hub_shipments WHERE id = $1 FOR UPDATE', [req.params.id]);
+    if (rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Shipment not found' });
+    }
+    const shipment = rows[0];
+    if (shipment.status !== 'flagged' || shipment.resolved_at) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'This shipment is not an unresolved flag.' });
+    }
+
+    let newStatus = 'flagged';
+    if (resolution === 'continue_processing') {
+      const { rows: last } = await client.query(
+        `SELECT step FROM hub_shipment_events WHERE shipment_id = $1 AND step != 'flagged' ORDER BY created_at DESC, id DESC LIMIT 1`,
+        [shipment.id]
+      );
+      newStatus = last.length > 0 ? last[0].step : 'awaiting_receipt';
+    }
+    const { rows: updated } = await client.query(
+      `UPDATE hub_shipments SET status = $1, resolution = $2, resolution_notes = $3, resolved_at = now(), resolved_by = $4, updated_at = now()
+       WHERE id = $5 RETURNING *`,
+      [newStatus, resolution, notes, req.user.sub, shipment.id]
+    );
+
+    let returnCase = null;
+    let notify = null;
+    const { rows: caseRows } = await client.query(
+      'SELECT * FROM return_cases WHERE sub_order_id = $1 ORDER BY created_at DESC LIMIT 1 FOR UPDATE',
+      [shipment.sub_order_id]
+    );
+    if (caseRows.length > 0) {
+      const rc = caseRows[0];
+      returnCase = { id: rc.id, status: rc.status, updated: false };
+      if (rc.status === 'awaiting' || rc.status === 'in_progress') {
+        await client.query('UPDATE return_cases SET status = $1, updated_at = now() WHERE id = $2', [outcome.caseStatus, rc.id]);
+        await client.query(
+          `INSERT INTO return_case_buyer_messages (case_id, sender_role, message) VALUES ($1, 'admin', $2)`,
+          [rc.id, outcome.buyerMessage]
+        );
+        returnCase = { id: rc.id, status: outcome.caseStatus, updated: true };
+        notify = { userId: rc.buyer_id, caseId: rc.id, orderId: rc.order_id, status: outcome.caseStatus, statusChanged: rc.status !== outcome.caseStatus };
+      }
+    }
+    await client.query('COMMIT');
+
+    // After the commit: best-effort. A guest buyer has no account to notify.
+    if (notify && notify.userId) {
+      try {
+        await createNotification({
+          userId: notify.userId,
+          type: 'return_status',
+          title: 'Your return request was updated',
+          body: notify.statusChanged ? `Return ${notify.caseId} is now ${notify.status}.` : `There is an update on return ${notify.caseId}.`,
+          linkType: 'order',
+          linkId: notify.orderId,
+        });
+      } catch (notifyErr) {
+        console.error('[flag-resolution] buyer notification failed (non-fatal):', notifyErr.message);
+      }
+    }
+    await logAdminAction(req, 'flagged_shipment_resolved', 'hub_shipment', String(shipment.id), {
+      resolution, returnCaseId: returnCase ? returnCase.id : null, returnCaseStatus: returnCase ? returnCase.status : null,
+    });
+    res.json({
+      id: updated[0].id, status: updated[0].status, resolution: updated[0].resolution,
+      resolutionNotes: updated[0].resolution_notes, resolvedAt: updated[0].resolved_at, returnCase,
+    });
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch { /* already rolled back */ }
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
 // PATCH /hub/assign/:subOrderId  { hubId } — admin assigns which hub a
 // sub-order routes through. Required before a supplier can mark it shipped.
 router.patch('/assign/:subOrderId', requireAuth, requireRole('admin'), requirePageAccess('hubs'), async (req, res, next) => {
@@ -229,7 +358,7 @@ router.get('/flagged', requireAuth, requireRole('admin'), requirePageAccess('fla
        JOIN supplier_sub_orders so ON so.id = hs.sub_order_id
        JOIN suppliers s ON s.id = so.supplier_id
        LEFT JOIN hubs h ON h.id = hs.hub_id
-       WHERE hs.status = 'flagged'
+       WHERE hs.status = 'flagged' AND hs.resolved_at IS NULL
        ORDER BY hs.updated_at DESC`
     );
     const shipments = await Promise.all(rows.map(async (r) => {
@@ -254,7 +383,7 @@ router.get('/flagged', requireAuth, requireRole('admin'), requirePageAccess('fla
         id: r.id, subOrderId: r.sub_order_id, orderId: r.order_id,
         supplierName: r.supplier_name, hubName: r.hub_name,
         flaggedAt: r.updated_at, flagNote: flagEvent?.notes || null,
-        flagPhotos: flagEvent?.photos || [],
+        flagPhotos: flagEvent?.photos || [], damageType: flagEvent?.damageType || null,
         returnCaseId: caseRows[0]?.id || null,
       };
     }));
@@ -281,7 +410,7 @@ async function attachEventsAndPhotos(shipmentRow) {
     return {
       id: e.id, step: e.step, notes: e.notes, trackingNumber: e.tracking_number,
       performedBy: e.performed_by_email, createdAt: e.created_at,
-      photos: photos.map((p) => p.url),
+      photos: photos.map((p) => p.url), damageType: e.damage_type,
     };
   }));
   return eventsWithPhotos;
@@ -391,6 +520,10 @@ router.get('/me/shipments/:id', requireAuth, requireRole('hub_staff'), async (re
     res.json({
       id: rows[0].id, status: rows[0].status, createdAt: rows[0].created_at, updatedAt: rows[0].updated_at,
       orderId: rows[0].order_id, supplierName: rows[0].supplier_name,
+      // Outcome of a flag once an admin has resolved it (migration 090); null until then. The admin's
+      // internal note (resolution_notes) is deliberately NOT included: hub staff need the outcome, not
+      // the platform's private remarks.
+      resolution: rows[0].resolution, resolvedAt: rows[0].resolved_at,
       shipmentIndex, totalShipments, otherShipments,
       items: itemsWithAttributes,
       deliveryAddress,
@@ -570,13 +703,17 @@ router.patch('/me/shipments/:id/items/:productId/received', requireAuth, require
 //     "evidence at each step" requirement)
 //   - trackingNumber required specifically for the shipped_to_buyer step
 router.post('/me/shipments/:id/events', requireAuth, requireRole('hub_staff'), async (req, res, next) => {
-  const { step, notes, photos, trackingNumber } = req.body || {};
+  const { step, notes, photos, trackingNumber, damageType } = req.body || {};
   if (!step) return res.status(400).json({ error: 'step is required' });
   if (!Array.isArray(photos) || photos.length < 1) {
     return res.status(400).json({ error: 'At least 1 evidence photo is required for this step' });
   }
   if (step === 'shipped_to_buyer' && !trackingNumber) {
     return res.status(400).json({ error: 'trackingNumber is required for the shipped_to_buyer step' });
+  }
+  // Optional kind-of-problem for a flag (migration 090). Only meaningful on 'flagged'; ignored otherwise.
+  if (damageType !== undefined && damageType !== null && !DAMAGE_TYPES.includes(damageType)) {
+    return res.status(400).json({ error: `damageType must be one of: ${DAMAGE_TYPES.join(', ')}` });
   }
 
   const client = await db.getPool().connect();
@@ -608,8 +745,8 @@ router.post('/me/shipments/:id/events', requireAuth, requireRole('hub_staff'), a
     }
 
     const eventRes = await client.query(
-      `INSERT INTO hub_shipment_events (shipment_id, step, notes, tracking_number, performed_by) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [shipment.id, step, notes || null, step === 'shipped_to_buyer' ? trackingNumber : null, req.user.sub]
+      `INSERT INTO hub_shipment_events (shipment_id, step, notes, tracking_number, performed_by, damage_type) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [shipment.id, step, notes || null, step === 'shipped_to_buyer' ? trackingNumber : null, req.user.sub, step === 'flagged' ? (damageType || null) : null]
     );
     const eventId = eventRes.rows[0].id;
     for (let i = 0; i < photos.length; i++) {

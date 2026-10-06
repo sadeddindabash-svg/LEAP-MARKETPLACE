@@ -8,15 +8,25 @@ const MOCK_FLAGGED = [
   { id: 335, subOrderId: 2222, orderId: 'LP-900555', supplierName: 'Guangzhou AutoParts Co.', hubName: 'Guangzhou Inspection Hub', flaggedAt: '2026-07-15T15:17:45.581Z', flagNote: 'Wrong part received', flagPhotos: ['/uploads/flag-evidence.jpg'] },
 ];
 
-function mockFetchRouter({ flagged = MOCK_FLAGGED } = {}) {
-  return vi.fn((url) => {
+function mockFetchRouter({ flagged = MOCK_FLAGGED, resolveResponse, resolveCalls = [] } = {}) {
+  let queue = [...flagged];
+  return vi.fn((url, options) => {
     const u = String(url);
+    // PATCH /hub/flagged/:id/resolve (migration 090)
+    const resolveMatch = u.match(/\/hub\/flagged\/(\d+)\/resolve$/);
+    if (resolveMatch && options?.method === 'PATCH') {
+      const body = JSON.parse(options.body);
+      resolveCalls.push({ id: Number(resolveMatch[1]), ...body });
+      if (resolveResponse) return Promise.resolve(resolveResponse);
+      queue = queue.filter((q) => q.id !== Number(resolveMatch[1]));
+      return Promise.resolve({ ok: true, json: async () => ({ id: Number(resolveMatch[1]), status: 'flagged', resolution: body.resolution, returnCase: { id: 'RC-7', status: body.resolution === 'continue_processing' ? 'rejected' : 'approved', updated: true } }) });
+    }
     if (u.includes('/auth/login')) return Promise.resolve({ ok: true, json: async () => ({ token: 'fake.jwt.token', user: ADMIN_USER }) });
     if (u.includes('/auth/me')) return Promise.resolve({ ok: true, json: async () => ADMIN_USER });
     if (u.endsWith('/overview')) {
       return Promise.resolve({ ok: true, json: async () => ({ totalOrders: 0, activeSuppliers: 0, pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, openTickets: 0, ordersByDay: [], unitsByCategory: [], topSuppliers: [] }) });
     }
-    if (u.endsWith('/hub/flagged')) return Promise.resolve({ ok: true, json: async () => flagged });
+    if (u.endsWith('/hub/flagged')) return Promise.resolve({ ok: true, json: async () => queue });
     // REAL, PRE-EXISTING BUG FOUND AND FIXED HERE (unrelated to
     // whatever else this session was touching when this was found):
     // this mock had no /supplier case at all, so SupplierAnalyticsPicker
@@ -106,5 +116,83 @@ describe('Flagged Shipments — the real queue and sidebar badge (mocked fetch, 
     fireEvent.click(screen.getByRole('button', { name: /view order/i }));
 
     await waitFor(() => expect(screen.getAllByText('LP-900555').length).toBeGreaterThan(0));
+  });
+});
+
+describe('Flagged Shipments — resolving a flag (mocked fetch, real component tree)', () => {
+  const FLAG_WITH_DETAILS = [{ ...MOCK_FLAGGED[0], damageType: 'water_damage', returnCaseId: 'RC-7' }];
+
+  async function openFlaggedPage(options) {
+    globalThis.fetch = mockFetchRouter(options);
+    render(<LeapAdminApp />);
+    await login();
+    fireEvent.click(screen.getByRole('button', { name: /flagged shipments/i }));
+    await waitFor(() => expect(screen.getByText('LP-900555')).toBeInTheDocument());
+  }
+  const dialogPanel = () => screen.getByText(/^Resolve flag — LP-900555$/).parentElement;
+  const fieldIn = (panel, label) => within(panel).getByText(label).parentElement.querySelector('input, select');
+
+  it('shows the kind of problem and the linked return case on the flag', async () => {
+    await openFlaggedPage({ flagged: FLAG_WITH_DETAILS });
+    expect(screen.getByText('Water damage')).toBeInTheDocument();
+    expect(screen.getByText(/Return case RC-7/)).toBeInTheDocument();
+  });
+
+  it('CRITICAL: resolving needs an outcome; with one it sends the right request, tells the admin what happened to the case, and the flag leaves the list and the sidebar badge', async () => {
+    const resolveCalls = [];
+    await openFlaggedPage({ flagged: FLAG_WITH_DETAILS, resolveCalls });
+    // "Flagged Shipments" is now both the sidebar item and the page title, so pick the sidebar button.
+    const sidebarItem = screen.getAllByText('Flagged Shipments').map((el) => el.closest('button')).find(Boolean);
+    await waitFor(() => expect(within(sidebarItem).getByText('1')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /^resolve$/i }));
+    const panel = dialogPanel();
+
+    // saving with no outcome is refused, and nothing is sent
+    fireEvent.click(within(panel).getByRole('button', { name: /^save$/i }));
+    expect(within(panel).getByText('Choose an outcome.')).toBeInTheDocument();
+    expect(resolveCalls).toHaveLength(0);
+
+    fireEvent.change(fieldIn(panel, 'Outcome'), { target: { value: 'discard' } });
+    fireEvent.change(fieldIn(panel, 'Internal note (optional — the buyer does not see this)'), { target: { value: '  crushed beyond use ' } });
+    fireEvent.click(within(panel).getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => expect(screen.getByText(/Return case RC-7 is now approved and the buyer was told\./)).toBeInTheDocument());
+    expect(resolveCalls).toEqual([{ id: 335, resolution: 'discard', resolutionNotes: 'crushed beyond use' }]);
+    await waitFor(() => expect(screen.getByText(/nothing flagged right now/i)).toBeInTheDocument());
+    // the badge on the sidebar dropped straight away (it used to refresh only when navigating)
+    expect(within(sidebarItem).queryByText('1')).not.toBeInTheDocument();
+  });
+
+  it('every outcome is offered, and each says what happens to the buyer or the case', async () => {
+    await openFlaggedPage({ flagged: FLAG_WITH_DETAILS });
+    fireEvent.click(screen.getByRole('button', { name: /^resolve$/i }));
+    const select = fieldIn(dialogPanel(), 'Outcome');
+    const labels = Array.from(select.querySelectorAll('option')).map((o) => o.textContent);
+    expect(labels).toEqual(expect.arrayContaining([
+      expect.stringMatching(/False alarm.*no problem was found/),
+      expect.stringMatching(/Return to supplier.*won't be shipped/),
+      expect.stringMatching(/Discard.*won't be shipped/),
+      expect.stringMatching(/replacement.*stays open/),
+    ]));
+  });
+
+  it('a server error is shown inside the open dialog and the flag stays in the list', async () => {
+    await openFlaggedPage({ resolveResponse: { ok: false, status: 400, json: async () => ({ error: 'This shipment is not an unresolved flag.' }) } });
+    fireEvent.click(screen.getByRole('button', { name: /^resolve$/i }));
+    const panel = dialogPanel();
+    fireEvent.change(fieldIn(panel, 'Outcome'), { target: { value: 'continue_processing' } });
+    fireEvent.click(within(panel).getByRole('button', { name: /^save$/i }));
+    expect(await within(panel).findByText('This shipment is not an unresolved flag.')).toBeInTheDocument();
+    expect(screen.getByText('LP-900555')).toBeInTheDocument();
+  });
+
+  it('says so when a return case was already finalised by hand and was left alone', async () => {
+    await openFlaggedPage({ resolveResponse: { ok: true, json: async () => ({ id: 335, status: 'flagged', returnCase: { id: 'RC-7', status: 'completed', updated: false } }) } });
+    fireEvent.click(screen.getByRole('button', { name: /^resolve$/i }));
+    const panel = dialogPanel();
+    fireEvent.change(fieldIn(panel, 'Outcome'), { target: { value: 'discard' } });
+    fireEvent.click(within(panel).getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(screen.getByText(/Return case RC-7 was already completed, so it was left as it is\./)).toBeInTheDocument());
   });
 });

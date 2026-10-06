@@ -60,6 +60,14 @@ const STRINGS = {
       deliveryNotePlaceholder: "例如：物流轨迹未更新，买家已通过聊天确认收货",
       confirming: "确认中…", confirmDelivered: "确认已送达",
       flaggedBanner: "此包裹已标记问题，等待平台审核。",
+      damageTypeLabel: "问题类型（可选）", damageTypePlaceholder: "— 请选择 —",
+      damageTypes: { physical_damage: "外观损坏", water_damage: "进水损坏", missing_parts: "缺少配件", wrong_item: "商品错发", other: "其他" },
+      resolvedBanners: {
+        continue_processing: "平台已审核：未发现问题，请继续处理此包裹。",
+        return_to_supplier: "平台已处理：此包裹将退回供应商。",
+        discard: "平台已处理：此包裹已作废，不会寄给买家。",
+        replacement_requested: "平台已处理：已向供应商申请换货。",
+      },
       completedBanner: "此包裹已完成送达买家的全部流程。",
       history: "历史记录", noSteps: "暂无记录步骤。",
       tracking: (n) => `运单号：${n}`, by: (name) => `操作人：${name}`,
@@ -103,6 +111,14 @@ const STRINGS = {
       deliveryNotePlaceholder: "e.g. tracking never updated, buyer confirmed receipt via chat",
       confirming: "Confirming…", confirmDelivered: "Confirm delivered",
       flaggedBanner: "This shipment is flagged and awaiting platform review.",
+      damageTypeLabel: "Kind of problem (optional)", damageTypePlaceholder: "— Select —",
+      damageTypes: { physical_damage: "Physical damage", water_damage: "Water damage", missing_parts: "Missing parts", wrong_item: "Wrong item", other: "Other" },
+      resolvedBanners: {
+        continue_processing: "Platform review: no problem found — please carry on processing this shipment.",
+        return_to_supplier: "Resolved by the platform: this shipment is being returned to the supplier.",
+        discard: "Resolved by the platform: this shipment was discarded and will not go to the buyer.",
+        replacement_requested: "Resolved by the platform: a replacement has been requested from the supplier.",
+      },
       completedBanner: "This shipment has completed its journey to the buyer.",
       history: "History", noSteps: "No steps recorded yet.",
       tracking: (n) => `Tracking: ${n}`, by: (name) => `by ${name}`,
@@ -333,6 +349,7 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showFlagForm, setShowFlagForm] = useState(false);
+  const [damageType, setDamageType] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
 
   const load = () => {
@@ -376,8 +393,9 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
       await recordShipmentEvent(getStoredToken(), shipmentId, {
         step, notes: notes.trim() || undefined, photos: photos.map((p) => p.url),
         trackingNumber: step === "shipped_to_buyer" ? trackingNumber.trim() : undefined,
+        damageType: step === "flagged" && damageType ? damageType : undefined,
       });
-      setNotes(""); setTrackingNumber(""); setPhotos([]); setShowFlagForm(false);
+      setNotes(""); setTrackingNumber(""); setPhotos([]); setDamageType(""); setShowFlagForm(false);
       load();
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
@@ -479,7 +497,7 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
               {isSubmitting ? t.detail.saving : stepText.actionLabel}
             </button>
             <button
-              onClick={() => { setShowFlagForm(true); setPhotos([]); setNotes(""); setErrorMessage(null); }}
+              onClick={() => { setShowFlagForm(true); setPhotos([]); setNotes(""); setDamageType(""); setErrorMessage(null); }}
               style={{ ...body, width: "100%", marginTop: 8, padding: "11px 16px", borderRadius: 9, border: `1px solid ${C.red}`, background: "#fff", color: C.red, fontWeight: 700, fontSize: 13, cursor: "pointer" }}
             >
               {t.detail.flagInstead}
@@ -499,6 +517,17 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
 
             <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 8 }}>{t.detail.evidencePhotos.toUpperCase()}</div>
             <EvidencePhotoPicker photos={photos} onAdd={handleAddPhoto} onRemove={removePhoto} isUploading={isUploadingPhoto} />
+
+            <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, margin: "16px 0 8px" }}>{t.detail.damageTypeLabel.toUpperCase()}</div>
+            <select
+              aria-label={t.detail.damageTypeLabel}
+              value={damageType}
+              onChange={(e) => setDamageType(e.target.value)}
+              style={{ ...body, width: "100%", boxSizing: "border-box", borderRadius: 8, border: `1px solid ${C.line}`, padding: 10, fontSize: 13, background: "#fff" }}
+            >
+              <option value="">{t.detail.damageTypePlaceholder}</option>
+              {Object.entries(t.detail.damageTypes).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
 
             <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, margin: "16px 0 8px" }}>{t.detail.whatsWrong.toUpperCase()}</div>
             <textarea
@@ -545,7 +574,15 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
 
         {isTerminal && (
           <div style={{ background: shipment.status === "flagged" ? C.redBg : C.gaugeBg, borderRadius: 10, padding: 14, ...body, fontSize: 13, color: shipment.status === "flagged" ? C.red : C.gauge, fontWeight: 700 }}>
-            {shipment.status === "flagged" ? t.detail.flaggedBanner : t.detail.completedBanner}
+            {shipment.status === "flagged" ? (shipment.resolution ? t.detail.resolvedBanners[shipment.resolution] : t.detail.flaggedBanner) : t.detail.completedBanner}
+          </div>
+        )}
+
+        {/* A false alarm puts the shipment back in the flow, so it is no longer terminal -- tell the
+            hub why it is moving again, instead of silently reappearing. */}
+        {!isTerminal && shipment.resolution === "continue_processing" && (
+          <div style={{ background: C.gaugeBg, borderRadius: 10, padding: 14, ...body, fontSize: 13, color: C.gauge, fontWeight: 700 }}>
+            {t.detail.resolvedBanners.continue_processing}
           </div>
         )}
 

@@ -521,6 +521,12 @@ page is the real fix:
   page itself uses), so an admin doesn't have to search for it manually.
 - A real empty state ("Nothing flagged right now") rather than a blank
   page when there's genuinely nothing to review.
+- **Resolve (new, migration 090)**: each flag has a **Resolve** button. The dialog asks for an outcome — false alarm (send it on),
+  return to supplier, discard, or request a replacement — and an optional internal note the buyer never sees. Each outcome's label says what
+  it does to the buyer-facing return case, because that is what the admin is really choosing: the case is closed with a matching status and
+  the buyer is notified (a case already finalised by hand is left alone, and the page says so). The flag then leaves the queue, and the sidebar
+  badge drops straight away (it used to refresh only on navigation). The queue also shows the kind of problem hub staff chose and the linked
+  return case. See `services/api/README.md`, "Resolving flagged hub shipments", for the rules and limits.
 
 ## Categories page (new — a supplier now picks from a real list instead of typing free text)
 
@@ -1228,6 +1234,16 @@ Sixty-six test files, 409 tests total, all passing:
   a freshly delivered order counts as "in return window", not ready to pay;
   commission rates are per category. Verified to fail when the ready /
   in-window buckets are swapped.
+- `src/flaggedResolution.integration.test.js` (9, REAL backend, new, migration 090) —
+  resolving a flagged shipment: a flag carries an optional kind of problem (invalid
+  kind rejected); "continue processing" puts the shipment back in the flow so the hub
+  can genuinely carry on, closes the case as rejected and notifies the buyer; "discard"
+  leaves the queue AND the hub's workload (exact, using an isolated hub), stays flagged,
+  approves the case; each outcome sets the right case status and buyer message; a case
+  an admin already finalised by hand is left alone; guest buyers work; unknown outcome /
+  resolving twice / not-a-flag / unknown id are rejected; only an admin with the Flagged
+  page can resolve; the audit log records it. Verified to fail when the workload
+  exclusion or the status revert is removed.
 - `src/recentlyViewed.integration.test.js` (4, REAL backend, new,
   migration 032) — recording a view and fetching the list shows it,
   most recent first; re-viewing a product moves it back to the front
@@ -1266,12 +1282,17 @@ Sixty-six test files, 409 tests total, all passing:
   (confirmed via direct `curl -F` testing that the actual endpoint
   itself works correctly) — switched to the well-established
   `form-data` package for reliable real multipart encoding instead.
-- `src/FlaggedShipmentsFlow.test.jsx` (5, mocked, full component tree) —
+- `src/FlaggedShipmentsFlow.test.jsx` (10, mocked, full component tree) —
   the sidebar shows a real count badge when something is flagged and
   shows no badge at all when nothing is (not a stray "0"), the queue
   page renders a real flagged entry with its real note and supplier
   name, a real empty state shows when nothing is flagged, and clicking
   "View order" genuinely navigates into that order's real detail page.
+  Added with migration 090 (resolving a flag): the kind of problem and return case show on the
+  flag; resolving needs an outcome, then sends the right request, tells the admin what happened
+  to the case, and the flag leaves the list AND the sidebar badge; every outcome says what it
+  does; a server error shows inside the dialog; a case already finalised by hand is reported as
+  left alone. The badge test was verified to fail when the page stops reporting its count.
 - `src/categoryParts.integration.test.js` (8, REAL backend) — real
   seeded categories/parts are publicly readable with no auth required;
   a category outside the real list is rejected; a part that isn't real

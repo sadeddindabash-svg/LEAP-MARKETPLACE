@@ -3223,6 +3223,47 @@ same supplier at the same time, the tests look a payout up by its own id and che
 the admin figure, retried to tolerate a concurrent payout) instead of exact running totals. Verified to fail when the ready / in-window
 buckets are swapped.
 
+## Resolving flagged hub shipments (migration 090)
+
+**The gap:** a hub staff member flagging a shipment already opened a return case automatically, and an admin could work that case (messages,
+statuses, buyer notifications). But the hub *shipment* stayed `flagged` forever, whatever the admin decided. A false alarm therefore blocked
+the order permanently (it could never be delivered, so the supplier was never paid), the Flagged Shipments queue never shrank, and the hub's
+workload kept counting handled shipments.
+
+**`PATCH /hub/flagged/:id/resolve` `{ resolution, resolutionNotes? }`** — admin only, needs access to the Flagged page. Outcomes:
+
+| `resolution` | The shipment | The linked return case (the buyer sees this) |
+|---|---|---|
+| `continue_processing` (false alarm) | goes back to the last real step it completed, so the hub carries on | `rejected` — "no problem found, your order continues" |
+| `return_to_supplier` | stays `flagged`; leaves the queue and the workload | `approved` — "sent back to the supplier, won't be shipped to you" |
+| `discard` | stays `flagged`; leaves the queue and the workload | `approved` — "damaged beyond use, won't be shipped to you" |
+| `replacement_requested` | stays `flagged`; leaves the queue and the workload | `in_progress` — "a replacement has been requested" (not closed) |
+
+The mapping and the buyer-facing wording are the `FLAG_RESOLUTIONS` table in `src/modules/hub/routes.js` — edit the text there. The wording
+promises nothing the system can't do: **there is no automated refund**, so the problem outcomes only say the team will follow up.
+
+**How it behaves (and why):**
+- **One decision, one place.** Resolving the shipment also closes the case and tells the buyer (a `return_status` notification, plus the
+  explanation posted to the case's buyer thread). Everything that must agree happens in a single database transaction; the notification goes out
+  after the commit, best-effort, and can never undo or block the resolution. A guest buyer has no account to notify and is skipped.
+- **A case an admin already finalised by hand is left alone.** The case is only updated while it is still `awaiting` / `in_progress`; otherwise
+  its status and the admin's own message stand, nothing is posted, and the response says `returnCase.updated: false`.
+- **Terminal outcomes deliberately stay `flagged`.** An honest record of where the shipment stopped; `resolved_at` is what removes it from
+  `GET /hub/flagged` and from `GET /hub/workload`. `discard` changes no stock numbers.
+- **Hub staff see the outcome** (`resolution` on `GET /hub/me/shipments/:id`) but **not the admin's internal note** (`resolution_notes`), which
+  is private to the platform.
+- Resolving twice, resolving a shipment that isn't an unresolved flag, or an unknown outcome is a 400; an unknown id is a 404.
+- Written to the audit log as `flagged_shipment_resolved` (outcome + the case it touched).
+
+**Optional kind of problem:** `POST /hub/me/shipments/:id/events` accepts `damageType` on a `flagged` step; `GET /hub/flagged` returns it.
+
+**Known limits:** the order still shows as a "dispute" for the three terminal outcomes (the shipment never ships); there is no refund or
+re-shipment automation; the buyer messages are English only. The Flutter hub app (`hub-mobile`) was NOT changed: it can't pick a kind of
+problem, and for a terminal outcome it still shows its old "awaiting platform review" banner.
+
+**Tested:** `apps/admin-dashboard/src/flaggedResolution.integration.test.js` (9, real backend). Each test builds its own hub and hub-staff
+login (using the Hub staff feature) so the workload checks are exact. Verified to fail when the workload exclusion or the status revert is removed.
+
 ## Hub staff accounts (migration 089)
 
 **The gap this closes:** until now nothing could create a hub staff login. Public sign-up only makes buyers, the admin "Team" feature

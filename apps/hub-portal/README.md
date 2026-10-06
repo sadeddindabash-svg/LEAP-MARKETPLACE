@@ -198,6 +198,17 @@ shipment, confirmed searching by a real supplier name does the same,
 and confirmed a search matching nothing shows the real empty state
 rather than an error. 16/16 passing across the full suite.
 
+## Flagging with a kind of problem, and seeing the outcome (new, migration 090)
+
+- The "flag a quality issue" form has an **optional** "kind of problem" dropdown (physical damage, water damage, missing parts, wrong item,
+  other), sent as `damageType`; the admin's Flagged Shipments page shows it. It stays optional: a flag with none chosen works exactly as before.
+- Before this, a flagged shipment said "awaiting platform review" **forever**. Now, once an admin resolves it, hub staff see the outcome:
+  false alarm (**the shipment goes back into the flow** and a banner says why it is moving again), returned to the supplier, discarded, or
+  replacement requested. Hub staff see the outcome but **not the admin's internal note**.
+- Tested in `src/FlagFlow.test.jsx` (7, mocked fetch); the kind-sent and resolved-banner tests were verified to fail when the behavior is removed.
+- **Not done:** the Flutter hub app (`apps/hub-mobile`) was not changed — it has no kind-of-problem picker, and for a terminal outcome it still
+  shows its old "awaiting platform review" banner.
+
 ## Real bilingual support (new) — closes this portal's own #1 flagged gap
 
 **This portal's own README had flagged English-only as the #1 next

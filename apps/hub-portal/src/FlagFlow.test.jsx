@@ -1,0 +1,132 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import LeapHubPortalApp from './App';
+
+const HUB_USER = { id: 'hub_staff_dev_seed', email: 'hub@leap.dev', name: 'Mei Lin', role: 'hub_staff', hubId: 'hub_guangzhou' };
+const SUMMARY = (status) => ({ id: 42, status, createdAt: '2026-07-14T00:00:00.000Z', updatedAt: '2026-07-14T00:00:00.000Z', subOrderId: 100, orderId: 'LP-200999', supplierName: 'Guangzhou AutoParts Co.', itemCount: 1 });
+const DETAIL = (over) => ({
+  id: 42, status: 'received', createdAt: '2026-07-14T00:00:00.000Z', updatedAt: '2026-07-14T00:00:00.000Z',
+  orderId: 'LP-200999', supplierName: 'Guangzhou AutoParts Co.',
+  items: [{ productId: 'p1', name: 'RIDEX Front Brake Disc, Vented 300mm', quantity: 1 }],
+  events: [], resolution: null, resolvedAt: null, ...over,
+});
+
+// Mocked backend. `detail` overrides the shipment detail; `eventCalls` collects every flag/step POST body.
+function mockBackend({ detail = DETAIL(), eventCalls = [] } = {}) {
+  return vi.fn((url, options) => {
+    const u = String(url);
+    const method = options?.method || 'GET';
+    const ok = (body, status = 200) => Promise.resolve({ ok: true, status, json: async () => body });
+    if (u.includes('/auth/login')) return ok({ token: 'fake.jwt.token', user: HUB_USER });
+    if (u.includes('/auth/me')) return ok(HUB_USER);
+    if (u.endsWith('/hub/me/shipments')) return ok([SUMMARY(detail.status)]);
+    if (u.endsWith('/hub/me/shipments/42')) return ok(detail);
+    if (method === 'POST' && u.endsWith('/uploads/product-image')) return ok({ url: '/uploads/evidence.jpg' }, 201);
+    if (method === 'POST' && u.endsWith('/hub/me/shipments/42/events')) {
+      eventCalls.push(JSON.parse(options.body));
+      return ok({ id: 42, status: 'flagged' }, 201);
+    }
+    return ok({});
+  });
+}
+
+// Language-independent selectors (the portal defaults to Chinese), like App.test.jsx.
+async function loginAndOpenShipment() {
+  await waitFor(() => document.getElementById('hub-email'));
+  fireEvent.change(document.getElementById('hub-email'), { target: { value: 'hub@leap.dev' } });
+  fireEvent.change(document.getElementById('hub-password'), { target: { value: 'hub_dev_password_123' } });
+  fireEvent.click(document.querySelector('button[type="submit"]'));
+  fireEvent.click(await screen.findByText('LP-200999'));
+}
+
+async function openFlagFormAndAttachPhoto() {
+  await waitFor(() => screen.getByText('改为标记质量问题'));
+  fireEvent.click(screen.getByText('改为标记质量问题'));
+  await screen.findByText('标记质量问题');
+  const file = new File(['x'], 'evidence.jpg', { type: 'image/jpeg' });
+  fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [file] } });
+  await waitFor(() => expect(document.querySelector('img[src*="evidence.jpg"]')).toBeInTheDocument());
+}
+
+beforeEach(() => { localStorage.clear(); });
+afterEach(() => { vi.restoreAllMocks(); });
+
+describe('Hub Portal — flagging with an optional kind of problem (mocked fetch, real component tree)', () => {
+  it('the flag form offers an optional kind-of-problem dropdown with every kind, empty by default', async () => {
+    globalThis.fetch = mockBackend();
+    render(<LeapHubPortalApp />);
+    await loginAndOpenShipment();
+    await waitFor(() => screen.getByText('改为标记质量问题'));
+    fireEvent.click(screen.getByText('改为标记质量问题'));
+
+    const select = await screen.findByLabelText('问题类型（可选）');
+    expect(select.value).toBe('');
+    const labels = Array.from(select.querySelectorAll('option')).map((o) => o.textContent);
+    expect(labels).toEqual(['— 请选择 —', '外观损坏', '进水损坏', '缺少配件', '商品错发', '其他']);
+  });
+
+  it('CRITICAL: the chosen kind is sent with the flag', async () => {
+    const eventCalls = [];
+    globalThis.fetch = mockBackend({ eventCalls });
+    render(<LeapHubPortalApp />);
+    await loginAndOpenShipment();
+    await openFlagFormAndAttachPhoto();
+
+    fireEvent.change(screen.getByLabelText('问题类型（可选）'), { target: { value: 'water_damage' } });
+    fireEvent.click(screen.getByText('提交标记'));
+
+    await waitFor(() => expect(eventCalls).toHaveLength(1));
+    expect(eventCalls[0]).toMatchObject({ step: 'flagged', damageType: 'water_damage', photos: ['/uploads/evidence.jpg'] });
+  });
+
+  it('the kind is optional: a flag with none chosen is sent without one', async () => {
+    const eventCalls = [];
+    globalThis.fetch = mockBackend({ eventCalls });
+    render(<LeapHubPortalApp />);
+    await loginAndOpenShipment();
+    await openFlagFormAndAttachPhoto();
+    fireEvent.click(screen.getByText('提交标记'));
+
+    await waitFor(() => expect(eventCalls).toHaveLength(1));
+    expect(eventCalls[0].step).toBe('flagged');
+    expect(eventCalls[0].damageType).toBeUndefined();
+  });
+});
+
+describe('Hub Portal — what hub staff see after an admin resolves their flag (mocked fetch, real component tree)', () => {
+  it('an unresolved flag still says it is awaiting platform review', async () => {
+    globalThis.fetch = mockBackend({ detail: DETAIL({ status: 'flagged' }) });
+    render(<LeapHubPortalApp />);
+    await loginAndOpenShipment();
+    expect(await screen.findByText('此包裹已标记问题，等待平台审核。')).toBeInTheDocument();
+  });
+
+  it('CRITICAL: a resolved flag shows the outcome, not "awaiting platform review" forever', async () => {
+    globalThis.fetch = mockBackend({ detail: DETAIL({ status: 'flagged', resolution: 'discard', resolvedAt: '2026-07-20T00:00:00.000Z' }) });
+    render(<LeapHubPortalApp />);
+    await loginAndOpenShipment();
+    expect(await screen.findByText('平台已处理：此包裹已作废，不会寄给买家。')).toBeInTheDocument();
+    expect(screen.queryByText('此包裹已标记问题，等待平台审核。')).not.toBeInTheDocument();
+  });
+
+  it('each terminal outcome has its own message', async () => {
+    for (const [resolution, text] of [
+      ['return_to_supplier', '平台已处理：此包裹将退回供应商。'],
+      ['replacement_requested', '平台已处理：已向供应商申请换货。'],
+    ]) {
+      globalThis.fetch = mockBackend({ detail: DETAIL({ status: 'flagged', resolution }) });
+      const { unmount } = render(<LeapHubPortalApp />);
+      await loginAndOpenShipment();
+      expect(await screen.findByText(text)).toBeInTheDocument();
+      unmount();
+      localStorage.clear();
+    }
+  });
+
+  it('CRITICAL: after a false alarm the shipment is back in the flow and the hub is told why', async () => {
+    globalThis.fetch = mockBackend({ detail: DETAIL({ status: 'received', resolution: 'continue_processing' }) });
+    render(<LeapHubPortalApp />);
+    await loginAndOpenShipment();
+    expect(await screen.findByText('平台已审核：未发现问题，请继续处理此包裹。')).toBeInTheDocument();
+  });
+});

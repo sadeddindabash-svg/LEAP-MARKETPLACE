@@ -31,6 +31,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchSupplierAnalytics,
   fetchHubWorkload, updateHubCapacity,
   fetchHubStaff, createHubStaff, updateHubStaff, setHubStaffDisabled, resetHubStaffPassword,
+  resolveFlaggedShipment,
   fetchHubPerformance,
   fetchFlaggedReviews, dismissReviewFlags,
   searchAdmin,
@@ -5242,20 +5243,64 @@ function PaymentProvidersPage({ onSessionExpired }) {
 // actual answer to "where do I find a flagged issue," which before this
 // existed had no answer at all beyond already knowing which order to
 // open. See services/api/src/modules/hub/routes.js's GET /hub/flagged.
-function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired }) {
+// What an admin can decide about a flagged shipment (migration 090). Each label says what it does to
+// the buyer-facing return case, because that is what the admin is really choosing. Module-level so the
+// dialog's `fields` keep one identity (EditDialog resets its form whenever `fields` changes).
+const FLAG_OUTCOME_OPTIONS = [
+  { value: "continue_processing", label: "False alarm — send it on (buyer told no problem was found)" },
+  { value: "return_to_supplier", label: "Return to supplier (buyer told it won't be shipped)" },
+  { value: "discard", label: "Discard — damaged beyond use (buyer told it won't be shipped)" },
+  { value: "replacement_requested", label: "Request a replacement (case stays open)" },
+];
+const FLAG_RESOLVE_FIELDS = [
+  { key: "resolution", label: "Outcome", value: "", options: FLAG_OUTCOME_OPTIONS, placeholder: "Choose an outcome…" },
+  { key: "resolutionNotes", label: "Internal note (optional — the buyer does not see this)", value: "" },
+];
+const DAMAGE_TYPE_LABELS = { physical_damage: "Physical damage", water_damage: "Water damage", missing_parts: "Missing parts", wrong_item: "Wrong item", other: "Other" };
+
+function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) {
   const [shipments, setShipments] = useState([]);
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
+  const [resolving, setResolving] = useState(null); // the shipment whose Resolve dialog is open
+  const [dialogError, setDialogError] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [notice, setNotice] = useState(null);
 
-  useEffect(() => {
+  const load = () => {
     fetchFlaggedShipments(getStoredToken())
-      .then((data) => { setShipments(data); setLoadState("ready"); })
+      // Tell the sidebar the fresh count too: its badge is otherwise refreshed only on navigation, so it
+      // would stay stale right after an admin resolves a flag on this very page.
+      .then((data) => { setShipments(data); setLoadState("ready"); if (onCountChange) onCountChange(data.length); })
       .catch((err) => {
         if (err instanceof SessionExpiredError) return onSessionExpired();
         setErrorMessage(err.message);
         setLoadState("error");
       });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleResolve = async (values) => {
+    if (!values.resolution) { setDialogError("Choose an outcome."); return; }
+    setIsSaving(true);
+    setDialogError(null);
+    try {
+      const result = await resolveFlaggedShipment(getStoredToken(), resolving.id, { resolution: values.resolution, resolutionNotes: (values.resolutionNotes || "").trim() });
+      const rc = result.returnCase;
+      setNotice(
+        !rc ? `Resolved. ${resolving.orderId} had no linked return case.`
+          : rc.updated ? `Resolved. Return case ${rc.id} is now ${rc.status} and the buyer was told.`
+          : `Resolved. Return case ${rc.id} was already ${rc.status}, so it was left as it is.`
+      );
+      setResolving(null);
+      load();
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setDialogError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <div>
@@ -5291,6 +5336,9 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired }) {
       <div style={{ padding: 24 }}>
         {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>}
 
+        {notice && (
+          <div style={{ ...body, fontSize: 12.5, color: C.gauge, background: C.gaugeBg, borderRadius: 8, padding: 10, marginBottom: 12 }}>{notice}</div>
+        )}
         {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>Loading…</div>}
         {loadState === "ready" && shipments.length === 0 && (
           <Card>
@@ -5309,17 +5357,27 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired }) {
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ ...disp, fontSize: 16, fontWeight: 700, color: C.ink }}>{s.orderId}</span>
                         <Badge label="Flagged" color={C.red} bg={C.redBg} />
+                        {s.damageType && <Badge label={DAMAGE_TYPE_LABELS[s.damageType] || s.damageType} color={C.amber} bg={C.amberBg} />}
                       </div>
                       <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 3 }}>
                         {s.supplierName} · {s.hubName || "no hub"} · {new Date(s.flaggedAt).toLocaleString()}
+                        {s.returnCaseId && <> · Return case {s.returnCaseId}</>}
                       </div>
                     </div>
-                    <button
-                      onClick={() => onOpenOrder(s.orderId)}
-                      style={{ ...body, padding: "7px 14px", borderRadius: 7, border: "none", background: C.signal, color: C.onSignal, fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
-                    >
-                      View order
-                    </button>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        onClick={() => { setDialogError(null); setNotice(null); setResolving(s); }}
+                        style={{ ...body, padding: "7px 14px", borderRadius: 7, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
+                      >
+                        Resolve
+                      </button>
+                      <button
+                        onClick={() => onOpenOrder(s.orderId)}
+                        style={{ ...body, padding: "7px 14px", borderRadius: 7, border: "none", background: C.signal, color: C.onSignal, fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
+                      >
+                        View order
+                      </button>
+                    </div>
                   </div>
                   {s.flagNote && <div style={{ ...body, fontSize: 13, color: C.ink, marginBottom: 10 }}>{s.flagNote}</div>}
                   {s.flagPhotos.length > 0 && (
@@ -5335,6 +5393,15 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired }) {
           </div>
         )}
       </div>
+      <EditDialog
+        isOpen={Boolean(resolving)}
+        title={resolving ? `Resolve flag — ${resolving.orderId}` : "Resolve flag"}
+        fields={FLAG_RESOLVE_FIELDS}
+        onSave={handleResolve}
+        onCancel={() => setResolving(null)}
+        errorMessage={dialogError}
+        isSaving={isSaving}
+      />
     </div>
   );
 }
@@ -7517,6 +7584,8 @@ const AUDIT_ACTION_TYPES = [
   'supplier_verification',
   // Hub staff account management (migration 089)
   'hub_staff_created', 'hub_staff_updated', 'hub_staff_disabled', 'hub_staff_enabled', 'hub_staff_password_reset',
+  // Resolving a flagged hub shipment (migration 090)
+  'flagged_shipment_resolved',
   // Real catalog/fitment reference-data and product-listing moderation
   // actions (new) -- confirmed genuinely missing from the audit trail
   // entirely before this, despite this page's own scope already
@@ -7818,7 +7887,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   else if (page === "pricing") content = <PricingPage onSessionExpired={onLogout} />;
   else if (page === "paymentMethods") content = <PaymentMethodsPage onSessionExpired={onLogout} />;
   else if (page === "paymentProviders") content = <PaymentProvidersPage onSessionExpired={onLogout} />;
-  else if (page === "flagged") content = <FlaggedShipmentsPage onOpenOrder={setOpenOrder} onSessionExpired={onLogout} />;
+  else if (page === "flagged") content = <FlaggedShipmentsPage onOpenOrder={setOpenOrder} onSessionExpired={onLogout} onCountChange={setFlaggedCount} />;
   else if (page === "payouts") content = <PayoutsPage onSessionExpired={onLogout} />;
   else if (page === "reviews") content = <ReviewsPage onSessionExpired={onLogout} />;
   else if (page === "tickets") content = <TicketsPage onOpenTicket={setOpenTicket} onSessionExpired={onLogout} />;
