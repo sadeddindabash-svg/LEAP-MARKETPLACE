@@ -6,6 +6,7 @@ const { logAdminAction } = require('../audit/helpers');
 const { validateFitment, tryMatchCategoryAndPart, tryMatchPosition, tryMatchDimensions, validateCompleteFields } = require('./productValidation');
 const { getSupplierAnalytics } = require('../supplierAnalytics/queries');
 const { getSupplierFinance } = require('../supplierFinance/queries');
+const { validateReturnAddress, getReturnAddress, saveReturnAddress } = require('../supplierReturnAddress/helpers');
 const { notifyRestock } = require('../restockAlerts/notify');
 
 /**
@@ -256,10 +257,6 @@ router.get('/:id', requireAuth, requireRole('admin'), requirePageAccess('supplie
   }
 });
 
-// GET/PUT /supplier/me/payout-method — real supplier payout method
-// (migration 034). CONFIRMED SCOPE: simple, universal fields only.
-// One real row per supplier -- a PUT always replaces whatever was
-// there before, rather than keeping a history.
 // GET /supplier/me/finance -- the supplier's own real money picture: what is ready to be paid,
 // what is still inside the return window, what has been paid, the commission rates that apply to
 // what they sell, and their payout history. Scoped to the logged-in supplier (no id in the URL),
@@ -272,6 +269,10 @@ router.get('/me/finance', requireAuth, requireRole('supplier'), async (req, res,
   }
 });
 
+// GET/PUT /supplier/me/payout-method — real supplier payout method
+// (migration 034). CONFIRMED SCOPE: simple, universal fields only.
+// One real row per supplier -- a PUT always replaces whatever was
+// there before, rather than keeping a history.
 router.get('/me/payout-method', requireAuth, requireRole('supplier'), async (req, res, next) => {
   try {
     const { rows } = await db.query('SELECT * FROM supplier_payout_methods WHERE supplier_id = $1', [req.user.supplierId]);
@@ -296,6 +297,53 @@ router.put('/me/payout-method', requireAuth, requireRole('supplier'), async (req
       [req.user.supplierId, bankName, accountNumber, accountHolderName]
     );
     res.json(toPayoutMethodDto(rows[0]));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET/PUT /supplier/me/return-address (migration 092): where the inspection hub sends a faulty unit back to. The
+// supplier maintains their own; saving replaces it. Declared before '/:id/return-address' so "me" is never read as an id.
+router.get('/me/return-address', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    res.json(await getReturnAddress(req.user.supplierId));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/me/return-address', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    const { error, value } = validateReturnAddress(req.body);
+    if (error) return res.status(400).json({ error });
+    res.json(await saveReturnAddress(req.user.supplierId, value, req.user.sub));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET/PUT /supplier/:id/return-address -- an admin can read and correct any supplier's return address (a supplier who
+// hasn't filled theirs in, or got it wrong, would otherwise leave the hub with nowhere to send a faulty unit).
+router.get('/:id/return-address', requireAuth, requireRole('admin'), requirePageAccess('suppliers'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT 1 FROM suppliers WHERE id = $1', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Supplier not found' });
+    res.json(await getReturnAddress(req.params.id));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/:id/return-address', requireAuth, requireRole('admin'), requirePageAccess('suppliers'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT 1 FROM suppliers WHERE id = $1', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Supplier not found' });
+    const { error, value } = validateReturnAddress(req.body);
+    if (error) return res.status(400).json({ error });
+    const saved = await saveReturnAddress(req.params.id, value, req.user.sub);
+    // the address itself is not copied into the audit log: it records WHO changed WHOSE address
+    await logAdminAction(req, 'supplier_return_address_updated', 'supplier', req.params.id, {});
+    res.json(saved);
   } catch (err) {
     next(err);
   }

@@ -1022,3 +1022,20 @@ export async function resolveFlaggedShipment(token, id, { resolution, resolution
   if (!response.ok) throw new Error(data.error || `Failed to resolve the flag (${response.status})`);
   return data;
 }
+
+// A supplier's return address (migration 092): where the inspection hub sends a faulty unit back to. null until entered.
+// The supplier maintains their own; an admin can read and correct any supplier's.
+export function fetchSupplierReturnAddress(token, supplierId) {
+  return authedGet(`/supplier/${supplierId}/return-address`, token);
+}
+export async function saveSupplierReturnAddress(token, supplierId, { contactName, phone, address }) {
+  const response = await fetch(`${API_BASE_URL}/supplier/${supplierId}/return-address`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ contactName, phone, address }),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `Failed to save the return address (${response.status})`);
+  return data;
+}

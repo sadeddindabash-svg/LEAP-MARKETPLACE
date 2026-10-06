@@ -31,7 +31,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchSupplierAnalytics,
   fetchHubWorkload, updateHubCapacity,
   fetchHubStaff, createHubStaff, updateHubStaff, setHubStaffDisabled, resetHubStaffPassword,
-  resolveFlaggedShipment, openFaultCase, confirmFaultRefund, markFaultRefunded,
+  resolveFlaggedShipment, openFaultCase, confirmFaultRefund, markFaultRefunded, fetchSupplierReturnAddress, saveSupplierReturnAddress,
   fetchHubPerformance,
   fetchFlaggedReviews, dismissReviewFlags,
   searchAdmin,
@@ -848,6 +848,86 @@ function HubAssignmentPanel({ subOrder, onAssigned, onSessionExpired }) {
 // + real products for this pass -- see the backend route's own
 // comment for why orders/payouts-by-supplier are a real, separate,
 // larger addition, not built here.
+// A supplier's return address (migration 092), on the supplier's page: where the inspection hub sends a faulty unit back to.
+// The supplier normally enters it themselves in Settings; admin can add or correct it here (it is audit-logged).
+function SupplierReturnAddressCard({ supplierId, onSessionExpired }) {
+  const [address, setAddress] = useState(undefined); // undefined = loading, null = nothing entered yet
+  const [loadError, setLoadError] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    fetchSupplierReturnAddress(getStoredToken(), supplierId)
+      .then((data) => setAddress(data || null))
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setLoadError(err.message);
+        setAddress(null);
+      });
+  }, [supplierId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // EditDialog resets its form whenever `fields` changes identity, so this is memoised on what is being edited.
+  const fields = React.useMemo(() => (editing ? [
+    { key: "contactName", label: "Contact name", value: address?.contactName || "" },
+    { key: "phone", label: "Phone number", value: address?.phone || "" },
+    { key: "address", label: "Full address", value: address?.address || "" },
+  ] : null), [editing, address]);
+
+  const handleSave = async (values) => {
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      setAddress(await saveSupplierReturnAddress(getStoredToken(), supplierId, values));
+      setEditing(false);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setSaveError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Card
+      title="Return address"
+      action={
+        address !== undefined && (
+          <button onClick={() => { setSaveError(null); setEditing(true); }} style={{ ...body, padding: "6px 12px", borderRadius: 7, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+            {address ? "Edit" : "Add"}
+          </button>
+        )
+      }
+    >
+      <div style={{ padding: 16, ...body, fontSize: 13, color: C.ink }}>
+        {loadError && <div style={{ color: C.red }}>Couldn't load the return address: {loadError}</div>}
+        {address === undefined && !loadError && <div style={{ color: C.muted }}>Loading…</div>}
+        {address === null && !loadError && (
+          <div style={{ color: C.amber, fontWeight: 700 }}>
+            Not entered yet — the inspection hub will not know where to send a faulty unit back. The supplier can add it in their Settings, or you can add it here.
+          </div>
+        )}
+        {address && (
+          <div>
+            <div style={{ fontWeight: 700 }}>{address.contactName}</div>
+            <div style={{ color: C.muted }}>{address.phone}</div>
+            <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{address.address}</div>
+          </div>
+        )}
+      </div>
+      <EditDialog
+        isOpen={editing}
+        title="Return address"
+        fields={fields}
+        onSave={handleSave}
+        onCancel={() => setEditing(false)}
+        errorMessage={saveError}
+        isSaving={isSaving}
+      />
+    </Card>
+  );
+}
+
 function SupplierDetailPage({ supplierId, onBack, onSessionExpired }) {
   const [supplier, setSupplier] = useState(null);
   const [loadState, setLoadState] = useState("loading");
@@ -957,6 +1037,9 @@ function SupplierDetailPage({ supplierId, onBack, onSessionExpired }) {
         <div style={{ ...body, fontSize: 12.5, color: C.red, background: C.redBg, padding: "10px 28px" }}>{errorMessage}</div>
       )}
       <div style={{ padding: 24 }}>
+        <div style={{ marginBottom: 16 }}>
+          <SupplierReturnAddressCard supplierId={supplierId} onSessionExpired={onSessionExpired} />
+        </div>
         <Card title={`Products (${supplier.products.length})`}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead><tr><Th>Product</Th><Th>Category</Th><Th align="right">Price</Th><Th align="right">Stock</Th><Th>Status</Th></tr></thead>
@@ -5279,6 +5362,11 @@ function FaultCaseDialog({ shipment, onCancel, onSubmit, isSaving, errorMessage 
           The hub will be told to send the unit back to the supplier, and the supplier will be asked whether they can replace it. The buyer is told a problem was confirmed.
         </p>
 
+        {shipment.supplierReturnAddressOnFile === false && (
+          <div style={{ ...body, fontSize: 12, color: C.amber, background: C.amberBg, borderRadius: 8, padding: 10, marginTop: 12 }}>
+            This supplier has <strong>no return address</strong> on file, so the hub will not know where to send the unit. The supplier will be reminded to add one; you can also add it yourself on the supplier's page.
+          </div>
+        )}
         <span style={label}>WHICH ITEMS ARE FAULTY?</span>
         {shipment.items.map((i) => (
           <label key={i.productId} style={{ ...body, display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.ink, padding: "4px 0", cursor: "pointer" }}>
@@ -5334,7 +5422,14 @@ function FaultCasePanel({ faultCase, onRefund, onMarkRefunded }) {
           : sup.canReplace ? `can replace — by ${sup.eta}${sup.note ? ` (“${sup.note}”)` : ""}`
           : `cannot replace${sup.note ? ` (“${sup.note}”)` : ""}`}
       </div>
-      <div style={row}><strong>Hub:</strong> {faultCase.hubReturn ? HUB_RETURN_LABELS[faultCase.hubReturn] : "the unit has not been sent back yet"}</div>
+      <div style={row}>
+        <strong>Hub:</strong>{" "}
+        {faultCase.hubReturn ? HUB_RETURN_LABELS[faultCase.hubReturn] : "the unit has not been sent back yet"}
+        {faultCase.hubReturnTracking ? ` — return tracking ${faultCase.hubReturnTracking}` : ""}
+      </div>
+      {!faultCase.hubReturn && faultCase.returnAddressOnFile === false && (
+        <div style={{ ...row, color: C.amber }}>The supplier still has no return address on file, so the hub cannot tell where to send the unit.</div>
+      )}
       {faultCase.refund && (
         <div style={row}>
           <strong>Refund:</strong> {usd2(faultCase.refund.amount)} — {faultCase.refund.status === "issued" ? `issued (${faultCase.refund.reference})` : "recorded, not yet issued"}
@@ -7743,7 +7838,7 @@ const AUDIT_ACTION_TYPES = [
   // Hub staff account management (migration 089)
   'hub_staff_created', 'hub_staff_updated', 'hub_staff_disabled', 'hub_staff_enabled', 'hub_staff_password_reset',
   // Resolving a flagged hub shipment (migration 090)
-  'flagged_shipment_resolved', 'fault_case_created', 'fault_case_refund_confirmed', 'fault_case_refund_issued',
+  'flagged_shipment_resolved', 'fault_case_created', 'fault_case_refund_confirmed', 'fault_case_refund_issued', 'supplier_return_address_updated',
   // Real catalog/fitment reference-data and product-listing moderation
   // actions (new) -- confirmed genuinely missing from the audit trail
   // entirely before this, despite this page's own scope already

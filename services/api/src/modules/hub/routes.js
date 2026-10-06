@@ -5,6 +5,7 @@ const { createNotification } = require('../notifications/helpers');
 const { sendTransactionalEmail } = require('../email/client');
 const { logAdminAction } = require('../audit/helpers');
 const faultCases = require('../faultCases/helpers');
+const { getReturnAddress } = require('../supplierReturnAddress/helpers');
 
 const DAMAGE_TYPES = ['physical_damage', 'water_damage', 'missing_parts', 'wrong_item', 'other'];
 const { deliveryNotificationEmail, shippingNotificationEmail } = require('../email/templates');
@@ -396,6 +397,8 @@ router.get('/flagged', requireAuth, requireRole('admin'), requirePageAccess('fla
         flagPhotos: flagEvent?.photos || [], damageType: flagEvent?.damageType || null,
         returnCaseId: caseRows[0]?.id || null,
         hubStatus: r.status,
+        // false = the supplier has no return address yet, so the hub would not know where to send a faulty unit (migration 092)
+        supplierReturnAddressOnFile: (await getReturnAddress((await db.query('SELECT supplier_id FROM supplier_sub_orders WHERE id = $1', [r.sub_order_id])).rows[0].supplier_id)) !== null,
         faultCase: faultRows[0] ? await faultCases.toAdminDto(db, faultRows[0]) : null,
       };
     }));

@@ -209,7 +209,10 @@ rather than an error. 16/16 passing across the full suite.
     number and an evidence photo are required) or **Discard at the hub** (a photo only). The shipment then shows "Returned to supplier" /
     "Discarded", with "Nothing more is needed from the hub" and a line saying where the platform is (still deciding, finishing, or closed) — never anything about money. Hub staff are never shown the refund, who bears the cost, or any note.
   - Shipments whose unit has left the hub still appear under the **Flagged** filter until the platform closes the case.
-- Tested in `src/FlagFlow.test.jsx` (14, mocked fetch): the dropdown and that the kind is sent (and is optional); the resolved and no-fault banners;
+  - **Where to send it (migration 092):** while the unit is being returned, the panel shows the supplier's **return address** (contact, phone, full address, as the
+    supplier entered it) and a **Print return label** button — a bilingual (English / 中文) page the browser prints, with only the label on the paper. If the supplier
+    has no address on file the panel says so and tells the hub to contact the platform before sending it back. Discarding at the hub needs no address.
+- Tested in `src/FlagFlow.test.jsx` (17, mocked fetch): the dropdown and that the kind is sent (and is optional); the resolved and no-fault banners;
   the fault panel, the tracking-number and photo requirements for a return, discarding without tracking, and the banners after each. Verified to fail
   when the kind stops being sent, the banner ignores the verdict, or the return stops requiring a tracking number.
 - **Not done:** the Flutter hub app (`apps/hub-mobile`) was not changed — it has no kind-of-problem picker, no return/discard screen, and does not

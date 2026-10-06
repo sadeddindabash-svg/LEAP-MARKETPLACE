@@ -128,7 +128,7 @@ describe('Flagged Shipments — the two verdicts: no fault, or a real fault (moc
     { productId: 'p1', name: 'RIDEX Front Brake Disc', quantity: 2, unitPrice: 15 },
     { productId: 'p4', name: 'MAHLE Oil Filter', quantity: 1, unitPrice: 8.5 },
   ];
-  const flag = (over = {}) => ({ ...MOCK_FLAGGED[0], returnCaseId: 'RC-7', damageType: 'water_damage', hubStatus: 'flagged', items: ITEMS, faultCase: null, ...over });
+  const flag = (over = {}) => ({ ...MOCK_FLAGGED[0], returnCaseId: 'RC-7', damageType: 'water_damage', hubStatus: 'flagged', items: ITEMS, faultCase: null, supplierReturnAddressOnFile: true, ...over });
   const faultCase = (over = {}) => ({
     id: 9, shipmentId: 335, status: 'awaiting_supplier', costBearer: 'supplier', adminNotes: null, items: [ITEMS[0]],
     // What the buyer actually paid for the faulty items (computed by the server; a discount makes it lower than list value).
@@ -229,6 +229,31 @@ describe('Flagged Shipments — the two verdicts: no fault, or a real fault (moc
   it('says plainly when the supplier cannot replace, and when they have not answered yet', async () => {
     await openFlaggedPage({ flagged: [flag({ faultCase: faultCase({ status: 'awaiting_admin', supplier: { answered: true, canReplace: false, eta: null, note: null } }) })] });
     expect(screen.getByText(/cannot replace/)).toBeInTheDocument();
+  });
+
+  it('CRITICAL: confirming a real fault WARNS when the supplier has no return address (the hub would not know where to send the unit)', async () => {
+    await openFlaggedPage({ flagged: [flag({ supplierReturnAddressOnFile: false })] });
+    fireEvent.click(screen.getByRole('button', { name: /^real fault…$/i }));
+    const dialog = screen.getByRole('dialog', { name: 'Confirm a real fault' });
+    expect(within(dialog).getByText(/no return address/i)).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: /confirm real fault/i })).toBeEnabled(); // a warning, not a block
+  });
+
+  it('no warning when the supplier does have a return address', async () => {
+    await openFlaggedPage({ flagged: [flag()] });
+    fireEvent.click(screen.getByRole('button', { name: /^real fault…$/i }));
+    expect(within(screen.getByRole('dialog', { name: 'Confirm a real fault' })).queryByText(/no return address/i)).not.toBeInTheDocument();
+  });
+
+  it('the fault panel shows the return tracking number once the hub sent the unit back, and reminds about a missing address while it has not', async () => {
+    await openFlaggedPage({ flagged: [flag({ faultCase: faultCase({ status: 'awaiting_admin', hubReturn: 'returned', hubReturnTracking: 'RET-554433', returnAddressOnFile: true }) })] });
+    expect(screen.getByText(/Returned to the supplier — return tracking RET-554433/)).toBeInTheDocument();
+    expect(screen.queryByText(/still has no return address/)).not.toBeInTheDocument();
+  });
+
+  it('while the unit has not been sent back and the supplier has no address, the panel says the hub cannot tell where to send it', async () => {
+    await openFlaggedPage({ flagged: [flag({ faultCase: faultCase({ returnAddressOnFile: false }) })] });
+    expect(screen.getByText(/supplier still has no return address on file/)).toBeInTheDocument();
   });
 
   it('the replacement button is shown but disabled until replacements are built', async () => {

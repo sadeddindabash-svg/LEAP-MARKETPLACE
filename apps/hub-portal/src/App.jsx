@@ -69,6 +69,9 @@ const STRINGS = {
       returnedBanner: "此包裹已退回供应商。仓库无需再做任何操作。", discardedBanner: "此包裹已在仓库销毁。仓库无需再做任何操作。",
       stage: { reviewing: "平台仍在决定如何处理此案例。", finalising: "平台正在办理收尾事项。", closed: "此案例已结案。" },
       waitingOnHub: "平台正在等待仓库处理问题商品。",
+      sendTo: "寄往（供应商退货地址）", printLabel: "打印退货标签",
+      noReturnAddress: "该供应商尚未填写退货地址。请先联系平台，再寄回问题商品。",
+      labelClose: "关闭", labelPrint: "打印",
       damageTypeLabel: "问题类型（可选）", damageTypePlaceholder: "— 请选择 —",
       damageTypes: { physical_damage: "外观损坏", water_damage: "进水损坏", missing_parts: "缺少配件", wrong_item: "商品错发", other: "其他" },
       resolvedBanners: {
@@ -130,6 +133,9 @@ const STRINGS = {
       returnedBanner: "This shipment was returned to the supplier. Nothing more is needed from the hub.", discardedBanner: "This shipment was discarded at the hub. Nothing more is needed from the hub.",
       stage: { reviewing: "The platform is still deciding how to handle this case.", finalising: "The platform is finishing this case.", closed: "This case is closed." },
       waitingOnHub: "The platform is waiting for the hub to deal with the faulty unit.",
+      sendTo: "Send it to (the supplier's return address)", printLabel: "Print return label",
+      noReturnAddress: "This supplier has not entered a return address. Please contact the platform before sending the unit back.",
+      labelClose: "Close", labelPrint: "Print",
       damageTypeLabel: "Kind of problem (optional)", damageTypePlaceholder: "— Select —",
       damageTypes: { physical_damage: "Physical damage", water_damage: "Water damage", missing_parts: "Missing parts", wrong_item: "Wrong item", other: "Other" },
       resolvedBanners: {
@@ -362,6 +368,37 @@ function EvidencePhotoPicker({ photos, onAdd, onRemove, isUploading }) {
   );
 }
 
+// A printable return label (migration 092). It is a plain page the browser prints, not a generated PDF, so Chinese and Arabic
+// addresses always draw correctly with the computer's own fonts. The headings are bilingual because a courier may read either.
+// Only the label is printed: everything else on the screen is hidden by the print stylesheet below.
+function ReturnLabel({ shipment, onClose }) {
+  const { t } = useLang();
+  const a = shipment.faultCase.returnAddress;
+  const heading = { ...body, fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "#555", marginTop: 16 };
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, overflowY: "auto" }}>
+      <style>{`@media print { body * { visibility: hidden !important; } #return-label, #return-label * { visibility: visible !important; } #return-label { position: fixed; left: 0; top: 0; width: 100%; box-shadow: none !important; border: 2px solid #000 !important; } .no-print { display: none !important; } }`}</style>
+      <div id="return-label" role="dialog" aria-label="Return label" style={{ background: "#fff", color: "#000", width: 420, maxWidth: "100%", border: "2px solid #000", borderRadius: 4, padding: 22, boxShadow: "0 12px 32px rgba(0,0,0,0.25)" }}>
+        <div style={{ ...body, fontSize: 20, fontWeight: 800, textAlign: "center", borderBottom: "2px solid #000", paddingBottom: 10 }}>RETURN TO SUPPLIER · 退回供应商</div>
+        <div style={heading}>TO · 收件人</div>
+        <div style={{ ...body, fontSize: 20, fontWeight: 700 }}>{a.contactName}</div>
+        <div style={{ ...body, fontSize: 17, marginTop: 2 }}>{a.phone}</div>
+        <div style={{ ...body, fontSize: 17, marginTop: 8, whiteSpace: "pre-wrap", lineHeight: 1.35 }}>{a.address}</div>
+        <div style={heading}>ORDER · 订单</div>
+        <div style={{ ...body, fontSize: 15, fontWeight: 700 }}>{shipment.orderId}</div>
+        <div style={heading}>CONTENTS · 内容物</div>
+        {shipment.faultCase.items.map((i) => (
+          <div key={i.productId} style={{ ...body, fontSize: 14 }}>{i.name || i.productId} × {i.quantity}</div>
+        ))}
+        <div className="no-print" style={{ display: "flex", gap: 8, marginTop: 22 }}>
+          <button onClick={() => window.print()} style={{ ...body, flex: 1, padding: "11px 14px", borderRadius: 8, border: "none", background: "#111", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>{t.detail.labelPrint}</button>
+          <button onClick={onClose} style={{ ...body, flex: 1, padding: "11px 14px", borderRadius: 8, border: "1px solid #ccc", background: "#fff", color: "#111", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>{t.detail.labelClose}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ShipmentDetailScreen({ shipmentId, onBack }) {
   const { onSessionExpired } = useHub();
   const { t } = useLang();
@@ -376,6 +413,7 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
   const [showFlagForm, setShowFlagForm] = useState(false);
   const [damageType, setDamageType] = useState("");
   const [returnMode, setReturnMode] = useState("return"); // "return" (to the supplier) or "discard" (at the hub)
+  const [showLabel, setShowLabel] = useState(false);
   const [deliveryNote, setDeliveryNote] = useState("");
 
   const load = () => {
@@ -626,6 +664,21 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
               <div key={i.productId} style={{ ...body, fontSize: 13, color: C.ink, padding: "2px 0" }}>{i.name || i.productId} × {i.quantity}</div>
             ))}
 
+            {/* Where to send it (migration 092) -- only needed when the unit is going back, not when it is discarded here. */}
+            {returnMode === "return" && (
+              shipment.faultCase.returnAddress ? (
+                <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: "#fff", border: `1px solid ${C.line}` }}>
+                  <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 6 }}>{t.detail.sendTo.toUpperCase()}</div>
+                  <div style={{ ...body, fontSize: 14, fontWeight: 700, color: C.ink }}>{shipment.faultCase.returnAddress.contactName}</div>
+                  <div style={{ ...body, fontSize: 13, color: C.ink }}>{shipment.faultCase.returnAddress.phone}</div>
+                  <div style={{ ...body, fontSize: 13, color: C.ink, marginTop: 4, whiteSpace: "pre-wrap" }}>{shipment.faultCase.returnAddress.address}</div>
+                  <button onClick={() => setShowLabel(true)} style={{ ...body, marginTop: 10, padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.ink}`, background: "#fff", color: C.ink, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t.detail.printLabel}</button>
+                </div>
+              ) : (
+                <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: C.amberBg, color: C.amber, ...body, fontSize: 12.5, fontWeight: 700 }}>{t.detail.noReturnAddress}</div>
+              )
+            )}
+
             <div style={{ display: "flex", gap: 8, margin: "16px 0 12px" }}>
               {[["return", t.detail.returnOption], ["discard", t.detail.discardOption]].map(([mode, label]) => (
                 <button
@@ -662,6 +715,7 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
             </button>
           </div>
         )}
+        {showLabel && shipment.faultCase && shipment.faultCase.returnAddress && <ReturnLabel shipment={shipment} onClose={() => setShowLabel(false)} />}
 
         {/* A false alarm puts the shipment back in the flow, so it is no longer terminal -- tell the
             hub why it is moving again, instead of silently reappearing. */}

@@ -527,7 +527,7 @@ page is the real fix:
   who pays, what the supplier answered to "can you replace?", whether the hub has sent the unit back, and the refund. The next action is offered
   on the panel: **Refund the buyer…** (pre-filled with **what the buyer actually paid** for those items — after any discount — with the breakdown shown; editable, never above the order total) and then **Mark as
   refunded…** once you have refunded in Stripe/PayPal (a reference is required). The case closes — and the flag leaves the queue — when the
-  refund is issued AND the hub has returned or discarded the unit. **Send a replacement** is shown but disabled until a later update. The
+  refund is issued AND the hub has returned or discarded the unit. **Send a replacement** is shown but disabled until a later update. The "Real fault…" dialog **warns when the supplier has no return address** (the hub would not know where to send the unit); the case panel shows the return tracking number once the hub has sent it back. Admin can add or correct a supplier's return address on the supplier's page. The
   sidebar badge drops straight away (it used to refresh only on navigation). See `services/api/README.md`, "Flagged shipments: the two verdicts,
   and fault cases", for the rules and limits.
 - **Evidence photos open full size.** Clicking a photo on a flag — and a photo in the hub timeline on the Order detail page ("View evidence") —
@@ -1253,6 +1253,14 @@ Sixty-six test files, 409 tests total, all passing:
   workload; the buyer sees "returns" and can't cancel the part; the case completes only when BOTH the refund is issued and the unit is back (in
   either order) and then the flag is closed; a confirmed fault can't be recorded as "no fault"; every step is audit-logged. Verified to fail when
   each of: completion stops needing both, supplier isolation, the cancel block, or the workload exclusion is removed.
+- `src/returnAddress.integration.test.js` (10, REAL backend, migration 092) — a supplier saves/reads their own return address (saving replaces it); bad or
+  incomplete details are rejected and good ones trimmed; one supplier can never see or change another's; only suppliers use `/me/return-address`; an admin
+  can read and correct any supplier's, audit-logged WITHOUT copying the address, and a limited admin cannot; the admin queue says whether the supplier has an
+  address BEFORE a case is opened; the supplier's "can you replace?" notice asks for one only when they have none; the hub sees the address (or `null`) and
+  no money; the supplier sees the return tracking number only after the unit was really sent back; the address never reaches the buyer.
+- `src/SupplierReturnAddressFlow.test.jsx` (5, mocked) — the supplier page's "Return address" card: the warning with an "Add" button when nothing is entered; an
+  address on file shown with "Edit"; adding sends exactly what was typed and then shows it; editing starts from what is on file; a server refusal shows inside
+  the dialog and leaves the card unchanged.
 - `src/trackingNumbers.integration.test.js` (5, REAL backend) — the buyer (and a guest) sees the HUB's tracking number, empty until the hub ships, and
   never the supplier's; admin sees both, labelled apart (Order detail shows "Supplier → hub" and "Hub → buyer"); the buyer is not told "shipped" when
   the supplier ships to the hub, only when the hub ships, with the hub's number; a faulty unit's return step and return tracking number are
@@ -1295,7 +1303,7 @@ Sixty-six test files, 409 tests total, all passing:
   (confirmed via direct `curl -F` testing that the actual endpoint
   itself works correctly) — switched to the well-established
   `form-data` package for reliable real multipart encoding instead.
-- `src/FlaggedShipmentsFlow.test.jsx` (20, mocked, full component tree) — the sidebar badge and queue; the kind of problem and return case on a
+- `src/FlaggedShipmentsFlow.test.jsx` (24, mocked, full component tree) — the sidebar badge and queue; the kind of problem and return case on a
   flag; "No fault" explains then records it and the flag leaves the list AND the sidebar badge; "Real fault…" lists every item (all ticked),
   needs at least one, and sends only the ticked ones with the cost bearer; the fault panel shows items, who pays, the supplier's answer (yes with a
   date, no, not yet) and the hub's progress; "Refund the buyer…" is pre-filled with the faulty items' value and sends the amount the admin settles

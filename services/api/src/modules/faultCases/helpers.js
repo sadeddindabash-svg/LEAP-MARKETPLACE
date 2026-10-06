@@ -1,5 +1,6 @@
 const db = require('../../../db/pool');
 const { createNotification } = require('../notifications/helpers');
+const { getReturnAddress } = require('../supplierReturnAddress/helpers');
 
 /**
  * Fault cases (migration 091): what happens after an admin confirms that a flagged hub shipment is REALLY
@@ -126,6 +127,20 @@ async function computeRefundSuggestion(client, row, items) {
   return { orderedValue, discountShare: Number((orderedValue - suggested).toFixed(2)), suggested, orderTotal };
 }
 
+async function supplierIdOf(client, subOrderId) {
+  const { rows } = await client.query('SELECT supplier_id FROM supplier_sub_orders WHERE id = $1', [subOrderId]);
+  return rows[0].supplier_id;
+}
+
+// The tracking number the hub entered when it sent the faulty unit back (null if it was discarded, or not sent yet).
+async function returnTrackingOf(client, shipmentId) {
+  const { rows } = await client.query(
+    `SELECT tracking_number FROM hub_shipment_events WHERE shipment_id = $1 AND step = 'returned_to_supplier' ORDER BY created_at DESC, id DESC LIMIT 1`,
+    [shipmentId]
+  );
+  return rows[0] ? rows[0].tracking_number : null;
+}
+
 // The full picture, for the admin.
 async function toAdminDto(client, row) {
   const items = await loadItems(client, row.id);
@@ -152,6 +167,8 @@ async function toAdminDto(client, row) {
       : null,
     hubReturn: row.hub_return,
     hubReturnedAt: row.hub_returned_at,
+    hubReturnTracking: row.hub_return === 'returned' ? await returnTrackingOf(client, row.shipment_id) : null,
+    returnAddressOnFile: (await getReturnAddress(await supplierIdOf(client, row.sub_order_id), client)) !== null,
     completedAt: row.completed_at,
   };
 }
@@ -164,6 +181,8 @@ async function toHubDto(client, row) {
     items: (await loadItems(client, row.id)).map(({ productId, name, quantity }) => ({ productId, name, quantity })),
     hubReturn: row.hub_return,
     needsReturn: row.hub_return === null,
+    // Where to send the unit (migration 092): the supplier's return address, or null if they haven't entered one.
+    returnAddress: await getReturnAddress(await supplierIdOf(client, row.sub_order_id), client),
     // Where the PLATFORM is on this case, in words that say nothing about money or who decided what:
     //   reviewing  = still deciding what to do (waiting for the supplier / for a decision)
     //   finalising = decided, finishing it off
@@ -215,11 +234,13 @@ async function createFaultCase(client, { shipmentId, items, costBearer, notes, a
 
   // Ask the supplier whether they can replace. Every user of that supplier account sees it.
   const { rows: supplierUsers } = await client.query(`SELECT id FROM users WHERE supplier_id = $1 AND role = 'supplier'`, [subOrder.supplier_id]);
+  // The hub has to send the faulty unit back, so the supplier is also asked for a return address if they have none yet.
+  const hasReturnAddress = (await getReturnAddress(subOrder.supplier_id, client)) !== null;
   for (const u of supplierUsers) {
     notifications.push({
       userId: u.id, type: 'supplier_message',
       title: `Can you replace? Order ${subOrder.order_id}`,
-      body: `Leap's inspection found a fault in ${chosen.length} item${chosen.length === 1 ? '' : 's'} of order ${subOrder.order_id}. Please tell us in your Returns page whether you can send a replacement, and when.`,
+      body: `Leap's inspection found a fault in ${chosen.length} item${chosen.length === 1 ? '' : 's'} of order ${subOrder.order_id}. Please tell us in your Returns page whether you can send a replacement, and when.${hasReturnAddress ? '' : ' You have no return address on file: please add one in Settings so the inspection hub knows where to send the faulty unit.'}`,
       linkType: 'order', linkId: subOrder.order_id,
     });
   }

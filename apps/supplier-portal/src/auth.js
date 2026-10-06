@@ -183,6 +183,15 @@ export function updateSubOrder(token, subOrderId, updates) {
   return authedMutate("PATCH", `/supplier/me/orders/${subOrderId}`, token, updates);
 }
 
+// The supplier's own return address (migration 092): where the inspection hub sends a faulty unit back to.
+// null until they have entered one; saving replaces it.
+export function fetchMyReturnAddress(token) {
+  return authedGet("/supplier/me/return-address", token);
+}
+export function saveMyReturnAddress(token, { contactName, phone, address }) {
+  return authedMutate("PUT", "/supplier/me/return-address", token, { contactName, phone, address });
+}
+
 // Fault cases (migration 091): "can you replace this faulty item?" -- the supplier's own cases only.
 export function fetchMyFaultCases(token) {
   return authedGet("/fault-cases/supplier/me", token);

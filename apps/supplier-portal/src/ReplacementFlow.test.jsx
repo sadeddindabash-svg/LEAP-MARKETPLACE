@@ -131,6 +131,16 @@ describe('Supplier Returns page — replacement requests (mocked fetch, real com
     expect(screen.queryByRole('button', { name: '提交回复' })).not.toBeInTheDocument();
   });
 
+  it('CRITICAL: once the hub has sent the faulty unit back, the supplier is told the return tracking number; a discarded or not-yet-sent unit has none', async () => {
+    await openReturnsPage({ cases: [
+      faultCase({ id: 1, orderId: 'LP-SENT', status: 'awaiting_admin', answered: true, canReplace: true, eta: '2026-08-20', hubReturn: 'returned', returnTrackingNumber: 'RET-554433' }),
+      faultCase({ id: 2, orderId: 'LP-DISC', status: 'awaiting_admin', answered: true, canReplace: false, hubReturn: 'discarded', returnTrackingNumber: null }),
+      faultCase({ id: 3, orderId: 'LP-WAIT', status: 'awaiting_admin', answered: true, canReplace: false, hubReturn: null, returnTrackingNumber: null }),
+    ] });
+    expect(await screen.findByText(/问题商品已退回给您 — 退回运单号: RET-554433/)).toBeInTheDocument();
+    expect(screen.getAllByText(/退回运单号/)).toHaveLength(1); // only the unit that was actually sent back
+  });
+
   it('never shows money or the platform\'s private details to the supplier', async () => {
     await openReturnsPage({ cases: [faultCase({ status: 'refund_pending', answered: true, canReplace: false })] });
     await screen.findByText('换货请求');

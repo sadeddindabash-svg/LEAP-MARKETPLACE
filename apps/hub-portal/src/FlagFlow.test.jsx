@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import LeapHubPortalApp from './App';
 
 const HUB_USER = { id: 'hub_staff_dev_seed', email: 'hub@leap.dev', name: 'Mei Lin', role: 'hub_staff', hubId: 'hub_guangzhou' };
@@ -132,7 +132,7 @@ describe('Hub Portal — what hub staff see after an admin resolves their flag (
 });
 
 describe('Hub Portal — dealing with a faulty unit after the platform confirms a real fault (mocked fetch, real component tree)', () => {
-  const FAULT = (over = {}) => ({ id: 9, items: [{ productId: 'p1', name: 'RIDEX Front Brake Disc', quantity: 2 }], hubReturn: null, needsReturn: true, platformStage: 'reviewing', ...over });
+  const FAULT = (over = {}) => ({ id: 9, items: [{ productId: 'p1', name: 'RIDEX Front Brake Disc', quantity: 2 }], hubReturn: null, needsReturn: true, platformStage: 'reviewing', returnAddress: { contactName: 'Wang Fang', phone: '+86 20 8888 1234', address: 'Building 3, 88 Huangpu Avenue, Tianhe District, Guangzhou 510000' }, ...over });
 
   async function openFaultShipment(detailOver, options = {}) {
     globalThis.fetch = mockBackend({ detail: DETAIL({ status: 'flagged', faultCase: FAULT(), ...detailOver }), ...options });
@@ -171,6 +171,46 @@ describe('Hub Portal — dealing with a faulty unit after the platform confirms 
     fireEvent.click(screen.getByText('确认已退回供应商'));
     await waitFor(() => expect(eventCalls).toHaveLength(1));
     expect(eventCalls[0]).toMatchObject({ step: 'returned_to_supplier', trackingNumber: 'RET-554433', photos: ['/uploads/evidence.jpg'] });
+  });
+
+  it('CRITICAL: shows WHERE to send the unit (the supplier\'s return address) while returning it, and hides that when discarding', async () => {
+    await openFaultShipment();
+    await screen.findByText('平台已确认存在质量问题——请处理问题商品');
+    expect(screen.getByText('Wang Fang')).toBeInTheDocument();
+    expect(screen.getByText('+86 20 8888 1234')).toBeInTheDocument();
+    expect(screen.getByText(/88 Huangpu Avenue/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '在仓库销毁' })); // discarding here: no address needed
+    expect(screen.queryByText('Wang Fang')).not.toBeInTheDocument();
+  });
+
+  it('CRITICAL: if the supplier has no return address the hub is told to contact the platform first, and cannot print a label', async () => {
+    await openFaultShipment({ faultCase: FAULT({ returnAddress: null }) });
+    expect(await screen.findByText('该供应商尚未填写退货地址。请先联系平台，再寄回问题商品。')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '打印退货标签' })).not.toBeInTheDocument();
+  });
+
+  it('prints a return label with the address, the order and the contents; only the label is printed; it closes again', async () => {
+    const print = vi.fn();
+    window.print = print;
+    await openFaultShipment();
+    await screen.findByText('平台已确认存在质量问题——请处理问题商品');
+    fireEvent.click(screen.getByRole('button', { name: '打印退货标签' }));
+
+    const label = await screen.findByRole('dialog', { name: 'Return label' });
+    expect(label).toHaveTextContent('RETURN TO SUPPLIER · 退回供应商');
+    expect(label).toHaveTextContent('Wang Fang');
+    expect(label).toHaveTextContent('+86 20 8888 1234');
+    expect(label).toHaveTextContent('88 Huangpu Avenue');
+    expect(label).toHaveTextContent('LP-200999');
+    expect(label).toHaveTextContent('RIDEX Front Brake Disc × 2');
+
+    fireEvent.click(within(label).getByRole('button', { name: '打印' }));
+    expect(print).toHaveBeenCalledTimes(1);
+    // the print stylesheet hides everything except the label
+    expect(document.querySelector('style').textContent).toContain('#return-label');
+
+    fireEvent.click(within(label).getByRole('button', { name: '关闭' }));
+    expect(screen.queryByRole('dialog', { name: 'Return label' })).not.toBeInTheDocument();
   });
 
   it('discarding at the hub needs a photo but no tracking number', async () => {

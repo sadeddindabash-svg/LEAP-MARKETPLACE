@@ -65,7 +65,7 @@ router.get('/supplier/me', ...supplierOnly, async (req, res, next) => {
       return {
         id: dto.id, orderId: r.order_id, status: dto.status, createdAt: dto.createdAt, items: dto.items.map(({ productId, name, quantity }) => ({ productId, name, quantity })),
         answered: dto.supplier.answered, canReplace: dto.supplier.canReplace, eta: dto.supplier.eta, note: dto.supplier.note,
-        outcome: dto.outcome, hubReturn: dto.hubReturn,
+        outcome: dto.outcome, hubReturn: dto.hubReturn, returnTrackingNumber: dto.hubReturnTracking,
       };
     })));
   } catch (err) {

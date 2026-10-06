@@ -20,7 +20,7 @@ import { QRCodeSVG } from "qrcode.react";
 import {
   getStoredToken, saveToken, clearToken, getCurrentUser, SessionExpiredError,
   fetchMySupplierProfile, fetchMyProducts, createProduct, updateProduct, bulkUpdateProductPrices,
-  fetchMyOrders, updateSubOrder, fetchMyReturnCases, fetchMyReturnCaseById, replyToReturnCase, fetchMyFaultCases, answerFaultCase,
+  fetchMyOrders, updateSubOrder, fetchMyReturnCases, fetchMyReturnCaseById, replyToReturnCase, fetchMyFaultCases, answerFaultCase, fetchMyReturnAddress, saveMyReturnAddress,
   fetchMyOverview,
   fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
   uploadProductImage, uploadProductVideo, fetchProductRequirements, fetchAttributeDefinitions, API_BASE_URL,
@@ -116,7 +116,7 @@ const STRINGS = {
       submit: "提交回复", submitting: "提交中…", errEta: "请选择预计发出日期。", errChoose: "请先选择“可以补发”或“无法补发”。",
       answeredYes: (d) => `您已回复：可以补发，预计 ${d} 发出`, answeredNo: "您已回复：无法补发",
       statusLabels: { awaiting_supplier: "等待您的回复", awaiting_admin: "等待平台决定", refund_pending: "平台正在为买家退款", completed: "已结案" },
-      hubNone: "问题商品尚未退回", hubReturned: "问题商品已退回给您", hubDiscarded: "问题商品已在仓库销毁",
+      hubNone: "问题商品尚未退回", hubReturned: "问题商品已退回给您", hubDiscarded: "问题商品已在仓库销毁", returnTracking: "退回运单号",
       loadError: "无法加载换货请求：",
     },
     messages: {
@@ -149,6 +149,11 @@ const STRINGS = {
       title: "店铺设置", subtitle: "企业资质与联系信息",
       companyTitle: "企业信息", companyName: "公司名称", country: "所在国家/地区", contactEmail: "联系邮箱",
       verification: "认证状态", verificationStates: { verified: "已认证", pending: "审核中", rejected: "未通过" },
+      returnAddress: {
+        title: "退货地址", help: "平台质检仓发现商品存在质量问题时，会把问题商品退回到这个地址。请填写您的快递能够送达的详细地址（可使用中文）。",
+        contactName: "联系人", phone: "联系电话", address: "详细地址", save: "保存", saving: "保存中…", saved: "已保存",
+        notSet: "尚未填写——质检仓将不知道把问题商品寄到哪里。", errRequired: "请填写联系人、联系电话和详细地址。", loadError: "无法加载退货地址：",
+      },
       notifTitle: "通知设置",
       toggles: ["新订单提醒", "库存不足预警", "结算到账通知", "翻译审核结果通知"],
     },
@@ -226,7 +231,7 @@ const STRINGS = {
       submit: "Send answer", submitting: "Sending…", errEta: "Choose the date you can send the replacement.", errChoose: "Choose “Yes, I can replace it” or “No, I can't” first.",
       answeredYes: (d) => `You answered: yes, you can replace it by ${d}`, answeredNo: "You answered: no, you can't replace it",
       statusLabels: { awaiting_supplier: "Waiting for your answer", awaiting_admin: "Waiting for Leap's decision", refund_pending: "Leap is refunding the buyer", completed: "Closed" },
-      hubNone: "The faulty unit has not been sent back yet", hubReturned: "The faulty unit was sent back to you", hubDiscarded: "The faulty unit was discarded at the hub",
+      hubNone: "The faulty unit has not been sent back yet", hubReturned: "The faulty unit was sent back to you", hubDiscarded: "The faulty unit was discarded at the hub", returnTracking: "Return tracking number",
       loadError: "Could not load replacement requests: ",
     },
     messages: {
@@ -259,6 +264,11 @@ const STRINGS = {
       title: "Shop settings", subtitle: "Business credentials and contact information",
       companyTitle: "Company information", companyName: "Company name", country: "Country", contactEmail: "Contact email",
       verification: "Verification status", verificationStates: { verified: "Verified", pending: "Pending review", rejected: "Not approved" },
+      returnAddress: {
+        title: "Return address", help: "If the inspection hub finds a faulty item, it is sent back to this address. Enter an address your courier can deliver to, in whatever language your courier needs.",
+        contactName: "Contact name", phone: "Phone number", address: "Full address", save: "Save", saving: "Saving…", saved: "Saved",
+        notSet: "Not entered yet — the inspection hub will not know where to send a faulty item.", errRequired: "Enter a contact name, a phone number and the full address.", loadError: "Could not load your return address: ",
+      },
       notifTitle: "Notification settings",
       toggles: ["New order alerts", "Low stock warnings", "Payout notifications", "Translation review results"],
     },
@@ -2670,6 +2680,7 @@ function ReplacementCard({ faultCase, onAnswered }) {
             <div>{faultCase.canReplace ? r.answeredYes(faultCase.eta) : r.answeredNo}{faultCase.note ? ` — “${faultCase.note}”` : ""}</div>
             <div style={{ color: C.muted, marginTop: 4 }}>
               {faultCase.hubReturn === "returned" ? r.hubReturned : faultCase.hubReturn === "discarded" ? r.hubDiscarded : r.hubNone}
+              {faultCase.returnTrackingNumber ? ` — ${r.returnTracking}: ${faultCase.returnTrackingNumber}` : ""}
             </div>
           </div>
         )}
@@ -3200,6 +3211,76 @@ function InfoRow({ icon: Icon, label, value }) {
 // Verification state (suppliers.verification_status) -> the badge color the portal already has.
 const VERIFICATION_BADGE = { verified: "active", pending: "pending", rejected: "rejected" };
 
+// The supplier's return address (migration 092): where the inspection hub sends a faulty unit back to. One address per
+// supplier; saving replaces it. Admin can also correct it from the supplier's page.
+function ReturnAddressCard() {
+  const { t } = useLang();
+  const { onSessionExpired } = useSupplier();
+  const font = useBodyFont();
+  const inputStyle = useInputStyle();
+  const r = t.settings.returnAddress;
+  const [saved, setSaved] = useState(undefined); // undefined = loading, null = nothing entered yet
+  const [form, setForm] = useState({ contactName: "", phone: "", address: "" });
+  const [error, setError] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+
+  useEffect(() => {
+    fetchMyReturnAddress(getStoredToken())
+      .then((data) => {
+        const entered = data && data.address ? data : null; // the server sends null when nothing has been entered
+        setSaved(entered);
+        if (entered) setForm({ contactName: entered.contactName, phone: entered.phone, address: entered.address });
+      })
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setError(`${r.loadError}${err.message}`);
+        setSaved(null);
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const change = (key) => (e) => { setForm((f) => ({ ...f, [key]: e.target.value })); setJustSaved(false); };
+  const save = async () => {
+    if (!form.contactName.trim() || !form.phone.trim() || !form.address.trim()) { setError(r.errRequired); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await saveMyReturnAddress(getStoredToken(), form);
+      setSaved(result);
+      setForm({ contactName: result.contactName, phone: result.phone, address: result.address });
+      setJustSaved(true);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+  const label = { ...font, display: "block", fontSize: 11.5, fontWeight: 700, color: C.muted, margin: "12px 0 6px" };
+
+  return (
+    <Card title={r.title} style={{ flex: 1 }}>
+      <div style={{ padding: 18 }}>
+        <p style={{ ...font, fontSize: 12.5, color: C.muted, margin: "0 0 4px" }}>{r.help}</p>
+        {saved === null && !error && <p style={{ ...font, fontSize: 12.5, fontWeight: 700, color: C.amber, margin: "6px 0 0" }}>{r.notSet}</p>}
+        <label style={label} htmlFor="ra-name">{r.contactName}</label>
+        <input id="ra-name" value={form.contactName} onChange={change("contactName")} style={inputStyle} />
+        <label style={label} htmlFor="ra-phone">{r.phone}</label>
+        <input id="ra-phone" value={form.phone} onChange={change("phone")} style={inputStyle} />
+        <label style={label} htmlFor="ra-address">{r.address}</label>
+        <textarea id="ra-address" value={form.address} onChange={change("address")} style={{ ...inputStyle, height: 78, resize: "vertical" }} />
+        {error && <div style={{ ...font, fontSize: 12, color: C.red, marginTop: 10 }}>{error}</div>}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 14 }}>
+          <button onClick={save} disabled={saving} style={{ ...font, padding: "9px 18px", borderRadius: 8, border: "none", background: saving ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 13, fontWeight: 700, cursor: saving ? "default" : "pointer" }}>
+            {saving ? r.saving : r.save}
+          </button>
+          {justSaved && <span style={{ ...font, fontSize: 12.5, fontWeight: 700, color: C.gauge }}>{r.saved}</span>}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function SettingsPage() {
   const { t, lang } = useLang();
   const { profile } = useSupplier();
@@ -3225,6 +3306,7 @@ function SettingsPage() {
             <InfoRow icon={Send} label={s.contactEmail} value={profile ? profile.contactEmail : ""} />
           </div>
         </Card>
+        <ReturnAddressCard />
         <Card title={s.notifTitle} style={{ flex: 1 }}>
           <div style={{ padding: 6 }}>
             {s.toggles.map((label, i) => (

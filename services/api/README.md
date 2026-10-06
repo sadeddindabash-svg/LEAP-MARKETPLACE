@@ -3283,6 +3283,34 @@ apps (they will show the new statuses unlabelled), supplier reminders, automatic
 builds its own hub and hub-staff login (using the Hub staff feature) so workload checks are exact. Verified to fail when completion stops needing
 both conditions, when supplier isolation is removed, when the buyer-cancel block is removed, or when the hub workload keeps counting returned units.
 
+## Supplier return addresses (migration 092)
+
+**The gap:** a confirmed real fault (migration 091) tells the hub to send the faulty unit back to the supplier, but `suppliers` held only a name,
+a country and a contact email, so hub staff had no address to ship to and no phone number for the courier.
+
+`supplier_return_addresses` — one row per supplier (`contact_name`, `phone`, `address`), same shape as `supplier_payout_methods`: saving **replaces**
+it, no history. Stored **as entered**, in whatever language the supplier's courier needs (a Chinese supplier will normally write it in Chinese).
+
+| Endpoint | Who | What it does |
+|---|---|---|
+| `GET` / `PUT /supplier/me/return-address` | the supplier | Read / save their own. `GET` returns `null` until one is entered. |
+| `GET` / `PUT /supplier/:id/return-address` | admin with access to the Suppliers page | Read / correct any supplier's. Unknown supplier → 404. The change is audit-logged (`supplier_return_address_updated`) **without** copying the address into the log. |
+
+Validation (same for both): contact name 2–100 characters, phone 5–30 characters of digits, spaces and `+ - ( ) .` only (it is read to a courier), address
+10–300 characters; values are trimmed. A supplier can only ever touch their own row.
+
+**Where it shows up:**
+- **Hub** — `faultCase.returnAddress` on `GET /hub/me/shipments/:id` (or `null`), shown in the hub portal's return panel with a **printable return label**
+  (the browser prints it — no PDF library, so Chinese and Arabic always draw correctly). Hub staff still see nothing about money.
+- **Admin** — `GET /hub/flagged` gives every flag `supplierReturnAddressOnFile`, so the "Real fault…" dialog can **warn before** a case is opened; the case panel
+  repeats the reminder while the unit is still waiting to go back. Admin can add or correct the address on the supplier's page.
+- **Supplier** — the "can you replace?" notification **also asks for a return address**, but only if they have none. Their case card now shows the
+  **return tracking number** the hub entered (`returnTrackingNumber`), and only when the unit was actually sent back (not when it was discarded).
+- **Never the buyer** — the address is not in any order data a buyer or guest receives (tested).
+
+**Tested:** `apps/admin-dashboard/src/returnAddress.integration.test.js` (10, real backend) — verified to fail when suppliers could write each other's address,
+when the hub stops receiving the address, and when the "no return address" nudge is sent unconditionally.
+
 ## Tracking numbers: which one the buyer sees
 
 An order has **two** tracking numbers for two different legs, and they were being mixed up:
