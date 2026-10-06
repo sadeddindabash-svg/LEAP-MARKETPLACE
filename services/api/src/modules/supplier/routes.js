@@ -7,6 +7,7 @@ const { logAdminAction } = require('../audit/helpers');
 const { shippingNotificationEmail } = require('../email/templates');
 const { validateFitment, tryMatchCategoryAndPart, tryMatchPosition, tryMatchDimensions, validateCompleteFields } = require('./productValidation');
 const { getSupplierAnalytics } = require('../supplierAnalytics/queries');
+const { getSupplierFinance } = require('../supplierFinance/queries');
 const { notifyRestock } = require('../restockAlerts/notify');
 
 /**
@@ -261,6 +262,18 @@ router.get('/:id', requireAuth, requireRole('admin'), requirePageAccess('supplie
 // (migration 034). CONFIRMED SCOPE: simple, universal fields only.
 // One real row per supplier -- a PUT always replaces whatever was
 // there before, rather than keeping a history.
+// GET /supplier/me/finance -- the supplier's own real money picture: what is ready to be paid,
+// what is still inside the return window, what has been paid, the commission rates that apply to
+// what they sell, and their payout history. Scoped to the logged-in supplier (no id in the URL),
+// so one supplier can never read another's figures. See supplierFinance/queries.js.
+router.get('/me/finance', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    res.json(await getSupplierFinance(req.user.supplierId));
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/me/payout-method', requireAuth, requireRole('supplier'), async (req, res, next) => {
   try {
     const { rows } = await db.query('SELECT * FROM supplier_payout_methods WHERE supplier_id = $1', [req.user.supplierId]);

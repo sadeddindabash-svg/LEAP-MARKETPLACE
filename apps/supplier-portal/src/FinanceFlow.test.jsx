@@ -5,7 +5,18 @@ import LeapSupplierPortalApp from './App';
 const SUPPLIER_USER = { id: 'supplier_dev_seed', email: 'supplier@leap.dev', name: 'Wei Zhang', role: 'supplier', supplierId: 's1' };
 const SUPPLIER_PROFILE = { id: 's1', name: 'Guangzhou AutoParts Co.', country: 'China', contactEmail: 'wei@gz.cn', verificationStatus: 'verified', listingCount: 2, createdAt: '2025-11-02T00:00:00.000Z' };
 
-function mockFetchRouter({ existingPayoutMethod = null } = {}) {
+// What GET /supplier/me/finance returns (see services/api/src/modules/supplierFinance/queries.js).
+const FINANCE = {
+  currencyCode: 'USD', returnWindowDays: 7,
+  readyToPay: { amount: 123.45, orderCount: 3 },
+  inReturnWindow: { amount: 526.84, orderCount: 16 },
+  totalPaid: 767.96,
+  lastPayout: { amount: 33.19, paidAt: '2026-07-05T00:00:00.000Z' },
+  commission: { minPercent: 17, maxPercent: 17, categories: [{ id: 'brake', nameEn: 'Brake System', nameAr: 'نظام الفرامل', percent: 17 }] },
+  payouts: [{ id: 1, amount: 33.19, currencyCode: 'USD', notes: 'July payout', paidAt: '2026-07-05T00:00:00.000Z', orderCount: 1, sales: 39.99, commission: 6.8 }],
+};
+
+function mockFetchRouter({ existingPayoutMethod = null, finance = FINANCE, financeFails = false } = {}) {
   let payoutMethod = existingPayoutMethod;
   return vi.fn((url, options) => {
     const u = String(url);
@@ -13,7 +24,14 @@ function mockFetchRouter({ existingPayoutMethod = null } = {}) {
     if (u.includes('/auth/login')) return Promise.resolve({ ok: true, json: async () => ({ token: 'fake.jwt.token', user: SUPPLIER_USER }) });
     if (u.includes('/auth/me')) return Promise.resolve({ ok: true, json: async () => SUPPLIER_USER });
     if (u.endsWith('/supplier/me')) return Promise.resolve({ ok: true, json: async () => SUPPLIER_PROFILE });
-    if (u.endsWith('/supplier/me/overview')) return Promise.resolve({ ok: true, json: async () => ({}) });
+    // A realistic (empty) overview: the Overview page is the landing page after login and renders
+    // before the test clicks Finance, so an empty {} here used to crash it whenever it won the race.
+    if (u.endsWith('/supplier/me/overview')) return Promise.resolve({ ok: true, json: async () => ({ totalOrders: 0, pendingOrders: 0, totalListings: 0, pendingReturns: 0, ordersByDay: [], topProducts: [], recentOrders: [] }) });
+    if (u.endsWith('/supplier/me/finance')) {
+      return financeFails
+        ? Promise.resolve({ ok: false, status: 500, json: async () => ({ error: 'boom' }) })
+        : Promise.resolve({ ok: true, json: async () => finance });
+    }
     if (method === 'PUT' && u.endsWith('/supplier/me/payout-method')) {
       const body = JSON.parse(options.body);
       if (!body.bankName || !body.accountNumber || !body.accountHolderName) {
@@ -91,5 +109,57 @@ describe('Supplier Finance page — real payout method (mocked fetch, real compo
 
     fireEvent.click(screen.getByText('取消'));
     await waitFor(() => expect(screen.getByText(/ICBC — 111222333/)).toBeInTheDocument());
+  });
+});
+
+describe('Supplier Finance page — real figures instead of typed-in ones (mocked fetch, real component tree)', () => {
+  async function openFinance(options) {
+    globalThis.fetch = mockFetchRouter({ existingPayoutMethod: { bankName: 'ICBC', accountNumber: '111222333', accountHolderName: 'Guangzhou AutoParts Co.' }, ...options });
+    render(<LeapSupplierPortalApp />);
+    await loginAsSupplier();
+    goToFinance();
+  }
+
+  it('CRITICAL: shows the real figures in USD, and none of the old made-up ones (¥54,542, ¥60,210, 12%, fake history)', async () => {
+    await openFinance();
+    await waitFor(() => expect(screen.getByText(/123\.45/)).toBeInTheDocument());   // ready to be paid
+    expect(screen.getByText(/526\.84/)).toBeInTheDocument();                       // still in the return window
+    expect(screen.getAllByText(/767\.96/).length).toBeGreaterThan(0);              // paid out so far
+    expect(screen.getByText('17%')).toBeInTheDocument();                            // the one real commission rate
+    expect(screen.getByText('Brake System')).toBeInTheDocument();
+    expect(screen.getByText(/USD/)).toBeInTheDocument();                            // says what currency it is
+
+    // the history row is the real payout: sales, commission taken (negative), payout, note
+    expect(screen.getByText(/39\.99/)).toBeInTheDocument();
+    expect(screen.getByText(/-\$6\.80/)).toBeInTheDocument();
+    expect(screen.getByText('July payout')).toBeInTheDocument();
+
+    expect(document.body.textContent).not.toContain('¥');
+    expect(screen.queryByText(/54,542/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/60,210/)).not.toBeInTheDocument();
+    expect(screen.queryByText('12%')).not.toBeInTheDocument();
+    expect(screen.queryByText(/68,420|61,980|20,140/)).not.toBeInTheDocument(); // the old fake history sales
+  });
+
+  it('commission rates that differ by category show as a range', async () => {
+    await openFinance({
+      finance: { ...FINANCE, commission: { minPercent: 12, maxPercent: 17, categories: [
+        { id: 'brake', nameEn: 'Brake System', nameAr: '', percent: 17 }, { id: 'light', nameEn: 'Lighting', nameAr: '', percent: 12 },
+      ] } },
+    });
+    await waitFor(() => expect(screen.getByText('12–17%')).toBeInTheDocument());
+  });
+
+  it('a supplier with no payouts yet sees an honest empty message, not invented history rows', async () => {
+    await openFinance({ finance: { ...FINANCE, totalPaid: 0, lastPayout: null, payouts: [] } });
+    await waitFor(() => expect(screen.getByText(/暂无结算记录。/)).toBeInTheDocument());
+    expect(screen.queryByText('July payout')).not.toBeInTheDocument();
+  });
+
+  it('CRITICAL: if the figures cannot be loaded, it says so instead of showing zeros or stale numbers', async () => {
+    await openFinance({ financeFails: true });
+    await waitFor(() => expect(screen.getByText(/无法加载财务数据/)).toBeInTheDocument());
+    expect(screen.getByText(/boom/)).toBeInTheDocument();
+    expect(screen.queryByText(/123\.45/)).not.toBeInTheDocument();
   });
 });

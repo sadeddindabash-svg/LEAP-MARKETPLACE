@@ -15,7 +15,8 @@ status/tracking updates), **real return/dispute case handling, a real
 Overview page, and real bidirectional messaging with the platform team**
 (auto-translated Chinese <-> English — see "Messages page" below) — the
 supplier side of the three-party marketplace is no longer just a
-disconnected mock. Finance and Settings (partially) are still mock data.
+disconnected mock. Finance and the Settings company card are now real too (see "Real Finance page and Settings" below);
+the notification toggles on Settings are still local-only (they change on screen but are never saved).
 The working 中文/EN language toggle (bilingual `STRINGS` dictionary
 pattern) is preserved throughout, including on the new login screen.
 
@@ -28,7 +29,12 @@ pattern) is preserved throughout, including on the new login screen.
 - **Settlement currency is RMB (¥) regardless of UI language** — this is
   about how suppliers get *paid out* (Finance/Payouts, not yet wired — see
   "Next steps"), which is separate from what currency a *product is listed
-  in* for buyers. Products created via the new Add Product form use USD
+  in* for buyers. **UPDATE — this constraint is NOT what the system does today:**
+  payouts are computed from USD order prices and recorded in USD
+  (`payouts.currency_code` defaults to USD and no route sets another), so the
+  Finance page shows USD, honestly, rather than an RMB figure the system never
+  produced. Making settlement genuinely RMB would need an FX rate fixed at payout
+  time and a currency on each payout — a business decision, not done here. Products created via the new Add Product form use USD
   (matching the rest of the seeded catalog) because that's the buyer-facing
   price — this does NOT contradict the RMB settlement constraint, which
   applies to the payout side once that's built.
@@ -408,6 +414,37 @@ superseded, not because it was ever functional to begin with.
   channel in this schema to miss. A genuinely complete answer, not a
   partial one hedged around gaps.
 
+## Real Finance page and Settings company card (new)
+
+**What was wrong:** the Finance page showed typed-in numbers — "¥54,542" pending, "¥60,210" last payout, a flat "12%" commission, a
+three-row fake payout history (`PAYOUTS_DATA`), and a subtitle claiming "Settlement currency: RMB · Payout cycle: twice monthly" (neither is
+true). The Settings company card showed a placeholder license number (`91440101MA5XXXXXXX`), a "Verified" badge that never changed, and a
+fixed list of "main categories". A supplier could read these as their real money and real standing.
+
+**Finance** now loads `GET /supplier/me/finance` (see `services/api/README.md`, "Supplier finance") and shows, all in **USD**:
+- **Ready to be paid** — delivered orders that have cleared the return window and have no return case. This is exactly what the admin
+  Payouts page shows as owed to this supplier (a test enforces they agree).
+- **In return window** — delivered orders that will become payable by themselves once the window passes.
+- **Paid out so far** — lifetime total, with the date of the last payout.
+- **Commission rate** — a single rate, or a range ("12–17%") when the categories the supplier sells in have different rates.
+- **Payout history** — each recorded payout with its date, orders, sales, commission taken and payout amount. A payout's amount is computed
+  by the server from the orders it covers, so commission = sales − payout is exact, not estimated.
+- Orders that have a return case are not included in any of these figures (stated on the page).
+- If the figures can't be loaded the page says so; it never falls back to zeros or old numbers. A supplier with no payouts sees an honest
+  empty message.
+
+**Settings** company card now shows real profile data: company name, **real verification status** (Verified / Pending review / Not approved,
+each with its own badge color), country and contact email. The license-number and main-categories rows are **removed**, not replaced: that
+data isn't collected anywhere. Adding a real license field would need onboarding and admin verification first.
+
+**Still not real on Settings:** the four notification toggles only change local screen state and are never saved or sent anywhere.
+
+**Tested:** `FinanceFlow.test.jsx` (7, mocked fetch) proves the real figures show and none of the old numbers do (no "¥", no "54,542",
+"60,210", "12%", or the fake history), plus range, empty and error cases; `SettingsFlow.test.jsx` (4) proves pending and rejected suppliers
+are not shown as verified and the placeholder license is gone — both were checked to fail when the old behavior is put back. The old
+`FinanceFlow` mock returned an empty `{}` for the Overview page, which crashed that page whenever it loaded before the test clicked Finance;
+it now returns a realistic overview.
+
 ## Setup
 
 ```bash
@@ -728,9 +765,10 @@ files, unchanged from before this extraction.
 
 ## Next steps to make this real
 
-1. Wire the Finance/Payouts page — blocked on the commission-rate
-   decision (Charter Section 1) — same reason the admin dashboard's
-   Payouts page is still mock.
+1. ~~Wire the Finance/Payouts page.~~ **Done** — commission is per product
+   category (`product_categories.commission_percent`) and the admin Payouts page
+   already computes real payouts from it; the supplier's Finance page now shows
+   the same figures. Still open: the RMB-vs-USD settlement question above.
 2. Split `src/App.jsx` into separate files (pages/components) — same note
    as the admin dashboard; this file is large now.
 3. ~~Add the OEM/fitment/description/image fields to real backend

@@ -223,6 +223,12 @@ export function fetchMyMessages(token) {
 }
 
 // Real supplier payout method (migration 034).
+// The supplier's own real money picture (ready to be paid, in the return window, paid out so far,
+// commission rates, payout history) -- see services/api/src/modules/supplierFinance/queries.js.
+export function fetchMyFinance(token) {
+  return authedGet("/supplier/me/finance", token);
+}
+
 export function fetchMyPayoutMethod(token) {
   return authedGet("/supplier/me/payout-method", token);
 }

@@ -1219,6 +1219,15 @@ Sixty-six test files, 409 tests total, all passing:
   "Delete") before calling the endpoint; enabling; reset shows a new password
   once; editing moves someone to another hub; "Add staff" is disabled when no
   hub exists.
+- `src/supplierFinance.integration.test.js` (6, REAL backend, new) — backs the
+  supplier portal's real Finance page: figures are in USD and scoped to the
+  supplier (admin 403, anonymous 401); "ready to be paid" always matches what
+  the admin Payouts page says is owed; a recorded payout appears in the
+  supplier's history with exact orders, sales and commission (sales − payout =
+  commission); every payout reconciles and the lifetime total matches the sum;
+  a freshly delivered order counts as "in return window", not ready to pay;
+  commission rates are per category. Verified to fail when the ready /
+  in-window buckets are swapped.
 - `src/recentlyViewed.integration.test.js` (4, REAL backend, new,
   migration 032) — recording a view and fetching the list shows it,
   most recent first; re-viewing a product moves it back to the front

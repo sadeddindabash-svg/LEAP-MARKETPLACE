@@ -3194,6 +3194,35 @@ English message — it is never blank.
 **Tested:** `apps/admin-dashboard/src/cartLanguage.integration.test.js` (7, real backend) and the extended
 `reviews.integration.test.js`. The stock tests were verified to fail against the previous cart and order routes.
 
+## Supplier finance (`GET /supplier/me/finance`)
+
+Backs the supplier portal's Finance page (which used to show typed-in numbers). Scoped to the logged-in supplier — there is no id in the
+URL, so a supplier can never read another's figures; admins and anonymous callers get 403 / 401. Code: `src/modules/supplierFinance/queries.js`.
+
+Returns `{ currencyCode, returnWindowDays, readyToPay, inReturnWindow, totalPaid, lastPayout, commission, payouts }`:
+
+| Field | Meaning |
+|---|---|
+| `readyToPay` `{amount, orderCount}` | Delivered, return window passed, no return case, not yet paid. Same set and same formula as `/payouts/owed` (and `payoutSummary.amountOwed` in the supplier overview). |
+| `inReturnWindow` `{amount, orderCount}` | Delivered and otherwise clean, but still inside the window — becomes payable by itself. |
+| `totalPaid` | Lifetime sum of every payout. A separate query, **not** a sum of the capped history, so it stays right past 100 payouts. |
+| `payouts[]` | Newest 100 recorded payouts: `amount`, `notes`, `paidAt`, `orderCount`, `sales`, `commission`. |
+| `commission` | `minPercent` / `maxPercent` plus the per-category rates for categories this supplier has listings in. |
+
+**Formula (identical to the admin side):** net of an order line = `unit_price × quantity × (1 − category commission % / 100)`.
+**Why `commission = sales − amount` is exact:** `POST /payouts` computes a payout's amount on the server from the eligible orders and links them
+in `payout_sub_orders`; it is never typed in. So for each payout, sales (what the buyers paid for those orders) minus the payout amount is
+exactly the commission taken, even if a category's rate has changed since.
+
+**Currency is USD.** Unit prices are the buyer-facing USD prices and payouts are recorded in USD (`payouts.currency_code` defaults to USD; no
+route sets another). Nothing is converted to RMB — that would be an invented number. NOTE this contradicts the supplier-portal README's stated
+constraint "settlement currency is RMB"; see that README for the open decision.
+
+**Tested:** `apps/admin-dashboard/src/supplierFinance.integration.test.js` (6, real backend). Because other test files record payouts for the
+same supplier at the same time, the tests look a payout up by its own id and check invariants (every payout reconciles; ready-to-pay matches
+the admin figure, retried to tolerate a concurrent payout) instead of exact running totals. Verified to fail when the ready / in-window
+buckets are swapped.
+
 ## Hub staff accounts (migration 089)
 
 **The gap this closes:** until now nothing could create a hub staff login. Public sign-up only makes buyers, the admin "Team" feature

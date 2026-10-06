@@ -6,7 +6,7 @@ import {
   LayoutGrid, PackageSearch, ShoppingBag, RotateCcw, MessageSquare, Wallet, Settings,
   Search, Bell, ChevronRight, ChevronLeft, TrendingUp, Plus, Upload, Download, Check, X,
   Star, MoreHorizontal, FileSpreadsheet, ImagePlus, Truck, Send, AlertTriangle, Store,
-  BadgeCheck, Building2, CreditCard, Bike, Disc, BatteryMedium, Car, Video,
+  BadgeCheck, Building2, CreditCard, Disc, BatteryMedium, Car, Video,
   Lightbulb, Wrench, Fan, Cog, Languages, FileQuestion
 } from "lucide-react";
 import {
@@ -26,7 +26,7 @@ import {
   uploadProductImage, uploadProductVideo, fetchProductRequirements, fetchAttributeDefinitions, API_BASE_URL,
   fetchCategories, fetchPartsForCategory,
   fetchMyMessages, sendMyMessage,
-  fetchMyPayoutMethod, updateMyPayoutMethod,
+  fetchMyFinance, fetchMyPayoutMethod, updateMyPayoutMethod,
   fetchMyNotifications, fetchUnreadNotificationCount, markNotificationRead, markAllNotificationsRead,
   bulkImportProducts, fetchMyDrafts, completeDraftProduct,
   fetchPartRequestQueue, fetchPartRequestDetail, sendPartRequestQuote,
@@ -122,19 +122,22 @@ const STRINGS = {
       markAllRead: "全部标记为已读",
     },
     finance: {
-      title: "财务与结算", subtitle: "结算币种：人民币 (¥) · 结算周期：每半月一次",
-      kpiPending: "待结算金额", kpiPendingSub: "预计 2026-07-18 到账",
-      kpiLast: "上次结算", kpiLastSub: "2026-07-05 已到账",
-      kpiCommission: "平均佣金比例", kpiCommissionSub: "刹车系统类目",
-      recordsTitle: "结算记录",
-      thPeriod: "结算周期", thOrders: "订单数", thSales: "销售额", thCommission: "平台佣金", thPayout: "应结金额", thStatus: "状态", thDate: "到账日期",
-      bankTitle: "收款账户", bankLine1: "中国建设银行 尾号 8842", bankLine2: "户名：广州汽配有限公司 · 已通过平台验证",
-      periods: ["2026年6月16日–6月30日", "2026年7月1日–7月15日", "2026年7月16日–7月31日"],
+      title: "财务与结算",
+      subtitle: (days) => `金额以美元 (USD) 计。订单送达并超过 ${days} 天退货期后，Leap 会记录一笔结算。`,
+      kpiReady: "可结算金额", kpiReadySub: (n) => `${n} 个订单已过退货期`,
+      kpiWaiting: "退货期内", kpiWaitingSub: (n, days) => `${n} 个已送达订单 · ${days} 天退货期后可结算`,
+      kpiPaid: "累计已结算", kpiPaidSub: (date) => (date ? `最近一次：${date}` : "暂无结算记录"),
+      kpiCommission: "佣金比例", kpiCommissionSub: "按类目设定",
+      kpiCommissionNone: "—", kpiCommissionNoneSub: "上架商品后显示",
+      recordsTitle: "结算记录", emptyRecords: "暂无结算记录。订单送达并过退货期后，Leap 会记录结算，并显示在这里。",
+      thDate: "记录日期", thOrders: "订单数", thSales: "销售额", thCommission: "平台佣金", thPayout: "结算金额", thNotes: "备注",
+      returnCaseNote: "有退货申请的订单不计入以上金额。", loadError: "无法加载财务数据：",
+      bankTitle: "收款账户",
     },
     settings: {
       title: "店铺设置", subtitle: "企业资质与联系信息",
-      companyTitle: "企业信息", companyName: "公司名称", license: "统一社会信用代码",
-      verification: "认证状态", verified: "已认证", mainCat: "主营类目", mainCatValue: "刹车系统、发动机部件、照明系统",
+      companyTitle: "企业信息", companyName: "公司名称", country: "所在国家/地区", contactEmail: "联系邮箱",
+      verification: "认证状态", verificationStates: { verified: "已认证", pending: "审核中", rejected: "未通过" },
       notifTitle: "通知设置",
       toggles: ["新订单提醒", "库存不足预警", "结算到账通知", "翻译审核结果通知"],
     },
@@ -218,19 +221,22 @@ const STRINGS = {
       markAllRead: "Mark all read",
     },
     finance: {
-      title: "Finance & Payouts", subtitle: "Settlement currency: RMB (\u00a5) · Payout cycle: twice monthly",
-      kpiPending: "Pending payout", kpiPendingSub: "Expected Jul 18, 2026",
-      kpiLast: "Last payout", kpiLastSub: "Landed Jul 5, 2026",
-      kpiCommission: "Avg. commission rate", kpiCommissionSub: "Brake System category",
-      recordsTitle: "Payout history",
-      thPeriod: "Period", thOrders: "Orders", thSales: "Sales", thCommission: "Commission", thPayout: "Payout", thStatus: "Status", thDate: "Payout date",
-      bankTitle: "Payout account", bankLine1: "China Construction Bank •••• 8842", bankLine2: "Account holder: Guangzhou AutoParts Co. \u00b7 Verified",
-      periods: ["Jun 16\u201330, 2026", "Jul 1\u201315, 2026", "Jul 16\u201331, 2026"],
+      title: "Finance & Payouts",
+      subtitle: (days) => `Amounts are in US dollars (USD). Leap records a payout once your delivered orders have cleared the ${days}-day return window.`,
+      kpiReady: "Ready to be paid", kpiReadySub: (n) => `${n} order${n === 1 ? "" : "s"} cleared the return window`,
+      kpiWaiting: "In return window", kpiWaitingSub: (n, days) => `${n} delivered order${n === 1 ? "" : "s"} · payable after ${days} days`,
+      kpiPaid: "Paid out so far", kpiPaidSub: (date) => (date ? `Last payout ${date}` : "No payouts yet"),
+      kpiCommission: "Commission rate", kpiCommissionSub: "Set per category",
+      kpiCommissionNone: "—", kpiCommissionNoneSub: "Shown once you have listings",
+      recordsTitle: "Payout history", emptyRecords: "No payouts yet. Once your delivered orders clear the return window, Leap records a payout and it appears here.",
+      returnCaseNote: "Orders that have a return case are not included in these figures.", loadError: "Could not load your finance data: ",
+      thDate: "Date recorded", thOrders: "Orders", thSales: "Sales", thCommission: "Commission", thPayout: "Payout", thNotes: "Notes",
+      bankTitle: "Payout account",
     },
     settings: {
       title: "Shop settings", subtitle: "Business credentials and contact information",
-      companyTitle: "Company information", companyName: "Company name", license: "Business license number",
-      verification: "Verification status", verified: "Verified", mainCat: "Main categories", mainCatValue: "Brake System, Engine Parts, Lighting",
+      companyTitle: "Company information", companyName: "Company name", country: "Country", contactEmail: "Contact email",
+      verification: "Verification status", verificationStates: { verified: "Verified", pending: "Pending review", rejected: "Not approved" },
       notifTitle: "Notification settings",
       toggles: ["New order alerts", "Low stock warnings", "Payout notifications", "Translation review results"],
     },
@@ -266,12 +272,6 @@ const PRODUCTS = [
 
 // RETURNS mock array removed — ReturnsPage now fetches real data from
 // GET /returns/supplier/me.
-
-const PAYOUTS_DATA = [
-  { orders: 312, sales: 68420, commission: 8210, payout: 60210, status: "paid", date: "2026-07-05" },
-  { orders: 287, sales: 61980, commission: 7438, payout: 54542, status: "pending", date: "2026-07-18" },
-  { orders: 94, sales: 20140, commission: 2417, payout: 17723, status: "calculating", date: "2026-08-02" },
-];
 
 /* ---------------- Shared UI bits ---------------- */
 
@@ -2884,6 +2884,19 @@ function FinancePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
 
+  // The supplier's real money figures (ready to be paid, in return window, paid so far,
+  // commission rates, payout history). undefined = loading.
+  const [finance, setFinance] = useState(undefined);
+  const [financeError, setFinanceError] = useState(null);
+  useEffect(() => {
+    fetchMyFinance(getStoredToken())
+      .then(setFinance)
+      .catch((err) => {
+        if (err instanceof SessionExpiredError) return onSessionExpired();
+        setFinanceError(err.message);
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     fetchMyPayoutMethod(getStoredToken())
       .then((result) => {
@@ -2923,33 +2936,55 @@ function FinancePage() {
     }
   };
 
+  // Amounts are USD (the currency payouts are actually recorded in) -- never converted.
+  const usd = (n) => `$${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const font = useBodyFont();
+  const commission = finance ? finance.commission : null;
+  const commissionValue = !commission || commission.minPercent == null ? fi.kpiCommissionNone
+    : commission.minPercent === commission.maxPercent ? `${commission.minPercent}%` : `${commission.minPercent}–${commission.maxPercent}%`;
+  const commissionSub = !commission || commission.minPercent == null ? fi.kpiCommissionNoneSub
+    : commission.categories.length === 1 ? commission.categories[0].nameEn : fi.kpiCommissionSub;
+
   return (
     <div>
-      <TopBar title={fi.title} subtitle={fi.subtitle} />
+      <TopBar title={fi.title} subtitle={finance ? fi.subtitle(finance.returnWindowDays) : ""} />
       <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
-        <div style={{ display: "flex", gap: 16 }}>
-          <KpiCard label={fi.kpiPending} value="¥54,542" sub={fi.kpiPendingSub} icon={Wallet} accent={C.torque} />
-          <KpiCard label={fi.kpiLast} value="¥60,210" sub={fi.kpiLastSub} icon={Check} accent={C.gauge} />
-          <KpiCard label={fi.kpiCommission} value="12%" sub={fi.kpiCommissionSub} icon={TrendingUp} accent={C.amber} />
-        </div>
-        <Card title={fi.recordsTitle}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead><tr><Th>{fi.thPeriod}</Th><Th align="right">{fi.thOrders}</Th><Th align="right">{fi.thSales}</Th><Th align="right">{fi.thCommission}</Th><Th align="right">{fi.thPayout}</Th><Th>{fi.thStatus}</Th><Th>{fi.thDate}</Th></tr></thead>
-            <tbody>
-              {PAYOUTS_DATA.map((p, i) => (
-                <tr key={i}>
-                  <Td style={{ fontWeight: 600 }}>{fi.periods[i]}</Td>
-                  <Td align="right">{p.orders}</Td>
-                  <Td align="right">¥{p.sales.toLocaleString()}</Td>
-                  <Td align="right" style={{ color: C.red }}>-¥{p.commission.toLocaleString()}</Td>
-                  <Td align="right" style={{ fontWeight: 700 }}>¥{p.payout.toLocaleString()}</Td>
-                  <Td><Badge label={t.statusPayout[p.status]} statusKey={p.status} /></Td>
-                  <Td style={{ color: C.muted }}>{p.date}</Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+        {financeError && (
+          <div style={{ ...font, fontSize: 12.5, color: C.red, background: C.redBg, borderRadius: 8, padding: 12 }}>{fi.loadError}{financeError}</div>
+        )}
+        {finance === undefined && !financeError && <div style={{ ...font, fontSize: 13, color: C.muted }}>Loading…</div>}
+        {finance && (
+          <>
+            <div style={{ display: "flex", gap: 16 }}>
+              <KpiCard label={fi.kpiReady} value={usd(finance.readyToPay.amount)} sub={fi.kpiReadySub(finance.readyToPay.orderCount)} icon={Wallet} accent={C.torque} />
+              <KpiCard label={fi.kpiWaiting} value={usd(finance.inReturnWindow.amount)} sub={fi.kpiWaitingSub(finance.inReturnWindow.orderCount, finance.returnWindowDays)} icon={RotateCcw} accent={C.amber} />
+              <KpiCard label={fi.kpiPaid} value={usd(finance.totalPaid)} sub={fi.kpiPaidSub(finance.lastPayout ? new Date(finance.lastPayout.paidAt).toLocaleDateString() : null)} icon={Check} accent={C.gauge} />
+              <KpiCard label={fi.kpiCommission} value={commissionValue} sub={commissionSub} icon={TrendingUp} accent={C.amber} />
+            </div>
+            <Card title={fi.recordsTitle}>
+              {finance.payouts.length === 0 ? (
+                <div style={{ ...font, padding: 22, fontSize: 13, color: C.muted, textAlign: "center" }}>{fi.emptyRecords}</div>
+              ) : (
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr><Th>{fi.thDate}</Th><Th align="right">{fi.thOrders}</Th><Th align="right">{fi.thSales}</Th><Th align="right">{fi.thCommission}</Th><Th align="right">{fi.thPayout}</Th><Th>{fi.thNotes}</Th></tr></thead>
+                  <tbody>
+                    {finance.payouts.map((p) => (
+                      <tr key={p.id}>
+                        <Td style={{ fontWeight: 600 }}>{new Date(p.paidAt).toLocaleDateString()}</Td>
+                        <Td align="right">{p.orderCount}</Td>
+                        <Td align="right">{usd(p.sales)}</Td>
+                        <Td align="right" style={{ color: C.red }}>-{usd(p.commission)}</Td>
+                        <Td align="right" style={{ fontWeight: 700 }}>{usd(p.amount)}</Td>
+                        <Td style={{ color: C.muted }}>{p.notes || ""}</Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <div style={{ ...font, padding: "10px 16px", fontSize: 11.5, color: C.muted, borderTop: `1px solid ${C.line}` }}>{fi.returnCaseNote}</div>
+            </Card>
+          </>
+        )}
         <Card title={fi.bankTitle}>
           <div style={{ padding: 16 }}>
             {payoutMethod === undefined && <div style={{ fontSize: 12.5, color: C.muted }}>Loading…</div>}
@@ -3013,6 +3048,9 @@ function InfoRow({ icon: Icon, label, value }) {
   );
 }
 
+// Verification state (suppliers.verification_status) -> the badge color the portal already has.
+const VERIFICATION_BADGE = { verified: "active", pending: "pending", rejected: "rejected" };
+
 function SettingsPage() {
   const { t, lang } = useLang();
   const { profile } = useSupplier();
@@ -3025,10 +3063,17 @@ function SettingsPage() {
       <div style={{ padding: 24, display: "flex", gap: 16 }}>
         <Card title={s.companyTitle} style={{ flex: 1 }}>
           <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+            {/* Real profile data only. A business license number and a "main categories" list used to
+                be typed in here (a placeholder number, and a fixed category list); neither exists in
+                the database, so they are gone rather than shown as if they were real. */}
             <InfoRow icon={Building2} label={s.companyName} value={profile ? profile.name : ""} />
-            <InfoRow icon={BadgeCheck} label={s.license} value="91440101MA5XXXXXXX" />
-            <InfoRow icon={Store} label={s.verification} value={<Badge label={s.verified} statusKey="active" />} />
-            <InfoRow icon={Bike} label={s.mainCat} value={s.mainCatValue} />
+            <InfoRow
+              icon={BadgeCheck}
+              label={s.verification}
+              value={profile ? <Badge label={s.verificationStates[profile.verificationStatus] || profile.verificationStatus} statusKey={VERIFICATION_BADGE[profile.verificationStatus] || "inactive"} /> : ""}
+            />
+            <InfoRow icon={Store} label={s.country} value={profile ? profile.country : ""} />
+            <InfoRow icon={Send} label={s.contactEmail} value={profile ? profile.contactEmail : ""} />
           </div>
         </Card>
         <Card title={s.notifTitle} style={{ flex: 1 }}>
