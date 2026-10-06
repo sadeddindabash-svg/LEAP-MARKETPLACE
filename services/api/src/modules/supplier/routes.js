@@ -2,9 +2,7 @@ const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { createNotification } = require('../notifications/helpers');
-const { sendTransactionalEmail } = require('../email/client');
 const { logAdminAction } = require('../audit/helpers');
-const { shippingNotificationEmail } = require('../email/templates');
 const { validateFitment, tryMatchCategoryAndPart, tryMatchPosition, tryMatchDimensions, validateCompleteFields } = require('./productValidation');
 const { getSupplierAnalytics } = require('../supplierAnalytics/queries');
 const { getSupplierFinance } = require('../supplierFinance/queries');
@@ -969,8 +967,11 @@ router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), asy
       await createNotification({
         userId: orderRows[0]?.buyer_id,
         type: 'order_status',
-        title: 'Your order has shipped',
-        body: `Order ${rows[0].order_id} is now shipped.`,
+        // The SUPPLIER shipping is only the leg to our inspection hub -- the buyer's "shipped" notice (with the hub's own
+        // tracking number) is sent when the HUB ships it to them (see hub/routes.js). Saying "shipped" here, and
+        // emailing the supplier's domestic tracking number, was wrong on both counts.
+        title: 'Your order is on its way to our inspection hub',
+        body: `Order ${rows[0].order_id} has been sent by the supplier to our inspection hub. We will tell you when it ships to you.`,
         linkType: 'order',
         linkId: rows[0].order_id,
       }, client);
@@ -985,26 +986,6 @@ router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), asy
     // be able to block the real, already-successful response if an
     // SMTP server is ever slow or unreachable.
     res.json({ subOrderId: rows[0].id, orderId: rows[0].order_id, status: rows[0].status, trackingNumber: rows[0].tracking_number, hubShipmentId });
-
-    if (status === 'shipped') {
-      (async () => {
-        try {
-          const { rows: orderRows } = await db.query('SELECT buyer_id, guest_email FROM orders WHERE id = $1', [rows[0].order_id]);
-          let recipientEmail = orderRows[0]?.guest_email || null;
-          let recipientName = null;
-          if (orderRows[0]?.buyer_id) {
-            const { rows: userRows } = await db.query('SELECT email, name FROM users WHERE id = $1', [orderRows[0].buyer_id]);
-            if (userRows.length > 0) { recipientEmail = userRows[0].email; recipientName = userRows[0].name; }
-          }
-          if (recipientEmail) {
-            const { html, text } = shippingNotificationEmail({ recipientName, orderId: rows[0].order_id, trackingNumber: rows[0].tracking_number });
-            await sendTransactionalEmail({ to: recipientEmail, subject: `Your order has shipped — ${rows[0].order_id}`, html, text, fallbackLogLabel: 'order-shipped' });
-          }
-        } catch (err) {
-          console.error('Order shipped email failed (non-fatal):', err.message);
-        }
-      })();
-    }
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);

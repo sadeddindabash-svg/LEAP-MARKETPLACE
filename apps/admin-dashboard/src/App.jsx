@@ -1089,7 +1089,10 @@ function OrderDetailPage({ orderId, onBack, onSessionExpired, onOpenTicket, onOp
                       <span style={{ ...body, fontSize: 13, fontWeight: 600, color: C.ink }}>{so.supplierName || so.supplierId}</span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {so.trackingNumber && <span style={{ ...body, fontSize: 11, color: C.muted }}>Supplier → hub</span>}
                       {so.trackingNumber && <PlateChip small>{so.trackingNumber}</PlateChip>}
+                      {so.hubTrackingNumber && <span style={{ ...body, fontSize: 11, color: C.muted }}>Hub → buyer</span>}
+                      {so.hubTrackingNumber && <PlateChip small>{so.hubTrackingNumber}</PlateChip>}
                       <Badge label={getHubStatusMeta(so.hubShipment?.status).label} color={getHubStatusMeta(so.hubShipment?.status).color} bg={getHubStatusMeta(so.hubShipment?.status).bg} />
                     </div>
                   </div>
@@ -5258,7 +5261,6 @@ const FAULT_STATUS = {
 const HUB_RETURN_LABELS = { returned: "Returned to the supplier", discarded: "Discarded at the hub" };
 const COST_BEARER_LABELS = { supplier: "The supplier", leap: "Leap" };
 const usd2 = (n) => `$${Number(n).toFixed(2)}`;
-const faultItemsTotal = (faultCase) => faultCase.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
 
 // "Real fault" dialog: which items are faulty, and who bears the cost. (Custom rather than EditDialog,
 // which has no checkboxes.) Everything defaults to the safe choice: all items ticked, supplier pays.
@@ -5428,7 +5430,11 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
   const editFields = React.useMemo(() => {
     if (!action) return null;
     if (action.type === "refund") {
-      return [{ key: "amount", label: "Refund amount (USD) — defaults to the faulty items' value", value: String(faultItemsTotal(action.shipment.faultCase).toFixed(2)), type: "number" }];
+      // The server works out what the buyer actually PAID for these items (a discount lowers it below their list value),
+      // so the default is never more than the order total -- which is all the server will accept.
+      const r = action.shipment.faultCase.refundSuggestion;
+      const detail = r.discountShare > 0 ? ` (ordered ${usd2(r.orderedValue)}, minus ${usd2(r.discountShare)} discount)` : "";
+      return [{ key: "amount", label: `Refund amount (USD) — defaults to what the buyer paid for these items: ${usd2(r.suggested)}${detail}`, value: r.suggested.toFixed(2), type: "number" }];
     }
     if (action.type === "issued") {
       return [{ key: "reference", label: "Stripe / PayPal refund reference (or a note)", value: "" }];

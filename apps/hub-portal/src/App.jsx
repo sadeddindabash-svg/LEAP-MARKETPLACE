@@ -66,7 +66,9 @@ const STRINGS = {
       faultDesc: "平台已确认下列商品确有质量问题。请将其退回供应商（填写运单号并拍照），或在仓库销毁（拍照留证）。",
       faultItems: "问题商品", returnOption: "退回供应商", discardOption: "在仓库销毁",
       returnTracking: "退回运单号", submitReturn: "确认已退回供应商", submitDiscard: "确认已销毁",
-      returnedBanner: "此包裹已退回供应商，等待平台结案。", discardedBanner: "此包裹已在仓库销毁，等待平台结案。",
+      returnedBanner: "此包裹已退回供应商。仓库无需再做任何操作。", discardedBanner: "此包裹已在仓库销毁。仓库无需再做任何操作。",
+      stage: { reviewing: "平台仍在决定如何处理此案例。", finalising: "平台正在办理收尾事项。", closed: "此案例已结案。" },
+      waitingOnHub: "平台正在等待仓库处理问题商品。",
       damageTypeLabel: "问题类型（可选）", damageTypePlaceholder: "— 请选择 —",
       damageTypes: { physical_damage: "外观损坏", water_damage: "进水损坏", missing_parts: "缺少配件", wrong_item: "商品错发", other: "其他" },
       resolvedBanners: {
@@ -125,7 +127,9 @@ const STRINGS = {
       faultDesc: "The platform confirmed a real quality problem with the items below. Send them back to the supplier (enter the tracking number and photograph the parcel), or discard them at the hub (photograph them as evidence).",
       faultItems: "Faulty items", returnOption: "Return to supplier", discardOption: "Discard at the hub",
       returnTracking: "Return tracking number", submitReturn: "Confirm returned to supplier", submitDiscard: "Confirm discarded",
-      returnedBanner: "This shipment was returned to the supplier. The platform will close the case.", discardedBanner: "This shipment was discarded at the hub. The platform will close the case.",
+      returnedBanner: "This shipment was returned to the supplier. Nothing more is needed from the hub.", discardedBanner: "This shipment was discarded at the hub. Nothing more is needed from the hub.",
+      stage: { reviewing: "The platform is still deciding how to handle this case.", finalising: "The platform is finishing this case.", closed: "This case is closed." },
+      waitingOnHub: "The platform is waiting for the hub to deal with the faulty unit.",
       damageTypeLabel: "Kind of problem (optional)", damageTypePlaceholder: "— Select —",
       damageTypes: { physical_damage: "Physical damage", water_damage: "Water damage", missing_parts: "Missing parts", wrong_item: "Wrong item", other: "Other" },
       resolvedBanners: {
@@ -602,6 +606,9 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
               : shipment.status === "returned_to_supplier" ? t.detail.returnedBanner
               : shipment.status === "discarded_at_hub" ? t.detail.discardedBanner
               : shipment.resolution ? t.detail.resolvedBanners[shipment.resolution] : t.detail.flaggedBanner}
+            {shipment.faultCase && !needsFaultReturn && (
+              <div style={{ fontWeight: 500, marginTop: 6 }}>{t.detail.stage[shipment.faultCase.platformStage]}</div>
+            )}
           </div>
         )}
 
@@ -612,7 +619,8 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
               <AlertTriangle size={17} color={C.red} />
               <div style={{ ...disp, fontSize: 17, fontWeight: 700, color: C.ink }}>{t.detail.faultTitle}</div>
             </div>
-            <div style={{ ...body, fontSize: 12.5, color: C.muted, marginBottom: 12 }}>{t.detail.faultDesc}</div>
+            <div style={{ ...body, fontSize: 12.5, color: C.muted, marginBottom: 6 }}>{t.detail.faultDesc}</div>
+            <div style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.red, marginBottom: 12 }}>{t.detail.waitingOnHub}</div>
             <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 6 }}>{t.detail.faultItems.toUpperCase()}</div>
             {shipment.faultCase.items.map((i) => (
               <div key={i.productId} style={{ ...body, fontSize: 13, color: C.ink, padding: "2px 0" }}>{i.name || i.productId} × {i.quantity}</div>

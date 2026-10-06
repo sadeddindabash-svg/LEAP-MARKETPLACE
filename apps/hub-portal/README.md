@@ -207,9 +207,9 @@ rather than an error. 16/16 passing across the full suite.
     outcome but **not the admin's internal note**.
   - **Real fault confirmed:** a red panel lists the faulty items and offers two ways to deal with them — **Return to supplier** (a return tracking
     number and an evidence photo are required) or **Discard at the hub** (a photo only). The shipment then shows "Returned to supplier" /
-    "Discarded", with a note that the platform will close the case. Hub staff are never shown the refund, who bears the cost, or any note.
+    "Discarded", with "Nothing more is needed from the hub" and a line saying where the platform is (still deciding, finishing, or closed) — never anything about money. Hub staff are never shown the refund, who bears the cost, or any note.
   - Shipments whose unit has left the hub still appear under the **Flagged** filter until the platform closes the case.
-- Tested in `src/FlagFlow.test.jsx` (13, mocked fetch): the dropdown and that the kind is sent (and is optional); the resolved and no-fault banners;
+- Tested in `src/FlagFlow.test.jsx` (14, mocked fetch): the dropdown and that the kind is sent (and is optional); the resolved and no-fault banners;
   the fault panel, the tracking-number and photo requirements for a return, discarding without tracking, and the banners after each. Verified to fail
   when the kind stops being sent, the banner ignores the verdict, or the return stops requiring a tracking number.
 - **Not done:** the Flutter hub app (`apps/hub-mobile`) was not changed — it has no kind-of-problem picker, no return/discard screen, and does not

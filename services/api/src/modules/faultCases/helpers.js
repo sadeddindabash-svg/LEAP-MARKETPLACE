@@ -97,8 +97,38 @@ async function loadItems(client, faultCaseId) {
   return rows.map((r) => ({ productId: r.product_id, name: r.name, quantity: r.quantity, unitPrice: Number(r.unit_price) }));
 }
 
+// What the buyer actually PAID for the faulty items -- the right default for a refund.
+//
+// Item prices (order_line_items.unit_price) are the prices BEFORE any order-level discount (a promo code or the loyalty
+// discount), so the faulty items' list value can be MORE than the buyer paid -- with every item faulty it is the whole
+// subtotal, which is more than the order total whenever a discount applied. Refunding list value would over-refund and
+// the server (rightly) refuses anything above the order total.
+//
+// The buyer paid `orders.total` for ALL the order's items, so the faulty items' share of what was really paid is
+//     faultyValue x (orders.total / value of every item in the order)
+// With no discount the ratio is 1 and this is exactly the faulty items' value; with a discount it is that value minus
+// their proportional share of the discount. The admin can still lower it, never above the order total.
+async function computeRefundSuggestion(client, row, items) {
+  const { rows } = await client.query(
+    `SELECT o.total,
+            (SELECT COALESCE(SUM(oli.unit_price * oli.quantity), 0)
+             FROM order_line_items oli JOIN supplier_sub_orders s2 ON s2.id = oli.sub_order_id
+             WHERE s2.order_id = o.id) AS all_items_value
+     FROM supplier_sub_orders so JOIN orders o ON o.id = so.order_id
+     WHERE so.id = $1`,
+    [row.sub_order_id]
+  );
+  const orderTotal = Number(rows[0].total);
+  const allItemsValue = Number(rows[0].all_items_value);
+  const orderedValue = Number(items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0).toFixed(2));
+  const paid = allItemsValue > 0 ? (orderedValue * orderTotal) / allItemsValue : orderedValue;
+  const suggested = Number(Math.min(paid, orderTotal).toFixed(2));
+  return { orderedValue, discountShare: Number((orderedValue - suggested).toFixed(2)), suggested, orderTotal };
+}
+
 // The full picture, for the admin.
 async function toAdminDto(client, row) {
+  const items = await loadItems(client, row.id);
   return {
     id: row.id,
     shipmentId: row.shipment_id,
@@ -106,7 +136,9 @@ async function toAdminDto(client, row) {
     costBearer: row.cost_bearer,
     adminNotes: row.admin_notes,
     createdAt: row.created_at,
-    items: await loadItems(client, row.id),
+    items,
+    // What the buyer really paid for these items (see computeRefundSuggestion): the refund's default amount.
+    refundSuggestion: await computeRefundSuggestion(client, row, items),
     supplier: {
       answered: row.supplier_answered_at !== null,
       canReplace: row.supplier_can_replace,
@@ -127,7 +159,18 @@ async function toAdminDto(client, row) {
 // What hub staff need: which items to send back, and whether they still have to. Deliberately NO money
 // (refund amount) and NO cost bearer: those are the platform's business.
 async function toHubDto(client, row) {
-  return { id: row.id, items: (await loadItems(client, row.id)).map(({ productId, name, quantity }) => ({ productId, name, quantity })), hubReturn: row.hub_return, needsReturn: row.hub_return === null };
+  return {
+    id: row.id,
+    items: (await loadItems(client, row.id)).map(({ productId, name, quantity }) => ({ productId, name, quantity })),
+    hubReturn: row.hub_return,
+    needsReturn: row.hub_return === null,
+    // Where the PLATFORM is on this case, in words that say nothing about money or who decided what:
+    //   reviewing  = still deciding what to do (waiting for the supplier / for a decision)
+    //   finalising = decided, finishing it off
+    //   closed     = done
+    // So hub staff always know whether anything is left for THEM (only the unit: needsReturn), without seeing refund details.
+    platformStage: row.status === 'completed' ? 'closed' : row.status === 'refund_pending' ? 'finalising' : 'reviewing',
+  };
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -221,8 +264,8 @@ async function confirmRefund(client, { caseId, amount, adminId }) {
   );
   if (sub[0].status === 'cancelled') throw new FaultCaseError('This part was already cancelled by the buyer.');
   const items = await loadItems(client, fc.id);
-  const itemsTotal = Number(items.reduce((s, i) => s + i.unitPrice * i.quantity, 0).toFixed(2));
-  const refundAmount = amount === undefined || amount === null ? itemsTotal : Number(amount);
+  const suggestion = await computeRefundSuggestion(client, fc, items);
+  const refundAmount = amount === undefined || amount === null ? suggestion.suggested : Number(amount);
   if (!Number.isFinite(refundAmount) || refundAmount <= 0) throw new FaultCaseError('The refund amount must be greater than zero.');
   if (refundAmount > Number(sub[0].total)) throw new FaultCaseError(`The refund cannot be more than the order total ($${money(sub[0].total)}).`);
   const finalAmount = Number(refundAmount.toFixed(2));
@@ -234,7 +277,7 @@ async function confirmRefund(client, { caseId, amount, adminId }) {
   );
   const notifications = [];
   const returnCase = await advanceReturnCase(client, await findReturnCase(client, fc.sub_order_id), 'approved', BUYER_TEXT.refundConfirmed(finalAmount), notifications);
-  return { faultCase: updated[0], returnCase, notifications, suggestedAmount: itemsTotal };
+  return { faultCase: updated[0], returnCase, notifications, suggestedAmount: suggestion.suggested };
 }
 
 async function markRefunded(client, { caseId, reference, adminId }) {

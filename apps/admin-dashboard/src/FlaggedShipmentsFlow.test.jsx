@@ -131,6 +131,8 @@ describe('Flagged Shipments — the two verdicts: no fault, or a real fault (moc
   const flag = (over = {}) => ({ ...MOCK_FLAGGED[0], returnCaseId: 'RC-7', damageType: 'water_damage', hubStatus: 'flagged', items: ITEMS, faultCase: null, ...over });
   const faultCase = (over = {}) => ({
     id: 9, shipmentId: 335, status: 'awaiting_supplier', costBearer: 'supplier', adminNotes: null, items: [ITEMS[0]],
+    // What the buyer actually paid for the faulty items (computed by the server; a discount makes it lower than list value).
+    refundSuggestion: { orderedValue: 30, discountShare: 0, suggested: 30, orderTotal: 50 },
     supplier: { answered: false, canReplace: null, eta: null, note: null }, outcome: null, refund: null, hubReturn: null, ...over,
   });
 
@@ -143,7 +145,7 @@ describe('Flagged Shipments — the two verdicts: no fault, or a real fault (moc
   }
   const dialogTitled = (title) => screen.getByText(title).parentElement;
   const fieldIn = (panel, label) => within(panel).getByText(label).parentElement.querySelector('input, select');
-  const REFUND_LABEL = "Refund amount (USD) — defaults to the faulty items' value";
+  const REFUND_LABEL = 'Refund amount (USD) — defaults to what the buyer paid for these items: $30.00';
 
   it('shows the kind of problem and the linked return case on the flag', async () => {
     await openFlaggedPage({ flagged: [flag()] });
@@ -258,6 +260,25 @@ describe('Flagged Shipments — the two verdicts: no fault, or a real fault (moc
     expect(await screen.findByRole('button', { name: /mark as refunded…/i })).toBeInTheDocument();
     expect(screen.getByText('Refund to issue')).toBeInTheDocument();
     expect(screen.getByText(/\$25\.00 — recorded, not yet issued/)).toBeInTheDocument();
+  });
+
+  it('CRITICAL: on a discounted order the refund default is what the buyer actually PAID (not the higher list value), shown with its breakdown, and is accepted as-is', async () => {
+    const calls = [];
+    const handlers = [{
+      method: 'POST', match: /\/fault-cases\/9\/confirm-refund$/,
+      respond: (body) => ({ body: { faultCase: { refund: { amount: body.amount } }, returnCase: { id: 'RC-7', status: 'approved' } } }),
+    }];
+    const discounted = faultCase({ refundSuggestion: { orderedValue: 560, discountShare: 16.91, suggested: 543.09, orderTotal: 543.09 } });
+    await openFlaggedPage({ flagged: [flag({ faultCase: discounted })], handlers, calls });
+    fireEvent.click(screen.getByRole('button', { name: /refund the buyer…/i }));
+    const panel = dialogTitled('Refund the buyer — LP-900555');
+    const label = 'Refund amount (USD) — defaults to what the buyer paid for these items: $543.09 (ordered $560.00, minus $16.91 discount)';
+    const amount = fieldIn(panel, label);
+    expect(amount.value).toBe('543.09'); // NOT 560.00, which the server refuses as more than the order total
+
+    fireEvent.click(within(panel).getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0].body).toEqual({ amount: 543.09 });
   });
 
   it('CRITICAL: "Mark as refunded…" records the Stripe/PayPal reference; the case closes once the hub has returned the unit', async () => {

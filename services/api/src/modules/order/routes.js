@@ -541,6 +541,9 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
       // for why this is a genuinely separate leg from the supplier's own
       // status above, not the same thing.
       let hubShipment = null;
+      // The hub -> BUYER tracking number: the one the hub entered when it shipped the parcel onward. This is the number a
+      // buyer can actually track. (so.tracking_number is the SUPPLIER'S number for the leg supplier -> hub.)
+      let hubTrackingNumber = null;
       const { rows: shipmentRows } = await db.query('SELECT * FROM hub_shipments WHERE sub_order_id = $1', [so.id]);
       if (shipmentRows.length > 0) {
         const shipment = shipmentRows[0];
@@ -551,7 +554,12 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
           [shipment.id]
         );
         const eventsWithPhotos = [];
+        const shippedEvent = [...events].reverse().find((e) => e.step === 'shipped_to_buyer');
+        hubTrackingNumber = shippedEvent ? shippedEvent.tracking_number : null;
         for (const e of events) {
+          // Returning or discarding a faulty unit (migration 091) is internal logistics between the hub and the supplier:
+          // its return tracking number and notes are not for the buyer.
+          if (!isAdmin && (e.step === 'returned_to_supplier' || e.step === 'discarded_at_hub')) continue;
           const { rows: photos } = await db.query('SELECT url FROM hub_shipment_photos WHERE event_id = $1 ORDER BY sort_order', [e.id]);
           eventsWithPhotos.push({
             step: e.step, notes: e.notes, trackingNumber: e.tracking_number,
@@ -567,7 +575,10 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
         supplierId: isAdmin ? so.supplier_id : null,
         supplierName: isAdmin ? so.supplier_name : supplierLabelMap.get(so.supplier_id),
         status: so.status,
-        trackingNumber: so.tracking_number,
+        // Admin keeps the supplier's number here (and gets the hub's separately); everyone else -- buyers, guests -- gets the
+        // hub's number, empty until the hub has shipped it. The supplier's domestic number is never shown to a buyer.
+        trackingNumber: isAdmin ? so.tracking_number : hubTrackingNumber,
+        hubTrackingNumber,
         hubId: so.hub_id,
         hubName: so.hub_name,
         hubShipment,

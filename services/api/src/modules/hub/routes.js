@@ -7,7 +7,7 @@ const { logAdminAction } = require('../audit/helpers');
 const faultCases = require('../faultCases/helpers');
 
 const DAMAGE_TYPES = ['physical_damage', 'water_damage', 'missing_parts', 'wrong_item', 'other'];
-const { deliveryNotificationEmail } = require('../email/templates');
+const { deliveryNotificationEmail, shippingNotificationEmail } = require('../email/templates');
 
 /**
  * Inspection hub module (migration 011) — new business requirement:
@@ -817,10 +817,47 @@ router.post('/me/shipments/:id/events', requireAuth, requireRole('hub_staff'), a
       );
     }
 
+    // The hub shipping the parcel to the BUYER is the real "your order has shipped" moment, and the tracking number
+    // that matters to the buyer is THIS one (hub -> buyer), not the supplier's domestic number to the hub.
+    let shippedOrderId = null;
+    if (step === 'shipped_to_buyer') {
+      const { rows: orderRows } = await client.query(
+        `SELECT so.order_id, o.buyer_id FROM supplier_sub_orders so JOIN orders o ON o.id = so.order_id WHERE so.id = $1`, [shipment.sub_order_id]
+      );
+      shippedOrderId = orderRows[0].order_id;
+      await createNotification({
+        userId: orderRows[0].buyer_id, type: 'order_status', title: 'Your order has shipped',
+        body: `Order ${shippedOrderId} is on its way to you. Tracking number: ${trackingNumber}`,
+        linkType: 'order', linkId: shippedOrderId,
+      }, client);
+    }
+
     await client.query('COMMIT');
     await faultCases.sendNotifications(returnNotifications);
     const { rows: updated } = await db.query('SELECT * FROM hub_shipments WHERE id = $1', [shipment.id]);
     res.status(201).json({ id: updated[0].id, status: updated[0].status, updatedAt: updated[0].updated_at });
+
+    // Best-effort email AFTER the response, so a slow or unreachable mail server can never block the hub (same rule as
+    // the delivery email below).
+    if (shippedOrderId) {
+      (async () => {
+        try {
+          const { rows: orderRows } = await db.query('SELECT buyer_id, guest_email FROM orders WHERE id = $1', [shippedOrderId]);
+          let recipientEmail = orderRows[0]?.guest_email || null;
+          let recipientName = null;
+          if (orderRows[0]?.buyer_id) {
+            const { rows: userRows } = await db.query('SELECT email, name FROM users WHERE id = $1', [orderRows[0].buyer_id]);
+            if (userRows.length > 0) { recipientEmail = userRows[0].email; recipientName = userRows[0].name; }
+          }
+          if (recipientEmail) {
+            const { html, text } = shippingNotificationEmail({ recipientName, orderId: shippedOrderId, trackingNumber });
+            await sendTransactionalEmail({ to: recipientEmail, subject: `Your order has shipped — ${shippedOrderId}`, html, text, fallbackLogLabel: 'order-shipped' });
+          }
+        } catch (err) {
+          console.error('Order shipped email failed (non-fatal):', err.message);
+        }
+      })();
+    }
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);

@@ -525,7 +525,7 @@ page is the real fix:
   the return case is closed and the buyer told) and **Real fault…**. A real fault opens a dialog to tick which items are faulty and choose who
   bears the cost (the supplier or Leap — recorded only, nothing is deducted automatically), then shows a **fault panel** on the flag: the items,
   who pays, what the supplier answered to "can you replace?", whether the hub has sent the unit back, and the refund. The next action is offered
-  on the panel: **Refund the buyer…** (pre-filled with the faulty items' value, editable, never above the order total) and then **Mark as
+  on the panel: **Refund the buyer…** (pre-filled with **what the buyer actually paid** for those items — after any discount — with the breakdown shown; editable, never above the order total) and then **Mark as
   refunded…** once you have refunded in Stripe/PayPal (a reference is required). The case closes — and the flag leaves the queue — when the
   refund is issued AND the hub has returned or discarded the unit. **Send a replacement** is shown but disabled until a later update. The
   sidebar badge drops straight away (it used to refresh only on navigation). See `services/api/README.md`, "Flagged shipments: the two verdicts,
@@ -1245,7 +1245,7 @@ Sixty-six test files, 409 tests total, all passing:
   kind rejected); "continue processing" puts the shipment back in the flow so the hub can genuinely carry on, closes the case as rejected and
   notifies the buyer; a case an admin already finalised by hand is left alone; guest buyers work; an unknown outcome, the old terminal outcomes
   (now fault cases), resolving twice and an unknown id are rejected; only an admin with the Flagged page can resolve; the audit log records it.
-- `src/faultCases.integration.test.js` (12, REAL backend, migration 091) — a real fault: opening a case asks the supplier and tells the buyer in
+- `src/faultCases.integration.test.js` (16, REAL backend, migration 091) — the refund default is what the buyer PAID (verified on a discounted order, including an order split across suppliers, and to fail with the old list-price default); the hub sees a neutral stage, never money; a real fault: opening a case asks the supplier and tells the buyer in
   English AND Arabic; bad requests (cost bearer, no items, an item not in the shipment, unknown shipment, a second case); only an admin with the
   Flagged page can act; only the supplier whose order it is can answer (another supplier gets 404), a "yes" needs a valid date, an answer is
   final; the supplier never sees money, the cost bearer or private notes; the refund default, bounds and manual "issued" with a required
@@ -1253,6 +1253,10 @@ Sixty-six test files, 409 tests total, all passing:
   workload; the buyer sees "returns" and can't cancel the part; the case completes only when BOTH the refund is issued and the unit is back (in
   either order) and then the flag is closed; a confirmed fault can't be recorded as "no fault"; every step is audit-logged. Verified to fail when
   each of: completion stops needing both, supplier isolation, the cancel block, or the workload exclusion is removed.
+- `src/trackingNumbers.integration.test.js` (5, REAL backend) — the buyer (and a guest) sees the HUB's tracking number, empty until the hub ships, and
+  never the supplier's; admin sees both, labelled apart (Order detail shows "Supplier → hub" and "Hub → buyer"); the buyer is not told "shipped" when
+  the supplier ships to the hub, only when the hub ships, with the hub's number; a faulty unit's return step and return tracking number are
+  hidden from the buyer but visible to admin. Verified to fail on each of those regressions.
 - `src/recentlyViewed.integration.test.js` (4, REAL backend, new,
   migration 032) — recording a view and fetching the list shows it,
   most recent first; re-viewing a product moves it back to the front
@@ -1291,7 +1295,7 @@ Sixty-six test files, 409 tests total, all passing:
   (confirmed via direct `curl -F` testing that the actual endpoint
   itself works correctly) — switched to the well-established
   `form-data` package for reliable real multipart encoding instead.
-- `src/FlaggedShipmentsFlow.test.jsx` (19, mocked, full component tree) — the sidebar badge and queue; the kind of problem and return case on a
+- `src/FlaggedShipmentsFlow.test.jsx` (20, mocked, full component tree) — the sidebar badge and queue; the kind of problem and return case on a
   flag; "No fault" explains then records it and the flag leaves the list AND the sidebar badge; "Real fault…" lists every item (all ticked),
   needs at least one, and sends only the ticked ones with the cost bearer; the fault panel shows items, who pays, the supplier's answer (yes with a
   date, no, not yet) and the hub's progress; "Refund the buyer…" is pre-filled with the faulty items' value and sends the amount the admin settles

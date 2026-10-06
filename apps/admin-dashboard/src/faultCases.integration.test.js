@@ -34,11 +34,11 @@ async function createIsolatedHub() {
 }
 
 // Order for the seeded product p1 -> routed to a hub -> shipped -> received -> FLAGGED.
-async function createFlaggedShipment() {
+async function createFlaggedShipment({ items = [{ productId: 'p1', quantity: 2 }], promoCode } = {}) {
   const admin = await adminToken();
   const { hubId, hubToken } = await createIsolatedHub();
   const buyer = await fetch(`${BACKEND_URL}/auth/signup`, { method: 'POST', headers: json, body: JSON.stringify({ email: `fault-buyer-${uniq()}@example.com`, password: 'test_password_123' }) }).then((r) => r.json());
-  const order = await fetch(`${BACKEND_URL}/order`, { method: 'POST', headers: json, body: JSON.stringify({ items: [{ productId: 'p1', quantity: 2 }], userId: buyer.user.id, address: TEST_ADDRESS }) }).then((r) => r.json());
+  const order = await fetch(`${BACKEND_URL}/order`, { method: 'POST', headers: json, body: JSON.stringify({ items, userId: buyer.user.id, address: TEST_ADDRESS, ...(promoCode ? { promoCode } : {}) }) }).then((r) => r.json());
   const subOrderId = order.supplierSubOrders[0].subOrderId;
   await fetch(`${BACKEND_URL}/hub/assign/${subOrderId}`, { method: 'PATCH', headers: auth(admin), body: JSON.stringify({ hubId }) });
   await fetch(`${BACKEND_URL}/supplier/me/orders/${subOrderId}`, { method: 'PATCH', headers: auth(await supplierToken()), body: JSON.stringify({ status: 'shipped' }) });
@@ -200,6 +200,61 @@ describe.runIf(backendUp)('fault cases: a real fault on a flagged shipment, agai
     expect(await queueEntry(f.shipmentId)).toBeTruthy();
   }, 60000);
 
+  // Value of EVERY item in the order, across all its supplier sub-orders (an order can split by supplier).
+  const orderWideListValue = async (orderId) => {
+    const order = await fetch(`${BACKEND_URL}/order/${orderId}`, { headers: auth(await adminToken()) }).then((r) => r.json());
+    return Number(order.supplierSubOrders.flatMap((so) => so.items).reduce((sum, i) => sum + i.unitPrice * i.quantity, 0).toFixed(2));
+  };
+
+  it('CRITICAL: the refund default is what the buyer actually PAID, so it works on a discounted order (a list-price default was refused as "more than the order total")', async () => {
+    // A $5 promo code makes the order total LOWER than the sum of its item prices.
+    const code = `FAULTREFUND${Date.now()}`;
+    expect((await post('/promo-codes', { code, type: 'flat', value: 5 })).status).toBe(201);
+
+    const f = await createFlaggedShipment({ items: [{ productId: 'p1', quantity: 2 }], promoCode: code }); // one supplier: every item faulty = the whole order
+    const listValue = await orderWideListValue(f.orderId);
+    expect(f.orderTotal).toBeLessThan(listValue); // precondition: a discount really applied
+
+    expect((await openCase(f, { items: ['p1'] })).status).toBe(201);
+    const fc = (await queueEntry(f.shipmentId)).faultCase;
+    expect(fc.refundSuggestion).toMatchObject({ orderedValue: listValue, suggested: f.orderTotal, orderTotal: f.orderTotal });
+    expect(fc.refundSuggestion.discountShare).toBeCloseTo(listValue - f.orderTotal, 2);
+
+    const confirm = await post(`/fault-cases/${fc.id}/confirm-refund`, {}); // NO amount: the default must be accepted
+    expect(confirm.status).toBe(200);
+    expect((await confirm.json()).faultCase.refund.amount).toBe(f.orderTotal);
+  }, 60000);
+
+  it('on a discounted order that splits across suppliers, the default is the faulty shipment\'s share of what was paid -- less than its list value', async () => {
+    const code = `FAULTSHARE${Date.now()}`;
+    expect((await post('/promo-codes', { code, type: 'flat', value: 5 })).status).toBe(201);
+    const f = await createFlaggedShipment({ items: [{ productId: 'p1', quantity: 1 }, { productId: 'p4', quantity: 1 }], promoCode: code });
+    const entry = await queueEntry(f.shipmentId);
+    const faultyValue = Number(entry.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0).toFixed(2));
+    const wholeOrder = await orderWideListValue(f.orderId);
+    expect(f.orderTotal).toBeLessThan(wholeOrder); // precondition: a discount really applied
+
+    await openCase(f, { items: entry.items.map((i) => i.productId) });
+    const fc = (await queueEntry(f.shipmentId)).faultCase;
+    const expected = Number(((faultyValue * f.orderTotal) / wholeOrder).toFixed(2));
+    expect(fc.refundSuggestion.suggested).toBeCloseTo(expected, 2);
+    expect(fc.refundSuggestion.suggested).toBeLessThan(faultyValue); // they paid less than the list price
+    expect(fc.refundSuggestion.orderedValue).toBe(faultyValue);
+    expect(fc.refundSuggestion.discountShare).toBeGreaterThan(0);
+
+    const confirm = await post(`/fault-cases/${fc.id}/confirm-refund`, {});
+    expect(confirm.status).toBe(200);
+    expect((await confirm.json()).faultCase.refund.amount).toBeCloseTo(expected, 2);
+  }, 60000);
+
+  it('with no discount the suggestion is exactly the faulty items\' list value', async () => {
+    const f = await createFlaggedShipment();
+    await openCase(f);
+    const { refundSuggestion, items } = (await queueEntry(f.shipmentId)).faultCase;
+    const listValue = Number(items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0).toFixed(2));
+    expect(refundSuggestion).toMatchObject({ orderedValue: listValue, suggested: listValue, discountShare: 0 });
+  }, 40000);
+
   it('an admin may override and refund before the supplier answers, and can set a smaller amount', async () => {
     const f = await createFlaggedShipment();
     await openCase(f, { costBearer: 'leap' });
@@ -240,6 +295,23 @@ describe.runIf(backendUp)('fault cases: a real fault on a flagged shipment, agai
     expect(order.displayStatus).toBe('returns');
     const cancel = await fetch(`${BACKEND_URL}/order/${f.orderId}/sub-orders/${f.subOrderId}/cancel`, { method: 'POST', headers: auth(f.buyerToken), body: '{}' });
     expect(cancel.status).toBe(400);
+  }, 60000);
+
+  it('the hub is told where the platform is (reviewing, finalising, closed) in words that never mention money', async () => {
+    const f = await createFlaggedShipment();
+    await openCase(f);
+    const hubFault = async () => (await fetch(`${BACKEND_URL}/hub/me/shipments/${f.shipmentId}`, { headers: auth(f.hubToken) }).then((r) => r.json())).faultCase;
+    expect((await hubFault()).platformStage).toBe('reviewing');
+
+    const caseId = (await queueEntry(f.shipmentId)).faultCase.id;
+    await post(`/fault-cases/${caseId}/confirm-refund`, {});
+    const finalising = await hubFault();
+    expect(finalising.platformStage).toBe('finalising');
+    expect(JSON.stringify(finalising)).not.toMatch(/refund|cost|amount|\$/i); // a stage, never a figure
+
+    await f.record('returned_to_supplier', { trackingNumber: 'RET-STAGE-1' });
+    await post(`/fault-cases/${caseId}/mark-refunded`, { reference: 'stage-ref-1' });
+    expect((await hubFault()).platformStage).toBe('closed');
   }, 60000);
 
   it('the hub can discard a unit instead of shipping it back (no tracking needed)', async () => {

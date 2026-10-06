@@ -3248,7 +3248,7 @@ refund_pending --(admin marks refunded)--+
 | Endpoint | Who | What it does |
 |---|---|---|
 | `POST /fault-cases` `{ shipmentId, items:[productId], costBearer, notes? }` | admin (Flagged page) | Opens the case for the **ticked items** (whole lines), records who bears the cost (`supplier` or `leap`), moves the buyer's return case to `in_progress`, tells the buyer, and asks the supplier whether they can replace. |
-| `POST /fault-cases/:id/confirm-refund` `{ amount? }` | admin | Records a refund. Default amount = the faulty items' value; the admin may enter less, never more than the order total. Return case → `approved`, buyer told. Allowed before the supplier answers (an override). |
+| `POST /fault-cases/:id/confirm-refund` `{ amount? }` | admin | Records a refund. Default amount = **what the buyer actually paid for those items**: their share of `orders.total` (their list value, minus their share of any promo/loyalty discount). The admin may enter less, never more than the order total. Return case → `approved`, buyer told. Allowed before the supplier answers (an override). |
 | `POST /fault-cases/:id/mark-refunded` `{ reference }` | admin | The refund was made **manually** in Stripe/PayPal; records the provider's reference (required, so it can be traced). Buyer told. |
 | `GET /fault-cases/supplier/me` | supplier | Their own cases, unanswered first. Shows the question, their answer and how it ended — **never** the refund amount, who bears the cost, or the platform's private notes. |
 | `POST /fault-cases/supplier/me/:id/answer` `{ canReplace, eta?, note? }` | supplier (own cases) | A "yes" needs a date (not in the past). Final: it can't be changed. Another supplier's case is a 404. |
@@ -3263,7 +3263,7 @@ refund_pending --(admin marks refunded)--+
   block a decision. A guest buyer has no account to notify and is skipped.
 - **A return case an admin already finalised by hand is left alone** — no status change, no message, no second notification.
 - **The hub sees what to send back, never the money:** `faultCase` on `GET /hub/me/shipments/:id` has the items and whether the return is still
-  needed — no refund, no cost bearer, no notes. Hub staff also see the outcome of a no-fault verdict, but not the admin's internal note.
+  needed — no refund, no cost bearer, no notes. Hub staff also see the outcome of a no-fault verdict, but not the admin's internal note. They get a neutral `platformStage` (`reviewing` / `finalising` / `closed`) so they always know whether anything is left for THEM (only the unit: `needsReturn`) — the stage never mentions money.
 - **The two new hub statuses leave the hub's workload** (the unit physically left) and are excluded from the stage-timing metric. The buyer **cannot
   cancel** a part once its unit has been returned/discarded (the refund is handled as a fault case; cancelling too would double-handle it).
 - **What the buyer sees:** an order with a return case always displays as `returns` (a return case takes priority over every other status), so
@@ -3279,9 +3279,32 @@ refund_pending --(admin marks refunded)--+
 **Not built yet:** creating the **replacement order** (the next patch — the admin button is shown disabled until then), the Flutter buyer and hub
 apps (they will show the new statuses unlabelled), supplier reminders, automatic payout deductions, and real Stripe/PayPal refunds.
 
-**Tested:** `apps/admin-dashboard/src/faultCases.integration.test.js` (12) and `flaggedResolution.integration.test.js` (7), real backend. Each test
+**Tested:** `apps/admin-dashboard/src/faultCases.integration.test.js` (16), `trackingNumbers.integration.test.js` (5) and `flaggedResolution.integration.test.js` (7), real backend. Each test
 builds its own hub and hub-staff login (using the Hub staff feature) so workload checks are exact. Verified to fail when completion stops needing
 both conditions, when supplier isolation is removed, when the buyer-cancel block is removed, or when the hub workload keeps counting returned units.
+
+## Tracking numbers: which one the buyer sees
+
+An order has **two** tracking numbers for two different legs, and they were being mixed up:
+
+| Number | Leg | Entered by | Who sees it |
+|---|---|---|---|
+| `supplier_sub_orders.tracking_number` | supplier → inspection hub (usually domestic) | the supplier, when they mark the order shipped | admin (labelled "Supplier → hub") and the supplier |
+| the `shipped_to_buyer` hub event's `tracking_number` | inspection hub → buyer | hub staff, when they ship the parcel onward | the buyer, and admin (labelled "Hub → buyer") |
+
+- **`GET /order/:id`** — for a **buyer or guest**, `supplierSubOrders[].trackingNumber` is now the **hub's** number (null until the hub ships), and the
+  supplier's number is never in the response. For an **admin**, `trackingNumber` is still the supplier's and the new `hubTrackingNumber` is the hub's.
+- **The "your order has shipped" notification and email now fire when the HUB ships to the buyer**, carrying the hub's number. Before, they fired when
+  the *supplier* shipped to the hub — too early, and with the supplier's domestic number. The supplier's step now notifies "on its way to our
+  inspection hub" with no tracking number, and sends no email.
+- **Internal hub events are hidden from buyers:** `returned_to_supplier` / `discarded_at_hub` (a faulty unit going back — its return tracking number and
+  notes) are omitted from a buyer's order data; admin still sees them.
+- The live-tracking feature (`/order/:id/tracking`) already used the hub's number.
+- The mobile app reads the same `trackingNumber` field, so it should show the hub's number without an app change (not testable here).
+
+**Tested:** `apps/admin-dashboard/src/trackingNumbers.integration.test.js` (5, real backend) — verified to fail when the buyer gets the supplier's
+number, when the return step is visible to buyers, and when the hub's shipping step stops sending the notification. The "shipped" email is best-effort
+and goes to the backend log when email isn't configured; it is not asserted by a test.
 
 ## Hub staff accounts (migration 089)
 

@@ -132,7 +132,7 @@ describe('Hub Portal — what hub staff see after an admin resolves their flag (
 });
 
 describe('Hub Portal — dealing with a faulty unit after the platform confirms a real fault (mocked fetch, real component tree)', () => {
-  const FAULT = (over = {}) => ({ id: 9, items: [{ productId: 'p1', name: 'RIDEX Front Brake Disc', quantity: 2 }], hubReturn: null, needsReturn: true, ...over });
+  const FAULT = (over = {}) => ({ id: 9, items: [{ productId: 'p1', name: 'RIDEX Front Brake Disc', quantity: 2 }], hubReturn: null, needsReturn: true, platformStage: 'reviewing', ...over });
 
   async function openFaultShipment(detailOver, options = {}) {
     globalThis.fetch = mockBackend({ detail: DETAIL({ status: 'flagged', faultCase: FAULT(), ...detailOver }), ...options });
@@ -152,6 +152,7 @@ describe('Hub Portal — dealing with a faulty unit after the platform confirms 
     expect(screen.getByText('退回供应商')).toBeInTheDocument();
     expect(screen.getByText('在仓库销毁')).toBeInTheDocument();
     expect(screen.queryByText('此包裹已标记问题，等待平台审核。')).not.toBeInTheDocument();
+    expect(screen.getByText('平台正在等待仓库处理问题商品。')).toBeInTheDocument(); // the platform is waiting for the hub
   });
 
   it('CRITICAL: returning to the supplier needs a tracking number and a photo, then sends both', async () => {
@@ -185,15 +186,22 @@ describe('Hub Portal — dealing with a faulty unit after the platform confirms 
     expect(eventCalls[0].trackingNumber).toBeUndefined();
   });
 
-  it('once the unit has been sent back, the panel is gone and a banner says the platform will close the case', async () => {
-    await openFaultShipment({ status: 'returned_to_supplier', faultCase: FAULT({ hubReturn: 'returned', needsReturn: false }) });
-    expect(await screen.findByText('此包裹已退回供应商，等待平台结案。')).toBeInTheDocument();
+  it('CRITICAL: once the unit has been sent back, the panel is gone and the hub is told nothing more is needed, and where the platform is', async () => {
+    await openFaultShipment({ status: 'returned_to_supplier', faultCase: FAULT({ hubReturn: 'returned', needsReturn: false, platformStage: 'reviewing' }) });
+    expect(await screen.findByText('此包裹已退回供应商。仓库无需再做任何操作。')).toBeInTheDocument();
+    expect(screen.getByText('平台仍在决定如何处理此案例。')).toBeInTheDocument();
     expect(screen.queryByText('平台已确认存在质量问题——请处理问题商品')).not.toBeInTheDocument();
   });
 
-  it('a discarded unit gets its own banner', async () => {
-    await openFaultShipment({ status: 'discarded_at_hub', faultCase: FAULT({ hubReturn: 'discarded', needsReturn: false }) });
-    expect(await screen.findByText('此包裹已在仓库销毁，等待平台结案。')).toBeInTheDocument();
+  it('a discarded unit gets its own banner, and the stage line follows the platform (finalising, then closed)', async () => {
+    await openFaultShipment({ status: 'discarded_at_hub', faultCase: FAULT({ hubReturn: 'discarded', needsReturn: false, platformStage: 'finalising' }) });
+    expect(await screen.findByText('此包裹已在仓库销毁。仓库无需再做任何操作。')).toBeInTheDocument();
+    expect(screen.getByText('平台正在办理收尾事项。')).toBeInTheDocument();
+  });
+
+  it('a closed case says so', async () => {
+    await openFaultShipment({ status: 'returned_to_supplier', faultCase: FAULT({ hubReturn: 'returned', needsReturn: false, platformStage: 'closed' }) });
+    expect(await screen.findByText('此案例已结案。')).toBeInTheDocument();
   });
 
   it('a flag with NO confirmed fault yet still just says it is awaiting platform review', async () => {
