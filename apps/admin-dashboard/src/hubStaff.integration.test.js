@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { login } from './auth';
 
 const BACKEND_URL = 'http://localhost:4000';
@@ -13,6 +13,10 @@ async function isBackendUp() {
 }
 
 const backendUp = await isBackendUp();
+
+// Creating a staff account hashes a password, which is slow when the whole test suite is running at once; the default 5-second limit made the
+// first test fail on a loaded machine even though nothing was wrong (it passes in ~1s on its own). A realistic limit removes that flake.
+vi.setConfig({ testTimeout: 30000 });
 
 const json = { 'Content-Type': 'application/json' };
 const auth = (token) => ({ ...json, Authorization: `Bearer ${token}` });

@@ -3285,6 +3285,25 @@ refund_pending --(admin marks refunded)--+
 builds its own hub and hub-staff login (using the Hub staff feature) so workload checks are exact. Verified to fail when completion stops needing
 both conditions, when supplier isolation is removed, when the buyer-cancel block is removed, or when the hub workload keeps counting returned units.
 
+## Crash protection and the "database not up to date" warning
+
+**The problem this fixes:** after an update, the new backend code can run against a database that has not had the new migration. The first route to touch a missing column then threw inside an `async` handler, and **Express 4 does not catch
+errors thrown in `async` handlers**: under Node 15+ the unhandled rejection **ended the whole backend process**, so every portal (admin, hub, supplier, the apps) suddenly looked "not loading". It was reproduced with migration 095 missing:
+`POST /fault-cases` killed the server.
+
+**What changed**
+- **`src/config/asyncErrors.js`** (installed first thing in `src/index.js`, before any route): a rejected promise from an async route handler now reaches the error handler and returns a **500**; the server stays up and keeps serving every
+  other request. (Express 5 does this natively; this is the same small patch the `express-async-errors` package makes, without the dependency.) It applies to every route in the backend, not just the fault-case ones.
+- **`src/config/pendingMigrations.js`**: when the backend **starts**, it compares `db/migrations/*.sql` with the database's `schema_migrations` and, if any are missing, prints a boxed warning in the backend window naming them and saying
+  exactly what to run (`node db/migrate.js`, then restart). `GET /health` also reports it: `{ status: 'ok', …, pendingMigrations: [] }` (the names of any missing files, or `null` if it could not be checked). `status` stays `ok`, so existing checks keep working.
+- It is a warning, not a refusal to start: a half-updated system is better diagnosed running than not running, and the 500s above are now safe.
+
+**Seeing the difference:** with the migration missing, `GET /hub/flagged` and `POST /fault-cases` return a clean `500 Internal server error` (and the Flagged page shows an error), `/health` lists the missing file, and everything else keeps working.
+
+**Tested:** `apps/admin-dashboard/src/startupSafety.test.js` (12): an async rejection (including one after an `await`) is a 500 and the next request is still served; synchronous errors, normal handlers, middleware order and 404s are unchanged; installing it twice is harmless;
+`index.js` installs it before the first route; the pending list is exactly the migrations the database lacks, in order (ignoring non-`.sql` files; a database with no migrations table has everything pending); the warning names each file and the fix; `/health` reports
+an empty list on an up-to-date database. Verified to fail when the guard is disabled, when the list is inverted, and when it is not installed.
+
 ## Replacement orders (migration 095)
 
 **What it does:** when the hub flags a faulty unit, an admin confirms it is a real fault, and the supplier says they CAN replace it, an admin can now confirm a **replacement** (the "Send a replacement…" button, which used

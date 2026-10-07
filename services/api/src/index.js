@@ -2,6 +2,11 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const { env, assertRequiredEnvInProduction } = require('./config/env');
+const { installAsyncErrorHandling } = require('./config/asyncErrors');
+const { getPendingMigrations, pendingMigrationsBanner } = require('./config/pendingMigrations');
+
+// An error inside an async route must return a 500, never stop the whole server (see config/asyncErrors.js).
+installAsyncErrorHandling();
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 
 const catalogRoutes = require('./modules/catalog/routes');
@@ -126,8 +131,12 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads'), {
   immutable: true,
 }));
 
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', env: env.nodeEnv, timestamp: new Date().toISOString() });
+app.get('/health', async (req, res) => {
+  // pendingMigrations: [] when the database is up to date; the list of migration files that still need `node db/migrate.js` otherwise
+  // (null if it could not be checked). The status stays 'ok' so existing checks keep working.
+  let pendingMigrations = null;
+  try { pendingMigrations = await getPendingMigrations(); } catch { /* health must never fail because of this check */ }
+  res.json({ status: 'ok', env: env.nodeEnv, timestamp: new Date().toISOString(), pendingMigrations });
 });
 
 app.use('/catalog', catalogRoutes);
@@ -180,6 +189,8 @@ app.use(errorHandler);
 if (require.main === module) {
   app.listen(env.port, () => {
     console.log(`Leap API listening on http://localhost:${env.port} (${env.nodeEnv})`);
+    // Say so LOUDLY if the code has migrations the database has not had yet (the most common cause of "it stopped working after an update").
+    getPendingMigrations().then((pending) => { if (pending.length > 0) console.error(pendingMigrationsBanner(pending)); }).catch(() => {});
   });
   // Real, once-a-day live FX rate refresh (migration 028) -- only when
   // the server actually runs, never when this file is required for
