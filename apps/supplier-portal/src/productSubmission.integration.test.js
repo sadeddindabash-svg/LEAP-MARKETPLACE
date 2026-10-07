@@ -9,6 +9,7 @@
 // useful error message until isolated with a plain Node script.
 import { describe, it, expect } from 'vitest';
 import { login } from './auth';
+import { asValidProduct } from './productFixtures';
 
 const BACKEND_URL = 'http://localhost:4000';
 
@@ -170,21 +171,23 @@ describe.runIf(backendUp)('structured supplier product submission against a REAL
     const upload2 = await uploadRealImage(token, 900, 850);
     const upload3 = await uploadRealImage(token, 900, 850);
 
-    const createRes = await fetch(`${BACKEND_URL}/supplier/me/products`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
+    // Valid under the CURRENT rules (a name of 10+ characters, exactly the required number of photos, a video): the fixture adds only what is missing.
+    const productBody = await asValidProduct({
         nameZh: `真实端到端测试 ${Date.now()}`,
         category: 'brake', part: 'Front Brake Disc', position: 'Front', oemNumber: `OEM-E2E-${Date.now()}`,
         price: 39.99, currencyCode: 'CNY', stockQuantity: 20,
         fitment: { generationId: 'gen_bmw_1_series_f20', year: 2016 },
         images: [upload1.body.url, upload2.body.url, upload3.body.url],
         weightKg: 3.5, lengthCm: 28, widthCm: 28, heightCm: 4,
-      }),
+    });
+    const createRes = await fetch(`${BACKEND_URL}/supplier/me/products`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(productBody),
     });
     expect(createRes.status).toBe(201);
     const created = await createRes.json();
-    expect(created.images.length).toBe(3);
+    expect(created.images.length).toBe(productBody.images.length);
     expect(created.fitment[0].brand).toBe('BMW');
 
     const { token: adminToken } = await login('admin@leap.dev', 'admin_dev_password_123');
@@ -193,7 +196,7 @@ describe.runIf(backendUp)('structured supplier product submission against a REAL
     const inQueue = queue.find((p) => p.id === created.id);
     expect(inQueue).toBeDefined();
     expect(inQueue.nameZh).toBe(created.nameZh);
-    expect(inQueue.images.length).toBe(3);
+    expect(inQueue.images.length).toBe(productBody.images.length);
 
     const rejectApproveRes = await fetch(`${BACKEND_URL}/catalog/products/${created.id}/moderate`, {
       method: 'PATCH',
@@ -214,7 +217,7 @@ describe.runIf(backendUp)('structured supplier product submission against a REAL
     const approveRes = await fetch(`${BACKEND_URL}/catalog/products/${created.id}/moderate`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-      body: JSON.stringify({ action: 'approve', nameEn: 'Front Brake Disc, Vented (E2E Test)', nameAr: 'قرص فرامل أمامي مهوى (اختبار)' }),
+      body: JSON.stringify({ action: 'approve', nameEn: 'Front Brake Disc, Vented (E2E Test)', nameAr: 'قرص فرامل أمامي مهوى (اختبار)', descriptionEn: 'A reviewed description of this vented front brake disc, written to satisfy the length the catalog requires for approval.', descriptionAr: 'وصف تمت مراجعته لقرص الفرامل الأمامي المهوى، مكتوب بالطول الذي يطلبه الكتالوج للموافقة على المنتج وعرضه.' }),
     });
     expect(approveRes.status).toBe(200);
     const approved = await approveRes.json();

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import LeapSupplierPortalApp from './App';
 
 const SUPPLIER_USER = { id: 'supplier_dev_seed', email: 'supplier@leap.dev', name: 'Wei Zhang', role: 'supplier', supplierId: 's1' };
@@ -119,6 +119,28 @@ describe('Supplier Finance page — real figures instead of typed-in ones (mocke
     await loginAsSupplier();
     goToFinance();
   }
+
+  it('CRITICAL: payments Leap RELEASED for a shipment damaged in its care are listed by order and kind, with what they are, so a bigger "ready to pay" is never a mystery', async () => {
+    await openFinance({ finance: { ...FINANCE, readyToPay: { amount: 175.95, orderCount: 3, adjustments: [
+      { kind: 'original_order', amount: 41.2, orderId: 'LP-900555' },
+      { kind: 'local_shipping', amount: 11.3, orderId: 'LP-900555' },
+    ] } } });
+    await waitFor(() => expect(screen.getByText('Leap 已放款')).toBeInTheDocument());
+    const card = screen.getByText('Leap 已放款').closest('div').parentElement;
+    expect(within(card).getAllByText('LP-900555')).toHaveLength(2);
+    expect(within(card).getByText('原订单')).toBeInTheDocument();
+    expect(within(card).getByText('国内运费')).toBeInTheDocument();
+    expect(within(card).getByText('$41.20')).toBeInTheDocument();
+    expect(within(card).getByText('$11.30')).toBeInTheDocument();
+    expect(within(card).getByText(/因货物在 Leap 处受损/)).toBeInTheDocument();
+    expect(screen.getByText(/175\.95/)).toBeInTheDocument();                     // and the total it is part of
+  });
+
+  it('a supplier with nothing released sees no such card (and no empty box)', async () => {
+    await openFinance();
+    await waitFor(() => expect(screen.getByText(/123\.45/)).toBeInTheDocument());
+    expect(screen.queryByText('Leap 已放款')).not.toBeInTheDocument();
+  });
 
   it('CRITICAL: shows the real figures in USD, and none of the old made-up ones (¥54,542, ¥60,210, 12%, fake history)', async () => {
     await openFinance();

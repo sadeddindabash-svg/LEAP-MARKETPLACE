@@ -51,14 +51,21 @@ const ELIGIBLE_SUB_ORDERS_CTE = `
 router.get('/owed', requireAuth, requireRole('admin'), requirePageAccess('payouts'), async (req, res, next) => {
   try {
     const { rows } = await db.query(`
-      ${ELIGIBLE_SUB_ORDERS_CTE}
+      ${ELIGIBLE_SUB_ORDERS_CTE},
+      -- Adjustments an admin released for a fault Leap bears the cost of (migration 097) are owed straight away: no return window applies.
+      owed_items AS (
+        SELECT supplier_id, net_amount AS amount, sub_order_id, false AS is_adjustment FROM eligible
+        UNION ALL
+        SELECT supplier_id, amount, NULL::int, true FROM payout_adjustments WHERE payout_id IS NULL
+      )
       SELECT s.id AS supplier_id, s.name AS supplier_name,
-             COALESCE(SUM(e.net_amount), 0) AS amount_owed,
-             COUNT(e.sub_order_id) AS eligible_sub_order_count
+             COALESCE(SUM(o.amount), 0) AS amount_owed,
+             COUNT(o.sub_order_id) AS eligible_sub_order_count,
+             COUNT(*) FILTER (WHERE o.is_adjustment) AS adjustment_count
       FROM suppliers s
-      LEFT JOIN eligible e ON e.supplier_id = s.id
+      LEFT JOIN owed_items o ON o.supplier_id = s.id
       GROUP BY s.id, s.name
-      HAVING COALESCE(SUM(e.net_amount), 0) > 0
+      HAVING COALESCE(SUM(o.amount), 0) > 0
       ORDER BY amount_owed DESC
     `);
     res.json(rows.map((r) => ({
@@ -66,6 +73,7 @@ router.get('/owed', requireAuth, requireRole('admin'), requirePageAccess('payout
       supplierName: r.supplier_name,
       amountOwed: Number(r.amount_owed),
       eligibleSubOrderCount: Number(r.eligible_sub_order_count),
+      adjustmentCount: Number(r.adjustment_count),
     })));
   } catch (err) {
     next(err);
@@ -124,11 +132,12 @@ router.post('/', requireAuth, requireRole('admin'), requirePageAccess('payouts')
        SELECT sub_order_id, net_amount FROM eligible WHERE supplier_id = $1`,
       [supplierId]
     );
-    if (eligibleRows.length === 0) {
+    const { rows: adjustmentRows } = await client.query('SELECT id, amount FROM payout_adjustments WHERE supplier_id = $1 AND payout_id IS NULL FOR UPDATE', [supplierId]);
+    if (eligibleRows.length === 0 && adjustmentRows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'This supplier has no real amount currently owed.' });
     }
-    const totalAmount = eligibleRows.reduce((sum, r) => sum + Number(r.net_amount), 0);
+    const totalAmount = eligibleRows.reduce((sum, r) => sum + Number(r.net_amount), 0) + adjustmentRows.reduce((sum, r) => sum + Number(r.amount), 0);
 
     const { rows: payoutRows } = await client.query(
       `INSERT INTO payouts (supplier_id, amount, notes, created_by_admin_id) VALUES ($1, $2, $3, $4) RETURNING *`,
@@ -137,6 +146,9 @@ router.post('/', requireAuth, requireRole('admin'), requirePageAccess('payouts')
     const payoutId = payoutRows[0].id;
     for (const row of eligibleRows) {
       await client.query('INSERT INTO payout_sub_orders (payout_id, sub_order_id) VALUES ($1, $2)', [payoutId, row.sub_order_id]);
+    }
+    if (adjustmentRows.length > 0) {
+      await client.query('UPDATE payout_adjustments SET payout_id = $1 WHERE id = ANY($2::int[])', [payoutId, adjustmentRows.map((r) => r.id)]);
     }
     await client.query('COMMIT');
     await logAdminAction(req, 'payout_recorded', 'payout', payoutId, { supplierId, amount: Number(totalAmount.toFixed(2)), subOrderCount: eligibleRows.length });
@@ -154,6 +166,7 @@ router.post('/', requireAuth, requireRole('admin'), requirePageAccess('payouts')
       currencyCode: payoutRows[0].currency_code,
       notes: payoutRows[0].notes,
       subOrderCount: eligibleRows.length,
+      adjustmentCount: adjustmentRows.length,
       createdAt: payoutRows[0].created_at,
     });
 

@@ -439,7 +439,11 @@ data isn't collected anywhere. Adding a real license field would need onboarding
 
 **Still not real on Settings:** the four notification toggles only change local screen state and are never saved or sent anywhere.
 
-**Tested:** `FinanceFlow.test.jsx` (7, mocked fetch) proves the real figures show and none of the old numbers do (no "¥", no "54,542",
+**Backend tests and the product rules:** `supplierPortal.integration`, `productSubmission.integration` and `bulkImport.integration` run against a REAL backend, and they build products, so they must follow the server's CURRENT rules (a name of 10-100 characters, exactly as many photos as the platform setting says, and a video; to approve, English AND Arabic names and descriptions of set lengths). `src/productFixtures.js` (a copy of the admin dashboard's) makes a product valid without disturbing what a test sets on purpose. A bulk-import draft now needs its photos AND its video. These three files used to be skipped whenever the backend was off, which hid that they had gone stale. `restockAlerts.integration` zeroes and then re-stocks a product of the supplier's; it now PUTS BACK the stock it found (it used to leave the seeded `p1` at 40, so later tests that order it ran out of stock).
+
+**Released by Leap (migration 097):** when Leap bears the cost of a fault (the shipment was damaged in its care), an admin releases what the supplier is owed for the original order plus their local shipping charges. They are listed on this page in a **"Leap 已放款 / Released by Leap"** card (order, kind, amount), are already included in "ready to be paid", and go out with the next payout. Nothing is shown when nothing was released.
+
+**Tested:** `FinanceFlow.test.jsx` (9, mocked fetch) proves the real figures show and none of the old numbers do (no "¥", no "54,542",
 "60,210", "12%", or the fake history), plus range, empty and error cases; `SettingsFlow.test.jsx` (4) proves pending and rejected suppliers
 are not shown as verified and the placeholder license is gone — both were checked to fail when the old behavior is put back. The old
 `FinanceFlow` mock returned an empty `{}` for the Overview page, which crashed that page whenever it loaded before the test clicked Finance;

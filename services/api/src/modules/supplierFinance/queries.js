@@ -54,7 +54,17 @@ async function getUnpaidDelivered(supplierId) {
     const row = rows.find((r) => r.window_elapsed === elapsed);
     return { amount: row ? Number(Number(row.net_amount).toFixed(2)) : 0, orderCount: row ? Number(row.order_count) : 0 };
   };
-  return { readyToPay: bucket(true), inReturnWindow: bucket(false) };
+  const ready = bucket(true);
+  // Payments an admin released for a fault Leap bears the cost of (migration 097): owed at once, no return window.
+  const { rows: adjustmentRows } = await db.query(
+    `SELECT a.kind, a.amount, so.order_id
+     FROM payout_adjustments a JOIN fault_cases fc ON fc.id = a.fault_case_id JOIN supplier_sub_orders so ON so.id = fc.sub_order_id
+     WHERE a.supplier_id = $1 AND a.payout_id IS NULL ORDER BY a.id`, [supplierId]
+  );
+  const adjustments = adjustmentRows.map((r) => ({ kind: r.kind, amount: Number(r.amount), orderId: r.order_id }));
+  ready.amount = Number((ready.amount + adjustments.reduce((sum, a) => sum + a.amount, 0)).toFixed(2));
+  ready.adjustments = adjustments;
+  return { readyToPay: ready, inReturnWindow: bucket(false) };
 }
 
 // Each recorded payout, with the orders it covered. A payout's amount is computed by the
@@ -64,7 +74,9 @@ async function getPayoutHistory(supplierId) {
   const { rows } = await db.query(
     `SELECT p.id, p.amount, p.currency_code, p.notes, p.created_at,
             COUNT(DISTINCT pso.sub_order_id) AS order_count,
-            COALESCE(SUM(oli.unit_price * oli.quantity), 0) AS sales
+            COALESCE(SUM(oli.unit_price * oli.quantity), 0) AS sales,
+            COALESCE((SELECT SUM(a.gross_amount) FROM payout_adjustments a WHERE a.payout_id = p.id), 0) AS adjustments_gross,
+            COALESCE((SELECT SUM(a.amount) FROM payout_adjustments a WHERE a.payout_id = p.id), 0) AS adjustments_net
      FROM payouts p
      LEFT JOIN payout_sub_orders pso ON pso.payout_id = p.id
      LEFT JOIN order_line_items oli ON oli.sub_order_id = pso.sub_order_id
@@ -76,8 +88,10 @@ async function getPayoutHistory(supplierId) {
   );
   return rows.map((r) => {
     const amount = Number(r.amount);
-    const sales = Number(Number(r.sales).toFixed(2));
+    // Released adjustments (migration 097) count as sales at their gross value, so "sales minus the payout" is still exactly the commission.
+    const sales = Number((Number(r.sales) + Number(r.adjustments_gross)).toFixed(2));
     return {
+      adjustmentsTotal: Number(Number(r.adjustments_net).toFixed(2)),
       id: r.id,
       amount,
       currencyCode: r.currency_code,

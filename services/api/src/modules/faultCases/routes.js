@@ -117,6 +117,16 @@ router.post('/:id/confirm-replacement', ...adminOnly, async (req, res, next) => 
   res.json({ faultCase: await helpers.toAdminDto(db, outcome.faultCase), returnCase: outcome.returnCase });
 });
 
+router.post('/:id/release-supplier-payment', ...adminOnly, async (req, res, next) => {
+  const outcome = await inTransaction(res, next, (client) => helpers.releaseSupplierPayment(client, {
+    caseId: Number(req.params.id), adminId: req.user.sub, localShippingAmount: (req.body || {}).localShippingAmount, note: (req.body || {}).note,
+  }));
+  if (!outcome) return;
+  await logAdminAction(req, 'fault_case_supplier_payment_released', 'fault_case', String(req.params.id), { originalOrder: outcome.originalOrder, localShipping: outcome.localShipping });
+  const { rows } = await db.query('SELECT * FROM fault_cases WHERE id = $1', [req.params.id]);
+  res.json({ faultCase: await helpers.toAdminDto(db, rows[0]) });
+});
+
 router.post('/:id/mark-refunded', ...adminOnly, async (req, res, next) => {
   const outcome = await inTransaction(res, next, (client) => helpers.markRefunded(client, { caseId: Number(req.params.id), reference: req.body?.reference, adminId: req.user.sub }));
   if (!outcome) return;

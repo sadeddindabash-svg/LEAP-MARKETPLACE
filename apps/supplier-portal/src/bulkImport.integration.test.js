@@ -35,7 +35,8 @@ async function fetchDrafts(token) {
 async function completeDraft(token, id, body) {
   const res = await fetch(`${BACKEND_URL}/supplier/me/products/${id}/complete`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
+    // a product video is required to complete a draft (a path is enough: the server checks it is there, not what is in it)
+    body: JSON.stringify({ videoUrl: '/uploads/fixture-video.mp4', ...body }),
   });
   return { status: res.status, body: await res.json() };
 }
@@ -55,8 +56,10 @@ function uploadRealImage(token) {
   });
 }
 
-async function threeRealPhotos(token) {
-  return Promise.all([uploadRealImage(token), uploadRealImage(token), uploadRealImage(token)]);
+// Exactly as many real photos as the platform currently requires (it was 3; the setting is 4 now and can change).
+async function requiredRealPhotos(token) {
+  const requirements = await fetch(`${BACKEND_URL}/catalog/product-requirements`).then((r) => r.json());
+  return Promise.all(Array.from({ length: requirements.minPhotos }, () => uploadRealImage(token)));
 }
 
 const REAL_FITMENT = { generationId: 'gen_bmw_1_series_f20', year: 2018 };
@@ -68,10 +71,10 @@ describe.runIf(backendUp)('real supplier bulk product import (spreadsheet-style,
     const { status, body } = await bulkImport(token, {
       fitment: REAL_FITMENT, nameLanguage: 'zh',
       items: [
-        { oemNumber: `BI-A-${suffix}`, itemName: '前刹车盘', price: 200, category: 'Brake System', part: 'Front Brake Disc', position: 'Front', weightKg: 5, lengthCm: 30, widthCm: 30, heightCm: 10 },
-        { oemNumber: `BI-B-${suffix}`, itemName: '后刹车盘', price: 180 },
+        { oemNumber: `BI-A-${suffix}`, itemName: '前刹车盘 item name for import test', price: 200, category: 'Brake System', part: 'Front Brake Disc', position: 'Front', weightKg: 5, lengthCm: 30, widthCm: 30, heightCm: 10 },
+        { oemNumber: `BI-B-${suffix}`, itemName: '后刹车盘 item name for import test', price: 180 },
         { itemName: 'missing oem', price: 100 },
-        { oemNumber: `BI-D-${suffix}`, itemName: '刹车片', price: 90, category: 'NotReal', position: 'NotReal' },
+        { oemNumber: `BI-D-${suffix}`, itemName: '刹车片 item name for import test', price: 90, category: 'NotReal', position: 'NotReal' },
       ],
     });
     expect(status).toBe(201);
@@ -85,7 +88,7 @@ describe.runIf(backendUp)('real supplier bulk product import (spreadsheet-style,
     const itemA = drafts.find((d) => d.oemNumber === `BI-A-${suffix}`);
     const itemB = drafts.find((d) => d.oemNumber === `BI-B-${suffix}`);
     const itemD = drafts.find((d) => d.oemNumber === `BI-D-${suffix}`);
-    expect(itemA.missing).toEqual(['photos']); // everything else matched
+    expect(itemA.missing).toEqual(['photos', 'video']); // everything else matched: a draft still needs its photos AND its video
     expect(itemB.missing).toEqual(expect.arrayContaining(['category', 'part', 'position', 'dimensions', 'photos']));
     expect(itemD.missing).toEqual(expect.arrayContaining(['category', 'part', 'position', 'dimensions', 'photos'])); // invalid optional fields = not provided, not rejected
   });
@@ -111,15 +114,15 @@ describe.runIf(backendUp)('real supplier bulk product import (spreadsheet-style,
     const suffix = Date.now();
     const { body: importBody } = await bulkImport(token, {
       fitment: REAL_FITMENT, nameLanguage: 'zh',
-      items: [{ oemNumber: `BI-COMPLETE-${suffix}`, itemName: '完整测试', price: 150, category: 'Brake System', part: 'Front Brake Disc', position: 'Front', weightKg: 3, lengthCm: 20, widthCm: 20, heightCm: 5 }],
+      items: [{ oemNumber: `BI-COMPLETE-${suffix}`, itemName: '完整测试 item name for import test', price: 150, category: 'Brake System', part: 'Front Brake Disc', position: 'Front', weightKg: 3, lengthCm: 20, widthCm: 20, heightCm: 5 }],
     });
     const productId = importBody.results[0].productId;
 
-    const photos = await threeRealPhotos(token);
+    const photos = await requiredRealPhotos(token);
     const { status, body } = await completeDraft(token, productId, { images: photos });
     expect(status).toBe(200);
     expect(body.status).toBe('translating');
-    expect(body.images).toHaveLength(3);
+    expect(body.images).toHaveLength(photos.length);
     expect(body.fitment[0]).toMatchObject({ brand: 'BMW', model: '1 Series', generation: 'F20', year: 2018 });
   });
 
@@ -128,11 +131,11 @@ describe.runIf(backendUp)('real supplier bulk product import (spreadsheet-style,
     const suffix = Date.now();
     const { body: importBody } = await bulkImport(token, {
       fitment: REAL_FITMENT, nameLanguage: 'zh',
-      items: [{ oemNumber: `BI-MINIMAL-${suffix}`, itemName: '最小测试', price: 80 }],
+      items: [{ oemNumber: `BI-MINIMAL-${suffix}`, itemName: '最小测试 item name for import test', price: 80 }],
     });
     const productId = importBody.results[0].productId;
 
-    const photos = await threeRealPhotos(token);
+    const photos = await requiredRealPhotos(token);
     const { status: partialStatus, body: partialBody } = await completeDraft(token, productId, { images: photos });
     expect(partialStatus).toBe(400);
     expect(partialBody.error).toContain('category');
@@ -149,10 +152,10 @@ describe.runIf(backendUp)('real supplier bulk product import (spreadsheet-style,
     const suffix = Date.now();
     const { body: importBody } = await bulkImport(token, {
       fitment: REAL_FITMENT, nameLanguage: 'zh',
-      items: [{ oemNumber: `BI-BADCAT-${suffix}`, itemName: 'test', price: 50 }],
+      items: [{ oemNumber: `BI-BADCAT-${suffix}`, itemName: 'test item name for import test', price: 50 }],
     });
     const productId = importBody.results[0].productId;
-    const photos = await threeRealPhotos(token);
+    const photos = await requiredRealPhotos(token);
 
     const { status: badCategoryStatus } = await completeDraft(token, productId, {
       category: 'not_a_real_category', part: 'X', position: 'Front', weightKg: 1, lengthCm: 1, widthCm: 1, heightCm: 1, images: photos,
@@ -170,10 +173,10 @@ describe.runIf(backendUp)('real supplier bulk product import (spreadsheet-style,
     const suffix = Date.now();
     const { body: importBody } = await bulkImport(token, {
       fitment: REAL_FITMENT, nameLanguage: 'zh',
-      items: [{ oemNumber: `BI-ONCE-${suffix}`, itemName: 'test', price: 50, category: 'Brake System', part: 'Front Brake Disc', position: 'Front', weightKg: 1, lengthCm: 1, widthCm: 1, heightCm: 1 }],
+      items: [{ oemNumber: `BI-ONCE-${suffix}`, itemName: 'test item name for import test', price: 50, category: 'Brake System', part: 'Front Brake Disc', position: 'Front', weightKg: 1, lengthCm: 1, widthCm: 1, heightCm: 1 }],
     });
     const productId = importBody.results[0].productId;
-    const photos = await threeRealPhotos(token);
+    const photos = await requiredRealPhotos(token);
 
     const first = await completeDraft(token, productId, { images: photos });
     expect(first.status).toBe(200);

@@ -3285,6 +3285,26 @@ refund_pending --(admin marks refunded)--+
 builds its own hub and hub-staff login (using the Hub staff feature) so workload checks are exact. Verified to fail when completion stops needing
 both conditions, when supplier isolation is removed, when the buyer-cancel block is removed, or when the hub workload keeps counting returned units.
 
+## Paying the supplier when LEAP bears the cost of a fault (migration 097)
+
+**The rule (decided with the owner):** Leap pays the supplier only **the order, the replacement, and local shipping charges**. Any other cost caused by a supplier's own fault is the supplier's.
+
+| Who bears the cost | What the supplier is paid |
+|---|---|
+| **Supplier** (their fault) | **Once**, for the unit the buyer finally receives (through the replacement, migration 095). The faulty original is never paid, and nothing else is: they bear every other cost of the fault. The platform does not "charge" those costs, it simply pays nothing extra. |
+| **Leap** (the fault happened in our care) | **The original order** (net of commission) **+ the replacement** (paid when delivered, as above) **+ local shipping charges**. |
+
+**Why an adjustment is needed:** a shipment with a fault case also has a return case, and the payout rules never pay an order with a return case. That is right for a supplier fault, but when Leap bears the cost Leap owes the supplier for that original order too. So an admin releases it explicitly.
+
+- `POST /fault-cases/:id/release-supplier-payment` (admin; body `{ localShippingAmount?, note? }`). Allowed only when `cost_bearer = 'leap'` **and** the refund or replacement has been confirmed (it works for either outcome: if the buyer was refunded, the supplier still shipped good goods). Refused for a supplier-fault case (400), before an outcome is chosen (400), for a bad shipping amount (negative / not a number / absurdly large: 400), a second time (409), and for an order already paid out (409). Audit-logged as `fault_case_supplier_payment_released`; the supplier gets a notification.
+- It writes up to two rows in **`payout_adjustments`**: `original_order` (the order's value net of commission, computed by the same arithmetic as the payout rules, with its gross value kept too) and `local_shipping` (the amount the admin typed, in USD: **nothing in the system stores a supplier's local shipping cost, so it is entered by hand**; optional).
+- Adjustments are owed **immediately** (no return window), and are picked up by the supplier's **next payout**: `GET /payouts/owed` (and `adjustmentCount`), `POST /payouts` (they are marked paid and the payout amount includes them), and the supplier's own Finance page (`readyToPay.amount` and a `readyToPay.adjustments` list) all agree. In the supplier's payout history `sales` counts an adjustment at its gross value, so "sales minus the payout" is still exactly the commission and local shipping is never mistaken for commission.
+- The admin's fault case shows `supplierPayment`: `{ released, originalOrder, localShipping, releasedAt, paidOut }` (only when Leap bears the cost; before release, `originalOrder` is a preview of what would be released).
+
+**Not automated:** the replacement's own local shipping, if the supplier charges one, is covered by typing it as "local shipping" at release. Costs the platform never tracked (return shipping, hub handling) are not charged to a supplier at fault: that would be a separate feature.
+
+**Tested:** `apps/admin-dashboard/src/supplierPaymentRelease.integration.test.js` (5, real backend, checks the money): only an admin; a supplier-fault case releases nothing; nothing before an outcome; bad amounts refused; the exact amounts on the admin payout page and the supplier's Finance page; no double release; the whole rule for both cost bearers side by side (Leap: order + replacement + shipping; supplier: the replacement only); the payout takes the adjustments with it and nothing is owed twice; no negative commission in the history; a refund also counts. Verified to fail when a supplier-fault case can release, when the gross is paid instead of the net, when a payout does not mark adjustments paid, when the history ignores them, and when the Finance page ignores them.
+
 ## Courier delivery link: photos AND delivery confirmation (migration 096)
 
 **What it does:** the address label the hub prints now carries a **QR code** ("FOR THE COURIER"). When the courier delivers, they scan it, take a photo and send it. That **stores the photos as proof of delivery** and **marks the shipment delivered**:
@@ -3359,8 +3379,7 @@ return case. The admin panel shows the replacement order and where it is: waitin
 **Money (decided with the owner: "if the fault is the supplier's they bear all fees")**
 - The faulty original always has a return case, so the payout rules (delivered + return window + **no return case**) can **never** pay it. The replacement carries the original prices and becomes payable once delivered and past the
   return window. Net effect for a supplier-fault case: the supplier is paid **once**, for the unit the buyer finally received, and bears the faulty unit and every shipping cost. Nothing in the payout code had to change.
-- **Not automated — when LEAP bears the cost:** the supplier should then ALSO be paid for the original shipment (it left them intact), but the payout rules cannot pay an order that has a return case. The admin dialog and panel say so
-  plainly; a payout adjustment tool would be a separate production.
+- **When LEAP bears the cost** the supplier is also paid for the original shipment, through an explicit admin release: see "Paying the supplier when LEAP bears the cost of a fault (migration 097)" below.
 - A refund on a case whose faulty unit came in a replacement is measured against what the buyer **paid** (the root order), never against the replacement's zero total.
 - Stock is **not** decremented for a replacement (the supplier ships from their own stock).
 

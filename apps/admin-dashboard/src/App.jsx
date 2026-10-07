@@ -31,7 +31,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchSupplierAnalytics,
   fetchHubWorkload, updateHubCapacity,
   fetchHubStaff, createHubStaff, updateHubStaff, setHubStaffDisabled, resetHubStaffPassword,
-  resolveFlaggedShipment, openFaultCase, confirmFaultRefund, markFaultRefunded, fetchSupplierReturnAddress, saveSupplierReturnAddress, updateOrderAddressEnglish, confirmFaultReplacement,
+  resolveFlaggedShipment, openFaultCase, confirmFaultRefund, markFaultRefunded, fetchSupplierReturnAddress, saveSupplierReturnAddress, updateOrderAddressEnglish, confirmFaultReplacement, releaseSupplierPayment,
   fetchHubPerformance,
   fetchFlaggedReviews, dismissReviewFlags,
   searchAdmin,
@@ -5511,7 +5511,7 @@ function FaultCaseDialog({ shipment, onCancel, onSubmit, isSaving, errorMessage 
 }
 
 // What has happened so far on a confirmed fault, and the next thing the admin can do.
-function FaultCasePanel({ faultCase, onRefund, onReplace, onMarkRefunded }) {
+function FaultCasePanel({ faultCase, onRefund, onReplace, onReleasePayment, onMarkRefunded }) {
   const st = FAULT_STATUS[faultCase.status] || FAULT_STATUS.awaiting_supplier;
   const sup = faultCase.supplier;
   const row = { ...body, fontSize: 12.5, color: C.ink, marginTop: 4 };
@@ -5541,9 +5541,6 @@ function FaultCasePanel({ faultCase, onRefund, onReplace, onMarkRefunded }) {
       {faultCase.replacement && (
         <div style={row}>
           <strong>Replacement:</strong> order {faultCase.replacement.orderId} — {REPLACEMENT_STAGE[faultCase.replacement.stage]}
-          {faultCase.costBearer === "leap" && (
-            <div style={{ color: C.amber, marginTop: 4 }}>Leap bears the cost, but the supplier's payment for the original faulty shipment is NOT released automatically: only the replacement becomes payable.</div>
-          )}
         </div>
       )}
       {faultCase.refund && (
@@ -5561,6 +5558,33 @@ function FaultCasePanel({ faultCase, onRefund, onReplace, onMarkRefunded }) {
             disabled={!sup.canReplace}
             title={!sup.answered ? "The supplier has to say they can replace it first" : !sup.canReplace ? "The supplier said they cannot replace it" : "Create a free replacement order for the buyer"}
             style={sup.canReplace ? { ...btn, border: `1px solid ${C.ink}`, background: "#fff", color: C.ink } : { ...btn, border: `1px solid ${C.line}`, background: "#fff", color: C.muted, cursor: "not-allowed" }}>Send a replacement…</button>
+        </div>
+      )}
+      {/* Who pays what once the outcome is decided (migration 097). */}
+      {faultCase.outcome && faultCase.costBearer === "supplier" && (
+        <div style={row}>
+          <strong>Supplier payment:</strong> the supplier is at fault, so they are paid once, for the unit the buyer finally receives, and bear every other cost of this fault. Leap pays them nothing extra.
+        </div>
+      )}
+      {faultCase.outcome && faultCase.supplierPayment && (
+        <div style={row}>
+          <strong>Supplier payment (Leap bears the cost):</strong>{" "}
+          {faultCase.supplierPayment.released ? (
+            <>
+              released: original order {usd2(faultCase.supplierPayment.originalOrder)}
+              {faultCase.supplierPayment.localShipping ? ` + local shipping ${usd2(faultCase.supplierPayment.localShipping)}` : ""}
+              {faultCase.supplierPayment.paidOut ? ", already paid out." : ", included in the supplier's next payout."}
+              {faultCase.outcome === "replacement" ? " The replacement is paid when it is delivered." : ""}
+            </>
+          ) : (
+            <>
+              the supplier is owed the original order ({usd2(faultCase.supplierPayment.originalOrder)} after commission) plus their local shipping charges. Not released yet.
+              {faultCase.outcome === "replacement" ? " The replacement is paid when it is delivered." : ""}
+              <div style={{ marginTop: 6 }}>
+                <button onClick={onReleasePayment} style={{ ...btn, border: `1px solid ${C.ink}`, background: "#fff", color: C.ink }}>Release supplier payment…</button>
+              </div>
+            </>
+          )}
         </div>
       )}
       {faultCase.status === "refund_pending" && (
@@ -5639,6 +5663,13 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
     return `Replacement order ${result.faultCase.replacement.orderId} created. The supplier has been asked to ship it to the inspection hub, and the buyer has been told. The case closes when it is delivered and the hub has dealt with the faulty unit.`;
   });
 
+  const handleRelease = (values) => run(async () => {
+    const shipping = values.localShippingAmount === "" ? undefined : Number(values.localShippingAmount);
+    const result = await releaseSupplierPayment(getStoredToken(), action.shipment.faultCase.id, { localShippingAmount: shipping, note: (values.note || "").trim() || undefined });
+    const sp = result.faultCase.supplierPayment;
+    return `Released: original order ${usd2(sp.originalOrder)}${sp.localShipping ? ` + local shipping ${usd2(sp.localShipping)}` : ""}. It is included in the supplier's next payout.`;
+  });
+
   const handleIssued = (values) => run(async () => {
     const result = await markFaultRefunded(getStoredToken(), action.shipment.faultCase.id, (values.reference || "").trim());
     return result.faultCase.status === "completed"
@@ -5655,6 +5686,13 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
       const r = action.shipment.faultCase.refundSuggestion;
       const detail = r.discountShare > 0 ? ` (ordered ${usd2(r.orderedValue)}, minus ${usd2(r.discountShare)} discount)` : "";
       return [{ key: "amount", label: `Refund amount (USD) — defaults to what the buyer paid for these items: ${usd2(r.suggested)}${detail}`, value: r.suggested.toFixed(2), type: "number" }];
+    }
+    if (action.type === "release") {
+      const sp = action.shipment.faultCase.supplierPayment;
+      return [
+        { key: "localShippingAmount", label: `Local shipping charges (USD) — what the supplier paid to ship to the hub. Optional; leave empty for none. The original order (${usd2(sp.originalOrder)} after commission) is added automatically.`, value: "", type: "number" },
+        { key: "note", label: "Note (optional)", value: "" },
+      ];
     }
     if (action.type === "issued") {
       return [{ key: "reference", label: "Stripe / PayPal refund reference (or a note)", value: "" }];
@@ -5757,7 +5795,7 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
                     </div>
                   )}
                   {s.faultCase && (
-                    <FaultCasePanel faultCase={s.faultCase} onRefund={() => open("refund", s)} onReplace={() => open("replace", s)} onMarkRefunded={() => open("issued", s)} />
+                    <FaultCasePanel faultCase={s.faultCase} onRefund={() => open("refund", s)} onReplace={() => open("replace", s)} onReleasePayment={() => open("release", s)} onMarkRefunded={() => open("issued", s)} />
                   )}
                 </div>
               </Card>
@@ -5790,10 +5828,10 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
         <FaultCaseDialog shipment={action.shipment} onCancel={close} onSubmit={handleOpenFault} isSaving={isSaving} errorMessage={dialogError} />
       )}
       <EditDialog
-        isOpen={action?.type === "refund" || action?.type === "issued"}
-        title={action?.type === "refund" ? `Refund the buyer — ${action.shipment.orderId}` : action?.type === "issued" ? `Mark as refunded — ${action.shipment.orderId}` : ""}
+        isOpen={action?.type === "refund" || action?.type === "issued" || action?.type === "release"}
+        title={action?.type === "refund" ? `Refund the buyer — ${action.shipment.orderId}` : action?.type === "issued" ? `Mark as refunded — ${action.shipment.orderId}` : action?.type === "release" ? `Release supplier payment — ${action.shipment.orderId}` : ""}
         fields={editFields}
-        onSave={action?.type === "refund" ? handleRefund : handleIssued}
+        onSave={action?.type === "refund" ? handleRefund : action?.type === "release" ? handleRelease : handleIssued}
         onCancel={close}
         errorMessage={dialogError}
         isSaving={isSaving}
@@ -7975,7 +8013,7 @@ const AUDIT_ACTION_TYPES = [
   // Hub staff account management (migration 089)
   'hub_staff_created', 'hub_staff_updated', 'hub_staff_disabled', 'hub_staff_enabled', 'hub_staff_password_reset',
   // Resolving a flagged hub shipment (migration 090)
-  'flagged_shipment_resolved', 'fault_case_created', 'fault_case_refund_confirmed', 'fault_case_refund_issued', 'supplier_return_address_updated', 'order_address_english_updated', 'fault_case_replacement_confirmed',
+  'flagged_shipment_resolved', 'fault_case_created', 'fault_case_refund_confirmed', 'fault_case_refund_issued', 'supplier_return_address_updated', 'order_address_english_updated', 'fault_case_replacement_confirmed', 'fault_case_supplier_payment_released',
   // Real catalog/fitment reference-data and product-listing moderation
   // actions (new) -- confirmed genuinely missing from the audit trail
   // entirely before this, despite this page's own scope already

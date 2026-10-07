@@ -159,6 +159,76 @@ async function returnTrackingOf(client, shipmentId) {
   return rows[0] ? rows[0].tracking_number : null;
 }
 
+const round2 = (value) => Number(Number(value).toFixed(2));
+
+// The original order's value, before and after the platform's commission: the same arithmetic the payout rules use.
+async function computeOriginalOrder(client, subOrderId) {
+  const { rows } = await client.query(
+    `SELECT COALESCE(SUM(oli.unit_price * oli.quantity), 0) AS gross,
+            COALESCE(SUM(oli.unit_price * oli.quantity * (1 - pc.commission_percent / 100.0)), 0) AS net
+     FROM order_line_items oli JOIN products p ON p.id = oli.product_id JOIN product_categories pc ON pc.id = p.category
+     WHERE oli.sub_order_id = $1`, [subOrderId]
+  );
+  return { gross: round2(rows[0].gross), net: round2(rows[0].net) };
+}
+
+async function supplierPaymentView(client, row) {
+  const { rows } = await client.query('SELECT kind, amount, payout_id, created_at FROM payout_adjustments WHERE fault_case_id = $1', [row.id]);
+  if (rows.length === 0) {
+    return { released: false, originalOrder: (await computeOriginalOrder(client, row.sub_order_id)).net, localShipping: null, releasedAt: null, paidOut: false };
+  }
+  const amountOf = (kind) => { const found = rows.find((r) => r.kind === kind); return found ? Number(found.amount) : null; };
+  return { released: true, originalOrder: amountOf('original_order'), localShipping: amountOf('local_shipping'), releasedAt: rows[0].created_at, paidOut: rows.every((r) => r.payout_id !== null) };
+}
+
+// When LEAP bears the cost, an admin releases what Leap owes the supplier for the ORIGINAL order (it cannot be paid by the normal rules: it has a return
+// case) plus the supplier's local shipping charges. They join the supplier's next payout. When the SUPPLIER is at fault nothing is released: they are
+// paid once, for the unit the buyer finally receives, and bear everything else. The replacement needs nothing here: it is paid on delivery as usual.
+async function releaseSupplierPayment(client, { caseId, adminId, localShippingAmount, note }) {
+  const { rows } = await client.query('SELECT * FROM fault_cases WHERE id = $1 FOR UPDATE', [caseId]);
+  if (rows.length === 0) throw new FaultCaseError('Fault case not found', 404);
+  const fc = rows[0];
+  if (fc.cost_bearer !== 'leap') throw new FaultCaseError('The supplier is at fault, so they bear the cost and nothing is released. They are paid once, for the unit the buyer finally receives.');
+  if (!fc.outcome) throw new FaultCaseError('Confirm the refund or the replacement first: the supplier payment is released after that.');
+
+  let shipping = 0;
+  if (localShippingAmount !== undefined && localShippingAmount !== null && localShippingAmount !== '') {
+    shipping = Number(localShippingAmount);
+    if (!Number.isFinite(shipping) || shipping < 0) throw new FaultCaseError('Local shipping charges must be a number, 0 or more.');
+    if (shipping > 100000) throw new FaultCaseError('That local shipping amount is too large. Check it.');
+    shipping = round2(shipping);
+  }
+  const { rows: existing } = await client.query('SELECT 1 FROM payout_adjustments WHERE fault_case_id = $1', [caseId]);
+  if (existing.length > 0) throw new FaultCaseError('The supplier payment for this case has already been released.', 409);
+  const { rows: subRows } = await client.query('SELECT so.supplier_id, so.order_id FROM supplier_sub_orders so WHERE so.id = $1', [fc.sub_order_id]);
+  const { rows: alreadyPaid } = await client.query('SELECT 1 FROM payout_sub_orders WHERE sub_order_id = $1', [fc.sub_order_id]);
+  if (alreadyPaid.length > 0) throw new FaultCaseError('This order was already paid out, so there is nothing to release.', 409);
+  const original = await computeOriginalOrder(client, fc.sub_order_id);
+  if (original.net <= 0) throw new FaultCaseError('This order has no priced items, so there is nothing to release.');
+
+  const noteText = typeof note === 'string' && note.trim() ? note.trim().slice(0, 300) : null;
+  await client.query(
+    `INSERT INTO payout_adjustments (supplier_id, fault_case_id, kind, amount, gross_amount, note, created_by_admin_id) VALUES ($1, $2, 'original_order', $3, $4, $5, $6)`,
+    [subRows[0].supplier_id, caseId, original.net, original.gross, noteText, adminId]
+  );
+  if (shipping > 0) {
+    await client.query(
+      `INSERT INTO payout_adjustments (supplier_id, fault_case_id, kind, amount, gross_amount, note, created_by_admin_id) VALUES ($1, $2, 'local_shipping', $3, $3, $4, $5)`,
+      [subRows[0].supplier_id, caseId, shipping, noteText, adminId]
+    );
+  }
+  const notifications = [];
+  const { rows: supplierUsers } = await client.query(`SELECT id FROM users WHERE supplier_id = $1 AND role = 'supplier'`, [subRows[0].supplier_id]);
+  for (const u of supplierUsers) {
+    notifications.push({
+      userId: u.id, type: 'supplier_message', title: `Payment released for order ${subRows[0].order_id}`,
+      body: `The fault on order ${subRows[0].order_id} happened in Leap's care, so Leap is paying you for the original order ($${money(original.net)} after commission)${shipping > 0 ? ` and your local shipping charges ($${money(shipping)})` : ''}. It will be included in your next payout; the replacement is paid when it is delivered.`,
+      linkType: 'order', linkId: subRows[0].order_id,
+    });
+  }
+  return { faultCase: fc, originalOrder: original.net, localShipping: shipping, notifications };
+}
+
 // Where a replacement order is up to, from the supplier's and the hub's own records.
 async function replacementStage(client, orderId) {
   const { rows } = await client.query(
@@ -192,6 +262,8 @@ async function toAdminDto(client, row) {
       answeredAt: row.supplier_answered_at,
     },
     outcome: row.outcome,
+    // Only when LEAP bears the cost: what the supplier is owed for the ORIGINAL order, and whether the admin has released it (migration 097).
+    supplierPayment: row.cost_bearer === 'leap' ? await supplierPaymentView(client, row) : null,
     // The replacement order (when the outcome is a replacement) and where it is up to: waiting_for_supplier | at_hub | shipped_to_buyer | delivered
     replacement: row.replacement_order_id
       ? { orderId: row.replacement_order_id, createdAt: row.replacement_created_at, deliveredAt: row.replacement_delivered_at, stage: await replacementStage(client, row.replacement_order_id) }
@@ -473,6 +545,6 @@ async function maybeComplete(client, caseId, notifications) {
 }
 
 module.exports = {
-  FaultCaseError, createFaultCase, recordSupplierAnswer, confirmRefund, markRefunded, confirmReplacement, onShipmentDelivered, recordHubReturn,
+  FaultCaseError, createFaultCase, recordSupplierAnswer, confirmRefund, markRefunded, confirmReplacement, releaseSupplierPayment, onShipmentDelivered, recordHubReturn,
   toAdminDto, toHubDto, sendNotifications,
 };

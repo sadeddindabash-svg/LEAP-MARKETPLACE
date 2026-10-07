@@ -4,6 +4,7 @@ import {
   fetchMyProducts, createProduct, updateProduct,
   fetchMyOrders, updateSubOrder,
 } from './auth';
+import { asValidProduct } from './productFixtures';
 
 const BACKEND_URL = 'http://localhost:4000';
 
@@ -54,7 +55,7 @@ describe.runIf(backendUp)('supplier portal against a REAL running backend', () =
 
   it('creates a new product, which starts in translating status (awaiting moderation)', async () => {
     const { token } = await login('supplier@leap.dev', 'supplier_dev_password_123');
-    const created = await createProduct(token, {
+    const created = await createProduct(token, await asValidProduct({
       nameZh: `集成测试商品 ${Date.now()}`,
       category: 'brake',
       part: 'Front Brake Disc',
@@ -66,7 +67,7 @@ describe.runIf(backendUp)('supplier portal against a REAL running backend', () =
       fitment: { generationId: 'gen_bmw_1_series_f20', year: 2017 },
       images: ['/uploads/test-a.jpg', '/uploads/test-b.jpg', '/uploads/test-c.jpg'],
       weightKg: 2.2, lengthCm: 25, widthCm: 25, heightCm: 4,
-    });
+    }));
     expect(created.status).toBe('translating');
 
     // Confirm it shows up in the ADMIN moderation queue too — proves the

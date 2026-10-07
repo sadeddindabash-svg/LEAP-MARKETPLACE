@@ -139,6 +139,7 @@ const STRINGS = {
     finance: {
       title: "财务与结算",
       subtitle: (days) => `金额以美元 (USD) 计。订单送达并超过 ${days} 天退货期后，Leap 会记录一笔结算。`,
+      adjTitle: "Leap 已放款", adjIntro: "以下款项因货物在 Leap 处受损而由 Leap 支付给您，已包含在上方金额中，并将计入您的下一次付款。", adjOriginal: "原订单", adjShipping: "国内运费",
       kpiReady: "可结算金额", kpiReadySub: (n) => `${n} 个订单已过退货期`,
       kpiWaiting: "退货期内", kpiWaitingSub: (n, days) => `${n} 个已送达订单 · ${days} 天退货期后可结算`,
       kpiPaid: "累计已结算", kpiPaidSub: (date) => (date ? `最近一次：${date}` : "暂无结算记录"),
@@ -258,6 +259,7 @@ const STRINGS = {
     finance: {
       title: "Finance & Payouts",
       subtitle: (days) => `Amounts are in US dollars (USD). Leap records a payout once your delivered orders have cleared the ${days}-day return window.`,
+      adjTitle: "Released by Leap", adjIntro: "Leap is paying you these for a shipment that was damaged while in Leap's care. They are included in the amount above and in your next payout.", adjOriginal: "Original order", adjShipping: "Local shipping",
       kpiReady: "Ready to be paid", kpiReadySub: (n) => `${n} order${n === 1 ? "" : "s"} cleared the return window`,
       kpiWaiting: "In return window", kpiWaitingSub: (n, days) => `${n} delivered order${n === 1 ? "" : "s"} · payable after ${days} days`,
       kpiPaid: "Paid out so far", kpiPaidSub: (date) => (date ? `Last payout ${date}` : "No payouts yet"),
@@ -3196,6 +3198,23 @@ function FinancePage() {
               <KpiCard label={fi.kpiPaid} value={usd(finance.totalPaid)} sub={fi.kpiPaidSub(finance.lastPayout ? new Date(finance.lastPayout.paidAt).toLocaleDateString() : null)} icon={Check} accent={C.gauge} />
               <KpiCard label={fi.kpiCommission} value={commissionValue} sub={commissionSub} icon={TrendingUp} accent={C.amber} />
             </div>
+            {/* Payments Leap released for a fault that happened in ITS care (migration 097): why "ready to pay" can include more than delivered orders. */}
+            {finance.readyToPay.adjustments && finance.readyToPay.adjustments.length > 0 && (
+              <Card title={fi.adjTitle}>
+                <div style={{ ...font, padding: "12px 16px", fontSize: 12.5, color: C.muted }}>{fi.adjIntro}</div>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <tbody>
+                    {finance.readyToPay.adjustments.map((a, i) => (
+                      <tr key={`${a.orderId}-${a.kind}-${i}`}>
+                        <Td style={{ fontWeight: 600 }}>{a.orderId}</Td>
+                        <Td>{a.kind === "original_order" ? fi.adjOriginal : fi.adjShipping}</Td>
+                        <Td align="right">{usd(a.amount)}</Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Card>
+            )}
             <Card title={fi.recordsTitle}>
               {finance.payouts.length === 0 ? (
                 <div style={{ ...font, padding: 22, fontSize: 13, color: C.muted, textAlign: "center" }}>{fi.emptyRecords}</div>

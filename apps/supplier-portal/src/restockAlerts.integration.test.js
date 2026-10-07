@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { login } from './auth';
 
 const BACKEND_URL = 'http://localhost:4000';
@@ -22,10 +22,22 @@ const backendUp = await isBackendUp();
 // supplier's own PATCH /supplier/me/products/:id), so this hooks in
 // directly there.
 describe.runIf(backendUp)('back-in-stock alerts against a REAL running backend', () => {
+  // These tests zero a product's stock and then "restock" it to 25 / 40. They use the supplier's first products, which can be the seeded p1: leaving
+  // it at 40 (it starts at ~100,000) made every LATER test that orders it fail once enough orders had drained it. So whatever stock a product had
+  // is recorded here and PUT BACK when the tests finish.
+  const originalStock = [];
+  afterAll(async () => {
+    const { token } = await login('supplier@leap.dev', 'supplier_dev_password_123');
+    for (const { id, stock } of originalStock) {
+      await fetch(`${BACKEND_URL}/supplier/me/products/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ stockQuantity: stock }) });
+    }
+  });
+
   it('CRITICAL: a genuine 0 -> positive stock transition notifies every real buyer with this product wishlisted', async () => {
     const { token: supplierToken } = await login('supplier@leap.dev', 'supplier_dev_password_123');
     const products = await fetch(`${BACKEND_URL}/supplier/me/products`, { headers: { Authorization: `Bearer ${supplierToken}` } }).then((r) => r.json());
     const product = products[0];
+    originalStock.push({ id: product.id, stock: product.stockQuantity });
 
     // Real, clean starting state -- explicitly zero before wishlisting,
     // so the buyer's wishlist add itself can never be misread as the
@@ -69,6 +81,7 @@ describe.runIf(backendUp)('back-in-stock alerts against a REAL running backend',
     const { token: supplierToken } = await login('supplier@leap.dev', 'supplier_dev_password_123');
     const products = await fetch(`${BACKEND_URL}/supplier/me/products`, { headers: { Authorization: `Bearer ${supplierToken}` } }).then((r) => r.json());
     const product = products[1];
+    originalStock.push({ id: product.id, stock: product.stockQuantity });
 
     await fetch(`${BACKEND_URL}/supplier/me/products/${product.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supplierToken}` },

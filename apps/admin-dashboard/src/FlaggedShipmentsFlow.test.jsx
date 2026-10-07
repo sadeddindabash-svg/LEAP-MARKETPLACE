@@ -302,10 +302,81 @@ describe('Flagged Shipments — the two verdicts: no fault, or a real fault (moc
     expect(within(dialogTitled(REPLACE_TITLE)).getByText(/Leap bears the cost: the supplier is paid for the replacement/)).toBeInTheDocument();
   });
 
-  it('...and the panel of such a case warns that the supplier\'s payment for the original faulty shipment is NOT released automatically', async () => {
-    const replacement = { orderId: 'LP-900555-R1', stage: 'at_hub', createdAt: '2026-07-21T00:00:00Z', deliveredAt: null };
-    await openFlaggedPage({ flagged: [flag({ faultCase: faultCase({ status: 'replacement_pending', outcome: 'replacement', supplier: SUPPLIER_YES, costBearer: 'leap', replacement }) })] });
-    expect(screen.getByText(/Leap bears the cost, but the supplier's payment for the original faulty shipment is NOT released automatically/)).toBeInTheDocument();
+  // ---- supplier payment when LEAP bears the cost (migration 097) ----
+  const RELEASE_URL = /\/fault-cases\/9\/release-supplier-payment$/;
+  const replacementCase = (over = {}) => faultCase({
+    status: 'replacement_pending', outcome: 'replacement', supplier: SUPPLIER_YES, costBearer: 'leap',
+    replacement: { orderId: 'LP-900555-R1', stage: 'at_hub', createdAt: '2026-07-21T00:00:00Z', deliveredAt: null },
+    supplierPayment: { released: false, originalOrder: 41.2, localShipping: null, releasedAt: null, paidOut: false }, ...over,
+  });
+  const RELEASE_TITLE = 'Release supplier payment — LP-900555';
+  const LOCAL_SHIPPING_LABEL = 'Local shipping charges (USD) — what the supplier paid to ship to the hub. Optional; leave empty for none. The original order ($41.20 after commission) is added automatically.';
+
+  it('CRITICAL: when Leap bears the cost and nothing is released yet, the panel says what the supplier is owed and offers "Release supplier payment…"', async () => {
+    await openFlaggedPage({ flagged: [flag({ faultCase: replacementCase() })] });
+    expect(screen.getByText(/Supplier payment \(Leap bears the cost\):/)).toBeInTheDocument();
+    expect(screen.getByText(/the supplier is owed the original order \(\$41\.20 after commission\) plus their local shipping charges\. Not released yet\./)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /release supplier payment…/i })).toBeEnabled();
+  });
+
+  it('CRITICAL: releasing sends the typed local shipping and note, and confirms what was released', async () => {
+    const calls = [];
+    const released = replacementCase({ supplierPayment: { released: true, originalOrder: 41.2, localShipping: 12.5, releasedAt: '2026-07-22T00:00:00Z', paidOut: false } });
+    const handlers = [{ method: 'POST', match: RELEASE_URL, respond: () => ({ body: { faultCase: released } }) }];
+    await openFlaggedPage({ flagged: [flag({ faultCase: replacementCase() })], handlers, calls });
+    fireEvent.click(screen.getByRole('button', { name: /release supplier payment…/i }));
+    const panel = dialogTitled(RELEASE_TITLE);
+    fireEvent.change(fieldIn(panel, LOCAL_SHIPPING_LABEL), { target: { value: '12.5' } });
+    fireEvent.change(fieldIn(panel, 'Note (optional)'), { target: { value: ' Courier in Guangzhou ' } });
+    expect(calls).toHaveLength(0); // nothing is sent until saved
+    fireEvent.click(within(panel).getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(screen.getByText("Released: original order $41.20 + local shipping $12.50. It is included in the supplier's next payout.")).toBeInTheDocument());
+    expect(calls).toHaveLength(1);
+    expect(calls[0].body).toEqual({ localShippingAmount: 12.5, note: 'Courier in Guangzhou' });
+  });
+
+  it('leaving the local shipping empty releases just the original order (no shipping amount is sent)', async () => {
+    const calls = [];
+    const released = replacementCase({ supplierPayment: { released: true, originalOrder: 41.2, localShipping: null, releasedAt: '2026-07-22T00:00:00Z', paidOut: false } });
+    const handlers = [{ method: 'POST', match: RELEASE_URL, respond: () => ({ body: { faultCase: released } }) }];
+    await openFlaggedPage({ flagged: [flag({ faultCase: replacementCase() })], handlers, calls });
+    fireEvent.click(screen.getByRole('button', { name: /release supplier payment…/i }));
+    fireEvent.click(within(dialogTitled(RELEASE_TITLE)).getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(screen.getByText("Released: original order $41.20. It is included in the supplier's next payout.")).toBeInTheDocument());
+    expect(calls[0].body).toEqual({});
+  });
+
+  it('once released, the panel shows exactly what was released and offers no second release; after a payout it says "already paid out"', async () => {
+    await openFlaggedPage({ flagged: [flag({ faultCase: replacementCase({ supplierPayment: { released: true, originalOrder: 41.2, localShipping: 12.5, releasedAt: '2026-07-22T00:00:00Z', paidOut: false } }) })] });
+    expect(screen.getByText(/released: original order \$41\.20 \+ local shipping \$12\.50, included in the supplier's next payout\./)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /release supplier payment…/i })).not.toBeInTheDocument();
+  });
+
+  it('...and after a payout it says so', async () => {
+    await openFlaggedPage({ flagged: [flag({ faultCase: replacementCase({ supplierPayment: { released: true, originalOrder: 41.2, localShipping: null, releasedAt: '2026-07-22T00:00:00Z', paidOut: true } }) })] });
+    expect(screen.getByText(/released: original order \$41\.20, already paid out\./)).toBeInTheDocument();
+  });
+
+  it('CRITICAL: when the SUPPLIER is at fault the panel says they are paid once and bear every other cost, and offers no release', async () => {
+    await openFlaggedPage({ flagged: [flag({ faultCase: replacementCase({ costBearer: 'supplier', supplierPayment: null }) })] });
+    expect(screen.getByText(/the supplier is at fault, so they are paid once, for the unit the buyer finally receives, and bear every other cost of this fault\. Leap pays them nothing extra\./)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /release supplier payment…/i })).not.toBeInTheDocument();
+  });
+
+  it('before a refund or replacement is decided there is no payment section at all', async () => {
+    await openFlaggedPage({ flagged: [flag({ faultCase: faultCase({ costBearer: 'leap', status: 'awaiting_admin', supplier: SUPPLIER_YES, supplierPayment: { released: false, originalOrder: 41.2, localShipping: null, releasedAt: null, paidOut: false } }) })] });
+    expect(screen.queryByText(/Supplier payment/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /release supplier payment…/i })).not.toBeInTheDocument();
+  });
+
+  it('a server refusal of the release is shown in its dialog, and nothing is claimed as released', async () => {
+    const handlers = [{ method: 'POST', match: RELEASE_URL, respond: () => ({ status: 409, body: { error: 'The supplier payment for this case has already been released.' } }) }];
+    await openFlaggedPage({ flagged: [flag({ faultCase: replacementCase() })], handlers });
+    fireEvent.click(screen.getByRole('button', { name: /release supplier payment…/i }));
+    const panel = dialogTitled(RELEASE_TITLE);
+    fireEvent.click(within(panel).getByRole('button', { name: /^save$/i }));
+    expect(await within(panel).findByText('The supplier payment for this case has already been released.')).toBeInTheDocument();
+    expect(screen.queryByText(/^Released:/)).not.toBeInTheDocument();
   });
 
   it.each([
