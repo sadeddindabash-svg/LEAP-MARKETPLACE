@@ -1,9 +1,10 @@
 const crypto = require('crypto');
+const { emailLanguageForAddress, emailSubject } = require('../email/language');
 const fs = require('fs');
 const path = require('path');
 const { imageSize } = require('image-size');
 const db = require('../../../db/pool');
-const { env } = require('../../config/env');
+const { publicBaseUrl } = require('../../config/publicUrl');
 const { isCloudStorageConfigured, uploadToCloud } = require('../storage/client');
 const { createNotification } = require('../notifications/helpers');
 const messages = require('../notifications/messages');
@@ -29,9 +30,6 @@ class ProofError extends Error {
   constructor(message, status = 400) { super(message); this.status = status; }
 }
 
-function publicBaseUrl() {
-  return (process.env.PUBLIC_API_URL || `http://localhost:${env.port}`).replace(/\/$/, '');
-}
 const proofUrl = (token) => `${publicBaseUrl()}/p/${token}`;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{20,100}$/;
 
@@ -157,8 +155,9 @@ function sendDeliveredEmail(orderId) {
         if (userRows.length > 0) { recipientEmail = userRows[0].email; recipientName = userRows[0].name; }
       }
       if (recipientEmail) {
-        const { html, text } = deliveryNotificationEmail({ recipientName, orderId });
-        await sendTransactionalEmail({ to: recipientEmail, subject: `Your order has been delivered — ${orderId}`, html, text, fallbackLogLabel: 'order-delivered-courier-link' });
+        const lang = await emailLanguageForAddress(recipientEmail);
+        const { html, text } = deliveryNotificationEmail({ recipientName, orderId, lang });
+        await sendTransactionalEmail({ to: recipientEmail, subject: emailSubject('orderDelivered', lang, { orderId }), html, text, fallbackLogLabel: 'order-delivered-courier-link' });
       }
     } catch (err) {
       console.error('Courier-link delivery email failed (non-fatal):', err.message);

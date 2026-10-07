@@ -1,4 +1,5 @@
 const express = require('express');
+const { normalizeEmail, sameEmail } = require('../auth/emailAddress');
 const db = require('../../../db/pool');
 const { requireAuth } = require('../auth/middleware');
 
@@ -31,7 +32,7 @@ router.post('/guest-claim', async (req, res, next) => {
     if (orderRows.length === 0) {
       return res.status(404).json({ error: 'Order not found' });
     }
-    if (orderRows[0].guest_email !== guestEmail) {
+    if (!sameEmail(orderRows[0].guest_email, guestEmail)) {
       return res.status(403).json({ error: 'This order was not placed with that email' });
     }
 
@@ -39,7 +40,7 @@ router.post('/guest-claim', async (req, res, next) => {
       `INSERT INTO users (id, email, role) VALUES ($1, $2, 'buyer')
        ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email
        RETURNING id`,
-      [`u_${Date.now()}`, guestEmail]
+      [`u_${Date.now()}`, normalizeEmail(guestEmail)]
     );
     // Confirmed fix, closing the real gap this TODO flagged: actually
     // links the real order to the real account now -- previously this

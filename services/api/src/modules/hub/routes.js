@@ -1,4 +1,5 @@
 const express = require('express');
+const { emailLanguageForAddress, emailSubject } = require('../email/language');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { createNotification } = require('../notifications/helpers');
@@ -889,8 +890,9 @@ router.post('/me/shipments/:id/events', requireAuth, requireRole('hub_staff'), a
             if (userRows.length > 0) { recipientEmail = userRows[0].email; recipientName = userRows[0].name; }
           }
           if (recipientEmail) {
-            const { html, text } = shippingNotificationEmail({ recipientName, orderId: shippedOrderId, trackingNumber });
-            await sendTransactionalEmail({ to: recipientEmail, subject: `Your order has shipped — ${shippedOrderId}`, html, text, fallbackLogLabel: 'order-shipped' });
+            const lang = await emailLanguageForAddress(recipientEmail);
+            const { html, text } = shippingNotificationEmail({ recipientName, orderId: shippedOrderId, trackingNumber, lang });
+            await sendTransactionalEmail({ to: recipientEmail, subject: emailSubject('orderShipped', lang, { orderId: shippedOrderId }), html, text, fallbackLogLabel: 'order-shipped' });
           }
         } catch (err) {
           console.error('Order shipped email failed (non-fatal):', err.message);
@@ -988,8 +990,9 @@ router.patch('/me/shipments/:id/confirm-delivery', requireAuth, requireRole('hub
           if (userRows.length > 0) { recipientEmail = userRows[0].email; recipientName = userRows[0].name; }
         }
         if (recipientEmail) {
-          const { html, text } = deliveryNotificationEmail({ recipientName, orderId });
-          await sendTransactionalEmail({ to: recipientEmail, subject: `Your order has been delivered — ${orderId}`, html, text, fallbackLogLabel: 'order-delivered-hub-manual' });
+          const lang = await emailLanguageForAddress(recipientEmail);
+          const { html, text } = deliveryNotificationEmail({ recipientName, orderId, lang });
+          await sendTransactionalEmail({ to: recipientEmail, subject: emailSubject('orderDelivered', lang, { orderId }), html, text, fallbackLogLabel: 'order-delivered-hub-manual' });
         }
       } catch (err) {
         console.error('Hub-confirmed delivery email failed (non-fatal):', err.message);

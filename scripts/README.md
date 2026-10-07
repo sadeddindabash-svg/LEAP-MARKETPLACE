@@ -29,3 +29,24 @@ Options: `-Only backend` / `-Only admin,hub` (start just those), `-SkipMigrate` 
 Run for real under PowerShell 7.4, with a stand-in for the one Windows-only command (`Get-NetTCPConnection`): the full start (all four servers answer); the stop (all four ports freed); a port held by a **non-node** program (refused, the program left running); the database being **down** (clear message, nothing started); a **failing migration** (real error shown, nothing started, nothing recorded); a folder whose name has a **space and an apostrophe**; start-up repeated while everything is already running. All three scripts parse with PowerShell's own parser, are plain ASCII, and avoid PowerShell-7-only syntax.
 
 **Not tested:** on **Windows PowerShell 5.1** itself (what a Windows PC runs), the real Windows port and service commands, and the separate windows: none exist in the sandbox. The one known difference (5.1 treats program output on stderr as an error) is handled in the migration step. If anything misbehaves, tell me what the window printed.
+
+## Testing email on your own PC with Mailpit (no provider needed)
+
+Mailpit is a free fake mail server with an inbox in your browser: nothing leaves your PC. Download `mailpit-windows-amd64.zip` from <https://github.com/axllent/mailpit/releases>, unzip it, and in its folder run (leave the window open):
+
+```powershell
+.\mailpit.exe --smtp 127.0.0.1:1025 --listen 127.0.0.1:8025 --smtp-auth-accept-any --smtp-auth-allow-insecure
+```
+
+Add these to `services\api\.env`, then restart the backend (`stop-leap.cmd`, `start-leap.cmd`):
+
+```
+SMTP_HOST=127.0.0.1
+SMTP_PORT=1025
+SMTP_USER=dev
+SMTP_PASSWORD=dev
+SMTP_FROM_EMAIL=noreply@leap.test
+SMTP_FROM_NAME=Leap Auto Parts
+```
+
+Open <http://localhost:8025> to see every email. `Invoke-RestMethod http://localhost:4000/health` should show `email: configured: True`, and `node scripts/send-test-email.js you@example.com ar` sends a test in Arabic. To make the reset button open from a **phone** on your Wi-Fi, also set `PUBLIC_API_URL=http://<your PC's address>:4000`. Delete the SMTP lines to go back to printing emails in the backend window.

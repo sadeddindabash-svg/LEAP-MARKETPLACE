@@ -123,6 +123,7 @@ See `migrations/001_init.sql` for the full schema with comments. Summary:
 | `payout_adjustments` (migration 097) | Amounts an admin releases to a supplier for a fault LEAP bears the cost of: the original order (net of commission, with its gross value) and the supplier's local shipping charges (typed by the admin). Owed at once and included in the supplier's next payout (`payout_id` is set then). One of each kind per fault case |
 | `fault_cases.closed_manually_by` / `closed_manually_note`, `hub_shipments.resolution = 'fault_closed_manually'` (migration 098) | An admin closes a stuck fault case by hand, with a written reason that is kept; the flag leaves the hub queue |
 | `users.must_change_password` (migration 099) | Set when an admin creates or resets a hub staff account (a temporary password); reported by login and `/auth/me`; cleared by `PATCH /auth/me/password` |
+| `users_email_lower_unique` (migration 100) | Email addresses are stored in lowercase (existing ones are lowercased, and so are `orders.guest_email`) and a unique index on `lower(email)` makes "same address, different capitals" impossible. The migration stops with a clear message if two accounts already differ only by capitals |
 
 **Not yet covered** (add a future migration once these backend modules
 exist — currently only in the admin-dashboard/supplier-portal prototypes,

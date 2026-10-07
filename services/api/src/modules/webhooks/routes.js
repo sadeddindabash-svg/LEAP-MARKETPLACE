@@ -1,4 +1,5 @@
 const express = require('express');
+const { emailLanguageForAddress, emailSubject } = require('../email/language');
 const crypto = require('crypto');
 const db = require('../../../db/pool');
 const faultCases = require('../faultCases/helpers');
@@ -134,8 +135,9 @@ router.post('/17track', async (req, res, next) => {
                 if (userRows.length > 0) { recipientEmail = userRows[0].email; recipientName = userRows[0].name; }
               }
               if (recipientEmail) {
-                const { html, text } = deliveryNotificationEmail({ recipientName, orderId });
-                await sendTransactionalEmail({ to: recipientEmail, subject: `Your order has been delivered — ${orderId}`, html, text, fallbackLogLabel: 'order-delivered-carrier' });
+                const lang = await emailLanguageForAddress(recipientEmail);
+                const { html, text } = deliveryNotificationEmail({ recipientName, orderId, lang });
+                await sendTransactionalEmail({ to: recipientEmail, subject: emailSubject('orderDelivered', lang, { orderId }), html, text, fallbackLogLabel: 'order-delivered-carrier' });
               }
             } catch (emailErr) {
               console.error('Carrier-confirmed delivery email failed (non-fatal):', emailErr.message);

@@ -1,6 +1,9 @@
 const express = require('express');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+const { normalizeEmail } = require('./emailAddress');
+const { publicBaseUrl } = require('../../config/publicUrl');
+const { emailLanguageForAddress, emailSubject } = require('../email/language');
 const db = require('../../../db/pool');
 const { signToken, requireAuth } = require('./middleware');
 const { recordReferral } = require('../promotions/helpers');
@@ -36,7 +39,8 @@ function isValidEmail(email) {
 // POST /auth/signup  { email, password, name? }
 router.post('/signup', async (req, res, next) => {
   try {
-    const { email, password, name, referralCode } = req.body || {};
+    const { email: submittedEmail, password, name, referralCode } = req.body || {};
+    const email = normalizeEmail(submittedEmail); // matched without regard to capital letters (migration 100)
     if (!isValidEmail(email)) {
       return res.status(400).json({ error: 'A valid email is required' });
     }
@@ -44,7 +48,7 @@ router.post('/signup', async (req, res, next) => {
       return res.status(400).json({ error: 'Password must be at least 8 characters' });
     }
 
-    const existing = await db.query('SELECT id FROM users WHERE email = $1', [email]);
+    const existing = await db.query('SELECT id FROM users WHERE lower(email) = $1', [email]);
     if (existing.rows.length > 0) {
       return res.status(409).json({ error: 'An account with this email already exists' });
     }
@@ -68,7 +72,7 @@ router.post('/signup', async (req, res, next) => {
     let linkedOrderCount = 0;
     try {
       const { rows: linkedRows } = await db.query(
-        `UPDATE orders SET buyer_id = $1 WHERE guest_email = $2 AND buyer_id IS NULL RETURNING id`,
+        `UPDATE orders SET buyer_id = $1 WHERE lower(guest_email) = $2 AND buyer_id IS NULL RETURNING id`,
         [userId, email]
       );
       linkedOrderCount = linkedRows.length;
@@ -85,8 +89,9 @@ router.post('/signup', async (req, res, next) => {
     // be able to delay or block the real signup response itself.
     (async () => {
       try {
-        const { html, text } = welcomeEmail({ recipientName: name || null });
-        await sendTransactionalEmail({ to: email, subject: 'Welcome to Leap', html, text, fallbackLogLabel: 'welcome' });
+        const lang = await emailLanguageForAddress(email);
+        const { html, text } = welcomeEmail({ recipientName: name || null, lang });
+        await sendTransactionalEmail({ to: email, subject: emailSubject('welcome', lang), html, text, fallbackLogLabel: 'welcome' });
       } catch (err) {
         console.error('Welcome email failed (non-fatal):', err.message);
       }
@@ -99,12 +104,13 @@ router.post('/signup', async (req, res, next) => {
 // POST /auth/login  { email, password }
 router.post('/login', async (req, res, next) => {
   try {
-    const { email, password } = req.body || {};
+    const { email: submittedEmail, password } = req.body || {};
+    const email = normalizeEmail(submittedEmail);
     if (!email || !password) {
       return res.status(400).json({ error: 'email and password are required' });
     }
 
-    const { rows } = await db.query('SELECT id, email, name, role, password_hash, supplier_id, hub_id, is_owner, two_factor_enabled, disabled_at, must_change_password FROM users WHERE email = $1', [email]);
+    const { rows } = await db.query('SELECT id, email, name, role, password_hash, supplier_id, hub_id, is_owner, two_factor_enabled, disabled_at, must_change_password FROM users WHERE lower(email) = $1', [email]);
     // Deliberately identical error for "no such user" and "wrong password"
     // — do not reveal which one it was, that leaks whether an email is registered.
     const genericError = { error: 'Invalid email or password' };
@@ -406,12 +412,13 @@ const RESET_TOKEN_EXPIRY_MINUTES = 60;
 // which case happened.
 router.post('/forgot-password', async (req, res, next) => {
   try {
-    const { email } = req.body || {};
+    const { email: submittedEmail } = req.body || {};
+    const email = normalizeEmail(submittedEmail);
     if (!isValidEmail(email)) {
       return res.status(400).json({ error: 'A valid email is required' });
     }
 
-    const { rows } = await db.query('SELECT id, name FROM users WHERE email = $1', [email]);
+    const { rows } = await db.query('SELECT id, name FROM users WHERE lower(email) = $1', [email]);
     if (rows.length > 0) {
       const user = rows[0];
       const token = crypto.randomBytes(32).toString('hex');
@@ -421,12 +428,14 @@ router.post('/forgot-password', async (req, res, next) => {
         [token, user.id, expiresAt]
       );
 
-      const resetUrl = `http://localhost:5173/reset-password?token=${token}`;
+      // The button opens the reset page this backend serves (works in any browser, English and Arabic); the CODE is the same secret, for the app's screen.
+      const resetUrl = `${publicBaseUrl()}/reset-password?token=${token}`;
       let delivered = false;
       if (isEmailConfigured()) {
         try {
-          const { html, text } = passwordResetEmail({ recipientName: user.name, resetUrl, expiryMinutes: RESET_TOKEN_EXPIRY_MINUTES });
-          await sendEmail({ to: email, subject: 'Reset your Leap password', html, text });
+          const lang = await emailLanguageForAddress(email);
+          const { html, text } = passwordResetEmail({ recipientName: user.name, resetUrl, expiryMinutes: RESET_TOKEN_EXPIRY_MINUTES, code: token, lang });
+          await sendEmail({ to: email, subject: emailSubject('passwordReset', lang), html, text });
           delivered = true;
         } catch (emailErr) {
           // Real SMTP failure (bad credentials, provider rejected it,
@@ -494,7 +503,8 @@ router.post('/reset-password', async (req, res, next) => {
 // until it naturally expired otherwise.
 router.patch('/me/email', requireAuth, async (req, res, next) => {
   try {
-    const { newEmail, currentPassword } = req.body || {};
+    const { newEmail: submittedNewEmail, currentPassword } = req.body || {};
+    const newEmail = normalizeEmail(submittedNewEmail);
     if (!isValidEmail(newEmail)) {
       return res.status(400).json({ error: 'A valid newEmail is required' });
     }
@@ -515,7 +525,7 @@ router.patch('/me/email', requireAuth, async (req, res, next) => {
       return res.status(400).json({ error: 'That is already your current email' });
     }
 
-    const { rows: existingRows } = await db.query('SELECT id FROM users WHERE email = $1 AND id != $2', [newEmail, req.user.sub]);
+    const { rows: existingRows } = await db.query('SELECT id FROM users WHERE lower(email) = $1 AND id != $2', [newEmail, req.user.sub]);
     if (existingRows.length > 0) {
       return res.status(409).json({ error: 'That email is already in use by another account' });
     }

@@ -1,4 +1,5 @@
 const express = require('express');
+const { normalizeEmail } = require('../auth/emailAddress');
 const bcrypt = require('bcryptjs');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, requireOwner } = require('../auth/middleware');
@@ -55,7 +56,8 @@ router.get('/', requireAuth, requireRole('admin'), requireOwner, async (req, res
 router.post('/', requireAuth, requireRole('admin'), requireOwner, async (req, res, next) => {
   const client = await db.getPool().connect();
   try {
-    const { email, password, name, allowedPages } = req.body || {};
+    const { email: submittedEmail, password, name, allowedPages } = req.body || {};
+    const email = normalizeEmail(submittedEmail);
     if (!email || !password) {
       return res.status(400).json({ error: 'email and password are required' });
     }
@@ -68,7 +70,7 @@ router.post('/', requireAuth, requireRole('admin'), requireOwner, async (req, re
       return res.status(400).json({ error: `Unknown page id(s): ${invalidPages.join(', ')}` });
     }
 
-    const existing = await client.query('SELECT id FROM users WHERE email = $1', [email]);
+    const existing = await client.query('SELECT id FROM users WHERE lower(email) = $1', [email]);
     if (existing.rows.length > 0) {
       return res.status(409).json({ error: 'An account with this email already exists' });
     }

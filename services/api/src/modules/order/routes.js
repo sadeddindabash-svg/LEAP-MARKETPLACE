@@ -1,4 +1,6 @@
 const express = require('express');
+const { normalizeEmail, sameEmail } = require('../auth/emailAddress');
+const { emailLanguageForAddress, emailSubject } = require('../email/language');
 const db = require('../../../db/pool');
 const { requireAuth, optionalAuth, requirePageAccessIfAdmin, requireRole, requirePageAccess } = require('../auth/middleware');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
@@ -237,7 +239,7 @@ router.post('/', async (req, res, next) => {
     const orderId = await nextOrderId(client);
     await client.query(
       `INSERT INTO orders (id, buyer_id, guest_email, status, total, currency_code, promo_code, discount_amount, wait_for_all_shipments, idempotency_key) VALUES ($1, $2, $3, 'to_ship', $4, $5, $6, $7, $8, $9)`,
-      [orderId, userId || null, guestEmail || null, total, currencyCode, appliedPromoCode, discountUsd, Boolean(waitForAllShipments), idempotencyKey || null]
+      [orderId, userId || null, normalizeEmail(guestEmail) || null, total, currencyCode, appliedPromoCode, discountUsd, Boolean(waitForAllShipments), idempotencyKey || null]
     );
     if (appliedPromoCode) {
       await recordRedemption(appliedPromoCode, userId || null, orderId, client);
@@ -433,8 +435,9 @@ router.post('/', async (req, res, next) => {
           const { rows: nameRows } = await db.query('SELECT id, name FROM products WHERE id = ANY($1::text[])', [productIds]);
           const nameById = Object.fromEntries(nameRows.map((r) => [r.id, r.name]));
           const emailItems = items.map((i) => ({ name: nameById[i.productId] || i.productId, quantity: i.quantity, price: buyerUnitPrices[i.productId] }));
-          const { html, text } = orderConfirmationEmail({ recipientName, orderId, items: emailItems, total, currencyCode });
-          await sendTransactionalEmail({ to: recipientEmail, subject: `Order confirmed — ${orderId}`, html, text, fallbackLogLabel: 'order-confirmation' });
+          const lang = await emailLanguageForAddress(recipientEmail);
+          const { html, text } = orderConfirmationEmail({ recipientName, orderId, items: emailItems, total, currencyCode, lang });
+          await sendTransactionalEmail({ to: recipientEmail, subject: emailSubject('orderConfirmed', lang, { orderId }), html, text, fallbackLogLabel: 'order-confirmation' });
         }
       } catch (err) {
         console.error('Order confirmation email failed (non-fatal):', err.message);
@@ -499,7 +502,7 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
 
     const isAdmin = req.user && req.user.role === 'admin';
     const isOwningBuyer = req.user && order.buyer_id && req.user.sub === order.buyer_id;
-    const guestEmailMatches = order.guest_email && req.query.guestEmail && req.query.guestEmail === order.guest_email;
+    const guestEmailMatches = order.guest_email && req.query.guestEmail && sameEmail(req.query.guestEmail, order.guest_email);
 
     if (!isAdmin && !isOwningBuyer && !guestEmailMatches) {
       return res.status(404).json({ error: 'Order not found' });
@@ -879,7 +882,7 @@ router.post('/:id/cancel', optionalAuth, async (req, res, next) => {
     const order = orderRows[0];
 
     const isOwningBuyer = req.user && order.buyer_id && req.user.sub === order.buyer_id;
-    const guestEmailMatches = order.guest_email && req.body?.guestEmail && req.body.guestEmail === order.guest_email;
+    const guestEmailMatches = order.guest_email && req.body?.guestEmail && sameEmail(req.body.guestEmail, order.guest_email);
     if (!isOwningBuyer && !guestEmailMatches) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Order not found' });
@@ -941,7 +944,7 @@ router.post('/:id/sub-orders/:subOrderId/cancel', optionalAuth, async (req, res,
     const order = orderRows[0];
 
     const isOwningBuyer = req.user && order.buyer_id && req.user.sub === order.buyer_id;
-    const guestEmailMatches = order.guest_email && req.body?.guestEmail && req.body.guestEmail === order.guest_email;
+    const guestEmailMatches = order.guest_email && req.body?.guestEmail && sameEmail(req.body.guestEmail, order.guest_email);
     if (!isOwningBuyer && !guestEmailMatches) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Order not found' });
@@ -1015,7 +1018,7 @@ router.patch('/:id/address', optionalAuth, async (req, res, next) => {
     const order = orderRows[0];
 
     const isOwningBuyer = req.user && order.buyer_id && req.user.sub === order.buyer_id;
-    const guestEmailMatches = order.guest_email && guestEmail && guestEmail === order.guest_email;
+    const guestEmailMatches = order.guest_email && guestEmail && sameEmail(guestEmail, order.guest_email);
     if (!isOwningBuyer && !guestEmailMatches) {
       return res.status(404).json({ error: 'Order not found' });
     }
@@ -1060,7 +1063,7 @@ router.put('/:id/address-english/confirm', optionalAuth, async (req, res, next) 
     if (orderRows.length === 0) return res.status(404).json({ error: 'Order not found' });
     const order = orderRows[0];
     const isOwningBuyer = req.user && order.buyer_id && req.user.sub === order.buyer_id;
-    const guestEmailMatches = order.guest_email && req.body?.guestEmail && req.body.guestEmail === order.guest_email;
+    const guestEmailMatches = order.guest_email && req.body?.guestEmail && sameEmail(req.body.guestEmail, order.guest_email);
     if (!isOwningBuyer && !guestEmailMatches) return res.status(404).json({ error: 'Order not found' });
 
     const existing = await ensureEnglishAddress(req.params.id);
@@ -1109,7 +1112,7 @@ router.get('/:id/receipt', optionalAuth, async (req, res, next) => {
 
     const isAdmin = req.user && req.user.role === 'admin';
     const isOwningBuyer = req.user && order.buyer_id && req.user.sub === order.buyer_id;
-    const guestEmailMatches = order.guest_email && req.query.guestEmail && req.query.guestEmail === order.guest_email;
+    const guestEmailMatches = order.guest_email && req.query.guestEmail && sameEmail(req.query.guestEmail, order.guest_email);
     if (!isAdmin && !isOwningBuyer && !guestEmailMatches) {
       return res.status(404).json({ error: 'Order not found' });
     }
@@ -1353,7 +1356,7 @@ router.get('/:id/tracking', optionalAuth, async (req, res, next) => {
 
     const isAdmin = req.user && req.user.role === 'admin';
     const isOwningBuyer = req.user && order.buyer_id && req.user.sub === order.buyer_id;
-    const guestEmailMatches = order.guest_email && req.query.guestEmail && req.query.guestEmail === order.guest_email;
+    const guestEmailMatches = order.guest_email && req.query.guestEmail && sameEmail(req.query.guestEmail, order.guest_email);
     if (!isAdmin && !isOwningBuyer && !guestEmailMatches) {
       return res.status(404).json({ error: 'Order not found' });
     }

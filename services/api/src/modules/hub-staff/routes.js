@@ -90,7 +90,7 @@ router.get('/', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const { email, name, hubId } = req.body || {};
-    const cleanEmail = typeof email === 'string' ? email.trim() : '';
+    const cleanEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
     const cleanName = typeof name === 'string' ? name.trim() : '';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) return res.status(400).json({ error: 'A valid email address is required.' });
     if (!cleanName) return res.status(400).json({ error: 'Name is required.' });

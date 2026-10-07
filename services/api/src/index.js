@@ -4,12 +4,14 @@ const path = require('path');
 const { env, assertRequiredEnvInProduction } = require('./config/env');
 const { installAsyncErrorHandling } = require('./config/asyncErrors');
 const { getPendingMigrations, pendingMigrationsBanner } = require('./config/pendingMigrations');
+const { isEmailConfigured } = require('./modules/email/client');
 
 // An error inside an async route must return a 500, never stop the whole server (see config/asyncErrors.js).
 installAsyncErrorHandling();
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 
 const { apiRouter: deliveryProofApi, pageRouter: deliveryProofPage } = require('./modules/deliveryProof/routes');
+const resetPageRoutes = require('./modules/auth/resetPageRoutes');
 const catalogRoutes = require('./modules/catalog/routes');
 const fitmentRoutes = require('./modules/fitment/routes');
 const cartRoutes = require('./modules/cart/routes');
@@ -137,12 +139,14 @@ app.get('/health', async (req, res) => {
   // (null if it could not be checked). The status stays 'ok' so existing checks keep working.
   let pendingMigrations = null;
   try { pendingMigrations = await getPendingMigrations(); } catch { /* health must never fail because of this check */ }
-  res.json({ status: 'ok', env: env.nodeEnv, timestamp: new Date().toISOString(), pendingMigrations });
+  // email.configured: whether SMTP is set up (false = emails are only printed in the backend window). No secrets are ever shown here.
+  res.json({ status: 'ok', env: env.nodeEnv, timestamp: new Date().toISOString(), pendingMigrations, email: { configured: isEmailConfigured() } });
 });
 
 // The courier link (migration 096): public on purpose, no login; the token in the address is the credential.
 app.use('/proof', deliveryProofApi);
 app.use('/p', deliveryProofPage);
+app.use('/reset-password', resetPageRoutes); // the page the password reset email's button opens
 
 app.use('/catalog', catalogRoutes);
 app.use('/fitment', fitmentRoutes);
@@ -194,6 +198,9 @@ app.use(errorHandler);
 if (require.main === module) {
   app.listen(env.port, () => {
     console.log(`Leap API listening on http://localhost:${env.port} (${env.nodeEnv})`);
+    console.log(isEmailConfigured()
+      ? `Email: sending through ${process.env.SMTP_HOST}:${process.env.SMTP_PORT}`
+      : 'Email: NOT configured, emails are printed in this window instead of being sent (see .env.example)');
     // Say so LOUDLY if the code has migrations the database has not had yet (the most common cause of "it stopped working after an update").
     getPendingMigrations().then((pending) => { if (pending.length > 0) console.error(pendingMigrationsBanner(pending)); }).catch(() => {});
   });
