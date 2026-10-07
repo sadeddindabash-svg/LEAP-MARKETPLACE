@@ -198,6 +198,15 @@ shipment, confirmed searching by a real supplier name does the same,
 and confirmed a search matching nothing shows the real empty state
 rather than an error. 16/16 passing across the full suite.
 
+## Ship to: the delivery address, in English (new, migration 094)
+
+The shipment page now has a **Ship to (English address)** card under the items: recipient, street, city / state / postal code, country, national address and phone. Before this, the hub web portal did not show where
+a parcel was going at all. The address is always **English**, even when the buyer typed it in Arabic (the hub staff cannot read Arabic). If it was produced **automatically** from an Arabic address and the buyer has not
+confirmed it, the card says so in amber and asks staff to check with the platform before shipping. A buyer who has not given an address yet is shown plainly.
+
+- Tested in `src/FlagFlow.test.jsx` (now 20): the English address with phone and national address; the amber warning for an automatic one (and none for a confirmed or already-English one); a missing address. Verified to fail when
+  the warning is removed. The hub MOBILE app reads the same fields and so also shows English (not checked on a device).
+
 ## Flagging, seeing the verdict, and returning a faulty unit (new, migrations 090–091)
 
 - The "flag a quality issue" form has an **optional** "kind of problem" dropdown (physical damage, water damage, missing parts, wrong item,
@@ -212,7 +221,7 @@ rather than an error. 16/16 passing across the full suite.
   - **Where to send it (migration 092):** while the unit is being returned, the panel shows the supplier's **return address** (contact, phone, full address, as the
     supplier entered it) and a **Print return label** button — a bilingual (English / 中文) page the browser prints, with only the label on the paper. If the supplier
     has no address on file the panel says so and tells the hub to contact the platform before sending it back. Discarding at the hub needs no address.
-- Tested in `src/FlagFlow.test.jsx` (17, mocked fetch): the dropdown and that the kind is sent (and is optional); the resolved and no-fault banners;
+- Tested in `src/FlagFlow.test.jsx` (20, mocked fetch): the dropdown and that the kind is sent (and is optional); the resolved and no-fault banners;
   the fault panel, the tracking-number and photo requirements for a return, discarding without tracking, and the banners after each. Verified to fail
   when the kind stops being sent, the banner ignores the verdict, or the return stops requiring a tracking number.
 - **Not done:** the Flutter hub app (`apps/hub-mobile`) was not changed — it has no kind-of-problem picker, no return/discard screen, and does not

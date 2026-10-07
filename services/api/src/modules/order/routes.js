@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../../../db/pool');
-const { requireAuth, optionalAuth, requirePageAccessIfAdmin } = require('../auth/middleware');
+const { requireAuth, optionalAuth, requirePageAccessIfAdmin, requireRole, requirePageAccess } = require('../auth/middleware');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
 const { validatePromoCode, calculateDiscountUsd, recordRedemption, checkAndGrantReferralReward } = require('../promotions/helpers');
 const { getLoyaltyDiscountPercentage } = require('../loyalty/helpers');
@@ -9,6 +9,8 @@ const { orderConfirmationEmail, wrapEmailBody } = require('../email/templates');
 const { createNotification } = require('../notifications/helpers');
 const { buildTrackingTimeline } = require('../tracking/liveTracking');
 const { buildSupplierLabelMap } = require('../shared/supplierAnonymize');
+const { logAdminAction } = require('../audit/helpers');
+const { refreshEnglishAddress, ensureEnglishAddress, toEnglishDto, validateEnglishAddress, saveEnglishAddress, confirmEnglishAddressAsIs } = require('../addressEnglish/helpers');
 const { STATUS_ORDER } = require('../shared/hubStatusOrder');
 const ArabicReshaper = require('arabic-reshaper');
 const bidiFactory = require('bidi-js');
@@ -267,6 +269,9 @@ router.post('/', async (req, res, next) => {
         [orderId, address.recipientName, address.phone, address.country, address.city, address.streetAddress, address.postalCode || null, address.state || null, address.nationalAddress || null]
       );
     }
+
+    // The inspection hub cannot read Arabic: keep an ENGLISH version of the address beside the one the buyer typed (migration 094).
+    await refreshEnglishAddress(orderId, { client, force: true });
 
     // Group items by supplier -> one supplier_sub_order per supplier.
     const bySupplier = {};
@@ -588,7 +593,9 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
 
     // Real shipping address status (migration 030) -- null means a
     // real, honest "pending address" state, not a silently missing one.
+    await ensureEnglishAddress(req.params.id); // an order from before migration 094 gets its English version the first time it is read
     const { rows: addressRows } = await db.query('SELECT * FROM order_addresses WHERE order_id = $1', [req.params.id]);
+    const addressEnglish = addressRows.length > 0 ? toEnglishDto(addressRows[0]) : null;
     const address = addressRows.length > 0 ? {
       recipientName: addressRows[0].recipient_name,
       phone: addressRows[0].phone,
@@ -613,6 +620,7 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
       waitForAllShipments: order.wait_for_all_shipments,
       placedAt: order.placed_at,
       address,
+      addressEnglish, // the same address in English letters, for the inspection hub (migration 094); source 'auto' = not yet confirmed by anyone
       supplierSubOrders,
     });
   } catch (err) {
@@ -1005,7 +1013,54 @@ router.patch('/:id/address', optionalAuth, async (req, res, next) => {
       [req.params.id, address.recipientName, address.phone, address.country, address.city, address.streetAddress, address.postalCode || null, address.state || null, address.nationalAddress || null, realSource]
     );
 
+    await refreshEnglishAddress(req.params.id, { force: true }); // the ORIGINAL changed, so any earlier English version no longer describes it
+
     res.json({ id: req.params.id, addressConfirmed: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /:id/address-english -- an ADMIN corrects the English version of an order's delivery address (migration 094). The original address the
+// buyer typed is never touched. It must be written in English letters: this is what the inspection hub reads and prints.
+router.put('/:id/address-english', requireAuth, requireRole('admin'), requirePageAccess('orders'), async (req, res, next) => {
+  try {
+    const { error, value } = validateEnglishAddress(req.body);
+    if (error) return res.status(400).json({ error });
+    const existing = await ensureEnglishAddress(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'This order has no delivery address yet.' });
+    const saved = await saveEnglishAddress(req.params.id, value, 'admin', req.user.sub);
+    await logAdminAction(req, 'order_address_english_updated', 'order', req.params.id, {}); // who changed which order's address; not the address itself
+    res.json(toEnglishDto(saved));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /:id/address-english/confirm { guestEmail?, ...english address? } -- the BUYER confirms the automatic English version of their address
+// (send nothing but guestEmail, if a guest) or corrects it (send the English fields). Either way it is then marked as confirmed by the buyer.
+router.put('/:id/address-english/confirm', optionalAuth, async (req, res, next) => {
+  try {
+    const { rows: orderRows } = await db.query('SELECT * FROM orders WHERE id = $1', [req.params.id]);
+    if (orderRows.length === 0) return res.status(404).json({ error: 'Order not found' });
+    const order = orderRows[0];
+    const isOwningBuyer = req.user && order.buyer_id && req.user.sub === order.buyer_id;
+    const guestEmailMatches = order.guest_email && req.body?.guestEmail && req.body.guestEmail === order.guest_email;
+    if (!isOwningBuyer && !guestEmailMatches) return res.status(404).json({ error: 'Order not found' });
+
+    const existing = await ensureEnglishAddress(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'This order has no delivery address yet.' });
+
+    const hasEdits = ['recipientName', 'country', 'city', 'streetAddress', 'state'].some((k) => req.body?.[k] !== undefined);
+    let saved;
+    if (hasEdits) {
+      const { error, value } = validateEnglishAddress(req.body);
+      if (error) return res.status(400).json({ error });
+      saved = await saveEnglishAddress(req.params.id, value, 'buyer', req.user ? req.user.sub : null);
+    } else {
+      saved = await confirmEnglishAddressAsIs(req.params.id, req.user ? req.user.sub : null);
+    }
+    res.json(toEnglishDto(saved));
   } catch (err) {
     next(err);
   }

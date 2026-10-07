@@ -1274,6 +1274,15 @@ Sixty-six test files, 409 tests total, all passing:
   everyone); an Arabic user gets an Arabic push and an English one an English push; a notification with no Arabic text is sent in English; every registered device gets it.
 - `src/notificationBackfill.integration.test.js` (4, real database) — the migration's backfill gives every old patterned notification correct Arabic and never alters the English; unknown
   patterns are left alone; running it again changes nothing; it never overwrites an Arabic text that is already there.
+- `src/addressTransliteration.test.js` (14, pure — no backend) — Arabic → English for delivery addresses: countries, cities and common names come out as written in English; a full street address reads like an English
+  one (the type word moves after the name, numbers are converted); "Street 10" / "Block 3" keep their order; P.O. Box with dots; Arabic-Indic and Persian digits; English text is never touched or reordered; mixed Arabic and
+  English; NO Arabic letter ever survives in the output (including for words not in the dictionary); the rule-based fallback is approximate but stable; diacritics are ignored; spelling variants still match.
+- `src/addressEnglish.integration.test.js` (10, REAL backend) — an Arabic address reaches the hub in English (not one Arabic letter) while the buyer's original is untouched and the English one is marked "auto"; an
+  English address is left alone ("same"); the address label PDF is produced; an admin can correct the English version (hub then sees it, audit-logged without the address); the correction must be English, complete and a
+  sensible size; only an admin with the Orders page can; the buyer (or a guest with the right email) can confirm or correct it; replacing the address recomputes the English; an order from BEFORE the feature gets its English
+  version the first time it is read.
+- `src/OrderAddressFlow.test.jsx` (5, mocked) — the admin order page's new "Delivery address" card: the address as typed AND the English version with a warning when automatic; no warning once confirmed; an order with no
+  address; editing sends exactly what was typed and then says "Corrected by an admin" while the buyer's original stays; a server refusal shows in the dialog.
 - `src/trackingNumbers.integration.test.js` (5, REAL backend) — the buyer (and a guest) sees the HUB's tracking number, empty until the hub ships, and
   never the supplier's; admin sees both, labelled apart (Order detail shows "Supplier → hub" and "Hub → buyer"); the buyer is not told "shipped" when
   the supplier ships to the hub, only when the hub ships, with the hub's number; a faulty unit's return step and return tracking number are

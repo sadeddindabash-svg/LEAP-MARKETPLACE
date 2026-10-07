@@ -1039,3 +1039,17 @@ export async function saveSupplierReturnAddress(token, supplierId, { contactName
   if (!response.ok) throw new Error(data.error || `Failed to save the return address (${response.status})`);
   return data;
 }
+
+// An admin corrects the ENGLISH version of an order's delivery address (migration 094): what the inspection hub reads and prints. The address
+// the buyer typed is never changed. Every field must be written in English letters (the server refuses Arabic).
+export async function updateOrderAddressEnglish(token, orderId, { recipientName, country, city, streetAddress, state }) {
+  const response = await fetch(`${API_BASE_URL}/order/${orderId}/address-english`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ recipientName, country, city, streetAddress, state }),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `Failed to save the English address (${response.status})`);
+  return data;
+}

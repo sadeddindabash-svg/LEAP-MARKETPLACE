@@ -70,6 +70,8 @@ const STRINGS = {
       stage: { reviewing: "平台仍在决定如何处理此案例。", finalising: "平台正在办理收尾事项。", closed: "此案例已结案。" },
       waitingOnHub: "平台正在等待仓库处理问题商品。",
       sendTo: "寄往（供应商退货地址）", printLabel: "打印退货标签",
+      shipTo: "收货地址（英文）", shipToNone: "买家尚未提供收货地址。",
+      shipToAuto: "此英文地址由系统根据买家填写的阿拉伯语地址自动生成，尚未经买家确认。如有疑问，请先联系平台再发货。",
       noReturnAddress: "该供应商尚未填写退货地址。请先联系平台，再寄回问题商品。",
       labelClose: "关闭", labelPrint: "打印",
       damageTypeLabel: "问题类型（可选）", damageTypePlaceholder: "— 请选择 —",
@@ -134,6 +136,8 @@ const STRINGS = {
       stage: { reviewing: "The platform is still deciding how to handle this case.", finalising: "The platform is finishing this case.", closed: "This case is closed." },
       waitingOnHub: "The platform is waiting for the hub to deal with the faulty unit.",
       sendTo: "Send it to (the supplier's return address)", printLabel: "Print return label",
+      shipTo: "Ship to (English address)", shipToNone: "The buyer has not given a delivery address yet.",
+      shipToAuto: "This English address was produced automatically from the address the buyer typed in Arabic, and the buyer has not confirmed it yet. If anything looks wrong, ask the platform before shipping.",
       noReturnAddress: "This supplier has not entered a return address. Please contact the platform before sending the unit back.",
       labelClose: "Close", labelPrint: "Print",
       damageTypeLabel: "Kind of problem (optional)", damageTypePlaceholder: "— Select —",
@@ -523,6 +527,26 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
           {shipment.items.map((item, i) => (
             <div key={i} style={{ ...body, fontSize: 13, color: C.ink, padding: "4px 0" }}>{item.name} × {item.quantity}</div>
           ))}
+        </div>
+
+        {/* Where the parcel goes, IN ENGLISH (migration 094): hub staff cannot read an address typed in Arabic. */}
+        <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 10, padding: 14 }}>
+          <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, letterSpacing: "0.04em", marginBottom: 8 }}>{t.detail.shipTo.toUpperCase()}</div>
+          {shipment.deliveryAddress ? (
+            <div style={{ ...body, fontSize: 13.5, color: C.ink, lineHeight: 1.45 }}>
+              <div style={{ fontWeight: 700 }}>{shipment.deliveryAddress.recipientName}</div>
+              <div>{shipment.deliveryAddress.streetAddress}</div>
+              <div>{[shipment.deliveryAddress.city, shipment.deliveryAddress.state, shipment.deliveryAddress.postalCode].filter(Boolean).join(", ")}</div>
+              <div>{shipment.deliveryAddress.country}</div>
+              {shipment.deliveryAddress.nationalAddress && <div>{shipment.deliveryAddress.nationalAddress}</div>}
+              <div style={{ color: C.muted }}>{shipment.deliveryAddress.phone}</div>
+              {shipment.deliveryAddress.englishSource === "auto" && (
+                <div style={{ marginTop: 8, padding: 10, borderRadius: 8, background: C.amberBg, color: C.amber, fontSize: 12, fontWeight: 700 }}>{t.detail.shipToAuto}</div>
+              )}
+            </div>
+          ) : (
+            <div style={{ ...body, fontSize: 13, color: C.muted }}>{t.detail.shipToNone}</div>
+          )}
         </div>
 
         {errorMessage && (

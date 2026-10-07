@@ -213,6 +213,30 @@ describe('Hub Portal — dealing with a faulty unit after the platform confirms 
     expect(screen.queryByRole('dialog', { name: 'Return label' })).not.toBeInTheDocument();
   });
 
+  const ENGLISH_ADDRESS = (over = {}) => ({ recipientName: 'Mohammed Al-Otaibi', phone: '0551234567', country: 'Saudi Arabia', city: 'Riyadh', streetAddress: 'King Fahad Street, Al-Olaya District, Building No. 123', postalCode: '12211', state: null, nationalAddress: 'RRRD2929', englishSource: 'same', ...over });
+
+  it('CRITICAL: the hub sees WHERE to ship the parcel, in English, with the phone number and national address', async () => {
+    await openFaultShipment({ status: 'received', faultCase: null, deliveryAddress: ENGLISH_ADDRESS() });
+    expect(await screen.findByText('收货地址（英文）')).toBeInTheDocument();
+    expect(screen.getByText('Mohammed Al-Otaibi')).toBeInTheDocument();
+    expect(screen.getByText('King Fahad Street, Al-Olaya District, Building No. 123')).toBeInTheDocument();
+    expect(screen.getByText('Riyadh, 12211')).toBeInTheDocument();
+    expect(screen.getByText('Saudi Arabia')).toBeInTheDocument();
+    expect(screen.getByText('RRRD2929')).toBeInTheDocument();
+    expect(screen.getByText('0551234567')).toBeInTheDocument();
+    expect(screen.queryByText(/自动生成/)).not.toBeInTheDocument(); // a confirmed / already-English address has no warning
+  });
+
+  it('CRITICAL: an address produced AUTOMATICALLY from Arabic carries a warning, so the hub asks the platform if anything looks wrong', async () => {
+    await openFaultShipment({ status: 'received', faultCase: null, deliveryAddress: ENGLISH_ADDRESS({ englishSource: 'auto' }) });
+    expect(await screen.findByText(/此英文地址由系统根据买家填写的阿拉伯语地址自动生成/)).toBeInTheDocument();
+  });
+
+  it('a buyer who has not given an address yet is shown plainly, not as a blank', async () => {
+    await openFaultShipment({ status: 'received', faultCase: null, deliveryAddress: null });
+    expect(await screen.findByText('买家尚未提供收货地址。')).toBeInTheDocument();
+  });
+
   it('discarding at the hub needs a photo but no tracking number', async () => {
     const eventCalls = [];
     await openFaultShipment({}, { eventCalls });

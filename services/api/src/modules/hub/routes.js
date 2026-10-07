@@ -7,6 +7,7 @@ const { logAdminAction } = require('../audit/helpers');
 const faultCases = require('../faultCases/helpers');
 const messages = require('../notifications/messages');
 const { getReturnAddress } = require('../supplierReturnAddress/helpers');
+const { getHubAddressRow } = require('../addressEnglish/helpers');
 
 const DAMAGE_TYPES = ['physical_damage', 'water_damage', 'missing_parts', 'wrong_item', 'other'];
 const { deliveryNotificationEmail, shippingNotificationEmail } = require('../email/templates');
@@ -513,10 +514,9 @@ router.get('/me/shipments/:id', requireAuth, requireRole('hub_staff'), async (re
     // snapshot for this order (migration 030) -- captured once at
     // order confirmation, never a live reference to a buyer's saved
     // address that could silently change later.
-    const { rows: addressRows } = await db.query(
-      'SELECT recipient_name, phone, country, city, street_address, postal_code, state, national_address FROM order_addresses WHERE order_id = $1',
-      [rows[0].order_id]
-    );
+    // The hub reads ENGLISH (migration 094): hub staff cannot read an address the buyer typed in Arabic. The original is never changed.
+    const hubAddress = await getHubAddressRow(rows[0].order_id);
+    const addressRows = hubAddress ? [hubAddress] : [];
     const deliveryAddress = addressRows.length > 0
       ? {
           recipientName: addressRows[0].recipient_name,
@@ -527,6 +527,8 @@ router.get('/me/shipments/:id', requireAuth, requireRole('hub_staff'), async (re
           postalCode: addressRows[0].postal_code,
           state: addressRows[0].state,
           nationalAddress: addressRows[0].national_address,
+          // 'auto' = produced automatically from an Arabic address and not yet confirmed by the buyer or an admin
+          englishSource: addressRows[0].english_source,
         }
       : null;
 
@@ -571,12 +573,9 @@ router.get('/me/shipments/:id/address-label', requireAuth, requireRole('hub_staf
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Shipment not found' });
 
-    const { rows: addressRows } = await db.query(
-      'SELECT recipient_name, phone, country, city, street_address, postal_code, state, national_address FROM order_addresses WHERE order_id = $1',
-      [rows[0].order_id]
-    );
-    if (addressRows.length === 0) return res.status(404).json({ error: 'No delivery address on file for this order' });
-    const addr = addressRows[0];
+    // The label is printed from the ENGLISH address (migration 094), never the Arabic original.
+    const addr = await getHubAddressRow(rows[0].order_id);
+    if (!addr) return res.status(404).json({ error: 'No delivery address on file for this order' });
 
     // Confirmed with the person: the real "Shipment: 1 of 2" field --
     // same real sibling-shipment query/ordering already established

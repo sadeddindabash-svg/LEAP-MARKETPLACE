@@ -3286,6 +3286,39 @@ apps (they will show the new statuses unlabelled), supplier reminders, automatic
 builds its own hub and hub-staff login (using the Hub staff feature) so workload checks are exact. Verified to fail when completion stops needing
 both conditions, when supplier isolation is removed, when the buyer-cancel block is removed, or when the hub workload keeps counting returned units.
 
+## English delivery address for the inspection hub (migration 094)
+
+**The gap:** a buyer may type their delivery address in Arabic, but the people at the inspection hub cannot read it, and a generated PDF label does not join or order Arabic letters reliably.
+The hub needs an English address to ship to. (The hub web portal and the admin order page also never showed the delivery address at all; both do now.)
+
+**How it works**
+- `order_addresses` still holds the address **exactly as the buyer typed it** (the legal record, never changed by any of this). Beside it are English columns (`recipient_name_en`, `country_en`, `city_en`,
+  `street_address_en`, `state_en`) and `english_source`: `same` (already English, nothing translated) · `auto` (produced automatically from Arabic) · `buyer` (the buyer confirmed or corrected it) · `admin` (an admin
+  corrected it) · `NULL` (an order from before the migration: filled in the first time it is read, so nothing is rewritten by the migration). Phone, postal code and national address are digits / codes and are not translated.
+- **`addressEnglish/transliterate.js`** (pure, no database) does the Arabic → English: a **dictionary** of countries, cities, address words (street, district, building, mosque, hospital…), well-known districts and
+  ~100 common first and family names, so those come out as the English world writes them ("الرياض" → "Riyadh"); everything else is **romanised by rule**. Arabic is normally written without short vowels, so the rule-based
+  part is **approximate** ("بستان" → "Basatan", where the usual spelling is "Bustan") — which is why `auto` addresses carry a warning everywhere they are shown and are meant to be confirmed. Digits and punctuation are converted
+  exactly. English text passes through untouched. Arabic puts the kind of place first ("شارع الملك فهد"), English after ("King Fahad Street"), so type words are moved within an Arabic clause. Never leaves an Arabic letter in
+  its output.
+- **When it is computed:** on every order placed (typed or saved address), and again when a guest adds or **replaces** their address after the fact (then any earlier correction no longer describes the new original, so it is recomputed).
+  A correction by a person is otherwise never overwritten.
+
+| Endpoint | Who | What it does |
+|---|---|---|
+| `GET /order/:id` | buyer / guest / admin | now includes `addressEnglish` `{ recipientName, country, city, streetAddress, state, source, confirmed, updatedAt }` beside the original `address` |
+| `GET /hub/me/shipments/:id` | hub staff | `deliveryAddress` is now the **English** address, plus `englishSource` (so the hub can see an automatic one) |
+| `GET /hub/me/shipments/:id/address-label` | hub staff | the printed label is produced from the English address |
+| `PUT /order/:id/address-english` | admin with the Orders page | corrects the English version (`recipientName`, `country`, `city`, `streetAddress` required; `state` optional); every field must be written in English letters (Arabic → 400); audit-logged as `order_address_english_updated` **without** copying the address |
+| `PUT /order/:id/address-english/confirm` | the buyer (or a guest with the order's email) | send nothing to confirm the automatic version as it is, or the English fields to correct it; either way it becomes `buyer` |
+
+**Hub apps:** `hub-mobile` reads the same `deliveryAddress` fields, so it shows English with no app change (not verified on a device). **Not built:** the buyer app asking the buyer to confirm (the endpoint is ready; the Flutter screen is not).
+
+**HONEST LIMITATIONS:** the transliteration is a good guess, not a certainty — the buyer's confirmation and the admin's correction are the safeguard; the dictionaries cover the Gulf and the main Arab cities and
+common names, not every place; the wording of the English side was written by the developer and not reviewed by a native speaker.
+
+**Tested:** `apps/admin-dashboard/src/addressTransliteration.test.js` (14, pure), `addressEnglish.integration.test.js` (10, real backend). Verified to fail when the hub is shown the Arabic original, when Arabic is accepted as
+"English", and when a replaced address keeps a stale correction.
+
 ## Notifications in the buyer's language (migration 093)
 
 **The gap:** every notification was stored as ONE English string, so a buyer using the app in Arabic still got English notifications, and the app never told the

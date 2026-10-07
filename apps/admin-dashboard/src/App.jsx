@@ -31,7 +31,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchSupplierAnalytics,
   fetchHubWorkload, updateHubCapacity,
   fetchHubStaff, createHubStaff, updateHubStaff, setHubStaffDisabled, resetHubStaffPassword,
-  resolveFlaggedShipment, openFaultCase, confirmFaultRefund, markFaultRefunded, fetchSupplierReturnAddress, saveSupplierReturnAddress,
+  resolveFlaggedShipment, openFaultCase, confirmFaultRefund, markFaultRefunded, fetchSupplierReturnAddress, saveSupplierReturnAddress, updateOrderAddressEnglish,
   fetchHubPerformance,
   fetchFlaggedReviews, dismissReviewFlags,
   searchAdmin,
@@ -1064,6 +1064,88 @@ function SupplierDetailPage({ supplierId, onBack, onSessionExpired }) {
   );
 }
 
+// The order's DELIVERY ADDRESS (migration 094): the address exactly as the buyer typed it, and the ENGLISH version the inspection hub reads and prints.
+// The English version is produced automatically when the buyer's address is in Arabic ("auto": a good guess, not a certainty), and can be corrected here.
+const ENGLISH_SOURCE_NOTE = {
+  same: { text: "Already in English", color: "gauge" },
+  auto: { text: "Automatic translation, not yet confirmed by the buyer. Check it before the parcel ships.", color: "amber" },
+  buyer: { text: "Confirmed by the buyer", color: "gauge" },
+  admin: { text: "Corrected by an admin", color: "gauge" },
+};
+
+function OrderAddressCard({ order, onSessionExpired }) {
+  const [english, setEnglish] = useState(order.addressEnglish);
+  const [editing, setEditing] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const original = order.address;
+
+  // EditDialog resets its form whenever `fields` changes identity, so this is memoised on what is being edited.
+  const fields = React.useMemo(() => (editing && english ? [
+    { key: "recipientName", label: "Recipient name", value: english.recipientName || "" },
+    { key: "streetAddress", label: "Street address", value: english.streetAddress || "" },
+    { key: "city", label: "City", value: english.city || "" },
+    { key: "state", label: "State / region (optional)", value: english.state || "" },
+    { key: "country", label: "Country", value: english.country || "" },
+  ] : null), [editing, english]);
+
+  const handleSave = async (values) => {
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      setEnglish(await updateOrderAddressEnglish(getStoredToken(), order.id, values));
+      setEditing(false);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setSaveError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const lines = (a) => [a.recipientName, a.streetAddress, [a.city, a.state].filter(Boolean).join(", "), a.country].filter(Boolean);
+  const note = english ? ENGLISH_SOURCE_NOTE[english.source] : null;
+  const label = { ...body, fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: C.muted, marginBottom: 4 };
+
+  return (
+    <Card
+      title="Delivery address"
+      action={english && (
+        <button onClick={() => { setSaveError(null); setEditing(true); }} style={{ ...body, padding: "6px 12px", borderRadius: 7, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+          Edit English
+        </button>
+      )}
+    >
+      <div style={{ padding: 16, ...body, fontSize: 13, color: C.ink }}>
+        {!original && <div style={{ color: C.muted }}>No delivery address yet: the buyer has not added one.</div>}
+        {original && (
+          <>
+            <div style={label}>AS ENTERED BY THE BUYER</div>
+            {lines(original).map((l, i) => <div key={i} dir="auto">{l}</div>)}
+            <div style={{ color: C.muted }}>{original.phone}{original.postalCode ? ` · ${original.postalCode}` : ""}</div>
+            {english && (
+              <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.line}` }}>
+                <div style={label}>ENGLISH (WHAT THE INSPECTION HUB SEES)</div>
+                {lines(english).map((l, i) => <div key={i} style={{ fontWeight: i === 0 ? 700 : 400 }}>{l}</div>)}
+                {note && <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: C[note.color] }}>{note.text}</div>}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      <EditDialog
+        isOpen={editing}
+        title="English delivery address"
+        fields={fields}
+        onSave={handleSave}
+        onCancel={() => setEditing(false)}
+        errorMessage={saveError}
+        isSaving={isSaving}
+      />
+    </Card>
+  );
+}
+
 function OrderDetailPage({ orderId, onBack, onSessionExpired, onOpenTicket, onOpenSupplierMessages }) {
   const [order, setOrder] = useState(null);
   const [loadState, setLoadState] = useState("loading");
@@ -1203,6 +1285,7 @@ function OrderDetailPage({ orderId, onBack, onSessionExpired, onOpenTicket, onOp
               </div>
             </div>
           </Card>
+          <OrderAddressCard order={order} onSessionExpired={onSessionExpired} />
           <Card title="Actions">
             <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
               <button onClick={handleMessageBuyer} disabled={isMessagingBuyer} style={{ ...body, padding: 10, borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 600, cursor: isMessagingBuyer ? "default" : "pointer", textAlign: "left", opacity: isMessagingBuyer ? 0.6 : 1 }}>{isMessagingBuyer ? "Opening…" : "Message buyer"}</button>
@@ -7838,7 +7921,7 @@ const AUDIT_ACTION_TYPES = [
   // Hub staff account management (migration 089)
   'hub_staff_created', 'hub_staff_updated', 'hub_staff_disabled', 'hub_staff_enabled', 'hub_staff_password_reset',
   // Resolving a flagged hub shipment (migration 090)
-  'flagged_shipment_resolved', 'fault_case_created', 'fault_case_refund_confirmed', 'fault_case_refund_issued', 'supplier_return_address_updated',
+  'flagged_shipment_resolved', 'fault_case_created', 'fault_case_refund_confirmed', 'fault_case_refund_issued', 'supplier_return_address_updated', 'order_address_english_updated',
   // Real catalog/fitment reference-data and product-listing moderation
   // actions (new) -- confirmed genuinely missing from the audit trail
   // entirely before this, despite this page's own scope already
