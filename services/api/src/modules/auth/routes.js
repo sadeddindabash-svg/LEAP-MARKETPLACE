@@ -430,26 +430,28 @@ router.post('/forgot-password', async (req, res, next) => {
 
       // The button opens the reset page this backend serves (works in any browser, English and Arabic); the CODE is the same secret, for the app's screen.
       const resetUrl = `${publicBaseUrl()}/reset-password?token=${token}`;
-      let delivered = false;
-      if (isEmailConfigured()) {
-        try {
-          const lang = await emailLanguageForAddress(email);
-          const { html, text } = passwordResetEmail({ recipientName: user.name, resetUrl, expiryMinutes: RESET_TOKEN_EXPIRY_MINUTES, code: token, lang });
-          await sendEmail({ to: email, subject: emailSubject('passwordReset', lang), html, text });
-          delivered = true;
-        } catch (emailErr) {
-          // Real SMTP failure (bad credentials, provider rejected it,
-          // network issue) -- honestly fall back to console-logging
-          // rather than losing the reset link entirely.
-          console.error('Password reset email delivery failed, falling back to console log:', emailErr.message);
+      // The reply NEVER waits for the email. A slow or unreachable mail server used to keep the buyer waiting (and the app shows "no internet connection"
+      // if it takes too long), and how long the reply took told a stranger whether an address was registered. The email is sent after the answer goes out.
+      (async () => {
+        let delivered = false;
+        if (isEmailConfigured()) {
+          try {
+            const lang = await emailLanguageForAddress(email);
+            const { html, text } = passwordResetEmail({ recipientName: user.name, resetUrl, expiryMinutes: RESET_TOKEN_EXPIRY_MINUTES, code: token, lang });
+            await sendEmail({ to: email, subject: emailSubject('passwordReset', lang), html, text });
+            delivered = true;
+          } catch (emailErr) {
+            // Real SMTP failure (bad credentials, provider rejected it, network issue): honestly fall back to console-logging rather than losing the link.
+            console.error('Password reset email delivery failed, falling back to console log:', emailErr.message);
+          }
         }
-      }
-      if (!delivered) {
-        console.log(
-          `[password-reset] Reset link for ${email}: ${resetUrl} ` +
-          `(expires in ${RESET_TOKEN_EXPIRY_MINUTES} minutes)`
-        );
-      }
+        if (!delivered) {
+          console.log(
+            `[password-reset] Reset link for ${email}: ${resetUrl} ` +
+            `(expires in ${RESET_TOKEN_EXPIRY_MINUTES} minutes)`
+          );
+        }
+      })();
     }
 
     // Same message regardless of whether the account exists.

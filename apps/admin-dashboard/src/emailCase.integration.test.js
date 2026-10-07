@@ -64,6 +64,19 @@ describe.runIf(backendUp)('email addresses are matched WITHOUT regard to capital
     expect((await unknown.json()).message).toMatch(/If that email is registered/);
   }, 60000);
 
+  it('CRITICAL: "forgot password" is answered at once, and just as fast for an unknown address as for a real one (it must never wait for the email: a slow mail server made the app say "no internet connection", and the delay told a stranger the address was registered)', async () => {
+    const email = `fast.${stamp()}@example.com`;
+    await signup(email);
+    const time = async (address) => { const start = Date.now(); const res = await forgot(address); return { status: res.status, ms: Date.now() - start }; };
+    const real = await time(email);
+    const unknown = await time(`nobody.${stamp()}@example.com`);
+    expect(real.status).toBe(200);
+    expect(unknown.status).toBe(200);
+    expect(real.ms).toBeLessThan(1500);
+    expect(unknown.ms).toBeLessThan(1500);
+    expect(Math.abs(real.ms - unknown.ms)).toBeLessThan(1000);          // no tell-tale difference
+  }, 30000);
+
   it('changing your email stores it in lowercase, and cannot take an address that differs from someone else\'s only by capitals', async () => {
     const mine = `mine.${stamp()}@example.com`;
     const theirs = `theirs.${stamp()}@example.com`;
