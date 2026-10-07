@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { login } from './auth';
+import { asValidProduct, asValidApproval } from './productFixtures';
 
 const BACKEND_URL = 'http://localhost:4000';
 
@@ -17,13 +18,13 @@ const backendUp = await isBackendUp();
 async function createPendingProduct(supplierToken, oemSuffix) {
   const res = await fetch(`${BACKEND_URL}/supplier/me/products`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supplierToken}` },
-    body: JSON.stringify({
+    body: JSON.stringify(await asValidProduct({
       nameZh: `批量测试产品${oemSuffix}`, category: 'brake', part: 'Front Brake Disc', position: 'Front', oemNumber: `BULKTEST-${oemSuffix}-${Date.now()}`,
       price: 200, currencyCode: 'CNY',
       fitment: { generationId: 'gen_bmw_1_series_f20', year: 2018 },
       images: ['/uploads/a.jpg', '/uploads/b.jpg', '/uploads/c.jpg'],
       weightKg: 5, lengthCm: 30, widthCm: 30, heightCm: 10,
-    }),
+    })),
   });
   const body = await res.json();
   return body.id;
@@ -45,7 +46,7 @@ describe.runIf(backendUp)('real bulk moderation (approve/reject many at once) ag
     const p2 = await createPendingProduct(supplierToken, 'B');
 
     const { status, body } = await bulkModerate(adminToken, [
-      { productId: p1, action: 'approve', nameEn: 'Bulk A', nameAr: 'دفعة أ' },
+      { productId: p1, ...(await asValidApproval({ action: 'approve', nameEn: 'Bulk A', nameAr: 'دفعة أ' })) },
       { productId: p2, action: 'reject' },
     ]);
     expect(status).toBe(200);
@@ -59,7 +60,7 @@ describe.runIf(backendUp)('real bulk moderation (approve/reject many at once) ag
     const invalidProduct = await createPendingProduct(supplierToken, 'INVALID');
 
     const { status, body } = await bulkModerate(adminToken, [
-      { productId: validProduct, action: 'approve', nameEn: 'Valid Item', nameAr: 'عنصر صالح' },
+      { productId: validProduct, ...(await asValidApproval({ action: 'approve', nameEn: 'Valid Item', nameAr: 'عنصر صالح' })) },
       { productId: invalidProduct, action: 'approve' }, // missing required nameEn/nameAr
     ]);
     expect(status).toBe(200);

@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { login } from './auth';
+import { asValidProduct, asValidApproval, ensureSeedParts } from './productFixtures';
 
 const BACKEND_URL = 'http://localhost:4000';
 
@@ -15,6 +16,8 @@ async function isBackendUp() {
 const backendUp = await isBackendUp();
 
 describe.runIf(backendUp)('category + parts reference system against a REAL running backend', () => {
+  beforeAll(async () => { await ensureSeedParts(); }); // the seed part these tests read must exist, whatever earlier runs did to this database
+
   it('CRITICAL: real seeded categories and parts are publicly readable, no auth required', async () => {
     const catRes = await fetch(`${BACKEND_URL}/catalog/categories`);
     expect(catRes.status).toBe(200);
@@ -32,12 +35,12 @@ describe.runIf(backendUp)('category + parts reference system against a REAL runn
     const { token } = await login('supplier@leap.dev', 'supplier_dev_password_123');
     const res = await fetch(`${BACKEND_URL}/supplier/me/products`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
+      body: JSON.stringify(await asValidProduct({
         nameZh: '测试', category: 'not_a_real_category', part: 'Anything', position: 'Front', oemNumber: `CATTEST-${Date.now()}`,
         price: 10, currencyCode: 'CNY', fitment: { generationId: 'gen_bmw_1_series_f20', year: 2017 },
         images: ['/uploads/a.jpg', '/uploads/b.jpg', '/uploads/c.jpg'],
         weightKg: 1, lengthCm: 10, widthCm: 10, heightCm: 10,
-      }),
+      })),
     });
     expect(res.status).toBe(400);
     const body = await res.json();
@@ -48,12 +51,12 @@ describe.runIf(backendUp)('category + parts reference system against a REAL runn
     const { token } = await login('supplier@leap.dev', 'supplier_dev_password_123');
     const res = await fetch(`${BACKEND_URL}/supplier/me/products`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
+      body: JSON.stringify(await asValidProduct({
         nameZh: '测试', category: 'brake', part: 'A Made Up Part Name Nobody Approved', position: 'Front', oemNumber: `PARTTEST-${Date.now()}`,
         price: 10, currencyCode: 'CNY', fitment: { generationId: 'gen_bmw_1_series_f20', year: 2017 },
         images: ['/uploads/a.jpg', '/uploads/b.jpg', '/uploads/c.jpg'],
         weightKg: 1, lengthCm: 10, widthCm: 10, heightCm: 10,
-      }),
+      })),
     });
     expect(res.status).toBe(400);
     const body = await res.json();
@@ -65,12 +68,12 @@ describe.runIf(backendUp)('category + parts reference system against a REAL runn
     // 'Air Filter' is real, but belongs to 'filters', not 'brake'.
     const res = await fetch(`${BACKEND_URL}/supplier/me/products`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
+      body: JSON.stringify(await asValidProduct({
         nameZh: '测试', category: 'brake', part: 'Air Filter', position: 'Front', oemNumber: `CROSSCAT-${Date.now()}`,
         price: 10, currencyCode: 'CNY', fitment: { generationId: 'gen_bmw_1_series_f20', year: 2017 },
         images: ['/uploads/a.jpg', '/uploads/b.jpg', '/uploads/c.jpg'],
         weightKg: 1, lengthCm: 10, widthCm: 10, heightCm: 10,
-      }),
+      })),
     });
     expect(res.status).toBe(400);
   });
@@ -79,12 +82,12 @@ describe.runIf(backendUp)('category + parts reference system against a REAL runn
     const { token } = await login('supplier@leap.dev', 'supplier_dev_password_123');
     const res = await fetch(`${BACKEND_URL}/supplier/me/products`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
+      body: JSON.stringify(await asValidProduct({
         nameZh: `真实分类测试 ${Date.now()}`, category: 'brake', part: 'Front Brake Disc', position: 'Front', oemNumber: `REALCAT-${Date.now()}`,
         price: 10, currencyCode: 'CNY', fitment: { generationId: 'gen_bmw_1_series_f20', year: 2017 },
         images: ['/uploads/a.jpg', '/uploads/b.jpg', '/uploads/c.jpg'],
         weightKg: 1, lengthCm: 10, widthCm: 10, heightCm: 10,
-      }),
+      })),
     });
     expect(res.status).toBe(201);
     const body = await res.json();
@@ -157,16 +160,33 @@ describe.runIf(backendUp)('category + parts reference system against a REAL runn
     expect(body.error).toContain('parts');
   });
 
-  it('cannot delete a real part that a real product references', async () => {
+  it('cannot delete a part that a real product references (this test creates its OWN part and product, and never touches the seed data)', async () => {
     const { token: adminToken } = await login('admin@leap.dev', 'admin_dev_password_123');
-    const partsRes = await fetch(`${BACKEND_URL}/catalog/categories/brake/parts`);
-    const parts = await partsRes.json();
-    const frontDisc = parts.find((p) => p.nameEn === 'Front Brake Disc');
-    expect(frontDisc).toBeDefined();
-
-    const deleteRes = await fetch(`${BACKEND_URL}/catalog/parts/${frontDisc.id}`, {
-      method: 'DELETE', headers: { Authorization: `Bearer ${adminToken}` },
+    const { token: supplierToken } = await login('supplier@leap.dev', 'supplier_dev_password_123');
+    // It used to try to delete the SEED part 'Front Brake Disc' and rely on a product referencing it: if that ever stopped being true, the delete
+    // SUCCEEDED and the seed data was gone for every later test and run.
+    const partName = `DeleteGuardPart${Date.now()}`;
+    const partRes = await fetch(`${BACKEND_URL}/catalog/categories/brake/parts`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ nameEn: partName, nameAr: `عربي ${partName}` }),
     });
+    expect(partRes.status).toBe(201);
+    const part = (await partRes.json());
+    const partId = part.id;
+    expect(partId).toBeDefined();
+
+    const productRes = await fetch(`${BACKEND_URL}/supplier/me/products`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supplierToken}` },
+      body: JSON.stringify(await asValidProduct({
+        nameZh: `删除保护测试 ${Date.now()}`, category: 'brake', part: partName, position: 'Front', oemNumber: `DELGUARD-${Date.now()}`,
+        price: 10, currencyCode: 'CNY', fitment: { generationId: 'gen_bmw_1_series_f20', year: 2017 },
+        images: ['/uploads/a.jpg', '/uploads/b.jpg', '/uploads/c.jpg'],
+        weightKg: 1, lengthCm: 10, widthCm: 10, heightCm: 10,
+      })),
+    });
+    expect(productRes.status).toBe(201);
+
+    const deleteRes = await fetch(`${BACKEND_URL}/catalog/parts/${partId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${adminToken}` } });
     expect(deleteRes.status).toBe(409);
   });
 });

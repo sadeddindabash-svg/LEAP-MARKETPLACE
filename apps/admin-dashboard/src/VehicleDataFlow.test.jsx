@@ -78,7 +78,8 @@ describe('Vehicle Data page — real fitment cascade management (mocked fetch, r
     await waitFor(() => screen.getByText('1 Series'));
 
     // Click the "Brands" breadcrumb to go back up.
-    fireEvent.click(screen.getByText('Brands'));
+    // "Brands" is now ALSO the name of a tab (a button) on this page, so pick the breadcrumb itself: a span.
+    fireEvent.click(screen.getAllByText('Brands').find((el) => el.tagName === 'SPAN'));
     await waitFor(() => expect(screen.queryByText('1 Series')).not.toBeInTheDocument());
   });
 

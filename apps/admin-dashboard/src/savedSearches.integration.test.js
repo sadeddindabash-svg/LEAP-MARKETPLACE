@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { login } from './auth';
+import { asValidProduct, asValidApproval } from './productFixtures';
 
 const BACKEND_URL = 'http://localhost:4000';
 
@@ -28,20 +29,20 @@ async function createApprovedSupplierProduct(nameZh) {
   const suffix = Date.now() + Math.random();
   const createRes = await fetch(`${BACKEND_URL}/supplier/me/products`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supplierToken}` },
-    body: JSON.stringify({
+    body: JSON.stringify(await asValidProduct({
       nameZh, category: 'brake', part: 'Front Brake Disc', position: 'Front', oemNumber: `SAVEDSEARCHTEST-${suffix}`,
       price: 100, currencyCode: 'CNY', stockQuantity: 50,
       fitment: { generationId: 'gen_bmw_1_series_f20', year: 2018 },
       images: ['/uploads/p-a.jpg', '/uploads/p-b.jpg', '/uploads/p-c.jpg'],
       weightKg: 1, lengthCm: 10, widthCm: 10, heightCm: 10,
-    }),
+    })),
   });
   const created = await createRes.json();
 
   const { token: adminToken } = await login('admin@leap.dev', 'admin_dev_password_123');
   await fetch(`${BACKEND_URL}/catalog/products/${created.id}/moderate`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-    body: JSON.stringify({ action: 'approve', nameEn: nameZh, nameAr: 'اختبار' }),
+    body: JSON.stringify(await asValidApproval({ action: 'approve', nameEn: nameZh, nameAr: 'اختبار' })),
   });
   return created.id;
 }

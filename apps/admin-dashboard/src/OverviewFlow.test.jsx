@@ -34,6 +34,8 @@ function mockFetchRouter({ overviewStatus = 200 } = {}) {
       if (overviewStatus === 401) return Promise.resolve({ ok: false, status: 401, json: async () => ({ error: 'unauthorized' }) });
       return Promise.resolve({ ok: true, json: async () => MOCK_OVERVIEW });
     }
+    // Every list the app reads on load must come back as a LIST: a fake server that answers {} used to crash the page when it happened to render first.
+    if (u.endsWith('/supplier') || u.endsWith('/hub/flagged')) return Promise.resolve({ ok: true, json: async () => [] });
     return Promise.resolve({ ok: true, json: async () => ({}) });
   });
 }

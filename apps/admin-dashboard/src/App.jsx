@@ -328,7 +328,7 @@ function SupplierAnalyticsPicker({ onSessionExpired }) {
 
   useEffect(() => {
     fetchSuppliers(getStoredToken())
-      .then((data) => setSuppliers(data))
+      .then((data) => setSuppliers(Array.isArray(data) ? data : []))
       .catch((err) => {
         if (err instanceof SessionExpiredError) onSessionExpired();
       });
@@ -470,7 +470,8 @@ function OverviewPage({ onSessionExpired }) {
 
   useEffect(() => {
     fetchOverview(getStoredToken())
-      .then((d) => { setData(d); setLoadState("ready"); })
+      // Whatever the server sends, the lists this page maps over always exist: a reply missing one (or an empty one) must not take the whole admin down.
+      .then((d) => { setData({ ordersByDay: [], topSuppliers: [], unitsByCategory: [], recentOrders: [], ...d }); setLoadState("ready"); })
       .catch((err) => {
         if (err instanceof SessionExpiredError) return onSessionExpired();
         setErrorMessage(err.message);
@@ -4636,7 +4637,7 @@ function LoyaltyTiersSection({ onSessionExpired }) {
   const load = () => {
     setLoadState("loading");
     fetchLoyaltyTiers(getStoredToken())
-      .then((t) => { setTiers(t); setLoadState("ready"); })
+      .then((t) => { setTiers(Array.isArray(t) ? t : []); setLoadState("ready"); })
       .catch((err) => {
         if (err instanceof SessionExpiredError) return onSessionExpired();
         setErrorMessage(err.message);

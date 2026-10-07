@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { login } from './auth';
+import { hubShipsToBuyer } from './hubFixtures';
 
 const BACKEND_URL = 'http://localhost:4000';
 
@@ -81,12 +82,29 @@ describe.runIf(backendUp)('real order cancellation + real guest-to-account conve
       body: JSON.stringify({ status: 'shipped' }),
     });
 
+    // The supplier sending it to the inspection hub is an internal step and does NOT stop a cancellation (see the next test): once the HUB has shipped
+    // it on to the buyer, it can no longer be cancelled.
+    await hubShipsToBuyer(subOrderId, { login });
+
     const res = await fetch(`${BACKEND_URL}/order/${order.id}/cancel`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${buyer.token}` },
       body: JSON.stringify({}),
     });
     expect(res.status).toBe(400);
     expect((await res.json()).error).toContain('already shipped');
+  }, 15000);
+
+  it('CRITICAL: while the order is only on its way TO the inspection hub (the supplier has shipped it, the hub has not), the buyer can still cancel it', async () => {
+    const buyer = await createSignedUpBuyer();
+    const order = await placeOrder({ userId: buyer.user.id });
+    const subOrderId = order.supplierSubOrders[0].subOrderId;
+    const { token: adminToken } = await login('admin@leap.dev', 'admin_dev_password_123');
+    await fetch(`${BACKEND_URL}/hub/assign/${subOrderId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` }, body: JSON.stringify({ hubId: 'hub_guangzhou' }) });
+    const { token: supplierToken } = await login('supplier@leap.dev', 'supplier_dev_password_123');
+    await fetch(`${BACKEND_URL}/supplier/me/orders/${subOrderId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supplierToken}` }, body: JSON.stringify({ status: 'shipped' }) });
+
+    const res = await fetch(`${BACKEND_URL}/order/${order.id}/cancel`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${buyer.token}` }, body: JSON.stringify({}) });
+    expect(res.status).toBe(200);
   }, 15000);
 
   it('CRITICAL: a real guest order can be cancelled with the correct guest email, and is rejected with the wrong one', async () => {

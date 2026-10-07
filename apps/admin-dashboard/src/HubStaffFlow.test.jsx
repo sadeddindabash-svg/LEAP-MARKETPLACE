@@ -25,7 +25,7 @@ function mockBackend({ hubs = HUBS } = {}) {
     const ok = (body, status = 200) => Promise.resolve({ ok: true, status, json: async () => body });
     if (u.includes('/auth/login')) return ok({ token: 'fake.jwt.token', user: ADMIN_USER });
     if (u.includes('/auth/me')) return ok(ADMIN_USER);
-    if (u.endsWith('/overview')) return ok({ totalOrders: 0, activeSuppliers: 0, pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, ordersByDay: [], topSuppliers: [], recentOrders: [] });
+    if (u.endsWith('/overview')) return ok({ totalOrders: 0, activeSuppliers: 0, pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, openTickets: 0, ordersByDay: [], unitsByCategory: [], topSuppliers: [], recentOrders: [] });
     if (u.endsWith('/hub/locations')) return ok(hubs);
     if (u.endsWith('/hub/workload')) return ok([]);
     if (u.endsWith('/hub/performance')) return ok([]);
@@ -53,6 +53,8 @@ function mockBackend({ hubs = HUBS } = {}) {
         return ok(staff.find((s) => s.id === id));
       }
     }
+    // Every list the app reads on load must come back as a LIST: a fake server that answers {} used to crash the page when it happened to render first.
+    if (u.endsWith('/supplier') || u.endsWith('/hub/flagged')) return ok([]);
     return ok({});
   });
   return { fetchMock, calls };

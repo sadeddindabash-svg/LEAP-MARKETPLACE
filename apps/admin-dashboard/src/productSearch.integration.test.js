@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { login } from './auth';
+import { asValidProduct, asValidApproval } from './productFixtures';
 
 const BACKEND_URL = 'http://localhost:4000';
 
@@ -38,14 +39,14 @@ async function createApprovedProduct({ part, oemNumber, category = 'brake' } = {
   const createRes = await fetch(`${BACKEND_URL}/supplier/me/products`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supplierToken}` },
-    body: JSON.stringify({
+    body: JSON.stringify(await asValidProduct({
       nameZh: `搜索测试 ${suffix}`,
       category, part: partName, position: 'Front', oemNumber: oemNumber || `SEARCH-${suffix}`,
       price: 88, currencyCode: 'CNY',
       fitment: { generationId: 'gen_bmw_1_series_f20', year: 2019 },
       images: ['/uploads/s-a.jpg', '/uploads/s-b.jpg', '/uploads/s-c.jpg'],
       weightKg: 2, lengthCm: 20, widthCm: 20, heightCm: 5,
-    }),
+    })),
   });
   const created = await createRes.json();
   return created.id;
@@ -56,7 +57,7 @@ async function approveProduct(productId, nameEn) {
   await fetch(`${BACKEND_URL}/catalog/products/${productId}/moderate`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-    body: JSON.stringify({ action: 'approve', nameEn, nameAr: 'اختبار البحث' }),
+    body: JSON.stringify(await asValidApproval({ action: 'approve', nameEn, nameAr: 'اختبار البحث' })),
   });
 }
 

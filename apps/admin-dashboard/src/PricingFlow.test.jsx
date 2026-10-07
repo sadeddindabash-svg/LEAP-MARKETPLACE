@@ -60,6 +60,8 @@ function mockFetchRouter() {
     if (u.endsWith('/pricing/fx-rate-mode')) return Promise.resolve({ ok: true, json: async () => ({ mode: fxRateMode }) });
     if (u.endsWith('/fitment/brands')) return Promise.resolve({ ok: true, json: async () => [] });
     if (u.endsWith('/catalog/discount-rules')) return Promise.resolve({ ok: true, json: async () => [] });
+    // The Pricing page also shows the loyalty tiers (migration 088). It maps over this LIST, so an unanswered request ({}) crashed the whole page.
+    if (u.endsWith('/pricing/loyalty-tiers')) return Promise.resolve({ ok: true, json: async () => [] });
     if (method === 'POST' && u.endsWith('/pricing/preview')) {
       const b = JSON.parse(options.body);
       return Promise.resolve({

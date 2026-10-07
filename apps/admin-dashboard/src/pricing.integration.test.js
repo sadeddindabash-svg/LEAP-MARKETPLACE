@@ -1,6 +1,7 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import { Pool } from 'pg';
 import { login } from './auth';
+import { asValidProduct, asValidApproval } from './productFixtures';
 
 const BACKEND_URL = 'http://localhost:4000';
 // Direct DB access for this one test's setup only — see below for why.
@@ -27,7 +28,7 @@ async function createApprovedCnyProduct({ priceCny, weightKg, lengthCm, widthCm,
   const createRes = await fetch(`${BACKEND_URL}/supplier/me/products`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supplierToken}` },
-    body: JSON.stringify({
+    body: JSON.stringify(await asValidProduct({
       nameZh: `定价引擎测试 ${suffix}`,
       category: 'brake', part: 'Front Brake Disc', position: 'Front', oemNumber: `PRICING-${suffix}`,
       price: priceCny, currencyCode: 'CNY',
@@ -40,7 +41,7 @@ async function createApprovedCnyProduct({ priceCny, weightKg, lengthCm, widthCm,
       fitment: { generationId: 'gen_bmw_1_series_f20', year: 2018 },
       images: ['/uploads/p-a.jpg', '/uploads/p-b.jpg', '/uploads/p-c.jpg'],
       weightKg, lengthCm, widthCm, heightCm,
-    }),
+    })),
   });
   const created = await createRes.json();
 
@@ -48,7 +49,7 @@ async function createApprovedCnyProduct({ priceCny, weightKg, lengthCm, widthCm,
   await fetch(`${BACKEND_URL}/catalog/products/${created.id}/moderate`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-    body: JSON.stringify({ action: 'approve', nameEn: 'Pricing Engine Test Product', nameAr: 'اختبار محرك التسعير' }),
+    body: JSON.stringify(await asValidApproval({ action: 'approve', nameEn: 'Pricing Engine Test Product', nameAr: 'اختبار محرك التسعير' })),
   });
   return created.id;
 }
@@ -62,13 +63,13 @@ describe.runIf(backendUp)('pricing engine against a REAL running backend', () =>
     const res = await fetch(`${BACKEND_URL}/supplier/me/products`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
+      body: JSON.stringify(await asValidProduct({
         nameZh: '货币测试', category: 'brake', part: 'Front Brake Disc', position: 'Front', oemNumber: `CUR-${Date.now()}`,
         price: 100, currencyCode: 'USD',
         fitment: { generationId: 'gen_bmw_1_series_f20', year: 2018 },
         images: ['/uploads/a.jpg', '/uploads/b.jpg', '/uploads/c.jpg'],
         weightKg: 1, lengthCm: 10, widthCm: 10, heightCm: 10,
-      }),
+      })),
     });
     expect(res.status).toBe(400);
     const body = await res.json();

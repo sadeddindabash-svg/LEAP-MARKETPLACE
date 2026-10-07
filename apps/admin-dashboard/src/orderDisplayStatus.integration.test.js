@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { login } from './auth';
+import { hubShipsToBuyer } from './hubFixtures';
 
 const BACKEND_URL = 'http://localhost:4000';
 
@@ -34,7 +35,8 @@ async function placeOrder(userId) {
   return res.json();
 }
 
-async function assignHubAndShip(subOrderId) {
+// The supplier ships the order to the inspection hub (an internal step: the buyer's order is NOT yet "shipped").
+async function assignAndSupplierShips(subOrderId) {
   const { token: adminToken } = await login('admin@leap.dev', 'admin_dev_password_123');
   await fetch(`${BACKEND_URL}/hub/assign/${subOrderId}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
@@ -47,7 +49,24 @@ async function assignHubAndShip(subOrderId) {
   });
 }
 
+// ...and the HUB then ships it on to the buyer: this is what makes the buyer-facing order "shipped".
+async function assignHubAndShip(subOrderId) {
+  await assignAndSupplierShips(subOrderId);
+  await hubShipsToBuyer(subOrderId, { login });
+}
+
 describe.runIf(backendUp)('real derived order status (to_ship / shipped / returns) against a REAL running backend', () => {
+  it('CRITICAL: the supplier sending the order to the inspection hub does NOT make it "shipped" for the buyer: that happens when the HUB ships it to them', async () => {
+    const { token, user } = await registerFreshBuyer();
+    const order = await placeOrder(user.id);
+    const subOrderId = order.supplierSubOrders[0].subOrderId;
+    await assignAndSupplierShips(subOrderId);
+    const get = async () => (await fetch(`${BACKEND_URL}/order/${order.id}`, { headers: { Authorization: `Bearer ${token}` } })).json();
+    expect((await get()).displayStatus).toBe('to_ship'); // on its way to OUR hub: still being prepared, as far as the buyer is concerned
+    await hubShipsToBuyer(subOrderId, { login });
+    expect((await get()).displayStatus).toBe('shipped');
+  });
+
   it('CRITICAL: a real bug this fixes -- orders.status is frozen at to_ship forever, but displayStatus reflects genuine real progress', async () => {
     const { token, user } = await registerFreshBuyer();
     const order = await placeOrder(user.id);

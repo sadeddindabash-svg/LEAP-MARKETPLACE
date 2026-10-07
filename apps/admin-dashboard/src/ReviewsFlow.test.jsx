@@ -42,6 +42,9 @@ function mockFetchRouter() {
       requireVerified = body.requireVerifiedPurchase;
       return Promise.resolve({ ok: true, json: async () => ({ requireVerifiedPurchase: requireVerified }) });
     }
+    // Every list the app reads on load must come back as a LIST: a fake server that answers {} used to crash the page when it happened to render first.
+    if (u.endsWith('/supplier') || u.endsWith('/hub/flagged')) return Promise.resolve({ ok: true, json: async () => [] });
+    if (u.endsWith('/overview')) return Promise.resolve({ ok: true, json: async () => ({ totalOrders: 0, activeSuppliers: 0, pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, openTickets: 0, ordersByDay: [], unitsByCategory: [], topSuppliers: [], recentOrders: [] }) });
     return Promise.resolve({ ok: true, json: async () => ({}) });
   });
 }

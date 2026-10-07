@@ -92,7 +92,7 @@ describe.runIf(backendUp)('catalog moderation against a REAL running backend', (
     // entire GCC plus Jordan) — confirmed separately below that omitting
     // either is rejected; here we provide both, matching what a real
     // admin reviewer would actually do.
-    const result = await moderateProduct(token, 'p9', 'approve', { nameEn: '6-Speed Manual Transmission Gear Set (reviewed)', nameAr: 'طقم تروس ناقل الحركة اليدوي 6 سرعات (تمت المراجعة)' });
+    const result = await moderateProduct(token, 'p9', 'approve', { nameEn: '6-Speed Manual Transmission Gear Set (reviewed)', nameAr: 'طقم تروس ناقل الحركة اليدوي 6 سرعات (تمت المراجعة)', descriptionEn: 'A reviewed six-speed manual gear set, checked against the supplier listing and approved for buyers to see in the catalog.', descriptionAr: 'طقم تروس يدوي بست سرعات تمت مراجعته ومطابقته مع بيانات المورد، وتمت الموافقة عليه ليظهر للمشترين في الكتالوج.' });
     expect(result.status).toBe('active');
     expect(result.name).toBe('6-Speed Manual Transmission Gear Set (reviewed)');
     expect(result.name_ar).toBe('طقم تروس ناقل الحركة اليدوي 6 سرعات (تمت المراجعة)');

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { login } from './auth';
+import { asValidProduct, asValidApproval } from './productFixtures';
 
 const BACKEND_URL = 'http://localhost:4000';
 
@@ -19,7 +20,7 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
     const anonRes = await fetch(`${BACKEND_URL}/fitment/brands`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: `Test Brand ${Date.now()}` }),
+      body: JSON.stringify({ name: `Test Brand ${Date.now()}`, nameAr: 'علامة اختبار', photoUrl: '/uploads/test-brand.png' }),
     });
     expect(anonRes.status).toBe(401);
 
@@ -27,7 +28,7 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
     const supplierRes = await fetch(`${BACKEND_URL}/fitment/brands`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supplierToken}` },
-      body: JSON.stringify({ name: `Test Brand ${Date.now()}` }),
+      body: JSON.stringify({ name: `Test Brand ${Date.now()}`, nameAr: 'علامة اختبار', photoUrl: '/uploads/test-brand.png' }),
     });
     expect(supplierRes.status).toBe(403);
   });
@@ -37,13 +38,13 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
     const name = `Dup Test Brand ${Date.now()}`;
     const first = await fetch(`${BACKEND_URL}/fitment/brands`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, nameAr: 'علامة اختبار', photoUrl: '/uploads/test-brand.png' }),
     });
     expect(first.status).toBe(201);
 
     const second = await fetch(`${BACKEND_URL}/fitment/brands`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, nameAr: 'علامة اختبار', photoUrl: '/uploads/test-brand.png' }),
     });
     expect(second.status).toBe(409);
   });
@@ -54,7 +55,7 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
 
     const brandRes = await fetch(`${BACKEND_URL}/fitment/brands`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: `E2E Brand ${suffix}` }),
+      body: JSON.stringify({ name: `E2E Brand ${suffix}`, nameAr: 'علامة اختبار', photoUrl: '/uploads/test-brand.png' }),
     });
     const brand = await brandRes.json();
 
@@ -106,7 +107,7 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
     const { token } = await login('admin@leap.dev', 'admin_dev_password_123');
     const brandRes = await fetch(`${BACKEND_URL}/fitment/brands`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: `Year Test Brand ${Date.now()}` }),
+      body: JSON.stringify({ name: `Year Test Brand ${Date.now()}`, nameAr: 'علامة اختبار', photoUrl: '/uploads/test-brand.png' }),
     });
     const brand = await brandRes.json();
     const modelRes = await fetch(`${BACKEND_URL}/fitment/brands/${brand.id}/models`, {
@@ -126,7 +127,7 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
     const { token } = await login('admin@leap.dev', 'admin_dev_password_123');
     const brandRes = await fetch(`${BACKEND_URL}/fitment/brands`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: `Delete Test Brand ${Date.now()}` }),
+      body: JSON.stringify({ name: `Delete Test Brand ${Date.now()}`, nameAr: 'علامة اختبار', photoUrl: '/uploads/test-brand.png' }),
     });
     const brand = await brandRes.json();
 
@@ -151,7 +152,7 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
     const suffix = Date.now();
     const brandRes = await fetch(`${BACKEND_URL}/fitment/brands`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-      body: JSON.stringify({ name: `Protection Test Brand ${suffix}` }),
+      body: JSON.stringify({ name: `Protection Test Brand ${suffix}`, nameAr: 'علامة اختبار', photoUrl: '/uploads/test-brand.png' }),
     });
     const brand = await brandRes.json();
     const modelRes = await fetch(`${BACKEND_URL}/fitment/brands/${brand.id}/models`, {
@@ -173,12 +174,12 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
     const { token: supplierToken } = await login('supplier@leap.dev', 'supplier_dev_password_123');
     await fetch(`${BACKEND_URL}/supplier/me/products`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supplierToken}` },
-      body: JSON.stringify({
+      body: JSON.stringify(await asValidProduct({
         nameZh: '保护测试产品', category: 'brake', part: 'Front Brake Disc', position: 'Front', oemNumber: `PROT-${suffix}`,
         price: 10, currencyCode: 'CNY', fitment: { generationId: generation.id, year: 2021 },
         images: ['/uploads/a.jpg', '/uploads/b.jpg', '/uploads/c.jpg'],
         weightKg: 1.5, lengthCm: 20, widthCm: 15, heightCm: 5,
-      }),
+      })),
     });
 
     const deleteRes = await fetch(`${BACKEND_URL}/fitment/generations/${generation.id}`, {
@@ -196,7 +197,7 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
     const { token } = await login('admin@leap.dev', 'admin_dev_password_123');
     const brandRes = await fetch(`${BACKEND_URL}/fitment/brands`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: `Cascade Test Brand ${Date.now()}` }),
+      body: JSON.stringify({ name: `Cascade Test Brand ${Date.now()}`, nameAr: 'علامة اختبار', photoUrl: '/uploads/test-brand.png' }),
     });
     const brand = await brandRes.json();
     const modelRes = await fetch(`${BACKEND_URL}/fitment/brands/${brand.id}/models`, {
