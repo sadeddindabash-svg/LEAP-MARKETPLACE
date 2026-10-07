@@ -70,6 +70,7 @@ const STRINGS = {
       stage: { reviewing: "平台仍在决定如何处理此案例。", finalising: "平台正在办理收尾事项。", closed: "此案例已结案。" },
       waitingOnHub: "平台正在等待仓库处理问题商品。",
       sendTo: "寄往（供应商退货地址）", printLabel: "打印退货标签",
+      replacementFor: "这是订单", replacementHint: "的补发件，请按普通包裹处理（接收、检查、发出）。",
       shipTo: "收货地址（英文）", shipToNone: "买家尚未提供收货地址。",
       shipToAuto: "此英文地址由系统根据买家填写的阿拉伯语地址自动生成，尚未经买家确认。如有疑问，请先联系平台再发货。",
       noReturnAddress: "该供应商尚未填写退货地址。请先联系平台，再寄回问题商品。",
@@ -136,6 +137,7 @@ const STRINGS = {
       stage: { reviewing: "The platform is still deciding how to handle this case.", finalising: "The platform is finishing this case.", closed: "This case is closed." },
       waitingOnHub: "The platform is waiting for the hub to deal with the faulty unit.",
       sendTo: "Send it to (the supplier's return address)", printLabel: "Print return label",
+      replacementFor: "This is a replacement for order", replacementHint: "— handle it like any other shipment (receive, inspect, ship).",
       shipTo: "Ship to (English address)", shipToNone: "The buyer has not given a delivery address yet.",
       shipToAuto: "This English address was produced automatically from the address the buyer typed in Arabic, and the buyer has not confirmed it yet. If anything looks wrong, ask the platform before shipping.",
       noReturnAddress: "This supplier has not entered a return address. Please contact the platform before sending the unit back.",
@@ -528,6 +530,13 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
             <div key={i} style={{ ...body, fontSize: 13, color: C.ink, padding: "4px 0" }}>{item.name} × {item.quantity}</div>
           ))}
         </div>
+
+        {/* A free REPLACEMENT for a faulty unit (migration 095): handled like any other shipment, but staff are told what it is. */}
+        {shipment.replacementFor && (
+          <div style={{ ...body, fontSize: 13, color: C.ink, background: C.amberBg, border: `1px solid ${C.line}`, borderRadius: 10, padding: 12 }}>
+            <strong>{t.detail.replacementFor} {shipment.replacementFor}</strong> {t.detail.replacementHint}
+          </div>
+        )}
 
         {/* Where the parcel goes, IN ENGLISH (migration 094): hub staff cannot read an address typed in Arabic. */}
         <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 10, padding: 14 }}>

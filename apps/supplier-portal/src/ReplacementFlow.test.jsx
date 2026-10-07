@@ -175,6 +175,17 @@ describe('Supplier Returns page — replacement requests (mocked fetch, real com
     expect(screen.queryByText('质检证据')).not.toBeInTheDocument();
   });
 
+  it('CRITICAL: once a replacement is confirmed, the supplier is told WHICH order to ship, where, and how they are paid; a request without one shows nothing of the kind', async () => {
+    await openReturnsPage({ cases: [
+      faultCase({ id: 1, orderId: 'LP-900001', status: 'replacement_pending', answered: true, canReplace: true, eta: '2026-08-20', replacementOrderId: 'LP-900001-R1' }),
+      faultCase({ id: 2, orderId: 'LP-900002', answered: false, replacementOrderId: null }),
+    ] });
+    expect(await screen.findByText(/LP-900001-R1/)).toBeInTheDocument();
+    expect(screen.getByText(/已确认补发。请在“订单”页发运补发订单 LP-900001-R1/)).toBeInTheDocument();
+    expect(screen.getByText(/您按原销售价格获得一次货款/)).toBeInTheDocument();
+    expect(screen.getAllByText(/已确认补发/)).toHaveLength(1); // only the case that has one
+  });
+
   it('never shows money or the platform\'s private details to the supplier', async () => {
     await openReturnsPage({ cases: [faultCase({ status: 'refund_pending', answered: true, canReplace: false })] });
     await screen.findByText('换货请求');

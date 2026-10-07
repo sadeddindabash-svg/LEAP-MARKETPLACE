@@ -82,16 +82,19 @@ export function Td({ children, align, style }) {
 // mockup before building this.
 // confirmLabel defaults to "Delete" so every existing use is unchanged; pass another
 // word (e.g. "Disable", "Reset password") for non-delete confirmations.
-export function ConfirmDialog({ isOpen, title, message, onConfirm, onCancel, confirmLabel = "Delete" }) {
+// `errorMessage` and `isSaving` are optional: a caller whose action can be REFUSED by the server passes them so the refusal is shown here and the
+// button cannot be clicked twice. A caller that passes neither behaves exactly as before.
+export function ConfirmDialog({ isOpen, title, message, onConfirm, onCancel, confirmLabel = "Delete", errorMessage, isSaving }) {
   if (!isOpen) return null;
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={onCancel}>
       <div style={{ background: "#fff", borderRadius: 12, padding: 20, maxWidth: 340, width: "90%", boxShadow: "0 12px 32px rgba(0,0,0,0.2)" }} onClick={(e) => e.stopPropagation()}>
         <p style={{ ...disp, fontSize: 15, fontWeight: 700, color: C.ink, margin: "0 0 6px" }}>{title}</p>
         <p style={{ ...body, fontSize: 12.5, color: C.muted, margin: "0 0 16px" }}>{message || "This can't be undone."}</p>
+        {errorMessage && <p role="alert" style={{ ...body, fontSize: 12.5, color: C.red, margin: "-6px 0 14px" }}>{errorMessage}</p>}
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button onClick={onCancel} style={{ ...body, fontSize: 12.5, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "none", cursor: "pointer" }}>Cancel</button>
-          <button onClick={onConfirm} style={{ ...body, fontSize: 12.5, padding: "7px 14px", borderRadius: 8, border: "none", background: C.red, color: "#fff", fontWeight: 600, cursor: "pointer" }}>{confirmLabel}</button>
+          <button onClick={onConfirm} disabled={isSaving} style={{ ...body, fontSize: 12.5, padding: "7px 14px", borderRadius: 8, border: "none", background: C.red, color: "#fff", fontWeight: 600, cursor: isSaving ? "default" : "pointer", opacity: isSaving ? 0.6 : 1 }}>{confirmLabel}</button>
         </div>
       </div>
     </div>

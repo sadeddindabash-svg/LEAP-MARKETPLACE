@@ -198,6 +198,10 @@ shipment, confirmed searching by a real supplier name does the same,
 and confirmed a search matching nothing shows the real empty state
 rather than an error. 16/16 passing across the full suite.
 
+## Replacement shipments (new, migration 095)
+
+When an admin confirms a replacement for a faulty unit, the replacement arrives at the hub as an ordinary shipment (the supplier ships it; you receive, inspect and ship it as usual). Its page shows a banner, **"This is a replacement for order LP-…"**, so staff know what it is. The faulty unit is still handled in its own flagged shipment (return it or discard it, as before). The fault case closes once the replacement has been delivered AND the faulty unit has left the hub. Tested in `src/FlagFlow.test.jsx`.
+
 ## Ship to: the delivery address, in English (new, migration 094)
 
 The shipment page now has a **Ship to (English address)** card under the items: recipient, street, city / state / postal code, country, national address and phone. Before this, the hub web portal did not show where
@@ -221,7 +225,7 @@ confirmed it, the card says so in amber and asks staff to check with the platfor
   - **Where to send it (migration 092):** while the unit is being returned, the panel shows the supplier's **return address** (contact, phone, full address, as the
     supplier entered it) and a **Print return label** button — a bilingual (English / 中文) page the browser prints, with only the label on the paper. If the supplier
     has no address on file the panel says so and tells the hub to contact the platform before sending it back. Discarding at the hub needs no address.
-- Tested in `src/FlagFlow.test.jsx` (20, mocked fetch): the dropdown and that the kind is sent (and is optional); the resolved and no-fault banners;
+- Tested in `src/FlagFlow.test.jsx` (22, mocked fetch): the dropdown and that the kind is sent (and is optional); the resolved and no-fault banners;
   the fault panel, the tracking-number and photo requirements for a return, discarding without tracking, and the banners after each. Verified to fail
   when the kind stops being sent, the banner ignores the verdict, or the return stops requiring a tracking number.
 - **Not done:** the Flutter hub app (`apps/hub-mobile`) was not changed — it has no kind-of-problem picker, no return/discard screen, and does not

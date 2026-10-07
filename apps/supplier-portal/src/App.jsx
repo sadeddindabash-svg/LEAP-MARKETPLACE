@@ -117,6 +117,7 @@ const STRINGS = {
       answeredYes: (d) => `您已回复：可以补发，预计 ${d} 发出`, answeredNo: "您已回复：无法补发",
       statusLabels: { awaiting_supplier: "等待您的回复", awaiting_admin: "等待平台决定", refund_pending: "平台正在为买家退款", completed: "已结案" },
       hubNone: "问题商品尚未退回", hubReturned: "问题商品已退回给您", hubDiscarded: "问题商品已在仓库销毁", returnTracking: "退回运单号",
+      replacementShipA: "已确认补发。请在“订单”页发运补发订单", replacementShipB: "到质检仓。该订单对买家免费；您按原销售价格获得一次货款，故障商品不再结算。",
       evidenceTitle: "质检证据", evidenceKind: "问题类型", evidenceNote: "质检员备注", evidenceNoPhotos: "质检员没有上传照片。",
       photoOpen: "点击放大", photoClose: "关闭", photoOriginal: "打开原图",
       damageTypes: { physical_damage: "外观损坏", water_damage: "进水损坏", missing_parts: "缺少配件", wrong_item: "商品错发", other: "其他" },
@@ -235,6 +236,7 @@ const STRINGS = {
       answeredYes: (d) => `You answered: yes, you can replace it by ${d}`, answeredNo: "You answered: no, you can't replace it",
       statusLabels: { awaiting_supplier: "Waiting for your answer", awaiting_admin: "Waiting for Leap's decision", refund_pending: "Leap is refunding the buyer", completed: "Closed" },
       hubNone: "The faulty unit has not been sent back yet", hubReturned: "The faulty unit was sent back to you", hubDiscarded: "The faulty unit was discarded at the hub", returnTracking: "Return tracking number",
+      replacementShipA: "A replacement is confirmed. Please ship order", replacementShipB: "to the inspection hub from your Orders page. It is free for the buyer; you are paid for it once, as for the original sale, and nothing for the faulty unit.",
       evidenceTitle: "Inspection evidence", evidenceKind: "Kind of problem", evidenceNote: "Inspector's note", evidenceNoPhotos: "The inspector did not upload photos.",
       photoOpen: "Click to enlarge", photoClose: "Close", photoOriginal: "Open original",
       damageTypes: { physical_damage: "Physical damage", water_damage: "Water damage", missing_parts: "Missing parts", wrong_item: "Wrong item", other: "Other" },
@@ -2693,6 +2695,15 @@ function ReplacementCard({ faultCase, onAnswered }) {
         <div style={{ ...font, fontSize: 12.5, color: C.ink }}>
           <strong>{r.itemsLabel}:</strong> {faultCase.items.map((i) => `${i.name || i.productId} × ${i.quantity}`).join(", ")}
         </div>
+
+        {/* The replacement the supplier now has to ship (migration 095). */}
+        {faultCase.replacementOrderId && (
+          <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: C.canvas, border: `1px solid ${C.gauge}` }}>
+            <div style={{ ...font, fontSize: 12.5, color: C.ink }}>
+              <strong>{r.replacementShipA} {faultCase.replacementOrderId}</strong> {r.replacementShipB}
+            </div>
+          </div>
+        )}
 
         {/* WHY it was flagged: what the inspector found. Without this a supplier is asked to replace something with no way to see the fault. */}
         {faultCase.evidence && (

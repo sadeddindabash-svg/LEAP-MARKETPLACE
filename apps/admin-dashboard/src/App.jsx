@@ -31,7 +31,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchSupplierAnalytics,
   fetchHubWorkload, updateHubCapacity,
   fetchHubStaff, createHubStaff, updateHubStaff, setHubStaffDisabled, resetHubStaffPassword,
-  resolveFlaggedShipment, openFaultCase, confirmFaultRefund, markFaultRefunded, fetchSupplierReturnAddress, saveSupplierReturnAddress, updateOrderAddressEnglish,
+  resolveFlaggedShipment, openFaultCase, confirmFaultRefund, markFaultRefunded, fetchSupplierReturnAddress, saveSupplierReturnAddress, updateOrderAddressEnglish, confirmFaultReplacement,
   fetchHubPerformance,
   fetchFlaggedReviews, dismissReviewFlags,
   searchAdmin,
@@ -1241,6 +1241,7 @@ function OrderDetailPage({ orderId, onBack, onSessionExpired, onOpenTicket, onOp
         <div style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink }}>Order</div>
         <PlateChip>{order.id}</PlateChip>
         <Badge label={meta.label} color={meta.color} bg={meta.bg} />
+        {order.isReplacement && <Badge label={`Replacement for ${order.replacementOf}`} color={C.torque} bg={C.torqueBg} />}
       </div>
       <div style={{ padding: 24, display: "flex", gap: 16 }}>
         <div style={{ flex: 2, display: "flex", flexDirection: "column", gap: 16 }}>
@@ -5422,8 +5423,10 @@ const FAULT_STATUS = {
   awaiting_supplier: { label: "Waiting for the supplier", color: C.amber, bg: C.amberBg },
   awaiting_admin: { label: "Supplier answered — your decision", color: C.torque, bg: C.torqueBg },
   refund_pending: { label: "Refund to issue", color: C.red, bg: C.redBg },
+  replacement_pending: { label: "Replacement on its way", color: C.torque, bg: C.torqueBg },
   completed: { label: "Completed", color: C.gauge, bg: C.gaugeBg },
 };
+const REPLACEMENT_STAGE = { waiting_for_supplier: "waiting for the supplier to ship it", at_hub: "at the inspection hub", shipped_to_buyer: "shipped to the buyer", delivered: "delivered to the buyer" };
 const HUB_RETURN_LABELS = { returned: "Returned to the supplier", discarded: "Discarded at the hub" };
 const COST_BEARER_LABELS = { supplier: "The supplier", leap: "Leap" };
 const usd2 = (n) => `$${Number(n).toFixed(2)}`;
@@ -5486,7 +5489,7 @@ function FaultCaseDialog({ shipment, onCancel, onSubmit, isSaving, errorMessage 
 }
 
 // What has happened so far on a confirmed fault, and the next thing the admin can do.
-function FaultCasePanel({ faultCase, onRefund, onMarkRefunded }) {
+function FaultCasePanel({ faultCase, onRefund, onReplace, onMarkRefunded }) {
   const st = FAULT_STATUS[faultCase.status] || FAULT_STATUS.awaiting_supplier;
   const sup = faultCase.supplier;
   const row = { ...body, fontSize: 12.5, color: C.ink, marginTop: 4 };
@@ -5513,6 +5516,14 @@ function FaultCasePanel({ faultCase, onRefund, onMarkRefunded }) {
       {!faultCase.hubReturn && faultCase.returnAddressOnFile === false && (
         <div style={{ ...row, color: C.amber }}>The supplier still has no return address on file, so the hub cannot tell where to send the unit.</div>
       )}
+      {faultCase.replacement && (
+        <div style={row}>
+          <strong>Replacement:</strong> order {faultCase.replacement.orderId} — {REPLACEMENT_STAGE[faultCase.replacement.stage]}
+          {faultCase.costBearer === "leap" && (
+            <div style={{ color: C.amber, marginTop: 4 }}>Leap bears the cost, but the supplier's payment for the original faulty shipment is NOT released automatically: only the replacement becomes payable.</div>
+          )}
+        </div>
+      )}
       {faultCase.refund && (
         <div style={row}>
           <strong>Refund:</strong> {usd2(faultCase.refund.amount)} — {faultCase.refund.status === "issued" ? `issued (${faultCase.refund.reference})` : "recorded, not yet issued"}
@@ -5523,7 +5534,11 @@ function FaultCasePanel({ faultCase, onRefund, onMarkRefunded }) {
       {["awaiting_supplier", "awaiting_admin"].includes(faultCase.status) && (
         <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
           <button onClick={onRefund} style={{ ...btn, border: "none", background: C.signal, color: C.onSignal }}>Refund the buyer…</button>
-          <button disabled title="Creating the replacement order arrives in the next update" style={{ ...btn, border: `1px solid ${C.line}`, background: "#fff", color: C.muted, cursor: "not-allowed" }}>Send a replacement (next update)</button>
+          <button
+            onClick={sup.canReplace ? onReplace : undefined}
+            disabled={!sup.canReplace}
+            title={!sup.answered ? "The supplier has to say they can replace it first" : !sup.canReplace ? "The supplier said they cannot replace it" : "Create a free replacement order for the buyer"}
+            style={sup.canReplace ? { ...btn, border: `1px solid ${C.ink}`, background: "#fff", color: C.ink } : { ...btn, border: `1px solid ${C.line}`, background: "#fff", color: C.muted, cursor: "not-allowed" }}>Send a replacement…</button>
         </div>
       )}
       {faultCase.status === "refund_pending" && (
@@ -5595,6 +5610,11 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
     const amount = values.amount === "" ? undefined : Number(values.amount);
     const result = await confirmFaultRefund(getStoredToken(), action.shipment.faultCase.id, amount);
     return `Refund of ${usd2(result.faultCase.refund.amount)} recorded as pending and the buyer was told. Refund them in Stripe or PayPal, then mark it as refunded here.`;
+  });
+
+  const handleReplace = () => run(async () => {
+    const result = await confirmFaultReplacement(getStoredToken(), action.shipment.faultCase.id);
+    return `Replacement order ${result.faultCase.replacement.orderId} created. The supplier has been asked to ship it to the inspection hub, and the buyer has been told. The case closes when it is delivered and the hub has dealt with the faulty unit.`;
   });
 
   const handleIssued = (values) => run(async () => {
@@ -5715,7 +5735,7 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
                     </div>
                   )}
                   {s.faultCase && (
-                    <FaultCasePanel faultCase={s.faultCase} onRefund={() => open("refund", s)} onMarkRefunded={() => open("issued", s)} />
+                    <FaultCasePanel faultCase={s.faultCase} onRefund={() => open("refund", s)} onReplace={() => open("replace", s)} onMarkRefunded={() => open("issued", s)} />
                   )}
                 </div>
               </Card>
@@ -5731,6 +5751,18 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
         confirmLabel="Confirm: no fault"
         onConfirm={handleNoFault}
         onCancel={close}
+        errorMessage={action?.type === "nofault" ? dialogError : null}
+        isSaving={isSaving}
+      />
+      <ConfirmDialog
+        isOpen={action?.type === "replace"}
+        title={action?.type === "replace" ? `Send a replacement — ${action.shipment.orderId}` : ""}
+        message={action?.type === "replace" ? `This creates a NEW order for the buyer, free of charge, with the faulty items (numbered from ${action.shipment.orderId}, e.g. ${action.shipment.orderId}-R1). The supplier is asked to ship it to the inspection hub, and it goes through the normal steps. The buyer pays nothing. ${action.shipment.faultCase.costBearer === "supplier" ? "The supplier is at fault, so they bear every cost: they are paid once, for the unit the buyer finally receives." : "Leap bears the cost: the supplier is paid for the replacement; their payment for the faulty original is not released automatically."} The case closes when the replacement is delivered and the hub has dealt with the faulty unit.` : ""}
+        confirmLabel="Confirm: send a replacement"
+        onConfirm={handleReplace}
+        onCancel={close}
+        errorMessage={action?.type === "replace" ? dialogError : null}
+        isSaving={isSaving}
       />
       {action?.type === "fault" && (
         <FaultCaseDialog shipment={action.shipment} onCancel={close} onSubmit={handleOpenFault} isSaving={isSaving} errorMessage={dialogError} />
@@ -7921,7 +7953,7 @@ const AUDIT_ACTION_TYPES = [
   // Hub staff account management (migration 089)
   'hub_staff_created', 'hub_staff_updated', 'hub_staff_disabled', 'hub_staff_enabled', 'hub_staff_password_reset',
   // Resolving a flagged hub shipment (migration 090)
-  'flagged_shipment_resolved', 'fault_case_created', 'fault_case_refund_confirmed', 'fault_case_refund_issued', 'supplier_return_address_updated', 'order_address_english_updated',
+  'flagged_shipment_resolved', 'fault_case_created', 'fault_case_refund_confirmed', 'fault_case_refund_issued', 'supplier_return_address_updated', 'order_address_english_updated', 'fault_case_replacement_confirmed',
   // Real catalog/fitment reference-data and product-listing moderation
   // actions (new) -- confirmed genuinely missing from the audit trail
   // entirely before this, despite this page's own scope already

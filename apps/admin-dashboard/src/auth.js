@@ -1053,3 +1053,17 @@ export async function updateOrderAddressEnglish(token, orderId, { recipientName,
   if (!response.ok) throw new Error(data.error || `Failed to save the English address (${response.status})`);
   return data;
 }
+
+// An admin confirms a REPLACEMENT for a faulty unit (migration 095): creates a free order for the buyer, "<original>-R1", that the supplier ships
+// to the inspection hub. Needs the supplier to have said they can replace it.
+export async function confirmFaultReplacement(token, caseId) {
+  const response = await fetch(`${API_BASE_URL}/fault-cases/${caseId}/confirm-replacement`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({}),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `Failed to confirm the replacement (${response.status})`);
+  return data;
+}

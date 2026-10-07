@@ -538,7 +538,7 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
       // session -- see cart/routes.js's own comment for why.
       const itemsWithImages = await Promise.all(items.map(async (i) => {
         const { rows: imageRows } = await db.query('SELECT url FROM product_images WHERE product_id = $1 ORDER BY sort_order LIMIT 1', [i.product_id]);
-        return { productId: i.product_id, name: i.name, quantity: i.quantity, unitPrice: Number(i.unit_price), imageUrl: imageRows[0]?.url || null };
+        return { productId: i.product_id, name: i.name, quantity: i.quantity, unitPrice: order.replacement_of && !isAdmin ? 0 : Number(i.unit_price), imageUrl: imageRows[0]?.url || null };
       }));
 
       // The hub's leg of the journey, if this sub-order has reached the
@@ -608,6 +608,9 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
 
     res.json({
       id: order.id,
+      // A free replacement for a faulty unit (migration 095): numbered from the order the buyer paid for, e.g. LP-200934-R1.
+      isReplacement: Boolean(order.replacement_of),
+      replacementOf: order.replacement_of || null,
       userId: order.buyer_id,
       guestEmail: order.guest_email,
       isGuestOrder: !order.buyer_id,
@@ -882,6 +885,10 @@ router.post('/:id/cancel', optionalAuth, async (req, res, next) => {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'This order is already cancelled.' });
     }
+    if (order.replacement_of) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'A replacement order is free of charge and cannot be cancelled. Contact support if you no longer need it.' });
+    }
 
     const subOrders = await fetchSubOrdersWithHubStatus(client, req.params.id);
     const alreadyShipped = subOrders.some((so) => !isSubOrderCancellable(so.status, so.hub_status));
@@ -939,6 +946,10 @@ router.post('/:id/sub-orders/:subOrderId/cancel', optionalAuth, async (req, res,
     if (order.status === 'cancelled') {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'This order is already cancelled.' });
+    }
+    if (order.replacement_of) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'A replacement order is free of charge and cannot be cancelled. Contact support if you no longer need it.' });
     }
 
     const subOrders = await fetchSubOrdersWithHubStatus(client, req.params.id);

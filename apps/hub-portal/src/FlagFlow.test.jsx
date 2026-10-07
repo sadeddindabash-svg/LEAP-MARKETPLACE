@@ -232,6 +232,18 @@ describe('Hub Portal — dealing with a faulty unit after the platform confirms 
     expect(await screen.findByText(/此英文地址由系统根据买家填写的阿拉伯语地址自动生成/)).toBeInTheDocument();
   });
 
+  it('CRITICAL: a shipment that is a free REPLACEMENT for a faulty unit says so, so staff know what it is; an ordinary shipment shows no such banner', async () => {
+    await openFaultShipment({ status: 'received', faultCase: null, deliveryAddress: ENGLISH_ADDRESS(), replacementFor: 'LP-200934' });
+    expect(await screen.findByText('这是订单 LP-200934')).toBeInTheDocument();
+    expect(screen.getByText(/的补发件，请按普通包裹处理/)).toBeInTheDocument();
+  });
+
+  it('an ordinary shipment has no replacement banner', async () => {
+    await openFaultShipment({ status: 'received', faultCase: null, deliveryAddress: ENGLISH_ADDRESS(), replacementFor: null });
+    await screen.findByText('收货地址（英文）');
+    expect(screen.queryByText(/这是订单/)).not.toBeInTheDocument();
+  });
+
   it('a buyer who has not given an address yet is shown plainly, not as a blank', async () => {
     await openFaultShipment({ status: 'received', faultCase: null, deliveryAddress: null });
     expect(await screen.findByText('买家尚未提供收货地址。')).toBeInTheDocument();

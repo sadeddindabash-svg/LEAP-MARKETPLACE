@@ -527,7 +527,7 @@ page is the real fix:
   who pays, what the supplier answered to "can you replace?", whether the hub has sent the unit back, and the refund. The next action is offered
   on the panel: **Refund the buyer…** (pre-filled with **what the buyer actually paid** for those items — after any discount — with the breakdown shown; editable, never above the order total) and then **Mark as
   refunded…** once you have refunded in Stripe/PayPal (a reference is required). The case closes — and the flag leaves the queue — when the
-  refund is issued AND the hub has returned or discarded the unit. **Send a replacement** is shown but disabled until a later update. The "Real fault…" dialog **warns when the supplier has no return address** (the hub would not know where to send the unit); the case panel shows the return tracking number once the hub has sent it back. Admin can add or correct a supplier's return address on the supplier's page. The
+  refund is issued AND the hub has returned or discarded the unit. ****Send a replacement…** is available once the supplier has said they can replace it: a dialog explains the money (the supplier bears every cost, or Leap does), then it creates the free order `<original>-R1`; the panel shows that order and where it is (waiting for the supplier / at the hub / shipped / delivered). A server refusal now shows inside the "No fault" and replacement dialogs (it used to be swallowed). The "Real fault…" dialog **warns when the supplier has no return address** (the hub would not know where to send the unit); the case panel shows the return tracking number once the hub has sent it back. Admin can add or correct a supplier's return address on the supplier's page. The
   sidebar badge drops straight away (it used to refresh only on navigation). See `services/api/README.md`, "Flagged shipments: the two verdicts,
   and fault cases", for the rules and limits.
 - **Evidence photos open full size.** Clicking a photo on a flag — and a photo in the hub timeline on the Order detail page ("View evidence") —
@@ -1274,6 +1274,7 @@ Sixty-six test files, 409 tests total, all passing:
   everyone); an Arabic user gets an Arabic push and an English one an English push; a notification with no Arabic text is sent in English; every registered device gets it.
 - `src/notificationBackfill.integration.test.js` (4, real database) — the migration's backfill gives every old patterned notification correct Arabic and never alters the English; unknown
   patterns are left alone; running it again changes nothing; it never overwrites an Arabic text that is already there.
+- `src/replacementOrders.integration.test.js` (9, REAL backend, migration 095) — a replacement needs the supplier's YES (nothing is created otherwise; only an admin); confirming creates the free `-R1` order with the faulty items at their original prices, the same address (English version too) and hub, and tells the buyer (both languages) and the supplier; the buyer sees no prices and a total of zero and cannot cancel it; it flows through the normal pipeline and the case completes only when it is DELIVERED and the faulty unit is back (either order); the supplier is paid ONCE (the replacement becomes payable at the original price, the faulty original never does, and their Finance page agrees); a replacement that is itself faulty becomes `-R2` and a refund on it is measured against the original payment; one outcome per case; audit-logged; hub staff see a neutral stage and no money. Verified to fail when each of those rules is broken.
 - `src/addressTransliteration.test.js` (14, pure — no backend) — Arabic → English for delivery addresses: countries, cities and common names come out as written in English; a full street address reads like an English
   one (the type word moves after the name, numbers are converted); "Street 10" / "Block 3" keep their order; P.O. Box with dots; Arabic-Indic and Persian digits; English text is never touched or reordered; mixed Arabic and
   English; NO Arabic letter ever survives in the output (including for words not in the dictionary); the rule-based fallback is approximate but stable; diacritics are ignored; spelling variants still match.
@@ -1281,7 +1282,7 @@ Sixty-six test files, 409 tests total, all passing:
   English address is left alone ("same"); the address label PDF is produced; an admin can correct the English version (hub then sees it, audit-logged without the address); the correction must be English, complete and a
   sensible size; only an admin with the Orders page can; the buyer (or a guest with the right email) can confirm or correct it; replacing the address recomputes the English; an order from BEFORE the feature gets its English
   version the first time it is read.
-- `src/OrderAddressFlow.test.jsx` (5, mocked) — the admin order page's new "Delivery address" card: the address as typed AND the English version with a warning when automatic; no warning once confirmed; an order with no
+- `src/OrderAddressFlow.test.jsx` (7, mocked) — the admin order page's new "Delivery address" card: the address as typed AND the English version with a warning when automatic; no warning once confirmed; an order with no
   address; editing sends exactly what was typed and then says "Corrected by an admin" while the buyer's original stays; a server refusal shows in the dialog.
 - `src/trackingNumbers.integration.test.js` (5, REAL backend) — the buyer (and a guest) sees the HUB's tracking number, empty until the hub ships, and
   never the supplier's; admin sees both, labelled apart (Order detail shows "Supplier → hub" and "Hub → buyer"); the buyer is not told "shipped" when
@@ -1325,7 +1326,7 @@ Sixty-six test files, 409 tests total, all passing:
   (confirmed via direct `curl -F` testing that the actual endpoint
   itself works correctly) — switched to the well-established
   `form-data` package for reliable real multipart encoding instead.
-- `src/FlaggedShipmentsFlow.test.jsx` (24, mocked, full component tree) — the sidebar badge and queue; the kind of problem and return case on a
+- `src/FlaggedShipmentsFlow.test.jsx` (34, mocked, full component tree) — the sidebar badge and queue; the kind of problem and return case on a
   flag; "No fault" explains then records it and the flag leaves the list AND the sidebar badge; "Real fault…" lists every item (all ticked),
   needs at least one, and sends only the ticked ones with the cost bearer; the fault panel shows items, who pays, the supplier's answer (yes with a
   date, no, not yet) and the hub's progress; "Refund the buyer…" is pre-filled with the faulty items' value and sends the amount the admin settles

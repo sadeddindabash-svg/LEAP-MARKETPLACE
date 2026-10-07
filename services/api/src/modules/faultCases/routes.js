@@ -68,6 +68,8 @@ router.get('/supplier/me', ...supplierOnly, async (req, res, next) => {
         outcome: dto.outcome, hubReturn: dto.hubReturn, returnTrackingNumber: dto.hubReturnTracking,
         // WHY it was flagged: the inspector's note, the kind of problem and the photos (not the platform's private notes)
         evidence: dto.evidence,
+        // the replacement order the supplier has to ship (migration 095)
+        replacementOrderId: dto.replacement ? dto.replacement.orderId : null,
       };
     })));
   } catch (err) {
@@ -102,6 +104,15 @@ router.post('/:id/confirm-refund', ...adminOnly, async (req, res, next) => {
   if (!outcome) return;
   await logAdminAction(req, 'fault_case_refund_confirmed', 'fault_case', String(outcome.faultCase.id), {
     amount: Number(outcome.faultCase.refund_amount), suggestedAmount: outcome.suggestedAmount, returnCaseId: outcome.returnCase ? outcome.returnCase.id : null,
+  });
+  res.json({ faultCase: await helpers.toAdminDto(db, outcome.faultCase), returnCase: outcome.returnCase });
+});
+
+router.post('/:id/confirm-replacement', ...adminOnly, async (req, res, next) => {
+  const outcome = await inTransaction(res, next, (client) => helpers.confirmReplacement(client, { caseId: Number(req.params.id), adminId: req.user.sub }));
+  if (!outcome) return;
+  await logAdminAction(req, 'fault_case_replacement_confirmed', 'fault_case', String(outcome.faultCase.id), {
+    replacementOrderId: outcome.replacementOrderId, costBearer: outcome.faultCase.cost_bearer, returnCaseId: outcome.returnCase ? outcome.returnCase.id : null,
   });
   res.json({ faultCase: await helpers.toAdminDto(db, outcome.faultCase), returnCase: outcome.returnCase });
 });

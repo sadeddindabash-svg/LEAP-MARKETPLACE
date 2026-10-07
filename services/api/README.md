@@ -3279,12 +3279,45 @@ refund_pending --(admin marks refunded)--+
 
 **Also tested:** `apps/admin-dashboard/src/buyerStatus.integration.test.js` (2, real backend) — a flagged order shows the buyer `returns`, an OLD flag with no return case shows `to_ship` (never `dispute`), and admin still sees `dispute` and can filter by it. Verified to fail when buyers get `dispute` again.
 
-**Not built yet:** creating the **replacement order** (the next patch — the admin button is shown disabled until then), the Flutter buyer and hub
-apps (they will show the new statuses unlabelled), supplier reminders, automatic payout deductions, and real Stripe/PayPal refunds.
+**Not built yet:** the Flutter hub app's fault screens, supplier reminders, automatic payout deductions, and real Stripe/PayPal refunds. (Replacement orders: see "Replacement orders (migration 095)" below.)
 
 **Tested:** `apps/admin-dashboard/src/faultCases.integration.test.js` (18), `trackingNumbers.integration.test.js` (5) and `flaggedResolution.integration.test.js` (7), real backend. Each test
 builds its own hub and hub-staff login (using the Hub staff feature) so workload checks are exact. Verified to fail when completion stops needing
 both conditions, when supplier isolation is removed, when the buyer-cancel block is removed, or when the hub workload keeps counting returned units.
+
+## Replacement orders (migration 095)
+
+**What it does:** when the hub flags a faulty unit, an admin confirms it is a real fault, and the supplier says they CAN replace it, an admin can now confirm a **replacement** (the "Send a replacement…" button, which used
+to be disabled). It creates a **new, free order** for the buyer that flows through the normal pipeline: the supplier ships it to the inspection hub, the hub receives / inspects / ships it, it is delivered.
+
+**The order**
+- Numbered from the order the buyer **paid for**: `LP-200934-R1`, then `-R2` if the replacement is itself faulty (the number is unique per root, enforced by a unique index; `orders.replacement_of` always points at the root).
+- `total = 0`: the buyer pays nothing, sees **no prices** on it (`unitPrice` is 0 for buyers and guests; admin and the supplier's own data keep the real figure), and **cannot cancel it** (whole order or part).
+- Same buyer, same delivery address **including its English version** (migration 094), same inspection hub, and the faulty items at their **original unit prices** (see "Money").
+- The buyer is told in both languages ("We are sending you a replacement at no charge…"), the supplier is asked to ship it, the buyer's return case moves to `approved`. `GET /order/:id` gains `isReplacement` and `replacementOf`;
+  `GET /hub/me/shipments/:id` gains `replacementFor` so hub staff know what it is.
+
+| Endpoint | Who | What it does |
+|---|---|---|
+| `POST /fault-cases/:id/confirm-replacement` | admin (Flagged page) | Needs the supplier to have answered **yes** (not unanswered, not "no"); refused once a refund or another replacement is confirmed. Audit-logged as `fault_case_replacement_confirmed` with the new order id. |
+
+**Lifecycle:** `awaiting_supplier` / `awaiting_admin` → `replacement_pending` → `completed`. The case completes only when **both** (a) the replacement is **delivered** (by the hub's manual confirmation or the carrier's webhook;
+`onShipmentDelivered`, best-effort, can never block the delivery itself) **and** (b) the hub has returned or discarded the **faulty unit**, in either order. Completing closes the flag (`resolution = 'fault_replacement'`) and the buyer's
+return case. The admin panel shows the replacement order and where it is: waiting for the supplier / at the hub / shipped / delivered.
+
+**Money (decided with the owner: "if the fault is the supplier's they bear all fees")**
+- The faulty original always has a return case, so the payout rules (delivered + return window + **no return case**) can **never** pay it. The replacement carries the original prices and becomes payable once delivered and past the
+  return window. Net effect for a supplier-fault case: the supplier is paid **once**, for the unit the buyer finally received, and bears the faulty unit and every shipping cost. Nothing in the payout code had to change.
+- **Not automated — when LEAP bears the cost:** the supplier should then ALSO be paid for the original shipment (it left them intact), but the payout rules cannot pay an order that has a return case. The admin dialog and panel say so
+  plainly; a payout adjustment tool would be a separate production.
+- A refund on a case whose faulty unit came in a replacement is measured against what the buyer **paid** (the root order), never against the replacement's zero total.
+- Stock is **not** decremented for a replacement (the supplier ships from their own stock).
+
+**HONEST LIMITS:** the buyer-facing receipt PDF of a replacement still lists the (hidden-elsewhere) unit prices with a $0 total; the mobile apps show the replacement as an ordinary order numbered "-R1" with $0 (not checked on a device); the
+hub's shipment LIST does not tag replacements (only the detail page does).
+
+**Tested:** `apps/admin-dashboard/src/replacementOrders.integration.test.js` (9, real backend, drives the whole journey). Verified to fail when the supplier's "yes" is not required, when completion does not wait for the faulty unit,
+when the buyer is shown prices, when the replacement is priced at zero (so the supplier would never be paid), and when the delivery hook is removed.
 
 ## English delivery address for the inspection hub (migration 094)
 

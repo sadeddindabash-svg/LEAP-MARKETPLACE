@@ -469,10 +469,11 @@ deciding or refunding the buyer, and whether the faulty unit has been sent back 
   are never part of it.
 - A supplier with no requests sees **no change** to the Returns page.
 - Once the hub has sent the faulty unit back, the card shows the **return tracking number** (not for a discarded unit).
+- Once an admin **confirms the replacement**, the card says which order to ship (`LP-…-R1`), where (the inspection hub, from the Orders page), and how you are paid: once, at the original price, and nothing for the faulty unit.
 - The supplier **never sees** the refund amount, who bears the cost, or the platform's private notes (the server doesn't send them).
 - **Not done yet:** the replacement itself — Leap confirming "replace", the new order appearing in the supplier's orders, and being paid for it.
   Today the answer informs the admin's decision; the replacement order arrives in a later update.
-- Tested in `src/ReplacementFlow.test.jsx` (12, mocked fetch): no section for suppliers without requests; the question and items; a "yes" needs a
+- Tested in `src/ReplacementFlow.test.jsx` (13, mocked fetch): no section for suppliers without requests; the question and items; a "yes" needs a
   date; "no" needs none; a server refusal shows on the card; answered cards show the answer and the hub's progress; no money is ever shown.
   Verified to fail when the date requirement is removed or the empty section is shown.
 

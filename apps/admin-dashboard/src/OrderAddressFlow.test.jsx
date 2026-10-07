@@ -8,7 +8,7 @@ const ARABIC = { recipientName: 'محمد العتيبي', phone: '0551234567', 
 const ENGLISH = { recipientName: 'Mohammed Al-Otaibi', country: 'Saudi Arabia', city: 'Riyadh', streetAddress: 'King Fahad Street, Al-Olaya District, Building No. 123', state: null, source: 'auto', confirmed: false, updatedAt: '2026-07-20T00:00:00Z' };
 
 // Mocked backend: login, the global search that leads to the order page, the order itself, and the PUT that corrects the English address.
-function mockBackend({ address = ARABIC, addressEnglish = ENGLISH, puts = [], putStatus = 200, putError } = {}) {
+function mockBackend({ address = ARABIC, addressEnglish = ENGLISH, puts = [], putStatus = 200, putError, orderExtra = {} } = {}) {
   return vi.fn((url, options) => {
     const u = String(url);
     const ok = (body) => Promise.resolve({ ok: true, status: 200, json: async () => body });
@@ -23,7 +23,7 @@ function mockBackend({ address = ARABIC, addressEnglish = ENGLISH, puts = [], pu
       return ok({ ...body, state: body.state || null, source: 'admin', confirmed: true, updatedAt: new Date().toISOString() });
     }
     if (u.endsWith('/order/LP-200999')) {
-      return ok({ id: 'LP-200999', userId: 'u1', guestEmail: null, status: 'to_ship', displayStatus: 'to_ship', total: 37.88, currencyCode: 'USD', placedAt: '2026-07-14T00:00:00.000Z', supplierSubOrders: [], address, addressEnglish });
+      return ok({ id: 'LP-200999', userId: 'u1', guestEmail: null, status: 'to_ship', displayStatus: 'to_ship', total: 37.88, currencyCode: 'USD', placedAt: '2026-07-14T00:00:00.000Z', supplierSubOrders: [], address, addressEnglish, ...orderExtra });
     }
     if (u.endsWith('/supplier')) return ok([]);
     if (u.endsWith('/overview')) return ok({ totalOrders: 1, activeSuppliers: 1, pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, openTickets: 0, ordersByDay: [], unitsByCategory: [], topSuppliers: [], recentOrders: [] });
@@ -62,6 +62,16 @@ describe('Order page — the delivery address in Arabic AND English (mocked fetc
     expect(screen.getByText('King Fahad Street, Al-Olaya District, Building No. 123')).toBeInTheDocument();
     expect(screen.getByText(/Automatic translation, not yet confirmed by the buyer/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Edit English' })).toBeInTheDocument();
+  });
+
+  it('a free REPLACEMENT order is labelled as one, with the order it replaces; an ordinary order has no such label', async () => {
+    await openOrderPage({ orderExtra: { isReplacement: true, replacementOf: 'LP-200950' } });
+    expect(screen.getByText('Replacement for LP-200950')).toBeInTheDocument();
+  });
+
+  it('an ordinary order shows no replacement label', async () => {
+    await openOrderPage();
+    expect(screen.queryByText(/Replacement for/)).not.toBeInTheDocument();
   });
 
   it('a confirmed or already-English address shows no warning', async () => {

@@ -1,6 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const db = require('../../../db/pool');
+const faultCases = require('../faultCases/helpers');
 const { sendTransactionalEmail } = require('../email/client');
 const { deliveryNotificationEmail } = require('../email/templates');
 
@@ -108,6 +109,7 @@ router.post('/17track', async (req, res, next) => {
           const { rows: subOrderRows } = await db.query('SELECT order_id FROM supplier_sub_orders WHERE id = $1', [rows[0].sub_order_id]);
           const orderId = subOrderRows[0]?.order_id;
           results.push({ trackingNumber, success: true, hubShipmentId: rows[0].id, orderId });
+          await faultCases.onShipmentDelivered(rows[0].sub_order_id); // a delivered REPLACEMENT is noted on its fault case
           // Real delivery notification email (new) -- best-effort, same
           // as the hub's own manual delivery path -- a real carrier
           // confirmation deserves the exact same real notification a

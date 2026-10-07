@@ -256,9 +256,90 @@ describe('Flagged Shipments — the two verdicts: no fault, or a real fault (moc
     expect(screen.getByText(/supplier still has no return address on file/)).toBeInTheDocument();
   });
 
-  it('the replacement button is shown but disabled until replacements are built', async () => {
-    await openFlaggedPage({ flagged: [flag({ faultCase: faultCase() })] });
-    expect(screen.getByRole('button', { name: /send a replacement/i })).toBeDisabled();
+  const SUPPLIER_YES = { answered: true, canReplace: true, eta: '2026-08-20', note: null, answeredAt: '2026-07-20T00:00:00Z' };
+  const SUPPLIER_NO = { answered: true, canReplace: false, eta: null, note: 'no stock', answeredAt: '2026-07-20T00:00:00Z' };
+  const REPLACE_URL = /\/fault-cases\/9\/confirm-replacement$/;
+
+  it('CRITICAL: "Send a replacement…" is available ONLY once the supplier has said they can replace it, and says why it is not otherwise', async () => {
+    await openFlaggedPage({ flagged: [flag({ faultCase: faultCase() })] }); // the supplier has not answered
+    const waiting = screen.getByRole('button', { name: /send a replacement/i });
+    expect(waiting).toBeDisabled();
+    expect(waiting).toHaveAttribute('title', 'The supplier has to say they can replace it first');
+  });
+
+  it('...and it stays disabled when the supplier said they cannot replace it (refund is the way forward)', async () => {
+    await openFlaggedPage({ flagged: [flag({ faultCase: faultCase({ status: 'awaiting_admin', supplier: SUPPLIER_NO }) })] });
+    const button = screen.getByRole('button', { name: /send a replacement/i });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('title', 'The supplier said they cannot replace it');
+    expect(screen.getByRole('button', { name: /refund the buyer…/i })).toBeEnabled();
+  });
+
+  const REPLACE_TITLE = 'Send a replacement — LP-900555';
+
+  it('CRITICAL: once the supplier can replace it, the admin confirms in a dialog that explains the money, and the replacement order is requested', async () => {
+    const calls = [];
+    const handlers = [{ method: 'POST', match: REPLACE_URL, respond: () => ({ body: { faultCase: { id: 9, replacement: { orderId: 'LP-900555-R1' } }, returnCase: { id: 'RC-7', status: 'approved' } } }) }];
+    await openFlaggedPage({ flagged: [flag({ faultCase: faultCase({ status: 'awaiting_admin', supplier: SUPPLIER_YES, costBearer: 'supplier' }) })], handlers, calls });
+    const button = screen.getByRole('button', { name: /send a replacement/i });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+
+    const dialog = dialogTitled(REPLACE_TITLE);
+    expect(within(dialog).getByText(/free of charge/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/LP-900555-R1/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/The supplier is at fault, so they bear every cost/)).toBeInTheDocument();
+    expect(calls).toHaveLength(0); // nothing is sent until the admin confirms
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /confirm: send a replacement/i }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(await screen.findByText(/Replacement order LP-900555-R1 created/)).toBeInTheDocument();
+  });
+
+  it('when LEAP bears the cost, the dialog says the supplier is paid for the replacement', async () => {
+    await openFlaggedPage({ flagged: [flag({ faultCase: faultCase({ status: 'awaiting_admin', supplier: SUPPLIER_YES, costBearer: 'leap' }) })] });
+    fireEvent.click(screen.getByRole('button', { name: /send a replacement/i }));
+    expect(within(dialogTitled(REPLACE_TITLE)).getByText(/Leap bears the cost: the supplier is paid for the replacement/)).toBeInTheDocument();
+  });
+
+  it('...and the panel of such a case warns that the supplier\'s payment for the original faulty shipment is NOT released automatically', async () => {
+    const replacement = { orderId: 'LP-900555-R1', stage: 'at_hub', createdAt: '2026-07-21T00:00:00Z', deliveredAt: null };
+    await openFlaggedPage({ flagged: [flag({ faultCase: faultCase({ status: 'replacement_pending', outcome: 'replacement', supplier: SUPPLIER_YES, costBearer: 'leap', replacement }) })] });
+    expect(screen.getByText(/Leap bears the cost, but the supplier's payment for the original faulty shipment is NOT released automatically/)).toBeInTheDocument();
+  });
+
+  it.each([
+    ['waiting_for_supplier', 'waiting for the supplier to ship it'],
+    ['at_hub', 'at the inspection hub'],
+    ['shipped_to_buyer', 'shipped to the buyer'],
+    ['delivered', 'delivered to the buyer'],
+  ])('CRITICAL: a case with a replacement shows the new order and where it is up to (%s), and offers no refund or second replacement', async (stage, text) => {
+    const replacement = { orderId: 'LP-900555-R1', stage, createdAt: '2026-07-21T00:00:00Z', deliveredAt: null };
+    await openFlaggedPage({ flagged: [flag({ faultCase: faultCase({ status: 'replacement_pending', outcome: 'replacement', supplier: SUPPLIER_YES, replacement }) })] });
+    expect(screen.getByText(/order LP-900555-R1/)).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(text))).toBeInTheDocument();
+    expect(screen.getByText('Replacement on its way')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /refund the buyer…/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /send a replacement/i })).not.toBeInTheDocument();
+  });
+
+  it('a server refusal of "No fault" is shown in its dialog too (it used to be swallowed), and the flag stays', async () => {
+    const handlers = [{ method: 'PATCH', match: /\/hub\/flagged\/\d+\/resolve$/, respond: () => ({ status: 400, body: { error: 'This shipment already has a fault case: handle it as a real fault.' } }) }];
+    await openFlaggedPage({ flagged: [flag()], handlers });
+    fireEvent.click(screen.getByRole('button', { name: /^no fault$/i }));
+    fireEvent.click(within(dialogTitled('No fault — LP-900555')).getByRole('button', { name: /confirm: no fault/i }));
+    expect(await within(dialogTitled('No fault — LP-900555')).findByText('This shipment already has a fault case: handle it as a real fault.')).toBeInTheDocument();
+    expect(screen.getByText('LP-900555')).toBeInTheDocument(); // still in the queue
+  });
+
+  it('a server refusal is shown in the dialog and nothing is claimed as done', async () => {
+    const handlers = [{ method: 'POST', match: REPLACE_URL, respond: () => ({ status: 400, body: { error: 'The supplier said they cannot replace this. Refund the buyer instead.' } }) }];
+    await openFlaggedPage({ flagged: [flag({ faultCase: faultCase({ status: 'awaiting_admin', supplier: SUPPLIER_YES }) })], handlers });
+    fireEvent.click(screen.getByRole('button', { name: /send a replacement/i }));
+    const dialog = dialogTitled(REPLACE_TITLE);
+    fireEvent.click(within(dialog).getByRole('button', { name: /confirm: send a replacement/i }));
+    expect(await within(dialog).findByText('The supplier said they cannot replace this. Refund the buyer instead.')).toBeInTheDocument();
+    expect(screen.queryByText(/Replacement order .* created/)).not.toBeInTheDocument();
   });
 
   it('CRITICAL: "Refund the buyer…" is pre-filled with the faulty items\' value, and sends the amount the admin settles on', async () => {

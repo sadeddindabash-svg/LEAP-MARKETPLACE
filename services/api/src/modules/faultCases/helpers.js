@@ -45,6 +45,10 @@ const BUYER_TEXT = {
     `Your refund of $${money(amount)} has been issued (reference: ${reference}). It may take a few days to appear with your payment provider.`,
     `تم إصدار استرداد مبلغ ${money(amount)}$ (المرجع: ${reference}). قد يستغرق ظهوره لدى مزوّد الدفع بضعة أيام.`
   ),
+  replacementConfirmed: (orderId) => pair(
+    `We are sending you a replacement at no charge. It is order ${orderId}: you can follow it in My Orders, and we will tell you when it ships.`,
+    `سنرسل لك بديلًا مجانًا. رقم الطلب ${orderId}، ويمكنك متابعته في طلباتي، وسنخبرك عند شحنه.`
+  ),
   closed: () => pair('This case is now closed. Thank you for your patience.', 'تم إغلاق هذه الحالة. شكرًا لصبرك.'),
 };
 
@@ -115,10 +119,12 @@ async function computeRefundSuggestion(client, row, items) {
             (SELECT COALESCE(SUM(oli.unit_price * oli.quantity), 0)
              FROM order_line_items oli JOIN supplier_sub_orders s2 ON s2.id = oli.sub_order_id
              WHERE s2.order_id = o.id) AS all_items_value
-     FROM supplier_sub_orders so JOIN orders o ON o.id = so.order_id
+     FROM supplier_sub_orders so JOIN orders o0 ON o0.id = so.order_id JOIN orders o ON o.id = COALESCE(o0.replacement_of, o0.id)
      WHERE so.id = $1`,
     [row.sub_order_id]
   );
+  // `o` is the order the buyer PAID for: a replacement is free, so if the replacement itself turns out faulty, a refund is still
+  // measured against the original payment, never against the replacement's total of zero.
   const orderTotal = Number(rows[0].total);
   const allItemsValue = Number(rows[0].all_items_value);
   const orderedValue = Number(items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0).toFixed(2));
@@ -153,6 +159,18 @@ async function returnTrackingOf(client, shipmentId) {
   return rows[0] ? rows[0].tracking_number : null;
 }
 
+// Where a replacement order is up to, from the supplier's and the hub's own records.
+async function replacementStage(client, orderId) {
+  const { rows } = await client.query(
+    `SELECT hs.status AS hub_status FROM supplier_sub_orders so LEFT JOIN hub_shipments hs ON hs.sub_order_id = so.id WHERE so.order_id = $1 LIMIT 1`, [orderId]
+  );
+  const hubStatus = rows[0] ? rows[0].hub_status : null;
+  if (hubStatus === 'delivered') return 'delivered';
+  if (hubStatus === 'shipped_to_buyer') return 'shipped_to_buyer';
+  if (hubStatus) return 'at_hub';
+  return 'waiting_for_supplier';
+}
+
 // The full picture, for the admin.
 async function toAdminDto(client, row) {
   const items = await loadItems(client, row.id);
@@ -174,6 +192,10 @@ async function toAdminDto(client, row) {
       answeredAt: row.supplier_answered_at,
     },
     outcome: row.outcome,
+    // The replacement order (when the outcome is a replacement) and where it is up to: waiting_for_supplier | at_hub | shipped_to_buyer | delivered
+    replacement: row.replacement_order_id
+      ? { orderId: row.replacement_order_id, createdAt: row.replacement_created_at, deliveredAt: row.replacement_delivered_at, stage: await replacementStage(client, row.replacement_order_id) }
+      : null,
     refund: row.refund_status
       ? { amount: Number(row.refund_amount), status: row.refund_status, reference: row.refund_reference, refundedAt: row.refunded_at }
       : null,
@@ -201,7 +223,7 @@ async function toHubDto(client, row) {
     //   finalising = decided, finishing it off
     //   closed     = done
     // So hub staff always know whether anything is left for THEM (only the unit: needsReturn), without seeing refund details.
-    platformStage: row.status === 'completed' ? 'closed' : row.status === 'refund_pending' ? 'finalising' : 'reviewing',
+    platformStage: row.status === 'completed' ? 'closed' : (row.status === 'refund_pending' || row.status === 'replacement_pending') ? 'finalising' : 'reviewing',
   };
 }
 
@@ -294,14 +316,14 @@ async function confirmRefund(client, { caseId, amount, adminId }) {
   if (!['awaiting_supplier', 'awaiting_admin'].includes(fc.status)) throw new FaultCaseError('A refund can only be confirmed before one has been confirmed.');
 
   const { rows: sub } = await client.query(
-    `SELECT so.status, so.order_id, o.total FROM supplier_sub_orders so JOIN orders o ON o.id = so.order_id WHERE so.id = $1`, [fc.sub_order_id]
+    `SELECT so.status, so.order_id, po.total FROM supplier_sub_orders so JOIN orders o ON o.id = so.order_id JOIN orders po ON po.id = COALESCE(o.replacement_of, o.id) WHERE so.id = $1`, [fc.sub_order_id]
   );
   if (sub[0].status === 'cancelled') throw new FaultCaseError('This part was already cancelled by the buyer.');
   const items = await loadItems(client, fc.id);
   const suggestion = await computeRefundSuggestion(client, fc, items);
   const refundAmount = amount === undefined || amount === null ? suggestion.suggested : Number(amount);
   if (!Number.isFinite(refundAmount) || refundAmount <= 0) throw new FaultCaseError('The refund amount must be greater than zero.');
-  if (refundAmount > Number(sub[0].total)) throw new FaultCaseError(`The refund cannot be more than the order total ($${money(sub[0].total)}).`);
+  if (refundAmount > Number(sub[0].total)) throw new FaultCaseError(`The refund cannot be more than what the buyer paid ($${money(sub[0].total)}).`);
   const finalAmount = Number(refundAmount.toFixed(2));
 
   const { rows: updated } = await client.query(
@@ -332,6 +354,97 @@ async function markRefunded(client, { caseId, reference, adminId }) {
   return { faultCase: completed || updated[0], returnCase, notifications };
 }
 
+// An admin confirms a REPLACEMENT (migration 095). Needs the supplier to have said they CAN replace it. Creates a new order, free to the buyer,
+// numbered from the order the buyer paid for ("LP-200934-R1"), with the faulty items at their ORIGINAL prices (see the migration for why),
+// the same delivery address (including its English version) and the same inspection hub. It then flows through the normal pipeline: the
+// supplier ships it to the hub, the hub receives, inspects and ships it, and delivery completes the case (with the unit's return).
+async function confirmReplacement(client, { caseId, adminId }) {
+  const { rows } = await client.query('SELECT * FROM fault_cases WHERE id = $1 FOR UPDATE', [caseId]);
+  if (rows.length === 0) throw new FaultCaseError('Fault case not found', 404);
+  const fc = rows[0];
+  if (!['awaiting_supplier', 'awaiting_admin'].includes(fc.status)) throw new FaultCaseError('A replacement can only be confirmed before a refund or another replacement has been confirmed.');
+  if (!fc.supplier_answered_at) throw new FaultCaseError('The supplier has not answered yet. A replacement needs the supplier to say they can send one.');
+  if (!fc.supplier_can_replace) throw new FaultCaseError('The supplier said they cannot replace this. Refund the buyer instead.');
+
+  const { rows: subRows } = await client.query(
+    `SELECT so.*, o.buyer_id, o.guest_email, o.currency_code, COALESCE(o.replacement_of, o.id) AS root_order_id
+     FROM supplier_sub_orders so JOIN orders o ON o.id = so.order_id WHERE so.id = $1`, [fc.sub_order_id]
+  );
+  const original = subRows[0];
+  if (original.status === 'cancelled') throw new FaultCaseError('This part was already cancelled by the buyer.');
+  if (!original.hub_id) throw new FaultCaseError('This part has no inspection hub, so a replacement cannot be routed.');
+  const items = await loadItems(client, fc.id);
+
+  // numbered from the order the buyer PAID for: LP-200934-R1, -R2 ... (a unique index stops two admins taking the same number)
+  const { rows: nextNumber } = await client.query('SELECT COALESCE(MAX(replacement_number), 0) + 1 AS n FROM orders WHERE replacement_of = $1', [original.root_order_id]);
+  const number = Number(nextNumber[0].n);
+  const replacementOrderId = `${original.root_order_id}-R${number}`;
+
+  await client.query(
+    `INSERT INTO orders (id, buyer_id, guest_email, status, total, currency_code, discount_amount, wait_for_all_shipments, replacement_of, replacement_number)
+     VALUES ($1, $2, $3, 'to_ship', 0, $4, 0, false, $5, $6)`,
+    [replacementOrderId, original.buyer_id, original.guest_email, original.currency_code, original.root_order_id, number]
+  );
+  await client.query(
+    `INSERT INTO order_addresses (order_id, recipient_name, phone, country, city, street_address, postal_code, state, national_address, source,
+                                  recipient_name_en, country_en, city_en, street_address_en, state_en, english_source, english_updated_at, english_updated_by)
+     SELECT $1, recipient_name, phone, country, city, street_address, postal_code, state, national_address, source,
+            recipient_name_en, country_en, city_en, street_address_en, state_en, english_source, english_updated_at, english_updated_by
+     FROM order_addresses WHERE order_id = $2`,
+    [replacementOrderId, original.order_id]
+  );
+  const { rows: newSub } = await client.query(
+    `INSERT INTO supplier_sub_orders (order_id, supplier_id, status, hub_id) VALUES ($1, $2, 'pending', $3) RETURNING id`,
+    [replacementOrderId, original.supplier_id, original.hub_id]
+  );
+  for (const item of items) {
+    await client.query('INSERT INTO order_line_items (sub_order_id, product_id, quantity, unit_price) VALUES ($1, $2, $3, $4)', [newSub[0].id, item.productId, item.quantity, item.unitPrice]);
+  }
+
+  const { rows: updated } = await client.query(
+    `UPDATE fault_cases SET outcome = 'replacement', status = 'replacement_pending', replacement_order_id = $1, replacement_confirmed_by = $2,
+            replacement_created_at = now(), updated_at = now() WHERE id = $3 RETURNING *`,
+    [replacementOrderId, adminId, caseId]
+  );
+
+  const notifications = [];
+  const returnCase = await advanceReturnCase(client, await findReturnCase(client, fc.sub_order_id), 'approved', BUYER_TEXT.replacementConfirmed(replacementOrderId), notifications);
+  const { rows: supplierUsers } = await client.query(`SELECT id FROM users WHERE supplier_id = $1 AND role = 'supplier'`, [original.supplier_id]);
+  for (const u of supplierUsers) {
+    notifications.push({
+      userId: u.id, type: 'supplier_message', title: `Replacement order ${replacementOrderId}`,
+      body: `Leap has confirmed a replacement for order ${original.order_id}. Please ship order ${replacementOrderId} to our inspection hub${fc.supplier_eta ? ` by ${dateOnly(fc.supplier_eta)}` : ''}. It is free for the buyer; you are paid for it once, as for the original sale.`,
+      linkType: 'order', linkId: replacementOrderId,
+    });
+  }
+  return { faultCase: updated[0], replacementOrderId, returnCase, notifications };
+}
+
+// A shipment was just delivered (by the hub, by the carrier's webhook, or by the courier link). If it is a REPLACEMENT for a fault case, record
+// it: the case completes once the faulty unit is also back from the hub. Best-effort and in its own transaction, so it can never undo or block
+// the delivery itself.
+async function onShipmentDelivered(subOrderId) {
+  const client = await db.getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `SELECT fc.id FROM fault_cases fc JOIN supplier_sub_orders so ON so.order_id = fc.replacement_order_id
+       WHERE so.id = $1 AND fc.replacement_delivered_at IS NULL FOR UPDATE OF fc`, [subOrderId]
+    );
+    if (rows.length === 0) { await client.query('ROLLBACK'); return; }
+    await client.query('UPDATE fault_cases SET replacement_delivered_at = now(), updated_at = now() WHERE id = $1', [rows[0].id]);
+    const notifications = [];
+    await maybeComplete(client, rows[0].id, notifications);
+    await client.query('COMMIT');
+    await sendNotifications(notifications);
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Recording a replacement delivery failed (non-fatal):', err.message);
+  } finally {
+    client.release();
+  }
+}
+
 // The hub has physically dealt with the faulty unit. Called inside the hub event transaction.
 async function recordHubReturn(client, { shipmentId, method }) {
   const { rows } = await client.query('SELECT * FROM fault_cases WHERE shipment_id = $1 FOR UPDATE', [shipmentId]);
@@ -348,17 +461,18 @@ async function recordHubReturn(client, { shipmentId, method }) {
 async function maybeComplete(client, caseId, notifications) {
   const { rows } = await client.query('SELECT * FROM fault_cases WHERE id = $1 FOR UPDATE', [caseId]);
   const fc = rows[0];
-  if (fc.status === 'completed' || fc.refund_status !== 'issued' || !fc.hub_return) return null;
+  const settled = (fc.outcome === 'refund' && fc.refund_status === 'issued') || (fc.outcome === 'replacement' && fc.replacement_delivered_at !== null);
+  if (fc.status === 'completed' || !settled || !fc.hub_return) return null;
   const { rows: done } = await client.query(`UPDATE fault_cases SET status = 'completed', completed_at = now(), updated_at = now() WHERE id = $1 RETURNING *`, [caseId]);
   await client.query(
-    `UPDATE hub_shipments SET resolution = 'fault_refund', resolved_at = now(), resolved_by = $1, updated_at = now() WHERE id = $2`,
-    [fc.refunded_by, fc.shipment_id]
+    `UPDATE hub_shipments SET resolution = $1, resolved_at = now(), resolved_by = $2, updated_at = now() WHERE id = $3`,
+    [fc.outcome === 'replacement' ? 'fault_replacement' : 'fault_refund', fc.outcome === 'replacement' ? fc.replacement_confirmed_by : fc.refunded_by, fc.shipment_id]
   );
   await advanceReturnCase(client, await findReturnCase(client, fc.sub_order_id), 'completed', BUYER_TEXT.closed(), notifications);
   return done[0];
 }
 
 module.exports = {
-  FaultCaseError, createFaultCase, recordSupplierAnswer, confirmRefund, markRefunded, recordHubReturn,
+  FaultCaseError, createFaultCase, recordSupplierAnswer, confirmRefund, markRefunded, confirmReplacement, onShipmentDelivered, recordHubReturn,
   toAdminDto, toHubDto, sendNotifications,
 };

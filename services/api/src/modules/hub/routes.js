@@ -517,6 +517,8 @@ router.get('/me/shipments/:id', requireAuth, requireRole('hub_staff'), async (re
     // The hub reads ENGLISH (migration 094): hub staff cannot read an address the buyer typed in Arabic. The original is never changed.
     const hubAddress = await getHubAddressRow(rows[0].order_id);
     const addressRows = hubAddress ? [hubAddress] : [];
+    // A REPLACEMENT for a faulty unit (migration 095) is handled like any other shipment, but staff are told what it is.
+    const { rows: replacementRows } = await db.query('SELECT replacement_of FROM orders WHERE id = $1', [rows[0].order_id]);
     const deliveryAddress = addressRows.length > 0
       ? {
           recipientName: addressRows[0].recipient_name,
@@ -548,6 +550,7 @@ router.get('/me/shipments/:id', requireAuth, requireRole('hub_staff'), async (re
       shipmentIndex, totalShipments, otherShipments,
       items: itemsWithAttributes,
       deliveryAddress,
+      replacementFor: replacementRows[0] ? replacementRows[0].replacement_of : null, // the order the buyer paid for, or null for a normal shipment
       events,
     });
   } catch (err) {
@@ -925,6 +928,7 @@ router.patch('/me/shipments/:id/confirm-delivery', requireAuth, requireRole('hub
     }, client);
 
     await client.query('COMMIT');
+    await faultCases.onShipmentDelivered(shipment.sub_order_id); // if this was a REPLACEMENT for a faulty unit, the fault case notes it (and may complete)
 
     // REAL BUG FOUND AND FIXED HERE, reported by an actual person: the
     // real response used to be sent AFTER attempting this email, with
