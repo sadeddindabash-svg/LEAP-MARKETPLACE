@@ -3503,6 +3503,13 @@ that language, and also remembers it so a push notification, sent when an event 
   order), and check it reads in Arabic; switch to English and it should read in English.
 - The language shown in the list follows the app's language when the screen opens; an open notifications screen does not re-translate by itself if the language is changed from elsewhere.
 
+## Proof of delivery photos (new, migration 096)
+
+When the courier delivers a parcel and sends photos through the QR on its label, the buyer sees them on the order page: a **"Proof of delivery" / "إثبات التسليم"** row of thumbnails under that part of the order, and tapping one opens it full size (pinch to zoom, × to close). A part with no photos shows nothing extra.
+
+- Needs the backend's migration 096 and a **rebuilt app**.
+- **HONEST LIMITATION:** read and bracket-checked, **not compiled or run** (no Flutter SDK in the sandbox). To try it: run `node D:\create-test-flags.js`-style flow to a shipped parcel, send a photo through the courier link (`/p/<token>`), then open that order in the app.
+
 ## Setup
 
 1. Install Flutter: https://docs.flutter.dev/get-started/install

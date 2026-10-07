@@ -9,6 +9,7 @@ const { getPendingMigrations, pendingMigrationsBanner } = require('./config/pend
 installAsyncErrorHandling();
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 
+const { apiRouter: deliveryProofApi, pageRouter: deliveryProofPage } = require('./modules/deliveryProof/routes');
 const catalogRoutes = require('./modules/catalog/routes');
 const fitmentRoutes = require('./modules/fitment/routes');
 const cartRoutes = require('./modules/cart/routes');
@@ -138,6 +139,10 @@ app.get('/health', async (req, res) => {
   try { pendingMigrations = await getPendingMigrations(); } catch { /* health must never fail because of this check */ }
   res.json({ status: 'ok', env: env.nodeEnv, timestamp: new Date().toISOString(), pendingMigrations });
 });
+
+// The courier link (migration 096): public on purpose, no login; the token in the address is the credential.
+app.use('/proof', deliveryProofApi);
+app.use('/p', deliveryProofPage);
 
 app.use('/catalog', catalogRoutes);
 app.use('/fitment', fitmentRoutes);

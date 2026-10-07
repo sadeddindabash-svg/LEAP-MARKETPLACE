@@ -39,6 +39,7 @@ class AppStrings {
 
     // ---- Bottom nav (RootShell) ----
     'nav_home': {'en': 'Home', 'ar': 'الرئيسية'},
+    'delivery_proof_title': {'en': 'Proof of delivery', 'ar': 'إثبات التسليم'},
     'nav_shop': {'en': 'Shop', 'ar': 'تسوق'},
     'nav_cart': {'en': 'Cart', 'ar': 'السلة'},
     'nav_orders': {'en': 'Orders', 'ar': 'الطلبات'},

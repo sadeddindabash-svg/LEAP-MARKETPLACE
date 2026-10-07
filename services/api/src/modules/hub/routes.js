@@ -8,6 +8,7 @@ const faultCases = require('../faultCases/helpers');
 const messages = require('../notifications/messages');
 const { getReturnAddress } = require('../supplierReturnAddress/helpers');
 const { getHubAddressRow } = require('../addressEnglish/helpers');
+const deliveryProof = require('../deliveryProof/helpers');
 
 const DAMAGE_TYPES = ['physical_damage', 'water_damage', 'missing_parts', 'wrong_item', 'other'];
 const { deliveryNotificationEmail, shippingNotificationEmail } = require('../email/templates');
@@ -615,6 +616,11 @@ router.get('/me/shipments/:id/address-label', requireAuth, requireRole('hub_staf
       return res.status(500).json({ error: 'Server is missing a required asset file -- contact support' });
     }
 
+    // The courier's link (migration 096) is created BEFORE the PDF starts streaming, so it always exists by the time the label reaches anyone. If it
+    // cannot be created the label is still produced, just without the QR.
+    let proofLink = null;
+    try { proofLink = await deliveryProof.ensureProofLink(rows[0].id); } catch (linkErr) { console.error('Could not create the courier link for the label (non-fatal):', linkErr.message); }
+
     const doc = new PDFDocument({ margin: 40, size: 'A5' });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="LEAP-address-${rows[0].order_id}.pdf"`);
@@ -682,6 +688,32 @@ router.get('/me/shipments/:id/address-label', requireAuth, requireRole('hub_staf
     if (addr.country === 'Saudi Arabia' && addr.national_address) {
       y += rowHeight;
       fieldRow(col2X, y, 'ADDRESS CODE', addr.national_address);
+    }
+
+    // The COURIER's QR (migration 096): scanned at the door, it opens a page to send a delivery photo, which confirms delivery. It is only a
+    // convenience: if anything about it fails the label is still produced without it.
+    try {
+      if (!proofLink) throw new Error('no courier link');
+      const link = proofLink;
+      const QRCode = require('qrcode');
+      const qr = QRCode.create(link.url, { errorCorrectionLevel: 'M' });
+      const cells = qr.modules.size;
+      const cell = 2.6;
+      const qrSize = cells * cell;
+      const qrTop = cardTop + cardHeight + 16;
+      const qrLeft = pageLeft;
+      doc.rect(qrLeft - 4, qrTop - 4, qrSize + 8, qrSize + 8).fillColor('#fff').fill();
+      for (let r = 0; r < cells; r += 1) {
+        for (let c = 0; c < cells; c += 1) {
+          if (qr.modules.get(r, c)) doc.rect(qrLeft + c * cell, qrTop + r * cell, cell, cell).fillColor('#000').fill();
+        }
+      }
+      const textLeft = qrLeft + qrSize + 16;
+      doc.font('ArabicCapable-Bold').fontSize(10).fillColor('#000').text('FOR THE COURIER', textLeft, qrTop, { width: pageRight - textLeft });
+      doc.font('ArabicCapable').fontSize(8.5).fillColor('#333').text('Scan to send a delivery photo. This confirms the parcel was delivered.', textLeft, doc.y + 2, { width: pageRight - textLeft });
+      doc.font('ArabicCapable').fontSize(6.5).fillColor('#888').text(link.url, textLeft, doc.y + 4, { width: pageRight - textLeft });
+    } catch (qrErr) {
+      console.error('Could not add the courier QR to the label (non-fatal):', qrErr.message);
     }
 
     doc.end();
@@ -826,6 +858,7 @@ router.post('/me/shipments/:id/events', requireAuth, requireRole('hub_staff'), a
     // that matters to the buyer is THIS one (hub -> buyer), not the supplier's domestic number to the hub.
     let shippedOrderId = null;
     if (step === 'shipped_to_buyer') {
+      await deliveryProof.ensureProofLink(shipment.id, client); // the courier's link (migration 096) exists once the parcel is on its way
       const { rows: orderRows } = await client.query(
         `SELECT so.order_id, o.buyer_id FROM supplier_sub_orders so JOIN orders o ON o.id = so.order_id WHERE so.id = $1`, [shipment.sub_order_id]
       );

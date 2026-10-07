@@ -559,6 +559,30 @@ bool isSubOrderCancellable(Map<String, dynamic> subOrder) {
   return true;
 }
 
+/// Opens a delivery proof photo full size (pinch to zoom, X to close).
+void _showProofPhoto(BuildContext context, String url) {
+  showDialog(
+    context: context,
+    builder: (dialogContext) => Dialog(
+      backgroundColor: Colors.black,
+      insetPadding: const EdgeInsets.all(12),
+      child: Stack(
+        children: [
+          InteractiveViewer(
+            child: CachedNetworkImage(
+              imageUrl: url,
+              fit: BoxFit.contain,
+              placeholder: (context, url) => const SizedBox(height: 240, child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
+              errorWidget: (context, url, error) => const SizedBox(height: 240, child: Center(child: Icon(Icons.broken_image_outlined, color: Colors.white54))),
+            ),
+          ),
+          Positioned(top: 4, right: 4, child: IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: () => Navigator.of(dialogContext).pop())),
+        ],
+      ),
+    ),
+  );
+}
+
 class _SupplierSubOrderCard extends StatelessWidget {
   final Map<String, dynamic> subOrder;
   final void Function(int subOrderId, String supplierLabel) onRequestReturn;
@@ -571,6 +595,11 @@ class _SupplierSubOrderCard extends StatelessWidget {
     final items = (subOrder['items'] as List).cast<Map<String, dynamic>>();
     final supplierName = (subOrder['supplierName'] as String?) ?? (subOrder['supplierId'] as String);
     final trackingNumber = subOrder['trackingNumber'] as String?;
+    // Photos the courier sent through the link on the parcel's label when they delivered it (migration 096): the buyer's own evidence that it
+    // arrived. Null / absent for a parcel that has none.
+    final hubShipmentData = subOrder['hubShipment'] as Map<String, dynamic>?;
+    final deliveryProof = hubShipmentData?['deliveryProof'] as Map<String, dynamic>?;
+    final proofPhotos = deliveryProof == null ? <Map<String, dynamic>>[] : (deliveryProof['photos'] as List).cast<Map<String, dynamic>>();
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -630,6 +659,32 @@ class _SupplierSubOrderCard extends StatelessWidget {
                   ),
                 ),
               ),
+            if (proofPhotos.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(tr(context, 'delivery_proof_title'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final photo in proofPhotos)
+                    GestureDetector(
+                      onTap: () => _showProofPhoto(context, ApiClient.resolveMediaUrl(photo['url'] as String)),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: CachedNetworkImage(
+                          imageUrl: ApiClient.resolveMediaUrl(photo['url'] as String),
+                          width: 72,
+                          height: 72,
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) => Container(width: 72, height: 72, color: Colors.white),
+                          errorWidget: (context, url, error) => Container(width: 72, height: 72, color: Colors.white, child: Icon(Icons.broken_image_outlined, size: 18, color: LeapPalette.of(context).muted)),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
             const SizedBox(height: 8),
             if (showCancelButton && onCancelSubOrder != null)
               Align(

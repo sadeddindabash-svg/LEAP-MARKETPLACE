@@ -815,6 +815,27 @@ function HubAssignmentPanel({ subOrder, onAssigned, onSessionExpired }) {
           </button>
         )}
       </div>
+      {/* PROOF OF DELIVERY sent by the courier through the link / QR on the label (migration 096). Anyone holding the label could have sent it, so it is
+          labelled as evidence, not a guarantee. The courier's name and note are shown to admin only (the buyer sees the photos). */}
+      {shipment && shipment.deliveryProof && (
+        <div style={{ marginTop: 10, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 8, padding: 10 }}>
+          <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.ink }}>
+            PROOF OF DELIVERY <span style={{ color: C.amber }}>· sent through the courier's link, not verified</span>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "8px 0" }}>
+            {shipment.deliveryProof.photos.map((p) => (
+              <EnlargeablePhoto key={p.url} src={`${API_BASE_URL}${p.url}`} style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 6, border: `1px solid ${C.line}` }} />
+            ))}
+          </div>
+          {[...new Set(shipment.deliveryProof.photos.map((p) => p.courierName).filter(Boolean))].length > 0 && (
+            <div style={{ ...body, fontSize: 11.5, color: C.ink }}>Courier: {[...new Set(shipment.deliveryProof.photos.map((p) => p.courierName).filter(Boolean))].join(", ")}</div>
+          )}
+          {[...new Set(shipment.deliveryProof.photos.map((p) => p.note).filter(Boolean))].map((note) => (
+            <div key={note} style={{ ...body, fontSize: 11.5, color: C.ink }}>Note: {note}</div>
+          ))}
+          <div style={{ ...body, fontSize: 10.5, color: C.muted, marginTop: 4 }}>Sent {new Date(shipment.deliveryProof.photos[0].submittedAt).toLocaleString()}</div>
+        </div>
+      )}
       {!shipment && (
         <div style={{ ...body, fontSize: 11.5, color: C.muted, marginTop: 6 }}>Awaiting the supplier to ship this leg — no evidence yet.</div>
       )}

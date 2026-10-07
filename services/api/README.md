@@ -3285,6 +3285,38 @@ refund_pending --(admin marks refunded)--+
 builds its own hub and hub-staff login (using the Hub staff feature) so workload checks are exact. Verified to fail when completion stops needing
 both conditions, when supplier isolation is removed, when the buyer-cancel block is removed, or when the hub workload keeps counting returned units.
 
+## Courier delivery link: photos AND delivery confirmation (migration 096)
+
+**What it does:** the address label the hub prints now carries a **QR code** ("FOR THE COURIER"). When the courier delivers, they scan it, take a photo and send it. That **stores the photos as proof of delivery** and **marks the shipment delivered**:
+the same as the hub confirming it by hand or the carrier's tracking saying so (status, delivery time, the buyer's notification in both languages, the email, and the replacement-case hook, so a delivered replacement completes its fault case).
+
+**The page** (`GET /p/:token`, no login, no app) is one small page in **English and Arabic together**: a photo picker (`capture="environment"` opens the camera), the courier's name and a note (both optional), and one button.
+It holds nothing about the order: the order number, buyer and address never go into the page.
+
+| Endpoint | What it does |
+|---|---|
+| `GET /proof/:token` | `{ state, orderId?, photoCount?, maxPhotos }`: `unknown` · `expired` · `not_shipped_yet` · `ready` · `delivered` |
+| `POST /proof/:token` | multipart: `photos` (1–8 JPEG/PNG/WebP, 10 MB each, at least 400 px on the short side, checked as real images), `courierName?`, `note?` |
+| `GET /order/:id` | each shipment gains `deliveryProof: { source: 'courier_link', verified: false, photos: [...] }` or `null`. **Admin** also gets each photo's `courierName` and `note`; the **buyer** gets only the photos and when. The courier's IP address and device are recorded and shown to nobody. |
+
+**Because the QR is on the parcel, anyone handling it (including the buyer) can see it, so the link is guarded:**
+- a long random token (32 random bytes), one per shipment, created when the label is printed or the hub ships the parcel; **reprinting a label keeps the same link** (a label already on a parcel must keep working);
+- it does **nothing until the hub has SHIPPED the parcel** (`not_shipped_yet` / 409), so scanning it early cannot mark anything delivered;
+- it **expires after 60 days**;
+- **only the first upload changes the delivery status**; later ones only add photos (at most **8 in total** per parcel), never a second notification or a moved delivery time;
+- a parcel the hub or carrier already delivered still accepts photos, but its delivery record is untouched;
+- rate limits: **20 attempts per link per 10 minutes**, and **300 hits on non-existent links per address per 10 minutes** (guessing); both answer 429 with `Retry-After`;
+- the admin sees the photos labelled **"sent through the courier's link, not verified"**: this is evidence, not a guarantee.
+
+**Setting:** `PUBLIC_API_URL` (in `services/api/.env`) is the address the QR contains. It must be reachable from the **courier's phone**, so in production it is your public API domain. For a test on your own Wi-Fi use your PC's address, e.g. `http://192.168.0.210:4000`
+(default: `http://localhost:<port>`, which only works on the PC itself). Change it and re-print the label: an existing link keeps its token but the QR is drawn from the current setting.
+
+**HONEST LIMITS:** the QR is only as secure as its token and guards; a determined person with a label can still send photos after the hub has shipped (that is the trade-off of "the courier's photo confirms delivery"); the label QR could not be scanned in the sandbox (the PDF
+is produced and the link behind it is tested); the buyer app's photos have been read and bracket-checked but not compiled; photos are stored with the other uploads (cloud if configured, otherwise the local `uploads` folder).
+
+**Tested:** `apps/admin-dashboard/src/courierProof.integration.test.js` (10, real backend, including a courier delivering a REPLACEMENT) and `courierProofRateLimit.test.js` (4). Verified to fail when the link works before shipping, when the photo cap is removed, when the buyer is shown who sent the photos,
+when the replacement hook is skipped, and when a reprint changes the link.
+
 ## Crash protection and the "database not up to date" warning
 
 **The problem this fixes:** after an update, the new backend code can run against a database that has not had the new migration. The first route to touch a missing column then threw inside an `async` handler, and **Express 4 does not catch

@@ -10,6 +10,7 @@ const { createNotification } = require('../notifications/helpers');
 const { buildTrackingTimeline } = require('../tracking/liveTracking');
 const { buildSupplierLabelMap } = require('../shared/supplierAnonymize');
 const { logAdminAction } = require('../audit/helpers');
+const { loadProofForShipment } = require('../deliveryProof/helpers');
 const { refreshEnglishAddress, ensureEnglishAddress, toEnglishDto, validateEnglishAddress, saveEnglishAddress, confirmEnglishAddressAsIs } = require('../addressEnglish/helpers');
 const { STATUS_ORDER } = require('../shared/hubStatusOrder');
 const ArabicReshaper = require('arabic-reshaper');
@@ -572,7 +573,9 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
             photos: photos.map((p) => p.url),
           });
         }
-        hubShipment = { id: shipment.id, status: shipment.status, updatedAt: shipment.updated_at, events: eventsWithPhotos };
+        // Delivery proof photos sent by the courier through the label's link (migration 096), or null. Admin also gets who sent them.
+        const deliveryProofData = await loadProofForShipment(shipment.id, { forAdmin: isAdmin });
+        hubShipment = { id: shipment.id, status: shipment.status, updatedAt: shipment.updated_at, events: eventsWithPhotos, deliveryProof: deliveryProofData };
       }
 
       supplierSubOrders.push({
