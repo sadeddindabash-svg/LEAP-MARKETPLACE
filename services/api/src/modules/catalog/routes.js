@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
@@ -1720,11 +1721,19 @@ router.post('/categories/:id/parts', requireAuth, requireRole('admin'), requireP
     if (!nameAr || !nameAr.trim()) return res.status(400).json({ error: 'nameAr is required' });
     const categoryCheck = await db.query('SELECT id FROM product_categories WHERE id = $1', [req.params.id]);
     if (categoryCheck.rows.length === 0) return res.status(404).json({ error: 'Category not found' });
-    const partId = `part_${Date.now()}`;
-    await db.query(
-      'INSERT INTO category_parts (id, category_id, name_en, name_ar, sort_order, photo_url) VALUES ($1, $2, $3, $4, $5, $6)',
-      [partId, req.params.id, nameEn, nameAr || null, sortOrder ?? 0, photoUrl?.trim() || null]
-    );
+    // A category cannot have two parts with the same name (capitals and extra spaces ignored): migration 101.
+    const duplicate = await db.query('SELECT 1 FROM category_parts WHERE category_id = $1 AND lower(btrim(name_en)) = lower(btrim($2))', [req.params.id, nameEn]);
+    if (duplicate.rows.length > 0) return res.status(409).json({ error: `This category already has a part called "${nameEn.trim()}"` });
+    const partId = `part_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`; // the random tail: two parts made in the same millisecond used to collide
+    try {
+      await db.query(
+        'INSERT INTO category_parts (id, category_id, name_en, name_ar, sort_order, photo_url) VALUES ($1, $2, $3, $4, $5, $6)',
+        [partId, req.params.id, nameEn.trim(), nameAr || null, sortOrder ?? 0, photoUrl?.trim() || null]
+      );
+    } catch (insertErr) {
+      if (insertErr.code === '23505') return res.status(409).json({ error: `This category already has a part called "${nameEn.trim()}"` }); // two admins at once
+      throw insertErr;
+    }
     const { rows } = await db.query('SELECT * FROM category_parts WHERE id = $1', [partId]);
     await logAdminAction(req, 'part_created', 'part', partId, { nameEn, categoryId: req.params.id });
     res.status(201).json(toPartDto(rows[0]));
@@ -1765,8 +1774,11 @@ router.patch('/parts/:id', requireAuth, requireRole('admin'), requirePageAccess(
     const { nameEn, nameAr } = req.body || {};
     if (!nameEn || !nameEn.trim()) return res.status(400).json({ error: 'nameEn is required' });
     if (!nameAr || !nameAr.trim()) return res.status(400).json({ error: 'nameAr is required' });
+    const own = await db.query('SELECT category_id FROM category_parts WHERE id = $1', [req.params.id]);
+    if (own.rows.length === 0) return res.status(404).json({ error: 'Part not found' });
+    const taken = await db.query('SELECT 1 FROM category_parts WHERE category_id = $1 AND lower(btrim(name_en)) = lower(btrim($2)) AND id != $3', [own.rows[0].category_id, nameEn, req.params.id]);
+    if (taken.rows.length > 0) return res.status(409).json({ error: `This category already has a part called "${nameEn.trim()}"` });
     const { rows } = await db.query('UPDATE category_parts SET name_en = $1, name_ar = $2 WHERE id = $3 RETURNING *', [nameEn.trim(), nameAr.trim(), req.params.id]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Part not found' });
     await logAdminAction(req, 'part_updated', 'part', req.params.id, { nameEn: nameEn.trim() });
     res.json(toPartDto(rows[0]));
   } catch (err) {

@@ -471,7 +471,7 @@ function OverviewPage({ onSessionExpired }) {
   useEffect(() => {
     fetchOverview(getStoredToken())
       // Whatever the server sends, the lists this page maps over always exist: a reply missing one (or an empty one) must not take the whole admin down.
-      .then((d) => { setData({ ordersByDay: [], topSuppliers: [], unitsByCategory: [], recentOrders: [], ...d }); setLoadState("ready"); })
+      .then((d) => { setData({ totalOrders: 0, activeSuppliers: 0, pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, openTickets: 0, ordersByDay: [], topSuppliers: [], unitsByCategory: [], recentOrders: [], ...d }); setLoadState("ready"); })
       .catch((err) => {
         if (err instanceof SessionExpiredError) return onSessionExpired();
         setErrorMessage(err.message);

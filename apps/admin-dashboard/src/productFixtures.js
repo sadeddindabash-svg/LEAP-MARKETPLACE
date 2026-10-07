@@ -19,6 +19,10 @@ export async function ensureSeedParts() {
   if (seedPartsChecked) return;
   const login = await fetch(`${BACKEND_URL}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'admin@leap.dev', password: 'admin_dev_password_123' }) }).then((r) => r.json());
   for (const part of SEED_PARTS) {
+    // LOOK FIRST. This used to POST every time on the assumption that the server refuses a part that already exists; it did not, so every test run
+    // added another copy ("Front Brake Disc" ended up in the list 26 times). The server now refuses duplicates (409) too, but a helper must not rely on that.
+    const existing = await fetch(`${BACKEND_URL}/catalog/categories/${part.category}/parts`).then((r) => r.json()).catch(() => []);
+    if (Array.isArray(existing) && existing.some((p) => String(p.nameEn).trim().toLowerCase() === part.nameEn.toLowerCase())) continue;
     await fetch(`${BACKEND_URL}/catalog/categories/${part.category}/parts`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${login.token}` },
       body: JSON.stringify({ nameEn: part.nameEn, nameAr: part.nameAr }),

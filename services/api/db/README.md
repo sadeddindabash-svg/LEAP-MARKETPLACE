@@ -124,6 +124,7 @@ See `migrations/001_init.sql` for the full schema with comments. Summary:
 | `fault_cases.closed_manually_by` / `closed_manually_note`, `hub_shipments.resolution = 'fault_closed_manually'` (migration 098) | An admin closes a stuck fault case by hand, with a written reason that is kept; the flag leaves the hub queue |
 | `users.must_change_password` (migration 099) | Set when an admin creates or resets a hub staff account (a temporary password); reported by login and `/auth/me`; cleared by `PATCH /auth/me/password` |
 | `users_email_lower_unique` (migration 100) | Email addresses are stored in lowercase (existing ones are lowercased, and so are `orders.guest_email`) and a unique index on `lower(email)` makes "same address, different capitals" impossible. The migration stops with a clear message if two accounts already differ only by capitals |
+| `category_parts_name_unique` (migration 101) | A category cannot have two parts with the same name (capitals and extra spaces ignored). The migration first merges existing duplicates, keeping one row per name (preferring one with a photo, then the oldest) |
 
 **Not yet covered** (add a future migration once these backend modules
 exist — currently only in the admin-dashboard/supplier-portal prototypes,

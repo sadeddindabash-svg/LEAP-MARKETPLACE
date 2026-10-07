@@ -48,3 +48,6 @@ coverage/
 # Misc
 *.tmp
 *.bak
+
+# Backups written by services/api/scripts/remove-test-data.js (may hold copies of removed rows)
+services/api/backups/

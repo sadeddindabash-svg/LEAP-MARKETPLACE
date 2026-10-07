@@ -31,6 +31,9 @@ function mockFetchRouter({ payoutMethod = { bankName: 'Bank of China', accountNu
       return Promise.resolve({ ok: true, status: 201, json: async () => newPayout });
     }
     if (u.endsWith('/payouts')) return Promise.resolve({ ok: true, json: async () => history });
+    // The app also asks for these when it loads. They must be complete: a fake server that answers {} used to crash the page depending on timing.
+    if (u.endsWith('/overview')) return Promise.resolve({ ok: true, json: async () => ({ totalOrders: 0, activeSuppliers: 0, pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, openTickets: 0, ordersByDay: [], unitsByCategory: [], topSuppliers: [], recentOrders: [] }) });
+    if (u.endsWith('/supplier') || u.endsWith('/hub/flagged')) return Promise.resolve({ ok: true, json: async () => [] });
     return Promise.resolve({ ok: true, json: async () => ({}) });
   });
 }
