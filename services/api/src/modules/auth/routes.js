@@ -104,7 +104,7 @@ router.post('/login', async (req, res, next) => {
       return res.status(400).json({ error: 'email and password are required' });
     }
 
-    const { rows } = await db.query('SELECT id, email, name, role, password_hash, supplier_id, hub_id, is_owner, two_factor_enabled, disabled_at FROM users WHERE email = $1', [email]);
+    const { rows } = await db.query('SELECT id, email, name, role, password_hash, supplier_id, hub_id, is_owner, two_factor_enabled, disabled_at, must_change_password FROM users WHERE email = $1', [email]);
     // Deliberately identical error for "no such user" and "wrong password"
     // — do not reveal which one it was, that leaks whether an email is registered.
     const genericError = { error: 'Invalid email or password' };
@@ -137,7 +137,7 @@ router.post('/login', async (req, res, next) => {
     const accessInfo = await getAdminAccessInfo(user.id, user.role, user.is_owner);
     res.json({
       token: signToken(user),
-      user: { id: user.id, email: user.email, name: user.name, role: user.role, supplierId: user.supplier_id, hubId: user.hub_id, ...accessInfo },
+      user: { id: user.id, email: user.email, name: user.name, role: user.role, supplierId: user.supplier_id, hubId: user.hub_id, mustChangePassword: Boolean(user.must_change_password), ...accessInfo },
     });
   } catch (err) {
     next(err);
@@ -162,7 +162,7 @@ router.post('/login/2fa', async (req, res, next) => {
       return res.status(400).json({ error: 'userId and code are required' });
     }
     const { rows } = await db.query(
-      'SELECT id, email, name, role, supplier_id, hub_id, is_owner, two_factor_enabled, two_factor_secret, disabled_at FROM users WHERE id = $1',
+      'SELECT id, email, name, role, supplier_id, hub_id, is_owner, two_factor_enabled, two_factor_secret, disabled_at, must_change_password FROM users WHERE id = $1',
       [userId]
     );
     if (rows.length === 0 || !rows[0].two_factor_enabled || !rows[0].two_factor_secret) {
@@ -178,7 +178,7 @@ router.post('/login/2fa', async (req, res, next) => {
     const accessInfo = await getAdminAccessInfo(user.id, user.role, user.is_owner);
     res.json({
       token: signToken(user),
-      user: { id: user.id, email: user.email, name: user.name, role: user.role, supplierId: user.supplier_id, hubId: user.hub_id, ...accessInfo },
+      user: { id: user.id, email: user.email, name: user.name, role: user.role, supplierId: user.supplier_id, hubId: user.hub_id, mustChangePassword: Boolean(user.must_change_password), ...accessInfo },
     });
   } catch (err) {
     next(err);
@@ -200,11 +200,31 @@ async function getAdminAccessInfo(userId, role, isOwnerFlag) {
 
 router.get('/me', requireAuth, async (req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT id, email, name, role, supplier_id, hub_id, is_owner, created_at, two_factor_enabled, avatar_url FROM users WHERE id = $1', [req.user.sub]);
+    const { rows } = await db.query('SELECT id, email, name, role, supplier_id, hub_id, is_owner, created_at, two_factor_enabled, avatar_url, must_change_password FROM users WHERE id = $1', [req.user.sub]);
     if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
-    const { supplier_id, hub_id, is_owner, two_factor_enabled, avatar_url, ...rest } = rows[0];
+    const { supplier_id, hub_id, is_owner, two_factor_enabled, avatar_url, must_change_password, ...rest } = rows[0];
     const accessInfo = await getAdminAccessInfo(rows[0].id, rows[0].role, is_owner);
-    res.json({ ...rest, supplierId: supplier_id, hubId: hub_id, twoFactorEnabled: two_factor_enabled, avatarUrl: avatar_url, ...accessInfo });
+    res.json({ ...rest, supplierId: supplier_id, hubId: hub_id, twoFactorEnabled: two_factor_enabled, avatarUrl: avatar_url, mustChangePassword: Boolean(must_change_password), ...accessInfo });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /auth/me/password { currentPassword, newPassword } -- a logged-in person chooses their own password (migration 099). Needed first of all by
+// someone who was given a TEMPORARY one (a new hub staff account, or one an admin reset), but open to everybody. The current password must be
+// right, the new one at least 8 characters and different, and it clears the "must change" flag.
+router.patch('/me/password', requireAuth, async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+    if (typeof currentPassword !== 'string' || currentPassword === '') return res.status(400).json({ error: 'currentPassword is required' });
+    if (typeof newPassword !== 'string' || newPassword.length < 8) return res.status(400).json({ error: 'newPassword must be at least 8 characters' });
+    if (newPassword.length > 200) return res.status(400).json({ error: 'newPassword is too long' });
+    if (newPassword === currentPassword) return res.status(400).json({ error: 'Choose a new password that is different from the current one' });
+    const { rows } = await db.query('SELECT password_hash FROM users WHERE id = $1', [req.user.sub]);
+    if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    if (!(await bcrypt.compare(currentPassword, rows[0].password_hash))) return res.status(401).json({ error: 'The current password is not right' });
+    await db.query('UPDATE users SET password_hash = $1, must_change_password = false WHERE id = $2', [await bcrypt.hash(newPassword, 10), req.user.sub]);
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

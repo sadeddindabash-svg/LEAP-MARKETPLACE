@@ -668,6 +668,22 @@ class ApiClient {
     }
   }
 
+  /// The buyer confirms the automatic ENGLISH version of their delivery address as it is (no [edits]), or corrects it ([edits]: recipientName, country,
+  /// city, streetAddress and optionally state; all in English letters). The inspection hub reads this English version (migration 094). Returns the
+  /// English address as the server now holds it.
+  Future<Map<String, dynamic>> confirmOrderAddressEnglish(String token, String orderId, {Map<String, String>? edits}) async {
+    final response = await _client.put(
+      Uri.parse('$baseUrl/order/$orderId/address-english/confirm'),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      body: jsonEncode(edits ?? <String, String>{}),
+    );
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode != 200) {
+      throw ApiException(body['error'] as String? ?? 'Failed to confirm the address (${response.statusCode})');
+    }
+    return body;
+  }
+
   /// Confirmed with the person: cancels just one real supplier's
   /// part of a real order (matching the confirmed real partial-
   /// cancellation scenario), leaving the rest of the real order

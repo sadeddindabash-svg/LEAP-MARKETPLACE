@@ -3285,6 +3285,32 @@ refund_pending --(admin marks refunded)--+
 builds its own hub and hub-staff login (using the Hub staff feature) so workload checks are exact. Verified to fail when completion stops needing
 both conditions, when supplier isolation is removed, when the buyer-cancel block is removed, or when the hub workload keeps counting returned units.
 
+## Closing a fault case by hand (migration 098)
+
+For a case that gets **stuck** (the hub never confirms the unit's return, a replacement was cancelled by agreement, a case was opened twice): `POST /fault-cases/:id/close` (admin, body `{ note }`). The **written reason is required** (5 to 500 characters) and is kept with who closed it (`closed_manually_by` / `closed_manually_note`, shown to admin as `closedManually`). Effects: the case becomes `completed`, the hub flag gets `resolution = 'fault_closed_manually'` and leaves the queue, and the buyer's return case closes with the usual "this case is now closed" message (both languages). Audit-logged as `fault_case_closed_manually`.
+
+**It is never a way round money:** while the case's outcome is a refund that has not been recorded as **issued**, closing is refused (the buyer is expecting that money): record it as refunded first. A case that is already closed cannot be closed again (the original reason is not overwritten). It can close a case with a replacement on its way, or one the supplier has not answered yet.
+
+**Tested:** `apps/admin-dashboard/src/closeCaseManually.integration.test.js` (5, real backend). Verified to fail when the reason is not required, when a closed case can be closed again, when the refund guard is removed, when the flag stays in the queue, and when the buyer's case is not closed.
+
+## Choosing your own password (migration 099)
+
+A person who was given a **temporary** password (a new hub staff account, or one an admin reset) must choose their own.
+- `users.must_change_password` is set when an admin creates or resets a hub staff account; `POST /auth/login`, `POST /auth/login/2fa` and `GET /auth/me` report it as `user.mustChangePassword`.
+- `PATCH /auth/me/password { currentPassword, newPassword }` (any logged-in person): the current password must be right (401 otherwise), the new one at least 8 characters (200 at most) and different from the current one; it clears the flag. The temporary password stops working at once.
+- The **hub web portal** shows a "set your own password" screen (Chinese / English) before anything else when the flag is set, including when a saved session is reopened (the flag comes from the server).
+
+**HONEST LIMIT:** this is enforced by the portal's screen, **not on the server and not in the hub mobile app**. Blocking the server would lock out staff who only use the mobile app, which does not know about the flag yet; adding it there needs the hub app to be rebuilt.
+
+**Tested:** `passwordChange.integration.test.js` (5, real backend) and the hub portal's `PasswordChangeFlow.test.jsx` (7). A real bug found by the tests on the way: the login queries selected named columns, so the flag was never reported until the new column was added to both.
+
+## Replacement orders: receipt and the hub's list
+
+- **Receipt (`GET /order/:id/receipt`):** for a free replacement (migration 095) the buyer's receipt no longer lists the original unit prices next to a total of $0.00: it is titled "Replacement order receipt (no charge)" (Arabic too) and shows $0.00 prices. An **admin** still sees the real figures. The original order's receipt is unchanged. (`order/receiptHelpers.js`.) Checked by reading the generated PDFs as the buyer, as an admin and for the original order.
+- **Hub list (`GET /hub/me/shipments`):** each shipment now has `replacementFor` (the order the buyer paid for, or `null`); the hub portal tags a replacement in the queue ("补发" / "Replacement"). The detail page already had the banner.
+
+**Tested:** `replacementPolish.integration.test.js` (2) and the pure `receiptHelpers.test.js` (3).
+
 ## Paying the supplier when LEAP bears the cost of a fault (migration 097)
 
 **The rule (decided with the owner):** Leap pays the supplier only **the order, the replacement, and local shipping charges**. Any other cost caused by a supplier's own fault is the supplier's.

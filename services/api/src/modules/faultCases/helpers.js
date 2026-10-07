@@ -262,6 +262,8 @@ async function toAdminDto(client, row) {
       answeredAt: row.supplier_answered_at,
     },
     outcome: row.outcome,
+    // Set when an admin closed the case by hand (migration 098): who and why.
+    closedManually: row.closed_manually_by ? { note: row.closed_manually_note, at: row.completed_at } : null,
     // Only when LEAP bears the cost: what the supplier is owed for the ORIGINAL order, and whether the admin has released it (migration 097).
     supplierPayment: row.cost_bearer === 'leap' ? await supplierPaymentView(client, row) : null,
     // The replacement order (when the outcome is a replacement) and where it is up to: waiting_for_supplier | at_hub | shipped_to_buyer | delivered
@@ -544,7 +546,34 @@ async function maybeComplete(client, caseId, notifications) {
   return done[0];
 }
 
+// An admin closes a case BY HAND, with a written reason (migration 098): for a case that is stuck (the hub never confirms the unit's return, a
+// replacement was cancelled by agreement, a case was opened twice). It is not a way round money: a refund the buyer is expecting has to be
+// recorded as refunded first. The flag leaves the hub queue, and the buyer's return case closes with the usual "this case is closed" message.
+async function closeCaseManually(client, { caseId, adminId, note }) {
+  const { rows } = await client.query('SELECT * FROM fault_cases WHERE id = $1 FOR UPDATE', [caseId]);
+  if (rows.length === 0) throw new FaultCaseError('Fault case not found', 404);
+  const fc = rows[0];
+  const reason = typeof note === 'string' ? note.trim() : '';
+  if (reason.length < 5) throw new FaultCaseError('Write the reason for closing this case (at least a few words): it is kept on the record.');
+  if (reason.length > 500) throw new FaultCaseError('The reason is too long (500 characters at most).');
+  if (fc.status === 'completed') throw new FaultCaseError('This case is already closed.');
+  if (fc.outcome === 'refund' && fc.refund_status !== 'issued') {
+    throw new FaultCaseError('The buyer is expecting a refund that has not been recorded as issued yet. Record it as refunded first, then the case can be closed.');
+  }
+  const { rows: done } = await client.query(
+    `UPDATE fault_cases SET status = 'completed', completed_at = now(), updated_at = now(), closed_manually_by = $1, closed_manually_note = $2 WHERE id = $3 RETURNING *`,
+    [adminId, reason, caseId]
+  );
+  await client.query(
+    `UPDATE hub_shipments SET resolution = 'fault_closed_manually', resolved_at = now(), resolved_by = $1, updated_at = now() WHERE id = $2 AND resolved_at IS NULL`,
+    [adminId, fc.shipment_id]
+  );
+  const notifications = [];
+  const returnCase = await advanceReturnCase(client, await findReturnCase(client, fc.sub_order_id), 'completed', BUYER_TEXT.closed(), notifications);
+  return { faultCase: done[0], returnCase, notifications };
+}
+
 module.exports = {
-  FaultCaseError, createFaultCase, recordSupplierAnswer, confirmRefund, markRefunded, confirmReplacement, releaseSupplierPayment, onShipmentDelivered, recordHubReturn,
+  closeCaseManually, FaultCaseError, createFaultCase, recordSupplierAnswer, confirmRefund, markRefunded, confirmReplacement, releaseSupplierPayment, onShipmentDelivered, recordHubReturn,
   toAdminDto, toHubDto, sendNotifications,
 };

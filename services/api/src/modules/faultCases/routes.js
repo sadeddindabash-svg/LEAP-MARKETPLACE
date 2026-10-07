@@ -127,6 +127,13 @@ router.post('/:id/release-supplier-payment', ...adminOnly, async (req, res, next
   res.json({ faultCase: await helpers.toAdminDto(db, rows[0]) });
 });
 
+router.post('/:id/close', ...adminOnly, async (req, res, next) => {
+  const outcome = await inTransaction(res, next, (client) => helpers.closeCaseManually(client, { caseId: Number(req.params.id), adminId: req.user.sub, note: (req.body || {}).note }));
+  if (!outcome) return;
+  await logAdminAction(req, 'fault_case_closed_manually', 'fault_case', String(outcome.faultCase.id), { note: outcome.faultCase.closed_manually_note, returnCaseId: outcome.returnCase ? outcome.returnCase.id : null });
+  res.json({ faultCase: await helpers.toAdminDto(db, outcome.faultCase), returnCase: outcome.returnCase });
+});
+
 router.post('/:id/mark-refunded', ...adminOnly, async (req, res, next) => {
   const outcome = await inTransaction(res, next, (client) => helpers.markRefunded(client, { caseId: Number(req.params.id), reference: req.body?.reference, adminId: req.user.sub }));
   if (!outcome) return;

@@ -8,6 +8,7 @@ import {
   fetchMyShipments, fetchMyShipmentById, recordShipmentEvent, uploadEvidencePhoto, confirmDelivery,
 } from "./auth";
 import LoginPage from "./LoginPage";
+import ChangePasswordPage from "./ChangePasswordPage";
 import { HubContext, useHub } from "./hubContext";
 import { LangContext, useLang } from "./langContext";
 
@@ -32,6 +33,12 @@ const STRINGS = {
       signIn: "登录", signingIn: "登录中…",
       restricted: "仅限 Leap 质检中心员工访问。",
       noAccess: "该账号没有质检中心访问权限。",
+    },
+    changePassword: {
+      title: "设置您的新密码", intro: "您使用的是管理员提供的临时密码。请先设置自己的密码，之后才能继续使用。",
+      current: "临时密码", newPassword: "新密码（至少 8 位）", confirm: "再次输入新密码",
+      submit: "保存并继续", saving: "保存中…",
+      tooShort: "新密码至少需要 8 位。", mismatch: "两次输入的新密码不一致。", same: "新密码不能与临时密码相同。",
     },
     steps: {
       awaiting_receipt: { label: "待接收", actionLabel: "确认已接收", promptTitle: "接收此包裹", promptHint: "请在拆封前拍摄包裹外观照片。" },
@@ -70,7 +77,7 @@ const STRINGS = {
       stage: { reviewing: "平台仍在决定如何处理此案例。", finalising: "平台正在办理收尾事项。", closed: "此案例已结案。" },
       waitingOnHub: "平台正在等待仓库处理问题商品。",
       sendTo: "寄往（供应商退货地址）", printLabel: "打印退货标签",
-      replacementFor: "这是订单", replacementHint: "的补发件，请按普通包裹处理（接收、检查、发出）。",
+      replacementTag: "补发", replacementFor: "这是订单", replacementHint: "的补发件，请按普通包裹处理（接收、检查、发出）。",
       shipTo: "收货地址（英文）", shipToNone: "买家尚未提供收货地址。",
       shipToAuto: "此英文地址由系统根据买家填写的阿拉伯语地址自动生成，尚未经买家确认。如有疑问，请先联系平台再发货。",
       noReturnAddress: "该供应商尚未填写退货地址。请先联系平台，再寄回问题商品。",
@@ -99,6 +106,12 @@ const STRINGS = {
       signIn: "Sign in", signingIn: "Signing in…",
       restricted: "Access is restricted to Leap inspection hub staff.",
       noAccess: "This account doesn't have inspection hub access.",
+    },
+    changePassword: {
+      title: "Choose your own password", intro: "You signed in with a temporary password an admin gave you. Choose your own password to continue.",
+      current: "Temporary password", newPassword: "New password (at least 8 characters)", confirm: "Repeat the new password",
+      submit: "Save and continue", saving: "Saving…",
+      tooShort: "The new password must be at least 8 characters.", mismatch: "The two new passwords do not match.", same: "The new password must be different from the temporary one.",
     },
     steps: {
       awaiting_receipt: { label: "Awaiting receipt", actionLabel: "Confirm Received", promptTitle: "Receiving this shipment", promptHint: "Photograph the package as it arrives, before opening it." },
@@ -137,7 +150,7 @@ const STRINGS = {
       stage: { reviewing: "The platform is still deciding how to handle this case.", finalising: "The platform is finishing this case.", closed: "This case is closed." },
       waitingOnHub: "The platform is waiting for the hub to deal with the faulty unit.",
       sendTo: "Send it to (the supplier's return address)", printLabel: "Print return label",
-      replacementFor: "This is a replacement for order", replacementHint: "— handle it like any other shipment (receive, inspect, ship).",
+      replacementTag: "Replacement", replacementFor: "This is a replacement for order", replacementHint: "— handle it like any other shipment (receive, inspect, ship).",
       shipTo: "Ship to (English address)", shipToNone: "The buyer has not given a delivery address yet.",
       shipToAuto: "This English address was produced automatically from the address the buyer typed in Arabic, and the buyer has not confirmed it yet. If anything looks wrong, ask the platform before shipping.",
       noReturnAddress: "This supplier has not entered a return address. Please contact the platform before sending the unit back.",
@@ -337,7 +350,10 @@ function QueueScreen({ onOpenShipment }) {
             style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 10, padding: 14, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
           >
             <div>
-              <div style={{ ...body, fontWeight: 700, fontSize: 14, color: C.ink }}>{s.orderId}</div>
+              <div style={{ ...body, fontWeight: 700, fontSize: 14, color: C.ink }}>
+                {s.orderId}
+                {s.replacementFor && <span style={{ marginLeft: 8, padding: "2px 8px", borderRadius: 999, background: C.amberBg, color: C.ink, fontSize: 10.5, fontWeight: 700 }}>{t.detail.replacementTag}</span>}
+              </div>
               <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2 }}>{s.supplierName}</div>
             </div>
             <Badge status={s.status} />
@@ -837,6 +853,7 @@ export default function LeapHubPortalApp() {
     saveToken(token);
     setAuthState({ status: "loggedIn", user });
   };
+  const handlePasswordChanged = () => setAuthState((current) => ({ ...current, user: { ...current.user, mustChangePassword: false } }));
   const handleLogout = () => {
     clearToken();
     setAuthState({ status: "loggedOut", user: null });
@@ -848,7 +865,11 @@ export default function LeapHubPortalApp() {
         <div style={{ ...body, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", color: C.muted, fontSize: 13 }}>{t.checkingSession}</div>
       )}
       {authState.status === "loggedOut" && <LoginPage onLoginSuccess={handleLoginSuccess} />}
-      {authState.status === "loggedIn" && (
+      {/* Signed in with a TEMPORARY password (migration 099): choose your own before anything else. */}
+      {authState.status === "loggedIn" && authState.user.mustChangePassword && (
+        <ChangePasswordPage onDone={handlePasswordChanged} onLogout={handleLogout} />
+      )}
+      {authState.status === "loggedIn" && !authState.user.mustChangePassword && (
         <HubContext.Provider value={{ currentUser: authState.user, onLogout: handleLogout, onSessionExpired: handleLogout }}>
           <HubShell />
         </HubContext.Provider>

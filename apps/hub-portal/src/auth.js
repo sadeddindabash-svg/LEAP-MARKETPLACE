@@ -96,3 +96,15 @@ export async function uploadEvidencePhoto(token, file) {
   if (!response.ok) throw new Error(data.error || `Upload failed (${response.status})`);
   return data; // { url, width, height }
 }
+
+// Chooses the signed-in person's own password (migration 099). Required first of all of someone who signed in with a TEMPORARY one.
+export async function changeMyPassword(token, currentPassword, newPassword) {
+  const response = await fetch(`${API_BASE_URL}/auth/me/password`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `Could not change the password (${response.status})`);
+  return data;
+}

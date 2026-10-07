@@ -1008,6 +1008,8 @@ async function faultCaseRequest(path, token, body) {
 export const openFaultCase = (token, { shipmentId, items, costBearer, notes }) => faultCaseRequest("", token, { shipmentId, items, costBearer, notes });
 export const confirmFaultRefund = (token, caseId, amount) => faultCaseRequest(`/${caseId}/confirm-refund`, token, { amount });
 export const markFaultRefunded = (token, caseId, reference) => faultCaseRequest(`/${caseId}/mark-refunded`, token, { reference });
+// Closes a stuck case by hand, with a written reason that is kept on the record (migration 098).
+export const closeFaultCase = (token, caseId, note) => faultCaseRequest(`/${caseId}/close`, token, { note });
 // When LEAP bears the cost of a fault (migration 097): releases what the supplier is owed for the ORIGINAL order, plus the local shipping charges the admin types.
 export const releaseSupplierPayment = (token, caseId, { localShippingAmount, note }) => faultCaseRequest(`/${caseId}/release-supplier-payment`, token, { localShippingAmount, note });
 

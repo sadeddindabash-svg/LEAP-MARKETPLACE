@@ -244,6 +244,22 @@ describe('Hub Portal — real queue search (mocked fetch, real component tree)',
     await waitFor(() => expect(screen.getByText('LP-100001')).toBeInTheDocument());
   }
 
+  it('CRITICAL: a free REPLACEMENT shipment is tagged in the queue so staff recognise it at a glance; an ordinary one is not', async () => {
+    globalThis.fetch = vi.fn((url) => {
+      const u = String(url);
+      if (u.includes('/auth/login')) return Promise.resolve({ ok: true, json: async () => ({ token: 'fake.jwt.token', user: HUB_USER }) });
+      if (u.includes('/auth/me')) return Promise.resolve({ ok: true, json: async () => HUB_USER });
+      if (u.endsWith('/hub/me/shipments')) return Promise.resolve({ ok: true, json: async () => [{ ...SHIPMENT_A, replacementFor: null }, { ...SHIPMENT_B, replacementFor: 'LP-100001' }] });
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    render(<LeapHubPortalApp />);
+    await loginMulti();
+    const tags = screen.getAllByText('补发');
+    expect(tags).toHaveLength(1);                                   // only the replacement
+    expect(tags[0].parentElement.textContent).toContain('LP-200002'); // and it sits on the replacement's own row
+    expect(screen.getByText('LP-100001').parentElement.textContent).not.toContain('补发');
+  });
+
   it('CRITICAL: searching by a real order ID genuinely narrows the queue to just that shipment', async () => {
     globalThis.fetch = mockFetchRouterMulti();
     render(<LeapHubPortalApp />);

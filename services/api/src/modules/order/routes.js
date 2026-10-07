@@ -11,6 +11,7 @@ const { buildTrackingTimeline } = require('../tracking/liveTracking');
 const { buildSupplierLabelMap } = require('../shared/supplierAnonymize');
 const { logAdminAction } = require('../audit/helpers');
 const { loadProofForShipment } = require('../deliveryProof/helpers');
+const { receiptItemsFor, receiptTitleFor } = require('./receiptHelpers');
 const { refreshEnglishAddress, ensureEnglishAddress, toEnglishDto, validateEnglishAddress, saveEnglishAddress, confirmEnglishAddressAsIs } = require('../addressEnglish/helpers');
 const { STATUS_ORDER } = require('../shared/hubStatusOrder');
 const ArabicReshaper = require('arabic-reshaper');
@@ -1129,7 +1130,7 @@ router.get('/:id/receipt', optionalAuth, async (req, res, next) => {
         }
       : { receiptTitle: 'Order receipt', order: 'Order', placed: 'Placed', customer: 'CUSTOMER', deliveryAddress: 'DELIVERY ADDRESS', guest: 'Guest', item: 'Item', qty: 'Qty', unitPrice: 'Unit price', total: 'Total', discount: 'Discount', totalLine: 'Total' };
 
-    const { rows: items } = await db.query(
+    const { rows: itemRows } = await db.query(
       `SELECT oli.quantity, oli.unit_price, p.name, p.name_ar
        FROM order_line_items oli
        JOIN supplier_sub_orders so ON so.id = oli.sub_order_id
@@ -1137,6 +1138,9 @@ router.get('/:id/receipt', optionalAuth, async (req, res, next) => {
        WHERE so.order_id = $1`,
       [req.params.id]
     );
+    // A free replacement (migration 095) shows no prices to the buyer, and says what it is.
+    const items = receiptItemsFor({ order, isAdmin, items: itemRows });
+    const receiptTitleText = receiptTitleFor({ order, isAr, defaultTitle: t.receiptTitle, shapeArabic });
     const { rows: addressRows } = await db.query('SELECT * FROM order_addresses WHERE order_id = $1', [req.params.id]);
     const address = addressRows[0] || null;
 
@@ -1247,7 +1251,7 @@ router.get('/:id/receipt', optionalAuth, async (req, res, next) => {
     doc.image(logoPath, logoX, headerTop, { width: 40, height: 40 });
     const brandName = isAr ? shapeArabic('ليب لقطع السيارات') : 'Leap Auto Parts';
     doc.fontSize(20).font('Body-Bold').text(brandName, textX, headerTop + 2, { width: textWidth, align: isAr ? 'right' : 'left' });
-    doc.fontSize(10).font('Body').fillColor('#666').text(t.receiptTitle, textX, headerTop + 32, { width: textWidth, align: isAr ? 'right' : 'left' });
+    doc.fontSize(10).font('Body').fillColor('#666').text(receiptTitleText, textX, headerTop + 32, { width: textWidth, align: isAr ? 'right' : 'left' });
     doc.fillColor('#000');
     doc.y = headerTop + 46 + 10;
     doc.moveTo(pageLeft, doc.y).lineTo(pageRight, doc.y).strokeColor('#E4E6EA').stroke();

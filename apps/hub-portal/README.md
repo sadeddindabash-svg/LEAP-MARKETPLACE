@@ -198,9 +198,15 @@ shipment, confirmed searching by a real supplier name does the same,
 and confirmed a search matching nothing shows the real empty state
 rather than an error. 16/16 passing across the full suite.
 
+## Choosing your own password (new, migration 099)
+
+When an admin creates your account, or resets your password, you are given a **temporary** password. The first time you sign in with it, the portal shows **"设置您的新密码 / Choose your own password"** before anything else: type the temporary password, then your new one twice (at least 8 characters, different from the temporary one). Only then does the queue open. The same screen appears if you reopen the portal while still using a temporary password. It is in Chinese and English, with a sign-out button.
+
+**Limit:** this is enforced by the web portal only. The hub **mobile** app does not know about it yet (a rebuilt app is needed), so a staff member who only uses the app can keep using the temporary password until they sign in here once. Tested in `src/PasswordChangeFlow.test.jsx` (7).
+
 ## Replacement shipments (new, migration 095)
 
-When an admin confirms a replacement for a faulty unit, the replacement arrives at the hub as an ordinary shipment (the supplier ships it; you receive, inspect and ship it as usual). Its page shows a banner, **"This is a replacement for order LP-…"**, so staff know what it is. The faulty unit is still handled in its own flagged shipment (return it or discard it, as before). The fault case closes once the replacement has been delivered AND the faulty unit has left the hub. Tested in `src/FlagFlow.test.jsx`.
+When an admin confirms a replacement for a faulty unit, the replacement arrives at the hub as an ordinary shipment (the supplier ships it; you receive, inspect and ship it as usual). In the queue it is tagged **补发 / Replacement**. Its page shows a banner, **"This is a replacement for order LP-…"**, so staff know what it is. The faulty unit is still handled in its own flagged shipment (return it or discard it, as before). The fault case closes once the replacement has been delivered AND the faulty unit has left the hub. Tested in `src/FlagFlow.test.jsx`.
 
 ## Ship to: the delivery address, in English (new, migration 094)
 

@@ -104,7 +104,7 @@ router.post('/', async (req, res, next) => {
     const passwordHash = await bcrypt.hash(temporaryPassword, 10);
     const id = `u_${Date.now()}${crypto.randomInt(100, 1000)}`;
     await db.query(
-      `INSERT INTO users (id, email, name, role, hub_id, password_hash) VALUES ($1, $2, $3, 'hub_staff', $4, $5)`,
+      `INSERT INTO users (id, email, name, role, hub_id, password_hash, must_change_password) VALUES ($1, $2, $3, 'hub_staff', $4, $5, true)`,
       [id, cleanEmail, cleanName, hubId, passwordHash]
     );
     await logAdminAction(req, 'hub_staff_created', 'hub_staff', id, { email: cleanEmail, hubId });
@@ -171,7 +171,7 @@ router.post('/:id/reset-password', async (req, res, next) => {
     if (!current) return res.status(404).json({ error: 'Hub staff account not found.' });
     const temporaryPassword = generateTemporaryPassword();
     const passwordHash = await bcrypt.hash(temporaryPassword, 10);
-    await db.query(`UPDATE users SET password_hash = $1 WHERE id = $2 AND role = 'hub_staff'`, [passwordHash, req.params.id]);
+    await db.query(`UPDATE users SET password_hash = $1, must_change_password = true WHERE id = $2 AND role = 'hub_staff'`, [passwordHash, req.params.id]);
     // The password itself is deliberately NOT part of the audit details.
     await logAdminAction(req, 'hub_staff_password_reset', 'hub_staff', req.params.id, { email: current.email });
     res.json({ staff: current, temporaryPassword });

@@ -3503,6 +3503,15 @@ that language, and also remembers it so a push notification, sent when an event 
   order), and check it reads in Arabic; switch to English and it should read in English.
 - The language shown in the list follows the app's language when the screen opens; an open notifications screen does not re-translate by itself if the language is changed from elsewhere.
 
+## Check your address in English (new, migration 094)
+
+The inspection hub reads the delivery address in **English**. When the server's automatic English version of a buyer's address has not been confirmed by anyone (source `auto`), the order page shows a card, **"Check your address in English / راجع عنوانك بالإنجليزية"**, with the English lines and two buttons: **It is correct** (confirms it as it is) and **Edit** (five fields; the app checks they are in English letters, and the server checks again). After confirming, the card disappears. An address already written in English needs no check, and nothing is shown for it.
+
+Also: the order page's **Cancel** button no longer shows for a part whose faulty unit has already left the hub (the server refused those anyway).
+
+- Needs a **rebuilt app**.
+- **HONEST LIMITATION:** read, bracket-checked and parsed with a real Dart grammar, but **not compiled or run** (no Flutter SDK in the sandbox). Please run `flutter analyze` and `flutter test` in `apps\mobile` and send me the output. To try it: place an order with an Arabic address, open it in the app, and the card should appear.
+
 ## Proof of delivery photos (new, migration 096)
 
 When the courier delivers a parcel and sends photos through the QR on its label, the buyer sees them on the order page: a **"Proof of delivery" / "إثبات التسليم"** row of thumbnails under that part of the order, and tapping one opens it full size (pinch to zoom, × to close). A part with no photos shows nothing extra.

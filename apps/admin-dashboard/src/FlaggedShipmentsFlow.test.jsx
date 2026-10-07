@@ -302,6 +302,45 @@ describe('Flagged Shipments — the two verdicts: no fault, or a real fault (moc
     expect(within(dialogTitled(REPLACE_TITLE)).getByText(/Leap bears the cost: the supplier is paid for the replacement/)).toBeInTheDocument();
   });
 
+  // ---- closing a stuck case by hand (migration 098) ----
+  const CLOSE_URL = /\/fault-cases\/9\/close$/;
+  const CLOSE_TITLE = 'Close case manually — LP-900555';
+  const CLOSE_LABEL = 'Why is this case being closed by hand? (required: it is kept on the record, and the buyer is told the case is closed)';
+
+  it('CRITICAL: a case that is still open offers "Close case manually…", and a flag with no case yet does not', async () => {
+    await openFlaggedPage({ flagged: [flag({ faultCase: faultCase({ status: 'replacement_pending', outcome: 'replacement', supplier: SUPPLIER_YES }) })] });
+    expect(screen.getByRole('button', { name: /close case manually…/i })).toBeEnabled();
+  });
+
+  it('a flag still waiting for a verdict has no case to close', async () => {
+    await openFlaggedPage({ flagged: [flag()] });
+    expect(screen.queryByRole('button', { name: /close case manually…/i })).not.toBeInTheDocument();
+  });
+
+  it('CRITICAL: closing sends the written reason (trimmed) and says what happened to the flag and the buyer', async () => {
+    const calls = [];
+    const handlers = [{ method: 'POST', match: CLOSE_URL, respond: () => ({ body: { faultCase: { id: 9, status: 'completed' }, returnCase: { id: 'RC-7', status: 'completed', updated: true } } }) }];
+    await openFlaggedPage({ flagged: [flag({ faultCase: faultCase({ status: 'awaiting_admin', supplier: SUPPLIER_NO }) })], handlers, calls });
+    fireEvent.click(screen.getByRole('button', { name: /close case manually…/i }));
+    const panel = dialogTitled(CLOSE_TITLE);
+    fireEvent.change(fieldIn(panel, CLOSE_LABEL), { target: { value: '  The hub never confirmed the return  ' } });
+    expect(calls).toHaveLength(0);
+    fireEvent.click(within(panel).getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(screen.getByText('Case closed. The flag has left the queue, and the buyer was told their case is closed.')).toBeInTheDocument());
+    expect(calls).toHaveLength(1);
+    expect(calls[0].body).toEqual({ note: 'The hub never confirmed the return' });
+  });
+
+  it('a refusal from the server (no reason, or a refund still owed) is shown in the dialog and nothing is claimed as closed', async () => {
+    const handlers = [{ method: 'POST', match: CLOSE_URL, respond: () => ({ status: 400, body: { error: 'The buyer is expecting a refund that has not been recorded as issued yet. Record it as refunded first, then the case can be closed.' } }) }];
+    await openFlaggedPage({ flagged: [flag({ faultCase: faultCase({ status: 'refund_pending', outcome: 'refund', refund: { amount: 30, status: 'pending', reference: null } }) })], handlers });
+    fireEvent.click(screen.getByRole('button', { name: /close case manually…/i }));
+    const panel = dialogTitled(CLOSE_TITLE);
+    fireEvent.click(within(panel).getByRole('button', { name: /^save$/i }));
+    expect(await within(panel).findByText(/expecting a refund that has not been recorded as issued yet/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Case closed\./)).not.toBeInTheDocument();
+  });
+
   // ---- supplier payment when LEAP bears the cost (migration 097) ----
   const RELEASE_URL = /\/fault-cases\/9\/release-supplier-payment$/;
   const replacementCase = (over = {}) => faultCase({

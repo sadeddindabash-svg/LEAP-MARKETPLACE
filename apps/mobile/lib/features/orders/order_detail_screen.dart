@@ -177,6 +177,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
   // suggestion at checkout; a real logged-in buyer should never
   // actually see this (their address is required at checkout), but
   // it's handled here too in case of any real edge case.
+  // True only for an automatic English address that nobody has confirmed (source 'auto'). An address already written in English ('same') needs no check.
+  bool _needsEnglishAddressCheck() {
+    final english = _order?['addressEnglish'];
+    return _order?['address'] != null && english is Map<String, dynamic> && english['source'] == 'auto';
+  }
+
   Widget _buildPendingAddressBanner() {
     final isAr = Localizations.localeOf(context).languageCode == 'ar';
     return Container(
@@ -419,6 +425,16 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
             _buildPendingAddressBanner()
           else
             _buildConfirmedAddress(_order!['address'] as Map<String, dynamic>),
+          // The inspection hub reads the address in English. When it is only a machine's guess nobody has confirmed, the buyer is asked to check it.
+          if (_needsEnglishAddressCheck())
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: _EnglishAddressCard(
+                orderId: widget.orderId,
+                english: _order!['addressEnglish'] as Map<String, dynamic>,
+                onConfirmed: () => _load(silent: true),
+              ),
+            ),
           const SizedBox(height: 20),
           Text(tr(context, 'shipped_by'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
           const SizedBox(height: 8),
@@ -556,7 +572,149 @@ bool isSubOrderCancellable(Map<String, dynamic> subOrder) {
   final hubShipment = subOrder['hubShipment'] as Map<String, dynamic>?;
   final hubStatus = hubShipment?['status'] as String?;
   if (hubStatus == 'shipped_to_buyer' || hubStatus == 'delivered') return false;
+  // The faulty unit has already left the hub and its refund / replacement is handled as a fault case: the server refuses a cancellation too.
+  if (hubStatus == 'returned_to_supplier' || hubStatus == 'discarded_at_hub') return false;
   return true;
+}
+
+/// Asks the buyer to check the English version of their delivery address: "It is correct" confirms it as it is, "Edit" lets them correct it.
+class _EnglishAddressCard extends StatefulWidget {
+  final String orderId;
+  final Map<String, dynamic> english;
+  final Future<void> Function() onConfirmed;
+  const _EnglishAddressCard({required this.orderId, required this.english, required this.onConfirmed});
+
+  @override
+  State<_EnglishAddressCard> createState() => _EnglishAddressCardState();
+}
+
+class _EnglishAddressCardState extends State<_EnglishAddressCard> {
+  static final RegExp _arabic = RegExp(r'[\u0600-\u06FF]');
+  bool _editing = false;
+  bool _saving = false;
+  String? _error;
+  late final TextEditingController _name = TextEditingController(text: (widget.english['recipientName'] as String?) ?? '');
+  late final TextEditingController _country = TextEditingController(text: (widget.english['country'] as String?) ?? '');
+  late final TextEditingController _city = TextEditingController(text: (widget.english['city'] as String?) ?? '');
+  late final TextEditingController _street = TextEditingController(text: (widget.english['streetAddress'] as String?) ?? '');
+  late final TextEditingController _state = TextEditingController(text: (widget.english['state'] as String?) ?? '');
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _country.dispose();
+    _city.dispose();
+    _street.dispose();
+    _state.dispose();
+    super.dispose();
+  }
+
+  List<String> _lines() {
+    final values = [widget.english['recipientName'], widget.english['streetAddress'], widget.english['city'], widget.english['state'], widget.english['country']];
+    return [for (final v in values) if (v is String && v.trim().isNotEmpty) v];
+  }
+
+  Future<void> _submit({Map<String, String>? edits}) async {
+    final token = context.read<AuthState>().token;
+    if (token == null) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await ApiClient().confirmOrderAddressEnglish(token, widget.orderId, edits: edits);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr(context, 'english_address_thanks'))));
+      await widget.onConfirmed();
+      // Normally the reload removes this card (the address is now confirmed); if it is still here, let the buyer try again.
+      if (mounted) setState(() => _saving = false);
+    } on ApiException catch (e) {
+      if (mounted) setState(() { _saving = false; _error = e.message; });
+    } catch (_) {
+      if (mounted) setState(() { _saving = false; _error = tr(context, 'something_went_wrong'); });
+    }
+  }
+
+  void _save() {
+    final values = <String, String>{
+      'recipientName': _name.text.trim(),
+      'country': _country.text.trim(),
+      'city': _city.text.trim(),
+      'streetAddress': _street.text.trim(),
+      'state': _state.text.trim(),
+    };
+    final missing = ['recipientName', 'country', 'city', 'streetAddress'].any((key) => values[key]!.isEmpty);
+    if (missing) {
+      setState(() => _error = tr(context, 'english_address_required'));
+      return;
+    }
+    if (values.values.any((v) => _arabic.hasMatch(v))) {
+      setState(() => _error = tr(context, 'english_address_arabic_error'));
+      return;
+    }
+    _submit(edits: values);
+  }
+
+  Widget _field(TextEditingController controller, String labelKey) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: TextField(
+          controller: controller,
+          textDirection: TextDirection.ltr,
+          decoration: InputDecoration(labelText: tr(context, labelKey), isDense: true, border: const OutlineInputBorder()),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.translate, size: 18),
+                const SizedBox(width: 8),
+                Expanded(child: Text(tr(context, 'english_address_title'), style: const TextStyle(fontWeight: FontWeight.w700))),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(tr(context, 'english_address_intro'), style: TextStyle(fontSize: 12.5, color: LeapPalette.of(context).muted)),
+            const SizedBox(height: 10),
+            if (!_editing) ...[
+              for (final line in _lines()) Text(line, textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 14)),
+            ] else ...[
+              _field(_name, 'english_address_name'),
+              _field(_street, 'english_address_street'),
+              _field(_city, 'english_address_city'),
+              _field(_state, 'english_address_state'),
+              _field(_country, 'english_address_country'),
+            ],
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(_error!, style: const TextStyle(color: Color(0xFFC0362C), fontSize: 12.5)),
+              ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _editing
+                  ? [
+                      ElevatedButton(onPressed: _saving ? null : _save, child: Text(tr(context, 'save'))),
+                      OutlinedButton(onPressed: _saving ? null : () => setState(() { _editing = false; _error = null; }), child: Text(tr(context, 'cancel'))),
+                    ]
+                  : [
+                      ElevatedButton(onPressed: _saving ? null : () => _submit(), child: Text(tr(context, 'english_address_ok'))),
+                      OutlinedButton(onPressed: _saving ? null : () => setState(() => _editing = true), child: Text(tr(context, 'edit'))),
+                    ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// Opens a delivery proof photo full size (pinch to zoom, X to close).

@@ -31,7 +31,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchSupplierAnalytics,
   fetchHubWorkload, updateHubCapacity,
   fetchHubStaff, createHubStaff, updateHubStaff, setHubStaffDisabled, resetHubStaffPassword,
-  resolveFlaggedShipment, openFaultCase, confirmFaultRefund, markFaultRefunded, fetchSupplierReturnAddress, saveSupplierReturnAddress, updateOrderAddressEnglish, confirmFaultReplacement, releaseSupplierPayment,
+  resolveFlaggedShipment, openFaultCase, confirmFaultRefund, markFaultRefunded, fetchSupplierReturnAddress, saveSupplierReturnAddress, updateOrderAddressEnglish, confirmFaultReplacement, releaseSupplierPayment, closeFaultCase,
   fetchHubPerformance,
   fetchFlaggedReviews, dismissReviewFlags,
   searchAdmin,
@@ -4199,6 +4199,7 @@ function HubStaffSection({ hubs, onSessionExpired }) {
             <p style={{ ...body, fontSize: 12.5, color: C.muted, margin: "0 0 12px" }}>
               Give them this temporary password and their login email (<strong>{reveal.member.email}</strong>). Share it privately.
               {reveal.reason === "reset" && " Their old password no longer works."}
+              {" They will be asked to choose their own password the first time they sign in to the hub portal."}
             </p>
             <div style={{ ...mono, fontSize: 18, fontWeight: 700, letterSpacing: "0.04em", color: C.ink, background: C.canvas, border: `1px dashed ${C.line}`, borderRadius: 8, padding: "12px 14px", textAlign: "center", userSelect: "all" }}>
               {reveal.temporaryPassword}
@@ -5511,7 +5512,7 @@ function FaultCaseDialog({ shipment, onCancel, onSubmit, isSaving, errorMessage 
 }
 
 // What has happened so far on a confirmed fault, and the next thing the admin can do.
-function FaultCasePanel({ faultCase, onRefund, onReplace, onReleasePayment, onMarkRefunded }) {
+function FaultCasePanel({ faultCase, onRefund, onReplace, onReleasePayment, onMarkRefunded, onCloseCase }) {
   const st = FAULT_STATUS[faultCase.status] || FAULT_STATUS.awaiting_supplier;
   const sup = faultCase.supplier;
   const row = { ...body, fontSize: 12.5, color: C.ink, marginTop: 4 };
@@ -5593,6 +5594,12 @@ function FaultCasePanel({ faultCase, onRefund, onReplace, onReleasePayment, onMa
           <button onClick={onMarkRefunded} style={{ ...btn, border: "none", background: C.signal, color: C.onSignal }}>Mark as refunded…</button>
         </div>
       )}
+      {/* For a case that is stuck (the hub never confirms the return, a replacement was cancelled by agreement, a case opened twice): migration 098. */}
+      {faultCase.status !== "completed" && (
+        <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.line}` }}>
+          <button onClick={onCloseCase} style={{ ...btn, border: `1px solid ${C.line}`, background: "#fff", color: C.muted }}>Close case manually…</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -5670,6 +5677,13 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
     return `Released: original order ${usd2(sp.originalOrder)}${sp.localShipping ? ` + local shipping ${usd2(sp.localShipping)}` : ""}. It is included in the supplier's next payout.`;
   });
 
+  const handleCloseCase = (values) => run(async () => {
+    const result = await closeFaultCase(getStoredToken(), action.shipment.faultCase.id, (values.note || "").trim());
+    return result.returnCase && result.returnCase.updated
+      ? "Case closed. The flag has left the queue, and the buyer was told their case is closed."
+      : "Case closed. The flag has left the queue.";
+  });
+
   const handleIssued = (values) => run(async () => {
     const result = await markFaultRefunded(getStoredToken(), action.shipment.faultCase.id, (values.reference || "").trim());
     return result.faultCase.status === "completed"
@@ -5686,6 +5700,9 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
       const r = action.shipment.faultCase.refundSuggestion;
       const detail = r.discountShare > 0 ? ` (ordered ${usd2(r.orderedValue)}, minus ${usd2(r.discountShare)} discount)` : "";
       return [{ key: "amount", label: `Refund amount (USD) — defaults to what the buyer paid for these items: ${usd2(r.suggested)}${detail}`, value: r.suggested.toFixed(2), type: "number" }];
+    }
+    if (action.type === "close") {
+      return [{ key: "note", label: "Why is this case being closed by hand? (required: it is kept on the record, and the buyer is told the case is closed)", value: "" }];
     }
     if (action.type === "release") {
       const sp = action.shipment.faultCase.supplierPayment;
@@ -5795,7 +5812,7 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
                     </div>
                   )}
                   {s.faultCase && (
-                    <FaultCasePanel faultCase={s.faultCase} onRefund={() => open("refund", s)} onReplace={() => open("replace", s)} onReleasePayment={() => open("release", s)} onMarkRefunded={() => open("issued", s)} />
+                    <FaultCasePanel faultCase={s.faultCase} onRefund={() => open("refund", s)} onReplace={() => open("replace", s)} onReleasePayment={() => open("release", s)} onMarkRefunded={() => open("issued", s)} onCloseCase={() => open("close", s)} />
                   )}
                 </div>
               </Card>
@@ -5828,10 +5845,10 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
         <FaultCaseDialog shipment={action.shipment} onCancel={close} onSubmit={handleOpenFault} isSaving={isSaving} errorMessage={dialogError} />
       )}
       <EditDialog
-        isOpen={action?.type === "refund" || action?.type === "issued" || action?.type === "release"}
-        title={action?.type === "refund" ? `Refund the buyer — ${action.shipment.orderId}` : action?.type === "issued" ? `Mark as refunded — ${action.shipment.orderId}` : action?.type === "release" ? `Release supplier payment — ${action.shipment.orderId}` : ""}
+        isOpen={action?.type === "refund" || action?.type === "issued" || action?.type === "release" || action?.type === "close"}
+        title={action?.type === "refund" ? `Refund the buyer — ${action.shipment.orderId}` : action?.type === "issued" ? `Mark as refunded — ${action.shipment.orderId}` : action?.type === "release" ? `Release supplier payment — ${action.shipment.orderId}` : action?.type === "close" ? `Close case manually — ${action.shipment.orderId}` : ""}
         fields={editFields}
-        onSave={action?.type === "refund" ? handleRefund : action?.type === "release" ? handleRelease : handleIssued}
+        onSave={action?.type === "refund" ? handleRefund : action?.type === "release" ? handleRelease : action?.type === "close" ? handleCloseCase : handleIssued}
         onCancel={close}
         errorMessage={dialogError}
         isSaving={isSaving}
@@ -8013,7 +8030,7 @@ const AUDIT_ACTION_TYPES = [
   // Hub staff account management (migration 089)
   'hub_staff_created', 'hub_staff_updated', 'hub_staff_disabled', 'hub_staff_enabled', 'hub_staff_password_reset',
   // Resolving a flagged hub shipment (migration 090)
-  'flagged_shipment_resolved', 'fault_case_created', 'fault_case_refund_confirmed', 'fault_case_refund_issued', 'supplier_return_address_updated', 'order_address_english_updated', 'fault_case_replacement_confirmed', 'fault_case_supplier_payment_released',
+  'flagged_shipment_resolved', 'fault_case_created', 'fault_case_refund_confirmed', 'fault_case_refund_issued', 'supplier_return_address_updated', 'order_address_english_updated', 'fault_case_replacement_confirmed', 'fault_case_supplier_payment_released', 'fault_case_closed_manually',
   // Real catalog/fitment reference-data and product-listing moderation
   // actions (new) -- confirmed genuinely missing from the audit trail
   // entirely before this, despite this page's own scope already

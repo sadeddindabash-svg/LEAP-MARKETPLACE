@@ -436,9 +436,10 @@ async function attachEventsAndPhotos(shipmentRow) {
 router.get('/me/shipments', requireAuth, requireRole('hub_staff'), async (req, res, next) => {
   try {
     const { rows } = await db.query(
-      `SELECT hs.id, hs.status, hs.created_at, hs.updated_at, so.id AS sub_order_id, so.order_id, s.name AS supplier_name
+      `SELECT hs.id, hs.status, hs.created_at, hs.updated_at, so.id AS sub_order_id, so.order_id, s.name AS supplier_name, o.replacement_of
        FROM hub_shipments hs
        JOIN supplier_sub_orders so ON so.id = hs.sub_order_id
+       JOIN orders o ON o.id = so.order_id
        JOIN suppliers s ON s.id = so.supplier_id
        WHERE hs.hub_id = $1
        ORDER BY hs.created_at ASC`,
@@ -447,6 +448,7 @@ router.get('/me/shipments', requireAuth, requireRole('hub_staff'), async (req, r
     res.json(rows.map((r) => ({
       id: r.id, status: r.status, createdAt: r.created_at, updatedAt: r.updated_at,
       subOrderId: r.sub_order_id, orderId: r.order_id, supplierName: r.supplier_name,
+      replacementFor: r.replacement_of || null, // a free REPLACEMENT for a faulty unit (migration 095): the order the buyer paid for
     })));
   } catch (err) {
     next(err);
