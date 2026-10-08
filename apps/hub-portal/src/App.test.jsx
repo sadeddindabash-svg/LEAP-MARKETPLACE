@@ -260,6 +260,30 @@ describe('Hub Portal — real queue search (mocked fetch, real component tree)',
     expect(screen.getByText('LP-100001').parentElement.textContent).not.toContain('补发');
   });
 
+  it('CRITICAL: a flag the platform has CLOSED is shown as Closed in the queue and is not under the "Flagged" filter; an open flag still is', async () => {
+    const OPEN_FLAG = { ...SHIPMENT_B, id: 3, subOrderId: 103, orderId: 'LP-300003', status: 'flagged', resolution: null, resolvedAt: null };
+    const CLOSED_FLAG = { ...SHIPMENT_B, id: 4, subOrderId: 104, orderId: 'LP-400004', status: 'flagged', resolution: 'fault_closed_manually', resolvedAt: '2026-07-20T00:00:00.000Z' };
+    globalThis.fetch = vi.fn((url) => {
+      const u = String(url);
+      if (u.includes('/auth/login')) return Promise.resolve({ ok: true, json: async () => ({ token: 'fake.jwt.token', user: HUB_USER }) });
+      if (u.includes('/auth/me')) return Promise.resolve({ ok: true, json: async () => HUB_USER });
+      if (u.endsWith('/hub/me/shipments')) return Promise.resolve({ ok: true, json: async () => [SHIPMENT_A, OPEN_FLAG, CLOSED_FLAG] });
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    render(<LeapHubPortalApp />);
+    await loginMulti();
+    // "all": every shipment is there; the open flag says Flagged, the closed one says Closed
+    expect(screen.getByText('LP-300003')).toBeInTheDocument();
+    expect(screen.getByText('LP-400004')).toBeInTheDocument();
+    expect(screen.getByText('已标记问题')).toBeInTheDocument();
+    expect(screen.getByText('已关闭')).toBeInTheDocument();
+    // the "Flagged" filter keeps only the OPEN flag
+    fireEvent.click(screen.getByRole('button', { name: /^已标记/ }));
+    expect(screen.getByText('LP-300003')).toBeInTheDocument();
+    expect(screen.queryByText('LP-400004')).not.toBeInTheDocument();
+    expect(screen.queryByText('LP-100001')).not.toBeInTheDocument();
+  });
+
   it('CRITICAL: searching by a real order ID genuinely narrows the queue to just that shipment', async () => {
     globalThis.fetch = mockFetchRouterMulti();
     render(<LeapHubPortalApp />);

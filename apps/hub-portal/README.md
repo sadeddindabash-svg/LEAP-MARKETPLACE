@@ -198,6 +198,10 @@ shipment, confirmed searching by a real supplier name does the same,
 and confirmed a search matching nothing shows the real empty state
 rather than an error. 16/16 passing across the full suite.
 
+## Closed flags (new, migration 098)
+
+When the platform **closes a flag by hand** (a stuck case), the shipment is shown as **Closed / 已关闭** in the queue (grey), is no longer listed under the **Flagged** filter, and its page says the platform has closed the case and **nothing more is needed from the hub**: the "send the unit back / discard" panel is gone. A flag that is still open is unchanged. Tested in `src/FlagFlow.test.jsx` and `src/App.test.jsx`.
+
 ## Choosing your own password (new, migration 099)
 
 When an admin creates your account, or resets your password, you are given a **temporary** password. The first time you sign in with it, the portal shows **"设置您的新密码 / Choose your own password"** before anything else: type the temporary password, then your new one twice (at least 8 characters, different from the temporary one). Only then does the queue open. The same screen appears if you reopen the portal while still using a temporary password. It is in Chinese and English, with a sign-out button.

@@ -88,6 +88,26 @@ describe.runIf(backendUp)('closing a fault case by hand (real backend)', () => {
     expect((Array.isArray(log) ? log : log.entries).some((e) => e.targetId === String(c.caseId))).toBe(true);
   }, 90000);
 
+  it('CRITICAL: what the HUB sees: while the case is open the unit must be sent back; once an admin closes it by hand the flag is shown as resolved and the hub is no longer asked to send anything back', async () => {
+    const c = await flaggedCase();
+    const hubList = async () => (await fetch(`${BACKEND_URL}/hub/me/shipments`, { headers: auth(await hubToken()) }).then((r) => r.json())).find((s) => s.id === c.shipmentId);
+    const hubDetail = async () => fetch(`${BACKEND_URL}/hub/me/shipments/${c.shipmentId}`, { headers: auth(await hubToken()) }).then((r) => r.json());
+
+    const open = await hubDetail();
+    expect(open.faultCase).toMatchObject({ needsReturn: true, platformStage: 'reviewing' });   // open: the unit has to go back
+    expect(await hubList()).toMatchObject({ status: 'flagged', resolution: null, resolvedAt: null });
+
+    expect((await close(c.caseId, 'The hub never confirmed the return; closed by hand')).status).toBe(200);
+    const closed = await hubDetail();
+    expect(closed.status).toBe('flagged');                                                   // the shipment keeps its status...
+    expect(closed.resolution).toBe('fault_closed_manually');                                 // ...but is marked resolved
+    expect(closed.faultCase).toMatchObject({ needsReturn: false, platformStage: 'closed' }); // and the hub is NOT asked to send anything back
+    const listed = await hubList();
+    expect(listed.resolution).toBe('fault_closed_manually');
+    expect(listed.resolvedAt).toBeTruthy();                                                  // so the hub's queue can show it as Closed
+    expect(JSON.stringify(closed.faultCase)).not.toMatch(/refund|costBearer|cost_bearer/i);  // and still nothing about money
+  }, 90000);
+
   it('a case that is already closed cannot be closed again, and nothing about it changes', async () => {
     const c = await flaggedCase();
     expect((await close(c.caseId, 'First close, for a good reason')).status).toBe(200);

@@ -145,6 +145,31 @@ describe('Hub Portal — dealing with a faulty unit after the platform confirms 
     await waitFor(() => expect(document.querySelector('img[src*="evidence.jpg"]')).toBeInTheDocument());
   }
 
+  it('CRITICAL: a flag the platform CLOSED BY HAND shows "Closed" and says nothing more is needed: no "send the unit back" panel, no red Flagged badge', async () => {
+    await openFaultShipment({ resolution: 'fault_closed_manually', resolvedAt: '2026-07-20T00:00:00.000Z', faultCase: FAULT({ needsReturn: false, platformStage: 'closed' }) });
+    expect(await screen.findByText(/平台已关闭此问题案件：此包裹无需再处理。/)).toBeInTheDocument();
+    expect(screen.getAllByText('已关闭').length).toBeGreaterThan(0);                           // the badge (and the stage line)
+    expect(screen.queryByText('已标记问题')).not.toBeInTheDocument();                           // not the red "flagged" badge any more
+    expect(screen.queryByText('平台已确认存在质量问题——请处理问题商品')).not.toBeInTheDocument(); // not asked to deal with the unit
+    expect(screen.queryByText('退回供应商')).not.toBeInTheDocument();
+    expect(screen.queryByText('在仓库销毁')).not.toBeInTheDocument();
+  });
+
+  it('...and the same in English', async () => {
+    await openFaultShipment({ resolution: 'fault_closed_manually', resolvedAt: '2026-07-20T00:00:00.000Z', faultCase: FAULT({ needsReturn: false, platformStage: 'closed' }) });
+    await screen.findByText(/平台已关闭此问题案件/);
+    fireEvent.click(screen.getByRole('button', { name: 'EN' }));
+    expect(await screen.findByText('The platform has closed this case: nothing more is needed from the hub for this shipment.')).toBeInTheDocument();
+    expect(screen.getAllByText('Closed').length).toBeGreaterThan(0);
+  });
+
+  it('an OPEN flag is unchanged: still the red Flagged badge, still asked to deal with the unit', async () => {
+    await openFaultShipment({ resolvedAt: null });
+    expect(await screen.findByText('平台已确认存在质量问题——请处理问题商品')).toBeInTheDocument();
+    expect(screen.getByText('已标记问题')).toBeInTheDocument();
+    expect(screen.queryByText('已关闭')).not.toBeInTheDocument();
+  });
+
   it('CRITICAL: shows what to send back and both ways to deal with it, instead of "awaiting platform review"', async () => {
     await openFaultShipment();
     expect(await screen.findByText('平台已确认存在质量问题——请处理问题商品')).toBeInTheDocument();

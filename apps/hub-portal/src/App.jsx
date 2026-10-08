@@ -51,6 +51,7 @@ const STRINGS = {
       flagged: { label: "已标记问题" },
       returned_to_supplier: { label: "已退回供应商" },
       discarded_at_hub: { label: "已销毁" },
+      closed: { label: "已关闭" },
     },
     filters: { all: "全部", awaiting_receipt: "待接收", in_progress: "处理中", shipped_to_buyer: "已发货", delivered: "已送达", flagged: "已标记" },
     queue: {
@@ -89,6 +90,9 @@ const STRINGS = {
         return_to_supplier: "平台已处理：此包裹将退回供应商。",
         discard: "平台已处理：此包裹已作废，不会寄给买家。",
         replacement_requested: "平台已处理：已向供应商申请换货。",
+        fault_closed_manually: "平台已关闭此问题案件：此包裹无需再处理。",
+        fault_refund: "平台已处理此问题案件：无需再处理。",
+        fault_replacement: "平台已处理此问题案件（已安排补发）：无需再处理。",
       },
       completedBanner: "此包裹已完成送达买家的全部流程。",
       history: "历史记录", noSteps: "暂无记录步骤。",
@@ -124,6 +128,7 @@ const STRINGS = {
       flagged: { label: "Flagged" },
       returned_to_supplier: { label: "Returned to supplier" },
       discarded_at_hub: { label: "Discarded" },
+      closed: { label: "Closed" },
     },
     filters: { all: "All", awaiting_receipt: "Awaiting receipt", in_progress: "In progress", shipped_to_buyer: "Shipped", delivered: "Delivered", flagged: "Flagged" },
     queue: {
@@ -162,6 +167,9 @@ const STRINGS = {
         return_to_supplier: "Resolved by the platform: this shipment is being returned to the supplier.",
         discard: "Resolved by the platform: this shipment was discarded and will not go to the buyer.",
         replacement_requested: "Resolved by the platform: a replacement has been requested from the supplier.",
+        fault_closed_manually: "The platform has closed this case: nothing more is needed from the hub for this shipment.",
+        fault_refund: "Resolved by the platform: nothing more is needed from the hub.",
+        fault_replacement: "Resolved by the platform: a replacement was arranged, nothing more is needed from the hub.",
       },
       completedBanner: "This shipment has completed its journey to the buyer.",
       history: "History", noSteps: "No steps recorded yet.",
@@ -195,6 +203,10 @@ const STATUS_COLOR = {
   delivered: [C.gauge, C.gaugeBg],
   flagged: [C.red, C.redBg], returned_to_supplier: [C.red, C.redBg], discarded_at_hub: [C.red, C.redBg],
 };
+
+// A flag the platform has CLOSED (migration 098: closed by hand, the shipment keeps its "flagged" status but has a resolution) is shown as Closed,
+// not as an open problem.
+const displayStatusOf = (shipment) => (shipment.status === "flagged" && shipment.resolvedAt ? "closed" : shipment.status);
 
 function Badge({ status }) {
   const { t } = useLang();
@@ -295,7 +307,7 @@ function QueueScreen({ onOpenShipment }) {
   const filtered = shipments.filter((s) => {
     if (filter === "all") { /* no status filter */ }
     else if (filter === "in_progress") { if (!IN_PROGRESS_STATUSES.includes(s.status)) return false; }
-    else if (filter === "flagged") { if (!FLAGGED_STATUSES.includes(s.status)) return false; }
+    else if (filter === "flagged") { if (!FLAGGED_STATUSES.includes(s.status) || displayStatusOf(s) === "closed") return false; } // a closed flag is no longer an open problem
     else if (s.status !== filter) return false;
 
     if (searchQuery.trim()) {
@@ -356,7 +368,7 @@ function QueueScreen({ onOpenShipment }) {
               </div>
               <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2 }}>{s.supplierName}</div>
             </div>
-            <Badge status={s.status} />
+            <Badge status={displayStatusOf(s)} />
           </div>
         ))}
       </div>
@@ -536,7 +548,7 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
           <div style={{ ...disp, fontSize: 18, fontWeight: 700, color: C.ink }}>{shipment.orderId}</div>
           <div style={{ ...body, fontSize: 11.5, color: C.muted }}>{shipment.supplierName}</div>
         </div>
-        <div style={{ marginLeft: "auto" }}><Badge status={shipment.status} /></div>
+        <div style={{ marginLeft: "auto" }}><Badge status={displayStatusOf(shipment)} /></div>
       </div>
 
       <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>

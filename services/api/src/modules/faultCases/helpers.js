@@ -289,7 +289,8 @@ async function toHubDto(client, row) {
     id: row.id,
     items: (await loadItems(client, row.id)).map(({ productId, name, quantity }) => ({ productId, name, quantity })),
     hubReturn: row.hub_return,
-    needsReturn: row.hub_return === null,
+    // Once the case is CLOSED (even by hand, with the unit never recorded as returned) the hub has nothing left to do for it.
+    needsReturn: row.status !== 'completed' && row.hub_return === null,
     // Where to send the unit (migration 092): the supplier's return address, or null if they haven't entered one.
     returnAddress: await getReturnAddress(await supplierIdOf(client, row.sub_order_id), client),
     // Where the PLATFORM is on this case, in words that say nothing about money or who decided what:

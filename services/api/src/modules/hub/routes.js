@@ -437,7 +437,7 @@ async function attachEventsAndPhotos(shipmentRow) {
 router.get('/me/shipments', requireAuth, requireRole('hub_staff'), async (req, res, next) => {
   try {
     const { rows } = await db.query(
-      `SELECT hs.id, hs.status, hs.created_at, hs.updated_at, so.id AS sub_order_id, so.order_id, s.name AS supplier_name, o.replacement_of
+      `SELECT hs.id, hs.status, hs.created_at, hs.updated_at, so.id AS sub_order_id, so.order_id, s.name AS supplier_name, o.replacement_of, hs.resolution, hs.resolved_at
        FROM hub_shipments hs
        JOIN supplier_sub_orders so ON so.id = hs.sub_order_id
        JOIN orders o ON o.id = so.order_id
@@ -450,6 +450,9 @@ router.get('/me/shipments', requireAuth, requireRole('hub_staff'), async (req, r
       id: r.id, status: r.status, createdAt: r.created_at, updatedAt: r.updated_at,
       subOrderId: r.sub_order_id, orderId: r.order_id, supplierName: r.supplier_name,
       replacementFor: r.replacement_of || null, // a free REPLACEMENT for a faulty unit (migration 095): the order the buyer paid for
+      // How the platform closed a flag (null while it is still open): lets the hub show a closed flag as CLOSED, not as an open problem.
+      resolution: r.resolution || null,
+      resolvedAt: r.resolved_at || null,
     })));
   } catch (err) {
     next(err);
