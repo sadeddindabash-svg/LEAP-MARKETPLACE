@@ -21,6 +21,9 @@ const isTestVehicleBrand = (name) => looksLikeTest(name);
 const isTestHub = ({ id, name }) => !/^hub_(guangzhou|ningbo|shenzhen|yiwu|shanghai)$/.test(String(id)) && looksLikeTest(name);
 // The tests sign up with @example.com addresses (a reserved "example" domain nobody really owns).
 const isTestAddress = (address) => typeof address === 'string' && /@example\.(com|org|net)$/i.test(address.trim());
+// A test ADMIN account: the tests create them with an @example.com address, or "perm-test-<number>@leap.dev", or a timestamp in the address. The owner is
+// never one, and neither is any admin whose address does not clearly look like a test account (so a real colleague with "test" in their name is safe).
+const isTestAdmin = ({ email, is_owner: isOwner }) => !isOwner && (isTestAddress(email) || /^perm-test-/i.test(String(email || '')) || /\d{10,}/.test(String(email || '')));
 const isTestProduct = ({ id, name, name_zh: nameZh, name_ar: nameAr }) => !isSeedProductId(id) && looksLikeTest(name, nameZh, nameAr);
 
-module.exports = { looksLikeTest, isSeedProductId, isTestCategory, isTestPart, isTestVehicleBrand, isTestHub, isTestProduct, isTestAddress };
+module.exports = { looksLikeTest, isSeedProductId, isTestCategory, isTestPart, isTestVehicleBrand, isTestHub, isTestProduct, isTestAddress, isTestAdmin };

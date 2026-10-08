@@ -40,6 +40,16 @@ describe('how the cleanup tool recognises test leftovers', () => {
     for (const address of ['mec_dabash@yahoo.com', 'real.person@gmail.com', 'someone@example.com.au', 'not-example.com', 'a@notexample.com', '', null, undefined]) expect(rules.isTestAddress(address), String(address)).toBe(false);
   });
 
+  it('CRITICAL: only an admin that clearly looks like a test account is a "test admin": never the owner, never a real colleague (even one with "test" in their name)', () => {
+    for (const email of ['perm-test-1791365435977.0095@leap.dev', 'Perm-Test-1791365435977.1@leap.dev', 'addr-limited-1791346251641-ecw23@example.com', 'x.1791365435977@gmail.com', 'admin.case.5@example.com']) {
+      expect(rules.isTestAdmin({ email, is_owner: false }), email).toBe(true);
+    }
+    for (const email of ['sara.manager@gmail.com', 'ahmad@leapautoparts.com', 'test.lead@company.com', 'contest@company.com', 'admin@leap.dev', '']) {
+      expect(rules.isTestAdmin({ email, is_owner: false }), email).toBe(false);
+    }
+    expect(rules.isTestAdmin({ email: 'perm-test-1791365435977@leap.dev', is_owner: true })).toBe(false); // the owner is never one, whatever it is called
+  });
+
   it('categories, parts, brands and hubs: test ones yes, the real ones no (the seed hubs are protected by id as well)', () => {
     expect(rules.isTestCategory({ id: 'test_cat_parts_1791130799700', name_en: 'Test Category With Parts' })).toBe(true);
     for (const id of ['brake', 'engine', 'electrical', 'filters', 'suspension', 'lighting']) expect(rules.isTestCategory({ id, name_en: id })).toBe(false);

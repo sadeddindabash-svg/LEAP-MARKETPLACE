@@ -13,6 +13,8 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const db = require('../db/pool');
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const rules = require('./testDataRules');
 
 const apply = process.argv.includes('--apply');
@@ -34,9 +36,25 @@ async function tryDelete(client, sql, params) {
 async function run() {
   const client = await db.getPool().connect();
   const report = { removed: {}, kept: {}, hidden: 0 };
-  const backup = { createdAt: new Date().toISOString(), categories: [], parts: [], vehicleBrands: [], hubs: [], hiddenProducts: [], closedFlags: [] };
+  const backup = { createdAt: new Date().toISOString(), categories: [], parts: [], vehicleBrands: [], hubs: [], hiddenProducts: [], closedFlags: [], removedAdmins: [] };
   try {
     await client.query('BEGIN');
+
+    // ---- test ADMIN accounts (a security matter: the tests give them KNOWN passwords) ----
+    // Deleted when nothing refers to them any more; if something still does (they created a fault case, a payout...), the account is LOCKED instead:
+    // its password is replaced by a random one nobody knows, so the known test password stops working. The owner and anything that does not clearly
+    // look like a test account are never touched.
+    const { rows: admins } = await client.query(`SELECT id, email, is_owner FROM users WHERE role = 'admin' ORDER BY email`);
+    const testAdmins = admins.filter(rules.isTestAdmin);
+    const keptAdmins = admins.filter((a) => !rules.isTestAdmin(a));
+    let deletedAdmins = 0; let lockedAdmins = 0;
+    for (const a of testAdmins) {
+      if (await tryDelete(client, 'DELETE FROM users WHERE id = $1', [a.id])) { deletedAdmins += 1; backup.removedAdmins.push({ id: a.id, email: a.email, action: 'deleted' }); continue; }
+      const unknownPassword = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
+      await client.query('UPDATE users SET password_hash = $1 WHERE id = $2', [unknownPassword, a.id]);
+      lockedAdmins += 1; backup.removedAdmins.push({ id: a.id, email: a.email, action: 'locked' });
+    }
+    report.admins = { deleted: deletedAdmins, locked: lockedAdmins, kept: keptAdmins };
 
     // ---- open flags that belong to TEST accounts: CLOSED (they leave the admin's Flagged page and the hub's Flagged filter) ----
     // Only flags whose order belongs to an @example.com address are touched: a flag on a real-looking address is left exactly as it is.
@@ -141,6 +159,8 @@ async function run() {
     console.log(apply ? '\nRemoving test data...\n' : '\nDRY RUN: nothing is changed. This is what would happen:\n');
     console.log(`  Test products ${apply ? 'HIDDEN from buyers' : 'that would be HIDDEN from buyers'} (not deleted; status set to inactive): ${report.hidden}`);
     if (report.hidden) console.log(`      e.g. ${report.hiddenSample}`);
+    console.log(`  Test ADMIN accounts ${apply ? 'REMOVED' : 'that would be REMOVED'}: ${report.admins.deleted}   ${apply ? 'LOCKED' : 'that would be LOCKED'} (still referenced, so the password is replaced by an unknown one): ${report.admins.locked}`);
+    console.log(`      admin accounts kept: ${report.admins.kept.map((a) => a.email + (a.is_owner ? ' (owner)' : '')).join(', ') || 'none'}`);
     console.log(`  Open flagged shipments of TEST accounts ${apply ? 'CLOSED' : 'that would be CLOSED'} (they leave the Flagged lists; nothing is deleted): ${report.flags.closed}   (fault cases closed: ${report.flags.faultCases}, buyer return cases closed: ${report.flags.returnCases})`);
     console.log(`      flagged shipments of real-looking accounts, left as they are: ${report.flags.kept.length}${report.flags.kept.length ? ' (' + sample(report.flags.kept, (f) => f.owner) + ')' : ''}`);
     console.log(`  Test categories ${verb}: ${report.removed.categories}   kept: ${report.kept.categories.length ? report.kept.categories.join(', ') : 0}`);
