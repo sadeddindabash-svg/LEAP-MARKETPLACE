@@ -3285,6 +3285,18 @@ refund_pending --(admin marks refunded)--+
 builds its own hub and hub-staff login (using the Hub staff feature) so workload checks are exact. Verified to fail when completion stops needing
 both conditions, when supplier isolation is removed, when the buyer-cancel block is removed, or when the hub workload keeps counting returned units.
 
+## What a supplier may do to an order (forward only, locked at the hub)
+
+Enforced by the **server** (`modules/supplier/orderRules.js`, used by both the order list and `PATCH /supplier/me/orders/:subOrderId`), not just by the portal's buttons:
+- **Forward only:** pending → preparing → shipped. An order that is preparing cannot go back to pending; a shipped one cannot go back to preparing or pending (`409`, code `status_cannot_go_back`). Skipping ahead (pending → shipped) is allowed; saying the same status again changes nothing.
+- **Locked once the hub has RECEIVED the parcel** (its hub shipment is anything past "awaiting receipt"): the supplier can change **nothing**, neither status nor tracking number (`409`, code `order_locked_at_hub`).
+- **Locked when the buyer cancelled the part** (`409`, code `order_cancelled`): a supplier click can no longer bring it back.
+- **Until the hub receives the parcel** the supplier can still correct the tracking number (re-sending "shipped" with a new number does **not** notify the buyer a second time).
+- **If the hub then flags it and the platform decides, the order itself stays locked.** The supplier's way back is the **fault case** (`POST /fault-cases/supplier/me/:id/answer`: can you replace it, ETA, note), and a replacement is a **new order** that starts again at pending. Re-opening the old order would rewrite its history.
+- The supplier can no longer set the status `dispute` (nothing ever reacted to it; disputes come from the hub). An old row in that state may still move forward.
+- `GET /supplier/me/orders` now carries `locked`, `lockReason` (`at_hub` / `cancelled` / null), `allowedStatuses` and `canEditTracking` for each order, and the `PATCH` reply carries the same, so the portal shows exactly what the server will accept. The row is locked (`FOR UPDATE`) while checking, so a click cannot slip in between the hub receiving the parcel and the check.
+- Tested: `supplierOrderRules.test.js` (4, pure), `supplierOrderRules.integration.test.js` (5, real backend: forward only, tracking fix without a second notification, locked at the hub, the fault case exception, cancelled part / no dispute / another supplier) and the portal's `OrderLockFlow.test.jsx` (5). Verified to fail when the server stops enforcing and when the portal stops disabling.
+
 ## One order, several statuses: what each screen shows (and the "stuck dispute" fix)
 
 An order has several statuses on purpose, because they describe different things:

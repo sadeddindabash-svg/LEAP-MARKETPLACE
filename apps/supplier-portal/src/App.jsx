@@ -97,6 +97,10 @@ const STRINGS = {
       shippingTitle: "发货信息", regionNote: (r) => `买家收货地区：${r}（系统不显示买家详细联系方式，如有问题请通过平台客服沟通）`,
       carrierLabel: "选择物流公司", carriers: ["顺丰国际 (SF International)", "中国邮政国际 (China Post)", "DHL Express", "第三方海外仓专线"],
       trackingLabel: "运单号", trackingPlaceholder: "请输入运单号", markShipped: "标记已发货",
+      lockedAtHub: "此包裹已到达质检仓，无法再在这里修改。如果仓库发现问题，平台会联系您，您可在“退货/售后”页回复。",
+      lockedCancelled: "买家已取消此部分订单，无需再处理。",
+      updateTracking: "更新运单号",
+      forwardOnlyHint: "状态只能向前推进（待确认 → 备货中 → 已发货），无法退回。仓库收货前仍可更正运单号；收货后将无法再修改。",
       actionsTitle: "操作", acceptOrder: "确认接单", contactPlatform: "联系平台客服", markOOS: "标记缺货",
       labelTitle: "质检中心运单标签", labelHint: "打印此标签并贴在包裹上，质检中心员工到货后扫描即可直接调出此运单记录。",
       labelRecipient: "收件方（质检中心）", labelOrder: "订单编号", printLabel: "打印标签",
@@ -216,6 +220,10 @@ const STRINGS = {
       shippingTitle: "Shipping", regionNote: (r) => `Buyer's region: ${r} (buyer contact details are not shown \u2014 use Platform Support for anything you need)`,
       carrierLabel: "Carrier", carriers: ["SF International", "China Post International", "DHL Express", "Third-party overseas warehouse line"],
       trackingLabel: "Tracking number", trackingPlaceholder: "Enter tracking number", markShipped: "Mark as shipped",
+      lockedAtHub: "This parcel has reached the inspection hub, so it can't be changed here any more. If the hub finds a problem, the platform will contact you and you can reply under Returns.",
+      lockedCancelled: "The buyer cancelled this part, so there is nothing more to do.",
+      updateTracking: "Update tracking number",
+      forwardOnlyHint: "Status only moves forward (Pending → Preparing → Shipped) and can't be undone. You can still correct the tracking number until the hub receives the parcel; after that nothing can be changed.",
       actionsTitle: "Actions", acceptOrder: "Accept order", contactPlatform: "Contact Platform Support", markOOS: "Mark out of stock",
       labelTitle: "Inspection hub shipping label", labelHint: "Print this and attach it to the package \u2014 hub staff can scan it on arrival to jump straight to this shipment.",
       labelRecipient: "Recipient (inspection hub)", labelOrder: "Order reference", printLabel: "Print label",
@@ -2363,6 +2371,8 @@ function BulkPriceModal({ selectedCount, productIds, onClose, onApplied, onSessi
   );
 }
 
+const ORDER_STAGES = ["pending", "preparing", "shipped"]; // the supplier's own leg, in order
+
 function OrderDetailPanel({ order, onBack, onUpdated }) {
   const [tracking, setTracking] = useState(order.trackingNumber || "");
   const [isSaving, setIsSaving] = useState(false);
@@ -2425,7 +2435,12 @@ function OrderDetailPanel({ order, onBack, onUpdated }) {
   // hub-portal action, since only the hub's own final leg to the buyer
   // (or real carrier tracking covering that same leg) has any real
   // visibility into whether a buyer actually received anything.
-  const statusOptions = ["pending", "preparing", "shipped", "dispute"];
+  // The SERVER decides what is allowed (order.allowedStatuses / locked / canEditTracking, see services/api/src/modules/supplier/orderRules.js); the portal
+  // only shows it. The fallback below is for a reply without those fields: forward only.
+  const stagePosition = ORDER_STAGES.indexOf(order.status);
+  const allowedStatuses = Array.isArray(order.allowedStatuses) ? order.allowedStatuses : ORDER_STAGES.filter((_, i) => i > stagePosition);
+  const locked = Boolean(order.locked);
+  const canEditTracking = order.canEditTracking !== undefined ? Boolean(order.canEditTracking) : !locked;
 
   return (
     <div>
@@ -2450,16 +2465,26 @@ function OrderDetailPanel({ order, onBack, onUpdated }) {
           <Card title={o.shippingTitle}>
             <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
               <Field label={o.trackingLabel}>
-                <input style={inputStyle} value={tracking} onChange={e => setTracking(e.target.value)} placeholder={o.trackingPlaceholder} />
+                <input style={inputStyle} value={tracking} onChange={e => setTracking(e.target.value)} placeholder={o.trackingPlaceholder} disabled={!canEditTracking} />
               </Field>
               {error && <div style={{ ...font, fontSize: 12, color: C.red }}>{error}</div>}
-              <button
+              {allowedStatuses.includes("shipped") ? (
+                <button
                 disabled={isSaving}
                 onClick={() => handleUpdate({ status: "shipped", trackingNumber: tracking })}
                 style={{ ...font, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: 11, borderRadius: 8, border: "none", background: isSaving ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 13, fontWeight: 700, cursor: isSaving ? "default" : "pointer" }}
               >
                 <Truck size={14} /> {o.markShipped}
               </button>
+              ) : canEditTracking ? (
+                <button
+                disabled={isSaving}
+                onClick={() => handleUpdate({ trackingNumber: tracking })}
+                style={{ ...font, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: 11, borderRadius: 8, border: "none", background: isSaving ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 13, fontWeight: 700, cursor: isSaving ? "default" : "pointer" }}
+              >
+                <Truck size={14} /> {o.updateTracking}
+              </button>
+              ) : null}
             </div>
           </Card>
           {order.hubShipmentId && (
@@ -2492,21 +2517,32 @@ function OrderDetailPanel({ order, onBack, onUpdated }) {
         </div>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
           <Card title={o.actionsTitle}>
-            <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-              {statusOptions.map(s => (
-                <button
-                  key={s}
-                  disabled={isSaving}
-                  onClick={() => handleUpdate({ status: s })}
-                  style={{
-                    ...font, padding: 10, borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: isSaving ? "default" : "pointer", textAlign: "left",
-                    border: order.status === s ? `2px solid ${C.signal}` : `1px solid ${C.line}`,
-                    background: order.status === s ? "#FDF1EB" : "#fff",
-                  }}
-                >{t.statusOrder[s] || s}</button>
-              ))}
-            </div>
-          </Card>
+              <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                {locked && (
+                  <div role="status" style={{ ...font, fontSize: 12.5, color: C.ink, background: "#FFF7E6", border: "1px solid #F5D9A8", borderRadius: 8, padding: 10, lineHeight: 1.5 }}>
+                    {order.lockReason === "cancelled" ? o.lockedCancelled : o.lockedAtHub}
+                  </div>
+                )}
+                {ORDER_STAGES.map(s => {
+                  const isCurrent = order.status === s;
+                  const isAllowed = allowedStatuses.includes(s);
+                  return (
+                    <button
+                      key={s}
+                      disabled={isSaving || !isAllowed}
+                      onClick={() => handleUpdate({ status: s })}
+                      style={{
+                        ...font, padding: 10, borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: isAllowed && !isSaving ? "pointer" : "default", textAlign: "left",
+                        border: isCurrent ? `2px solid ${C.signal}` : `1px solid ${C.line}`,
+                        background: isCurrent ? "#FDF1EB" : "#fff",
+                        opacity: isAllowed || isCurrent ? 1 : 0.45,
+                      }}
+                    >{t.statusOrder[s] || s}</button>
+                  );
+                })}
+                {!locked && <div style={{ ...font, fontSize: 11.5, color: C.muted, lineHeight: 1.5 }}>{o.forwardOnlyHint}</div>}
+              </div>
+            </Card>
         </div>
       </div>
     </div>

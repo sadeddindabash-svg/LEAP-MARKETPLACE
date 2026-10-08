@@ -1,4 +1,5 @@
 const express = require('express');
+const { describeControls, refuseChange } = require('./orderRules');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { createNotification } = require('../notifications/helpers');
@@ -899,7 +900,7 @@ router.patch('/me/products/:id', requireAuth, requireRole('supplier'), async (re
 router.get('/me/orders', requireAuth, requireRole('supplier'), async (req, res, next) => {
   try {
     const { rows: subOrders } = await db.query(
-      `SELECT so.id, so.order_id, so.status, so.tracking_number, so.hub_id, h.name AS hub_name, h.address AS hub_address, o.placed_at, hs.id AS hub_shipment_id
+      `SELECT so.id, so.order_id, so.status, so.tracking_number, so.hub_id, h.name AS hub_name, h.address AS hub_address, o.placed_at, hs.id AS hub_shipment_id, hs.status AS hub_shipment_status
        FROM supplier_sub_orders so
        JOIN orders o ON o.id = so.order_id
        LEFT JOIN hubs h ON h.id = so.hub_id
@@ -927,7 +928,9 @@ router.get('/me/orders', requireAuth, requireRole('supplier'), async (req, res, 
         hubAddress: so.hub_address,
         hubShipmentId: so.hub_shipment_id,
         placedAt: so.placed_at,
-        items: items.map((i) => ({ productId: i.product_id, name: i.name, quantity: i.quantity, unitPrice: Number(i.unit_price) })),
+          // What this supplier may do right now (see ./orderRules.js): the portal shows only these, the server enforces them.
+          ...describeControls({ status: so.status, hubShipmentStatus: so.hub_shipment_status }),
+          items: items.map((i) => ({ productId: i.product_id, name: i.name, quantity: i.quantity, unitPrice: Number(i.unit_price) })),
       });
     }
     res.json(result);
@@ -960,8 +963,9 @@ router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), asy
   // from here entirely -- a supplier has no real visibility into
   // whether a buyer actually received anything; only the hub's own
   // final leg does (see hub/routes.js).
-  if (status !== undefined && !['pending', 'preparing', 'shipped', 'dispute'].includes(status)) {
-    return res.status(400).json({ error: "status must be one of: pending, preparing, shipped, dispute" });
+  // 'dispute' used to be allowed here: nothing ever reacted to it (disputes come from the hub), so it is gone.
+  if (status !== undefined && !['pending', 'preparing', 'shipped'].includes(status)) {
+    return res.status(400).json({ error: "status must be one of: pending, preparing, shipped" });
   }
   if (status === undefined && trackingNumber === undefined) {
     return res.status(400).json({ error: 'Provide at least one of: status, trackingNumber' });
@@ -971,12 +975,22 @@ router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), asy
   try {
     await client.query('BEGIN');
 
+    // The rules (./orderRules.js): forward only, and nothing at all once the hub has received the parcel or the buyer cancelled it. The row is locked
+    // first, so a click cannot slip in between the hub receiving the parcel and this check.
+    const current = await client.query('SELECT status, hub_id FROM supplier_sub_orders WHERE id = $1 AND supplier_id = $2 FOR UPDATE', [req.params.subOrderId, req.user.supplierId]);
+    if (current.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Sub-order not found' });
+    }
+    const hubNow = await client.query('SELECT status FROM hub_shipments WHERE sub_order_id = $1 FOR UPDATE', [req.params.subOrderId]);
+    const refusal = refuseChange({ status: current.rows[0].status, hubShipmentStatus: hubNow.rows[0]?.status || null }, { status, trackingNumber });
+    if (refusal) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: refusal.message, code: refusal.code });
+    }
+
     if (status === 'shipped') {
-      const ownCheck = await client.query('SELECT hub_id FROM supplier_sub_orders WHERE id = $1 AND supplier_id = $2', [req.params.subOrderId, req.user.supplierId]);
-      if (ownCheck.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(404).json({ error: 'Sub-order not found' });
-      }
+      const ownCheck = { rows: [{ hub_id: current.rows[0].hub_id }] };
       if (!ownCheck.rows[0].hub_id) {
         await client.query('ROLLBACK');
         return res.status(400).json({ error: 'This sub-order has no inspection hub assigned yet — an admin must assign one before it can be marked shipped.' });
@@ -1011,7 +1025,8 @@ router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), asy
     // to 'shipped' notifies the real buyer that their order is now on
     // its way to the assigned hub. Part of the SAME transaction as the
     // real status update itself, not a separate best-effort step.
-    if (status === 'shipped') {
+    // Only on the real change TO shipped: re-sending "shipped" to correct a tracking number must not notify the buyer a second time.
+    if (status === 'shipped' && current.rows[0].status !== 'shipped') {
       const { rows: orderRows } = await client.query('SELECT buyer_id FROM orders WHERE id = $1', [rows[0].order_id]);
       await createNotification({
         userId: orderRows[0]?.buyer_id,
@@ -1033,7 +1048,11 @@ router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), asy
     // now happens FIRST -- a real, best-effort email send must never
     // be able to block the real, already-successful response if an
     // SMTP server is ever slow or unreachable.
-    res.json({ subOrderId: rows[0].id, orderId: rows[0].order_id, status: rows[0].status, trackingNumber: rows[0].tracking_number, hubShipmentId });
+    // after this change the parcel is either still with the supplier or (just shipped) waiting for the hub to receive it
+    res.json({
+      subOrderId: rows[0].id, orderId: rows[0].order_id, status: rows[0].status, trackingNumber: rows[0].tracking_number, hubShipmentId,
+      ...describeControls({ status: rows[0].status, hubShipmentStatus: hubShipmentId ? 'awaiting_receipt' : (hubNow.rows[0]?.status || null) }),
+    });
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);
