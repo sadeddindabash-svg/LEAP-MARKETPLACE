@@ -16,8 +16,29 @@ const db = require('../db/pool');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const rules = require('./testDataRules');
+const engine = require('./deleteWithDependents');
 
 const apply = process.argv.includes('--apply');
+const keepOrders = process.argv.includes('--keep-orders');
+const MIXED_PAYOUT_ORDERS_SQL = `
+  WITH links AS (
+    SELECT ps.payout_id, so.order_id FROM payout_sub_orders ps JOIN supplier_sub_orders so ON so.id = ps.sub_order_id
+    UNION ALL
+    SELECT a.payout_id, so2.order_id FROM payout_adjustments a LEFT JOIN fault_cases fc ON fc.id = a.fault_case_id LEFT JOIN supplier_sub_orders so2 ON so2.id = fc.sub_order_id WHERE a.payout_id IS NOT NULL
+  ), mixed AS (
+    SELECT payout_id FROM links GROUP BY payout_id
+    HAVING bool_or(order_id = ANY($1::text[])) AND bool_or(order_id IS NULL OR NOT (order_id = ANY($1::text[])))
+  )
+  SELECT DISTINCT l.order_id FROM links l JOIN mixed m ON m.payout_id = l.payout_id WHERE l.order_id = ANY($1::text[])`;
+
+// Payouts whose every item and adjustment is already marked for deletion: nothing real is left in them, so they go too.
+const FULLY_TEST_PAYOUTS_SQL = `
+  SELECT p.ctid::text AS id FROM payouts p
+  WHERE (EXISTS (SELECT 1 FROM payout_sub_orders ps JOIN _marked m ON m.tbl = 'payout_sub_orders' AND m.id = ps.ctid::text WHERE ps.payout_id = p.id)
+      OR EXISTS (SELECT 1 FROM payout_adjustments a JOIN _marked m ON m.tbl = 'payout_adjustments' AND m.id = a.ctid::text WHERE a.payout_id = p.id))
+    AND NOT EXISTS (SELECT 1 FROM payout_sub_orders ps WHERE ps.payout_id = p.id AND NOT EXISTS (SELECT 1 FROM _marked m WHERE m.tbl = 'payout_sub_orders' AND m.id = ps.ctid::text))
+    AND NOT EXISTS (SELECT 1 FROM payout_adjustments a WHERE a.payout_id = p.id AND NOT EXISTS (SELECT 1 FROM _marked m WHERE m.tbl = 'payout_adjustments' AND m.id = a.ctid::text))`;
+
 const sample = (items, label) => items.slice(0, 4).map(label).join('; ') + (items.length > 4 ? `; ... (+${items.length - 4} more)` : '');
 
 async function tryDelete(client, sql, params) {
@@ -36,9 +57,48 @@ async function tryDelete(client, sql, params) {
 async function run() {
   const client = await db.getPool().connect();
   const report = { removed: {}, kept: {}, hidden: 0 };
-  const backup = { createdAt: new Date().toISOString(), categories: [], parts: [], vehicleBrands: [], hubs: [], hiddenProducts: [], closedFlags: [], removedAdmins: [] };
+  const backup = { createdAt: new Date().toISOString(), categories: [], parts: [], vehicleBrands: [], hubs: [], hiddenProducts: [], closedFlags: [], removedAdmins: [], deletedOrders: [], heldBackOrders: [], deletedRowCounts: {} };
   try {
     await client.query('BEGIN');
+
+    // ---- test ORDERS, together with everything that hangs off them ----
+    // An order is a test order only if its buyer or guest address is @example.com / .org / .net. Its shipments, events, fault cases, return cases, tickets,
+    // payments, addresses and so on are found through the database's own foreign keys and removed with it, so nothing is left pointing at a deleted order.
+    // A payout that pays ONLY test orders goes too; a payout that ALSO pays a real order stays, and so do the test orders in it (deleting them would make
+    // that payout's total wrong). Orders of real-looking addresses are never touched.
+    report.orders = { deleted: 0, rows: 0, tables: 0, heldBack: 0, kept: 0, breakdown: {} };
+    if (!keepOrders) {
+      const foreignKeys = await engine.loadForeignKeys(client);
+      const { rows: allOrders } = await client.query('SELECT o.id, COALESCE(u.email, o.guest_email) AS owner FROM orders o LEFT JOIN users u ON u.id = o.buyer_id');
+      const chosen = new Set(allOrders.filter((o) => rules.isTestAddress(o.owner)).map((o) => o.id));
+      report.orders.kept = allOrders.length - chosen.size;
+      const heldBack = new Set();
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        const { rows: risky } = await client.query(MIXED_PAYOUT_ORDERS_SQL, [[...chosen]]);
+        const more = risky.map((r) => r.order_id).filter((id) => chosen.has(id));
+        if (more.length === 0) break;
+        more.forEach((id) => { chosen.delete(id); heldBack.add(id); });
+      }
+      await engine.startMarking(client);
+      if (chosen.size > 0) {
+        await engine.markRows(client, 'orders', 't.id = ANY($1::text[])', [[...chosen]]);
+        await engine.markDependents(client, foreignKeys);
+        const { rows: emptyPayouts } = await client.query(FULLY_TEST_PAYOUTS_SQL);
+        if (emptyPayouts.length > 0) {
+          await engine.markRows(client, 'payouts', 't.ctid::text = ANY($1::text[])', [emptyPayouts.map((r) => r.id)]);
+          await engine.markDependents(client, foreignKeys);
+        }
+        const deletedRows = await engine.deleteMarked(client);
+        report.orders.deleted = deletedRows.orders || 0;
+        report.orders.rows = Object.values(deletedRows).reduce((sum, n) => sum + n, 0);
+        report.orders.tables = Object.keys(deletedRows).length;
+        report.orders.breakdown = deletedRows;
+        backup.deletedRowCounts = deletedRows;
+        backup.deletedOrders = [...chosen];
+      }
+      report.orders.heldBack = heldBack.size;
+      backup.heldBackOrders = [...heldBack];
+    }
 
     // ---- test ADMIN accounts (a security matter: the tests give them KNOWN passwords) ----
     // Deleted when nothing refers to them any more; if something still does (they created a fault case, a payout...), the account is LOCKED instead:
@@ -159,6 +219,9 @@ async function run() {
     console.log(apply ? '\nRemoving test data...\n' : '\nDRY RUN: nothing is changed. This is what would happen:\n');
     console.log(`  Test products ${apply ? 'HIDDEN from buyers' : 'that would be HIDDEN from buyers'} (not deleted; status set to inactive): ${report.hidden}`);
     if (report.hidden) console.log(`      e.g. ${report.hiddenSample}`);
+    const top = Object.entries(report.orders.breakdown).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([t, n]) => `${t} ${n}`).join(', ');
+    console.log(`  Test ORDERS ${apply ? 'DELETED' : 'that would be DELETED'}, with everything that hangs off them (shipments, events, fault cases, returns, tickets, payments...): ${report.orders.deleted}   (${report.orders.rows} rows in ${report.orders.tables} tables${top ? '; most: ' + top : ''})`);
+    console.log(`      orders of real-looking accounts, left exactly as they are: ${report.orders.kept}   test orders held back because a payout ALSO pays a real order: ${report.orders.heldBack}${keepOrders ? '   (--keep-orders: orders skipped)' : ''}`);
     console.log(`  Test ADMIN accounts ${apply ? 'REMOVED' : 'that would be REMOVED'}: ${report.admins.deleted}   ${apply ? 'LOCKED' : 'that would be LOCKED'} (still referenced, so the password is replaced by an unknown one): ${report.admins.locked}`);
     console.log(`      admin accounts kept: ${report.admins.kept.map((a) => a.email + (a.is_owner ? ' (owner)' : '')).join(', ') || 'none'}`);
     console.log(`  Open flagged shipments of TEST accounts ${apply ? 'CLOSED' : 'that would be CLOSED'} (they leave the Flagged lists; nothing is deleted): ${report.flags.closed}   (fault cases closed: ${report.flags.faultCases}, buyer return cases closed: ${report.flags.returnCases})`);
@@ -171,6 +234,7 @@ async function run() {
     if (!apply) {
       await client.query('ROLLBACK');
       console.log('\nNothing was changed. To do it for real:  node scripts/remove-test-data.js --apply');
+      if (report.orders.deleted > 0) console.log('Deleting orders cannot be undone. Take a full backup first if you want one (use the port and user from your services\\api\\.env):\n  & "C:\\Program Files\\PostgreSQL\\14\\bin\\pg_dump.exe" -h localhost -p 5434 -U leap_dev -Fc -f D:\\leap-backup.dump leap_marketplace_dev');
       return;
     }
     const folder = path.join(__dirname, '..', 'backups');
