@@ -30,6 +30,16 @@ Run for real under PowerShell 7.4, with a stand-in for the one Windows-only comm
 
 **Not tested:** on **Windows PowerShell 5.1** itself (what a Windows PC runs), the real Windows port and service commands, and the separate windows: none exist in the sandbox. The one known difference (5.1 treats program output on stderr as an error) is handled in the migration step. If anything misbehaves, tell me what the window printed.
 
+## The phone says "no internet connection" or "took too long" (`check-phone-connection.cmd`)
+
+Double-click **`scripts\check-phone-connection.cmd`** (or run `scripts\check-phone-connection.ps1`). It changes nothing and tells you which of these it is, and what to do:
+1. **The backend is not running** (the usual cause: its window was closed, `stop-leap.cmd` was run, or the PC restarted) -> run `start-leap.cmd`.
+2. **The PC's address changed** since the app was built (the address is built into the app: `--dart-define=API_BASE_URL=http://<address>:4000`) -> it prints the new address and the rebuild command. `-AppAddress <address>` tells it which address the app was built with (default `192.168.0.210`).
+3. **The backend only listens on this PC itself** -> restart it with `start-leap.cmd`.
+4. **Windows Firewall / a "Public" Wi-Fi blocks the phone** -> run it again from **PowerShell as Administrator** with **`-FixFirewall`**: it opens port 4000 and sets the Wi-Fi to Private.
+If everything on the PC is fine it prints the exact address to open in the **phone's** browser (`http://<address>:4000/health`) and, if even that does not load (some routers stop devices talking to each other), the USB route (`adb reverse tcp:4000 tcp:4000` and a build with `API_BASE_URL=http://localhost:4000`).
+**Tested** with five simulated situations (everything fine, backend off, address changed, listening only on the PC, Public network with no firewall rule, and `-FixFirewall` without administrator rights), using stand-ins for the Windows-only network commands: the real Windows commands themselves were not run here.
+
 ## Running the tests safely (`run-tests.cmd`)
 
 **Never run the test suites against the database your app uses**: they create hundreds of categories, parts, products, accounts and orders and leave them behind (your phone app then shows them). Use this instead:
