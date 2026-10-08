@@ -51,3 +51,6 @@ coverage/
 
 # Backups written by services/api/scripts/remove-test-data.js (may hold copies of removed rows)
 services/api/backups/
+
+# JVM crash logs the Android build can leave next to a project (hs_err_pid<number>.log)
+hs_err_pid*.log
