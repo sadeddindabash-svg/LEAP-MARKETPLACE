@@ -57,7 +57,7 @@ async function tryDelete(client, sql, params) {
 async function run() {
   const client = await db.getPool().connect();
   const report = { removed: {}, kept: {}, hidden: 0 };
-  const backup = { createdAt: new Date().toISOString(), categories: [], parts: [], vehicleBrands: [], hubs: [], hiddenProducts: [], closedFlags: [], removedAdmins: [], deletedOrders: [], heldBackOrders: [], deletedRowCounts: {} };
+  const backup = { createdAt: new Date().toISOString(), categories: [], parts: [], vehicleBrands: [], hubs: [], hiddenProducts: [], closedFlags: [], removedAdmins: [], deletedOrders: [], heldBackOrders: [], deletedRowCounts: {}, deletedAccounts: [], heldBackAccounts: [], deletedProducts: [], heldBackProducts: [] };
   try {
     await client.query('BEGIN');
 
@@ -67,8 +67,8 @@ async function run() {
     // A payout that pays ONLY test orders goes too; a payout that ALSO pays a real order stays, and so do the test orders in it (deleting them would make
     // that payout's total wrong). Orders of real-looking addresses are never touched.
     report.orders = { deleted: 0, rows: 0, tables: 0, heldBack: 0, kept: 0, breakdown: {} };
+    const foreignKeys = await engine.loadForeignKeys(client);
     if (!keepOrders) {
-      const foreignKeys = await engine.loadForeignKeys(client);
       const { rows: allOrders } = await client.query('SELECT o.id, COALESCE(u.email, o.guest_email) AS owner FROM orders o LEFT JOIN users u ON u.id = o.buyer_id');
       const chosen = new Set(allOrders.filter((o) => rules.isTestAddress(o.owner)).map((o) => o.id));
       report.orders.kept = allOrders.length - chosen.size;
@@ -98,6 +98,36 @@ async function run() {
       }
       report.orders.heldBack = heldBack.size;
       backup.heldBackOrders = [...heldBack];
+    }
+
+    // ---- test ACCOUNTS: buyers, hub staff and supplier logins with an @example.com address (admins were dealt with above) ----
+    // Deleted together with what they created that is not an order: support tickets, reviews, wishlists, saved vehicles, notifications, hub events...
+    // An account that still OWNS an order (one held back above) is kept. A safety stop cancels the whole run if deleting accounts would ever reach an
+    // order, shipment, payout or product.
+    report.accounts = { deleted: 0, rows: 0, heldBack: 0, kept: [], breakdown: {} };
+    {
+      const { rows: people } = await client.query("SELECT id, email, role FROM users WHERE role <> 'admin' ORDER BY email");
+      const testPeople = people.filter((u) => rules.isTestAddress(u.email));
+      report.accounts.kept = people.filter((u) => !rules.isTestAddress(u.email));
+      const { rows: owners } = await client.query('SELECT DISTINCT buyer_id FROM orders WHERE buyer_id = ANY($1::text[])', [testPeople.map((u) => u.id)]);
+      const stillOwnOrders = new Set(owners.map((o) => o.buyer_id));
+      const chosenPeople = testPeople.filter((u) => !stillOwnOrders.has(u.id));
+      report.accounts.heldBack = testPeople.length - chosenPeople.length;
+      backup.heldBackAccounts = testPeople.filter((u) => stillOwnOrders.has(u.id)).map((u) => u.email);
+      if (chosenPeople.length > 0) {
+        await engine.startMarking(client);
+        await engine.markRows(client, 'users', 't.id = ANY($1::text[])', [chosenPeople.map((u) => u.id)]);
+        await engine.markDependents(client, foreignKeys);
+        const reach = await engine.markedCounts(client);
+        for (const forbidden of ['orders', 'supplier_sub_orders', 'order_line_items', 'hub_shipments', 'payouts', 'products']) {
+          if (reach[forbidden]) throw new Error(`Safety stop: deleting the test accounts would also delete ${reach[forbidden]} row(s) of ${forbidden}. Nothing was changed.`);
+        }
+        const deletedRows = await engine.deleteMarked(client);
+        report.accounts.deleted = deletedRows.users || 0;
+        report.accounts.rows = Object.values(deletedRows).reduce((sum, n) => sum + n, 0);
+        report.accounts.breakdown = deletedRows;
+        backup.deletedAccounts = chosenPeople.map((u) => u.email);
+      }
     }
 
     // ---- test ADMIN accounts (a security matter: the tests give them KNOWN passwords) ----
@@ -150,6 +180,51 @@ async function run() {
     if (testProducts.length > 0) await client.query(`UPDATE products SET status = 'inactive' WHERE id = ANY($1::text[])`, [testProducts.map((p) => p.id)]);
     report.hidden = testProducts.length;
     report.hiddenSample = sample(testProducts, (p) => p.name);
+
+    // ---- support tickets opened by a TEST guest address (no account): deleted with their messages ----
+    report.guestTickets = { deleted: 0, rows: 0 };
+    {
+      const { rows: guestTickets } = await client.query('SELECT id, guest_email FROM support_tickets WHERE buyer_id IS NULL');
+      const testTicketIds = guestTickets.filter((t) => rules.isTestAddress(t.guest_email)).map((t) => t.id);
+      if (testTicketIds.length > 0) {
+        await engine.startMarking(client);
+        await engine.markRows(client, 'support_tickets', 't.id = ANY($1)', [testTicketIds]);
+        await engine.markDependents(client, foreignKeys);
+        const deletedRows = await engine.deleteMarked(client);
+        report.guestTickets.deleted = deletedRows.support_tickets || 0;
+        report.guestTickets.rows = Object.values(deletedRows).reduce((sum, n) => sum + n, 0);
+      }
+    }
+
+    // ---- test PRODUCTS: now DELETED (the ones above were only hidden), unless something real still uses them ----
+    // Kept (but hidden): a product that a remaining order contains, or that a remaining (real) account reviewed or wishlisted.
+    report.productsDeleted = { deleted: 0, rows: 0, held: 0, breakdown: {} };
+    {
+      const { rows: everyProduct } = await client.query('SELECT id, name, name_zh, name_ar FROM products');
+      const testIds = everyProduct.filter(rules.isTestProduct).map((p) => p.id);
+      const used = new Set();
+      for (const [table, column] of [['order_line_items', 'product_id'], ['product_reviews', 'product_id'], ['wishlist_items', 'product_id']]) {
+        const { rows } = await client.query(`SELECT DISTINCT ${column} AS id FROM ${table} WHERE ${column} = ANY($1::text[])`, [testIds]);
+        rows.forEach((r) => used.add(r.id));
+      }
+      const deletable = testIds.filter((id) => !used.has(id));
+      report.productsDeleted.held = testIds.length - deletable.length;
+      backup.heldBackProducts = testIds.filter((id) => used.has(id));
+      if (deletable.length > 0) {
+        await engine.startMarking(client);
+        await engine.markRows(client, 'products', 't.id = ANY($1::text[])', [deletable]);
+        await engine.markDependents(client, foreignKeys);
+        const reach = await engine.markedCounts(client);
+        for (const forbidden of ['orders', 'supplier_sub_orders', 'users', 'hub_shipments', 'payouts']) {
+          if (reach[forbidden]) throw new Error(`Safety stop: deleting the test products would also delete ${reach[forbidden]} row(s) of ${forbidden}. Nothing was changed.`);
+        }
+        const deletedRows = await engine.deleteMarked(client);
+        report.productsDeleted.deleted = deletedRows.products || 0;
+        report.productsDeleted.rows = Object.values(deletedRows).reduce((sum, n) => sum + n, 0);
+        report.productsDeleted.breakdown = deletedRows;
+        backup.deletedProducts = deletable;
+      }
+    }
 
     // ---- categories (and their parts) ----
     const { rows: categories } = await client.query('SELECT id, name_en FROM product_categories');
@@ -222,6 +297,10 @@ async function run() {
     const top = Object.entries(report.orders.breakdown).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([t, n]) => `${t} ${n}`).join(', ');
     console.log(`  Test ORDERS ${apply ? 'DELETED' : 'that would be DELETED'}, with everything that hangs off them (shipments, events, fault cases, returns, tickets, payments...): ${report.orders.deleted}   (${report.orders.rows} rows in ${report.orders.tables} tables${top ? '; most: ' + top : ''})`);
     console.log(`      orders of real-looking accounts, left exactly as they are: ${report.orders.kept}   test orders held back because a payout ALSO pays a real order: ${report.orders.heldBack}${keepOrders ? '   (--keep-orders: orders skipped)' : ''}`);
+    console.log(`  Test ACCOUNTS (buyers, hub staff, supplier logins) ${apply ? 'DELETED' : 'that would be DELETED'}, with their tickets, reviews, wishlists, saved vehicles, notifications...: ${report.accounts.deleted}   (${report.accounts.rows} rows)`);
+    console.log(`      accounts kept: ${report.accounts.kept.map((u) => `${u.email} (${u.role})`).join(', ') || 'none'}${report.accounts.heldBack ? `   (+${report.accounts.heldBack} test account(s) kept because they still own an order)` : ''}`);
+    console.log(`  Support tickets opened by a TEST guest address ${apply ? 'DELETED' : 'that would be DELETED'}: ${report.guestTickets.deleted}   (${report.guestTickets.rows} rows, with their messages)`);
+    console.log(`  Test PRODUCTS ${apply ? 'DELETED' : 'that would be DELETED'}: ${report.productsDeleted.deleted}   (${report.productsDeleted.rows} rows)   kept hidden because something real still uses them: ${report.productsDeleted.held}`);
     console.log(`  Test ADMIN accounts ${apply ? 'REMOVED' : 'that would be REMOVED'}: ${report.admins.deleted}   ${apply ? 'LOCKED' : 'that would be LOCKED'} (still referenced, so the password is replaced by an unknown one): ${report.admins.locked}`);
     console.log(`      admin accounts kept: ${report.admins.kept.map((a) => a.email + (a.is_owner ? ' (owner)' : '')).join(', ') || 'none'}`);
     console.log(`  Open flagged shipments of TEST accounts ${apply ? 'CLOSED' : 'that would be CLOSED'} (they leave the Flagged lists; nothing is deleted): ${report.flags.closed}   (fault cases closed: ${report.flags.faultCases}, buyer return cases closed: ${report.flags.returnCases})`);

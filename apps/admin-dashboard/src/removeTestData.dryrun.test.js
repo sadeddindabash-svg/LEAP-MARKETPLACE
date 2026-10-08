@@ -25,6 +25,11 @@ async function snapshot() {
     admins: await one(`SELECT count(*)::int AS n FROM users WHERE role = 'admin'`),
     lockedOrChanged: await one(`SELECT count(*)::int AS n FROM users WHERE role = 'admin' AND password_hash IS NOT NULL`),
     orders: await one('SELECT count(*)::int AS n FROM orders'),
+    accounts: await one('SELECT count(*)::int AS n FROM users'),
+    tickets: await one('SELECT count(*)::int AS n FROM support_tickets'),
+    products: await one('SELECT count(*)::int AS n FROM products'),
+    reviews: await one('SELECT count(*)::int AS n FROM product_reviews'),
+    wishlists: await one('SELECT count(*)::int AS n FROM wishlist_items'),
     subOrders: await one('SELECT count(*)::int AS n FROM supplier_sub_orders'),
     shipments: await one('SELECT count(*)::int AS n FROM hub_shipments'),
     payouts: await one('SELECT count(*)::int AS n FROM payouts'),
@@ -40,7 +45,7 @@ describe.runIf(dbUp)('the cleanup tool\'s dry run', () => {
     const output = execFileSync('node', ['scripts/remove-test-data.js'], { cwd: apiDir, env: { ...process.env, DATABASE_URL: TEST_DB_URL }, encoding: 'utf8' });
     expect(output).toContain('DRY RUN: nothing is changed');
     expect(output).toContain('Nothing was changed. To do it for real:  node scripts/remove-test-data.js --apply');
-    for (const line of ['Test products', 'Test categories', 'Test parts', 'Test vehicle brands', 'Test hubs', 'Test ORDERS', 'Test ADMIN accounts', 'Open flagged shipments of TEST accounts']) expect(output).toContain(line);
+    for (const line of ['Test products', 'Test categories', 'Test parts', 'Test vehicle brands', 'Test hubs', 'Test ORDERS', 'Test ACCOUNTS', 'Support tickets opened by a TEST guest address', 'Test PRODUCTS', 'Test ADMIN accounts', 'Open flagged shipments of TEST accounts']) expect(output).toContain(line);
     expect(output).not.toContain('Removing test data');
     expect(output).not.toContain('backup of what was removed');
     expect(await snapshot()).toEqual(before);
