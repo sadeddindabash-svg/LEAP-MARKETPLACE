@@ -34,9 +34,36 @@ async function tryDelete(client, sql, params) {
 async function run() {
   const client = await db.getPool().connect();
   const report = { removed: {}, kept: {}, hidden: 0 };
-  const backup = { createdAt: new Date().toISOString(), categories: [], parts: [], vehicleBrands: [], hubs: [], hiddenProducts: [] };
+  const backup = { createdAt: new Date().toISOString(), categories: [], parts: [], vehicleBrands: [], hubs: [], hiddenProducts: [], closedFlags: [] };
   try {
     await client.query('BEGIN');
+
+    // ---- open flags that belong to TEST accounts: CLOSED (they leave the admin's Flagged page and the hub's Flagged filter) ----
+    // Only flags whose order belongs to an @example.com address are touched: a flag on a real-looking address is left exactly as it is.
+    const { rows: openFlags } = await client.query(
+      `SELECT hs.id AS shipment_id, so.id AS sub_order_id, COALESCE(u.email, o.guest_email) AS owner, fc.id AS fault_case_id, fc.status AS fault_status
+       FROM hub_shipments hs
+       JOIN supplier_sub_orders so ON so.id = hs.sub_order_id
+       JOIN orders o ON o.id = so.order_id
+       LEFT JOIN users u ON u.id = o.buyer_id
+       LEFT JOIN fault_cases fc ON fc.shipment_id = hs.id
+       WHERE hs.resolved_at IS NULL AND hs.status IN ('flagged', 'returned_to_supplier', 'discarded_at_hub')`);
+    const testFlags = openFlags.filter((f) => rules.isTestAddress(f.owner));
+    const realFlags = openFlags.filter((f) => !rules.isTestAddress(f.owner));
+    const openFaultCases = testFlags.filter((f) => f.fault_case_id && f.fault_status !== 'completed');
+    let closedReturnCases = 0;
+    if (testFlags.length > 0) {
+      const subOrderIds = testFlags.map((f) => f.sub_order_id);
+      const { rows: returns } = await client.query(`SELECT id, sub_order_id, status FROM return_cases WHERE sub_order_id = ANY($1::int[]) AND status NOT IN ('completed', 'rejected')`, [subOrderIds]);
+      backup.closedFlags = testFlags.map((f) => ({ shipmentId: f.shipment_id, faultCaseId: f.fault_case_id, faultStatus: f.fault_status, returnCases: returns.filter((x) => x.sub_order_id === f.sub_order_id).map((x) => ({ id: x.id, status: x.status })) }));
+      if (openFaultCases.length > 0) {
+        await client.query(`UPDATE fault_cases SET status = 'completed', completed_at = now(), updated_at = now(), closed_manually_note = 'Closed by the test-data cleanup' WHERE id = ANY($1::int[])`, [openFaultCases.map((f) => f.fault_case_id)]);
+      }
+      await client.query(`UPDATE hub_shipments SET resolution = 'fault_closed_manually', resolved_at = now(), updated_at = now() WHERE id = ANY($1::int[])`, [testFlags.map((f) => f.shipment_id)]);
+      closedReturnCases = returns.length;
+      if (returns.length > 0) await client.query(`UPDATE return_cases SET status = 'completed', updated_at = now() WHERE id = ANY($1::text[])`, [returns.map((x) => x.id)]);
+    }
+    report.flags = { closed: testFlags.length, faultCases: openFaultCases.length, returnCases: closedReturnCases, kept: realFlags };
 
     // ---- products: HIDE (status -> inactive) ----
     const { rows: products } = await client.query(`SELECT id, name, name_zh, name_ar, status FROM products WHERE status = 'active'`);
@@ -114,6 +141,8 @@ async function run() {
     console.log(apply ? '\nRemoving test data...\n' : '\nDRY RUN: nothing is changed. This is what would happen:\n');
     console.log(`  Test products ${apply ? 'HIDDEN from buyers' : 'that would be HIDDEN from buyers'} (not deleted; status set to inactive): ${report.hidden}`);
     if (report.hidden) console.log(`      e.g. ${report.hiddenSample}`);
+    console.log(`  Open flagged shipments of TEST accounts ${apply ? 'CLOSED' : 'that would be CLOSED'} (they leave the Flagged lists; nothing is deleted): ${report.flags.closed}   (fault cases closed: ${report.flags.faultCases}, buyer return cases closed: ${report.flags.returnCases})`);
+    console.log(`      flagged shipments of real-looking accounts, left as they are: ${report.flags.kept.length}${report.flags.kept.length ? ' (' + sample(report.flags.kept, (f) => f.owner) + ')' : ''}`);
     console.log(`  Test categories ${verb}: ${report.removed.categories}   kept: ${report.kept.categories.length ? report.kept.categories.join(', ') : 0}`);
     console.log(`  Test parts ${verb}: ${report.removed.parts}   kept: ${report.kept.parts.length ? sample(report.kept.parts, (x) => x) : 0}`);
     console.log(`  Test vehicle brands ${verb}: ${report.removed.vehicleBrands}   kept: ${report.kept.vehicleBrands.length ? sample(report.kept.vehicleBrands, (x) => x) : 0}`);

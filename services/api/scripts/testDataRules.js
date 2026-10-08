@@ -19,6 +19,8 @@ const isTestCategory = ({ id, name_en: nameEn }) => /^test_cat_/i.test(String(id
 const isTestPart = (nameEn) => looksLikeTest(nameEn);
 const isTestVehicleBrand = (name) => looksLikeTest(name);
 const isTestHub = ({ id, name }) => !/^hub_(guangzhou|ningbo|shenzhen|yiwu|shanghai)$/.test(String(id)) && looksLikeTest(name);
+// The tests sign up with @example.com addresses (a reserved "example" domain nobody really owns).
+const isTestAddress = (address) => typeof address === 'string' && /@example\.(com|org|net)$/i.test(address.trim());
 const isTestProduct = ({ id, name, name_zh: nameZh, name_ar: nameAr }) => !isSeedProductId(id) && looksLikeTest(name, nameZh, nameAr);
 
-module.exports = { looksLikeTest, isSeedProductId, isTestCategory, isTestPart, isTestVehicleBrand, isTestHub, isTestProduct };
+module.exports = { looksLikeTest, isSeedProductId, isTestCategory, isTestPart, isTestVehicleBrand, isTestHub, isTestProduct, isTestAddress };

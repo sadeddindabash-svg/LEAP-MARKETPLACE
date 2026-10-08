@@ -35,6 +35,11 @@ describe('how the cleanup tool recognises test leftovers', () => {
     expect(rules.isTestProduct({ id: 'p_1790000000001_0', name: 'RIDEX Front Brake Disc, Vented 300mm bvgftgfvbgv bvgfbv', name_zh: '我的刹车盘' })).toBe(false);
   });
 
+  it('CRITICAL: only an @example.com address counts as a test account (the tests sign up with those); a real-looking address, or none at all, never does', () => {
+    for (const address of ['partial.1791398997@example.com', 'MIXED.Case@Example.COM', 'x@example.org', ' guest.1@example.net ']) expect(rules.isTestAddress(address), address).toBe(true);
+    for (const address of ['mec_dabash@yahoo.com', 'real.person@gmail.com', 'someone@example.com.au', 'not-example.com', 'a@notexample.com', '', null, undefined]) expect(rules.isTestAddress(address), String(address)).toBe(false);
+  });
+
   it('categories, parts, brands and hubs: test ones yes, the real ones no (the seed hubs are protected by id as well)', () => {
     expect(rules.isTestCategory({ id: 'test_cat_parts_1791130799700', name_en: 'Test Category With Parts' })).toBe(true);
     for (const id of ['brake', 'engine', 'electrical', 'filters', 'suspension', 'lighting']) expect(rules.isTestCategory({ id, name_en: id })).toBe(false);
