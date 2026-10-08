@@ -3285,6 +3285,22 @@ refund_pending --(admin marks refunded)--+
 builds its own hub and hub-staff login (using the Hub staff feature) so workload checks are exact. Verified to fail when completion stops needing
 both conditions, when supplier isolation is removed, when the buyer-cancel block is removed, or when the hub workload keeps counting returned units.
 
+## Partly faulty parcels: KNOWN GAP (found by running a real order through the backend)
+
+**What happens today.** A fault case can cover just SOME of the items in a hub parcel, but the hub handles the parcel as a whole. Tested with a real order of two items from one supplier (one faulty, supplier at fault, refund, unit returned):
+
+| | |
+|---|---|
+| Buyer paid | **$69.31** (item 1 $39.99, item 2 $29.32 after discount) |
+| Refund | **$39.99** (the faulty item only, as the case says) |
+| The other item ($29.32) | **never shipped** (the hub shipment ends at "returned to supplier" and cannot be advanced: `packed` and `shipped_to_buyer` are refused with 400), **never refunded**, and **never paid to the supplier** (a sub-order with a return case is never payable) |
+
+So the buyer is out $29.32 and the supplier is out the same, for an item nobody ever sent. The same happens with a **replacement**: the replacement order contains only the faulty items, and the good ones are still stranded in the returned parcel.
+
+**What protects you meanwhile.** The "Real fault…" dialog ticks **every** item by default, and shows an amber warning, with the amount left out, as soon as an item is unticked. Ticking every item is consistent with how the hub works today (the whole parcel goes back and is refunded or replaced).
+
+**Not fixed yet: it needs a decision.** The proper fix is to let the good items continue to the buyer after the faulty unit is returned, and to pay the supplier for those good items when delivered. That touches the hub's steps, the payout rules (in three places) and the payment-release amounts, so it should only be built once the business rule is confirmed.
+
 ## Test leftovers in the app's database, and how to remove them (migration 101)
 
 **What happened.** The automated test suites run against a REAL backend and a REAL database, and they leave what they create behind: test categories, parts, products and vehicle brands (all named with a 13-digit timestamp, or "Test" / "E2E" / 测试). When the suites are run against the database the **phone app uses**, the app shows them: dozens of test products, 20 extra categories, a part list with hundreds of entries, and test vehicle brands in the garage's "add a vehicle" list. (In one case it was partly a bug in a test helper: it re-created the seed part "Front Brake Disc" on every run, because the server accepted duplicate part names. About 26 copies had piled up.)
@@ -3302,7 +3318,7 @@ both conditions, when supplier isolation is removed, when the buyer-cancel block
 
 **Tested on a copy of a polluted database** (the tests' own leftovers plus traps: a hand-typed product, a test brand that a product fits, a test brand a buyer saved, a real product using a test-looking part): categories 27 to 6, parts 277 to 36, vehicle brands 34 to 8 (the 6 real ones plus the 2 protected by real use), 79 test products hidden, the hand-typed product still active, orders and accounts untouched, and a second run finds nothing left. **Automated:** `testDataRules.test.js` (4: test and real names), `removeTestData.dryrun.test.js` (2: the dry run changes nothing and is repeatable), `partDuplicates.integration.test.js` (6).
 
-**To keep the app's database clean in future, do not run the test suites against it.** Run them against a throwaway database (create one, run `node db/migrate.js` and `node db/seed.js` against it, point `DATABASE_URL` at it for the backend and the tests).
+**To keep the app's database clean in future, do not run the test suites against it: use `scripts\run-tests.cmd`** (see `scripts/README.md`). It wipes and rebuilds a separate `..._test` database, runs a hidden backend on it, runs the suites, and puts your normal backend back. Underneath: `db/prepare-test-db.js` (creates / wipes / migrates / seeds the test database; `db/testDatabase.js` holds the rule that only a name ending in `_test` may be wiped).
 
 ## Email: addresses without regard to capitals, Arabic emails, and a reset page that works (migration 100)
 

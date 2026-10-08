@@ -256,6 +256,30 @@ describe('Flagged Shipments — the two verdicts: no fault, or a real fault (moc
     expect(screen.getByText(/supplier still has no return address on file/)).toBeInTheDocument();
   });
 
+  it('CRITICAL: ticking only SOME items warns, with the amount at stake, that the rest of the parcel is not delivered, refunded or paid for (and ticking every item shows no warning)', async () => {
+    await openFlaggedPage({ flagged: [flag()] });
+    fireEvent.click(screen.getByRole('button', { name: /^real fault…$/i }));
+    const dialog = screen.getByRole('dialog', { name: 'Confirm a real fault' });
+    const boxes = within(dialog).getAllByRole('checkbox');
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();                 // everything ticked: nothing to warn about
+
+    fireEvent.click(boxes[1]);                                                           // the oil filter ($8.50) is no longer ticked
+    const warning = within(dialog).getByRole('alert');
+    expect(warning).toHaveTextContent('Only some items are ticked.');
+    expect(warning).toHaveTextContent('The other item in this parcel ($8.50) are not covered');
+    expect(warning).toHaveTextContent('not delivered to the buyer, not refunded, and the supplier is not paid for them');
+    expect(warning).toHaveTextContent('tick every item');
+
+    fireEvent.click(boxes[1]); fireEvent.click(boxes[0]);                                // now the brake discs ($30.00) are the ones left out
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('($30.00)');
+
+    fireEvent.click(boxes[0]);                                                           // everything ticked again
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
+    fireEvent.click(boxes[0]); fireEvent.click(boxes[1]);                                // nothing ticked: the button is off, and no misleading warning
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: /confirm real fault/i })).toBeDisabled();
+  });
+
   const SUPPLIER_YES = { answered: true, canReplace: true, eta: '2026-08-20', note: null, answeredAt: '2026-07-20T00:00:00Z' };
   const SUPPLIER_NO = { answered: true, canReplace: false, eta: null, note: 'no stock', answeredAt: '2026-07-20T00:00:00Z' };
   const REPLACE_URL = /\/fault-cases\/9\/confirm-replacement$/;

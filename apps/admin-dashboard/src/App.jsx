@@ -5484,6 +5484,13 @@ function FaultCaseDialog({ shipment, onCancel, onSubmit, isSaving, errorMessage 
             <span style={{ marginLeft: "auto", color: C.muted }}>{usd2(i.unitPrice * i.quantity)}</span>
           </label>
         ))}
+        {/* A fault covering only SOME items of a parcel: today the hub sends the WHOLE parcel back, so the rest is neither delivered, refunded nor paid for. */}
+        {selected.size > 0 && selected.size < shipment.items.length && (
+          <div role="alert" style={{ ...body, fontSize: 12, color: C.amber, background: C.amberBg, borderRadius: 8, padding: 10, marginTop: 8 }}>
+            <strong>Only some items are ticked.</strong> The other item{shipment.items.length - selected.size === 1 ? "" : "s"} in this parcel ({usd2(shipment.items.filter((i) => !selected.has(i.productId)).reduce((sum, i) => sum + i.unitPrice * i.quantity, 0))}) are{" "}
+            <strong>not covered</strong>: today the hub sends the <strong>whole parcel</strong> back, so they are not delivered to the buyer, not refunded, and the supplier is not paid for them. Unless you will sort that out by hand, tick <strong>every</strong> item.
+          </div>
+        )}
 
         <label style={label} htmlFor="fault-cost-bearer">WHO BEARS THE COST? (refund and return shipping)</label>
         <select id="fault-cost-bearer" value={costBearer} onChange={(e) => setCostBearer(e.target.value)} style={{ ...body, width: "100%", boxSizing: "border-box", padding: 9, borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13, background: "#fff" }}>
