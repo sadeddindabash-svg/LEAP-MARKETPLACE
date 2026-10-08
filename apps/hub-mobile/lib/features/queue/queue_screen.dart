@@ -85,6 +85,9 @@ class _QueueScreenState extends State<QueueScreen> {
         // no status filter
       } else if (_filter == 'in_progress') {
         if (!_inProgressStatuses.contains(s.status)) return false;
+      } else if (_filter == 'flagged') {
+        // the whole flagged family (flagged, returned, discarded), but a flag the platform has CLOSED is no longer an open problem: it stays under "All"
+        if (!kFlaggedStatuses.contains(s.status) || s.resolvedAt != null) return false;
       } else if (s.status != _filter) {
         return false;
       }
@@ -227,12 +230,25 @@ class _QueueScreenState extends State<QueueScreen> {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(s.orderId, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: HubColors.ink)),
+                            Row(
+                              children: [
+                                Text(s.orderId, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: HubColors.ink)),
+                                // a free replacement for a faulty unit: handled like any other shipment, but the hub should know why it came
+                                if (s.replacementFor != null) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(color: HubColors.torqueBg, borderRadius: BorderRadius.circular(999)),
+                                    child: Text(t.detail.replacementTag, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: HubColors.torque)),
+                                  ),
+                                ],
+                              ],
+                            ),
                             const SizedBox(height: 2),
                             Text(s.supplierName, style: const TextStyle(fontSize: 12, color: HubColors.muted)),
                           ],
                         ),
-                        StatusBadge(status: s.status),
+                        StatusBadge(status: s.displayStatus),
                       ],
                     ),
                   ),

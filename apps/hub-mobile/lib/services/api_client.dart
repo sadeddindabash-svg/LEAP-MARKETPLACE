@@ -123,6 +123,25 @@ class ApiClient {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  /// The worker chooses their own password (PATCH /auth/me/password). Deliberately NOT sent through _authedMutate: the server answers a WRONG
+  /// current password with a 401 and a clear message, and _authedMutate would read that as "session expired" and sign the worker out.
+  Future<void> changeMyPassword(String token, String currentPassword, String newPassword) async {
+    final request = http.Request('PATCH', Uri.parse('$baseUrl/auth/me/password'))
+      ..headers.addAll(_jsonAuthHeaders(token))
+      ..body = jsonEncode({'currentPassword': currentPassword, 'newPassword': newPassword});
+    final streamedResponse = await _client.send(request);
+    final response = await http.Response.fromStream(streamedResponse);
+    Map<String, dynamic> data = {};
+    try {
+      data = jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (_) {
+      // an unreadable body: the status code below still tells the story
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ApiException((data['error'] as String?) ?? 'Could not change the password (${response.statusCode})');
+    }
+  }
+
   // ---------------- Hub staff endpoints ----------------
   // Ported 1:1 from apps/hub-portal/src/auth.js's own real, working
   // endpoint list -- same paths, same request shapes.

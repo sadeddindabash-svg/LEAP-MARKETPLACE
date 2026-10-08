@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'core/auth_state.dart';
 import 'core/language_state.dart';
 import 'core/theme.dart';
+import 'features/auth/change_password_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/queue/queue_screen.dart';
 
@@ -47,7 +48,10 @@ class _RootScreen extends StatelessWidget {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    return auth.isLoggedIn ? const QueueScreen() : const LoginScreen();
+    if (!auth.isLoggedIn) return const LoginScreen();
+    // Still on the temporary password an admin gave them: choose their own first, before anything else.
+    if (auth.mustChangePassword) return const ChangePasswordScreen();
+    return const QueueScreen();
   }
 }
 

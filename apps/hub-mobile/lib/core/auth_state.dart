@@ -33,6 +33,18 @@ class AuthState extends ChangeNotifier {
   String? get token => _token;
   String? get rejectionReason => _rejectionReason;
 
+  /// True while the worker is still on the TEMPORARY password an admin gave them: the app shows "choose your own password" before anything else.
+  /// (The server tells us in the login and /auth/me replies.)
+  bool get mustChangePassword => _user?['mustChangePassword'] == true;
+
+  /// Called after the worker has chosen their own password: the queue opens.
+  void markPasswordChanged() {
+    final user = _user;
+    if (user == null) return;
+    _user = {...user, 'mustChangePassword': false};
+    notifyListeners();
+  }
+
   Future<void> _restoreSession() async {
     final savedToken = await _secureStorage.read(key: _tokenKey);
     if (savedToken != null) {

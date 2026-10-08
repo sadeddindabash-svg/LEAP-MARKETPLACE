@@ -52,6 +52,10 @@ IconData _iconForStep(String step) {
       return Icons.check_circle_outline;
     case 'flagged':
       return Icons.warning_amber_outlined;
+    case 'returned_to_supplier':
+      return Icons.undo;
+    case 'discarded_at_hub':
+      return Icons.delete_outline;
     default:
       return Icons.assignment_turned_in_outlined;
   }
@@ -73,6 +77,9 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
   final _notesController = TextEditingController();
   final _trackingController = TextEditingController();
   final _deliveryNoteController = TextEditingController();
+  final _returnTrackingController = TextEditingController();
+  // The faulty-unit panel: send it back to the supplier ('return') or destroy it at the hub ('discard').
+  String _returnMode = 'return';
   List<String> _photos = [];
   bool _isUploadingPhoto = false;
   bool _isSubmitting = false;
@@ -101,6 +108,7 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
     _notesController.dispose();
     _trackingController.dispose();
     _deliveryNoteController.dispose();
+    _returnTrackingController.dispose();
     for (final c in _receivedControllers.values) {
       c.dispose();
     }
@@ -242,6 +250,48 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
     }
   }
 
+  /// A real fault was confirmed by the platform: record that the faulty unit was sent back to the supplier (return tracking number required) or
+  /// discarded at the hub. Same rules as the web hub portal: at least one evidence photo, and a tracking number for a return.
+  Future<void> _submitFaultReturn() async {
+    final t = kHubStrings[context.read<LanguageState>().language]!;
+    final step = _returnMode == 'return' ? 'returned_to_supplier' : 'discarded_at_hub';
+    if (_photos.isEmpty) {
+      setState(() => _errorMessage = t.detail.errPhotoRequired);
+      return;
+    }
+    if (step == 'returned_to_supplier' && _returnTrackingController.text.trim().isEmpty) {
+      setState(() => _errorMessage = t.detail.errReturnTrackingRequired);
+      return;
+    }
+    setState(() {
+      _isSubmitting = true;
+      _errorMessage = null;
+    });
+    final auth = context.read<AuthState>();
+    try {
+      await ApiClient().recordShipmentEvent(
+        auth.token!,
+        widget.shipmentId,
+        step: step,
+        notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+        photos: _photos,
+        trackingNumber: step == 'returned_to_supplier' ? _returnTrackingController.text.trim() : null,
+      );
+      if (!mounted) return;
+      _notesController.clear();
+      _returnTrackingController.clear();
+      setState(() => _photos = []);
+      await _load();
+    } on SessionExpiredError {
+      auth.handleSessionExpired();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMessage = e.message);
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
   Future<void> _submitConfirmDelivery() async {
     final t = kHubStrings[context.read<LanguageState>().language]!;
     if (_deliveryNoteController.text.trim().isEmpty) {
@@ -286,8 +336,11 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
     // longer the real terminal state -- a real "Confirm Delivered"
     // action (or real carrier tracking) still needs to happen from
     // here. Only "delivered" and "flagged" are genuinely final.
-    final isTerminal = shipment.status == 'delivered' || shipment.status == 'flagged';
+    // Delivered, or anywhere in the flagged family (flagged, returned to the supplier, discarded): nothing more to ADVANCE.
+    final isTerminal = shipment.status == 'delivered' || kFlaggedStatuses.contains(shipment.status);
     final needsDeliveryConfirmation = shipment.status == 'shipped_to_buyer';
+    // A real fault was confirmed and the faulty unit is still at this hub: it must be sent back or discarded.
+    final needsFaultReturn = shipment.needsFaultReturn;
     // Confirmed with the person through several rounds of
     // clarification: can't mark a shipment as inspected until every
     // real spec on every real item has been actively confirmed
@@ -345,11 +398,15 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
             Text(shipment.supplierName, style: const TextStyle(fontSize: 11.5, color: HubColors.muted)),
           ],
         ),
-        actions: [Padding(padding: const EdgeInsets.only(right: 16), child: StatusBadge(status: shipment.status))],
+        actions: [Padding(padding: const EdgeInsets.only(right: 16), child: StatusBadge(status: shipment.displayStatus))],
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          if (shipment.replacementFor != null) ...[
+            _buildReplacementBanner(t, shipment.replacementFor!),
+            const SizedBox(height: 12),
+          ],
           if (itemsCardMode != _ItemsCardMode.hidden) _buildItemsCard(t, shipment, itemsCardMode),
           if (_deliveryAddressVisibleFor(shipment.status) && shipment.deliveryAddress != null) ...[
             const SizedBox(height: 12),
@@ -373,6 +430,10 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
               child: Text(_errorMessage!, style: const TextStyle(fontSize: 12.5, color: HubColors.red)),
             ),
           ],
+          if (needsFaultReturn) ...[
+            const SizedBox(height: 16),
+            _buildFaultPanel(t, shipment),
+          ],
           if (showMainStepForm) ...[
             const SizedBox(height: 16),
             _buildMainStepForm(t, stepText!, nextStatus!, allChecksConfirmed),
@@ -385,7 +446,7 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
             const SizedBox(height: 16),
             _buildConfirmDeliveryCard(t),
           ],
-          if (isTerminal) ...[
+          if (isTerminal && !needsFaultReturn) ...[
             const SizedBox(height: 16),
             _buildTerminalBanner(t, shipment),
           ],
@@ -736,14 +797,161 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
     );
   }
 
+  Widget _buildReplacementBanner(HubText t, String orderId) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: HubColors.torqueBg, borderRadius: BorderRadius.circular(10)),
+      child: Text(
+        '${t.detail.replacementFor} $orderId ${t.detail.replacementHint}',
+        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: HubColors.torque),
+      ),
+    );
+  }
+
+  /// Where to send the faulty unit: the supplier's return address (the label itself is printed from the web portal).
+  Widget _buildReturnAddressCard(HubText t, ReturnAddress address) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: HubColors.card, border: Border.all(color: HubColors.line), borderRadius: BorderRadius.circular(10)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(t.detail.sendTo.toUpperCase(), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: HubColors.muted)),
+          const SizedBox(height: 6),
+          Text(address.contactName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: HubColors.ink)),
+          Text(address.phone, style: const TextStyle(fontSize: 13, color: HubColors.ink)),
+          const SizedBox(height: 4),
+          Text(address.address, style: const TextStyle(fontSize: 13, color: HubColors.ink)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModeButton(String label, String mode) {
+    final selected = _returnMode == mode;
+    return OutlinedButton(
+      onPressed: () => setState(() {
+        _returnMode = mode;
+        _errorMessage = null;
+      }),
+      style: OutlinedButton.styleFrom(
+        side: BorderSide(color: selected ? HubColors.ink : HubColors.line),
+        backgroundColor: selected ? HubColors.card : Colors.transparent,
+        foregroundColor: HubColors.ink,
+        padding: const EdgeInsets.symmetric(vertical: 12),
+      ),
+      child: Text(label, style: TextStyle(fontSize: 12.5, fontWeight: selected ? FontWeight.w800 : FontWeight.w600)),
+    );
+  }
+
+  /// A real fault was confirmed by the platform: this hub has to deal with the faulty unit. It can say NOTHING about money or who decided what
+  /// (the server never sends that to a hub).
+  Widget _buildFaultPanel(HubText t, ShipmentDetail shipment) {
+    final auth = context.read<AuthState>();
+    final fault = shipment.faultCase!;
+    final returning = _returnMode == 'return';
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(color: HubColors.redBg, border: Border.all(color: HubColors.red.withValues(alpha: 0.27)), borderRadius: BorderRadius.circular(12)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.warning_amber_outlined, size: 17, color: HubColors.red),
+              const SizedBox(width: 8),
+              Expanded(child: Text(t.detail.faultTitle, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: HubColors.ink))),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(t.detail.faultDesc, style: const TextStyle(fontSize: 12.5, color: HubColors.muted)),
+          const SizedBox(height: 6),
+          Text(t.detail.waitingOnHub, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: HubColors.red)),
+          const SizedBox(height: 12),
+          Text(t.detail.faultItems.toUpperCase(), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: HubColors.muted)),
+          const SizedBox(height: 6),
+          ...fault.items.map((i) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Text('${i.name} × ${i.quantity}', style: const TextStyle(fontSize: 13, color: HubColors.ink)),
+              )),
+          if (returning) ...[
+            const SizedBox(height: 14),
+            if (fault.returnAddress != null)
+              _buildReturnAddressCard(t, fault.returnAddress!)
+            else
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: HubColors.amberBg, borderRadius: BorderRadius.circular(10)),
+                child: Text(t.detail.noReturnAddress, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: HubColors.amber)),
+              ),
+          ],
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(child: _buildModeButton(t.detail.returnOption, 'return')),
+              const SizedBox(width: 8),
+              Expanded(child: _buildModeButton(t.detail.discardOption, 'discard')),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(t.detail.evidencePhotos.toUpperCase(), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: HubColors.muted)),
+          const SizedBox(height: 8),
+          EvidencePhotoPicker(
+            photoUrls: _photos,
+            onAdd: (url) => setState(() => _photos = [..._photos, url]),
+            onRemove: (url) => setState(() => _photos = _photos.where((p) => p != url).toList()),
+            isUploading: _isUploadingPhoto,
+            onUploadingChanged: (v) => setState(() => _isUploadingPhoto = v),
+            onError: (msg) => setState(() => _errorMessage = msg),
+            token: auth.token!,
+          ),
+          if (returning) ...[
+            const SizedBox(height: 16),
+            Text(t.detail.returnTracking.toUpperCase(), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: HubColors.muted)),
+            const SizedBox(height: 8),
+            TextField(controller: _returnTrackingController),
+          ],
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _isSubmitting ? null : _submitFaultReturn,
+              style: ElevatedButton.styleFrom(backgroundColor: _isSubmitting ? const Color(0xFFD1D5DB) : HubColors.red),
+              child: Text(_isSubmitting ? t.detail.saving : (returning ? t.detail.submitReturn : t.detail.submitDiscard)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The shipment has reached a final state for the hub: delivered, flagged and waiting for the platform, the faulty unit gone, or a flag the platform closed.
   Widget _buildTerminalBanner(HubText t, ShipmentDetail shipment) {
-    final isFlagged = shipment.status == 'flagged';
+    final isDelivered = shipment.status == 'delivered';
+    final String message;
+    if (isDelivered) {
+      message = t.detail.completedBanner;
+    } else if (shipment.status == 'returned_to_supplier') {
+      message = t.detail.returnedBanner;
+    } else if (shipment.status == 'discarded_at_hub') {
+      message = t.detail.discardedBanner;
+    } else if (shipment.resolution != null) {
+      message = t.detail.resolvedBanners[shipment.resolution] ?? t.detail.flaggedBanner;
+    } else {
+      message = t.detail.flaggedBanner;
+    }
+    final stage = (shipment.faultCase != null && !shipment.needsFaultReturn) ? t.detail.stage[shipment.faultCase!.platformStage] : null;
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: isFlagged ? HubColors.redBg : HubColors.gaugeBg, borderRadius: BorderRadius.circular(10)),
-      child: Text(
-        isFlagged ? t.detail.flaggedBanner : t.detail.completedBanner,
-        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: isFlagged ? HubColors.red : HubColors.gauge),
+      decoration: BoxDecoration(color: isDelivered ? HubColors.gaugeBg : HubColors.redBg, borderRadius: BorderRadius.circular(10)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(message, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: isDelivered ? HubColors.gauge : HubColors.red)),
+          if (stage != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text(stage, style: const TextStyle(fontSize: 12.5, color: HubColors.ink))),
+        ],
       ),
     );
   }

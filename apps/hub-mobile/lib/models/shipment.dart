@@ -8,10 +8,15 @@ class ShipmentSummary {
   final String subOrderId;
   final String orderId;
   final String supplierName;
+  // The order a free REPLACEMENT stands in for (null for a normal shipment), and how the platform closed a flag (null while it is still open).
+  final String? replacementFor;
+  final String? resolution;
+  final DateTime? resolvedAt;
 
   ShipmentSummary({
     required this.id, required this.status, required this.createdAt, required this.updatedAt,
     required this.subOrderId, required this.orderId, required this.supplierName,
+    this.replacementFor, this.resolution, this.resolvedAt,
   });
 
   factory ShipmentSummary.fromJson(Map<String, dynamic> json) => ShipmentSummary(
@@ -22,7 +27,13 @@ class ShipmentSummary {
         subOrderId: json['subOrderId'].toString(),
         orderId: json['orderId'] as String,
         supplierName: json['supplierName'] as String,
+        replacementFor: json['replacementFor'] as String?,
+        resolution: json['resolution'] as String?,
+        resolvedAt: json['resolvedAt'] == null ? null : DateTime.parse(json['resolvedAt'] as String),
       );
+
+  /// A flag the platform has CLOSED keeps its "flagged" status but is no longer an open problem: it reads "closed".
+  String get displayStatus => displayStatusOf(status, resolvedAt);
 }
 
 class ShipmentItem {
@@ -120,12 +131,19 @@ class ShipmentDetail {
   // delivery address snapshot for this order, shown once inspection
   // is done. Null when genuinely no address is on file.
   final DeliveryAddress? deliveryAddress;
+  // A free replacement for a faulty unit (the order the buyer paid for); how the platform closed a flag (null while open); and, for a confirmed
+  // fault, what the hub must do with the faulty unit.
+  final String? replacementFor;
+  final String? resolution;
+  final DateTime? resolvedAt;
+  final FaultCaseInfo? faultCase;
 
   ShipmentDetail({
     required this.id, required this.status, required this.createdAt, required this.updatedAt,
     required this.orderId, required this.supplierName,
     this.shipmentIndex = 1, this.totalShipments = 1, this.otherShipments = const [],
     required this.items, required this.events, this.deliveryAddress,
+    this.replacementFor, this.resolution, this.resolvedAt, this.faultCase,
   });
 
   factory ShipmentDetail.fromJson(Map<String, dynamic> json) => ShipmentDetail(
@@ -143,7 +161,17 @@ class ShipmentDetail {
         items: (json['items'] as List<dynamic>).map((i) => ShipmentItem.fromJson(i as Map<String, dynamic>)).toList(),
         events: (json['events'] as List<dynamic>).map((e) => ShipmentEvent.fromJson(e as Map<String, dynamic>)).toList(),
         deliveryAddress: json['deliveryAddress'] == null ? null : DeliveryAddress.fromJson(json['deliveryAddress'] as Map<String, dynamic>),
+        replacementFor: json['replacementFor'] as String?,
+        resolution: json['resolution'] as String?,
+        resolvedAt: json['resolvedAt'] == null ? null : DateTime.parse(json['resolvedAt'] as String),
+        faultCase: json['faultCase'] == null ? null : FaultCaseInfo.fromJson(json['faultCase'] as Map<String, dynamic>),
       );
+
+  /// A flag the platform has CLOSED keeps its "flagged" status but is no longer an open problem: it reads "closed".
+  String get displayStatus => displayStatusOf(status, resolvedAt);
+
+  /// A real fault was confirmed and the faulty unit is still at this hub: it must be sent back or discarded.
+  bool get needsFaultReturn => status == 'flagged' && (faultCase?.needsReturn ?? false);
 }
 
 class DeliveryAddress {
@@ -190,4 +218,58 @@ String? nextStatusFor(String currentStatus) {
   final idx = kStatusOrder.indexOf(currentStatus);
   if (idx < 0 || idx >= kStatusOrder.length - 1) return null;
   return kStatusOrder[idx + 1];
+}
+
+
+/// The statuses of a shipment the hub has flagged, from the flag until the unit has left.
+const Set<String> kFlaggedStatuses = {'flagged', 'returned_to_supplier', 'discarded_at_hub'};
+
+/// A flagged shipment whose flag the platform has CLOSED reads "closed" (it keeps the "flagged" status, only `resolvedAt` says it is over).
+String displayStatusOf(String status, DateTime? resolvedAt) => status == 'flagged' && resolvedAt != null ? 'closed' : status;
+
+/// Where to send a faulty unit back to: the supplier's return address (null when the supplier has not entered one).
+class ReturnAddress {
+  final String contactName;
+  final String phone;
+  final String address;
+
+  ReturnAddress({required this.contactName, required this.phone, required this.address});
+
+  factory ReturnAddress.fromJson(Map<String, dynamic> json) => ReturnAddress(
+        contactName: json['contactName'] as String? ?? '',
+        phone: json['phone'] as String? ?? '',
+        address: json['address'] as String? ?? '',
+      );
+}
+
+class FaultCaseItem {
+  final String productId;
+  final String name;
+  final int quantity;
+
+  FaultCaseItem({required this.productId, required this.name, required this.quantity});
+
+  factory FaultCaseItem.fromJson(Map<String, dynamic> json) => FaultCaseItem(
+        productId: json['productId'] as String,
+        name: (json['name'] as String?) ?? (json['productId'] as String),
+        quantity: json['quantity'] as int,
+      );
+}
+
+/// What the HUB sees of a confirmed fault (GET /hub/me/shipments/:id -> faultCase): nothing about money or who decided what.
+/// `platformStage`: reviewing / finalising / closed. `needsReturn` is true while the faulty unit is still at this hub and the case is not closed.
+class FaultCaseInfo {
+  final List<FaultCaseItem> items;
+  final bool needsReturn;
+  final String platformStage;
+  final ReturnAddress? returnAddress;
+
+  FaultCaseInfo({required this.items, required this.needsReturn, required this.platformStage, this.returnAddress});
+
+  factory FaultCaseInfo.fromJson(Map<String, dynamic> json) => FaultCaseInfo(
+        items: (json['items'] as List<dynamic>? ?? []).map((i) => FaultCaseItem.fromJson(i as Map<String, dynamic>)).toList(),
+        needsReturn: json['needsReturn'] as bool? ?? false,
+        platformStage: json['platformStage'] as String? ?? 'reviewing',
+        returnAddress: json['returnAddress'] == null ? null : ReturnAddress.fromJson(json['returnAddress'] as Map<String, dynamic>),
+      );
 }

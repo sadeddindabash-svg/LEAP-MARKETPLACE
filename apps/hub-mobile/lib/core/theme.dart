@@ -40,6 +40,9 @@ const Map<String, List<Color>> kStatusColors = {
   'shipped_to_buyer': [HubColors.gauge, HubColors.gaugeBg],
   'delivered': [HubColors.gauge, HubColors.gaugeBg],
   'flagged': [HubColors.red, HubColors.redBg],
+  // The faulty unit has left the hub. (A flag the platform closed, 'closed', falls back to the neutral grey on purpose.)
+  'returned_to_supplier': [HubColors.red, HubColors.redBg],
+  'discarded_at_hub': [HubColors.red, HubColors.redBg],
 };
 
 ThemeData buildHubTheme() {
