@@ -579,7 +579,7 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
         }
         // Delivery proof photos sent by the courier through the label's link (migration 096), or null. Admin also gets who sent them.
         const deliveryProofData = await loadProofForShipment(shipment.id, { forAdmin: isAdmin });
-        hubShipment = { id: shipment.id, status: shipment.status, updatedAt: shipment.updated_at, events: eventsWithPhotos, deliveryProof: deliveryProofData };
+        hubShipment = { id: shipment.id, status: shipment.status, updatedAt: shipment.updated_at, events: eventsWithPhotos, deliveryProof: deliveryProofData, ...(isAdmin ? { resolution: shipment.resolution || null, resolvedAt: shipment.resolved_at || null } : {}) };
       }
 
       supplierSubOrders.push({
@@ -680,7 +680,8 @@ async function computeDisplayStatus(orderId) {
   // status instead.
   const { rows: subOrders } = await db.query(
     `SELECT so.status,
-            (SELECT hs.status FROM hub_shipments hs WHERE hs.sub_order_id = so.id) AS hub_status
+            (SELECT hs.status FROM hub_shipments hs WHERE hs.sub_order_id = so.id) AS hub_status,
+            (SELECT hs.resolved_at FROM hub_shipments hs WHERE hs.sub_order_id = so.id) AS flag_resolved_at
      FROM supplier_sub_orders so
      WHERE so.order_id = $1`,
     [orderId]
@@ -704,7 +705,11 @@ async function computeDisplayStatus(orderId) {
   // _buyerFacingStage logic exactly.
   // 'returned_to_supplier' / 'discarded_at_hub' (migration 091) are a confirmed fault whose unit has left the hub:
   // still a dispute for the buyer until the case is closed.
-  if (subOrders.some((so) => ['flagged', 'returned_to_supplier', 'discarded_at_hub'].includes(so.hub_status))) return 'dispute';
+  const faultStatuses = ['flagged', 'returned_to_supplier', 'discarded_at_hub'];
+  if (subOrders.some((so) => faultStatuses.includes(so.hub_status) && !so.flag_resolved_at)) return 'dispute';
+  // A flag the platform has CLOSED (by hand, or because the refund / replacement is done) is no longer an open dispute: it used to stay 'dispute'
+  // for ever, because the shipment keeps its "flagged" status. The order ended through the fault path, so it counts as a return.
+  if (subOrders.some((so) => faultStatuses.includes(so.hub_status) && so.flag_resolved_at)) return 'returns';
 
   // Multi-supplier orders can have genuinely MIXED real progress (one
   // hub-shipped, one still at the hub) -- if ANY real part has
@@ -727,13 +732,15 @@ async function computeDisplayStatus(orderId) {
 // order at all (too early -- not a fabricated default).
 async function computeHubStatus(orderId) {
   const { rows } = await db.query(
-    `SELECT hs.status
+    `SELECT hs.status, hs.resolved_at
      FROM hub_shipments hs
      JOIN supplier_sub_orders so ON so.id = hs.sub_order_id
      WHERE so.order_id = $1`,
     [orderId]
   );
   if (rows.length === 0) return null;
+  // A flagged shipment whose flag has been CLOSED (resolved) reads 'closed': the admin's "Disputes" tab and hub-status chip used to keep showing it as an open flag.
+  for (const row of rows) { if (row.status === 'flagged' && row.resolved_at) row.status = 'closed'; }
   let leastAdvanced = null;
   let leastAdvancedIdx = Infinity;
   for (const row of rows) {

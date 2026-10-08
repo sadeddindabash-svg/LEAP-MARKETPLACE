@@ -3285,6 +3285,17 @@ refund_pending --(admin marks refunded)--+
 builds its own hub and hub-staff login (using the Hub staff feature) so workload checks are exact. Verified to fail when completion stops needing
 both conditions, when supplier isolation is removed, when the buyer-cancel block is removed, or when the hub workload keeps counting returned units.
 
+## One order, several statuses: what each screen shows (and the "stuck dispute" fix)
+
+An order has several statuses on purpose, because they describe different things:
+- **Supplier portal "Shipped"**: the supplier's own leg (supplier to hub). It stays "shipped" for ever; it does not change when the hub flags or closes anything.
+- **Hub portal**: the hub parcel's own state: received, inspected, packed, shipped to buyer, delivered, flagged, **Closed** (a flag the platform has closed).
+- **Admin Orders "Hub status" chip and the "Disputes" tab**: the hub parcel's state, now `closed` for a closed flag. **Before, a flag closed by hand kept the raw status "flagged", so the order stayed in the Disputes tab for ever and showed a red "Flagged" chip while the hub already said "Closed".** The Disputes tab now lists only OPEN flags; a closed one stays under "All".
+- **Admin Orders "Status" chip and the order page header**: now the COMPUTED status (`displayStatus`: to ship / shipped / delivered / dispute / returns). It used to read the stored status, which is only ever "to_ship" or "cancelled", so it said "To ship" for orders that were long delivered.
+- **`displayStatus` rule:** an order is a **dispute** only while a flag is OPEN and there is no return case; a closed flag counts as **returns** (it ended through the fault path). Any return case still makes it **returns**. Buyers never see "dispute" (it shows as "to ship").
+- The admin's order page also receives the parcel's `resolution` and `resolvedAt` (admin only; buyers never get them) so it can show "Closed".
+- Tested: `closedFlagOrderStatus.integration.test.js` (3, real backend, including an old-style flag with no return case) and three new screen tests in `OrdersFlow.test.jsx`. Verified to fail with the old rules.
+
 ## Tracking timeline in the buyer's language
 
 `GET /order/:id/tracking?lang=ar` returns the hub's own steps ("Received at hub", "Opened for inspection", "Inspection complete", "Repacked for shipping", "Shipped to you", "Delivered (confirmed by hub / carrier)") in **Arabic**; any other value, or none, gives the English text exactly as before. Each hub step now also has **`kind`** (`received`, `opened`, `inspected`, `packed`, `shipped_to_buyer`, `delivered`), the same in every language, so the app chooses icons from it instead of reading English words. The courier's own scan events keep the courier's text (they have no `kind`). **Fixed on the way:** internal steps (a flag, returning or discarding a faulty unit) used to appear in a buyer's tracking as the raw step name (for example "flagged"); only the buyer-facing steps are shown now. Tested in `trackingLanguage.integration.test.js` (3), verified to fail with the old behaviour.

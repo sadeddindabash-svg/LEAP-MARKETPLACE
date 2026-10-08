@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import LeapAdminApp from './App';
 
 const ADMIN_USER = { id: 'admin_dev_seed', email: 'admin@leap.dev', name: 'Dev Admin', role: 'admin', isOwner: true, allowedPages: 'all' };
@@ -186,5 +186,59 @@ describe('Orders page — real data flow (mocked fetch, but exercising the real 
     // view (with the real hub name) replaces the picker.
     await waitFor(() => expect(assignCallBody).toEqual({ hubId: 'hub_guangzhou' }));
     await waitFor(() => expect(screen.getByText('Guangzhou Inspection Hub')).toBeInTheDocument());
+  });
+});
+
+describe('Orders page: a CLOSED flag is no longer a dispute, and the status shown is the real one (mocked fetch, real component tree)', () => {
+  let originalFetch;
+  beforeEach(() => { originalFetch = globalThis.fetch; localStorage.clear(); });
+  afterEach(() => { globalThis.fetch = originalFetch; localStorage.clear(); });
+
+  // The STORED status is only ever "to_ship" (or "cancelled"); the computed one (displayStatus) and the hub's status are what tell the truth.
+  const ORDERS = [
+    { id: 'LP-910001', userId: 'u_1', guestEmail: null, status: 'to_ship', displayStatus: 'dispute', hubStatus: 'flagged', total: 10, currencyCode: 'USD', placedAt: '2026-07-04T10:00:00.000Z' },
+    { id: 'LP-910002', userId: 'u_2', guestEmail: null, status: 'to_ship', displayStatus: 'returns', hubStatus: 'closed', total: 20, currencyCode: 'USD', placedAt: '2026-07-03T10:00:00.000Z' },
+    { id: 'LP-910003', userId: 'u_3', guestEmail: null, status: 'to_ship', displayStatus: 'delivered', hubStatus: 'delivered', total: 30, currencyCode: 'USD', placedAt: '2026-07-02T10:00:00.000Z' },
+  ];
+  const openOrdersPage = async () => {
+    globalThis.fetch = vi.fn((url) => {
+      const u = String(url);
+      if (u.includes('/auth/login')) return Promise.resolve({ ok: true, json: async () => ({ token: 'fake.jwt.token', user: ADMIN_USER }) });
+      if (u.includes('/auth/me')) return Promise.resolve({ ok: true, json: async () => ADMIN_USER });
+      if (u.endsWith('/overview')) return Promise.resolve({ ok: true, json: async () => ({ totalOrders: 0, activeSuppliers: 0, pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, openTickets: 0, ordersByDay: [], unitsByCategory: [], topSuppliers: [], recentOrders: [] }) });
+      if (u.endsWith('/order')) return Promise.resolve({ ok: true, json: async () => ORDERS });
+      if (u.endsWith('/supplier') || u.endsWith('/hub/flagged')) return Promise.resolve({ ok: true, json: async () => [] });
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    render(<LeapAdminApp />);
+    await loginAndGoToOrders();
+    await screen.findByText('LP-910001');
+  };
+  const rowOf = (id) => screen.getByText(id).closest('tr');
+
+  it('CRITICAL: the "Disputes" tab lists only OPEN flags; a closed flag leaves it but stays under "All"', async () => {
+    await openOrdersPage();
+    for (const id of ['LP-910001', 'LP-910002', 'LP-910003']) expect(screen.getByText(id)).toBeInTheDocument();   // All
+    fireEvent.click(screen.getByRole('button', { name: 'Disputes' }));
+    expect(screen.getByText('LP-910001')).toBeInTheDocument();                  // the open flag
+    expect(screen.queryByText('LP-910002')).not.toBeInTheDocument();            // the closed one is gone from Disputes...
+    expect(screen.queryByText('LP-910003')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'All' }));
+    expect(screen.getByText('LP-910002')).toBeInTheDocument();                  // ...but still under All
+  });
+
+  it('CRITICAL: a closed flag shows a grey "Closed" hub chip, not the red "Flagged" one, and an open flag still shows "Flagged"', async () => {
+    await openOrdersPage();
+    expect(within(rowOf('LP-910002')).getByText('Closed')).toBeInTheDocument();
+    expect(within(rowOf('LP-910002')).queryByText('Flagged')).not.toBeInTheDocument();
+    expect(within(rowOf('LP-910001')).getByText('Flagged')).toBeInTheDocument();
+  });
+
+  it('CRITICAL: the Status chip is the REAL status (it used to read the stored one, so a delivered order said "To ship")', async () => {
+    await openOrdersPage();
+    expect(within(rowOf('LP-910003')).getAllByText('Delivered')).toHaveLength(2);   // Status and Hub status
+    expect(within(rowOf('LP-910003')).queryByText('To ship')).not.toBeInTheDocument();
+    expect(within(rowOf('LP-910002')).getByText('Returns')).toBeInTheDocument();
+    expect(within(rowOf('LP-910001')).getByText('Dispute')).toBeInTheDocument();
   });
 });

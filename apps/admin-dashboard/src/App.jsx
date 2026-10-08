@@ -81,6 +81,11 @@ function getOrderStatusMeta(status) {
   return ORDER_STATUS_META[status] || { label: status || "Unknown", color: C.muted, bg: "#EEEFF1" };
 }
 
+// A flagged shipment whose flag was CLOSED reads "closed" (the hub shipment keeps its "flagged" status; only resolvedAt says it is over).
+function effectiveHubStatus(hubShipment) {
+  return hubShipment && hubShipment.status === "flagged" && hubShipment.resolvedAt ? "closed" : hubShipment?.status;
+}
+
 // Confirmed with the person: the real, detailed hub_shipments
 // workflow's own labels/colors -- a genuinely separate, more
 // granular set from ORDER_STATUS_META above, which stays the coarse
@@ -94,6 +99,8 @@ const HUB_STATUS_META = {
   shipped_to_buyer: { label: "Shipped to buyer", color: C.gauge, bg: C.gaugeBg },
   delivered: { label: "Delivered", color: C.gauge, bg: C.gaugeBg },
   flagged: { label: "Flagged", color: C.red, bg: C.redBg },
+  // A flag the platform has CLOSED (by hand, or finished normally): no longer an open problem.
+  closed: { label: "Closed", color: C.muted, bg: "#EEEFF1" },
   // A confirmed real fault whose unit has left the hub (migration 091).
   returned_to_supplier: { label: "Returned to supplier", color: C.red, bg: C.redBg },
   discarded_at_hub: { label: "Discarded at hub", color: C.red, bg: C.redBg },
@@ -689,7 +696,7 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
               total: Number(o.total),
               currencyCode: o.currencyCode,
               placedAt: new Date(o.placedAt).toLocaleDateString(),
-              status: getOrderStatusMeta(o.status).label,
+              status: getOrderStatusMeta(o.displayStatus || o.status).label,
               hubStatus: getHubStatusMeta(o.hubStatus).label,
             })),
           })}
@@ -718,7 +725,8 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
                   <tr><td colSpan={7} style={{ ...body, textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>No orders match this filter.</td></tr>
                 )}
                 {filtered.map(o => {
-                  const meta = getOrderStatusMeta(o.status);
+                  // the COMPUTED status: the stored one is only ever "to ship" or "cancelled", so it said "To ship" for orders that were long delivered
+                  const meta = getOrderStatusMeta(o.status === "cancelled" ? "cancelled" : (o.displayStatus || o.status));
                   const hubMeta = getHubStatusMeta(o.hubStatus);
                   return (
                     <tr key={o.id} onClick={() => onOpenOrder(o.id)} style={{ cursor: "pointer" }}>
@@ -1253,7 +1261,7 @@ function OrderDetailPage({ orderId, onBack, onSessionExpired, onOpenTicket, onOp
     );
   }
 
-  const meta = getOrderStatusMeta(order.status);
+  const meta = getOrderStatusMeta(order.status === "cancelled" ? "cancelled" : (order.displayStatus || order.status));
   const buyerLabel = order.userId || order.guestEmail || "Unknown";
 
   return (
@@ -1281,7 +1289,7 @@ function OrderDetailPage({ orderId, onBack, onSessionExpired, onOpenTicket, onOp
                       {so.trackingNumber && <PlateChip small>{so.trackingNumber}</PlateChip>}
                       {so.hubTrackingNumber && <span style={{ ...body, fontSize: 11, color: C.muted }}>Hub → buyer</span>}
                       {so.hubTrackingNumber && <PlateChip small>{so.hubTrackingNumber}</PlateChip>}
-                      <Badge label={getHubStatusMeta(so.hubShipment?.status).label} color={getHubStatusMeta(so.hubShipment?.status).color} bg={getHubStatusMeta(so.hubShipment?.status).bg} />
+                      <Badge label={getHubStatusMeta(effectiveHubStatus(so.hubShipment)).label} color={getHubStatusMeta(effectiveHubStatus(so.hubShipment)).color} bg={getHubStatusMeta(effectiveHubStatus(so.hubShipment)).bg} />
                     </div>
                   </div>
                   {so.items?.map((item, j) => (
@@ -5457,10 +5465,8 @@ const usd2 = (n) => `$${Number(n).toFixed(2)}`;
 // "Real fault" dialog: which items are faulty, and who bears the cost. (Custom rather than EditDialog,
 // which has no checkboxes.) Everything defaults to the safe choice: all items ticked, supplier pays.
 function FaultCaseDialog({ shipment, onCancel, onSubmit, isSaving, errorMessage }) {
-  const [selected, setSelected] = useState(() => new Set(shipment.items.map((i) => i.productId)));
   const [costBearer, setCostBearer] = useState("supplier");
   const [notes, setNotes] = useState("");
-  const toggle = (id) => setSelected((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const label = { ...body, display: "block", fontSize: 11.5, fontWeight: 700, color: C.muted, margin: "14px 0 6px" };
 
   return (
@@ -5476,21 +5482,15 @@ function FaultCaseDialog({ shipment, onCancel, onSubmit, isSaving, errorMessage 
             This supplier has <strong>no return address</strong> on file, so the hub will not know where to send the unit. The supplier will be reminded to add one; you can also add it yourself on the supplier's page.
           </div>
         )}
-        <span style={label}>WHICH ITEMS ARE FAULTY?</span>
+        {/* A fault ALWAYS covers the whole parcel: the hub handles the parcel as one, so it goes back as a whole and every item is refunded or replaced. */}
+        <span style={label}>THE WHOLE PARCEL IS COVERED</span>
+        <p style={{ ...body, fontSize: 12, color: C.muted, margin: "0 0 6px" }}>A fault always covers the whole parcel: all of it goes back to the supplier, and every item below is refunded or replaced together.</p>
         {shipment.items.map((i) => (
-          <label key={i.productId} style={{ ...body, display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.ink, padding: "4px 0", cursor: "pointer" }}>
-            <input type="checkbox" checked={selected.has(i.productId)} onChange={() => toggle(i.productId)} />
+          <div key={i.productId} style={{ ...body, display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.ink, padding: "4px 0" }}>
             <span>{i.name || i.productId} × {i.quantity}</span>
             <span style={{ marginLeft: "auto", color: C.muted }}>{usd2(i.unitPrice * i.quantity)}</span>
-          </label>
-        ))}
-        {/* A fault covering only SOME items of a parcel: today the hub sends the WHOLE parcel back, so the rest is neither delivered, refunded nor paid for. */}
-        {selected.size > 0 && selected.size < shipment.items.length && (
-          <div role="alert" style={{ ...body, fontSize: 12, color: C.amber, background: C.amberBg, borderRadius: 8, padding: 10, marginTop: 8 }}>
-            <strong>Only some items are ticked.</strong> The other item{shipment.items.length - selected.size === 1 ? "" : "s"} in this parcel ({usd2(shipment.items.filter((i) => !selected.has(i.productId)).reduce((sum, i) => sum + i.unitPrice * i.quantity, 0))}) are{" "}
-            <strong>not covered</strong>: today the hub sends the <strong>whole parcel</strong> back, so they are not delivered to the buyer, not refunded, and the supplier is not paid for them. Unless you will sort that out by hand, tick <strong>every</strong> item.
           </div>
-        )}
+        ))}
 
         <label style={label} htmlFor="fault-cost-bearer">WHO BEARS THE COST? (refund and return shipping)</label>
         <select id="fault-cost-bearer" value={costBearer} onChange={(e) => setCostBearer(e.target.value)} style={{ ...body, width: "100%", boxSizing: "border-box", padding: 9, borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13, background: "#fff" }}>
@@ -5506,9 +5506,9 @@ function FaultCaseDialog({ shipment, onCancel, onSubmit, isSaving, errorMessage 
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
           <button onClick={onCancel} style={{ ...body, fontSize: 12.5, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", cursor: "pointer" }}>Cancel</button>
           <button
-            disabled={isSaving || selected.size === 0}
-            onClick={() => onSubmit({ items: [...selected], costBearer, notes: notes.trim() })}
-            style={{ ...body, fontSize: 12.5, fontWeight: 700, padding: "8px 14px", borderRadius: 8, border: "none", background: isSaving || selected.size === 0 ? "#D1D5DB" : C.red, color: "#fff", cursor: isSaving || selected.size === 0 ? "default" : "pointer" }}
+            disabled={isSaving}
+            onClick={() => onSubmit({ items: shipment.items.map((i) => i.productId), costBearer, notes: notes.trim() })}
+            style={{ ...body, fontSize: 12.5, fontWeight: 700, padding: "8px 14px", borderRadius: 8, border: "none", background: isSaving ? "#D1D5DB" : C.red, color: "#fff", cursor: isSaving ? "default" : "pointer" }}
           >
             {isSaving ? "Saving…" : "Confirm real fault"}
           </button>
