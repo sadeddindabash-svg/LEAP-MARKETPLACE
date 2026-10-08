@@ -44,11 +44,15 @@ export function KpiCard({ label, value, delta, positive, icon: Icon }) {
         <Icon size={16} color={C.muted} />
       </div>
       <div style={{ ...disp, fontSize: 28, fontWeight: 700, color: C.ink, marginBottom: 4 }}>{value}</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-        {positive ? <TrendingUp size={13} color={C.gauge} /> : <TrendingDown size={13} color={C.red} />}
-        <span style={{ ...body, fontSize: 12, fontWeight: 600, color: positive ? C.gauge : C.red }}>{delta}</span>
-        <span style={{ ...body, fontSize: 11.5, color: C.muted }}>vs last week</span>
-      </div>
+      {/* Only when a REAL change is given. Nothing used to pass one, so every card showed a red down-arrow and "vs last week" with no number, as if
+          every figure had dropped. */}
+      {delta !== undefined && delta !== null && delta !== "" && (
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          {positive ? <TrendingUp size={13} color={C.gauge} /> : <TrendingDown size={13} color={C.red} />}
+          <span style={{ ...body, fontSize: 12, fontWeight: 600, color: positive ? C.gauge : C.red }}>{delta}</span>
+          <span style={{ ...body, fontSize: 11.5, color: C.muted }}>vs last week</span>
+        </div>
+      )}
     </div>
   );
 }

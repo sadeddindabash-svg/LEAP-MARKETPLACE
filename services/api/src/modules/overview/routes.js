@@ -47,10 +47,15 @@ router.get('/', requireAuth, requireRole('admin'), requirePageAccess('overview')
       db.query(`SELECT COUNT(*) AS n FROM products WHERE status = 'translating'`),
       db.query(`SELECT COUNT(*) AS n FROM support_tickets WHERE status != 'resolved'`),
       db.query(`
-        SELECT date_trunc('day', placed_at) AS day, COUNT(*) AS n
-        FROM orders
-        WHERE placed_at > now() - interval '7 days'
-        GROUP BY day ORDER BY day ASC
+        -- EVERY one of the last 7 days (today and the 6 before), with 0 for a day without orders. Before, only days that HAD orders were returned, so a
+        -- chart with two busy days was a straight line between two points and the quiet days were simply missing.
+        SELECT d AS day, COALESCE(c.n, 0) AS n
+        FROM generate_series(date_trunc('day', now()) - interval '6 days', date_trunc('day', now()), interval '1 day') AS d
+        LEFT JOIN (
+          SELECT date_trunc('day', placed_at) AS day, COUNT(*) AS n FROM orders
+          WHERE placed_at >= date_trunc('day', now()) - interval '6 days' GROUP BY 1
+        ) c ON c.day = d
+        ORDER BY d ASC
       `),
       db.query(`
         SELECT p.category, SUM(oli.quantity) AS units

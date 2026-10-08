@@ -1067,10 +1067,15 @@ router.get('/me/overview', requireAuth, requireRole('supplier'), async (req, res
         [supplierId]
       ),
       db.query(
-        `SELECT date_trunc('day', o.placed_at) AS day, COUNT(*) AS n
-         FROM supplier_sub_orders so JOIN orders o ON o.id = so.order_id
-         WHERE so.supplier_id = $1 AND o.placed_at > now() - interval '7 days'
-         GROUP BY day ORDER BY day ASC`,
+        // every one of the last 7 days (today and the 6 before), 0 where there were no orders (see the admin overview)
+        `SELECT d AS day, COALESCE(c.n, 0) AS n
+         FROM generate_series(date_trunc('day', now()) - interval '6 days', date_trunc('day', now()), interval '1 day') AS d
+         LEFT JOIN (
+           SELECT date_trunc('day', o.placed_at) AS day, COUNT(*) AS n
+           FROM supplier_sub_orders so JOIN orders o ON o.id = so.order_id
+           WHERE so.supplier_id = $1 AND o.placed_at >= date_trunc('day', now()) - interval '6 days' GROUP BY 1
+         ) c ON c.day = d
+         ORDER BY d ASC`,
         [supplierId]
       ),
       db.query(

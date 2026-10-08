@@ -3285,6 +3285,13 @@ refund_pending --(admin marks refunded)--+
 builds its own hub and hub-staff login (using the Hub staff feature) so workload checks are exact. Verified to fail when completion stops needing
 both conditions, when supplier isolation is removed, when the buyer-cancel block is removed, or when the hub workload keeps counting returned units.
 
+## The Overview page: honest numbers
+
+- **Orders per day** (admin Overview and the supplier dashboard) now returns **every one of the last 7 days** (today and the 6 before), with **0** for a day without orders. Before, only days that had orders came back, so two busy days showed as a straight line between two points (it looked like a steady climb) and the quiet days were missing.
+- **The "vs last week" trend** on the KPI cards is shown **only when a real change is supplied**. Nothing supplied one, so every card used to show a red down-arrow and "vs last week" with no number, as if every figure had dropped. The cards now show just the number. (Real week-over-week changes can be added later, per card.)
+- The supplier portal's language file had an unused, invented "+9.4% vs last week" text; it was never displayed and has been removed.
+- **The numbers themselves are real counts of what is in the database**, which includes whatever the automated tests left there (see "Test leftovers"). Total orders, the busy day on the chart, open disputes and open tickets all fall once the test data is cleaned.
+
 ## Partly faulty parcels: KNOWN GAP (found by running a real order through the backend)
 
 **What happens today.** A fault case can cover just SOME of the items in a hub parcel, but the hub handles the parcel as a whole. Tested with a real order of two items from one supplier (one faulty, supplier at fault, refund, unit returned):

@@ -54,7 +54,6 @@ const STRINGS = {
     overview: {
       title: "概览", subtitle: "数据每 5 分钟更新一次",
       alert: (a, b, c) => (<span><b>{a}</b> 个新订单待确认，<b>{b}</b> 个商品正在翻译审核中，<b>{c}</b> 个售后案例待回复。</span>),
-      kpiSales: "本周销售额", kpiSalesSub: "较上周 +9.4%",
       kpiPending: "待处理订单", kpiPendingSub: "其中 2 个待确认",
       kpiListings: "在架商品", kpiListingsSub: "共 6 个分类",
       kpiRating: "店铺评分", kpiRatingSub: "履约达标率 96%",
@@ -174,7 +173,6 @@ const STRINGS = {
     overview: {
       title: "Overview", subtitle: "Data refreshes every 5 minutes",
       alert: (a, b, c) => (<span><b>{a}</b> new orders awaiting confirmation, <b>{b}</b> listings in translation review, <b>{c}</b> return case(s) awaiting your reply.</span>),
-      kpiSales: "Sales this week", kpiSalesSub: "+9.4% vs last week",
       kpiPending: "Pending orders", kpiPendingSub: "2 awaiting confirmation",
       kpiListings: "Active listings", kpiListingsSub: "Across 6 categories",
       kpiRating: "Store rating", kpiRatingSub: "96% fulfillment SLA",
