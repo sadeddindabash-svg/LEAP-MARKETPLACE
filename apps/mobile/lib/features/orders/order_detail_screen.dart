@@ -909,7 +909,7 @@ class _AddAddressSheetState extends State<_AddAddressSheet> {
         _countryController.text.trim().isEmpty ||
         _cityController.text.trim().isEmpty ||
         _streetController.text.trim().isEmpty) {
-      setState(() => _error = 'Please fill in every field.');
+      setState(() => _error = trRead(context, 'fill_every_field'));
       return;
     }
     setState(() { _isSaving = true; _error = null; });
@@ -944,17 +944,17 @@ class _AddAddressSheetState extends State<_AddAddressSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Add your delivery address', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            Text(tr(context, 'address_prompt_title'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
             const SizedBox(height: 16),
-            TextField(controller: _recipientController, decoration: const InputDecoration(labelText: 'Recipient name')),
+            TextField(controller: _recipientController, decoration: InputDecoration(labelText: tr(context, 'recipient_name_field'))),
             const SizedBox(height: 10),
-            TextField(controller: _phoneController, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone')),
+            TextField(controller: _phoneController, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: tr(context, 'phone_field'))),
             const SizedBox(height: 10),
-            TextField(controller: _countryController, decoration: const InputDecoration(labelText: 'Country')),
+            TextField(controller: _countryController, decoration: InputDecoration(labelText: tr(context, 'country_field'))),
             const SizedBox(height: 10),
-            TextField(controller: _cityController, decoration: const InputDecoration(labelText: 'City')),
+            TextField(controller: _cityController, decoration: InputDecoration(labelText: tr(context, 'city_field'))),
             const SizedBox(height: 10),
-            TextField(controller: _streetController, decoration: const InputDecoration(labelText: 'Street address')),
+            TextField(controller: _streetController, decoration: InputDecoration(labelText: tr(context, 'street_address_field'))),
             if (_error != null) ...[
               const SizedBox(height: 10),
               Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 12.5)),
@@ -964,7 +964,7 @@ class _AddAddressSheetState extends State<_AddAddressSheet> {
               onPressed: _isSaving ? null : _save,
               child: _isSaving
                   ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('Save address'),
+                  : Text(tr(context, 'save_address')),
             ),
           ],
         ),

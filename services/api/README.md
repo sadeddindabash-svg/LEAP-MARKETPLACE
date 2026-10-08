@@ -3285,6 +3285,10 @@ refund_pending --(admin marks refunded)--+
 builds its own hub and hub-staff login (using the Hub staff feature) so workload checks are exact. Verified to fail when completion stops needing
 both conditions, when supplier isolation is removed, when the buyer-cancel block is removed, or when the hub workload keeps counting returned units.
 
+## Tracking timeline in the buyer's language
+
+`GET /order/:id/tracking?lang=ar` returns the hub's own steps ("Received at hub", "Opened for inspection", "Inspection complete", "Repacked for shipping", "Shipped to you", "Delivered (confirmed by hub / carrier)") in **Arabic**; any other value, or none, gives the English text exactly as before. Each hub step now also has **`kind`** (`received`, `opened`, `inspected`, `packed`, `shipped_to_buyer`, `delivered`), the same in every language, so the app chooses icons from it instead of reading English words. The courier's own scan events keep the courier's text (they have no `kind`). **Fixed on the way:** internal steps (a flag, returning or discarding a faulty unit) used to appear in a buyer's tracking as the raw step name (for example "flagged"); only the buyer-facing steps are shown now. Tested in `trackingLanguage.integration.test.js` (3), verified to fail with the old behaviour.
+
 ## The Overview page: honest numbers
 
 - **Orders per day** (admin Overview and the supplier dashboard) now returns **every one of the last 7 days** (today and the 6 before), with **0** for a day without orders. Before, only days that had orders came back, so two busy days showed as a straight line between two points (it looked like a steady climb) and the quiet days were missing.
@@ -3292,21 +3296,16 @@ both conditions, when supplier isolation is removed, when the buyer-cancel block
 - The supplier portal's language file had an unused, invented "+9.4% vs last week" text; it was never displayed and has been removed.
 - **The numbers themselves are real counts of what is in the database**, which includes whatever the automated tests left there (see "Test leftovers"). Total orders, the busy day on the chart, open disputes and open tickets all fall once the test data is cleaned.
 
-## Partly faulty parcels: KNOWN GAP (found by running a real order through the backend)
+## A fault covers the WHOLE parcel (decision, replaces the earlier "partly faulty parcels" gap)
 
-**What happens today.** A fault case can cover just SOME of the items in a hub parcel, but the hub handles the parcel as a whole. Tested with a real order of two items from one supplier (one faulty, supplier at fault, refund, unit returned):
+**What was wrong.** A fault case could cover just SOME items of a hub parcel, but the hub handles the parcel as one. Tested with a real two-item order (one faulty item, supplier at fault, refund, unit returned): the buyer paid $69.31 and was refunded $39.99; the other item ($29.32) was **never shipped** (the hub shipment ends at "returned to supplier" and cannot be advanced), **never refunded** and **never paid to the supplier**.
 
-| | |
-|---|---|
-| Buyer paid | **$69.31** (item 1 $39.99, item 2 $29.32 after discount) |
-| Refund | **$39.99** (the faulty item only, as the case says) |
-| The other item ($29.32) | **never shipped** (the hub shipment ends at "returned to supplier" and cannot be advanced: `packed` and `shipped_to_buyer` are refused with 400), **never refunded**, and **never paid to the supplier** (a sub-order with a return case is never payable) |
-
-So the buyer is out $29.32 and the supplier is out the same, for an item nobody ever sent. The same happens with a **replacement**: the replacement order contains only the faulty items, and the good ones are still stranded in the returned parcel.
-
-**What protects you meanwhile.** The "Real fault…" dialog ticks **every** item by default, and shows an amber warning, with the amount left out, as soon as an item is unticked. Ticking every item is consistent with how the hub works today (the whole parcel goes back and is refunded or replaced).
-
-**Not fixed yet: it needs a decision.** The proper fix is to let the good items continue to the buyer after the faulty unit is returned, and to pay the supplier for those good items when delivered. That touches the hub's steps, the payout rules (in three places) and the payment-release amounts, so it should only be built once the business rule is confirmed.
+**The decision (option B): a fault always covers the whole parcel.** The whole parcel goes back to the supplier and **every** item in it is refunded or replaced together, so nobody is left out of pocket and the existing payout and payment-release rules (which already work on the whole sub-order) stay correct.
+- `POST /fault-cases`: `items` is now **optional**. Leave it out and the case covers every item of the shipment. If you do send it, it must list **every** item; a partial list is refused with `400` ("A fault covers the whole parcel: all N items in it are returned and refunded or replaced together. Leave \"items\" out, or list every item."). An unknown product, an empty list, or a value that is not a list are also refused. A one-item parcel is unchanged.
+- The suggested refund is therefore what the buyer actually paid for the whole parcel; a replacement order contains every item.
+- **Admin screen:** the "Real fault..." dialog no longer has item tick-boxes. It says "THE WHOLE PARCEL IS COVERED", lists every item with its value, and sends every item. (The amber "only some items are ticked" warning that was added meanwhile is gone with the tick-boxes.)
+- **Tested:** `faultCases.integration.test.js` (5 new tests, with a real two-item parcel) and `FlaggedShipmentsFlow.test.jsx`. Verified to fail when a partial list is accepted again, and when only one item is covered.
+- **If the business later wants buyers to keep the good items** (ship them on and pay the supplier for them), that is a larger change to the hub's steps, the payout rules and the payment-release amounts; the decision was to keep it simple for now.
 
 ## Test leftovers in the app's database, and how to remove them (migration 101)
 

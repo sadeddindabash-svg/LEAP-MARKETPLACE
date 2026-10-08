@@ -64,14 +64,15 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
   }
 
   Future<void> _confirmSetup() async {
-    if (_codeController.text.trim().isEmpty) return;
+    final code = toWesternDigits(_codeController.text.trim());
+    if (code.isEmpty) return;
     final auth = context.read<AuthState>();
     setState(() {
       _isBusy = true;
       _errorMessage = null;
     });
     try {
-      await ApiClient().confirmTwoFactor(auth.token!, _codeController.text.trim());
+      await ApiClient().confirmTwoFactor(auth.token!, code);
       // Real sync back to AuthState (new) -- re-fetches the real,
       // now-updated user record so the rest of the real app (this
       // screen included, on a future visit) sees the real, current

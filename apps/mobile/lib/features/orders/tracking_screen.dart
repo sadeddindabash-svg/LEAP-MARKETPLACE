@@ -2,7 +2,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
+import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
+import '../../core/language_state.dart';
 import '../../services/api_client.dart';
 
 /// Real "track your package" screen (new). Shows a real, merged
@@ -65,10 +67,11 @@ class _TrackingScreenState extends State<TrackingScreen> {
   }
 
   Future<void> _load({required bool showSpinner}) async {
-    if (_token == null) return;
+    if (_token == null || !mounted) return;
+    final lang = context.read<LanguageState>().isArabic ? 'ar' : 'en'; // read BEFORE the await below
     if (showSpinner && mounted) setState(() { _isLoading = true; _error = null; });
     try {
-      final data = await ApiClient().fetchOrderTracking(_token!, widget.orderId);
+      final data = await ApiClient().fetchOrderTracking(_token!, widget.orderId, lang: lang);
       if (mounted) setState(() { _tracking = data; _isLoading = false; _error = null; });
     } catch (e) {
       // A silent background poll that fails shouldn't wipe out an
@@ -78,7 +81,19 @@ class _TrackingScreenState extends State<TrackingScreen> {
     }
   }
 
-  IconData _iconFor(String description) {
+  // [kind] is the hub step's own name (sent by the server, the same in every language); the carrier's own texts have none and are matched by words.
+  IconData _iconFor(String description, String? kind) {
+    switch (kind) {
+      case 'delivered':
+        return Icons.check_circle;
+      case 'shipped_to_buyer':
+        return Icons.local_shipping_outlined;
+      case 'received':
+      case 'opened':
+      case 'inspected':
+      case 'packed':
+        return Icons.inventory_2_outlined;
+    }
     final d = description.toLowerCase();
     if (d.contains('delivered')) return Icons.check_circle;
     if (d.contains('shipped')) return Icons.local_shipping_outlined;
@@ -91,9 +106,9 @@ class _TrackingScreenState extends State<TrackingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Track your package')),
+      appBar: AppBar(title: Text(tr(context, 'track_package_title'))),
       body: _token == null
-          ? const Center(child: Text('Please log in to view tracking.', style: TextStyle(color: LeapColors.muted)))
+          ? Center(child: Text(tr(context, 'tracking_login_required'), style: const TextStyle(color: LeapColors.muted)))
           : _buildBody(),
     );
   }
@@ -106,13 +121,13 @@ class _TrackingScreenState extends State<TrackingScreen> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Text('Could not load tracking.\n$_error', textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted)),
+          child: Text(tr(context, 'tracking_load_failed'), textAlign: TextAlign.center, style: const TextStyle(color: LeapColors.muted)),
         ),
       );
     }
     final subOrders = (_tracking?['subOrders'] as List?)?.cast<Map<String, dynamic>>() ?? [];
     if (subOrders.isEmpty) {
-      return const Center(child: Text('No shipments found for this order.', style: TextStyle(color: LeapColors.muted)));
+      return Center(child: Text(tr(context, 'tracking_no_shipments'), style: const TextStyle(color: LeapColors.muted)));
     }
     return RefreshIndicator(
       onRefresh: () => _load(showSpinner: false),
@@ -142,10 +157,10 @@ class _TrackingScreenState extends State<TrackingScreen> {
                       children: [
                         const Icon(Icons.schedule, color: LeapColors.torque, size: 18),
                         const SizedBox(width: 8),
-                        const Expanded(
-                          child: Text(
-                            'This shipment is taking longer than expected. We\'re keeping an eye on it.',
-                            style: TextStyle(color: LeapColors.torque, fontSize: 12.5, fontWeight: FontWeight.w600),
+                        Expanded(
+                            child: Text(
+                              tr(context, 'tracking_delayed'),
+                              style: const TextStyle(color: LeapColors.torque, fontSize: 12.5, fontWeight: FontWeight.w600),
                           ),
                         ),
                       ],
@@ -154,19 +169,19 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   const SizedBox(height: 16),
                 ],
                 if (hubTracking != null) ...[
-                  const Text('Tracking number', style: TextStyle(fontSize: 11.5, color: LeapColors.muted)),
+                  Text(tr(context, 'tracking_number_label'), style: const TextStyle(fontSize: 11.5, color: LeapColors.muted)),
                   Text(hubTracking, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 16),
                 ],
                 if (timeline.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Text('No tracking updates yet — check back once your order ships.', style: TextStyle(color: LeapColors.muted)),
+                  Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Text(tr(context, 'tracking_no_updates'), style: const TextStyle(color: LeapColors.muted)),
                   )
                 else
                   for (var j = 0; j < timeline.length; j++)
                     _TimelineRow(
-                      icon: _iconFor(timeline[j]['description'] as String? ?? ''),
+                      icon: _iconFor(timeline[j]['description'] as String? ?? '', timeline[j]['kind'] as String?),
                       description: timeline[j]['description'] as String? ?? '',
                       location: timeline[j]['location'] as String?,
                       time: timeline[j]['time'] as String?,

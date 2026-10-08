@@ -31,13 +31,14 @@ class _LoginTwoFactorScreenState extends State<LoginTwoFactorScreen> {
   }
 
   Future<void> _submit() async {
-    if (_codeController.text.trim().isEmpty) return;
+    final code = toWesternDigits(_codeController.text.trim());
+    if (code.isEmpty) return;
     setState(() {
       _isSubmitting = true;
       _errorMessage = null;
     });
     try {
-      await context.read<AuthState>().verifyTwoFactorLogin(widget.userId, _codeController.text.trim());
+      await context.read<AuthState>().verifyTwoFactorLogin(widget.userId, code);
       if (mounted) {
         PushState.initialize(context);
         context.go('/account');
@@ -56,8 +57,8 @@ class _LoginTwoFactorScreenState extends State<LoginTwoFactorScreen> {
     final palette = LeapPalette.of(context);
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(icon: const Icon(Icons.close), tooltip: 'Close', onPressed: () => context.pop()),
-        title: const Text('Two-factor authentication'),
+        leading: IconButton(icon: const Icon(Icons.close), tooltip: tr(context, 'close_label'), onPressed: () => context.pop()),
+        title: Text(tr(context, 'two_factor_title')),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -68,7 +69,7 @@ class _LoginTwoFactorScreenState extends State<LoginTwoFactorScreen> {
             Icon(Icons.shield_outlined, size: 40, color: palette.signal),
             const SizedBox(height: 16),
             Text(
-              'Enter the 6-digit code from your authenticator app.',
+              tr(context, 'two_factor_login_prompt'),
               style: TextStyle(color: palette.muted, fontSize: 13),
             ),
             const SizedBox(height: 20),
@@ -91,7 +92,7 @@ class _LoginTwoFactorScreenState extends State<LoginTwoFactorScreen> {
               onPressed: _isSubmitting ? null : _submit,
               child: _isSubmitting
                   ? SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: palette.onSignal))
-                  : const Text('Verify'),
+                  : Text(tr(context, 'verify_label')),
             ),
           ],
         ),

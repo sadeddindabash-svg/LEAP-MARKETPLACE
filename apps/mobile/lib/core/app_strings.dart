@@ -51,6 +51,26 @@ class AppStrings {
     'english_address_required': {'en': 'Please fill in the name, country, city and street.', 'ar': 'يرجى تعبئة الاسم والدولة والمدينة والشارع.'},
     'english_address_arabic_error': {'en': 'Please write the address in English letters.', 'ar': 'يرجى كتابة العنوان بأحرف إنجليزية.'},
     'english_address_thanks': {'en': 'Thank you, your address is confirmed.', 'ar': 'شكرًا لك، تم تأكيد عنوانك.'},
+    'track_package_title': {'en': 'Track your package', 'ar': 'تتبع الطلب'},
+    'tracking_login_required': {'en': 'Please log in to view tracking.', 'ar': 'يرجى تسجيل الدخول لعرض التتبع.'},
+    'tracking_load_failed': {'en': 'Could not load tracking.', 'ar': 'تعذر تحميل بيانات التتبع.'},
+    'tracking_no_shipments': {'en': 'No shipments found for this order.', 'ar': 'لا توجد شحنات لهذا الطلب.'},
+    'tracking_delayed': {'en': 'This shipment is taking longer than expected. We\'re keeping an eye on it.', 'ar': 'تستغرق هذه الشحنة وقتًا أطول من المتوقع. نحن نتابعها.'},
+    'tracking_number_label': {'en': 'Tracking number', 'ar': 'رقم التتبع'},
+    'tracking_no_updates': {'en': 'No tracking updates yet — check back once your order ships.', 'ar': 'لا توجد تحديثات تتبع بعد — عد بعد شحن طلبك.'},
+    'address_prompt_title': {'en': 'Add your delivery address', 'ar': 'أضف عنوان التسليم'},
+    'address_confirm_title': {'en': 'Is this your delivery address?', 'ar': 'هل هذا عنوان التسليم الخاص بك؟'},
+    'address_found_hint': {'en': 'We found this from your location — check it over and adjust anything before confirming.', 'ar': 'وجدنا هذا العنوان من موقعك — راجعه وعدّل ما يلزم قبل التأكيد.'},
+    'address_undetected_hint': {'en': 'We couldn\'t detect your location. Fill this in so we know where to ship your order.', 'ar': 'تعذر تحديد موقعك. املأ هذه البيانات لنعرف أين نشحن طلبك.'},
+    'address_add_later': {'en': 'Add later', 'ar': 'أضف لاحقًا'},
+    'confirm_label': {'en': 'Confirm', 'ar': 'تأكيد'},
+    'save_address': {'en': 'Save address', 'ar': 'حفظ العنوان'},
+    'fill_every_field': {'en': 'Please fill in every field.', 'ar': 'يرجى تعبئة جميع الحقول.'},
+    'address_fallback_label': {'en': 'Address', 'ar': 'عنوان'},
+    'order_placed_with_id': {'en': 'Order {id} placed successfully', 'ar': 'تم تقديم الطلب {id} بنجاح'},
+    'two_factor_login_prompt': {'en': 'Enter the 6-digit code from your authenticator app.', 'ar': 'أدخل الرمز المكوّن من 6 أرقام من تطبيق المصادقة.'},
+    'verify_label': {'en': 'Verify', 'ar': 'تحقق'},
+    'close_label': {'en': 'Close', 'ar': 'إغلاق'},
     'nav_shop': {'en': 'Shop', 'ar': 'تسوق'},
     'nav_cart': {'en': 'Cart', 'ar': 'السلة'},
     'nav_orders': {'en': 'Orders', 'ar': 'الطلبات'},
@@ -527,4 +547,23 @@ String trStatus(BuildContext context, String rawStatus) {
   }
   final isAr = context.watch<LanguageState>().isArabic;
   return (isAr ? entry['ar'] : entry['en']) ?? entry['en'] ?? rawStatus;
+}
+
+/// An Arabic keyboard can type Arabic-Indic digits (٠١٢٣٤٥٦٧٨٩) or Persian ones (۰۱۲۳۴۵۶۷۸۹). Anything that sends a code or number the person TYPED to the
+/// server must turn them into ordinary digits first, or the server sees an invalid code (e.g. a perfectly correct two-factor code).
+String toWesternDigits(String input) {
+  const arabicIndic = '٠١٢٣٤٥٦٧٨٩';
+  const persian = '۰۱۲۳۴۵۶۷۸۹';
+  final buffer = StringBuffer();
+  for (final rune in input.runes) {
+    final ch = String.fromCharCode(rune);
+    final a = arabicIndic.indexOf(ch);
+    if (a >= 0) {
+      buffer.write(a);
+      continue;
+    }
+    final p = persian.indexOf(ch);
+    buffer.write(p >= 0 ? p : ch);
+  }
+  return buffer.toString();
 }

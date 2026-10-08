@@ -1361,7 +1361,7 @@ router.get('/:id/tracking', optionalAuth, async (req, res, next) => {
       return res.status(404).json({ error: 'Order not found' });
     }
 
-    const timeline = await buildTrackingTimeline(req.params.id);
+    const timeline = await buildTrackingTimeline(req.params.id, req.query.lang === 'ar' ? 'ar' : 'en'); // the hub's own steps in the buyer's language
     res.json({ orderId: req.params.id, subOrders: timeline });
   } catch (err) {
     next(err);

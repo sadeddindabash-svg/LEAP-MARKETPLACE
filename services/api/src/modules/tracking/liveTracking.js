@@ -27,12 +27,18 @@ const db = require('../../../db/pool');
 
 const TRACK17_BASE_URL = 'https://api.17track.net/track/v2.2';
 
+// The buyer-facing wording of the hub's own steps, in both languages (the buyer app asks for ?lang=ar). Steps NOT listed here (a flag, returning or
+// discarding a faulty unit) are internal logistics and are never shown to a buyer.
 const HUB_STEP_LABELS = {
-  received: 'Received at hub',
-  opened: 'Opened for inspection',
-  inspected: 'Inspection complete',
-  packed: 'Repacked for shipping',
-  shipped_to_buyer: 'Shipped to you',
+  received: { en: 'Received at hub', ar: 'تم الاستلام في المركز' },
+  opened: { en: 'Opened for inspection', ar: 'فُتحت للفحص' },
+  inspected: { en: 'Inspection complete', ar: 'اكتمل الفحص' },
+  packed: { en: 'Repacked for shipping', ar: 'أُعيدت تعبئتها للشحن' },
+  shipped_to_buyer: { en: 'Shipped to you', ar: 'تم شحنها إليك' },
+};
+const DELIVERED_LABELS = {
+  carrier: { en: 'Delivered (confirmed by carrier)', ar: 'تم التسليم (بتأكيد شركة الشحن)' },
+  hub: { en: 'Delivered (confirmed by hub)', ar: 'تم التسليم (بتأكيد المركز)' },
 };
 
 function apiHeaders() {
@@ -143,7 +149,8 @@ async function fetchLiveTrackingEvents(trackingNumber, carrierCode) {
 // (always real and available, regardless of any carrier API) plus
 // real live carrier events for the final leg, when a real hub
 // tracking number exists and the real 17TRACK query succeeds.
-async function buildTrackingTimeline(orderId) {
+async function buildTrackingTimeline(orderId, lang = 'en') {
+  const language = lang === 'ar' ? 'ar' : 'en';
   const { rows: subOrders } = await db.query(
     `SELECT so.id, so.status AS supplier_status, so.tracking_number AS supplier_tracking_number
      FROM supplier_sub_orders so WHERE so.order_id = $1`,
@@ -172,12 +179,16 @@ async function buildTrackingTimeline(orderId) {
         [shipment.id]
       );
       for (const e of events) {
-        hubMilestones.push({ time: e.created_at, description: HUB_STEP_LABELS[e.step] || e.step, location: null, source: 'hub' });
-      }
+          const label = HUB_STEP_LABELS[e.step];
+          if (!label) continue; // internal steps (flagged, returned_to_supplier...) used to show up here as the raw step name
+          // `kind` is the step's own name, the same in every language: the app picks the icon from it instead of reading English words.
+          hubMilestones.push({ time: e.created_at, description: label[language], kind: e.step, location: null, source: 'hub' });
+        }
       if (shipment.delivered_at) {
         hubMilestones.push({
           time: shipment.delivered_at,
-          description: shipment.delivery_confirmed_by === 'carrier' ? 'Delivered (confirmed by carrier)' : 'Delivered (confirmed by hub)',
+          description: DELIVERED_LABELS[shipment.delivery_confirmed_by === 'carrier' ? 'carrier' : 'hub'][language],
+          kind: 'delivered',
           location: null,
           source: 'hub',
         });

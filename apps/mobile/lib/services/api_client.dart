@@ -641,9 +641,10 @@ class ApiClient {
   /// Real live tracking timeline (new) -- merges our own real hub
   /// milestones with real live carrier events from 17TRACK's query
   /// API, for the hub's own final-leg tracking number.
-  Future<Map<String, dynamic>> fetchOrderTracking(String token, String orderId) async {
+  Future<Map<String, dynamic>> fetchOrderTracking(String token, String orderId, {String? lang}) async {
+    // [lang] ('ar' / 'en'): the hub's own steps ("Received at hub"...) are written by the server, in that language.
     final response = await _client.get(
-      Uri.parse('$baseUrl/order/$orderId/tracking'),
+      Uri.parse('$baseUrl/order/$orderId/tracking${lang != null ? '?lang=$lang' : ''}'),
       headers: {'Authorization': 'Bearer $token'},
     );
     if (response.statusCode != 200) {

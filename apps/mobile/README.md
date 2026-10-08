@@ -3503,6 +3503,23 @@ that language, and also remembers it so a push notification, sent when an event 
   order), and check it reads in Arabic; switch to English and it should read in English.
 - The language shown in the list follows the app's language when the screen opens; an open notifications screen does not re-translate by itself if the language is changed from elsewhere.
 
+## Arabic coverage: checkout, tracking, status, two-factor
+
+What was still English-only in the Arabic app, and is now translated (needs a **rebuilt app**):
+- **Tracking screen:** the title, "log in to view tracking", "could not load tracking", "no shipments", the delay notice, "Tracking number", "no updates yet". The hub's own steps ("Received at hub", "Opened for inspection", "Inspection complete", "Repacked for shipping", "Shipped to you", "Delivered ...") are written by the **server** and now arrive in Arabic: the app asks for them with `?lang=ar`. Each step also carries its own name (`kind`), so icons no longer depend on reading English words.
+- **The delivery address form** (shown at checkout, and on an order that is waiting for its address): the title, the explanation, the five field labels, "Add later", "Confirm", "Save address" and the "fill in every field" message.
+- **Checkout:** the "Order LP-... placed successfully" message (it started with an English word), and the fallback "Address" label.
+- **Two-factor login screen:** title, instruction, "Verify", "Close".
+- **Arabic digits:** an Arabic keyboard can type Arabic-Indic digits (٣٢١٠٤٥). The two-factor code (at login and when turning it on) is converted to ordinary digits before it is sent, otherwise a correct code was refused.
+- **Status badges** were already fully translated: the server only ever sends `to_ship`, `shipped`, `delivered`, `dispute`, `returns`, and the app has Arabic for each.
+
+**Still English in the Arabic app (honest list):**
+- The **carrier's own tracking texts** (the courier's scan events) are written by the carrier and are shown as received.
+- **Messages the server sends back** when something is refused (for example "invalid code", "email already registered") are in English.
+- **Dates** in the tracking timeline are numeric (month/day/year) with ordinary digits.
+
+**The Arabic wording was written by me and needs to be read by a native speaker before launch.** `apps/admin-dashboard/src/mobileStrings.test.js` checks the translation table against the code (every key a screen uses exists; every entry has real Arabic; placeholders match) because the app itself cannot be compiled where the tests run. As always: read and parsed with a real Dart grammar, **not compiled or run**: please run `flutter analyze` and try the screens in Arabic.
+
 ## Check your address in English (new, migration 094)
 
 The inspection hub reads the delivery address in **English**. When the server's automatic English version of a buyer's address has not been confirmed by anyone (source `auto`), the order page shows a card, **"Check your address in English / راجع عنوانك بالإنجليزية"**, with the English lines and two buttons: **It is correct** (confirms it as it is) and **Edit** (five fields; the app checks they are in English letters, and the server checks again). After confirming, the card disappears. An address already written in English needs no check, and nothing is shown for it.
