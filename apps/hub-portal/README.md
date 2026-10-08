@@ -200,7 +200,7 @@ rather than an error. 16/16 passing across the full suite.
 
 ## Closed flags (new, migration 098)
 
-When the platform **closes a flag by hand** (a stuck case), the shipment is shown as **Closed / 已关闭** in the queue (grey), is no longer listed under the **Flagged** filter, and its page says the platform has closed the case and **nothing more is needed from the hub**: the "send the unit back / discard" panel is gone. A flag that is still open is unchanged. Tested in `src/FlagFlow.test.jsx` and `src/App.test.jsx`.
+Any flag the platform has **closed** (by hand, or normally once the refund or replacement is done and the unit has been sent back) **leaves the Flagged filter** and stays under **All** as history; a flag that is still open stays under Flagged. When the platform **closes a flag by hand** (a stuck case), the shipment is shown as **Closed / 已关闭** in the queue (grey), is no longer listed under the **Flagged** filter, and its page says the platform has closed the case and **nothing more is needed from the hub**: the "send the unit back / discard" panel is gone. A flag that is still open is unchanged. Tested in `src/FlagFlow.test.jsx` and `src/App.test.jsx`.
 
 ## Choosing your own password (new, migration 099)
 

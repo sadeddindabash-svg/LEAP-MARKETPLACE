@@ -262,12 +262,15 @@ describe('Hub Portal — real queue search (mocked fetch, real component tree)',
 
   it('CRITICAL: a flag the platform has CLOSED is shown as Closed in the queue and is not under the "Flagged" filter; an open flag still is', async () => {
     const OPEN_FLAG = { ...SHIPMENT_B, id: 3, subOrderId: 103, orderId: 'LP-300003', status: 'flagged', resolution: null, resolvedAt: null };
+    // the normal path: the faulty unit was sent back. While the case is still open it stays Flagged; once it is closed (refund done) it leaves the filter.
+    const RETURNED_OPEN = { ...SHIPMENT_B, id: 5, subOrderId: 105, orderId: 'LP-500005', status: 'returned_to_supplier', resolution: null, resolvedAt: null };
+    const RETURNED_DONE = { ...SHIPMENT_B, id: 6, subOrderId: 106, orderId: 'LP-600006', status: 'returned_to_supplier', resolution: 'fault_refund', resolvedAt: '2026-07-21T00:00:00.000Z' };
     const CLOSED_FLAG = { ...SHIPMENT_B, id: 4, subOrderId: 104, orderId: 'LP-400004', status: 'flagged', resolution: 'fault_closed_manually', resolvedAt: '2026-07-20T00:00:00.000Z' };
     globalThis.fetch = vi.fn((url) => {
       const u = String(url);
       if (u.includes('/auth/login')) return Promise.resolve({ ok: true, json: async () => ({ token: 'fake.jwt.token', user: HUB_USER }) });
       if (u.includes('/auth/me')) return Promise.resolve({ ok: true, json: async () => HUB_USER });
-      if (u.endsWith('/hub/me/shipments')) return Promise.resolve({ ok: true, json: async () => [SHIPMENT_A, OPEN_FLAG, CLOSED_FLAG] });
+      if (u.endsWith('/hub/me/shipments')) return Promise.resolve({ ok: true, json: async () => [SHIPMENT_A, OPEN_FLAG, CLOSED_FLAG, RETURNED_OPEN, RETURNED_DONE] });
       return Promise.resolve({ ok: true, json: async () => ({}) });
     });
     render(<LeapHubPortalApp />);
@@ -279,9 +282,14 @@ describe('Hub Portal — real queue search (mocked fetch, real component tree)',
     expect(screen.getByText('已关闭')).toBeInTheDocument();
     // the "Flagged" filter keeps only the OPEN flag
     fireEvent.click(screen.getByRole('button', { name: /^已标记/ }));
-    expect(screen.getByText('LP-300003')).toBeInTheDocument();
-    expect(screen.queryByText('LP-400004')).not.toBeInTheDocument();
+    expect(screen.getByText('LP-300003')).toBeInTheDocument();                  // open flag: stays
+    expect(screen.getByText('LP-500005')).toBeInTheDocument();                  // unit sent back, case still open: stays
+    expect(screen.queryByText('LP-400004')).not.toBeInTheDocument();            // closed by hand: gone
+    expect(screen.queryByText('LP-600006')).not.toBeInTheDocument();            // closed the normal way: gone
     expect(screen.queryByText('LP-100001')).not.toBeInTheDocument();
+    // ...but every one of them is still under "All"
+    fireEvent.click(screen.getByRole('button', { name: /^全部/ }));
+    for (const id of ['LP-300003', 'LP-400004', 'LP-500005', 'LP-600006', 'LP-100001']) expect(screen.getByText(id), id).toBeInTheDocument();
   });
 
   it('CRITICAL: searching by a real order ID genuinely narrows the queue to just that shipment', async () => {

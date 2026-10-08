@@ -307,7 +307,7 @@ function QueueScreen({ onOpenShipment }) {
   const filtered = shipments.filter((s) => {
     if (filter === "all") { /* no status filter */ }
     else if (filter === "in_progress") { if (!IN_PROGRESS_STATUSES.includes(s.status)) return false; }
-    else if (filter === "flagged") { if (!FLAGGED_STATUSES.includes(s.status) || displayStatusOf(s) === "closed") return false; } // a closed flag is no longer an open problem
+    else if (filter === "flagged") { if (!FLAGGED_STATUSES.includes(s.status) || s.resolvedAt) return false; } // a flag the platform has CLOSED (however) is no longer an open problem: it stays under "All"
     else if (s.status !== filter) return false;
 
     if (searchQuery.trim()) {
