@@ -26,3 +26,7 @@ The app matches the hub web portal:
 
 Tested: the wording table and the server's replies are checked by `apps/admin-dashboard/src/hubMobileStrings.test.js` and `hubMobileContract.integration.test.js` (which does what the app does against the real backend); the model logic by `test/widget_test.dart` (run `flutter test`). **The Dart was read and parsed with a real Dart grammar but not compiled or run**: please run `flutter analyze` and `flutter test` in `apps/hub-mobile`, then rebuild.
 
+## The QR scan screen
+
+`MobileScanner` (ML Kit, bundled model: no Google services needed) reads the shipment id from the QR code on the parcel label. **On the first release build the scanner failed on a Huawei phone** with "Camera error: genericError ... on a null object reference" and scrambled class names (`w4.c`, `s4.b`): Flutter shrinks and RENAMES the code of every release build (R8), and the scanner finds its own parts by their original names. `android/gradle.properties` therefore sets `shrink=false` (read by Flutter's Android plugin), so the release build keeps readable names; the cost is a somewhat larger app, irrelevant for an internal tool. If the camera still cannot start, the screen now says so in Chinese or English, shows the technical reason small, and offers **Back to the list** (search by order ID always works).
+

@@ -88,6 +88,9 @@ class _ScanScreenState extends State<ScanScreen> {
               );
             },
             errorBuilder: (context, error, child) {
+              // The scanner cannot start on this phone: say so in the worker's language, show the technical reason small (for whoever has to fix it),
+              // and offer the way that always works: back to the list, then search by order ID.
+              final details = error.errorDetails?.message;
               return Container(
                 color: Colors.black,
                 padding: const EdgeInsets.all(24),
@@ -97,11 +100,15 @@ class _ScanScreenState extends State<ScanScreen> {
                   children: [
                     const Icon(Icons.no_photography_outlined, color: Colors.white, size: 40),
                     const SizedBox(height: 12),
-                    Text(
-                      'Camera error: ${error.errorCode.name}${error.errorDetails?.message != null ? '\n${error.errorDetails!.message}' : ''}',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white, fontSize: 13),
-                    ),
+                    Text('${t.cameraError}: ${error.errorCode.name}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 8),
+                    Text(t.cameraErrorHint, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                    if (details != null) ...[
+                      const SizedBox(height: 8),
+                      Text(details, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                    ],
+                    const SizedBox(height: 20),
+                    ElevatedButton(onPressed: () => Navigator.of(context).pop(), child: Text(t.backToList)),
                   ],
                 ),
               );

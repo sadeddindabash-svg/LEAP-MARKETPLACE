@@ -80,6 +80,18 @@ describe('the hub app wording table', () => {
     }
   });
 
+  it('CRITICAL: the top-level wording (including the scan screen\'s camera error) is complete in both languages', () => {
+    const required = requiredNames('HubText').sort();
+    for (const language of ['zh', 'en']) expect(givenNames(blocks[language]).sort(), language).toEqual(required);
+    for (const name of ['cameraError', 'cameraErrorHint', 'backToList']) {
+      for (const language of ['zh', 'en']) {
+        const value = stringValues(fieldsOf(blocks[language]).get(name) || '').join(' ');
+        expect(value.length, `${name} (${language}) is empty`).toBeGreaterThan(0);
+        expect(CHINESE.test(value), `${name} (${language})`).toBe(language === 'zh');
+      }
+    }
+  });
+
   it('CRITICAL: the Chinese is Chinese and the English is English in everything added for the fault panel, closed flags, replacements and the password screen', () => {
     for (const [cls, key] of [['DetailText', 'detail'], ['PasswordText', 'changePassword']]) {
       const only = cls === 'DetailText'

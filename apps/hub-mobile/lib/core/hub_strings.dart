@@ -67,6 +67,7 @@ class PasswordText {
 
 class HubText {
   final String appName, logout, checkingSession, addPhoto, scanButtonLabel;
+  final String cameraError, cameraErrorHint, backToList; // the scan screen when the camera cannot start
   final LoginText login;
   final Map<String, StepText> steps;
   final Map<String, String> filters;
@@ -75,6 +76,7 @@ class HubText {
   final PasswordText changePassword;
   const HubText({
     required this.appName, required this.logout, required this.checkingSession, required this.addPhoto, required this.scanButtonLabel,
+    required this.cameraError, required this.cameraErrorHint, required this.backToList,
     required this.login, required this.steps, required this.filters, required this.queue, required this.detail, required this.changePassword,
   });
 }
@@ -82,6 +84,7 @@ class HubText {
 const Map<String, HubText> kHubStrings = {
   'zh': HubText(
     appName: 'LEAP 质检中心', logout: '退出登录', checkingSession: '正在检查登录状态…', addPhoto: '添加照片', scanButtonLabel: '扫描',
+    cameraError: '相机错误', cameraErrorHint: '此手机上的扫码功能暂时无法使用。您仍可返回列表，按订单号或供应商名称搜索包裹。', backToList: '返回列表',
     login: LoginText(
       subtitle: '质检中心员工登录', email: '邮箱', password: '密码',
       signIn: '登录', signingIn: '登录中…',
@@ -153,6 +156,7 @@ const Map<String, HubText> kHubStrings = {
   ),
   'en': HubText(
     appName: 'LEAP HUB', logout: 'Log out', checkingSession: 'Checking session…', addPhoto: 'Add photo', scanButtonLabel: 'Scan',
+    cameraError: 'Camera error', cameraErrorHint: 'Scanning is not working on this phone right now. You can still go back to the list and search for the shipment by order ID or supplier name.', backToList: 'Back to the list',
     login: LoginText(
       subtitle: 'Inspection hub sign-in', email: 'Email', password: 'Password',
       signIn: 'Sign in', signingIn: 'Signing in…',
