@@ -817,3 +817,7 @@ files, unchanged from before this extraction.
 ## The order panel: forward only, locked at the hub
 
 On an order's page the supplier sees the three steps **Pending, Preparing, Shipped**. Only the steps **ahead** can be clicked: once preparing, "pending" is greyed out; once shipped, nothing can go back. Until the hub **receives** the parcel the tracking number can still be corrected ("Update tracking number"). **After the hub has received it, nothing on the order can be changed**: a notice says so and points to **Returns** (退货/售后), where a fault case question from the platform appears if the hub finds a problem. A part the buyer cancelled shows its own notice. The portal only displays what the server allows (`allowedStatuses`, `locked`, `canEditTracking`); the server enforces it. The old "dispute" button is gone. Tested in `src/OrderLockFlow.test.jsx`.
+
+## Vehicle year labels
+
+A vehicle year added through the admin's Vehicle Data is a one-year entry named by the year, so the fitment dropdowns show it as just `2021` (not `2021 (2021–2021)`). Older entries keep their range, `F20 (2015–2019)`. The rule is `src/vehicleLabels.js`, tested in `src/vehicleLabels.test.js`.

@@ -31,6 +31,7 @@ import {
   bulkImportProducts, fetchMyDrafts, completeDraftProduct,
   fetchPartRequestQueue, fetchPartRequestDetail, sendPartRequestQuote,
 } from "./auth";
+import { generationOptionLabel } from "./vehicleLabels";
 
 /* ============================================================
    LEAP 供应商门户 / Supplier Portal — bilingual (中文 / English)
@@ -978,7 +979,7 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
                 <Field label={cascadeLabel("世代", "Generation")}>
                   <select style={selectStyle} value={selectedGenerationId} onChange={(e) => handleGenerationChange(e.target.value)} disabled={!selectedModelId}>
                     <option value="">{cascadeLabel("请选择", "Select…")}</option>
-                    {generations.map(g => <option key={g.id} value={g.id}>{g.name} ({g.yearStart}–{g.yearEnd || cascadeLabel("至今", "present")})</option>)}
+                    {generations.map(g => <option key={g.id} value={g.id}>{generationOptionLabel(g, cascadeLabel("至今", "present"))}</option>)}
                   </select>
                 </Field>
                 <Field label={cascadeLabel("年份", "Year")}>
@@ -1472,7 +1473,7 @@ function BulkUploadPanel({ onCancel, onImported }) {
               <Field label={cascadeLabel('世代', 'Generation')}>
                 <select style={selectStyle} value={selectedGenerationId} onChange={(e) => handleGenerationChange(e.target.value)} disabled={!selectedModelId}>
                   <option value="">{cascadeLabel('请选择', 'Select…')}</option>
-                  {generations.map((g) => <option key={g.id} value={g.id}>{g.name} ({g.yearStart}–{g.yearEnd || cascadeLabel('至今', 'present')})</option>)}
+                  {generations.map((g) => <option key={g.id} value={g.id}>{generationOptionLabel(g, cascadeLabel('至今', 'present'))}</option>)}
                 </select>
               </Field>
               <Field label={cascadeLabel('年份', 'Year')}>

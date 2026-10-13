@@ -300,9 +300,10 @@ export const updateModel = (token, id, name, nameAr) => fitmentMutate("PATCH", `
 export const updateGeneration = (token, id, name, yearStart, yearEnd) => fitmentMutate("PATCH", `/fitment/generations/${id}`, token, { name, yearStart, yearEnd });
 export const updateEngine = (token, id, name) => fitmentMutate("PATCH", `/fitment/engines/${id}`, token, { name });
 export const updateTransmission = (token, id, name) => fitmentMutate("PATCH", `/fitment/transmissions/${id}`, token, { name });
-// A new vehicle YEAR (generation) needs a photo (the server refuses one without; migration 102). Brands and models do not.
-export const createGeneration = (token, modelId, name, yearStart, yearEnd, photoUrl) =>
-  fitmentMutate("POST", `/fitment/models/${modelId}/generations`, token, { name, yearStart, yearEnd, photoUrl });
+// Add a vehicle YEAR to a model: only the year (English digits, e.g. 2021) and its photo, both required (the server refuses anything else). The year is
+// stored as a one-year entry named by it. Older entries with a range of years are still edited with updateGeneration.
+export const createYear = (token, modelId, year, photoUrl) =>
+  fitmentMutate("POST", `/fitment/models/${modelId}/generations`, token, { year, photoUrl });
 // Add or replace the photo of an existing year (also how years created before the year photo existed get one).
 export const updateGenerationPhoto = (token, id, photoUrl) => fitmentMutate("PATCH", `/fitment/generations/${id}/photo`, token, { photoUrl });
 export const deleteGeneration = (token, id) => fitmentMutate("DELETE", `/fitment/generations/${id}`, token);

@@ -83,7 +83,7 @@ function toGenerationDto(r) {
 
 router.get('/models/:modelId/generations', async (req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT * FROM vehicle_generations WHERE model_id = $1 ORDER BY sort_order ASC', [req.params.modelId]);
+    const { rows } = await db.query('SELECT * FROM vehicle_generations WHERE model_id = $1 ORDER BY year_start DESC, sort_order ASC', [req.params.modelId]);
     res.json(rows.map(toGenerationDto));
   } catch (err) {
     next(err);
@@ -146,8 +146,9 @@ router.post('/brands', requireAuth, requireRole('admin'), requirePageAccess('veh
     // retroactively break brands created before this requirement
     // existed.
     if (!nameAr || !nameAr.trim()) return res.status(400).json({ error: 'nameAr is required' });
-    // The photo is OPTIONAL for a brand now (it moved to the vehicle year, migration 102). The buyer app's brand logo strip simply skips a brand without one.
-    const photo = photoUrl && photoUrl.trim() ? photoUrl.trim() : null;
+    // A brand needs all three: English name, Arabic name and a photo.
+    if (!photoUrl || typeof photoUrl !== 'string' || !photoUrl.trim()) return res.status(400).json({ error: 'photoUrl is required' });
+    const photo = photoUrl.trim();
     const id = `brand_${Date.now()}`;
     const { rows: maxRows } = await db.query('SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM vehicle_brands');
     await db.query('INSERT INTO vehicle_brands (id, name, name_ar, photo_url, sort_order) VALUES ($1, $2, $3, $4, $5)', [id, name.trim(), nameAr.trim(), photo, maxRows[0].max_order + 10]);
@@ -230,16 +231,17 @@ router.delete('/brands/:id', requireAuth, requireRole('admin'), requirePageAcces
 // POST /fitment/brands/:brandId/models  { name }
 router.post('/brands/:brandId/models', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
-    const { name, nameAr, photoUrl } = req.body || {};
+    // A model takes only its English and Arabic names. (A photo sent along is ignored: models have no photo; see migration 102.)
+    const { name, nameAr } = req.body || {};
     if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' });
     if (!nameAr || !nameAr.trim()) return res.status(400).json({ error: 'nameAr is required' });
     const brandCheck = await db.query('SELECT id FROM vehicle_brands WHERE id = $1', [req.params.brandId]);
     if (brandCheck.rows.length === 0) return res.status(404).json({ error: 'Brand not found' });
     const id = `model_${Date.now()}`;
     const { rows: maxRows } = await db.query('SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM vehicle_models WHERE brand_id = $1', [req.params.brandId]);
-    await db.query('INSERT INTO vehicle_models (id, brand_id, name, name_ar, photo_url, sort_order) VALUES ($1, $2, $3, $4, $5, $6)', [id, req.params.brandId, name.trim(), nameAr.trim(), photoUrl?.trim() || null, maxRows[0].max_order + 10]);
+    await db.query('INSERT INTO vehicle_models (id, brand_id, name, name_ar, photo_url, sort_order) VALUES ($1, $2, $3, $4, $5, $6)', [id, req.params.brandId, name.trim(), nameAr.trim(), null, maxRows[0].max_order + 10]);
     await logAdminAction(req, 'model_created', 'model', id, { name: name.trim(), brandId: req.params.brandId });
-    res.status(201).json({ id, brandId: req.params.brandId, name: name.trim(), nameAr: nameAr.trim(), photoUrl: photoUrl?.trim() || null, sortOrder: maxRows[0].max_order + 10 });
+    res.status(201).json({ id, brandId: req.params.brandId, name: name.trim(), nameAr: nameAr.trim(), photoUrl: null, sortOrder: maxRows[0].max_order + 10 });
   } catch (err) {
     next(err);
   }
@@ -311,24 +313,57 @@ router.delete('/models/:id', requireAuth, requireRole('admin'), requirePageAcces
   }
 });
 
-// POST /fitment/models/:modelId/generations  { name, yearStart, yearEnd?, photoUrl }  (the photo is REQUIRED for a new year: migration 102)
+// A vehicle YEAR is added with only the year and its photo, both required:  POST /fitment/models/:modelId/generations  { year, photoUrl }
+//   - the year is written in English digits (Arabic-Indic and Persian digits are converted), four digits, from 1950 to next year;
+//   - one entry per year and model (409 if it already exists);
+//   - it is stored as a one-year entry named by the year (name "2021", start and end 2021), so the garage, product fitment and the buyer's picker keep working
+//     unchanged. Entries created the older way (a name like "F20" with a range of years) stay valid and are still edited with PATCH /generations/:id.
+const OLDEST_YEAR = 1950;
+function toEnglishDigits(text) {
+  return String(text ?? '')
+    .replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660))   // Arabic-Indic digits
+    .replace(/[\u06F0-\u06F9]/g, (d) => String(d.charCodeAt(0) - 0x06F0));  // Persian digits
+}
 router.post('/models/:modelId/generations', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
-    const { name, yearStart, yearEnd, photoUrl } = req.body || {};
-    if (!name || !name.trim() || !yearStart) return res.status(400).json({ error: 'name and yearStart are required' });
-    if (yearEnd && yearEnd < yearStart) return res.status(400).json({ error: 'yearEnd cannot be before yearStart' });
-    // The one level where a photo is mandatory. (Years created before this existed have none and keep working; they get one with PATCH /generations/:id/photo.)
+    const { year: rawYear, photoUrl } = req.body || {};
+    const newest = new Date().getFullYear() + 1;
+    const yearText = toEnglishDigits(rawYear).trim();
+    if (!yearText) return res.status(400).json({ error: 'year is required' });
+    if (!/^\d{4}$/.test(yearText)) return res.status(400).json({ error: 'year must be four digits, written in English digits (for example 2021)' });
+    const year = Number(yearText);
+    if (year < OLDEST_YEAR || year > newest) return res.status(400).json({ error: `year must be between ${OLDEST_YEAR} and ${newest}` });
     if (!photoUrl || typeof photoUrl !== 'string' || !photoUrl.trim()) return res.status(400).json({ error: 'photoUrl is required' });
     const modelCheck = await db.query('SELECT id FROM vehicle_models WHERE id = $1', [req.params.modelId]);
     if (modelCheck.rows.length === 0) return res.status(404).json({ error: 'Model not found' });
-    const id = `gen_${Date.now()}`;
-    const { rows: maxRows } = await db.query('SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM vehicle_generations WHERE model_id = $1', [req.params.modelId]);
-    await db.query(
-      'INSERT INTO vehicle_generations (id, model_id, name, year_start, year_end, sort_order, photo_url) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-        [id, req.params.modelId, name.trim(), yearStart, yearEnd || null, maxRows[0].max_order + 10, photoUrl.trim()]
-    );
-    await logAdminAction(req, 'generation_created', 'generation', id, { name: name.trim(), modelId: req.params.modelId, yearStart, yearEnd: yearEnd || null });
-    res.status(201).json({ id, modelId: req.params.modelId, name: name.trim(), yearStart, yearEnd: yearEnd || null, sortOrder: maxRows[0].max_order + 10, photoUrl: photoUrl.trim() });
+    // A random part, so two different years created in the same millisecond cannot get the same id.
+    const id = `gen_${Date.now()}${Math.floor(Math.random() * 1000)}`;
+    // "That year does not exist yet, then insert" must be ONE step per model: two requests arriving together (a double click) used to both pass the check
+    // and both insert, creating the same year twice. A transaction-level lock on the model makes the second request wait until the first has committed,
+    // so it then sees the year and answers 409. (The lock is released automatically on commit or rollback.)
+    const client = await db.getPool().connect();
+    let sortOrder;
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`vehicle_year:${req.params.modelId}`]);
+      const { rows: maxRows } = await client.query('SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM vehicle_generations WHERE model_id = $1', [req.params.modelId]);
+      sortOrder = maxRows[0].max_order + 10;
+      const { rowCount } = await client.query(
+        `INSERT INTO vehicle_generations (id, model_id, name, year_start, year_end, sort_order, photo_url)
+         SELECT $1, $2, $3, $4, $4, $5, $6
+         WHERE NOT EXISTS (SELECT 1 FROM vehicle_generations WHERE model_id = $2 AND year_start = $4 AND year_end = $4)`,
+        [id, req.params.modelId, String(year), year, sortOrder, photoUrl.trim()]
+      );
+      await client.query('COMMIT');
+      if (rowCount === 0) return res.status(409).json({ error: `${year} already exists for this model` });
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+    await logAdminAction(req, 'generation_created', 'generation', id, { name: String(year), modelId: req.params.modelId, yearStart: year, yearEnd: year });
+    res.status(201).json({ id, modelId: req.params.modelId, name: String(year), yearStart: year, yearEnd: year, sortOrder, photoUrl: photoUrl.trim() });
   } catch (err) {
     next(err);
   }

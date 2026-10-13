@@ -11,18 +11,14 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchAdminProducts, fetchAdminProductDetail, updateAdminProduct,
   fetchProductRequirements, updateProductRequirements, fetchAttributeDefinitions,
   fetchDeliveryRules, createDeliveryRule, updateDeliveryRule, deleteDeliveryRule, reorderDeliveryRules,
-  fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
-  createBrand, deleteBrand, createModel, deleteModel, createGeneration, deleteGeneration, createEngine, deleteEngine, createTransmission, deleteTransmission,
-  fetchVinWmiCodes, saveVinWmiCode, deleteVinWmiCode,
+  fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, createBrand, deleteBrand, createModel, deleteModel, deleteGeneration, fetchVinWmiCodes, saveVinWmiCode, deleteVinWmiCode,
   fetchVinModelPatterns, saveVinModelPattern, deleteVinModelPattern, bulkUploadVinModelPatterns, resolveVinModelPatternConflict,
   fetchHubLocations, createHubLocation, deleteHubLocation, assignHubToSubOrder,
   fetchFeeComponents, createFeeComponent, updateFeeComponent, deleteFeeComponent, moveFeeComponent, fetchFxRate, updateFxRate, fetchFxRateMode, updateFxRateMode, previewPricing,
   fetchDiscountRules, createDiscountRule, updateDiscountRule, deleteDiscountRule,
   fetchLoyaltyTiers, createLoyaltyTier, updateLoyaltyTier, deleteLoyaltyTier,
   fetchFlaggedShipments,
-  fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart, uploadImage, updateCategoryPhoto, updatePartPhoto, updateGenerationPhoto, moveCategory, movePart, moveBrand, moveModel, moveGeneration, moveEngine, moveTransmission, updateBrandPhoto, updateModelPhoto,
-  updateCategory, updatePart, updateBrand, updateModel, updateGeneration, updateEngine, updateTransmission,
-  fetchPaymentMethods, fetchAvailableCountries, fetchAvailableProviders, createPaymentMethod, updatePaymentMethod, updatePaymentMethodPhoto, movePaymentMethod, activatePaymentMethodCountry, deactivatePaymentMethodCountry, deletePaymentMethod, setPaymentMethodActive, bulkSetPaymentMethodCountries,
+  fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart, uploadImage, updateCategoryPhoto, updatePartPhoto, updateGenerationPhoto, createYear, moveCategory, movePart, moveBrand, moveModel, updateBrandPhoto, updateCategory, updatePart, updateBrand, updateModel, updateGeneration, fetchPaymentMethods, fetchAvailableCountries, fetchAvailableProviders, createPaymentMethod, updatePaymentMethod, updatePaymentMethodPhoto, movePaymentMethod, activatePaymentMethodCountry, deactivatePaymentMethodCountry, deletePaymentMethod, setPaymentMethodActive, bulkSetPaymentMethodCountries,
   fetchPaymentProviders, savePaymentProviderCredentials, deletePaymentProviderCredentials,
   fetchSupplierMessagesInbox, fetchSupplierMessageThread, sendSupplierMessage, createTicketForOrder,
   fetchPromoCodes, createPromoCode, updatePromoCode, deletePromoCode,
@@ -2589,7 +2585,8 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
     setFitment([...fitment, {
       generationId: selectedGenerationId,
       year: Number(selectedYear),
-      label: `${brand?.name} ${model?.name} (${selectedGeneration?.name}) · ${selectedYear}`,
+      // a one-year entry is named by its year: print "Geely Coolray · 2021", not "Geely Coolray (2021) · 2021"
+      label: selectedGeneration?.name === String(selectedYear) ? `${brand?.name} ${model?.name} · ${selectedYear}` : `${brand?.name} ${model?.name} (${selectedGeneration?.name}) · ${selectedYear}`,
     }]);
     setSelectedBrandId(""); setModels([]); setSelectedModelId(""); setGenerations([]); setSelectedGenerationId(""); setSelectedYear("");
   };
@@ -3326,42 +3323,42 @@ function VinWmiCodesSettings({ onSessionExpired }) {
   );
 }
 
+// Vehicle Data adds a vehicle in three steps and asks for only this:
+//   Brand : English name + Arabic name + photo, all required
+//   Model : English name + Arabic name, nothing else (no photo)
+//   Year  : the year in English digits + photo, both required (a year entry is stored as a one-year "generation": its name is the year)
+// Engines and transmissions are no longer part of adding a vehicle (existing ones stay in the database untouched). Years that were created the older way
+// (a name like "F20" with a range of years) keep working: they are listed with an "Older entry" mark and can still be edited, deleted and given a photo.
+const OLDEST_YEAR = 1950;
+const toEnglishDigits = (text) => String(text ?? "")
+  .replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660))   // Arabic-Indic digits
+  .replace(/[\u06F0-\u06F9]/g, (d) => String(d.charCodeAt(0) - 0x06F0));   // Persian digits
+// A year entry made through Vehicle Data: one year, named by it.
+const isSingleYearEntry = (g) => g.yearEnd === g.yearStart && String(g.name).trim() === String(g.yearStart);
+
 function VehicleDataPage({ onSessionExpired }) {
   const [activeTab, setActiveTab] = useState("brands");
   const [brands, setBrands] = useState([]);
   const [selectedBrand, setSelectedBrand] = useState(null);
   const [models, setModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState(null);
-  const [generations, setGenerations] = useState([]);
-  const [selectedGeneration, setSelectedGeneration] = useState(null);
-  const [engines, setEngines] = useState([]);
-  const [transmissions, setTransmissions] = useState([]);
+  const [years, setYears] = useState([]);
 
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
-  const [newName, setNewName] = useState("");
-  const [newYearStart, setNewYearStart] = useState("");
-  const [newYearEnd, setNewYearEnd] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  // Real, required bilingual name + photo for a new brand (new) --
-  // only relevant at the top-level "Brands" view; Model/Generation/
-  // Engine/Transmission still use the simpler shared newName/addRow
-  // below, unchanged.
+  // Brand: English name, Arabic name, photo (all required)
+  const [newBrandName, setNewBrandName] = useState("");
   const [newBrandNameAr, setNewBrandNameAr] = useState("");
   const [newBrandPhotoFile, setNewBrandPhotoFile] = useState(null);
   const [newBrandPhotoPreview, setNewBrandPhotoPreview] = useState(null);
   const [isUploadingBrandPhoto, setIsUploadingBrandPhoto] = useState(false);
   const [replacingBrandPhotoId, setReplacingBrandPhotoId] = useState(null);
-  // Real, optional photo for a new model (new) -- unlike brands' own
-  // required photo, kept optional here.
-  const [newModelPhotoFile, setNewModelPhotoFile] = useState(null);
-  const [newModelPhotoPreview, setNewModelPhotoPreview] = useState(null);
-  const [isUploadingModelPhoto, setIsUploadingModelPhoto] = useState(false);
-  // Real, optional Arabic name for a new model (new, migration 062) --
-  // kept optional, same reasoning as the photo above.
+  // Model: English name, Arabic name (nothing else)
+  const [newModelName, setNewModelName] = useState("");
   const [newModelNameAr, setNewModelNameAr] = useState("");
-  const [replacingModelPhotoId, setReplacingModelPhotoId] = useState(null);
-  // A new vehicle YEAR (generation) needs a photo: the one level where it is mandatory (migration 102). Brands and models: optional.
+  // Year: the year (English digits) and a photo, both required
+  const [newYear, setNewYear] = useState("");
   const [newYearPhotoFile, setNewYearPhotoFile] = useState(null);
   const [newYearPhotoPreview, setNewYearPhotoPreview] = useState(null);
   const [isUploadingYearPhoto, setIsUploadingYearPhoto] = useState(false);
@@ -3377,89 +3374,86 @@ function VehicleDataPage({ onSessionExpired }) {
   useEffect(loadBrands, []);
 
   const openBrand = (brand) => {
-    setSelectedBrand(brand); setSelectedModel(null); setSelectedGeneration(null);
-    setNewName(""); setErrorMessage(null);
+    setSelectedBrand(brand); setSelectedModel(null);
+    setNewModelName(""); setNewModelNameAr(""); setErrorMessage(null);
     fetchModelsForBrand(brand.id).then(setModels).catch((e) => setErrorMessage(e.message));
   };
   const openModel = (model) => {
-    setSelectedModel(model); setSelectedGeneration(null);
-    setNewName(""); setErrorMessage(null);
-    fetchGenerationsForModel(model.id).then(setGenerations).catch((e) => setErrorMessage(e.message));
+    setSelectedModel(model);
+    setNewYear(""); setErrorMessage(null);
+    fetchGenerationsForModel(model.id).then(setYears).catch((e) => setErrorMessage(e.message));
   };
-  const openGeneration = (generation) => {
-    setSelectedGeneration(generation);
-    setNewName(""); setErrorMessage(null);
-    Promise.all([fetchEnginesForGeneration(generation.id), fetchTransmissionsForGeneration(generation.id)])
-      .then(([eng, trans]) => { setEngines(eng); setTransmissions(trans); })
-      .catch((e) => setErrorMessage(e.message));
-  };
+  const backToBrands = () => { setSelectedBrand(null); setSelectedModel(null); setErrorMessage(null); };
+  const backToModels = () => { setSelectedModel(null); setErrorMessage(null); };
 
-  const backToBrands = () => { setSelectedBrand(null); setSelectedModel(null); setSelectedGeneration(null); setErrorMessage(null); };
-  const backToModels = () => { setSelectedModel(null); setSelectedGeneration(null); setErrorMessage(null); };
-  const backToGenerations = () => { setSelectedGeneration(null); setErrorMessage(null); };
-
-  const handleAdd = async (kind) => {
-    if (!newName.trim()) { setErrorMessage("Name is required."); return; }
-    if (kind === "generation" && !newYearStart) { setErrorMessage("Start year is required."); return; }
-    if (kind === "generation" && !newYearPhotoFile) { setErrorMessage("A photo is required."); return; }
-    if (kind === "brand") {
-      if (!newBrandNameAr.trim()) { setErrorMessage("Arabic name is required."); return; }
-      // the brand photo is optional now: it moved to the vehicle year
-    }
-    if (kind === "model" && !newModelNameAr.trim()) { setErrorMessage("Arabic name is required."); return; }
-    setIsSubmitting(true);
+  const handleBrandPhotoSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setNewBrandPhotoFile(file);
+    setNewBrandPhotoPreview(URL.createObjectURL(file));
     setErrorMessage(null);
+  };
+  const handleYearPhotoSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setNewYearPhotoFile(file);
+    setNewYearPhotoPreview(URL.createObjectURL(file));
+    setErrorMessage(null);
+  };
+
+  // Each step checks only what it asks for, then uploads the photo FIRST (so a failed upload is caught before anything is created).
+  const handleAddBrand = async () => {
+    if (!newBrandName.trim()) { setErrorMessage("English name is required."); return; }
+    if (!newBrandNameAr.trim()) { setErrorMessage("Arabic name is required."); return; }
+    if (!newBrandPhotoFile) { setErrorMessage("A photo is required."); return; }
+    setIsSubmitting(true); setErrorMessage(null);
     try {
       const token = getStoredToken();
-      if (kind === "brand") {
-        // The photo is optional for a brand now. When one was chosen it is uploaded FIRST, so a failed upload (bad file, network) is caught before the
-        // brand is created.
-        let brandPhotoUrl;
-        if (newBrandPhotoFile) {
-          setIsUploadingBrandPhoto(true);
-          const uploadResult = await uploadImage(token, newBrandPhotoFile);
-          setIsUploadingBrandPhoto(false);
-          brandPhotoUrl = uploadResult.url;
-        }
-        await createBrand(token, newName.trim(), newBrandNameAr.trim(), brandPhotoUrl);
-        loadBrands();
-        setNewBrandNameAr(""); setNewBrandPhotoFile(null); setNewBrandPhotoPreview(null);
-      } else if (kind === "model") {
-        let modelPhotoUrl;
-        if (newModelPhotoFile) {
-          setIsUploadingModelPhoto(true);
-          const uploadResult = await uploadImage(token, newModelPhotoFile);
-          setIsUploadingModelPhoto(false);
-          modelPhotoUrl = uploadResult.url;
-        }
-        await createModel(token, selectedBrand.id, newName.trim(), newModelNameAr.trim(), modelPhotoUrl);
-        openBrand(selectedBrand);
-        setNewModelPhotoFile(null); setNewModelPhotoPreview(null); setNewModelNameAr("");
-      } else if (kind === "generation") {
-        // The photo is uploaded first, so a failed upload is caught before the year is created (the server refuses a year without a photo anyway).
-        setIsUploadingYearPhoto(true);
-        const yearUpload = await uploadImage(token, newYearPhotoFile);
-        setIsUploadingYearPhoto(false);
-        await createGeneration(token, selectedModel.id, newName.trim(), parseInt(newYearStart, 10), newYearEnd ? parseInt(newYearEnd, 10) : undefined, yearUpload.url);
-        setNewYearPhotoFile(null); setNewYearPhotoPreview(null);
-        openModel(selectedModel);
-      } else if (kind === "engine") {
-        await createEngine(token, selectedGeneration.id, newName.trim());
-        openGeneration(selectedGeneration);
-      } else if (kind === "transmission") {
-        await createTransmission(token, selectedGeneration.id, newName.trim());
-        openGeneration(selectedGeneration);
-      }
-      setNewName(""); setNewYearStart(""); setNewYearEnd("");
+      setIsUploadingBrandPhoto(true);
+      const upload = await uploadImage(token, newBrandPhotoFile);
+      setIsUploadingBrandPhoto(false);
+      await createBrand(token, newBrandName.trim(), newBrandNameAr.trim(), upload.url);
+      loadBrands();
+      setNewBrandName(""); setNewBrandNameAr(""); setNewBrandPhotoFile(null); setNewBrandPhotoPreview(null);
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
       setErrorMessage(err.message);
-    } finally {
-      setIsSubmitting(false);
-      setIsUploadingBrandPhoto(false);
-      setIsUploadingModelPhoto(false);
+    } finally { setIsSubmitting(false); setIsUploadingBrandPhoto(false); }
+  };
+
+  const handleAddModel = async () => {
+    if (!newModelName.trim()) { setErrorMessage("English name is required."); return; }
+    if (!newModelNameAr.trim()) { setErrorMessage("Arabic name is required."); return; }
+    setIsSubmitting(true); setErrorMessage(null);
+    try {
+      await createModel(getStoredToken(), selectedBrand.id, newModelName.trim(), newModelNameAr.trim());
+      openBrand(selectedBrand);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally { setIsSubmitting(false); }
+  };
+
+  const handleAddYear = async () => {
+    const year = toEnglishDigits(newYear).trim();
+    const newest = new Date().getFullYear() + 1;
+    if (!year) { setErrorMessage("Year is required."); return; }
+    if (!/^\d{4}$/.test(year)) { setErrorMessage("Write the year as four digits, for example 2021."); return; }
+    if (Number(year) < OLDEST_YEAR || Number(year) > newest) { setErrorMessage(`The year must be between ${OLDEST_YEAR} and ${newest}.`); return; }
+    if (!newYearPhotoFile) { setErrorMessage("A photo is required."); return; }
+    setIsSubmitting(true); setErrorMessage(null);
+    try {
+      const token = getStoredToken();
+      setIsUploadingYearPhoto(true);
+      const upload = await uploadImage(token, newYearPhotoFile);
       setIsUploadingYearPhoto(false);
-    }
+      await createYear(token, selectedModel.id, Number(year), upload.url);
+      setNewYear(""); setNewYearPhotoFile(null); setNewYearPhotoPreview(null);
+      openModel(selectedModel);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);   // e.g. "2021 already exists for this model"
+    } finally { setIsSubmitting(false); setIsUploadingYearPhoto(false); }
   };
 
   const handleDelete = async (kind, id) => {
@@ -3468,8 +3462,6 @@ function VehicleDataPage({ onSessionExpired }) {
       if (kind === "brand") { await deleteBrand(token, id); loadBrands(); }
       else if (kind === "model") { await deleteModel(token, id); openBrand(selectedBrand); }
       else if (kind === "generation") { await deleteGeneration(token, id); openModel(selectedModel); }
-      else if (kind === "engine") { await deleteEngine(token, id); openGeneration(selectedGeneration); }
-      else if (kind === "transmission") { await deleteTransmission(token, id); openGeneration(selectedGeneration); }
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
       setErrorMessage(err.message); // e.g. the real 409 "products reference this" message
@@ -3478,28 +3470,18 @@ function VehicleDataPage({ onSessionExpired }) {
     }
   };
 
-  // Real, new -- reorders any of the 5 real vehicle data levels.
-  // Updates state directly from each move endpoint's own returned
-  // list, rather than a slower separate re-fetch.
+  // Brands and models can be reordered; years are always listed newest first.
   const handleMove = async (kind, id, direction) => {
     try {
       const token = getStoredToken();
       if (kind === "brand") setBrands(await moveBrand(token, id, direction));
       else if (kind === "model") setModels(await moveModel(token, id, direction));
-      else if (kind === "generation") setGenerations(await moveGeneration(token, id, direction));
-      else if (kind === "engine") setEngines(await moveEngine(token, id, direction));
-      else if (kind === "transmission") setTransmissions(await moveTransmission(token, id, direction));
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
-      setErrorMessage(err.message); // e.g. the real "already the first/last" message
+      setErrorMessage(err.message);
     }
   };
 
-  // Real, new -- edits any of the 5 real vehicle data levels, same
-  // real dispatch-by-kind pattern as handleDelete and handleMove
-  // above. Re-opens whichever real parent view is currently showing
-  // afterward, so the edited real name/years are reflected
-  // immediately.
   const handleSaveEdit = async (values) => {
     const { kind, item } = pendingEdit;
     setIsSavingEdit(true);
@@ -3509,8 +3491,6 @@ function VehicleDataPage({ onSessionExpired }) {
       if (kind === "brand") { await updateBrand(token, item.id, values.name.trim(), values.nameAr.trim()); loadBrands(); }
       else if (kind === "model") { await updateModel(token, item.id, values.name.trim(), values.nameAr?.trim()); openBrand(selectedBrand); }
       else if (kind === "generation") { await updateGeneration(token, item.id, values.name.trim(), parseInt(values.yearStart, 10), values.yearEnd ? parseInt(values.yearEnd, 10) : undefined); openModel(selectedModel); }
-      else if (kind === "engine") { await updateEngine(token, item.id, values.name.trim()); openGeneration(selectedGeneration); }
-      else if (kind === "transmission") { await updateTransmission(token, item.id, values.name.trim()); openGeneration(selectedGeneration); }
       setPendingEdit(null);
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
@@ -3520,9 +3500,7 @@ function VehicleDataPage({ onSessionExpired }) {
     }
   };
 
-  // Real, new -- lets an admin replace an existing brand's photo at
-  // any time, same real capability already added for categories and
-  // parts.
+  // Replace an existing brand's photo (brands always have one).
   const handleReplaceBrandPhoto = async (id, file) => {
     if (!file) return;
     setReplacingBrandPhotoId(id);
@@ -3540,47 +3518,7 @@ function VehicleDataPage({ onSessionExpired }) {
     }
   };
 
-  const breadcrumb = (
-    <div style={{ display: "flex", alignItems: "center", gap: 6, ...body, fontSize: 12.5, color: C.muted, marginBottom: 14 }}>
-      <span onClick={backToBrands} style={{ cursor: selectedBrand ? "pointer" : "default", fontWeight: selectedBrand ? 400 : 700, color: selectedBrand ? C.muted : C.ink }}>Brands</span>
-      {selectedBrand && <>
-        <ChevronRight size={12} />
-        <span onClick={backToModels} style={{ cursor: selectedModel ? "pointer" : "default", fontWeight: selectedModel ? 400 : 700, color: selectedModel ? C.muted : C.ink }}>{selectedBrand.name}</span>
-      </>}
-      {selectedModel && <>
-        <ChevronRight size={12} />
-        <span onClick={backToGenerations} style={{ cursor: selectedGeneration ? "pointer" : "default", fontWeight: selectedGeneration ? 400 : 700, color: selectedGeneration ? C.muted : C.ink }}>{selectedModel.name}</span>
-      </>}
-      {selectedGeneration && <>
-        <ChevronRight size={12} />
-        <span style={{ fontWeight: 700, color: C.ink }}>{selectedGeneration.name}</span>
-      </>}
-    </div>
-  );
-
-  const handleBrandPhotoSelect = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setNewBrandPhotoFile(file);
-    setNewBrandPhotoPreview(URL.createObjectURL(file));
-  };
-
-  const handleModelPhotoSelect = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setNewModelPhotoFile(file);
-    setNewModelPhotoPreview(URL.createObjectURL(file));
-  };
-
-  const handleYearPhotoSelect = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setNewYearPhotoFile(file);
-    setNewYearPhotoPreview(URL.createObjectURL(file));
-    setErrorMessage(null);
-  };
-
-  // Add or replace the photo of an EXISTING year: how the years that were created before the year photo existed get theirs.
+  // Add or replace the photo of an EXISTING year (how years created before the year photo existed get theirs).
   const handleReplaceYearPhoto = async (id, file) => {
     if (!file) return;
     setReplacingYearPhotoId(id);
@@ -3598,106 +3536,47 @@ function VehicleDataPage({ onSessionExpired }) {
     }
   };
 
-  // Real, new -- lets an admin add or replace an existing model's
-  // photo at any time, same real pattern as handleReplaceBrandPhoto.
-  const handleReplaceModelPhoto = async (id, file) => {
-    if (!file) return;
-    setReplacingModelPhotoId(id);
-    setErrorMessage(null);
-    try {
-      const token = getStoredToken();
-      const uploadResult = await uploadImage(token, file);
-      await updateModelPhoto(token, id, uploadResult.url);
-      openBrand(selectedBrand);
-    } catch (err) {
-      if (err instanceof SessionExpiredError) return onSessionExpired();
-      setErrorMessage(err.message);
-    } finally {
-      setReplacingModelPhotoId(null);
-    }
-  };
-
-  const addRow = (kind, placeholder, showYears) => (
-    <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
-      <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={placeholder} style={{ ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
-      {showYears && <>
-        <input value={newYearStart} onChange={(e) => setNewYearStart(e.target.value)} placeholder="Start year" type="number" style={{ ...body, width: 100, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
-        <input value={newYearEnd} onChange={(e) => setNewYearEnd(e.target.value)} placeholder="End year (optional)" type="number" style={{ ...body, width: 140, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+  const breadcrumb = (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, ...body, fontSize: 12.5, color: C.muted, marginBottom: 14 }}>
+      <span onClick={backToBrands} style={{ cursor: selectedBrand ? "pointer" : "default", fontWeight: selectedBrand ? 400 : 700, color: selectedBrand ? C.muted : C.ink }}>Brands</span>
+      {selectedBrand && <>
+        <ChevronRight size={12} />
+        <span onClick={backToModels} style={{ cursor: selectedModel ? "pointer" : "default", fontWeight: selectedModel ? 400 : 700, color: selectedModel ? C.muted : C.ink }}>{selectedBrand.name}</span>
       </>}
-      {kind === "generation" && (
-        <>
-          <label style={{ ...body, display: "flex", alignItems: "center", gap: 6, border: `1px solid ${newYearPhotoFile ? C.line : C.red}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", color: C.ink, background: C.card }}>
-            <ImagePlus size={14} />
-            {newYearPhotoFile ? "Photo selected" : "Choose photo (required)"}
-            <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleYearPhotoSelect} style={{ display: "none" }} />
-          </label>
-          {newYearPhotoPreview && <img src={newYearPhotoPreview} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
-        </>
-      )}
-      {kind === "model" && (
-        <>
-          <input value={newModelNameAr} onChange={(e) => setNewModelNameAr(e.target.value)} placeholder="Arabic name (required)" dir="rtl" style={{ ...body, flex: 1, minWidth: 140, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
-          <label style={{ ...body, display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", color: newModelPhotoFile ? C.gauge : C.muted }}>
-            <ImagePlus size={14} />
-            {newModelPhotoFile ? "Photo selected" : "Choose photo (optional)"}
-            <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleModelPhotoSelect} style={{ display: "none" }} />
-          </label>
-          {newModelPhotoPreview && <img src={newModelPhotoPreview} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
-        </>
-      )}
-      <button disabled={isSubmitting} onClick={() => handleAdd(kind)} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
-        <Check size={13} /> {(kind === "model" && isUploadingModelPhoto) || (kind === "generation" && isUploadingYearPhoto) ? "Uploading…" : "Add"}
-      </button>
+      {selectedModel && <>
+        <ChevronRight size={12} />
+        <span style={{ fontWeight: 700, color: C.ink }}>{selectedModel.name}</span>
+      </>}
     </div>
   );
 
-  const listRow = (label, sub, onOpen, onDelete, isFirst, isLast, onMoveUp, onMoveDown, onEdit, leading = null, trailing = null) => (
-    <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderBottom: `1px solid ${C.line}` }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-          <button onClick={onMoveUp} disabled={isFirst} style={{ background: "none", border: "none", padding: 0, cursor: isFirst ? "default" : "pointer", opacity: isFirst ? 0.25 : 1 }} title="Move up">
-            <ChevronUp size={13} color={C.ink} />
-          </button>
-          <button onClick={onMoveDown} disabled={isLast} style={{ background: "none", border: "none", padding: 0, cursor: isLast ? "default" : "pointer", opacity: isLast ? 0.25 : 1 }} title="Move down">
-            <ChevronDown size={13} color={C.ink} />
-          </button>
-        </div>
-        {leading}
-        <div onClick={onOpen} style={{ cursor: onOpen ? "pointer" : "default", flex: 1 }}>
-          <span style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>{label}</span>
-          {sub && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }}>{sub}</span>}
-        </div>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        {trailing}
-        {onOpen && <ChevronRight size={14} color={C.muted} onClick={onOpen} style={{ cursor: "pointer" }} />}
-        <button onClick={onEdit} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><Pencil size={13} color={C.muted} /></button>
-        <button onClick={onDelete} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={14} color={C.red} /></button>
-      </div>
-    </div>
-  );
-
-  // A vehicle YEAR's photo in the list: a thumbnail (click to add or replace), a badge saying whether it has one, and the button to add or replace it.
-  // Years created before the year photo existed have none; they stay usable and are flagged "No photo yet".
-  const yearPhotoThumb = (g) => (
-    <label onClick={(e) => e.stopPropagation()} title="Click to add or replace this photo" style={{ position: "relative", width: 28, height: 28, borderRadius: 6, flexShrink: 0, cursor: replacingYearPhotoId === g.id ? "default" : "pointer", display: "block" }}>
-      {g.photoUrl ? (
-        <img src={g.photoUrl.startsWith("http") ? g.photoUrl : `${API_BASE_URL}${g.photoUrl}`} alt="" style={{ width: 28, height: 28, borderRadius: 6, objectFit: "cover", display: "block", opacity: replacingYearPhotoId === g.id ? 0.4 : 1 }} />
-      ) : (
-        <div style={{ width: 28, height: 28, borderRadius: 6, background: C.canvas, display: "flex", alignItems: "center", justifyContent: "center" }}><ImagePlus size={12} color={C.muted} /></div>
-      )}
-      <input type="file" accept="image/jpeg,image/png,image/webp" disabled={replacingYearPhotoId === g.id} onChange={(e) => handleReplaceYearPhoto(g.id, e.target.files?.[0])} style={{ display: "none" }} />
-    </label>
-  );
-  const yearPhotoStatus = (g) => (
+  const fieldStyle = { ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, color: C.ink, background: C.card, outline: "none" };
+  const photoPicker = (file, preview, onSelect) => (
     <>
-      <span style={{ ...body, fontSize: 11, fontWeight: 700, color: g.photoUrl ? "#16794F" : "#8A5A12", background: g.photoUrl ? "#E6F5EE" : "#FDF3E1", borderRadius: 999, padding: "3px 9px" }}>{g.photoUrl ? "Has photo" : "No photo yet"}</span>
-      <label style={{ ...body, fontSize: 12, fontWeight: 700, borderRadius: 8, padding: "5px 11px", cursor: replacingYearPhotoId === g.id ? "default" : "pointer", border: g.photoUrl ? `1px solid ${C.line}` : "none", background: g.photoUrl ? C.card : C.signal, color: g.photoUrl ? C.ink : C.onSignal }}>
-        {replacingYearPhotoId === g.id ? "Uploading…" : g.photoUrl ? "Replace photo" : "Add photo"}
-        <input type="file" accept="image/jpeg,image/png,image/webp" disabled={replacingYearPhotoId === g.id} onChange={(e) => handleReplaceYearPhoto(g.id, e.target.files?.[0])} style={{ display: "none" }} />
+      <label style={{ ...body, display: "flex", alignItems: "center", gap: 6, border: `1px solid ${file ? C.line : C.red}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", color: C.ink, background: C.card }}>
+        <ImagePlus size={14} />
+        {file ? "Photo selected" : "Choose photo (required)"}
+        <input type="file" accept="image/jpeg,image/png,image/webp" onChange={onSelect} style={{ display: "none" }} />
       </label>
+      {preview && <img src={preview} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
     </>
   );
+  const addButton = (onClick, uploading) => (
+    <button disabled={isSubmitting} onClick={onClick} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
+      <Check size={13} /> {uploading ? "Uploading…" : "Add"}
+    </button>
+  );
+  const arrows = (kind, id, isFirst, isLast) => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+      <button onClick={() => handleMove(kind, id, "up")} disabled={isFirst} style={{ background: "none", border: "none", padding: 0, cursor: isFirst ? "default" : "pointer", opacity: isFirst ? 0.25 : 1 }} title="Move up"><ChevronUp size={13} color={C.ink} /></button>
+      <button onClick={() => handleMove(kind, id, "down")} disabled={isLast} style={{ background: "none", border: "none", padding: 0, cursor: isLast ? "default" : "pointer", opacity: isLast ? 0.25 : 1 }} title="Move down"><ChevronDown size={13} color={C.ink} /></button>
+    </div>
+  );
+  const rowStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderBottom: `1px solid ${C.line}` };
+  const mediaSrc = (url) => (url.startsWith("http") ? url : `${API_BASE_URL}${url}`);
+
+  // Years are listed newest first.
+  const sortedYears = [...years].sort((a, b) => b.yearStart - a.yearStart);
 
   if (loadState === "loading") {
     return <div><TopBar title="Vehicle Data" subtitle="Loading…" /><div style={{ padding: 24 }}><Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading…</div></Card></div></div>;
@@ -3708,171 +3587,131 @@ function VehicleDataPage({ onSessionExpired }) {
 
   return (
     <div>
-      <TopBar title="Vehicle Data" subtitle="Manage the Brand → Model → Generation → Engine/Transmission cascade, and the VIN decoder's own data tables" />
+      <TopBar title="Vehicle Data" subtitle="Add a vehicle in three steps: Brand, then Model, then Year. Also the VIN decoder's own data tables" />
       <div style={{ padding: "24px 24px 0" }}>
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-          <button
-            onClick={() => setActiveTab("brands")}
-            style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: activeTab === "brands" ? C.ink : C.line, color: activeTab === "brands" ? "#fff" : C.muted, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}
-          >Brands</button>
-          <button
-            onClick={() => setActiveTab("wmi")}
-            style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: activeTab === "wmi" ? C.ink : C.line, color: activeTab === "wmi" ? "#fff" : C.muted, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}
-          >VIN WMI</button>
-          <button
-            onClick={() => setActiveTab("patterns")}
-            style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: activeTab === "patterns" ? C.ink : C.line, color: activeTab === "patterns" ? "#fff" : C.muted, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}
-          >VIN model patterns</button>
+          {[["brands", "Brands"], ["wmi", "VIN WMI"], ["patterns", "VIN model patterns"]].map(([id, label]) => (
+            <button key={id} onClick={() => setActiveTab(id)} style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: activeTab === id ? C.ink : C.line, color: activeTab === id ? "#fff" : C.muted, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{label}</button>
+          ))}
         </div>
       </div>
       {activeTab === "brands" && (
-      <div style={{ padding: "0 24px 24px" }}>
-        <Card>
-          <div style={{ padding: 18 }}>
-            {breadcrumb}
-            {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: "#FBE7E5", borderRadius: 8, padding: 10, marginBottom: 14 }}>{errorMessage}</div>}
+        <div style={{ padding: "0 24px 24px" }}>
+          <Card>
+            <div style={{ padding: 18 }}>
+              {breadcrumb}
+              {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: "#FBE7E5", borderRadius: 8, padding: 10, marginBottom: 14 }}>{errorMessage}</div>}
 
-            {!selectedBrand && (
-              <>
-                {/* Real, dedicated Add Brand form (new) -- required
-                    bilingual name (English/Arabic) and a required
-                    photo, unlike the simpler shared addRow() used
-                    below for Model/Generation/Engine/Transmission. */}
-                <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
-                  <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="English name (e.g. Nissan)" style={{ ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
-                  <input value={newBrandNameAr} onChange={(e) => setNewBrandNameAr(e.target.value)} placeholder="Arabic name (required)" dir="rtl" style={{ ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
-                  <label style={{ ...body, display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", color: newBrandPhotoFile ? C.gauge : C.muted }}>
-                    <ImagePlus size={14} />
-                    {newBrandPhotoFile ? "Photo selected" : "Choose photo (optional)"}
-                    <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleBrandPhotoSelect} style={{ display: "none" }} />
-                  </label>
-                  {newBrandPhotoPreview && <img src={newBrandPhotoPreview} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
-                  <button disabled={isSubmitting} onClick={() => handleAdd("brand")} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
-                    <Check size={13} /> {isUploadingBrandPhoto ? "Uploading…" : "Add"}
-                  </button>
-                </div>
-                {brands.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No brands yet.</div>}
-                {brands.map((b, i) => (
-                  <div key={b.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderBottom: `1px solid ${C.line}` }}>
-                    <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                        <button onClick={() => handleMove("brand", b.id, "up")} disabled={i === 0} style={{ background: "none", border: "none", padding: 0, cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? 0.25 : 1 }} title="Move up">
-                          <ChevronUp size={13} color={C.ink} />
-                        </button>
-                        <button onClick={() => handleMove("brand", b.id, "down")} disabled={i === brands.length - 1} style={{ background: "none", border: "none", padding: 0, cursor: i === brands.length - 1 ? "default" : "pointer", opacity: i === brands.length - 1 ? 0.25 : 1 }} title="Move down">
-                          <ChevronDown size={13} color={C.ink} />
-                        </button>
-                      </div>
-                      <label
-                        onClick={(e) => e.stopPropagation()}
-                        title="Click to replace this photo"
-                        style={{ position: "relative", width: 28, height: 28, borderRadius: 6, flexShrink: 0, cursor: replacingBrandPhotoId === b.id ? "default" : "pointer", display: "block" }}
-                      >
-                        {b.photoUrl ? (
-                          <img src={b.photoUrl.startsWith("http") ? b.photoUrl : `${API_BASE_URL}${b.photoUrl}`} alt="" style={{ width: 28, height: 28, borderRadius: 6, objectFit: "cover", display: "block", opacity: replacingBrandPhotoId === b.id ? 0.5 : 1 }} />
-                        ) : (
-                          <div style={{ width: 28, height: 28, borderRadius: 6, background: C.canvas }} />
-                        )}
-                        <input
-                          type="file"
-                          accept="image/jpeg,image/png,image/webp"
-                          disabled={replacingBrandPhotoId === b.id}
-                          onChange={(e) => handleReplaceBrandPhoto(b.id, e.target.files?.[0])}
-                          style={{ display: "none" }}
-                        />
-                      </label>
-                      <div onClick={() => openBrand(b)} style={{ cursor: "pointer" }}>
-                        <span style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>{b.name}</span>
-                        {b.nameAr && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }} dir="rtl">{b.nameAr}</span>}
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <ChevronRight size={14} color={C.muted} onClick={() => openBrand(b)} style={{ cursor: "pointer" }} />
-                      <button onClick={() => setPendingEdit({ kind: "brand", item: b })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><Pencil size={13} color={C.muted} /></button>
-                      <button onClick={() => setPendingDelete({ kind: "brand", id: b.id, label: b.name })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={14} color={C.red} /></button>
-                    </div>
+              {/* Step 1: Brand (English name, Arabic name, photo: all required) */}
+              {!selectedBrand && (
+                <>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+                    <input value={newBrandName} onChange={(e) => setNewBrandName(e.target.value)} placeholder="English name (e.g. Nissan)" style={fieldStyle} />
+                    <input value={newBrandNameAr} onChange={(e) => setNewBrandNameAr(e.target.value)} placeholder="Arabic name (required)" dir="rtl" style={fieldStyle} />
+                    {photoPicker(newBrandPhotoFile, newBrandPhotoPreview, handleBrandPhotoSelect)}
+                    {addButton(handleAddBrand, isUploadingBrandPhoto)}
                   </div>
-                ))}
-              </>
-            )}
-
-            {selectedBrand && !selectedModel && (
-              <>
-                {addRow("model", `New model under ${selectedBrand.name} (e.g. Focus)`, false)}
-                {models.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No models yet.</div>}
-                {models.map((m, i) => (
-                  <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderBottom: `1px solid ${C.line}` }}>
-                    <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                        <button onClick={() => handleMove("model", m.id, "up")} disabled={i === 0} style={{ background: "none", border: "none", padding: 0, cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? 0.25 : 1 }} title="Move up">
-                          <ChevronUp size={13} color={C.ink} />
-                        </button>
-                        <button onClick={() => handleMove("model", m.id, "down")} disabled={i === models.length - 1} style={{ background: "none", border: "none", padding: 0, cursor: i === models.length - 1 ? "default" : "pointer", opacity: i === models.length - 1 ? 0.25 : 1 }} title="Move down">
-                          <ChevronDown size={13} color={C.ink} />
-                        </button>
+                  {brands.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No brands yet.</div>}
+                  {brands.map((b, i) => (
+                    <div key={b.id} style={rowStyle}>
+                      <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10 }}>
+                        {arrows("brand", b.id, i === 0, i === brands.length - 1)}
+                        <label onClick={(e) => e.stopPropagation()} title="Click to replace this photo" style={{ position: "relative", width: 28, height: 28, borderRadius: 6, flexShrink: 0, cursor: replacingBrandPhotoId === b.id ? "default" : "pointer", display: "block" }}>
+                          {b.photoUrl ? (
+                            <img src={mediaSrc(b.photoUrl)} alt="" style={{ width: 28, height: 28, borderRadius: 6, objectFit: "cover", display: "block", opacity: replacingBrandPhotoId === b.id ? 0.4 : 1 }} />
+                          ) : (
+                            <div style={{ width: 28, height: 28, borderRadius: 6, background: C.canvas, display: "flex", alignItems: "center", justifyContent: "center" }}><ImagePlus size={12} color={C.muted} /></div>
+                          )}
+                          <input type="file" accept="image/jpeg,image/png,image/webp" disabled={replacingBrandPhotoId === b.id} onChange={(e) => handleReplaceBrandPhoto(b.id, e.target.files?.[0])} style={{ display: "none" }} />
+                        </label>
+                        <div onClick={() => openBrand(b)} style={{ cursor: "pointer" }}>
+                          <span style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>{b.name}</span>
+                          {b.nameAr && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }} dir="rtl">{b.nameAr}</span>}
+                        </div>
                       </div>
-                      <label
-                        onClick={(e) => e.stopPropagation()}
-                        title="Click to add or replace this photo"
-                        style={{ position: "relative", width: 28, height: 28, borderRadius: 6, flexShrink: 0, cursor: replacingModelPhotoId === m.id ? "default" : "pointer", display: "block" }}
-                      >
-                        {m.photoUrl ? (
-                          <img src={m.photoUrl.startsWith("http") ? m.photoUrl : `${API_BASE_URL}${m.photoUrl}`} alt="" style={{ width: 28, height: 28, borderRadius: 6, objectFit: "cover", display: "block", opacity: replacingModelPhotoId === m.id ? 0.5 : 1 }} />
-                        ) : (
-                          <div style={{ width: 28, height: 28, borderRadius: 6, background: C.canvas, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                            <ImagePlus size={12} color={C.muted} />
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <ChevronRight size={14} color={C.muted} onClick={() => openBrand(b)} style={{ cursor: "pointer" }} />
+                        <button onClick={() => setPendingEdit({ kind: "brand", item: b })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><Pencil size={13} color={C.muted} /></button>
+                        <button onClick={() => setPendingDelete({ kind: "brand", id: b.id, label: b.name })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={14} color={C.red} /></button>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {/* Step 2: Model (English name, Arabic name: nothing else) */}
+              {selectedBrand && !selectedModel && (
+                <>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+                    <input value={newModelName} onChange={(e) => setNewModelName(e.target.value)} placeholder={`New model under ${selectedBrand.name} (e.g. Focus)`} style={fieldStyle} />
+                    <input value={newModelNameAr} onChange={(e) => setNewModelNameAr(e.target.value)} placeholder="Arabic name (required)" dir="rtl" style={fieldStyle} />
+                    {addButton(handleAddModel, false)}
+                  </div>
+                  {models.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No models yet.</div>}
+                  {models.map((m, i) => (
+                    <div key={m.id} style={rowStyle}>
+                      <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10 }}>
+                        {arrows("model", m.id, i === 0, i === models.length - 1)}
+                        <div onClick={() => openModel(m)} style={{ cursor: "pointer" }}>
+                          <span style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>{m.name}</span>
+                          {m.nameAr && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }} dir="rtl">{m.nameAr}</span>}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <ChevronRight size={14} color={C.muted} onClick={() => openModel(m)} style={{ cursor: "pointer" }} />
+                        <button onClick={() => setPendingEdit({ kind: "model", item: m })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><Pencil size={13} color={C.muted} /></button>
+                        <button onClick={() => setPendingDelete({ kind: "model", id: m.id, label: m.name })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={14} color={C.red} /></button>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {/* Step 3: Year (the year in English digits + photo, both required) */}
+              {selectedModel && (
+                <>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+                    <input value={newYear} onChange={(e) => setNewYear(e.target.value)} placeholder="Year (English digits, e.g. 2021)" inputMode="numeric" style={fieldStyle} />
+                    {photoPicker(newYearPhotoFile, newYearPhotoPreview, handleYearPhotoSelect)}
+                    {addButton(handleAddYear, isUploadingYearPhoto)}
+                  </div>
+                  {sortedYears.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No years yet.</div>}
+                  {sortedYears.map((g) => {
+                    const single = isSingleYearEntry(g);
+                    return (
+                      <div key={g.id} style={rowStyle}>
+                        <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10 }}>
+                          <label onClick={(e) => e.stopPropagation()} title="Click to add or replace this photo" style={{ position: "relative", width: 28, height: 28, borderRadius: 6, flexShrink: 0, cursor: replacingYearPhotoId === g.id ? "default" : "pointer", display: "block" }}>
+                            {g.photoUrl ? (
+                              <img src={mediaSrc(g.photoUrl)} alt="" style={{ width: 28, height: 28, borderRadius: 6, objectFit: "cover", display: "block", opacity: replacingYearPhotoId === g.id ? 0.4 : 1 }} />
+                            ) : (
+                              <div style={{ width: 28, height: 28, borderRadius: 6, background: C.canvas, display: "flex", alignItems: "center", justifyContent: "center" }}><ImagePlus size={12} color={C.muted} /></div>
+                            )}
+                            <input type="file" accept="image/jpeg,image/png,image/webp" disabled={replacingYearPhotoId === g.id} onChange={(e) => handleReplaceYearPhoto(g.id, e.target.files?.[0])} style={{ display: "none" }} />
+                          </label>
+                          <div>
+                            <span style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>{g.name}</span>
+                            {!single && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }}>{g.yearStart} to {g.yearEnd || "present"}</span>}
+                            {!single && <span style={{ ...body, fontSize: 11, fontWeight: 700, color: "#4B5563", background: "#EEF0F3", borderRadius: 999, padding: "2px 8px", marginLeft: 8 }}>Older entry</span>}
                           </div>
-                        )}
-                        <input
-                          type="file"
-                          accept="image/jpeg,image/png,image/webp"
-                          disabled={replacingModelPhotoId === m.id}
-                          onChange={(e) => handleReplaceModelPhoto(m.id, e.target.files?.[0])}
-                          style={{ display: "none" }}
-                        />
-                      </label>
-                      <div onClick={() => openModel(m)} style={{ cursor: "pointer" }}>
-                        <span style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>{m.name}</span>
-                        {m.nameAr && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }} dir="rtl">{m.nameAr}</span>}
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <span style={{ ...body, fontSize: 11, fontWeight: 700, color: g.photoUrl ? "#16794F" : "#8A5A12", background: g.photoUrl ? "#E6F5EE" : "#FDF3E1", borderRadius: 999, padding: "3px 9px" }}>{g.photoUrl ? "Has photo" : "No photo yet"}</span>
+                          <label style={{ ...body, fontSize: 12, fontWeight: 700, borderRadius: 8, padding: "5px 11px", cursor: replacingYearPhotoId === g.id ? "default" : "pointer", border: g.photoUrl ? `1px solid ${C.line}` : "none", background: g.photoUrl ? C.card : C.signal, color: g.photoUrl ? C.ink : C.onSignal }}>
+                            {replacingYearPhotoId === g.id ? "Uploading…" : g.photoUrl ? "Replace photo" : "Add photo"}
+                            <input type="file" accept="image/jpeg,image/png,image/webp" disabled={replacingYearPhotoId === g.id} onChange={(e) => handleReplaceYearPhoto(g.id, e.target.files?.[0])} style={{ display: "none" }} />
+                          </label>
+                          {!single && <button onClick={() => setPendingEdit({ kind: "generation", item: g })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }} title="Edit this older entry"><Pencil size={13} color={C.muted} /></button>}
+                          <button onClick={() => setPendingDelete({ kind: "generation", id: g.id, label: g.name })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }} aria-label={`Delete ${g.name}`}><X size={14} color={C.red} /></button>
+                        </div>
                       </div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <ChevronRight size={14} color={C.muted} onClick={() => openModel(m)} style={{ cursor: "pointer" }} />
-                      <button onClick={() => setPendingEdit({ kind: "model", item: m })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><Pencil size={13} color={C.muted} /></button>
-                      <button onClick={() => setPendingDelete({ kind: "model", id: m.id, label: m.name })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={14} color={C.red} /></button>
-                    </div>
-                  </div>
-                ))}
-              </>
-            )}
-
-            {selectedModel && !selectedGeneration && (
-              <>
-                {addRow("generation", `New generation under ${selectedModel.name} (e.g. Mk4)`, true)}
-                {generations.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No generations yet.</div>}
-                {generations.map((g, i) => listRow(g.name, `${g.yearStart}–${g.yearEnd || "present"}`, () => openGeneration(g), () => setPendingDelete({ kind: "generation", id: g.id, label: g.name }), i === 0, i === generations.length - 1, () => handleMove("generation", g.id, "up"), () => handleMove("generation", g.id, "down"), () => setPendingEdit({ kind: "generation", item: g }), yearPhotoThumb(g), yearPhotoStatus(g)))}
-              </>
-            )}
-
-            {selectedGeneration && (
-              <div style={{ display: "flex", gap: 20 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.ink, marginBottom: 8 }}>Engines</div>
-                  {addRow("engine", "e.g. 1.0L EcoBoost", false)}
-                  {engines.length === 0 && <div style={{ ...body, fontSize: 12, color: C.muted, padding: 8 }}>None yet.</div>}
-                  {engines.map((e, i) => listRow(e.name, null, null, () => setPendingDelete({ kind: "engine", id: e.id, label: e.name }), i === 0, i === engines.length - 1, () => handleMove("engine", e.id, "up"), () => handleMove("engine", e.id, "down"), () => setPendingEdit({ kind: "engine", item: e })))}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.ink, marginBottom: 8 }}>Transmissions</div>
-                  {addRow("transmission", "e.g. 6-Speed Manual", false)}
-                  {transmissions.length === 0 && <div style={{ ...body, fontSize: 12, color: C.muted, padding: 8 }}>None yet.</div>}
-                  {transmissions.map((t, i) => listRow(t.name, null, null, () => setPendingDelete({ kind: "transmission", id: t.id, label: t.name }), i === 0, i === transmissions.length - 1, () => handleMove("transmission", t.id, "up"), () => handleMove("transmission", t.id, "down"), () => setPendingEdit({ kind: "transmission", item: t })))}
-                </div>
-              </div>
-            )}
-          </div>
-        </Card>
-      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+          </Card>
+        </div>
       )}
       <ConfirmDialog
         isOpen={!!pendingDelete}
@@ -3890,12 +3729,10 @@ function VehicleDataPage({ onSessionExpired }) {
           ] : pendingEdit.kind === "model" ? [
             { key: "name", label: "Name", value: pendingEdit.item.name },
             { key: "nameAr", label: "Arabic name (required)", value: pendingEdit.item.nameAr, dir: "rtl" },
-          ] : pendingEdit.kind === "generation" ? [
+          ] : [
             { key: "name", label: "Name", value: pendingEdit.item.name },
             { key: "yearStart", label: "Start year", value: pendingEdit.item.yearStart, type: "number" },
             { key: "yearEnd", label: "End year (optional)", value: pendingEdit.item.yearEnd, type: "number" },
-          ] : [
-            { key: "name", label: "Name", value: pendingEdit.item.name },
           ]
         ) : []}
         onSave={handleSaveEdit}
@@ -3904,14 +3741,14 @@ function VehicleDataPage({ onSessionExpired }) {
         isSaving={isSavingEdit}
       />
       {activeTab === "wmi" && (
-      <div style={{ padding: "0 24px 24px" }}>
-        <VinWmiCodesSettings onSessionExpired={onSessionExpired} />
-      </div>
+        <div style={{ padding: "0 24px 24px" }}>
+          <VinWmiCodesSettings onSessionExpired={onSessionExpired} />
+        </div>
       )}
       {activeTab === "patterns" && (
-      <div style={{ padding: "0 24px 24px" }}>
-        <VinModelPatternsSettings onSessionExpired={onSessionExpired} />
-      </div>
+        <div style={{ padding: "0 24px 24px" }}>
+          <VinModelPatternsSettings onSessionExpired={onSessionExpired} />
+        </div>
       )}
     </div>
   );

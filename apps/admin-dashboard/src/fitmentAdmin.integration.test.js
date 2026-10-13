@@ -68,7 +68,7 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
 
     const genRes = await fetch(`${BACKEND_URL}/fitment/models/${model.id}/generations`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: 'E2E Gen', yearStart: 2020, yearEnd: 2025, photoUrl: '/uploads/test-year.jpg' }),
+      body: JSON.stringify({ year: 2020, photoUrl: '/uploads/test-year.jpg' }),
     });
     const generation = await genRes.json();
     expect(generation.modelId).toBe(model.id);
@@ -103,11 +103,11 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
     expect((await enginesListRes.json()).length).toBe(1);
   });
 
-  it('rejects a generation with yearEnd before yearStart', async () => {
+  it('rejects a year outside the allowed range, and one that is not four digits', async () => {
     const { token } = await login('admin@leap.dev', 'admin_dev_password_123');
     const brandRes = await fetch(`${BACKEND_URL}/fitment/brands`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: `Year Test Brand ${Date.now()}`, nameAr: 'علامة اختبار', photoUrl: '/uploads/test-brand.png' }),
+      body: JSON.stringify({ name: `Range Test ${Date.now()}`, nameAr: 'اختبار النطاق', photoUrl: '/uploads/test-brand.png' }),
     });
     const brand = await brandRes.json();
     const modelRes = await fetch(`${BACKEND_URL}/fitment/brands/${brand.id}/models`, {
@@ -115,12 +115,13 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
       body: JSON.stringify({ name: 'Year Test Model', nameAr: 'موديل اختبار السنة' }),
     });
     const model = await modelRes.json();
-
-    const res = await fetch(`${BACKEND_URL}/fitment/models/${model.id}/generations`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: 'Bad Range', yearStart: 2020, yearEnd: 2015, photoUrl: '/uploads/test-year.jpg' }),
-    });
-    expect(res.status).toBe(400);
+    for (const year of [1949, 3000, 'abcd', '21']) {
+      const res = await fetch(`${BACKEND_URL}/fitment/models/${model.id}/generations`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ year, photoUrl: '/uploads/test-year.jpg' }),
+      });
+      expect(res.status, String(year)).toBe(400);
+    }
   });
 
   it('successfully deletes an unreferenced entry, confirmed by independent re-fetch', async () => {
@@ -162,7 +163,7 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
     const model = await modelRes.json();
     const genRes = await fetch(`${BACKEND_URL}/fitment/models/${model.id}/generations`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-      body: JSON.stringify({ name: 'Protection Test Gen', yearStart: 2020, yearEnd: 2024, photoUrl: '/uploads/test-year.jpg' }),
+      body: JSON.stringify({ year: 2021, photoUrl: '/uploads/test-year.jpg' }),
     });
     const generation = await genRes.json();
 
@@ -207,7 +208,7 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
     const model = await modelRes.json();
     await fetch(`${BACKEND_URL}/fitment/models/${model.id}/generations`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: 'Cascade Test Gen', yearStart: 2021, photoUrl: '/uploads/test-year.jpg' }),
+      body: JSON.stringify({ year: 2021, photoUrl: '/uploads/test-year.jpg' }),
     });
 
     const deleteRes = await fetch(`${BACKEND_URL}/fitment/brands/${brand.id}`, {

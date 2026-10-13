@@ -3285,14 +3285,21 @@ refund_pending --(admin marks refunded)--+
 builds its own hub and hub-staff login (using the Hub staff feature) so workload checks are exact. Verified to fail when completion stops needing
 both conditions, when supplier isolation is removed, when the buyer-cancel block is removed, or when the hub workload keeps counting returned units.
 
-## Vehicle photos: required for a YEAR, optional for a brand and a model (migration 102)
+## Adding a vehicle: Brand, then Model, then Year (migration 102)
 
-The vehicle cascade is Brand > Model > **Year** (a "generation": name, start year, optional end year) > Engine / Transmission. The photo requirement moved to the year level:
-- **Adding a year requires a photo:** `POST /fitment/models/:modelId/generations` needs `photoUrl` (`400 photoUrl is required` for a missing, blank, empty or non-text one; nothing is created).
-- **Adding a brand no longer requires one** (`POST /fitment/brands`: `photoUrl` optional, blank counts as none). A model's was already optional.
-- **`PATCH /fitment/generations/:id/photo { photoUrl }`** adds or replaces a year's photo (admins with the Vehicle Data page only). This is how the years that existed **before** this change, which have no photo, get one. The column `vehicle_generations.photo_url` is deliberately **nullable**, so those years stay valid; the admin list marks them "No photo yet".
-- Every year the API returns now carries `photoUrl` (null when it has none). `GET /garage/me` carries **`generationPhotoUrl`** next to `modelPhotoUrl` and `brandPhotoUrl`; the buyer app shows the year photo first, then the model's, then the brand's, then a generic icon.
-- Tested: `vehicleYearPhoto.integration.test.js` (7, real backend: the rules, old years, permissions, the garage reply, the nullable column) and `vehicleYearPhotoApp.test.js` (3, the buyer app is wired to it).
+Vehicle Data asks for only this:
+| Step | Required | Not asked |
+|---|---|---|
+| **Brand** `POST /fitment/brands` | English name, Arabic name, **photo** | |
+| **Model** `POST /fitment/brands/:id/models` | English name, Arabic name | **no photo** (one sent along is ignored; models have none) |
+| **Year** `POST /fitment/models/:modelId/generations` `{ year, photoUrl }` | the year, **photo** | no name, no range of years |
+
+- **The year** is written in English digits (Arabic-Indic and Persian digits are converted), four digits, from 1950 to next year (`400` otherwise). **Only once per model** (`409 "2021 already exists for this model"`; two requests at the same moment cannot both succeed: the check and the insert run under a per-model lock). A missing, blank or non-text photo is `400 photoUrl is required` and nothing is created.
+- **How it is stored:** as a one-year entry named by the year (name `"2021"`, start and end 2021, plus `photo_url`), so the garage, product fitment and the buyer's picker keep working unchanged. **Older entries** (a name like "F20" with a range of years) stay valid and are still edited with `PATCH /generations/:id`; they have no photo until someone adds one with **`PATCH /fitment/generations/:id/photo { photoUrl }`** (also how any year's photo is replaced). The column is deliberately **nullable** for them.
+- **Order:** `GET /fitment/models/:id/generations` lists years **newest first**.
+- **Engines and transmissions** are no longer part of adding a vehicle (the admin screens are gone). Their data and endpoints stay untouched; suppliers can still pick an existing one for a product (it is optional there).
+- **The buyer's picture of a saved vehicle:** `GET /garage/me` carries `generationPhotoUrl` and `brandPhotoUrl` (and the old `modelPhotoUrl`, which the app ignores). The app shows the year photo, else the brand photo, else a generic icon.
+- Tested: `vehicleYearPhoto.integration.test.js` (12, real backend: every rule, digits, range, duplicates and the 10-simultaneous-requests race, older entries, permissions, the garage) and `vehicleYearPhotoApp.test.js` (4, the buyer app is wired to it).
 
 ## /health tells a stopped database from a missing migration
 

@@ -56,10 +56,10 @@ class Vehicle {
     this.generationPhotoUrl,
   });
 
-  /// The picture of this vehicle: the YEAR photo first (a photo of this exact vehicle), then the model's, then the brand's; null when there is none
-  /// (callers then show a generic car icon). Empty text counts as no photo.
+  /// The picture of this vehicle: the YEAR photo first (a photo of this exact vehicle), then the BRAND's; null when there is none (callers then show a
+  /// generic car icon). The model's photo is no longer used: models do not take a photo in Vehicle Data. Empty text counts as no photo.
   String? get heroPhotoUrl {
-    for (final url in [generationPhotoUrl, modelPhotoUrl, brandPhotoUrl]) {
+    for (final url in [generationPhotoUrl, brandPhotoUrl]) {
       if (url != null && url.isNotEmpty) return url;
     }
     return null;
@@ -91,7 +91,8 @@ class Vehicle {
   // technical codes, not real translatable text, and vehicle_generations
   // has no real name_ar column at all. The year itself is already
   // language-neutral.
-  String get subLabel => '$generation · $year';
+  // A year added through Vehicle Data is a one-year entry named by the year (generation "2021", year 2021): show just "2021", not "2021 · 2021".
+  String get subLabel => generation.trim() == '$year' ? '$year' : '$generation · $year';
 
   factory Vehicle.fromJson(Map<String, dynamic> json) => Vehicle(
         generationId: json['generationId'] as String,
@@ -124,4 +125,12 @@ class Vehicle {
         'modelPhotoUrl': modelPhotoUrl,
         'generationPhotoUrl': generationPhotoUrl,
       };
+}
+
+/// How a vehicle year ENTRY is written in lists: a one-year entry named by its year (name "2021", 2021 to 2021) is just "2021"; an older entry (a name like
+/// "F20" with a range of years) keeps its range: "F20 (2015–2019)".
+String generationDisplay(String name, int yearStart, int? yearEnd) {
+  if (yearEnd == yearStart && name.trim() == '$yearStart') return name;
+  final years = yearEnd == null ? '$yearStart–present' : '$yearStart–$yearEnd';
+  return '$name ($years)';
 }

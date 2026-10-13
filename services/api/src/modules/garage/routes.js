@@ -39,13 +39,13 @@ function toSavedGenerationDto(row) {
     // saved vehicle drives automatic fitment filtering (the home feed)
     // when a buyer has more than one.
     isDefault: row.is_default,
-    // Brand photo: nullable. It used to be required for a new brand; since migration 102 a brand needs none (the photo moved to the vehicle YEAR), so
-    // callers must handle null gracefully, never assume a photo exists.
+    // Brand photo: every brand added since migration 046 has one (required); nullable only for brands that predate it. Callers must handle null.
     brandPhotoUrl: row.brand_photo_url,
-    // Model photo (migration 061): optional. The picture of a vehicle is chosen: year photo, then this, then the brand's, then a generic icon.
+    // Model photo (migration 061): models no longer take a photo in Vehicle Data, so this is only an old value kept in the database. The buyer app
+    // ignores it: a vehicle's picture is its YEAR photo, else its BRAND photo (see Vehicle.heroPhotoUrl in the app).
     modelPhotoUrl: row.model_photo_url,
     // Real year photo (migration 102): the first choice for the vehicle's picture. Nullable (years that predate it have none): callers fall back
-    // to modelPhotoUrl, then brandPhotoUrl, then a generic icon.
+    // to the brand's photo, then a generic icon.
     generationPhotoUrl: row.generation_photo_url,
   };
 }

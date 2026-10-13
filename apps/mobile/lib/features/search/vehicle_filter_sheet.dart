@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/language_state.dart';
 import '../../core/app_strings.dart';
+import '../../models/vehicle.dart';
 import '../../services/api_client.dart';
 import '../../widgets/skeleton.dart';
 
@@ -259,11 +260,7 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
   String _labelFor(Map<String, dynamic> generation) {
     final brand = _selectedBrand?['name'] as String? ?? '';
     final model = _selectedModel?['name'] as String? ?? '';
-    final genName = generation['name'] as String;
-    final yearStart = generation['yearStart'];
-    final yearEnd = generation['yearEnd'];
-    final years = yearEnd == null ? '$yearStart–present' : '$yearStart–$yearEnd';
-    return '$brand · $model · $genName ($years)';
+    return '$brand · $model · ${generationDisplay(generation['name'] as String, generation['yearStart'] as int, generation['yearEnd'] as int?)}';
   }
 
   void _goBack() {
@@ -359,10 +356,7 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
         return _buildList(
           future: _generationsFuture!,
           onTap: _selectGeneration,
-          labelOf: (g) {
-            final years = g['yearEnd'] == null ? '${g['yearStart']}–present' : '${g['yearStart']}–${g['yearEnd']}';
-            return '${g['name']} ($years)';
-          },
+          labelOf: (g) => generationDisplay(g['name'] as String, g['yearStart'] as int, g['yearEnd'] as int?),
         );
       case _Step.year:
         return _buildYearList();
