@@ -3,7 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const { env, assertRequiredEnvInProduction } = require('./config/env');
 const { installAsyncErrorHandling } = require('./config/asyncErrors');
-const { getPendingMigrations, pendingMigrationsBanner } = require('./config/pendingMigrations');
+const { getPendingMigrations, pendingMigrationsBanner, describeDatabaseError, databaseUnreachableBanner } = require('./config/pendingMigrations');
 const { isEmailConfigured } = require('./modules/email/client');
 
 // An error inside an async route must return a 500, never stop the whole server (see config/asyncErrors.js).
@@ -135,12 +135,16 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads'), {
 }));
 
 app.get('/health', async (req, res) => {
-  // pendingMigrations: [] when the database is up to date; the list of migration files that still need `node db/migrate.js` otherwise
-  // (null if it could not be checked). The status stays 'ok' so existing checks keep working.
+  // pendingMigrations: [] when the database is up to date; the list of migration files that still need `node db/migrate.js` otherwise.
+  // database.reachable: false (and HTTP 503, status 'database_unreachable') when the database cannot be reached at all: before, that was reported as
+  // "every migration pending" with status 'ok', which sent people to the wrong fix. Normal answers keep status 'ok' so existing checks work.
   let pendingMigrations = null;
-  try { pendingMigrations = await getPendingMigrations(); } catch { /* health must never fail because of this check */ }
+  let database = { reachable: true };
+  try { pendingMigrations = await getPendingMigrations(); } catch (err) { database = { reachable: false, reason: describeDatabaseError(err) }; }
   // email.configured: whether SMTP is set up (false = emails are only printed in the backend window). No secrets are ever shown here.
-  res.json({ status: 'ok', env: env.nodeEnv, timestamp: new Date().toISOString(), pendingMigrations, email: { configured: isEmailConfigured() } });
+  res.status(database.reachable ? 200 : 503).json({
+    status: database.reachable ? 'ok' : 'database_unreachable', env: env.nodeEnv, timestamp: new Date().toISOString(), database, pendingMigrations, email: { configured: isEmailConfigured() },
+  });
 });
 
 // The courier link (migration 096): public on purpose, no login; the token in the address is the credential.
@@ -202,7 +206,7 @@ if (require.main === module) {
       ? `Email: sending through ${process.env.SMTP_HOST}:${process.env.SMTP_PORT}`
       : 'Email: NOT configured, emails are printed in this window instead of being sent (see .env.example)');
     // Say so LOUDLY if the code has migrations the database has not had yet (the most common cause of "it stopped working after an update").
-    getPendingMigrations().then((pending) => { if (pending.length > 0) console.error(pendingMigrationsBanner(pending)); }).catch(() => {});
+    getPendingMigrations().then((pending) => { if (pending.length > 0) console.error(pendingMigrationsBanner(pending)); }).catch((err) => { console.error(databaseUnreachableBanner(err)); });
   });
   // Real, once-a-day live FX rate refresh (migration 028) -- only when
   // the server actually runs, never when this file is required for

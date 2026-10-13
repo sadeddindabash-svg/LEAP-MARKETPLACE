@@ -30,6 +30,15 @@ Run for real under PowerShell 7.4, with a stand-in for the one Windows-only comm
 
 **Not tested:** on **Windows PowerShell 5.1** itself (what a Windows PC runs), the real Windows port and service commands, and the separate windows: none exist in the sandbox. The one known difference (5.1 treats program output on stderr as an error) is handled in the migration step. If anything misbehaves, tell me what the window printed.
 
+## You can sign in, but nothing loads (`check-data-loading.cmd`)
+
+Double-click **`scripts\check-data-loading.cmd`** (or run `scripts\check-data-loading.ps1`). It only reads. It signs in as an admin, a supplier and a hub worker (the seeded accounts; if you changed a password pass it: `-AdminPassword`, `-SupplierPassword`, `-HubPassword`) and calls the first things each portal and app loads, printing for every call whether it worked, **how long it took** and **how many items came back**. Then it says what that means:
+- **A call FAILED (HTTP 500 etc.)** -> the error is printed in the backend window at that moment: send me it together with this output.
+- **A call is SLOW** (4 s or more; `-SlowMs` changes that) -> usually the pile of test data (thousands of orders and hubs make the lists huge; a phone gives up after 30 seconds). Preview the clean-up with `node scripts\remove-test-data.js`.
+- **A list is genuinely EMPTY** -> the database has no such data (for example after the test-data clean-up).
+- **Everything worked and was fast** -> the problem is on the portal or app side (browser F12 > Network tab).
+`/health` now also says when the **database itself cannot be reached** (`status: database_unreachable`, HTTP 503, with the reason): before, a stopped database was reported as "every migration pending", which sent you to the wrong fix.
+
 ## The phone says "no internet connection" or "took too long" (`check-phone-connection.cmd`)
 
 Double-click **`scripts\check-phone-connection.cmd`** (or run `scripts\check-phone-connection.ps1`). It changes nothing and tells you which of these it is, and what to do:
