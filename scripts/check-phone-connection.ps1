@@ -96,17 +96,24 @@ if (Has 'Get-NetConnectionProfile') {
   if ($publicOnes.Count -gt 0) { $category = 'Public' }
 }
 $portRule = $false
-if (Has 'Get-NetFirewallRule') {
-  $rules = @(Get-NetFirewallRule -Direction Inbound -Action Allow -Enabled True -ErrorAction SilentlyContinue)
-  foreach ($rule in $rules) {
-    $filter = Get-NetFirewallPortFilter -AssociatedNetFirewallRule $rule -ErrorAction SilentlyContinue
-    if ($filter -and $filter.Protocol -eq 'TCP' -and ($filter.LocalPort -contains "$Port")) { $portRule = $true; break }
+$portRuleProfiles = @()
+# ONE call for every port filter, then only the few that name this port are looked at. (Asking about every rule one by one takes minutes on a real PC.)
+if ((Has 'Get-NetFirewallPortFilter') -and (Has 'Get-NetFirewallRule')) {
+  Write-Host "  (reading the firewall rules: a few seconds)"
+  $filters = @(Get-NetFirewallPortFilter -ErrorAction SilentlyContinue | Where-Object { $_.Protocol -eq 'TCP' -and ($_.LocalPort -contains "$Port") })
+  foreach ($filter in $filters) {
+    $rule = $filter | Get-NetFirewallRule -ErrorAction SilentlyContinue
+    if ($rule -and ("$($rule.Enabled)" -eq 'True') -and ("$($rule.Direction)" -eq 'Inbound') -and ("$($rule.Action)" -eq 'Allow')) { $portRule = $true; $portRuleProfiles += "$($rule.Profile)" }
   }
 }
 if ($portRule) { Write-Ok "A firewall rule allows inbound TCP $Port" }
 else { Write-Warn "No firewall rule opens port $Port. Windows may still let it through (a 'Node.js' prompt), but on a 'Public' network it usually blocks phones." }
-if ($category -eq 'Public') { Write-Fail "Your Wi-Fi is set to 'Public'. Windows blocks other devices on Public networks by default."; $problems += 'public-network' }
-if (($category -eq 'Public') -or (-not $portRule)) { $next += "Run this script again as Administrator with -FixFirewall: it opens port $Port and sets your Wi-Fi to Private." }
+# A rule made with -Profile Any (or one that names Public) lets phones in on a Public network too, so "Public" alone is only a problem when no rule covers it.
+$ruleCoversPublic = (@($portRuleProfiles | Where-Object { $_ -match 'Any|Public' })).Count -gt 0
+$publicBlocks = ($category -eq 'Public') -and (-not $ruleCoversPublic)
+if ($category -eq 'Public' -and $ruleCoversPublic) { Write-Ok "Your Wi-Fi is 'Public', but the rule for port $Port covers Public networks too, so a phone is let in" }
+if ($publicBlocks) { Write-Fail "Your Wi-Fi is set to 'Public' and no rule for port $Port covers Public networks. Windows blocks other devices on Public networks by default."; $problems += 'public-network' }
+if ($publicBlocks -or (-not $portRule)) { $next += "Run this script again as Administrator with -FixFirewall: it opens port $Port and sets your Wi-Fi to Private." }
 
 if ($FixFirewall) {
   Write-Host ""
