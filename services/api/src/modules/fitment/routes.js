@@ -76,10 +76,15 @@ router.get('/brands/:brandId/models', async (req, res, next) => {
   }
 });
 
+// How a vehicle YEAR (generation) is sent to clients. photoUrl is null for years created before the year photo existed (migration 102).
+function toGenerationDto(r) {
+  return { id: r.id, modelId: r.model_id, name: r.name, yearStart: r.year_start, yearEnd: r.year_end, sortOrder: r.sort_order, photoUrl: r.photo_url || null };
+}
+
 router.get('/models/:modelId/generations', async (req, res, next) => {
   try {
     const { rows } = await db.query('SELECT * FROM vehicle_generations WHERE model_id = $1 ORDER BY sort_order ASC', [req.params.modelId]);
-    res.json(rows.map((r) => ({ id: r.id, modelId: r.model_id, name: r.name, yearStart: r.year_start, yearEnd: r.year_end, sortOrder: r.sort_order })));
+    res.json(rows.map(toGenerationDto));
   } catch (err) {
     next(err);
   }
@@ -141,12 +146,13 @@ router.post('/brands', requireAuth, requireRole('admin'), requirePageAccess('veh
     // retroactively break brands created before this requirement
     // existed.
     if (!nameAr || !nameAr.trim()) return res.status(400).json({ error: 'nameAr is required' });
-    if (!photoUrl || !photoUrl.trim()) return res.status(400).json({ error: 'photoUrl is required' });
+    // The photo is OPTIONAL for a brand now (it moved to the vehicle year, migration 102). The buyer app's brand logo strip simply skips a brand without one.
+    const photo = photoUrl && photoUrl.trim() ? photoUrl.trim() : null;
     const id = `brand_${Date.now()}`;
     const { rows: maxRows } = await db.query('SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM vehicle_brands');
-    await db.query('INSERT INTO vehicle_brands (id, name, name_ar, photo_url, sort_order) VALUES ($1, $2, $3, $4, $5)', [id, name.trim(), nameAr.trim(), photoUrl.trim(), maxRows[0].max_order + 10]);
+    await db.query('INSERT INTO vehicle_brands (id, name, name_ar, photo_url, sort_order) VALUES ($1, $2, $3, $4, $5)', [id, name.trim(), nameAr.trim(), photo, maxRows[0].max_order + 10]);
     await logAdminAction(req, 'brand_created', 'brand', id, { name: name.trim() });
-    res.status(201).json({ id, name: name.trim(), nameAr: nameAr.trim(), photoUrl: photoUrl.trim(), sortOrder: maxRows[0].max_order + 10 });
+    res.status(201).json({ id, name: name.trim(), nameAr: nameAr.trim(), photoUrl: photo, sortOrder: maxRows[0].max_order + 10 });
   } catch (err) {
     if (isUniqueViolation(err)) return res.status(409).json({ error: `A brand named "${req.body.name}" already exists` });
     next(err);
@@ -305,22 +311,24 @@ router.delete('/models/:id', requireAuth, requireRole('admin'), requirePageAcces
   }
 });
 
-// POST /fitment/models/:modelId/generations  { name, yearStart, yearEnd? }
+// POST /fitment/models/:modelId/generations  { name, yearStart, yearEnd?, photoUrl }  (the photo is REQUIRED for a new year: migration 102)
 router.post('/models/:modelId/generations', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
-    const { name, yearStart, yearEnd } = req.body || {};
+    const { name, yearStart, yearEnd, photoUrl } = req.body || {};
     if (!name || !name.trim() || !yearStart) return res.status(400).json({ error: 'name and yearStart are required' });
     if (yearEnd && yearEnd < yearStart) return res.status(400).json({ error: 'yearEnd cannot be before yearStart' });
+    // The one level where a photo is mandatory. (Years created before this existed have none and keep working; they get one with PATCH /generations/:id/photo.)
+    if (!photoUrl || typeof photoUrl !== 'string' || !photoUrl.trim()) return res.status(400).json({ error: 'photoUrl is required' });
     const modelCheck = await db.query('SELECT id FROM vehicle_models WHERE id = $1', [req.params.modelId]);
     if (modelCheck.rows.length === 0) return res.status(404).json({ error: 'Model not found' });
     const id = `gen_${Date.now()}`;
     const { rows: maxRows } = await db.query('SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM vehicle_generations WHERE model_id = $1', [req.params.modelId]);
     await db.query(
-      'INSERT INTO vehicle_generations (id, model_id, name, year_start, year_end, sort_order) VALUES ($1, $2, $3, $4, $5, $6)',
-      [id, req.params.modelId, name.trim(), yearStart, yearEnd || null, maxRows[0].max_order + 10]
+      'INSERT INTO vehicle_generations (id, model_id, name, year_start, year_end, sort_order, photo_url) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [id, req.params.modelId, name.trim(), yearStart, yearEnd || null, maxRows[0].max_order + 10, photoUrl.trim()]
     );
     await logAdminAction(req, 'generation_created', 'generation', id, { name: name.trim(), modelId: req.params.modelId, yearStart, yearEnd: yearEnd || null });
-    res.status(201).json({ id, modelId: req.params.modelId, name: name.trim(), yearStart, yearEnd: yearEnd || null, sortOrder: maxRows[0].max_order + 10 });
+    res.status(201).json({ id, modelId: req.params.modelId, name: name.trim(), yearStart, yearEnd: yearEnd || null, sortOrder: maxRows[0].max_order + 10, photoUrl: photoUrl.trim() });
   } catch (err) {
     next(err);
   }
@@ -336,17 +344,14 @@ router.post('/generations/:id/move', requireAuth, requireRole('admin'), requireP
     const { current, neighbor } = await moveItem({ table: 'vehicle_generations', id: req.params.id, direction, orderColumn: 'sort_order', scopeColumn: 'model_id', scopeValue: genRows[0].model_id, notFoundMessage: 'Generation not found' });
     await logAdminAction(req, 'generation_reordered', 'generation', current.id, { direction, swappedWith: neighbor.name });
     const { rows } = await db.query('SELECT * FROM vehicle_generations WHERE model_id = $1 ORDER BY sort_order ASC', [genRows[0].model_id]);
-    res.json(rows.map((r) => ({ id: r.id, modelId: r.model_id, name: r.name, yearStart: r.year_start, yearEnd: r.year_end, sortOrder: r.sort_order })));
+    res.json(rows.map(toGenerationDto));
   } catch (err) {
     if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
     next(err);
   }
 });
 
-// Real, new -- lets an admin edit an existing generation's name and
-// years at any time. Genuinely new capability here specifically --
-// generations have no photo field at all, so this closes the only
-// real level that previously had zero edit capability of any kind.
+// Lets an admin edit an existing generation's name and years at any time (its photo has its own endpoint just below).
 router.patch('/generations/:id', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
     const { name, yearStart, yearEnd } = req.body || {};
@@ -358,7 +363,22 @@ router.patch('/generations/:id', requireAuth, requireRole('admin'), requirePageA
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Generation not found' });
     await logAdminAction(req, 'generation_updated', 'generation', req.params.id, { name: name.trim() });
-    res.json({ id: rows[0].id, modelId: rows[0].model_id, name: rows[0].name, yearStart: rows[0].year_start, yearEnd: rows[0].year_end, sortOrder: rows[0].sort_order });
+    res.json(toGenerationDto(rows[0]));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Add or replace the photo of an existing vehicle year: how the years created before the year photo existed (migration 102) get theirs, and how any
+// year's photo is replaced later.
+router.patch('/generations/:id/photo', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const { photoUrl } = req.body || {};
+    if (!photoUrl || typeof photoUrl !== 'string' || !photoUrl.trim()) return res.status(400).json({ error: 'photoUrl is required' });
+    const { rows } = await db.query('UPDATE vehicle_generations SET photo_url = $1 WHERE id = $2 RETURNING *', [photoUrl.trim(), req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Generation not found' });
+    await logAdminAction(req, 'generation_photo_changed', 'generation', req.params.id, {});
+    res.json(toGenerationDto(rows[0]));
   } catch (err) {
     next(err);
   }

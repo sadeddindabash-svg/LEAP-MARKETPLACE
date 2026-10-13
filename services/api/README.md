@@ -3285,6 +3285,15 @@ refund_pending --(admin marks refunded)--+
 builds its own hub and hub-staff login (using the Hub staff feature) so workload checks are exact. Verified to fail when completion stops needing
 both conditions, when supplier isolation is removed, when the buyer-cancel block is removed, or when the hub workload keeps counting returned units.
 
+## Vehicle photos: required for a YEAR, optional for a brand and a model (migration 102)
+
+The vehicle cascade is Brand > Model > **Year** (a "generation": name, start year, optional end year) > Engine / Transmission. The photo requirement moved to the year level:
+- **Adding a year requires a photo:** `POST /fitment/models/:modelId/generations` needs `photoUrl` (`400 photoUrl is required` for a missing, blank, empty or non-text one; nothing is created).
+- **Adding a brand no longer requires one** (`POST /fitment/brands`: `photoUrl` optional, blank counts as none). A model's was already optional.
+- **`PATCH /fitment/generations/:id/photo { photoUrl }`** adds or replaces a year's photo (admins with the Vehicle Data page only). This is how the years that existed **before** this change, which have no photo, get one. The column `vehicle_generations.photo_url` is deliberately **nullable**, so those years stay valid; the admin list marks them "No photo yet".
+- Every year the API returns now carries `photoUrl` (null when it has none). `GET /garage/me` carries **`generationPhotoUrl`** next to `modelPhotoUrl` and `brandPhotoUrl`; the buyer app shows the year photo first, then the model's, then the brand's, then a generic icon.
+- Tested: `vehicleYearPhoto.integration.test.js` (7, real backend: the rules, old years, permissions, the garage reply, the nullable column) and `vehicleYearPhotoApp.test.js` (3, the buyer app is wired to it).
+
 ## /health tells a stopped database from a missing migration
 
 `GET /health` answers `status: "ok"` (HTTP 200) with `database: { reachable: true }` and `pendingMigrations` (the migration files not applied yet; `[]` when up to date). **If the database cannot be reached it answers `status: "database_unreachable"` with HTTP 503, `database: { reachable: false, reason: "..." }` and `pendingMigrations: null`**, and the backend window prints "THE DATABASE CANNOT BE REACHED" with the fix. Before, any database error was treated as "no migrations table", so a stopped database was reported as "101 migrations pending" with status ok. Only a really missing `schema_migrations` table still means "nothing applied yet". Tested in `databaseDown.test.js` (3, including the real backend started with no database).

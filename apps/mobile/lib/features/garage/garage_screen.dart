@@ -250,9 +250,9 @@ class _GarageScreenState extends State<GarageScreen> {
                       width: double.infinity,
                       decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(10)),
                       padding: const EdgeInsets.all(8),
-                      child: (v.modelPhotoUrl ?? v.brandPhotoUrl) != null
+                      child: v.heroPhotoUrl != null
                           ? CachedNetworkImage(
-                              imageUrl: ApiClient.resolveMediaUrl((v.modelPhotoUrl ?? v.brandPhotoUrl)!),
+                              imageUrl: ApiClient.resolveMediaUrl(v.heroPhotoUrl!),
                               fit: BoxFit.contain,
                               fadeInDuration: const Duration(milliseconds: 300),
                               errorWidget: (context, url, error) => Icon(Icons.directions_car, size: 56, color: palette.muted),

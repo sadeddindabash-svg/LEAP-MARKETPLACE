@@ -20,7 +20,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchDiscountRules, createDiscountRule, updateDiscountRule, deleteDiscountRule,
   fetchLoyaltyTiers, createLoyaltyTier, updateLoyaltyTier, deleteLoyaltyTier,
   fetchFlaggedShipments,
-  fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart, uploadImage, updateCategoryPhoto, updatePartPhoto, moveCategory, movePart, moveBrand, moveModel, moveGeneration, moveEngine, moveTransmission, updateBrandPhoto, updateModelPhoto,
+  fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart, uploadImage, updateCategoryPhoto, updatePartPhoto, updateGenerationPhoto, moveCategory, movePart, moveBrand, moveModel, moveGeneration, moveEngine, moveTransmission, updateBrandPhoto, updateModelPhoto,
   updateCategory, updatePart, updateBrand, updateModel, updateGeneration, updateEngine, updateTransmission,
   fetchPaymentMethods, fetchAvailableCountries, fetchAvailableProviders, createPaymentMethod, updatePaymentMethod, updatePaymentMethodPhoto, movePaymentMethod, activatePaymentMethodCountry, deactivatePaymentMethodCountry, deletePaymentMethod, setPaymentMethodActive, bulkSetPaymentMethodCountries,
   fetchPaymentProviders, savePaymentProviderCredentials, deletePaymentProviderCredentials,
@@ -3361,6 +3361,11 @@ function VehicleDataPage({ onSessionExpired }) {
   // kept optional, same reasoning as the photo above.
   const [newModelNameAr, setNewModelNameAr] = useState("");
   const [replacingModelPhotoId, setReplacingModelPhotoId] = useState(null);
+  // A new vehicle YEAR (generation) needs a photo: the one level where it is mandatory (migration 102). Brands and models: optional.
+  const [newYearPhotoFile, setNewYearPhotoFile] = useState(null);
+  const [newYearPhotoPreview, setNewYearPhotoPreview] = useState(null);
+  const [isUploadingYearPhoto, setIsUploadingYearPhoto] = useState(false);
+  const [replacingYearPhotoId, setReplacingYearPhotoId] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null); // {kind, id, label}
   const [pendingEdit, setPendingEdit] = useState(null); // {kind, item}
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -3396,9 +3401,10 @@ function VehicleDataPage({ onSessionExpired }) {
   const handleAdd = async (kind) => {
     if (!newName.trim()) { setErrorMessage("Name is required."); return; }
     if (kind === "generation" && !newYearStart) { setErrorMessage("Start year is required."); return; }
+    if (kind === "generation" && !newYearPhotoFile) { setErrorMessage("A photo is required."); return; }
     if (kind === "brand") {
       if (!newBrandNameAr.trim()) { setErrorMessage("Arabic name is required."); return; }
-      if (!newBrandPhotoFile) { setErrorMessage("A photo is required."); return; }
+      // the brand photo is optional now: it moved to the vehicle year
     }
     if (kind === "model" && !newModelNameAr.trim()) { setErrorMessage("Arabic name is required."); return; }
     setIsSubmitting(true);
@@ -3406,14 +3412,16 @@ function VehicleDataPage({ onSessionExpired }) {
     try {
       const token = getStoredToken();
       if (kind === "brand") {
-        // Real, required photo upload (new) -- happens first so a real
-        // upload failure (bad file, network) is caught before the
-        // brand itself is created, rather than creating a brand with
-        // no photo and no way to add one after the fact from this form.
-        setIsUploadingBrandPhoto(true);
-        const uploadResult = await uploadImage(token, newBrandPhotoFile);
-        setIsUploadingBrandPhoto(false);
-        await createBrand(token, newName.trim(), newBrandNameAr.trim(), uploadResult.url);
+        // The photo is optional for a brand now. When one was chosen it is uploaded FIRST, so a failed upload (bad file, network) is caught before the
+        // brand is created.
+        let brandPhotoUrl;
+        if (newBrandPhotoFile) {
+          setIsUploadingBrandPhoto(true);
+          const uploadResult = await uploadImage(token, newBrandPhotoFile);
+          setIsUploadingBrandPhoto(false);
+          brandPhotoUrl = uploadResult.url;
+        }
+        await createBrand(token, newName.trim(), newBrandNameAr.trim(), brandPhotoUrl);
         loadBrands();
         setNewBrandNameAr(""); setNewBrandPhotoFile(null); setNewBrandPhotoPreview(null);
       } else if (kind === "model") {
@@ -3428,7 +3436,12 @@ function VehicleDataPage({ onSessionExpired }) {
         openBrand(selectedBrand);
         setNewModelPhotoFile(null); setNewModelPhotoPreview(null); setNewModelNameAr("");
       } else if (kind === "generation") {
-        await createGeneration(token, selectedModel.id, newName.trim(), parseInt(newYearStart, 10), newYearEnd ? parseInt(newYearEnd, 10) : undefined);
+        // The photo is uploaded first, so a failed upload is caught before the year is created (the server refuses a year without a photo anyway).
+        setIsUploadingYearPhoto(true);
+        const yearUpload = await uploadImage(token, newYearPhotoFile);
+        setIsUploadingYearPhoto(false);
+        await createGeneration(token, selectedModel.id, newName.trim(), parseInt(newYearStart, 10), newYearEnd ? parseInt(newYearEnd, 10) : undefined, yearUpload.url);
+        setNewYearPhotoFile(null); setNewYearPhotoPreview(null);
         openModel(selectedModel);
       } else if (kind === "engine") {
         await createEngine(token, selectedGeneration.id, newName.trim());
@@ -3445,6 +3458,7 @@ function VehicleDataPage({ onSessionExpired }) {
       setIsSubmitting(false);
       setIsUploadingBrandPhoto(false);
       setIsUploadingModelPhoto(false);
+      setIsUploadingYearPhoto(false);
     }
   };
 
@@ -3558,6 +3572,32 @@ function VehicleDataPage({ onSessionExpired }) {
     setNewModelPhotoPreview(URL.createObjectURL(file));
   };
 
+  const handleYearPhotoSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setNewYearPhotoFile(file);
+    setNewYearPhotoPreview(URL.createObjectURL(file));
+    setErrorMessage(null);
+  };
+
+  // Add or replace the photo of an EXISTING year: how the years that were created before the year photo existed get theirs.
+  const handleReplaceYearPhoto = async (id, file) => {
+    if (!file) return;
+    setReplacingYearPhotoId(id);
+    setErrorMessage(null);
+    try {
+      const token = getStoredToken();
+      const uploadResult = await uploadImage(token, file);
+      await updateGenerationPhoto(token, id, uploadResult.url);
+      openModel(selectedModel);
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setReplacingYearPhotoId(null);
+    }
+  };
+
   // Real, new -- lets an admin add or replace an existing model's
   // photo at any time, same real pattern as handleReplaceBrandPhoto.
   const handleReplaceModelPhoto = async (id, file) => {
@@ -3584,6 +3624,16 @@ function VehicleDataPage({ onSessionExpired }) {
         <input value={newYearStart} onChange={(e) => setNewYearStart(e.target.value)} placeholder="Start year" type="number" style={{ ...body, width: 100, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
         <input value={newYearEnd} onChange={(e) => setNewYearEnd(e.target.value)} placeholder="End year (optional)" type="number" style={{ ...body, width: 140, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
       </>}
+      {kind === "generation" && (
+        <>
+          <label style={{ ...body, display: "flex", alignItems: "center", gap: 6, border: `1px solid ${newYearPhotoFile ? C.line : C.red}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", color: C.ink, background: C.card }}>
+            <ImagePlus size={14} />
+            {newYearPhotoFile ? "Photo selected" : "Choose photo (required)"}
+            <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleYearPhotoSelect} style={{ display: "none" }} />
+          </label>
+          {newYearPhotoPreview && <img src={newYearPhotoPreview} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
+        </>
+      )}
       {kind === "model" && (
         <>
           <input value={newModelNameAr} onChange={(e) => setNewModelNameAr(e.target.value)} placeholder="Arabic name (required)" dir="rtl" style={{ ...body, flex: 1, minWidth: 140, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
@@ -3596,12 +3646,12 @@ function VehicleDataPage({ onSessionExpired }) {
         </>
       )}
       <button disabled={isSubmitting} onClick={() => handleAdd(kind)} style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
-        <Check size={13} /> {kind === "model" && isUploadingModelPhoto ? "Uploading…" : "Add"}
+        <Check size={13} /> {(kind === "model" && isUploadingModelPhoto) || (kind === "generation" && isUploadingYearPhoto) ? "Uploading…" : "Add"}
       </button>
     </div>
   );
 
-  const listRow = (label, sub, onOpen, onDelete, isFirst, isLast, onMoveUp, onMoveDown, onEdit) => (
+  const listRow = (label, sub, onOpen, onDelete, isFirst, isLast, onMoveUp, onMoveDown, onEdit, leading = null, trailing = null) => (
     <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderBottom: `1px solid ${C.line}` }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -3612,17 +3662,41 @@ function VehicleDataPage({ onSessionExpired }) {
             <ChevronDown size={13} color={C.ink} />
           </button>
         </div>
+        {leading}
         <div onClick={onOpen} style={{ cursor: onOpen ? "pointer" : "default", flex: 1 }}>
           <span style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>{label}</span>
           {sub && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }}>{sub}</span>}
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {trailing}
         {onOpen && <ChevronRight size={14} color={C.muted} onClick={onOpen} style={{ cursor: "pointer" }} />}
         <button onClick={onEdit} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><Pencil size={13} color={C.muted} /></button>
         <button onClick={onDelete} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={14} color={C.red} /></button>
       </div>
     </div>
+  );
+
+  // A vehicle YEAR's photo in the list: a thumbnail (click to add or replace), a badge saying whether it has one, and the button to add or replace it.
+  // Years created before the year photo existed have none; they stay usable and are flagged "No photo yet".
+  const yearPhotoThumb = (g) => (
+    <label onClick={(e) => e.stopPropagation()} title="Click to add or replace this photo" style={{ position: "relative", width: 28, height: 28, borderRadius: 6, flexShrink: 0, cursor: replacingYearPhotoId === g.id ? "default" : "pointer", display: "block" }}>
+      {g.photoUrl ? (
+        <img src={g.photoUrl.startsWith("http") ? g.photoUrl : `${API_BASE_URL}${g.photoUrl}`} alt="" style={{ width: 28, height: 28, borderRadius: 6, objectFit: "cover", display: "block", opacity: replacingYearPhotoId === g.id ? 0.4 : 1 }} />
+      ) : (
+        <div style={{ width: 28, height: 28, borderRadius: 6, background: C.canvas, display: "flex", alignItems: "center", justifyContent: "center" }}><ImagePlus size={12} color={C.muted} /></div>
+      )}
+      <input type="file" accept="image/jpeg,image/png,image/webp" disabled={replacingYearPhotoId === g.id} onChange={(e) => handleReplaceYearPhoto(g.id, e.target.files?.[0])} style={{ display: "none" }} />
+    </label>
+  );
+  const yearPhotoStatus = (g) => (
+    <>
+      <span style={{ ...body, fontSize: 11, fontWeight: 700, color: g.photoUrl ? "#16794F" : "#8A5A12", background: g.photoUrl ? "#E6F5EE" : "#FDF3E1", borderRadius: 999, padding: "3px 9px" }}>{g.photoUrl ? "Has photo" : "No photo yet"}</span>
+      <label style={{ ...body, fontSize: 12, fontWeight: 700, borderRadius: 8, padding: "5px 11px", cursor: replacingYearPhotoId === g.id ? "default" : "pointer", border: g.photoUrl ? `1px solid ${C.line}` : "none", background: g.photoUrl ? C.card : C.signal, color: g.photoUrl ? C.ink : C.onSignal }}>
+        {replacingYearPhotoId === g.id ? "Uploading…" : g.photoUrl ? "Replace photo" : "Add photo"}
+        <input type="file" accept="image/jpeg,image/png,image/webp" disabled={replacingYearPhotoId === g.id} onChange={(e) => handleReplaceYearPhoto(g.id, e.target.files?.[0])} style={{ display: "none" }} />
+      </label>
+    </>
   );
 
   if (loadState === "loading") {
@@ -3669,7 +3743,7 @@ function VehicleDataPage({ onSessionExpired }) {
                   <input value={newBrandNameAr} onChange={(e) => setNewBrandNameAr(e.target.value)} placeholder="Arabic name (required)" dir="rtl" style={{ ...body, flex: 1, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
                   <label style={{ ...body, display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", color: newBrandPhotoFile ? C.gauge : C.muted }}>
                     <ImagePlus size={14} />
-                    {newBrandPhotoFile ? "Photo selected" : "Choose photo (required)"}
+                    {newBrandPhotoFile ? "Photo selected" : "Choose photo (optional)"}
                     <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleBrandPhotoSelect} style={{ display: "none" }} />
                   </label>
                   {newBrandPhotoPreview && <img src={newBrandPhotoPreview} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
@@ -3776,7 +3850,7 @@ function VehicleDataPage({ onSessionExpired }) {
               <>
                 {addRow("generation", `New generation under ${selectedModel.name} (e.g. Mk4)`, true)}
                 {generations.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No generations yet.</div>}
-                {generations.map((g, i) => listRow(g.name, `${g.yearStart}–${g.yearEnd || "present"}`, () => openGeneration(g), () => setPendingDelete({ kind: "generation", id: g.id, label: g.name }), i === 0, i === generations.length - 1, () => handleMove("generation", g.id, "up"), () => handleMove("generation", g.id, "down"), () => setPendingEdit({ kind: "generation", item: g })))}
+                {generations.map((g, i) => listRow(g.name, `${g.yearStart}–${g.yearEnd || "present"}`, () => openGeneration(g), () => setPendingDelete({ kind: "generation", id: g.id, label: g.name }), i === 0, i === generations.length - 1, () => handleMove("generation", g.id, "up"), () => handleMove("generation", g.id, "down"), () => setPendingEdit({ kind: "generation", item: g }), yearPhotoThumb(g), yearPhotoStatus(g)))}
               </>
             )}
 

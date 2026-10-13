@@ -68,7 +68,7 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
 
     const genRes = await fetch(`${BACKEND_URL}/fitment/models/${model.id}/generations`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: 'E2E Gen', yearStart: 2020, yearEnd: 2025 }),
+      body: JSON.stringify({ name: 'E2E Gen', yearStart: 2020, yearEnd: 2025, photoUrl: '/uploads/test-year.jpg' }),
     });
     const generation = await genRes.json();
     expect(generation.modelId).toBe(model.id);
@@ -118,7 +118,7 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
 
     const res = await fetch(`${BACKEND_URL}/fitment/models/${model.id}/generations`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: 'Bad Range', yearStart: 2020, yearEnd: 2015 }),
+      body: JSON.stringify({ name: 'Bad Range', yearStart: 2020, yearEnd: 2015, photoUrl: '/uploads/test-year.jpg' }),
     });
     expect(res.status).toBe(400);
   });
@@ -162,7 +162,7 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
     const model = await modelRes.json();
     const genRes = await fetch(`${BACKEND_URL}/fitment/models/${model.id}/generations`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-      body: JSON.stringify({ name: 'Protection Test Gen', yearStart: 2020, yearEnd: 2024 }),
+      body: JSON.stringify({ name: 'Protection Test Gen', yearStart: 2020, yearEnd: 2024, photoUrl: '/uploads/test-year.jpg' }),
     });
     const generation = await genRes.json();
 
@@ -207,7 +207,7 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
     const model = await modelRes.json();
     await fetch(`${BACKEND_URL}/fitment/models/${model.id}/generations`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: 'Cascade Test Gen', yearStart: 2021 }),
+      body: JSON.stringify({ name: 'Cascade Test Gen', yearStart: 2021, photoUrl: '/uploads/test-year.jpg' }),
     });
 
     const deleteRes = await fetch(`${BACKEND_URL}/fitment/brands/${brand.id}`, {

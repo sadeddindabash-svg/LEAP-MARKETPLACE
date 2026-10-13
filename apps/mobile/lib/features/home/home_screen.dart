@@ -576,10 +576,8 @@ class _ShoppingForCard extends StatelessWidget {
         // plain icon, gracefully, when the brand has no real photo
         // set yet (most brands today, confirmed via a real query).
         final isAr = context.watch<LanguageState>().isArabic;
-        // Real, confirmed fallback chain: the model's own photo is
-        // more specific to this exact saved vehicle than the brand's
-        // generic one, so it's preferred whenever it exists.
-        final displayPhotoUrl = vehicle.modelPhotoUrl ?? vehicle.brandPhotoUrl;
+        // The most specific picture of the saved vehicle: its YEAR photo, else the model's, else the brand's (see Vehicle.heroPhotoUrl).
+        final displayPhotoUrl = vehicle.heroPhotoUrl;
         return Card(
           clipBehavior: Clip.antiAlias,
           color: palette.chalk,

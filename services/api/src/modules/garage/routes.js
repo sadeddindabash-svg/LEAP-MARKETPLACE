@@ -39,21 +39,19 @@ function toSavedGenerationDto(row) {
     // saved vehicle drives automatic fitment filtering (the home feed)
     // when a buyer has more than one.
     isDefault: row.is_default,
-    // Real brand photo (new) -- nullable, not every brand has one yet
-    // (see migration 046's own comment: nullable at the DB level,
-    // required only for new brands going forward). Callers must
-    // handle null gracefully, never assume a photo exists.
+    // Brand photo: nullable. It used to be required for a new brand; since migration 102 a brand needs none (the photo moved to the vehicle YEAR), so
+    // callers must handle null gracefully, never assume a photo exists.
     brandPhotoUrl: row.brand_photo_url,
-    // Real model photo (new, migration 061) -- nullable, optional even
-    // for new models (unlike brands' required photo). The real
-    // "Shopping for" card falls back to brandPhotoUrl, then a plain
-    // generic icon, when this is null.
+    // Model photo (migration 061): optional. The picture of a vehicle is chosen: year photo, then this, then the brand's, then a generic icon.
     modelPhotoUrl: row.model_photo_url,
+    // Real year photo (migration 102): the first choice for the vehicle's picture. Nullable (years that predate it have none): callers fall back
+    // to modelPhotoUrl, then brandPhotoUrl, then a generic icon.
+    generationPhotoUrl: row.generation_photo_url,
   };
 }
 
 const SAVED_GENERATION_SELECT = `
-  SELECT usg.generation_id, usg.year, usg.is_default, vg.name AS generation_name, vg.year_start, vg.year_end,
+  SELECT usg.generation_id, usg.year, usg.is_default, vg.name AS generation_name, vg.year_start, vg.year_end, vg.photo_url AS generation_photo_url,
          vm.name AS model_name, vm.name_ar AS model_name_ar, vm.photo_url AS model_photo_url,
          vb.name AS brand_name, vb.name_ar AS brand_name_ar, vb.photo_url AS brand_photo_url
   FROM user_saved_generations usg

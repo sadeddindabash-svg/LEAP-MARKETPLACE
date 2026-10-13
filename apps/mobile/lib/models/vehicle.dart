@@ -31,15 +31,14 @@ class Vehicle {
   // saved vehicle drives automatic fitment filtering (the home feed)
   // when a buyer has more than one saved.
   final bool isDefault;
-  // Real brand photo -- nullable, not every brand has one yet. Note
-  // this is a photo of the real vehicle BRAND (e.g. a generic Honda
-  // image), not a photo specific to this exact model/generation.
+  // Brand photo: nullable. It used to be required for a new brand; since backend migration 102 a brand needs none (the photo moved to the vehicle
+  // YEAR), and old brands may not have one either. A photo of the BRAND, not of this exact vehicle.
   final String? brandPhotoUrl;
-  // Real model photo (new, migration 061) -- nullable, optional even
-  // for new models (unlike brands' required photo). The real
-  // "Shopping for" card prefers this over brandPhotoUrl when present,
-  // since it's more specific to the buyer's actual saved vehicle.
+  // Model photo (migration 061): nullable, optional.
   final String? modelPhotoUrl;
+  // Photo of this exact vehicle YEAR (generation; backend migration 102): required for every year added since, but nullable because years that existed
+  // before then have none. The most specific picture of the buyer's saved vehicle, so it comes first (see heroPhotoUrl).
+  final String? generationPhotoUrl;
 
   const Vehicle({
     required this.generationId,
@@ -54,7 +53,17 @@ class Vehicle {
     this.isDefault = false,
     this.brandPhotoUrl,
     this.modelPhotoUrl,
+    this.generationPhotoUrl,
   });
+
+  /// The picture of this vehicle: the YEAR photo first (a photo of this exact vehicle), then the model's, then the brand's; null when there is none
+  /// (callers then show a generic car icon). Empty text counts as no photo.
+  String? get heroPhotoUrl {
+    for (final url in [generationPhotoUrl, modelPhotoUrl, brandPhotoUrl]) {
+      if (url != null && url.isNotEmpty) return url;
+    }
+    return null;
+  }
 
   // Kept as a synthetic id (not a real column) purely for Flutter
   // widget keys -- deletion always needs the real (generationId, year)
@@ -97,6 +106,7 @@ class Vehicle {
         isDefault: json['isDefault'] as bool? ?? false,
         brandPhotoUrl: json['brandPhotoUrl'] as String?,
         modelPhotoUrl: json['modelPhotoUrl'] as String?,
+        generationPhotoUrl: json['generationPhotoUrl'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -112,5 +122,6 @@ class Vehicle {
         'isDefault': isDefault,
         'brandPhotoUrl': brandPhotoUrl,
         'modelPhotoUrl': modelPhotoUrl,
+        'generationPhotoUrl': generationPhotoUrl,
       };
 }
