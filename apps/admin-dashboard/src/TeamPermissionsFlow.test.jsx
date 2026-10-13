@@ -65,8 +65,8 @@ describe('Real Team & Permissions UI and nav filtering (mocked fetch, real compo
     await login();
 
     expect(screen.getByRole('button', { name: /settings/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /pricing/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /promo codes/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^financial$/i })).toBeInTheDocument();      // Pricing and Payouts live in the Financial group
+    expect(screen.getByRole('button', { name: /^support$/i })).toBeInTheDocument();        // Promo Codes and Reviews live in the Support group
   });
 
   it('CRITICAL: a real scoped admin only sees their real allowed pages in the nav, and lands on one of them (not a blank Overview they can\'t access)', async () => {
@@ -76,8 +76,10 @@ describe('Real Team & Permissions UI and nav filtering (mocked fetch, real compo
 
     expect(screen.getByRole('button', { name: /^support$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /returns/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /pricing/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /promo codes/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^financial$/i })).not.toBeInTheDocument();   // none of its pages is allowed, so the whole group is hidden
+    expect(screen.queryByRole('tab', { name: /promo codes/i })).not.toBeInTheDocument();      // and inside Support only the allowed page (tickets) exists...
+    expect(screen.queryByRole('tab', { name: /reviews/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();                            // ...so there is nothing to switch between: no tab bar
     expect(screen.queryByRole('button', { name: /settings/i })).not.toBeInTheDocument();
   });
 

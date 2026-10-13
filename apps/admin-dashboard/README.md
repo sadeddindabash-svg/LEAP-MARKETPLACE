@@ -1942,3 +1942,23 @@ only a new button added to each.
    are decided.
 5. Consider code-splitting (the build currently warns about a >500kB bundle)
    once real routing is introduced — e.g. React Router with lazy-loaded pages.
+
+## The sidebar: grouped pages and sub-tabs
+
+The sidebar groups related pages under one entry; inside a group a row of **sub-tabs** switches between its pages:
+
+| Sidebar entry | Sub-tabs, in order |
+|---|---|
+| **Suppliers** | Suppliers, Supplier Messages |
+| **Products** | Moderation, All Products |
+| **Support** | Tickets (the old "Support" page), Reviews, Promo Codes |
+| **Financial** | Payment Methods, Payment Providers, Payouts, Pricing |
+
+Everything else (Overview, Orders, Returns, Vehicle Data, Delivery Rules, Categories, Hubs, Flagged Shipments, Settings) stays on its own. A group sits where its first page used to be. **Only the sidebar and the tab bar changed: every page is exactly what it was, and each page keeps its own id.** That id is also its **permission** (Settings > Team & permissions still lists the individual pages), and what the notification bell, global search and "Message supplier(s)" navigate to, so all of those keep working and open the right tab.
+
+- **Permissions:** a group shows when the admin may open *at least one* of its pages; the tab bar lists only the pages they may open; with only one allowed page there is no tab bar and the page opens directly.
+- **Clicking a group** opens the tab you were last on in that group (the first allowed one the first time).
+- **A detail page** (an order, ticket, return case or supplier) hides the tab bar. Clicking any sidebar entry now also leaves a **supplier** detail (before, the sidebar did nothing while a supplier's page was open).
+- **To change the grouping,** edit `NAV_GROUPS` and `TAB_LABELS` in `src/adminNav.js` (pure logic, no React); the sidebar icons of the groups are in `GROUP_ICONS` in `App.jsx`; the tab bar itself is `src/components/GroupTabs.jsx`.
+- Tested: `adminNav.test.js` (6, pure: the exact groups, **no page can be lost or duplicated**, permission filtering, last tab), `NavGroupsFlow.test.jsx` (7, the real app: the sidebar, every tab opens its own page, limited admins, the bell deep link, supplier detail). The existing page tests (Payouts, Pricing, Reviews, Promo Codes, Supplier Messages, Moderation, Team permissions) now open their page the way a person does, group first and then the tab; their assertions are unchanged.
+

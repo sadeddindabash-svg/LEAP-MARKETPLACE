@@ -56,7 +56,7 @@ async function loginAndGoToModeration() {
   fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'admin_dev_password_123' } });
   fireEvent.click(screen.getByRole('button', { name: /log in/i }));
   await waitFor(() => expect(screen.getByRole('button', { name: /log out/i })).toBeInTheDocument());
-  fireEvent.click(screen.getByRole('button', { name: /moderation/i }));
+  fireEvent.click(screen.getByRole('button', { name: /^products$/i }));   // the Products group opens on its first tab, Moderation
 }
 
 // REAL BUG FOUND AND FIXED HERE: this used to assume a fixed GLOBAL

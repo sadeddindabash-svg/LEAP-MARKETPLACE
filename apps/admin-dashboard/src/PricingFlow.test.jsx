@@ -17,6 +17,8 @@ function mockFetchRouter() {
     const method = options?.method || 'GET';
     if (u.includes('/auth/login')) return Promise.resolve({ ok: true, json: async () => ({ token: 'fake.jwt.token', user: ADMIN_USER }) });
     if (u.includes('/auth/me')) return Promise.resolve({ ok: true, json: async () => ADMIN_USER });
+    // Clicking a group in the sidebar opens its FIRST tab, so that page loads as well: answer it with an empty (valid) list.
+    if (method === 'GET' && (u.endsWith('/payment-methods') || u.includes('/payment-methods/available-') || u.endsWith('/support/tickets') || u.endsWith('/supplier'))) return Promise.resolve({ ok: true, json: async () => [] });
     if (u.endsWith('/overview')) {
       return Promise.resolve({ ok: true, json: async () => ({ totalOrders: 0, activeSuppliers: 0, pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, openTickets: 0, ordersByDay: [], unitsByCategory: [], topSuppliers: [] }) });
     }
@@ -89,7 +91,8 @@ async function loginAndGoToPricing() {
   fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'admin_dev_password_123' } });
   fireEvent.click(screen.getByRole('button', { name: /log in/i }));
   await waitFor(() => expect(screen.getByRole('button', { name: /log out/i })).toBeInTheDocument());
-  fireEvent.click(screen.getByRole('button', { name: /^pricing$/i }));
+  fireEvent.click(screen.getByRole('button', { name: /^financial$/i }));                       // the sidebar entry is a group...
+  fireEvent.click(await screen.findByRole('tab', { name: /^pricing$/i }));             // ...and the page is a tab inside it
 }
 
 beforeEach(() => { localStorage.clear(); });

@@ -21,6 +21,8 @@ function mockFetchRouter() {
     const method = options?.method || 'GET';
     if (u.includes('/auth/login')) return Promise.resolve({ ok: true, json: async () => ({ token: 'fake.jwt.token', user: OWNER_USER }) });
     if (u.includes('/auth/me')) return Promise.resolve({ ok: true, json: async () => OWNER_USER });
+    // Clicking a group in the sidebar opens its FIRST tab, so that page loads as well: answer it with an empty (valid) list.
+    if (method === 'GET' && (u.endsWith('/payment-methods') || u.includes('/payment-methods/available-') || u.endsWith('/support/tickets') || u.endsWith('/supplier'))) return Promise.resolve({ ok: true, json: async () => [] });
     if (u.endsWith('/reviews/pending')) return Promise.resolve({ ok: true, json: async () => pending });
     if (u.endsWith('/reviews/flagged')) return Promise.resolve({ ok: true, json: async () => flagged });
     if (method === 'POST' && u.match(/\/reviews\/\d+\/dismiss-flags$/)) {
@@ -56,7 +58,8 @@ async function loginAndGoToReviews() {
   fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'admin_dev_password_123' } });
   fireEvent.click(screen.getByRole('button', { name: /log in/i }));
   await waitFor(() => expect(screen.getByRole('button', { name: /log out/i })).toBeInTheDocument());
-  fireEvent.click(screen.getByRole('button', { name: /^reviews$/i }));
+  fireEvent.click(screen.getByRole('button', { name: /^support$/i }));                       // the sidebar entry is a group...
+  fireEvent.click(await screen.findByRole('tab', { name: /^reviews$/i }));             // ...and the page is a tab inside it
 }
 
 beforeEach(() => { localStorage.clear(); });

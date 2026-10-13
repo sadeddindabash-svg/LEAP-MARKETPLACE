@@ -18,6 +18,8 @@ function mockFetchRouter({ inbox = MOCK_INBOX, thread = MOCK_THREAD } = {}) {
     const method = options?.method || 'GET';
     if (u.includes('/auth/login')) return Promise.resolve({ ok: true, json: async () => ({ token: 'fake.jwt.token', user: ADMIN_USER }) });
     if (u.includes('/auth/me')) return Promise.resolve({ ok: true, json: async () => ADMIN_USER });
+    // Clicking a group in the sidebar opens its FIRST tab, so that page loads as well: answer it with an empty (valid) list.
+    if (method === 'GET' && (u.endsWith('/payment-methods') || u.includes('/payment-methods/available-') || u.endsWith('/support/tickets') || u.endsWith('/supplier'))) return Promise.resolve({ ok: true, json: async () => [] });
     if (u.endsWith('/overview')) {
       return Promise.resolve({ ok: true, json: async () => ({ totalOrders: 0, activeSuppliers: 0, pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, openTickets: 0, ordersByDay: [], unitsByCategory: [], topSuppliers: [] }) });
     }
@@ -51,7 +53,8 @@ describe('Admin Supplier Messages — real inbox + thread with translation toggl
     render(<LeapAdminApp />);
     await login();
 
-    fireEvent.click(screen.getByRole('button', { name: /supplier messages/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^suppliers$/i }));                       // the sidebar entry is a group...
+    fireEvent.click(await screen.findByRole('tab', { name: /^supplier messages$/i }));             // ...and the page is a tab inside it
     await waitFor(() => expect(screen.getByText('Guangzhou AutoParts Co.')).toBeInTheDocument());
     expect(screen.getByText('Our brake pads are running low in stock.')).toBeInTheDocument();
   });
@@ -61,7 +64,8 @@ describe('Admin Supplier Messages — real inbox + thread with translation toggl
     render(<LeapAdminApp />);
     await login();
 
-    fireEvent.click(screen.getByRole('button', { name: /supplier messages/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^suppliers$/i }));                       // the sidebar entry is a group...
+    fireEvent.click(await screen.findByRole('tab', { name: /^supplier messages$/i }));             // ...and the page is a tab inside it
     fireEvent.click(await screen.findByText('Guangzhou AutoParts Co.'));
 
     await waitFor(() => expect(screen.getByText('Our brake pads are running low in stock.')).toBeInTheDocument());
@@ -76,7 +80,8 @@ describe('Admin Supplier Messages — real inbox + thread with translation toggl
     render(<LeapAdminApp />);
     await login();
 
-    fireEvent.click(screen.getByRole('button', { name: /supplier messages/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^suppliers$/i }));                       // the sidebar entry is a group...
+    fireEvent.click(await screen.findByRole('tab', { name: /^supplier messages$/i }));             // ...and the page is a tab inside it
     fireEvent.click(await screen.findByText('Guangzhou AutoParts Co.'));
     await waitFor(() => screen.getByPlaceholderText(/type a message/i));
 
@@ -91,7 +96,8 @@ describe('Admin Supplier Messages — real inbox + thread with translation toggl
     render(<LeapAdminApp />);
     await login();
 
-    fireEvent.click(screen.getByRole('button', { name: /supplier messages/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^suppliers$/i }));                       // the sidebar entry is a group...
+    fireEvent.click(await screen.findByRole('tab', { name: /^supplier messages$/i }));             // ...and the page is a tab inside it
     await waitFor(() => expect(screen.getByText(/no supplier messages yet/i)).toBeInTheDocument());
   });
 });

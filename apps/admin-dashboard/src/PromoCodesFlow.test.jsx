@@ -15,6 +15,8 @@ function mockFetchRouter({ codes = MOCK_CODES } = {}) {
     const method = options?.method || 'GET';
     if (u.includes('/auth/login')) return Promise.resolve({ ok: true, json: async () => ({ token: 'fake.jwt.token', user: ADMIN_USER }) });
     if (u.includes('/auth/me')) return Promise.resolve({ ok: true, json: async () => ADMIN_USER });
+    // Clicking a group in the sidebar opens its FIRST tab, so that page loads as well: answer it with an empty (valid) list.
+    if (method === 'GET' && (u.endsWith('/payment-methods') || u.includes('/payment-methods/available-') || u.endsWith('/support/tickets') || u.endsWith('/supplier'))) return Promise.resolve({ ok: true, json: async () => [] });
     if (u.endsWith('/overview')) {
       return Promise.resolve({ ok: true, json: async () => ({ totalOrders: 0, activeSuppliers: 0, pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, openTickets: 0, ordersByDay: [], unitsByCategory: [], topSuppliers: [] }) });
     }
@@ -53,7 +55,8 @@ describe('Admin Promo Codes page — real general promotions engine (mocked fetc
     render(<LeapAdminApp />);
     await login();
 
-    fireEvent.click(screen.getByRole('button', { name: /promo codes/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^support$/i }));                       // the sidebar entry is a group...
+    fireEvent.click(await screen.findByRole('tab', { name: /^promo codes$/i }));             // ...and the page is a tab inside it
     await waitFor(() => expect(screen.getByText('SUMMER10')).toBeInTheDocument());
     expect(screen.getByText(/10% off/i)).toBeInTheDocument();
   });
@@ -63,7 +66,8 @@ describe('Admin Promo Codes page — real general promotions engine (mocked fetc
     render(<LeapAdminApp />);
     await login();
 
-    fireEvent.click(screen.getByRole('button', { name: /promo codes/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^support$/i }));                       // the sidebar entry is a group...
+    fireEvent.click(await screen.findByRole('tab', { name: /^promo codes$/i }));             // ...and the page is a tab inside it
     await waitFor(() => screen.getByPlaceholderText(/code \(e\.g\./i));
     fireEvent.change(screen.getByPlaceholderText(/code \(e\.g\./i), { target: { value: 'FALL20' } });
     fireEvent.change(screen.getByPlaceholderText(/10 \(%\)/i), { target: { value: '20' } });
@@ -77,7 +81,8 @@ describe('Admin Promo Codes page — real general promotions engine (mocked fetc
     render(<LeapAdminApp />);
     await login();
 
-    fireEvent.click(screen.getByRole('button', { name: /promo codes/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^support$/i }));                       // the sidebar entry is a group...
+    fireEvent.click(await screen.findByRole('tab', { name: /^promo codes$/i }));             // ...and the page is a tab inside it
     await waitFor(() => screen.getByPlaceholderText(/code \(e\.g\./i));
     fireEvent.change(screen.getByPlaceholderText(/code \(e\.g\./i), { target: { value: 'WELCOME15' } });
     fireEvent.change(screen.getByPlaceholderText(/10 \(%\)/i), { target: { value: '15' } });
@@ -93,7 +98,8 @@ describe('Admin Promo Codes page — real general promotions engine (mocked fetc
     render(<LeapAdminApp />);
     await login();
 
-    fireEvent.click(screen.getByRole('button', { name: /promo codes/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^support$/i }));                       // the sidebar entry is a group...
+    fireEvent.click(await screen.findByRole('tab', { name: /^promo codes$/i }));             // ...and the page is a tab inside it
     await waitFor(() => screen.getByText('SUMMER10'));
     fireEvent.click(screen.getByRole('button', { name: /deactivate/i }));
 
@@ -105,7 +111,8 @@ describe('Admin Promo Codes page — real general promotions engine (mocked fetc
     render(<LeapAdminApp />);
     await login();
 
-    fireEvent.click(screen.getByRole('button', { name: /promo codes/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^support$/i }));                       // the sidebar entry is a group...
+    fireEvent.click(await screen.findByRole('tab', { name: /^promo codes$/i }));             // ...and the page is a tab inside it
     await waitFor(() => expect(screen.getByText(/no promo codes yet/i)).toBeInTheDocument());
   });
 
@@ -121,7 +128,8 @@ describe('Admin Promo Codes page — real general promotions engine (mocked fetc
     render(<LeapAdminApp />);
     await login();
 
-    fireEvent.click(screen.getByRole('button', { name: /promo codes/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^support$/i }));                       // the sidebar entry is a group...
+    fireEvent.click(await screen.findByRole('tab', { name: /^promo codes$/i }));             // ...and the page is a tab inside it
     await waitFor(() => expect(screen.getByText('HALFUSED')).toBeInTheDocument());
 
     expect(screen.getByText('42 used')).toBeInTheDocument();

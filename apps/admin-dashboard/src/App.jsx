@@ -2,6 +2,8 @@ import React, { useState, useEffect, createContext, useContext } from "react";
 import ExcelJS from "exceljs";
 import LoginPage from "./LoginPage";
 import { exportToExcel } from "./exportToExcel";
+import { sidebarEntries, groupOfPage, accessibleChildren, landingPage, TAB_LABELS } from "./adminNav";
+import GroupTabs from "./components/GroupTabs";
 import { FONT_IMPORT, C, disp, body, mono } from "./theme";
 import { PlateChip, Badge, Stars, KpiCard, Card, Th, Td, ConfirmDialog, EditDialog, EnlargeablePhoto } from "./components/ui";
 import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, fetchSupplierById, verifySupplier, updateSupplierCountry, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
@@ -8277,9 +8279,12 @@ const NAV = [
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
+// The sidebar entry for each group of pages (adminNav.js decides what is in a group; the pages themselves are unchanged).
+const GROUP_ICONS = { "group:suppliers": Store, "group:products": Package, "group:support": LifeBuoy, "group:financial": Wallet };
+
 function AdminDashboardShell({ currentUser, onLogout }) {
+  const hasAccess = (id) => currentUser.isOwner || currentUser.allowedPages === 'all' || (currentUser.allowedPages || []).includes(id);
   const [page, setPage] = useState(() => {
-    const hasAccess = (id) => currentUser.isOwner || currentUser.allowedPages === 'all' || (currentUser.allowedPages || []).includes(id);
     if (hasAccess('overview')) return 'overview';
     const firstAllowed = NAV.find((n) => hasAccess(n.id));
     return firstAllowed ? firstAllowed.id : 'overview';
@@ -8295,6 +8300,12 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   // whole Suppliers list page.
   const [openSupplier, setOpenSupplier] = useState(null);
   const [flaggedCount, setFlaggedCount] = useState(0);
+  // The tab each group was last on (clicking the group in the sidebar returns to it). Kept up to date by ANY navigation: the sidebar, a tab, the bell, search, a link.
+  const [lastTabByGroup, setLastTabByGroup] = useState({});
+  useEffect(() => {
+    const group = groupOfPage(page);
+    if (group) setLastTabByGroup((previous) => (previous[group.id] === page ? previous : { ...previous, [group.id]: page }));
+  }, [page]);
   // Real notification bell (new) -- closes a real gap: the Bell icon
   // in TopBar was 100% decorative before this, no badge, no click
   // handler, nothing. Reuses the SAME real aggregate counts the
@@ -8345,6 +8356,10 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   else if (page === "tickets") content = <TicketsPage onOpenTicket={setOpenTicket} onSessionExpired={onLogout} />;
   else if (page === "settings") content = <SettingsPage currentUser={currentUser} onSessionExpired={onLogout} />;
 
+  // The sub-tabs of the current page's group, only the pages this admin may open, and not while an order / ticket / case / supplier detail is showing.
+  const tabGroup = !openOrder && !openTicket && !openCase && !openSupplier ? groupOfPage(page) : null;
+  const tabIds = tabGroup ? accessibleChildren(tabGroup, hasAccess) : [];
+
   return (
     <CurrentUserContext.Provider value={currentUser}>
     <NavigationContext.Provider value={{
@@ -8365,11 +8380,18 @@ function AdminDashboardShell({ currentUser, onLogout }) {
           <span style={{ ...mono, fontSize: 9, color: "#9AA1AC", border: "1px solid #3A3F48", borderRadius: 4, padding: "2px 5px" }}>OPS</span>
         </div>
         <div style={{ flex: 1, padding: "0 12px" }}>
-          {NAV.filter((n) => currentUser.isOwner || currentUser.allowedPages === 'all' || (currentUser.allowedPages || []).includes(n.id)).map(n => {
+          {sidebarEntries(NAV, hasAccess).map((entry) => {
+            // A group (Suppliers, Products, Support, Financial) is ONE sidebar entry; everything else is a page, as before.
+            const isGroup = entry.type === "group";
+            const n = isGroup ? { id: entry.group.id, label: entry.group.label, icon: GROUP_ICONS[entry.group.id] } : entry.page;
             const Icon = n.icon;
-            const active = page === n.id && !openOrder && !openTicket && !openCase;
+            const active = (isGroup ? entry.group.children.includes(page) : page === n.id) && !openOrder && !openTicket && !openCase;
+            const open = () => {
+              setPage(isGroup ? landingPage(entry.group, hasAccess, lastTabByGroup[entry.group.id]) : n.id);
+              setOpenOrder(null); setOpenTicket(null); setOpenCase(null); setOpenSupplier(null); setMessageSupplier(null);
+            };
             return (
-              <button key={n.id} onClick={() => { setPage(n.id); setOpenOrder(null); setOpenTicket(null); setOpenCase(null); setMessageSupplier(null); }} style={{
+              <button key={n.id} onClick={open} style={{
                 width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", marginBottom: 2, borderRadius: 8,
                 border: "none", cursor: "pointer", textAlign: "left",
                 background: active ? C.signal : "transparent", color: active ? C.onSignal : "#B8BEC9",
@@ -8397,6 +8419,14 @@ function AdminDashboardShell({ currentUser, onLogout }) {
         </div>
       </div>
       <div style={{ flex: 1, overflowY: "auto" }}>
+        {tabIds.length > 1 && (
+          <GroupTabs
+            label={tabGroup.label}
+            tabs={tabIds.map((id) => ({ id, label: TAB_LABELS[id] }))}
+            activeId={page}
+            onSelect={(id) => { setPage(id); setMessageSupplier(null); }}
+          />
+        )}
         {content}
       </div>
     </div>
