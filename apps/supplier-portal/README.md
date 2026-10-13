@@ -818,6 +818,13 @@ files, unchanged from before this extraction.
 
 On an order's page the supplier sees the three steps **Pending, Preparing, Shipped**. Only the steps **ahead** can be clicked: once preparing, "pending" is greyed out; once shipped, nothing can go back. Until the hub **receives** the parcel the tracking number can still be corrected ("Update tracking number"). **After the hub has received it, nothing on the order can be changed**: a notice says so and points to **Returns** (退货/售后), where a fault case question from the platform appears if the hub finds a problem. A part the buyer cancelled shows its own notice. The portal only displays what the server allows (`allowedStatuses`, `locked`, `canEditTracking`); the server enforces it. The old "dispute" button is gone. Tested in `src/OrderLockFlow.test.jsx`.
 
-## Vehicle year labels
+## Choosing the vehicle: Brand, then Model, then Year (Add product and Bulk upload)
 
-A vehicle year added through the admin's Vehicle Data is a one-year entry named by the year, so the fitment dropdowns show it as just `2021` (not `2021 (2021–2021)`). Older entries keep their range, `F20 (2015–2019)`. The rule is `src/vehicleLabels.js`, tested in `src/vehicleLabels.test.js`.
+The supplier picks the vehicle in **three steps, in the same sequence as the admin's Vehicle Data**: **1 Brand, 2 Model, 3 Year**. Each step opens only after the one before it. Next to the steps, the **Car photo** panel shows the photo the **admin added**: the **brand's** photo after the brand and the model (models have no photo), the **year's** photo once a year is chosen, and a car icon when there is none (a chip says which one it is: "Brand photo" / "Year photo"; the caption reads "Geely", "Geely Coolray", "Geely Coolray, 2021").
+
+- **A year entry holds one year**, so choosing it also chooses the year (no extra question). An **older entry** (a name like "F20" with a range of years) is listed as "F20 (2015–2019)" and asks **"Which year?"** within its range.
+- **Generation, Engine and Transmission are not asked any more.** The product is saved with `fitment: { generationId, year }` only (the server has always accepted exactly that; engine and transmission were optional). Products already saved keep any engine or transmission they have.
+- **Bulk upload** uses the very same picker (smaller photo) for "Vehicle this batch is for"; the file can be chosen only once the vehicle, and for an older entry its year, is complete.
+- A vehicle already chosen by a buyer's quote request is unchanged ("already chosen by the buyer"); it is now written as "Geely Coolray · 2021".
+- **Where it lives:** `src/VehiclePicker.jsx` (the screen, Chinese and English), `src/vehicleCascade.js` (the state, shared by both forms), `src/vehicleLabels.js` (the pure rules: which photo, the caption, how a year is written).
+- **Tested:** `src/VehiclePickerFlow.test.jsx` (11, the real app: the three steps, the photo following each choice, older entries, exactly what is saved, the bulk version) and `src/vehicleLabels.test.js` (8, the pure rules). Verified to fail when the photo order, the automatic year or the older entry's "Which year?" are broken.

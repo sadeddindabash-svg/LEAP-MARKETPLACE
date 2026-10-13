@@ -6,7 +6,7 @@ import {
   LayoutGrid, PackageSearch, ShoppingBag, RotateCcw, MessageSquare, Wallet, Settings,
   Search, Bell, ChevronRight, ChevronLeft, TrendingUp, Plus, Upload, Download, Check, X,
   Star, MoreHorizontal, FileSpreadsheet, ImagePlus, Truck, Send, AlertTriangle, Store,
-  BadgeCheck, Building2, CreditCard, Disc, BatteryMedium, Car, Video,
+  BadgeCheck, Building2, CreditCard, Disc, BatteryMedium, Video,
   Lightbulb, Wrench, Fan, Cog, Languages, FileQuestion
 } from "lucide-react";
 import {
@@ -22,7 +22,6 @@ import {
   fetchMySupplierProfile, fetchMyProducts, createProduct, updateProduct, bulkUpdateProductPrices,
   fetchMyOrders, updateSubOrder, fetchMyReturnCases, fetchMyReturnCaseById, replyToReturnCase, fetchMyFaultCases, answerFaultCase, fetchMyReturnAddress, saveMyReturnAddress,
   fetchMyOverview,
-  fetchBrands, fetchModelsForBrand, fetchGenerationsForModel, fetchEnginesForGeneration, fetchTransmissionsForGeneration,
   uploadProductImage, uploadProductVideo, fetchProductRequirements, fetchAttributeDefinitions, API_BASE_URL,
   fetchCategories, fetchPartsForCategory,
   fetchMyMessages, sendMyMessage,
@@ -31,7 +30,9 @@ import {
   bulkImportProducts, fetchMyDrafts, completeDraftProduct,
   fetchPartRequestQueue, fetchPartRequestDetail, sendPartRequestQuote,
 } from "./auth";
-import { generationOptionLabel } from "./vehicleLabels";
+import { vehicleSummary } from "./vehicleLabels";
+import VehiclePicker from "./VehiclePicker";
+import { useVehicleCascade } from "./vehicleCascade";
 
 /* ============================================================
    LEAP 供应商门户 / Supplier Portal — bilingual (中文 / English)
@@ -83,7 +84,6 @@ const STRINGS = {
         imageLabel: "商品图片", imageHint: "点击或拖拽上传图片（建议 1000×1000px 以上）",
         cancel: "取消", submit: "提交平台审核",
         savedKeepFitment: "商品已添加。车型信息已保留，可继续添加同一车型的其他商品。",
-        vehiclePhotoHint: "请核对车型图片，确认车型无误",
       },
       bulk: {
         title: "批量上传商品", templateTitle: "批量导入模板（.xlsx）", templateSub: "包含商品信息与车型适配字段，请勿更改表头",
@@ -206,7 +206,6 @@ const STRINGS = {
         imageLabel: "Product images", imageHint: "Click or drag to upload (1000\u00d71000px or larger recommended)",
         cancel: "Cancel", submit: "Submit for platform review",
         savedKeepFitment: "Product added. Vehicle fitment kept \u2014 keep adding more products for the same vehicle.",
-        vehiclePhotoHint: "Check the vehicle photo to confirm this is the right one",
       },
       bulk: {
         title: "Bulk upload products", templateTitle: "Bulk import template (.xlsx)", templateSub: "Includes product and fitment fields \u2014 do not change the header row",
@@ -708,18 +707,6 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
   const [heightCm, setHeightCm] = useState("");
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Fitment cascade
-  const [brands, setBrands] = useState([]);
-  const [selectedBrandId, setSelectedBrandId] = useState("");
-  const [models, setModels] = useState([]);
-  const [selectedModelId, setSelectedModelId] = useState("");
-  const [generations, setGenerations] = useState([]);
-  const [selectedGenerationId, setSelectedGenerationId] = useState(prefill?.generationId || "");
-  const [selectedYear, setSelectedYear] = useState(prefill?.year ? String(prefill.year) : "");
-  const [engines, setEngines] = useState([]);
-  const [selectedEngineId, setSelectedEngineId] = useState("");
-  const [transmissions, setTransmissions] = useState([]);
-  const [selectedTransmissionId, setSelectedTransmissionId] = useState("");
 
   // Photos
   const [photos, setPhotos] = useState([]); // [{ url, width, height }]
@@ -742,9 +729,9 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    fetchBrands().then(setBrands).catch((e) => setError(e.message));
-  }, []);
+  // The vehicle picker (Brand, then Model, then Year): shared with Bulk upload. A vehicle already chosen by a buyer comes in as the starting point.
+  const cascade = useVehicleCascade({ initialGenerationId: prefill?.generationId || "", initialYear: prefill?.year, onError: setError });
+  const { selectedGenerationId, selectedYear } = cascade;
 
   // Real categories, fetched once — a supplier picks from these, not a
   // hardcoded array, so an admin adding a category via the new
@@ -771,49 +758,6 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
     }).catch((e) => { setError(e.message); setIsLoadingParts(false); });
   }, [category]);
 
-  const handleBrandChange = async (brandId) => {
-    setSelectedBrandId(brandId);
-    setSelectedModelId(""); setModels([]);
-    setSelectedGenerationId(""); setGenerations([]);
-    setSelectedYear(""); setSelectedEngineId(""); setEngines([]);
-    setSelectedTransmissionId(""); setTransmissions([]);
-    if (!brandId) return;
-    try {
-      setModels(await fetchModelsForBrand(brandId));
-    } catch (e) { setError(e.message); }
-  };
-
-  const handleModelChange = async (modelId) => {
-    setSelectedModelId(modelId);
-    setSelectedGenerationId(""); setGenerations([]);
-    setSelectedYear(""); setSelectedEngineId(""); setEngines([]);
-    setSelectedTransmissionId(""); setTransmissions([]);
-    if (!modelId) return;
-    try {
-      setGenerations(await fetchGenerationsForModel(modelId));
-    } catch (e) { setError(e.message); }
-  };
-
-  const handleGenerationChange = async (generationId) => {
-    setSelectedGenerationId(generationId);
-    setSelectedYear(""); setSelectedEngineId(""); setEngines([]);
-    setSelectedTransmissionId(""); setTransmissions([]);
-    if (!generationId) return;
-    try {
-      const [eng, trans] = await Promise.all([fetchEnginesForGeneration(generationId), fetchTransmissionsForGeneration(generationId)]);
-      setEngines(eng);
-      setTransmissions(trans);
-    } catch (e) { setError(e.message); }
-  };
-
-  const selectedModel = models.find((m) => m.id === selectedModelId);
-  const selectedGeneration = generations.find((g) => g.id === selectedGenerationId);
-  const yearOptions = selectedGeneration
-    ? Array.from(
-        { length: (selectedGeneration.yearEnd || new Date().getFullYear() + 1) - selectedGeneration.yearStart + 1 },
-        (_, i) => selectedGeneration.yearStart + i
-      )
-    : [];
 
   const handlePhotoSelect = async (e) => {
     const files = Array.from(e.target.files || []);
@@ -869,8 +813,8 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
     if (!part.trim()) missing.push(lang === "zh" ? "部件类型" : "part");
     if (!oemNumber.trim()) missing.push(lang === "zh" ? "OEM 编号" : "OEM number");
     if (!price) missing.push(lang === "zh" ? "价格" : "price");
-    if (!selectedGenerationId) missing.push(lang === "zh" ? "车型世代" : "vehicle generation");
-    if (!selectedYear) missing.push(lang === "zh" ? "年份" : "year");
+    if (!selectedGenerationId) missing.push(lang === "zh" ? "品牌、车型和年份" : "brand, model and year");
+    else if (!selectedYear) missing.push(lang === "zh" ? "年份" : "year");
     if (requirements.photosRequired && photos.length !== requirements.minPhotos) missing.push(lang === "zh" ? `${requirements.minPhotos} 张照片` : `exactly ${requirements.minPhotos} photos`);
     if (requirements.videoRequired && !video) missing.push(lang === "zh" ? "商品视频" : "product video");
     if (!weightKg) missing.push(lang === "zh" ? "重量" : "weight");
@@ -897,11 +841,9 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
         currencyCode: "CNY",
         stockQuantity: parseInt(stock, 10) || 0,
         fitment: {
-          generationId: selectedGenerationId,
-          year: parseInt(selectedYear, 10),
-          engineId: selectedEngineId || undefined,
-          transmissionId: selectedTransmissionId || undefined,
-        },
+            generationId: selectedGenerationId,
+            year: parseInt(selectedYear, 10),
+          },
         images: photos.map((p) => p.url),
         videoUrl: video?.url || undefined,
         weightKg: parseFloat(weightKg),
@@ -915,7 +857,7 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
         // Real, confirmed with the person: reset every real field
         // except the real fitment cascade -- a supplier listing many
         // real parts for the same real car shouldn't have to re-pick
-        // brand/model/generation/year/engine/transmission every
+        // brand, model and year every
         // single time, only until they themselves change it.
         setNameZh(""); setDescriptionZh("");
         setOemNumber(""); setPrice(""); setStock("");
@@ -960,66 +902,7 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
               {prefill.vehicleLabel} <span style={{ color: C.muted, fontSize: 11.5 }}>({cascadeLabel("已由买家选定，不可更改", "already chosen by the buyer, can't be changed")})</span>
             </div>
           ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
-            <div>
-              <div style={{ ...font, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 8 }}>{cascadeLabel("车辆信息", "Car details")}</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <Field label={cascadeLabel("品牌", "Brand")}>
-                  <select style={selectStyle} value={selectedBrandId} onChange={(e) => handleBrandChange(e.target.value)}>
-                    <option value="">{cascadeLabel("请选择", "Select…")}</option>
-                    {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                  </select>
-                </Field>
-                <Field label={cascadeLabel("车型", "Model")}>
-                  <select style={selectStyle} value={selectedModelId} onChange={(e) => handleModelChange(e.target.value)} disabled={!selectedBrandId}>
-                    <option value="">{cascadeLabel("请选择", "Select…")}</option>
-                    {models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                  </select>
-                </Field>
-                <Field label={cascadeLabel("世代", "Generation")}>
-                  <select style={selectStyle} value={selectedGenerationId} onChange={(e) => handleGenerationChange(e.target.value)} disabled={!selectedModelId}>
-                    <option value="">{cascadeLabel("请选择", "Select…")}</option>
-                    {generations.map(g => <option key={g.id} value={g.id}>{generationOptionLabel(g, cascadeLabel("至今", "present"))}</option>)}
-                  </select>
-                </Field>
-                <Field label={cascadeLabel("年份", "Year")}>
-                  <select style={selectStyle} value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} disabled={!selectedGenerationId}>
-                    <option value="">{cascadeLabel("请选择", "Select…")}</option>
-                    {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
-                  </select>
-                </Field>
-                <Field label={cascadeLabel("发动机（选填）", "Engine (optional)")}>
-                  <select style={selectStyle} value={selectedEngineId} onChange={(e) => setSelectedEngineId(e.target.value)} disabled={!selectedGenerationId}>
-                    <option value="">{cascadeLabel("任意发动机", "Any engine")}</option>
-                    {engines.map(en => <option key={en.id} value={en.id}>{en.name}</option>)}
-                  </select>
-                </Field>
-                <Field label={cascadeLabel("变速箱（选填）", "Transmission (optional)")}>
-                  <select style={selectStyle} value={selectedTransmissionId} onChange={(e) => setSelectedTransmissionId(e.target.value)} disabled={!selectedGenerationId}>
-                    <option value="">{cascadeLabel("任意变速箱", "Any transmission")}</option>
-                    {transmissions.map(tr => <option key={tr.id} value={tr.id}>{tr.name}</option>)}
-                  </select>
-                </Field>
-              </div>
-            </div>
-            <div>
-              <div style={{ ...font, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 8 }}>{cascadeLabel("车辆照片", "Car photo")}</div>
-              <div style={{ width: "100%", aspectRatio: "1 / 1", borderRadius: 10, border: `1px solid ${C.line}`, background: C.canvas, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-                {selectedModel?.photoUrl ? (
-                  <img
-                    src={`${API_BASE_URL}${selectedModel.photoUrl}`}
-                    alt={selectedModel.name}
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  />
-                ) : (
-                  <Car size={36} color={C.muted} />
-                )}
-              </div>
-              {selectedModel?.photoUrl && (
-                <div style={{ ...font, fontSize: 11.5, color: C.muted, marginTop: 6 }}>{f.vehiclePhotoHint}</div>
-              )}
-            </div>
-          </div>
+          <VehiclePicker cascade={cascade} />
           )}
         </div>
 
@@ -1300,7 +1183,6 @@ function BulkUploadPanel({ onCancel, onImported }) {
   const { t, lang } = useLang();
   const b = t.products.bulk;
   const font = useBodyFont();
-  const selectStyle = useInputStyle();
 
   const [step, setStep] = useState('setup'); // 'setup' | 'preview' | 'results'
   const [nameLanguage, setNameLanguage] = useState('zh');
@@ -1310,54 +1192,10 @@ function BulkUploadPanel({ onCancel, onImported }) {
   const [parsedItems, setParsedItems] = useState([]);
   const [results, setResults] = useState(null);
 
-  // Real vehicle picker cascade -- same real pattern as AddProductForm's
-  // own fitment cascade, duplicated deliberately rather than shared, to
-  // avoid any regression risk on that already-working, tested component.
-  const [brands, setBrands] = useState([]);
-  const [selectedBrandId, setSelectedBrandId] = useState('');
-  const [models, setModels] = useState([]);
-  const [selectedModelId, setSelectedModelId] = useState('');
-  const [generations, setGenerations] = useState([]);
-  const [selectedGenerationId, setSelectedGenerationId] = useState('');
-  const [selectedYear, setSelectedYear] = useState('');
-  const [engines, setEngines] = useState([]);
-  const [selectedEngineId, setSelectedEngineId] = useState('');
-  const [transmissions, setTransmissions] = useState([]);
-  const [selectedTransmissionId, setSelectedTransmissionId] = useState('');
+  // The vehicle picker (Brand, then Model, then Year): the same one as the single-product form.
+  const cascade = useVehicleCascade({ onError: setError });
+  const { selectedGenerationId, selectedYear } = cascade;
 
-  useEffect(() => { fetchBrands().then(setBrands).catch((e) => setError(e.message)); }, []);
-
-  const handleBrandChange = async (brandId) => {
-    setSelectedBrandId(brandId);
-    setSelectedModelId(''); setModels([]);
-    setSelectedGenerationId(''); setGenerations([]);
-    setSelectedYear(''); setSelectedEngineId(''); setEngines([]);
-    setSelectedTransmissionId(''); setTransmissions([]);
-    if (!brandId) return;
-    try { setModels(await fetchModelsForBrand(brandId)); } catch (e) { setError(e.message); }
-  };
-  const handleModelChange = async (modelId) => {
-    setSelectedModelId(modelId);
-    setSelectedGenerationId(''); setGenerations([]);
-    setSelectedYear(''); setSelectedEngineId(''); setEngines([]);
-    setSelectedTransmissionId(''); setTransmissions([]);
-    if (!modelId) return;
-    try { setGenerations(await fetchGenerationsForModel(modelId)); } catch (e) { setError(e.message); }
-  };
-  const handleGenerationChange = async (generationId) => {
-    setSelectedGenerationId(generationId);
-    setSelectedYear(''); setSelectedEngineId(''); setEngines([]);
-    setSelectedTransmissionId(''); setTransmissions([]);
-    if (!generationId) return;
-    try {
-      const [eng, trans] = await Promise.all([fetchEnginesForGeneration(generationId), fetchTransmissionsForGeneration(generationId)]);
-      setEngines(eng); setTransmissions(trans);
-    } catch (e) { setError(e.message); }
-  };
-  const selectedGeneration = generations.find((g) => g.id === selectedGenerationId);
-  const yearOptions = selectedGeneration
-    ? Array.from({ length: (selectedGeneration.yearEnd || new Date().getFullYear() + 1) - selectedGeneration.yearStart + 1 }, (_, i) => selectedGeneration.yearStart + i)
-    : [];
 
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
@@ -1389,7 +1227,7 @@ function BulkUploadPanel({ onCancel, onImported }) {
     setError(null);
     try {
       const data = await bulkImportProducts(getStoredToken(), {
-        fitment: { generationId: selectedGenerationId, year: Number(selectedYear), engineId: selectedEngineId || undefined, transmissionId: selectedTransmissionId || undefined },
+        fitment: { generationId: selectedGenerationId, year: Number(selectedYear) },
         nameLanguage,
         items: parsedItems,
       });
@@ -1457,44 +1295,9 @@ function BulkUploadPanel({ onCancel, onImported }) {
             <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 10 }}>
               {cascadeLabel('这批商品适配的车型', 'Vehicle this batch is for')}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
-              <Field label={cascadeLabel('品牌', 'Brand')}>
-                <select style={selectStyle} value={selectedBrandId} onChange={(e) => handleBrandChange(e.target.value)}>
-                  <option value="">{cascadeLabel('请选择', 'Select…')}</option>
-                  {brands.map((br) => <option key={br.id} value={br.id}>{br.name}</option>)}
-                </select>
-              </Field>
-              <Field label={cascadeLabel('车型', 'Model')}>
-                <select style={selectStyle} value={selectedModelId} onChange={(e) => handleModelChange(e.target.value)} disabled={!selectedBrandId}>
-                  <option value="">{cascadeLabel('请选择', 'Select…')}</option>
-                  {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </select>
-              </Field>
-              <Field label={cascadeLabel('世代', 'Generation')}>
-                <select style={selectStyle} value={selectedGenerationId} onChange={(e) => handleGenerationChange(e.target.value)} disabled={!selectedModelId}>
-                  <option value="">{cascadeLabel('请选择', 'Select…')}</option>
-                  {generations.map((g) => <option key={g.id} value={g.id}>{generationOptionLabel(g, cascadeLabel('至今', 'present'))}</option>)}
-                </select>
-              </Field>
-              <Field label={cascadeLabel('年份', 'Year')}>
-                <select style={selectStyle} value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} disabled={!selectedGenerationId}>
-                  <option value="">{cascadeLabel('请选择', 'Select…')}</option>
-                  {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
-                </select>
-              </Field>
-              <Field label={cascadeLabel('发动机（选填）', 'Engine (optional)')}>
-                <select style={selectStyle} value={selectedEngineId} onChange={(e) => setSelectedEngineId(e.target.value)} disabled={!selectedGenerationId}>
-                  <option value="">{cascadeLabel('任意发动机', 'Any engine')}</option>
-                  {engines.map((en) => <option key={en.id} value={en.id}>{en.name}</option>)}
-                </select>
-              </Field>
-              <Field label={cascadeLabel('变速箱（选填）', 'Transmission (optional)')}>
-                <select style={selectStyle} value={selectedTransmissionId} onChange={(e) => setSelectedTransmissionId(e.target.value)} disabled={!selectedGenerationId}>
-                  <option value="">{cascadeLabel('任意变速箱', 'Any transmission')}</option>
-                  {transmissions.map((tr) => <option key={tr.id} value={tr.id}>{tr.name}</option>)}
-                </select>
-              </Field>
-            </div>
+            <div style={{ marginBottom: 16 }}>
+                <VehiclePicker cascade={cascade} compact idPrefix="bulk" />
+              </div>
 
             <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 8 }}>
               {cascadeLabel('商品名称语言', 'Item name language')}
@@ -1931,7 +1734,7 @@ function PartRequestDetail({ requestId, onBack, onSessionExpired }) {
   };
 
   if (fulfillingItem && request) {
-    const vehicleLabel = [request.brand, request.model, request.generation ? `(${request.generation})` : null, `· ${request.year}`].filter(Boolean).join(" ");
+    const vehicleLabel = vehicleSummary({ brand: request.brand, model: request.model, generation: request.generation, year: request.year });
     return (
       <div style={{ padding: 24 }}>
         <AddProductForm
