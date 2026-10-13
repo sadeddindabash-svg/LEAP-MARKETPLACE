@@ -1,0 +1,82 @@
+# Launch checklist
+
+Two parts: what a **script can check** (run it, fix every `[FAIL]`), and what **only a person can do**.
+
+## 1. Run the checker, on the server you are about to launch
+
+```
+cd services/api
+node scripts/check-launch-readiness.js
+```
+
+It reads the server's settings and the database, **changes nothing**, and prints each problem with the exact fix:
+
+- `[FAIL]` blocks going live (a security hole, or something customers would see break). Exit code 1.
+- `[WARN]` should be dealt with soon, but will not hurt on day one.
+- `[PASS]` is fine.
+
+Run it **on the production server**, because it judges the settings it can see there. On your own computer it will, correctly, say "not ready".
+
+What it covers: the secrets that sign logins and protect payment credentials; accounts still using a password that is written in the project files; leftover test admins, accounts, orders, products and hubs; invented review counts on the seed products; owners without two-factor; the public addresses emails link to (must be https and public); real email instead of the fake test inbox; live (not test) payment keys; the courier-tracking secret; push, photo storage and translation; and database migrations.
+
+The server also **refuses to start in production** (`NODE_ENV=production`) on a missing, default or too-short `JWT_SECRET` or `CREDENTIALS_ENCRYPTION_KEY`, and without a database URL or Stripe key.
+
+To clean test data (take a backup first; the tool prints the command): `node scripts/remove-test-data.js` previews, `--apply` does it.
+
+## 2. What only a person can do
+
+### Hosting and addresses
+- [ ] A server for the backend (Node 20+) and a **managed PostgreSQL** with automatic daily backups.
+- [ ] The three portals (admin, supplier, hub) built (`npm run build`) and served over **https**.
+- [ ] A domain and a certificate (https everywhere, including the API). The apps' `API_BASE_URL` and `PUBLIC_API_URL` must be that https address, never a computer's IP.
+- [ ] All secrets set as the server's environment variables, **not** committed to git. Never reuse the development values.
+
+### Email (so password reset works)
+- [ ] An email provider, and your sending domain verified: **SPF, DKIM and DMARC** records in your DNS. Without them, mail lands in spam.
+- [ ] Send yourself a real test: `node scripts/send-test-email.js you@yourdomain.com both`, then do a real password reset.
+
+### Money
+- [ ] Live payment keys for at least one provider, and the provider's webhook pointed at the server.
+- [ ] **One real small payment and one real refund**, end to end, before announcing anything.
+- [ ] Decide who handles refunds, disputes and supplier payouts day to day, and how often payouts run.
+
+### Accounts
+- [ ] Every real person has **their own** account. Nobody shares the owner login.
+- [ ] Two-factor on for the owner and every admin.
+- [ ] The seeded accounts (`admin@leap.dev`, `supplier@leap.dev`, `hub@leap.dev`, `leap-supplier@leap.dev`) changed to strong passwords or removed.
+
+### Backups and recovery
+- [ ] Daily database backups **and a restore you have actually tried** on another machine. An untested backup is a hope, not a backup.
+- [ ] Photos: either S3 storage, or the server's uploads folder backed up too.
+- [ ] Written down: what you do if the server dies, and who can do it.
+
+### Watching it run
+- [ ] An uptime monitor on `https://<your api>/health` that messages you when it stops answering.
+- [ ] Error logging you will actually read (for example Sentry), and server logs kept for a few weeks.
+
+### The phone apps
+- [ ] **Release signing.** Both apps are currently signed with the temporary *debug* key. Create a release keystore, keep it safe (lose it and you can never update the app) and sign with it.
+- [ ] **The hub app is still called `com.example.leap_hub_mobile`** (Android) and `com.example.leapHubMobile` (iOS). Stores reject `com.example`. Change both to your own name, for example `com.leapautoparts.leap_hub`, **before** the first release, because it cannot be changed afterwards.
+- [ ] Build both with the production address: `--dart-define=API_BASE_URL=https://<your api>`.
+- [ ] Store accounts (Google Play; Apple Developer for iOS), listings, screenshots, a privacy policy address, and the data-safety / privacy answers each store asks for.
+- [ ] Firebase set up (the service account in `FIREBASE_SERVICE_ACCOUNT_JSON`, the apps registered) if you want push notifications.
+
+### Words and rules
+- [ ] A **native Arabic speaker** reads every Arabic text (the buyer app, the emails, the reset page) before launch. The Chinese in the hub app too.
+- [ ] Privacy policy, terms of sale, and a refund and returns policy, written for the countries you sell in. These need a person who knows that law; the code cannot supply them.
+- [ ] Decide how long you keep personal data and how a customer asks for it to be deleted.
+
+### The first day
+- [ ] A smoke test in production with real accounts: sign up, order, pay, supplier ships, hub receives and inspects, ships to the buyer, the buyer sees it delivered. Plus one flagged parcel through the whole fault process.
+- [ ] Hub staff shown how the app works (including the faulty-unit panel and choosing their own password).
+
+## 3. Known gaps found while preparing this list (not fixed yet)
+
+Honest list, so nothing is a surprise:
+
+1. **Nothing limits repeated failed logins** (no lockout, no rate limit), so someone could guess passwords against the admin login for as long as they like. Two-factor helps a lot, which is why it is on the list above; a login limiter should still be added before launch.
+2. **The server accepts requests from any website** (CORS is open) and sends no security headers (no `helmet`). Logins use a header, not cookies, which limits the harm, but in production the allowed websites should be only your own portals.
+3. **The server will not start in production without `STRIPE_SECRET_KEY`**, even if you only use PayPal or Amazon Payment Services. The rule should be "at least one live provider".
+4. **Server refusal messages are still in English** inside the Arabic app, and the price-drop, back-in-stock and saved-search emails are not translated yet.
+5. **The hub web portal prints the return label; the hub phone app shows the supplier's address instead.**
+6. **The QR scanner in the hub app** failed on one Huawei phone in a release build; a fix is in place (code shrinking turned off) but should be confirmed on the phones your hub staff really use.

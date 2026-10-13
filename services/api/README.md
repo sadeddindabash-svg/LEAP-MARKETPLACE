@@ -3285,6 +3285,10 @@ refund_pending --(admin marks refunded)--+
 builds its own hub and hub-staff login (using the Hub staff feature) so workload checks are exact. Verified to fail when completion stops needing
 both conditions, when supplier isolation is removed, when the buyer-cancel block is removed, or when the hub workload keeps counting returned units.
 
+## Is this installation ready for real customers? (`node scripts/check-launch-readiness.js`)
+
+Run it **on the server you are about to launch**, from `services/api`. It reads the settings and the database, **changes nothing**, and prints every `[FAIL]` (blocks going live), `[WARN]` and `[PASS]` with the exact fix; exit code 1 if anything blocks. The rules live in `scripts/launchChecks.js` (pure functions, tested without a database). What a script cannot do (hosting, https, email DNS, backups, store accounts, legal pages) is in `docs/LAUNCH-CHECKLIST.md`, which also lists the known security gaps. **In production the server now also refuses to start on a missing, default or too-short `JWT_SECRET` / `CREDENTIALS_ENCRYPTION_KEY`** (before, the public default JWT secret was accepted, which would have let anyone forge a login for any account). `.env.example` now lists every setting the server reads, and nothing it does not (kept honest by `envExample.test.js`). Tested: `launchChecks.test.js` (8), `launchReadiness.integration.test.js` (2, runs the real command and proves it changes nothing), `productionBoot.test.js` (5), `envExample.test.js` (3).
+
 ## What a supplier may do to an order (forward only, locked at the hub)
 
 Enforced by the **server** (`modules/supplier/orderRules.js`, used by both the order list and `PATCH /supplier/me/orders/:subOrderId`), not just by the portal's buttons:
