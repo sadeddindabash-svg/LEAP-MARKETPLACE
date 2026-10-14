@@ -1,4 +1,4 @@
-import React, { useState, useEffect, createContext, useContext } from "react";
+import React, { useState, useEffect, useMemo, createContext, useContext } from "react";
 import ExcelJS from "exceljs";
 import LoginPage from "./LoginPage";
 import { exportToExcel } from "./exportToExcel";
@@ -34,6 +34,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchFlaggedReviews, dismissReviewFlags,
   searchAdmin,
 } from "./auth";
+import { SHIPPING_FIELDS, emptyShipping, isShippingEmpty, parseShipping, describeShipping } from "./categoryShipping";
 import {
   LayoutGrid, ShoppingBag, Store, PackageSearch, Wallet, LifeBuoy, Settings,
   Search, Bell, ChevronDown, ChevronUp, ChevronRight, TrendingUp, TrendingDown, Truck, Plus, Pencil,
@@ -5786,6 +5787,8 @@ function CategoriesPage({ onSessionExpired }) {
   const [newCatId, setNewCatId] = useState("");
   const [newCatNameEn, setNewCatNameEn] = useState("");
   const [newCatNameAr, setNewCatNameAr] = useState("");
+  // The weight and package size of the new category: the shipping cost of every product in it uses them (all four required).
+  const [newCatShipping, setNewCatShipping] = useState(emptyShipping());
   const [newCatPhotoFile, setNewCatPhotoFile] = useState(null);
   const [newCatPhotoPreview, setNewCatPhotoPreview] = useState(null);
   const [isUploadingCatPhoto, setIsUploadingCatPhoto] = useState(false);
@@ -5794,6 +5797,13 @@ function CategoriesPage({ onSessionExpired }) {
   const [pendingDeleteCat, setPendingDeleteCat] = useState(null); // {id, nameEn}
   const [pendingEditCat, setPendingEditCat] = useState(null); // the full category object
   const [isSavingCatEdit, setIsSavingCatEdit] = useState(false);
+  // The edit dialog starts over from these whenever it receives a NEW list, so the list must stay the same object between renders: otherwise everything the admin
+  // typed disappears the moment a validation message makes the page re-render.
+  const editFields = useMemo(() => (pendingEditCat ? [
+    { key: "nameEn", label: "English name", value: pendingEditCat.nameEn },
+    { key: "nameAr", label: "Arabic name", value: pendingEditCat.nameAr, dir: "rtl" },
+    ...SHIPPING_FIELDS.map(({ key, label }) => ({ key, label, value: pendingEditCat[key] ?? "" })),
+  ] : []), [pendingEditCat]);
 
   const loadCategories = () => {
     setLoadState("loading");
@@ -5808,6 +5818,8 @@ function CategoriesPage({ onSessionExpired }) {
     }
     // Both now required (new) -- nameAr was optional before this.
     if (!newCatNameAr.trim()) { setErrorMessage("An Arabic name is required."); return; }
+    const shipping = parseShipping(newCatShipping);
+    if (shipping.error) { setErrorMessage(shipping.error); return; }
     if (!newCatPhotoFile) { setErrorMessage("A photo is required."); return; }
     setIsSubmittingCat(true);
     setErrorMessage(null);
@@ -5819,8 +5831,8 @@ function CategoriesPage({ onSessionExpired }) {
       setIsUploadingCatPhoto(true);
       const uploadResult = await uploadImage(token, newCatPhotoFile);
       setIsUploadingCatPhoto(false);
-      await createCategory(token, newCatId.trim(), newCatNameEn.trim(), newCatNameAr.trim(), uploadResult.url, categories.length * 10 + 10);
-      setNewCatId(""); setNewCatNameEn(""); setNewCatNameAr(""); setNewCatPhotoFile(null); setNewCatPhotoPreview(null);
+      await createCategory(token, newCatId.trim(), newCatNameEn.trim(), newCatNameAr.trim(), uploadResult.url, categories.length * 10 + 10, shipping.values);
+      setNewCatId(""); setNewCatNameEn(""); setNewCatNameAr(""); setNewCatShipping(emptyShipping()); setNewCatPhotoFile(null); setNewCatPhotoPreview(null);
       loadCategories();
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
@@ -5884,7 +5896,15 @@ function CategoriesPage({ onSessionExpired }) {
     setIsSavingCatEdit(true);
     setErrorMessage(null);
     try {
-      await updateCategory(getStoredToken(), pendingEditCat.id, values.nameEn.trim(), values.nameAr.trim());
+      // The weight and size are saved together with the names. All four empty (a category that has none yet, edited by name only) leaves them alone;
+      // anything typed must be all four, each above zero.
+      let shipping;
+      if (!isShippingEmpty(values)) {
+        const parsed = parseShipping(values);
+        if (parsed.error) { setErrorMessage(parsed.error); setIsSavingCatEdit(false); return; }
+        shipping = parsed.values;
+      }
+      await updateCategory(getStoredToken(), pendingEditCat.id, values.nameEn.trim(), values.nameAr.trim(), shipping);
       setPendingEditCat(null);
       loadCategories();
     } catch (err) {
@@ -5913,10 +5933,21 @@ function CategoriesPage({ onSessionExpired }) {
           <div style={{ padding: 18 }}>
             {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 14 }}>{errorMessage}</div>}
 
-            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
               <input value={newCatId} onChange={(e) => setNewCatId(e.target.value)} placeholder="id (e.g. tires)" style={{ ...body, flex: 1, minWidth: 120, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
               <input value={newCatNameEn} onChange={(e) => setNewCatNameEn(e.target.value)} placeholder="English name" style={{ ...body, flex: 1, minWidth: 140, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
               <input value={newCatNameAr} onChange={(e) => setNewCatNameAr(e.target.value)} placeholder="Arabic name (required)" dir="rtl" style={{ ...body, flex: 1, minWidth: 140, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
+            </div>
+            {/* The weight and package size of the category: the shipping cost of every product in it uses them automatically. */}
+            <div style={{ border: `1px solid ${C.line}`, borderRadius: 10, background: "#FAFAFB", padding: 12, marginBottom: 12 }}>
+              <div style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.ink, marginBottom: 8 }}>Shipping <span style={{ fontWeight: 500, color: C.muted }}>(used automatically in the shipping cost of every product in this category)</span></div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {SHIPPING_FIELDS.map(({ key, label }) => (
+                  <input key={key} type="text" inputMode="decimal" value={newCatShipping[key]} onChange={(e) => setNewCatShipping((prev) => ({ ...prev, [key]: e.target.value }))} placeholder={label} aria-label={label} style={{ ...body, flex: 1, minWidth: 110, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, color: C.ink, background: C.card, outline: "none" }} />
+                ))}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
               <label style={{ ...body, display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", color: newCatPhotoFile ? C.gauge : C.muted }}>
                 <ImagePlus size={14} />
                 {newCatPhotoFile ? "Photo selected" : "Choose photo (required)"}
@@ -5927,7 +5958,6 @@ function CategoriesPage({ onSessionExpired }) {
                 <Check size={13} /> {isUploadingCatPhoto ? "Uploading…" : "Add category"}
               </button>
             </div>
-
             {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>Loading…</div>}
             {loadState === "ready" && categories.map((c, i) => (
               <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 4px", borderBottom: i < categories.length - 1 ? `1px solid ${C.line}` : "none", cursor: "pointer" }}
@@ -5977,6 +6007,14 @@ function CategoriesPage({ onSessionExpired }) {
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  {describeShipping(c) ? (
+                    <>
+                      <span style={{ ...body, fontSize: 12, fontWeight: 700, color: C.ink, background: "#EEF0F3", borderRadius: 999, padding: "3px 10px", whiteSpace: "nowrap" }}>{describeShipping(c).weight}</span>
+                      <span style={{ ...body, fontSize: 12, fontWeight: 700, color: C.ink, background: "#EEF0F3", borderRadius: 999, padding: "3px 10px", whiteSpace: "nowrap" }}>{describeShipping(c).size}</span>
+                    </>
+                  ) : (
+                    <span style={{ ...body, fontSize: 12, fontWeight: 700, color: "#8A5A12", background: "#FDF3E1", borderRadius: 999, padding: "3px 10px", whiteSpace: "nowrap" }}>No weight or size yet</span>
+                  )}
                   <span style={{ ...body, fontSize: 11.5, color: C.muted }}>{c.id}</span>
                   <button onClick={(e) => { e.stopPropagation(); setPendingEditCat(c); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><Pencil size={14} color={C.muted} /></button>
                   <button onClick={(e) => { e.stopPropagation(); setPendingDeleteCat({ id: c.id, nameEn: c.nameEn }); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><X size={15} color={C.red} /></button>
@@ -5996,10 +6034,7 @@ function CategoriesPage({ onSessionExpired }) {
       <EditDialog
         isOpen={!!pendingEditCat}
         title={`Edit "${pendingEditCat?.nameEn}"`}
-        fields={pendingEditCat ? [
-          { key: "nameEn", label: "English name", value: pendingEditCat.nameEn },
-          { key: "nameAr", label: "Arabic name", value: pendingEditCat.nameAr, dir: "rtl" },
-        ] : []}
+        fields={editFields}
         onSave={handleSaveCategoryEdit}
         onCancel={() => setPendingEditCat(null)}
         errorMessage={errorMessage}

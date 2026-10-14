@@ -293,7 +293,8 @@ export const updateModelPhoto = (token, id, photoUrl) => fitmentMutate("PATCH", 
 // Real, new -- edit the name fields of any of the 7 levels, at any
 // time. Photo/id/sortOrder are unaffected by these -- each stays on
 // its own separate endpoint.
-export const updateCategory = (token, id, nameEn, nameAr) => fitmentMutate("PATCH", `/catalog/categories/${id}`, token, { nameEn, nameAr });
+// `shipping` ({ weightKg, lengthCm, widthCm, heightCm }) is optional: left out, only the names change; sent, all four are validated and saved together.
+export const updateCategory = (token, id, nameEn, nameAr, shipping) => fitmentMutate("PATCH", `/catalog/categories/${id}`, token, { nameEn, nameAr, ...(shipping || {}) });
 export const updatePart = (token, id, nameEn, nameAr) => fitmentMutate("PATCH", `/catalog/parts/${id}`, token, { nameEn, nameAr });
 export const updateBrand = (token, id, name, nameAr) => fitmentMutate("PATCH", `/fitment/brands/${id}`, token, { name, nameAr });
 export const updateModel = (token, id, name, nameAr) => fitmentMutate("PATCH", `/fitment/models/${id}`, token, { name, nameAr });
@@ -479,11 +480,12 @@ export async function updateProductRequirements(token, patch) {
   return data;
 }
 
-export async function createCategory(token, id, nameEn, nameAr, photoUrl, sortOrder) {
+// `shipping` = { weightKg, lengthCm, widthCm, heightCm }: required, the shipping cost of every product in the category uses it (backend migration 103).
+export async function createCategory(token, id, nameEn, nameAr, photoUrl, sortOrder, shipping) {
   const response = await fetch(`${API_BASE_URL}/catalog/categories`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ id, nameEn, nameAr, photoUrl, sortOrder }),
+    body: JSON.stringify({ id, nameEn, nameAr, photoUrl, sortOrder, ...(shipping || {}) }),
   });
   if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
   const data = await response.json();

@@ -42,7 +42,7 @@ async function toItemDto(row) {
   };
   if (row.status === 'priced' && row.product_id) {
     const { rows } = await db.query(
-      'SELECT price, currency_code, status, weight_kg, length_cm, width_cm, height_cm, last_known_buyer_price_usd FROM products WHERE id = $1',
+      'SELECT price, currency_code, status, category, weight_kg, length_cm, width_cm, height_cm, last_known_buyer_price_usd FROM products WHERE id = $1',
       [row.product_id]
     );
     if (rows.length > 0) {

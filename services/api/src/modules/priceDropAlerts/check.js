@@ -1,5 +1,6 @@
 const db = require('../../../db/pool');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
+const { withEffectiveShipping } = require('../shared/categoryShipping');
 const { createNotification } = require('../notifications/helpers');
 const messages = require('../notifications/messages');
 const { sendTransactionalEmail } = require('../email/client');
@@ -27,12 +28,14 @@ async function checkProductForPriceDrop(product) {
   if (product.currency_code !== 'CNY') {
     currentPriceUsd = Number(product.price);
   } else {
+    // The weight and size of the product, else its category's (migration 103).
+    const shipped = await withEffectiveShipping(product);
     const result = await calculateBuyerPriceUsd({
       supplierCostCny: Number(product.price),
-      weightKg: product.weight_kg === null ? null : Number(product.weight_kg),
-      lengthCm: product.length_cm === null ? null : Number(product.length_cm),
-      widthCm: product.width_cm === null ? null : Number(product.width_cm),
-      heightCm: product.height_cm === null ? null : Number(product.height_cm),
+      weightKg: shipped.weight_kg === null ? null : Number(shipped.weight_kg),
+      lengthCm: shipped.length_cm === null ? null : Number(shipped.length_cm),
+      widthCm: shipped.width_cm === null ? null : Number(shipped.width_cm),
+      heightCm: shipped.height_cm === null ? null : Number(shipped.height_cm),
     });
     currentPriceUsd = result.buyerPriceUsd;
   }

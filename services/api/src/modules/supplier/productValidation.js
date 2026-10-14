@@ -74,23 +74,29 @@ function tryMatchDimensions({ weightKg, lengthCm, widthCm, heightCm }) {
 // matching above, every one of these is now required, matching the
 // exact same real bar the original single-item endpoint always held
 // products to before they could enter real moderation.
-function validateCompleteFields({ category, part, position, weightKg, lengthCm, widthCm, heightCm, images, videoUrl }, requirements) {
+// `shippingFromCategory` is true when the product's category has its own weight and size set by the admin (migration 103): the supplier then enters none of the
+// four, and they are not checked here.
+function validateCompleteFields({ category, part, position, weightKg, lengthCm, widthCm, heightCm, images, videoUrl, shippingFromCategory = false }, requirements) {
   const missing = [];
   if (!category) missing.push('category');
   if (!part) missing.push('part');
   if (!position) missing.push('position');
-  if (weightKg === undefined || weightKg === null) missing.push('weightKg');
-  if (lengthCm === undefined || lengthCm === null) missing.push('lengthCm');
-  if (widthCm === undefined || widthCm === null) missing.push('widthCm');
-  if (heightCm === undefined || heightCm === null) missing.push('heightCm');
+  if (!shippingFromCategory) {
+    if (weightKg === undefined || weightKg === null) missing.push('weightKg');
+    if (lengthCm === undefined || lengthCm === null) missing.push('lengthCm');
+    if (widthCm === undefined || widthCm === null) missing.push('widthCm');
+    if (heightCm === undefined || heightCm === null) missing.push('heightCm');
+  }
   if (missing.length > 0) {
     return { valid: false, error: `Missing required field(s): ${missing.join(', ')}` };
   }
   if (!ALLOWED_POSITIONS.includes(position)) {
     return { valid: false, error: `position must be one of: ${ALLOWED_POSITIONS.join(', ')}` };
   }
-  for (const [field, value] of [['weightKg', weightKg], ['lengthCm', lengthCm], ['widthCm', widthCm], ['heightCm', heightCm]]) {
-    if (value <= 0) return { valid: false, error: `${field} must be a positive number` };
+  if (!shippingFromCategory) {
+    for (const [field, value] of [['weightKg', weightKg], ['lengthCm', lengthCm], ['widthCm', widthCm], ['heightCm', heightCm]]) {
+      if (value <= 0) return { valid: false, error: `${field} must be a positive number` };
+    }
   }
   const photoCount = Array.isArray(images) ? images.length : 0;
   if (requirements.photos_required && photoCount !== requirements.min_photos) {

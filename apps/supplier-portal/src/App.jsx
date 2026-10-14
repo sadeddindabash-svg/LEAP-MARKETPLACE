@@ -32,6 +32,8 @@ import {
 } from "./auth";
 import { vehicleSummary } from "./vehicleLabels";
 import VehiclePicker from "./VehiclePicker";
+import CategoryShippingBlock from "./CategoryShippingBlock";
+import { categoryShippingOf } from "./categoryShipping";
 import { useVehicleCascade } from "./vehicleCascade";
 
 /* ============================================================
@@ -732,6 +734,9 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
   // The vehicle picker (Brand, then Model, then Year): shared with Bulk upload. A vehicle already chosen by a buyer comes in as the starting point.
   const cascade = useVehicleCascade({ initialGenerationId: prefill?.generationId || "", initialYear: prefill?.year, onError: setError });
   const { selectedGenerationId, selectedYear } = cascade;
+  // A category whose weight and package size the admin has set supplies them: the supplier enters none, and the shipping cost uses the category's (migration 103).
+  const selectedCategory = categories.find((c) => c.id === category);
+  const categoryShipping = categoryShippingOf(selectedCategory);
 
   // Real categories, fetched once — a supplier picks from these, not a
   // hardcoded array, so an admin adding a category via the new
@@ -817,10 +822,12 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
     else if (!selectedYear) missing.push(lang === "zh" ? "年份" : "year");
     if (requirements.photosRequired && photos.length !== requirements.minPhotos) missing.push(lang === "zh" ? `${requirements.minPhotos} 张照片` : `exactly ${requirements.minPhotos} photos`);
     if (requirements.videoRequired && !video) missing.push(lang === "zh" ? "商品视频" : "product video");
-    if (!weightKg) missing.push(lang === "zh" ? "重量" : "weight");
-    if (!lengthCm) missing.push(lang === "zh" ? "长度" : "length");
-    if (!widthCm) missing.push(lang === "zh" ? "宽度" : "width");
-    if (!heightCm) missing.push(lang === "zh" ? "高度" : "height");
+    if (!categoryShipping) {
+      if (!weightKg) missing.push(lang === "zh" ? "重量" : "weight");
+      if (!lengthCm) missing.push(lang === "zh" ? "长度" : "length");
+      if (!widthCm) missing.push(lang === "zh" ? "宽度" : "width");
+      if (!heightCm) missing.push(lang === "zh" ? "高度" : "height");
+    }
 
     if (missing.length > 0) {
       setError((lang === "zh" ? "请填写：" : "Please fill in: ") + missing.join(lang === "zh" ? "、" : ", "));
@@ -846,10 +853,11 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
           },
         images: photos.map((p) => p.url),
         videoUrl: video?.url || undefined,
-        weightKg: parseFloat(weightKg),
-        lengthCm: parseFloat(lengthCm),
-        widthCm: parseFloat(widthCm),
-        heightCm: parseFloat(heightCm),
+        // the category's weight and size are used; the supplier sends none (the server would ignore them anyway)
+        weightKg: categoryShipping ? undefined : parseFloat(weightKg),
+        lengthCm: categoryShipping ? undefined : parseFloat(lengthCm),
+        widthCm: categoryShipping ? undefined : parseFloat(widthCm),
+        heightCm: categoryShipping ? undefined : parseFloat(heightCm),
         attributes: selectedAttributes,
         fulfillsRequestItemId: prefill?.fulfillsRequestItemId || undefined,
       });
@@ -983,18 +991,24 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
             <Field label={cascadeLabel("库存数量", "Stock quantity")}>
               <input type="number" style={inputStyle} placeholder="0" value={stock} onChange={(e) => setStock(e.target.value)} />
             </Field>
-            <Field label={cascadeLabel("重量 (kg)", "Weight (kg)")}>
-              <input type="number" step="0.01" min="0" style={inputStyle} placeholder="0.00" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} />
-            </Field>
-            <Field label={cascadeLabel("长度 (cm)", "Length (cm)")}>
-              <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={lengthCm} onChange={(e) => setLengthCm(e.target.value)} />
-            </Field>
-            <Field label={cascadeLabel("宽度 (cm)", "Width (cm)")}>
-              <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={widthCm} onChange={(e) => setWidthCm(e.target.value)} />
-            </Field>
-            <Field label={cascadeLabel("高度 (cm)", "Height (cm)")}>
-              <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={heightCm} onChange={(e) => setHeightCm(e.target.value)} />
-            </Field>
+            {categoryShipping ? (
+              <CategoryShippingBlock category={selectedCategory} shipping={categoryShipping} />
+            ) : (
+              <>
+              <Field label={cascadeLabel("重量 (kg)", "Weight (kg)")}>
+                <input type="number" step="0.01" min="0" style={inputStyle} placeholder="0.00" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} />
+              </Field>
+              <Field label={cascadeLabel("长度 (cm)", "Length (cm)")}>
+                <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={lengthCm} onChange={(e) => setLengthCm(e.target.value)} />
+              </Field>
+              <Field label={cascadeLabel("宽度 (cm)", "Width (cm)")}>
+                <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={widthCm} onChange={(e) => setWidthCm(e.target.value)} />
+              </Field>
+              <Field label={cascadeLabel("高度 (cm)", "Height (cm)")}>
+                <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={heightCm} onChange={(e) => setHeightCm(e.target.value)} />
+              </Field>
+              </>
+            )}
           </div>
         </div>
 
@@ -1099,7 +1113,6 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
 
 const BULK_TEMPLATE_HEADERS = [
   'OE Number', 'Item Name', 'Price RMB', 'Category', 'Part', 'Position',
-  'Weight kg', 'Length cm', 'Width cm', 'Height cm',
 ];
 
 // Real, live-generated .xlsx template (new) -- CONFIRMED SCOPE: only
@@ -1114,7 +1127,7 @@ async function downloadBulkTemplate() {
   const sheet = workbook.addWorksheet('Products');
   sheet.addRow(BULK_TEMPLATE_HEADERS);
   sheet.getRow(1).font = { bold: true };
-  sheet.addRow(['BMW-BD-2018-F20', 'Front Brake Disc', 200, 'Brake System', 'Front Brake Disc', 'Front', 5, 30, 30, 10]);
+  sheet.addRow(['BMW-BD-2018-F20', 'Front Brake Disc', 200, 'Brake System', 'Front Brake Disc', 'Front']);
   sheet.columns.forEach((col) => { col.width = 16; });
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -1366,10 +1379,13 @@ function CompleteDraftForm({ draft, onCancel, onCompleted }) {
 
   const needsCategory = draft.missing.includes('category') || draft.missing.includes('part');
   const needsPosition = draft.missing.includes('position');
-  const needsDimensions = draft.missing.includes('dimensions');
+  const needsDimensionsFromSupplier = draft.missing.includes('dimensions');
 
   const [categories, setCategories] = useState([]);
   const [category, setCategory] = useState(draft.category || '');
+  // A category whose weight and package size the admin has set supplies them: the supplier then enters none (migration 103).
+  const draftCategoryShipping = categoryShippingOf(categories.find((c) => c.id === category));
+  const needsDimensions = needsDimensionsFromSupplier && !draftCategoryShipping;
   const [parts, setParts] = useState([]);
   const [part, setPart] = useState(draft.part || '');
   const [position, setPosition] = useState(draft.position || POSITION_OPTIONS[0].id);
@@ -1502,6 +1518,9 @@ function CompleteDraftForm({ draft, onCancel, onCompleted }) {
           </Field>
         )}
 
+        {needsDimensionsFromSupplier && draftCategoryShipping && (
+          <CategoryShippingBlock category={categories.find((c) => c.id === category)} shipping={draftCategoryShipping} />
+        )}
         {needsDimensions && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
             <Field label={cascadeLabel('重量 kg', 'Weight kg')}><input style={selectStyle} type="number" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} /></Field>

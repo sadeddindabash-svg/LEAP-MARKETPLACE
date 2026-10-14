@@ -4,6 +4,7 @@ const { emailLanguageForAddress, emailSubject } = require('../email/language');
 const db = require('../../../db/pool');
 const { requireAuth, optionalAuth, requirePageAccessIfAdmin, requireRole, requirePageAccess } = require('../auth/middleware');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
+const { withEffectiveShipping } = require('../shared/categoryShipping');
 const { validatePromoCode, calculateDiscountUsd, recordRedemption, checkAndGrantReferralReward } = require('../promotions/helpers');
 const { getLoyaltyDiscountPercentage } = require('../loyalty/helpers');
 const { sendTransactionalEmail } = require('../email/client');
@@ -115,7 +116,7 @@ router.post('/', async (req, res, next) => {
     // the client for amounts that determine what gets charged).
     const productIds = items.map((i) => i.productId);
     const { rows: products } = await client.query(
-      `SELECT id, price, currency_code, supplier_id, weight_kg, length_cm, width_cm, height_cm FROM products WHERE id = ANY($1::text[])`,
+      `SELECT id, price, currency_code, supplier_id, category, weight_kg, length_cm, width_cm, height_cm FROM products WHERE id = ANY($1::text[])`,
       [productIds]
     );
     const productById = Object.fromEntries(products.map((p) => [p.id, p]));
@@ -186,12 +187,14 @@ router.post('/', async (req, res, next) => {
         // (see the same handling in the catalog/cart modules for why).
         buyerUnitPrices[productId] = Number(product.price);
       } else {
+        // The weight and size of the product, else its category's (migration 103): the price LOCKED into the order uses the same ones the buyer saw.
+        const shipped = await withEffectiveShipping(product, client);
         const result = await calculateBuyerPriceUsd({
           supplierCostCny: Number(product.price),
-          weightKg: product.weight_kg === null ? null : Number(product.weight_kg),
-          lengthCm: product.length_cm === null ? null : Number(product.length_cm),
-          widthCm: product.width_cm === null ? null : Number(product.width_cm),
-          heightCm: product.height_cm === null ? null : Number(product.height_cm),
+          weightKg: shipped.weight_kg === null ? null : Number(shipped.weight_kg),
+          lengthCm: shipped.length_cm === null ? null : Number(shipped.length_cm),
+          widthCm: shipped.width_cm === null ? null : Number(shipped.width_cm),
+          heightCm: shipped.height_cm === null ? null : Number(shipped.height_cm),
         });
         buyerUnitPrices[productId] = result.buyerPriceUsd;
         const shippingCny = result.breakdown
