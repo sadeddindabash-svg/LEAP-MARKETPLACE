@@ -15,6 +15,7 @@ import '../../core/push_state.dart';
 import '../../core/theme_state.dart';
 import '../../services/api_client.dart';
 import 'loyalty_card.dart';
+import '../../core/api_error_text.dart';
 
 class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key});
@@ -159,7 +160,7 @@ class _AccountScreenState extends State<AccountScreen> {
               children: [
                 IconButton(
                   icon: const Icon(Icons.notifications_none),
-                  tooltip: 'Notifications',
+                  tooltip: tr(context, 'notifications'),
                   onPressed: () => context.push('/notifications').then((_) => _loadUnreadCount()),
                 ),
                 if (_unreadCount > 0)
@@ -440,7 +441,7 @@ class _LoggedInHeaderState extends State<_LoggedInHeader> {
       final updatedUser = await ApiClient().getCurrentUser(auth.token!);
       await auth.updateSession(auth.token!, updatedUser);
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : 'Could not update your photo')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? apiErrorText(context, e) : tr(context, 'could_not_update_photo'))));
     } finally {
       if (mounted) setState(() => _isUploading = false);
     }
@@ -598,7 +599,7 @@ class _AppLockSection extends StatelessWidget {
     if (wantsEnabled) {
       // Real, required authentication check before turning this ON --
       // see AppLockState.enable()'s own header comment for why.
-      final success = await lockState.enable();
+      final success = await lockState.enable(reason: trRead(context, 'app_lock_enable_reason'));
       if (!success && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(trRead(context, 'app_lock_enable_failed'))),

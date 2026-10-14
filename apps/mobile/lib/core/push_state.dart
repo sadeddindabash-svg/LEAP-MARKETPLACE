@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'auth_state.dart';
+import 'language_state.dart';
 import '../services/api_client.dart';
 
 /// Real push notification registration.
@@ -36,6 +37,7 @@ class PushState {
     // disposed (e.g. the person navigated away or logged out mid-call),
     // a real, common Flutter bug this avoids entirely.
     final authToken = context.read<AuthState>().token;
+    final isArabic = context.read<LanguageState>().isArabic;     // captured now for the same reason: `context` must not be used after an await
     if (authToken == null) return; // not logged in yet -- nothing real to register a device token against
     try {
       // REAL BUG FOUND AND FIXED HERE, while adding crash reporting
@@ -56,16 +58,16 @@ class PushState {
       // not a fabricated third "security" category with nothing real
       // to put in it yet.
       final localNotifications = FlutterLocalNotificationsPlugin();
-      const ordersChannel = AndroidNotificationChannel(
+      final ordersChannel = AndroidNotificationChannel(
         'orders',
-        'Orders',
-        description: 'Order status, returns, and support replies',
+        isArabic ? 'الطلبات' : 'Orders',
+        description: isArabic ? 'حالة الطلب والمرتجعات وردود الدعم' : 'Order status, returns, and support replies',
         importance: Importance.high,
       );
-      const updatesChannel = AndroidNotificationChannel(
+      final updatesChannel = AndroidNotificationChannel(
         'updates',
-        'Updates',
-        description: 'Price drops, back-in-stock alerts, and other updates',
+        isArabic ? 'التحديثات' : 'Updates',
+        description: isArabic ? 'انخفاض الأسعار وتنبيهات توفر المنتجات وتحديثات أخرى' : 'Price drops, back-in-stock alerts, and other updates',
         importance: Importance.defaultImportance,
       );
       await localNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.createNotificationChannel(ordersChannel);

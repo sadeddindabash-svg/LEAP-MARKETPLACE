@@ -13,6 +13,8 @@ import '../models/vehicle.dart';
 import '../models/review.dart';
 import '../models/saved_search.dart';
 import '../models/quote_request.dart';
+import '../core/server_messages.dart';
+import '../core/language_state.dart';
 
 /// Real, centralized offline/network-failure handling (new). Without
 /// this, a real network failure (no internet, DNS lookup failure, a
@@ -1479,7 +1481,9 @@ class ApiException implements Exception {
   // code 'insufficient_stock'), so a translated sentence can fill in its blanks. Null when
   // the error didn't come from a backend response.
   final Map<String, dynamic>? details;
-  ApiException(this.message, {this.isNetworkError = false, this.code, this.details});
+  // The message is put in the buyer's language HERE, once, so every screen that shows an error gets it (in English it is returned untouched).
+  ApiException(String message, {this.isNetworkError = false, this.code, this.details})
+      : message = LanguageState.arabicNow ? localizeServerMessage(message) : message;
   @override
   String toString() => 'ApiException: $message';
 }

@@ -22,6 +22,10 @@ class LanguageState extends ChangeNotifier {
   final _secureStorage = const FlutterSecureStorage();
 
   String _language = 'en'; // 'en' or 'ar'
+
+  /// The same choice, readable WITHOUT a BuildContext. `ApiException` is created deep inside the API client, where no context exists, and uses this to put its
+  /// message in the buyer's language (see core/server_messages.dart). Kept in step with [_language] in the two places that change it.
+  static bool arabicNow = false;
   bool _isLoading = true;
 
   LanguageState() {
@@ -37,6 +41,7 @@ class LanguageState extends ChangeNotifier {
     if (saved == 'ar' || saved == 'en') {
       _language = saved!;
     }
+    arabicNow = _language == 'ar';
     _isLoading = false;
     notifyListeners();
   }
@@ -44,6 +49,7 @@ class LanguageState extends ChangeNotifier {
   Future<void> setLanguage(String language) async {
     if (language != 'en' && language != 'ar') return;
     _language = language;
+    arabicNow = language == 'ar';
     await _secureStorage.write(key: _languageKey, value: language);
     notifyListeners();
   }

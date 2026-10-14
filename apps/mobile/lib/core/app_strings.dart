@@ -499,6 +499,39 @@ class AppStrings {
     'reset_code_label': {'en': 'Reset code', 'ar': 'رمز إعادة التعيين'},
     'new_password_label': {'en': 'New password', 'ar': 'كلمة المرور الجديدة'},
     'password_reset_success': {'en': 'Password reset. Please log in with your new password.', 'ar': 'تمت إعادة تعيين كلمة المرور. يرجى تسجيل الدخول بكلمة المرور الجديدة.'},
+
+    // ---- Tooltips, a heading and a few labels that had no translation at all ----
+    'remove_item': {'en': 'Remove item', 'ar': 'إزالة المنتج'},
+    'decrease_quantity': {'en': 'Decrease quantity', 'ar': 'تقليل الكمية'},
+    'increase_quantity': {'en': 'Increase quantity', 'ar': 'زيادة الكمية'},
+    'remove_vehicle': {'en': 'Remove vehicle', 'ar': 'إزالة السيارة'},
+    'remove_photo': {'en': 'Remove photo', 'ar': 'إزالة الصورة'},
+    'search_label': {'en': 'Search', 'ar': 'بحث'},
+    'support_label': {'en': 'Support', 'ar': 'الدعم'},
+    'back_label': {'en': 'Back', 'ar': 'رجوع'},
+    'referral_history': {'en': 'Referral history', 'ar': 'سجل الإحالات'},
+    'could_not_load_product': {'en': 'Could not load this product.', 'ar': 'تعذّر تحميل هذا المنتج.'},
+    'status_to_pay': {'en': 'To pay', 'ar': 'بانتظار الدفع'},
+    'status_to_review': {'en': 'To review', 'ar': 'بانتظار التقييم'},
+
+    // ---- Messages and labels found by a full audit of the app for English-only text ----
+    'show_password': {'en': 'Show password', 'ar': 'إظهار كلمة المرور'},
+    'hide_password': {'en': 'Hide password', 'ar': 'إخفاء كلمة المرور'},
+    'could_not_update_photo': {'en': 'Could not update your photo', 'ar': 'تعذّر تحديث صورتك'},
+    'referral_member_joined': {'en': '{name} joined', 'ar': 'انضم {name}'},
+    'referral_new_member': {'en': 'A new member joined', 'ar': 'انضم عضو جديد'},
+    'reward_earned': {'en': 'Reward earned', 'ar': 'تم كسب المكافأة'},
+    'reward_pending': {'en': 'Reward pending', 'ar': 'المكافأة قيد الانتظار'},
+    'ocr_no_text': {'en': "Couldn't read any text in that photo. Try getting closer, or in better light.", 'ar': 'تعذّر قراءة أي نص في هذه الصورة. جرّب الاقتراب أكثر أو استخدام إضاءة أفضل.'},
+    'ocr_failed': {'en': "Couldn't process that photo. Please try again.", 'ar': 'تعذّرت معالجة هذه الصورة. يرجى المحاولة مرة أخرى.'},
+    'vin_lookup_failed': {'en': 'Could not look up this VIN. Please select your vehicle manually.', 'ar': 'تعذّر البحث عن رقم الهيكل هذا. يرجى اختيار سيارتك يدويًا.'},
+    'vin_decoded_unknown_brand': {'en': "Decoded: {label} — but this brand isn't in our catalog yet. Please select your vehicle manually.", 'ar': 'تم فك الترميز: {label} — لكن هذه الماركة غير متوفرة في كتالوجنا بعد. يرجى اختيار سيارتك يدويًا.'},
+    'vin_decoded_pick_model': {'en': 'Decoded: {label}. Please pick your model below.', 'ar': 'تم فك الترميز: {label}. يرجى اختيار الموديل أدناه.'},
+    'vin_decoded_no_generation': {'en': 'Decoded: {label} — found the brand and model, but not the exact generation for that year. Please continue from here.', 'ar': 'تم فك الترميز: {label} — وجدنا الماركة والموديل، لكن ليس الجيل المحدد لتلك السنة. يرجى المتابعة من هنا.'},
+    'checkout_stock_changed_one': {'en': '{items} has less stock available now than in your cart. Please adjust the quantity before continuing.', 'ar': 'الكمية المتوفرة من {items} أقل الآن مما في سلتك. يرجى تعديل الكمية قبل المتابعة.'},
+    'checkout_stock_changed_many': {'en': '{items} have less stock available now than in your cart. Please adjust the quantity before continuing.', 'ar': 'الكميات المتوفرة من {items} أقل الآن مما في سلتك. يرجى تعديل الكميات قبل المتابعة.'},
+    'app_lock_enable_reason': {'en': 'Confirm to enable app lock', 'ar': 'أكّد لتفعيل قفل التطبيق'},
+    'app_lock_unlock_reason': {'en': 'Unlock Leap', 'ar': 'افتح Leap'},
   };
 
   static String get(String key) {
@@ -524,6 +557,10 @@ String tr(BuildContext context, String key) {
 /// callback throws a real Flutter framework assertion. Use this instead
 /// anywhere a string is needed one-off outside the widget tree's build
 /// method (e.g. `setState(() => _errorMessage = trRead(context, 'key'))`).
+/// The server sends the anonymized supplier label in English ("Supplier 1 LEAP-SLR-AB12"). Swaps the leading word for the buyer's language and keeps the code.
+/// In English the word is replaced by itself, so English buyers see exactly what they always did.
+String localizedSupplierLabel(BuildContext context, String label) => label.replaceFirst(RegExp(r'^Supplier\b'), tr(context, 'supplier_label'));
+
 String trRead(BuildContext context, String key) {
   final isAr = context.read<LanguageState>().isArabic;
   final entry = AppStrings._strings[key];

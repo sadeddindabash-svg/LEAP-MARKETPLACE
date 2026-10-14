@@ -14,6 +14,7 @@ import '../../services/api_client.dart';
 import '../../widgets/plate_chip.dart';
 import '../../widgets/order_status_timeline.dart';
 import '../../core/cart_state.dart';
+import '../../core/language_state.dart';
 
 /// BUY-052/053: order detail, showing the real per-supplier split (the
 /// buyer placed one order, but it's fulfilled by potentially multiple
@@ -184,7 +185,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
   }
 
   Widget _buildPendingAddressBanner() {
-    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final isAr = context.watch<LanguageState>().isArabic;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(color: const Color(0xFFFDF1EB), borderRadius: BorderRadius.circular(10)),
@@ -268,7 +269,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
   }
 
   Future<void> _confirmAndCancelOrder() async {
-    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final isAr = context.read<LanguageState>().isArabic;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -302,7 +303,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
   /// part -- same real confirm-dialog and feedback pattern as
   /// _confirmAndCancelOrder above, scoped to a single sub-order.
   Future<void> _confirmAndCancelSubOrder(int subOrderId, String supplierLabel) async {
-    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final isAr = context.read<LanguageState>().isArabic;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -343,7 +344,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
   /// available right now.
   Future<void> _reorder() async {
     if (_order == null) return;
-    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final isAr = context.read<LanguageState>().isArabic;
     final subOrders = (_order!['supplierSubOrders'] as List).cast<Map<String, dynamic>>();
     final allItems = <Map<String, dynamic>>[];
     for (final so in subOrders) {
@@ -457,7 +458,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
             OutlinedButton.icon(
               onPressed: () => context.push('/orders/${widget.orderId}/tracking'),
               icon: const Icon(Icons.local_shipping_outlined, size: 18),
-              label: Text(Localizations.localeOf(context).languageCode == 'ar' ? 'تتبع الطلب' : 'Track your package'),
+              label: Text(context.watch<LanguageState>().isArabic ? 'تتبع الطلب' : 'Track your package'),
             ),
           const SizedBox(height: 10),
           // Real Download receipt button (#150) -- opens the real
@@ -475,7 +476,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
               await launchUrl(url, mode: LaunchMode.externalApplication);
             },
             icon: const Icon(Icons.receipt_long_outlined, size: 18),
-            label: Text(Localizations.localeOf(context).languageCode == 'ar' ? 'تنزيل الإيصال' : 'Download receipt'),
+            label: Text(context.watch<LanguageState>().isArabic ? 'تنزيل الإيصال' : 'Download receipt'),
           ),
           const SizedBox(height: 10),
           FilledButton.icon(
@@ -485,8 +486,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
                 : const Icon(Icons.replay, size: 18),
             label: Text(
               _isReordering
-                  ? (Localizations.localeOf(context).languageCode == 'ar' ? 'جارٍ الإضافة…' : 'Adding…')
-                  : (Localizations.localeOf(context).languageCode == 'ar' ? 'إعادة الطلب' : 'Reorder'),
+                  ? (context.watch<LanguageState>().isArabic ? 'جارٍ الإضافة…' : 'Adding…')
+                  : (context.watch<LanguageState>().isArabic ? 'إعادة الطلب' : 'Reorder'),
             ),
             style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
           ),
@@ -495,7 +496,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
             OutlinedButton(
               onPressed: _confirmAndCancelOrder,
               style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red), minimumSize: const Size.fromHeight(48)),
-              child: Text(Localizations.localeOf(context).languageCode == 'ar' ? 'إلغاء الطلب' : 'Cancel order'),
+              child: Text(context.watch<LanguageState>().isArabic ? 'إلغاء الطلب' : 'Cancel order'),
             ),
           ],
         ],
@@ -769,7 +770,7 @@ class _SupplierSubOrderCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(supplierName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                Text(localizedSupplierLabel(context, supplierName), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
               ],
             ),
             const SizedBox(height: 10),
@@ -1123,7 +1124,7 @@ class _ReturnRequestSheetState extends State<_ReturnRequestSheet> {
                         top: -6, right: -6,
                         child: IconButton(
                           icon: Icon(Icons.cancel, size: 18, color: LeapPalette.of(context).muted),
-                          tooltip: 'Remove photo',
+                          tooltip: tr(context, 'remove_photo'),
                           onPressed: () => _removePhoto(i),
                         ),
                       ),

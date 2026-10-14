@@ -6,6 +6,7 @@ import '../../core/app_strings.dart';
 import '../../models/vehicle.dart';
 import '../../services/api_client.dart';
 import '../../widgets/skeleton.dart';
+import '../../core/api_error_text.dart';
 
 /// What the user picked, once they've drilled all the way down. `year`
 /// is null when the generation spans a single year (nothing to choose)
@@ -133,7 +134,7 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
             (b) => (b['name'] as String).toLowerCase().contains(decodedMake.toLowerCase()) || decodedMake.toLowerCase().contains((b['name'] as String).toLowerCase()),
           ));
       if (matchedBrand == null || !mounted) {
-        _showVinResultMessage('Decoded: $decodedLabel — but this brand isn\'t in our catalog yet. Please select your vehicle manually.');
+        _showVinResultMessage(trRead(context, 'vin_decoded_unknown_brand').replaceAll('{label}', decodedLabel));
         return;
       }
 
@@ -152,7 +153,7 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
         // year forward so _selectModel's own generation fetch can
         // pre-narrow once the person picks a model.
         _pendingVinYear = decodedYear;
-        _showVinResultMessage('Decoded: $decodedLabel. Please pick your model below.');
+        _showVinResultMessage(trRead(context, 'vin_decoded_pick_model').replaceAll('{label}', decodedLabel));
         setState(() {
           _selectedBrand = matchedBrand;
           _modelsFuture = Future.value(models);
@@ -170,7 +171,7 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
               return decodedYear >= yearStart && (yearEnd == null || decodedYear <= yearEnd);
             }));
       if (matchedGeneration == null || !mounted) {
-        _showVinResultMessage('Decoded: $decodedLabel — found the brand and model, but not the exact generation for that year. Please continue from here.');
+        _showVinResultMessage(trRead(context, 'vin_decoded_no_generation').replaceAll('{label}', decodedLabel));
         setState(() {
           _selectedBrand = matchedBrand;
           _selectedModel = matchedModel;
@@ -187,9 +188,9 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
       _selectedModel = matchedModel;
       _selectGeneration(matchedGeneration);
     } on ApiException catch (e) {
-      _showVinResultMessage(e.message);
+      _showVinResultMessage(apiErrorText(context, e));
     } catch (e) {
-      _showVinResultMessage('Could not look up this VIN. Please select your vehicle manually.');
+      _showVinResultMessage(trRead(context, 'vin_lookup_failed'));
     } finally {
       if (mounted) setState(() => _isLookingUpVin = false);
     }
@@ -308,13 +309,13 @@ class _VehicleFilterSheetState extends State<VehicleFilterSheet> {
               child: Row(
                 children: [
                   if (_step != _Step.brand)
-                    IconButton(icon: const Icon(Icons.arrow_back), tooltip: 'Back', onPressed: _goBack)
+                    IconButton(icon: const Icon(Icons.arrow_back), tooltip: tr(context, 'back_label'), onPressed: _goBack)
                   else
                     const SizedBox(width: 48),
                   Expanded(
                     child: Text(_title(context), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                   ),
-                  IconButton(icon: const Icon(Icons.close), tooltip: 'Close', onPressed: () => Navigator.of(context).pop()),
+                  IconButton(icon: const Icon(Icons.close), tooltip: tr(context, 'close_label'), onPressed: () => Navigator.of(context).pop()),
                 ],
               ),
             ),

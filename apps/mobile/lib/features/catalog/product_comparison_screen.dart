@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../core/currency_state.dart';
 import '../../models/product.dart';
+import 'package:provider/provider.dart';
+import '../../core/language_state.dart';
 
 /// Real side-by-side product comparison (#101) -- 2 to 4 real
 /// products, real specs aligned in real columns. Every row uses a
@@ -17,7 +19,7 @@ class ProductComparisonScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = LeapPalette.of(context);
-    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final isAr = context.watch<LanguageState>().isArabic;
 
     final rows = <(String, String Function(Product))>[
       (isAr ? 'السعر' : 'Price', (p) => formatPrice(context, p.price.toDouble())),

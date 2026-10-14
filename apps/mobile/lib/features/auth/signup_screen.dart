@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../services/api_client.dart';
+import '../../core/language_state.dart';
 
 class SignupScreen extends StatefulWidget {
   // Real pre-fill for the guest-to-account conversion flow (migration
@@ -76,7 +77,7 @@ class _SignupScreenState extends State<SignupScreen> {
         // dismisses it themselves, so it can never be silently
         // destroyed by the navigation that follows.
         if (linkedOrderCount > 0) {
-          final isAr = Localizations.localeOf(context).languageCode == 'ar';
+          final isAr = context.read<LanguageState>().isArabic;
           await showDialog<void>(
             context: context,
             builder: (dialogContext) => AlertDialog(
@@ -146,7 +147,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 // except retyping it.
                 suffixIcon: IconButton(
                   icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                  tooltip: _obscurePassword ? 'Show password' : 'Hide password',
+                  tooltip: tr(context, _obscurePassword ? 'show_password' : 'hide_password'),
                   onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                 ),
               ),

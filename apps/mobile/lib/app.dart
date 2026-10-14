@@ -119,9 +119,11 @@ final GoRouter appRouter = GoRouter(
         final extra = state.extra;
         String? categoryName;
         String? part;
+        String? partLabel;
         if (extra is Map) {
           categoryName = extra['categoryName'] as String?;
           part = extra['part'] as String?;
+          partLabel = extra['partLabel'] as String?;   // the part's name in the buyer's language (title only)
         } else if (extra is String) {
           categoryName = extra;
         }
@@ -129,6 +131,7 @@ final GoRouter appRouter = GoRouter(
           categoryId: state.pathParameters['id']!,
           categoryName: categoryName ?? state.pathParameters['id']!,
           part: part,
+          partLabel: partLabel,
         );
       },
     ),

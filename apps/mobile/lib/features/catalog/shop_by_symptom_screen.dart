@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
+import 'package:provider/provider.dart';
+import '../../core/language_state.dart';
 
 /// Real "Shop by symptom" guided entry point (#15) -- a curated list
 /// mapping real, common car symptoms to genuine parts that actually
@@ -37,7 +39,7 @@ class ShopBySymptomScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final isAr = context.watch<LanguageState>().isArabic;
     final palette = LeapPalette.of(context);
     return Scaffold(
       appBar: AppBar(title: Text(isAr ? 'تسوق حسب العارض' : 'Shop by symptom')),

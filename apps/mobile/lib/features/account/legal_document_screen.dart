@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
+import 'package:provider/provider.dart';
+import '../../core/language_state.dart';
 
 /// Real Terms of Service / Privacy Policy viewer (#146). HONEST
 /// SCOPE, stated directly: no real legal content exists anywhere in
@@ -17,7 +19,7 @@ class LegalDocumentScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final isAr = context.watch<LanguageState>().isArabic;
     final palette = LeapPalette.of(context);
     final title = type == LegalDocumentType.terms
         ? (isAr ? 'شروط الخدمة' : 'Terms of Service')

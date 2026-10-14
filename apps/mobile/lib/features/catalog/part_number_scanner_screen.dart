@@ -3,6 +3,9 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import '../../core/theme.dart';
+import 'package:provider/provider.dart';
+import '../../core/language_state.dart';
+import '../../core/app_strings.dart';
 
 /// Real "search by photo" for a printed part/OEM number -- reads the
 /// real, physically-printed number on a part directly from a real
@@ -65,12 +68,12 @@ class _PartNumberScannerScreenState extends State<PartNumberScannerScreen> {
         setState(() {
           _candidates = lines;
           if (lines.isEmpty) {
-            _errorMessage = 'Couldn\'t read any text in that photo. Try getting closer, or in better light.';
+            _errorMessage = trRead(context, 'ocr_no_text');
           }
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _errorMessage = 'Couldn\'t process that photo. Please try again.');
+      if (mounted) setState(() => _errorMessage = trRead(context, 'ocr_failed'));
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
@@ -82,7 +85,7 @@ class _PartNumberScannerScreenState extends State<PartNumberScannerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final isAr = context.watch<LanguageState>().isArabic;
     final palette = LeapPalette.of(context);
     return Scaffold(
       appBar: AppBar(title: Text(isAr ? 'صورة رقم القطعة' : 'Photo of part number')),

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../core/theme.dart';
 import '../core/app_lock_state.dart';
+import '../core/language_state.dart';
+import '../core/app_strings.dart';
 
 /// Real gate wrapping the whole app (new) -- shows a real lock screen
 /// requiring Face ID/fingerprint (or the device's own PIN/passcode,
@@ -52,7 +54,7 @@ class _AppLockGateState extends State<AppLockGate> with WidgetsBindingObserver {
       return const _BlankSplash();
     }
     if (lockState.isLocked) {
-      return _LockScreen(onUnlock: () => lockState.unlock());
+      return _LockScreen(onUnlock: () => lockState.unlock(reason: trRead(context, 'app_lock_unlock_reason')));
     }
     return widget.child;
   }
@@ -73,7 +75,7 @@ class _LockScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final isAr = context.watch<LanguageState>().isArabic;
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(

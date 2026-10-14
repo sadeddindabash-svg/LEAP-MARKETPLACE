@@ -666,7 +666,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '${_stockChangedItemNames.join(", ")} ${_stockChangedItemNames.length == 1 ? "has" : "have"} less stock available now than in your cart. Please adjust the quantity before continuing.',
+                      tr(context, _stockChangedItemNames.length == 1 ? 'checkout_stock_changed_one' : 'checkout_stock_changed_many').replaceAll('{items}', _stockChangedItemNames.join(', ')),
                       style: TextStyle(color: Colors.orange.shade900, fontSize: 12.5, fontWeight: FontWeight.w600),
                     ),
                   ),

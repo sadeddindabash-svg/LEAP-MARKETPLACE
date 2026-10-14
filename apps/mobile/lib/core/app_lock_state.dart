@@ -88,9 +88,9 @@ class AppLockState extends ChangeNotifier {
   /// authentication first, so turning this on can't silently lock a
   /// buyer out of their own real account if their device's biometric/
   /// credential setup doesn't actually work.
-  Future<bool> enable() async {
+  Future<bool> enable({String reason = 'Confirm to enable app lock'}) async {
     if (!_isSupported) return false;
-    final success = await authenticate(reason: 'Confirm to enable app lock');
+    final success = await authenticate(reason: reason);
     if (!success) return false;
     await _storage.write(key: _enabledKey, value: 'true');
     _isEnabled = true;
@@ -105,8 +105,8 @@ class AppLockState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> unlock() async {
-    final success = await authenticate(reason: 'Unlock Leap');
+  Future<void> unlock({String reason = 'Unlock Leap'}) async {
+    final success = await authenticate(reason: reason);
     if (success) {
       _isLocked = false;
       notifyListeners();

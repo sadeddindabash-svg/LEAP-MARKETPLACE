@@ -411,7 +411,7 @@ class _CartItemRowState extends State<_CartItemRow> {
                       icon: _isRemoving
                           ? SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: palette.muted))
                           : Icon(Icons.delete_outline, size: 18, color: palette.muted),
-                      tooltip: 'Remove item',
+                      tooltip: tr(context, 'remove_item'),
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
                       visualDensity: VisualDensity.compact,
@@ -444,7 +444,7 @@ class _CartItemRowState extends State<_CartItemRow> {
                             constraints: const BoxConstraints(),
                             onPressed: () => _changeQuantity(context, cart, item.quantity - 1),
                             icon: Icon(Icons.remove, color: palette.ink),
-                            tooltip: 'Decrease quantity',
+                            tooltip: tr(context, 'decrease_quantity'),
                           ),
                           SizedBox(width: 20, child: Text('${item.quantity}', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: palette.ink))),
                           IconButton(
@@ -453,7 +453,7 @@ class _CartItemRowState extends State<_CartItemRow> {
                             constraints: const BoxConstraints(),
                             onPressed: atStockLimit ? null : () => _changeQuantity(context, cart, item.quantity + 1),
                             icon: Icon(Icons.add, color: atStockLimit ? palette.muted : palette.ink),
-                            tooltip: 'Increase quantity',
+                            tooltip: tr(context, 'increase_quantity'),
                           ),
                         ],
                       ),

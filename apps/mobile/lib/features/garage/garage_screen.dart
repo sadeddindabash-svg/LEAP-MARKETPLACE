@@ -307,7 +307,7 @@ class _GarageScreenState extends State<GarageScreen> {
                           ),
                         ),
                       const SizedBox(width: 8),
-                      IconButton(icon: Icon(Icons.close, size: 18, color: palette.muted), tooltip: 'Remove vehicle', onPressed: () => _confirmRemove(v)),
+                      IconButton(icon: Icon(Icons.close, size: 18, color: palette.muted), tooltip: tr(context, 'remove_vehicle'), onPressed: () => _confirmRemove(v)),
                     ],
                   ),
                   const SizedBox(height: 2),

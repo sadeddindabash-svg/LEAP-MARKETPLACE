@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../core/theme.dart';
+import 'package:provider/provider.dart';
+import '../core/language_state.dart';
 
 /// Real, first-run onboarding walkthrough (new) -- closes a real gap:
 /// nothing pointed a brand-new user at My Garage or vehicle-fitment
@@ -61,7 +63,7 @@ class _OnboardingDialogState extends State<_OnboardingDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final isAr = context.watch<LanguageState>().isArabic;
     final palette = LeapPalette.of(context);
     return Dialog(
       insetPadding: const EdgeInsets.all(20),

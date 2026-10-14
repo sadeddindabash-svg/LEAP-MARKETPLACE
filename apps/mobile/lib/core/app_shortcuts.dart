@@ -1,3 +1,4 @@
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:quick_actions/quick_actions.dart';
 import '../app.dart';
 
@@ -35,9 +36,12 @@ class AppShortcuts {
     // doesn't exist would be a real, silently broken icon on a real
     // device. The OS shows a generic fallback icon without it, which
     // is honest given no real icon assets have been added here.
+    // These are set once at app start, before any screen exists, so the language is read straight from where the Account screen saves it. A change of
+    // language shows here the next time the app starts.
+    final isAr = (await const FlutterSecureStorage().read(key: 'leap_language')) == 'ar';
     await _quickActions.setShortcutItems([
-      const ShortcutItem(type: 'search', localizedTitle: 'Search'),
-      const ShortcutItem(type: 'orders', localizedTitle: 'Track order'),
+      ShortcutItem(type: 'search', localizedTitle: isAr ? 'بحث' : 'Search'),
+      ShortcutItem(type: 'orders', localizedTitle: isAr ? 'تتبع الطلب' : 'Track order'),
     ]);
   }
 }

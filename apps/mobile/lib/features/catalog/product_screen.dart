@@ -156,7 +156,7 @@ class _ProductScreenState extends State<ProductScreen> {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text('Could not load this product.\n${snapshot.error}', textAlign: TextAlign.center, style: TextStyle(color: LeapPalette.of(context).muted)),
+                child: Text('${tr(context, 'could_not_load_product')}\n${snapshot.error}', textAlign: TextAlign.center, style: TextStyle(color: LeapPalette.of(context).muted)),
               ),
             );
           }
@@ -441,12 +441,12 @@ class _ProductDetailBody extends StatelessWidget {
                     decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(999), border: Border.all(color: palette.line)),
                     child: Row(
                       children: [
-                        IconButton(onPressed: () => onQtyChanged(qty > 1 ? qty - 1 : 1), icon: Icon(Icons.remove, size: 16, color: palette.ink), tooltip: 'Decrease quantity'),
+                        IconButton(onPressed: () => onQtyChanged(qty > 1 ? qty - 1 : 1), icon: Icon(Icons.remove, size: 16, color: palette.ink), tooltip: tr(context, 'decrease_quantity')),
                         Text('$qty', style: TextStyle(fontWeight: FontWeight.w700, color: palette.ink)),
                         IconButton(
                           onPressed: qty >= product.stockQuantity ? null : () => onQtyChanged(qty + 1),
                           icon: Icon(Icons.add, size: 16, color: qty >= product.stockQuantity ? palette.muted : palette.ink),
-                          tooltip: 'Increase quantity',
+                          tooltip: tr(context, 'increase_quantity'),
                         ),
                       ],
                     ),

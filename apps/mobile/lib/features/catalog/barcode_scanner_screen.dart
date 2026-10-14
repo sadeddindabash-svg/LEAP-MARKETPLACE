@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../core/theme.dart';
+import 'package:provider/provider.dart';
+import '../../core/language_state.dart';
 
 /// Real barcode/OEM part-number scanner (#1) -- feeds a genuinely
 /// scanned code straight into the existing real search, exactly the
@@ -42,7 +44,7 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final isAr = context.watch<LanguageState>().isArabic;
     return Scaffold(
       appBar: AppBar(
         title: Text(isAr ? 'مسح الرمز' : 'Scan barcode'),

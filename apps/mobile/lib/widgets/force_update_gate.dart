@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../core/theme.dart';
 import '../services/api_client.dart';
+import 'package:provider/provider.dart';
+import '../core/language_state.dart';
 
 /// Real, genuine semantic-version comparison (new) -- deliberately NOT
 /// a plain string comparison, which would incorrectly treat "1.10.0"
@@ -92,7 +94,7 @@ class _UpdateRequiredScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final isAr = context.watch<LanguageState>().isArabic;
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(

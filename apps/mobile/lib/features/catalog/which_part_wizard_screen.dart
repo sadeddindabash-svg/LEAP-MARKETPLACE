@@ -122,7 +122,7 @@ class _WhichPartWizardScreenState extends State<WhichPartWizardScreen> {
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: ElevatedButton(
-                      onPressed: () => context.push('/category/${category.id}', extra: {'categoryName': category.nameEn}),
+                      onPressed: () => context.push('/category/${category.id}', extra: {'categoryName': category.displayName(isAr)}),
                       child: Text(isAr ? 'عرض المنتجات' : 'View products'),
                     ),
                   ),
@@ -138,7 +138,7 @@ class _WhichPartWizardScreenState extends State<WhichPartWizardScreen> {
                     child: ListTile(
                       title: Text(p.displayName(isAr), style: TextStyle(fontWeight: FontWeight.w600, color: palette.ink)),
                       trailing: const Icon(Icons.chevron_right),
-                      onTap: () => context.push('/category/${category.id}', extra: {'categoryName': category.nameEn, 'part': p.nameEn}),
+                      onTap: () => context.push('/category/${category.id}', extra: {'categoryName': category.displayName(isAr), 'part': p.nameEn, 'partLabel': p.displayName(isAr)}),
                     ),
                   );
                 },

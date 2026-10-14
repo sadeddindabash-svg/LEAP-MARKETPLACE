@@ -25,9 +25,15 @@ import '../../widgets/skeleton.dart';
 /// concept already uses.
 class CategoryScreen extends StatefulWidget {
   final String categoryId;
+  /// The category's name, ALREADY in the buyer's language (the caller localizes it).
   final String categoryName;
+  /// The part's ENGLISH name: this is what the server filters by, so it must not be translated.
   final String? part;
-  const CategoryScreen({super.key, required this.categoryId, required this.categoryName, this.part});
+  /// The part's name in the buyer's language, for the page title only. Falls back to [part] when a caller gives none.
+  final String? partLabel;
+  const CategoryScreen({super.key, required this.categoryId, required this.categoryName, this.part, this.partLabel});
+
+  String get _title => partLabel ?? part ?? categoryName;
 
   @override
   State<CategoryScreen> createState() => _CategoryScreenState();
@@ -80,11 +86,11 @@ class _CategoryScreenState extends State<CategoryScreen> {
   Widget build(BuildContext context) {
     final language = context.watch<LanguageState>().language;
     if (!_defaultVehicleChecked) {
-      return Scaffold(appBar: AppBar(title: Text(widget.part ?? widget.categoryName)), body: const ProductGridSkeleton());
+      return Scaffold(appBar: AppBar(title: Text(widget._title)), body: const ProductGridSkeleton());
     }
     _ensureLoaded(language);
     return Scaffold(
-      appBar: AppBar(title: Text(widget.part ?? widget.categoryName)),
+      appBar: AppBar(title: Text(widget._title)),
       body: FutureBuilder<List<Product>>(
         future: _productsFuture,
         builder: (context, snapshot) {

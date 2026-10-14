@@ -156,7 +156,7 @@ class _ReferralsScreenState extends State<ReferralsScreen> {
                       // header.
                       if (_history != null && _history!.isNotEmpty) ...[
                         const SizedBox(height: 24),
-                        Text('Referral history', style: TextStyle(fontSize: 11.5, color: palette.muted, fontWeight: FontWeight.w700)),
+                        Text(tr(context, 'referral_history'), style: TextStyle(fontSize: 11.5, color: palette.muted, fontWeight: FontWeight.w700)),
                         const SizedBox(height: 8),
                         ..._history!.map((h) {
                           final firstName = h['firstName'] as String?;
@@ -166,8 +166,8 @@ class _ReferralsScreenState extends State<ReferralsScreen> {
                             margin: const EdgeInsets.only(bottom: 8),
                             child: ListTile(
                               leading: Icon(rewardGranted ? Icons.check_circle : Icons.hourglass_empty, color: rewardGranted ? palette.gauge : palette.muted),
-                              title: Text(firstName != null ? '$firstName joined' : 'A new member joined'),
-                              subtitle: Text('${joinedAt.month}/${joinedAt.day}/${joinedAt.year} — ${rewardGranted ? "Reward earned" : "Reward pending"}'),
+                              title: Text(firstName != null ? tr(context, 'referral_member_joined').replaceAll('{name}', firstName) : tr(context, 'referral_new_member')),
+                              subtitle: Text('${joinedAt.month}/${joinedAt.day}/${joinedAt.year} — ${tr(context, rewardGranted ? 'reward_earned' : 'reward_pending')}'),
                             ),
                           );
                         }),

@@ -195,7 +195,7 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
                               trailing: Icon(Icons.chevron_right, color: palette.muted),
                               onTap: () => context.push(
                                 '/category/$_selectedCategoryId',
-                                extra: {'categoryName': categoryLabel, 'part': part.nameEn},
+                                extra: {'categoryName': categoryLabel, 'part': part.nameEn, 'partLabel': partLabel},
                               ),
                             ),
                           );
