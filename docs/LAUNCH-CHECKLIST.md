@@ -61,6 +61,14 @@ To clean test data (take a backup first; the tool prints the command): `node scr
 - [ ] Store accounts (Google Play; Apple Developer for iOS), listings, screenshots, a privacy policy address, and the data-safety / privacy answers each store asks for.
 - [ ] Firebase set up (the service account in `FIREBASE_SERVICE_ACCOUNT_JSON`, the apps registered) if you want push notifications.
 
+### Search engines (the public storefront only)
+- [ ] The storefront is served publicly over **https**, and `NEXT_PUBLIC_SITE_URL` is that exact address (every canonical address and the sitemap use it).
+- [ ] Registered in **Google Search Console** and **Bing Webmaster Tools**, and `/sitemap.xml` submitted. Check "Pages" a week later for pages that are excluded or not indexed.
+- [ ] Test products, test categories and fake review counts are removed **before** the sitemap is submitted (the readiness checker lists them): they would be indexed.
+- [ ] Open a few product pages in Google's [Rich Results Test](https://search.google.com/test/rich-results) to see the structured data is read.
+- [ ] Every product's weight and size can be worked out (its own, or its part's): the checker's "can be priced" line. A product that cannot be priced is **hidden from buyers**, and so from search.
+- [ ] Consider Google Merchant Center free listings (a product feed) and an Arabic version of the storefront: see `apps/web-storefront/README.md`, "SEO".
+
 ### Words and rules
 - [ ] A **native Arabic speaker** reads every Arabic text (the buyer app, the emails, the reset page) before launch. The Chinese in the hub app too.
 - [ ] Privacy policy, terms of sale, and a refund and returns policy, written for the countries you sell in. These need a person who knows that law; the code cannot supply them.

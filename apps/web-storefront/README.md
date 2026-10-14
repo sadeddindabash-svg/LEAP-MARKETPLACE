@@ -693,3 +693,25 @@ suite: 29/29 passing.
    and `next/image`'s domain allowlist isn't set up for that yet in
    this project. Worth revisiting once a single, real, fixed image
    host is settled on.
+
+## SEO: what search engines are told (all in `lib/seo.ts`, tested in `lib/seo.test.ts` and `app/seo-routes.test.ts`)
+
+**The rule behind everything: only real data.** Titles, descriptions and structured data are built from what a product really has. A field it does not have (a part brand, a condition, a rating nobody gave) is left out, never invented, because search engines penalise made-up data.
+
+- **Product pages**
+  - *Title:* the name, then `OEM <part number>`, then the vehicle (`Brand Model Year`), as much as fits about 62 characters (people search by part number and by car). The layout adds ` | Leap Auto Parts`.
+  - *Description:* the product's own words (short), then part number, fitment, stock, price and delivery.
+  - *Canonical address:* `/products/<id>`, plus share-card tags (`og:` and `twitter:`).
+  - *Structured data* (schema.org JSON-LD, escaped so a product name cannot close the script tag): a `Product` with its real offer (price, currency, in stock or out of stock, part number as `mpn`), a `BreadcrumbList` (Home, category, product), and an `AggregateRating` **only when real reviews exist** (the stored seed rating is never used). Not stated on purpose: `brand` (the storefront is not given the part's manufacturer) and `itemCondition`.
+- **Search pages:** a **category page** (`/search?category=brake`) is a real landing page: indexed, titled "Brake System parts", canonical to itself. Every other combination (a typed query, a vehicle filter, page 2...) is **followed but not indexed** (`noindex, follow`) and points at the category page as the one real version.
+- **Home page:** a canonical address and `Organization` + `WebSite` data (with the site's search box).
+- **Private pages** (`PRIVATE_PATHS`: cart, checkout, login, signup, orders, wishlist, notifications, returns, support, referrals, saved-searches) are kept out **two ways**: `robots.txt` disallows them and each section has a `layout.tsx` with `noindex, nofollow` (they are client components, which cannot export metadata themselves). A test compares the list with the real folders, so **a new section that is neither public on purpose nor listed as private fails the tests**.
+- **`/robots.txt`** allows the site, disallows the private paths and points at the sitemap. **`/sitemap.xml`** lists the home page, the catalog, every **category that has products**, and every product (at most 50,000 addresses: split it with `generateSitemaps` when the catalog outgrows that). It has **no `lastModified`, `changeFrequency` or `priority`**: products have no honest "last changed" date (prices are worked out live), and a sitemap that says "changed just now" for every page teaches Google to ignore it. It refreshes with the product data (`REVALIDATE_SECONDS`, 60).
+- **The other web pages of the project** (the three portals and the web builds of the two phone apps) say `noindex, nofollow` (checked in `apps/admin-dashboard/src/webIndexing.test.js`). Only the storefront belongs in search results.
+
+**In production you must:** set `NEXT_PUBLIC_SITE_URL` to the real **https** address (it defaults to `http://localhost:3001`, and every canonical address and the sitemap use it), serve the storefront publicly, then register it in Google Search Console and Bing Webmaster Tools and submit `/sitemap.xml`. Remove test products and fake review counts first (`node scripts/remove-test-data.js` in `services/api`); the launch checker lists them.
+
+**Not done yet (the biggest remaining wins):** an Arabic version of the site (`lang="ar"`, right to left, with `hreflang` links), category/part/vehicle landing pages beyond the category page, readable product addresses (keywords instead of ids), and a product feed for Google Merchant Center.
+
+**Run the tests:** `cd apps/web-storefront && npm test` (the API integration tests need the backend running). They are not part of `scripts/run-tests.ps1`.
+

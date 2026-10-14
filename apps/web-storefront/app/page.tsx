@@ -1,5 +1,10 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { fetchCategories, fetchProducts, resolveImageUrl } from "@/lib/api";
+import { JsonLd } from "@/components/JsonLd";
+import { websiteJsonLd } from "@/lib/seo";
+
+export const metadata: Metadata = { alternates: { canonical: "/" } };
 
 // Real Server Component -- this data is fetched and rendered into
 // real, crawlable HTML at request time, on the server. This is the
@@ -15,6 +20,7 @@ export default async function HomePage() {
 
   return (
     <div>
+      <JsonLd data={websiteJsonLd()} />
       <section className="border-b border-line bg-white">
         <div className="mx-auto max-w-6xl px-6 py-16 md:py-24">
           <h1 className="font-display font-bold text-5xl md:text-7xl leading-[0.95] tracking-tight max-w-3xl">

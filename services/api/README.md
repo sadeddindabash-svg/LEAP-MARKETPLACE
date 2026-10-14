@@ -3285,6 +3285,10 @@ refund_pending --(admin marks refunded)--+
 builds its own hub and hub-staff login (using the Hub staff feature) so workload checks are exact. Verified to fail when completion stops needing
 both conditions, when supplier isolation is removed, when the buyer-cancel block is removed, or when the hub workload keeps counting returned units.
 
+## A product that cannot be priced is hidden, it does not take the catalog down
+
+The buyer price needs the product's shipping fee, which needs a weight and size (its own, else its part's). A product with neither used to make **every** buyer-facing product list an error for **everyone**, because the list prices all its products together and one failure failed the whole response. Now the pricing engine throws a recognisable `MissingShippingDataError` (code `missing_shipping_data`, same message as before), the four buyer product lists **skip** that product, and `GET /catalog/products/:id` answers `404 Product not found` for it. The server log names the product (`[catalog] product <id> (<category> / <part>) is hidden from buyers: ...`). Any other error still fails loudly. The product comes back as soon as its part gets a weight and size. `node scripts/check-launch-readiness.js` lists such active products (`unpriceableProducts`), skipping old products priced directly in USD. **Not covered:** the cart and order paths still treat a product that became unpriceable *after* it was added to a cart as an error. Tested in `unpriceableProduct.integration.test.js` (it fails against the old code with a 500).
+
 ## A weight and package size for each PART (migration 104; moved from categories, which had them in 103)
 
 The shipping cost (the `shipping_volumetric` fee: a rate times the larger of the weight and length x width x height / 5000) used to read a weight and size the supplier typed on every product. Now the **admin sets them once per PART** (the sub-category, e.g. "Front Brake Disc" under "Brake System"; `category_parts.weight_kg / length_cm / width_cm / height_cm`) and every product with that part uses them. A major category carries none: a category holds parts of very different sizes.

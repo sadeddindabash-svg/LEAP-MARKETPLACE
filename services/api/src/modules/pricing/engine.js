@@ -97,7 +97,7 @@ async function calculateBuyerPriceUsd({ supplierCostCny, weightKg, lengthCm, wid
       feeAmountCny = Number(c.value);
     } else if (c.type === 'shipping_volumetric') {
       if (weightKg == null || lengthCm == null || widthCm == null || heightCm == null) {
-        throw new Error(`Cannot apply shipping fee "${c.name}" — product is missing weight/dimensions`);
+        throw new MissingShippingDataError(`Cannot apply shipping fee "${c.name}" — product is missing weight/dimensions`);
       }
       const chargeable = chargeableWeightKg({ weightKg, lengthCm, widthCm, heightCm });
       feeAmountCny = Number(c.value) * chargeable;
@@ -120,4 +120,14 @@ async function calculateBuyerPriceUsd({ supplierCostCny, weightKg, lengthCm, wid
   };
 }
 
-module.exports = { calculateBuyerPriceUsd, getFxRate, chargeableWeightKg, SHIPPING_VOLUMETRIC_DIVISOR };
+// The product has no weight and size to work the shipping fee from (neither its own nor its part's). Its own class, so a caller can tell "this product cannot be
+// priced" (skip it, say which one) from a real bug (fail loudly).
+class MissingShippingDataError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'MissingShippingDataError';
+    this.code = 'missing_shipping_data';
+  }
+}
+
+module.exports = { calculateBuyerPriceUsd, getFxRate, chargeableWeightKg, SHIPPING_VOLUMETRIC_DIVISOR, MissingShippingDataError };

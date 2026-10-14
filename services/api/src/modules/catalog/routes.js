@@ -2,7 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
-const { calculateBuyerPriceUsd } = require('../pricing/engine');
+const { calculateBuyerPriceUsd, MissingShippingDataError } = require('../pricing/engine');
 const { withEffectiveShipping } = require('../shared/partShipping');
 const { findMatchingDiscountRule } = require('../pricing/discountRules');
 const { resolveDestinationIsoCode, calculateDeliveryDays } = require('../deliveryEstimate/engine');
@@ -105,6 +105,26 @@ function toBuyerProductDto(row, lang) {
 // findMatchingDiscountRule now lives in the shared pricing/discountRules
 // module (imported below), since the cart endpoint needs this exact
 // same real matching logic too.
+
+// A product whose shipping fee cannot be worked out (no weight and size of its own, and its part has none either) cannot be sold. It used to take the whole product
+// list down for EVERYONE: the list prices all its products together, so one such product made the whole response an error. Now it is left out of every buyer-facing
+// list and its own page says "not found", and the server log names it, so it can be fixed (set its part's weight and size, or give the product its own).
+function warnUnpriceable(row, err) {
+  console.error(`[catalog] product ${row.id} (${row.category} / ${row.part}) is hidden from buyers: ${err.message}. Set the weight and size of its part, or give the product its own.`);
+}
+// Builds a buyer-facing DTO for each row, skipping the rows that cannot be priced (any other error still fails loudly).
+async function buildBuyerList(rows, build) {
+  const dtos = await Promise.all(rows.map(async (row) => {
+    try {
+      return await build(row);
+    } catch (err) {
+      if (err instanceof MissingShippingDataError) { warnUnpriceable(row, err); return null; }
+      throw err;
+    }
+  }));
+  return dtos.filter(Boolean);
+}
+
 
 async function attachBuyerPrice(dto, row) {
   // The weight and size shipping is worked out from: the product's own complete set, else its part's (migration 104). The buyer sees the same ones.
@@ -370,7 +390,7 @@ router.get('/products', async (req, res, next) => {
 
     const { rows } = await db.query(sql, params);
     const destinationIsoCode = await resolveDestinationIsoCode(req);
-    let dtos = await Promise.all(rows.map(async (r) => {
+    let dtos = await buildBuyerList(rows, async (r) => {
       let dto = toBuyerProductDto(r, lang);
       dto = await attachBuyerImages(dto, r.id);
       dto = await attachPrimaryFitment(dto, r.id, lang);
@@ -379,7 +399,7 @@ router.get('/products', async (req, res, next) => {
       dto = await attachSupplierSignals(dto, r.supplier_id);
       dto = await attachDeliveryEstimate(dto, destinationIsoCode);
       return dto;
-    }));
+    });
 
     // Real price range filter + price sort -- deliberately applied
     // HERE, in application code, after attachBuyerPrice runs, not as SQL
@@ -450,7 +470,13 @@ router.get('/products/:id', async (req, res, next) => {
     dto = await attachBuyerImages(dto, req.params.id);
     dto = await attachPrimaryFitment(dto, req.params.id, lang);
     dto = await attachPartTranslation(dto, rows[0], lang);
-    dto = await attachBuyerPrice(dto, rows[0]);
+    try {
+      dto = await attachBuyerPrice(dto, rows[0]);
+    } catch (err) {
+      // cannot be priced, so cannot be sold: the same answer as a product that does not exist (and the log names it)
+      if (err instanceof MissingShippingDataError) { warnUnpriceable(rows[0], err); return res.status(404).json({ error: 'Product not found' }); }
+      throw err;
+    }
     dto = await attachSupplierSignals(dto, rows[0].supplier_id);
     dto = await attachDeliveryEstimate(dto, await resolveDestinationIsoCode(req));
     const { rows: attrRows } = await db.query(
@@ -509,7 +535,7 @@ router.get('/products/:id/alternatives', async (req, res, next) => {
     );
 
     const destinationIsoCode = await resolveDestinationIsoCode(req);
-    const dtos = await Promise.all(rows.map(async (row) => {
+    const dtos = await buildBuyerList(rows, async (row) => {
       let dto = toBuyerProductDto(row, lang);
       dto = await attachBuyerImages(dto, row.id);
       dto = await attachPrimaryFitment(dto, row.id, lang);
@@ -518,7 +544,7 @@ router.get('/products/:id/alternatives', async (req, res, next) => {
       dto = await attachSupplierSignals(dto, row.supplier_id);
       dto = await attachDeliveryEstimate(dto, destinationIsoCode);
       return dto;
-    }));
+    });
     res.json(dtos);
   } catch (err) {
     next(err);
@@ -544,7 +570,7 @@ router.get('/products/:id/oem-alternatives', async (req, res, next) => {
       [oemNumber, req.params.id]
     );
     const destinationIsoCode = await resolveDestinationIsoCode(req);
-    const dtos = await Promise.all(rows.map(async (row) => {
+    const dtos = await buildBuyerList(rows, async (row) => {
       let dto = toBuyerProductDto(row, lang);
       dto = await attachBuyerImages(dto, row.id);
       dto = await attachPrimaryFitment(dto, row.id, lang);
@@ -553,7 +579,7 @@ router.get('/products/:id/oem-alternatives', async (req, res, next) => {
       dto = await attachSupplierSignals(dto, row.supplier_id);
       dto = await attachDeliveryEstimate(dto, destinationIsoCode);
       return dto;
-    }));
+    });
     res.json(dtos);
   } catch (err) {
     next(err);
@@ -606,7 +632,7 @@ router.get('/products/:id/same-brand', async (req, res, next) => {
       [brandId, req.params.id, modelId, currentCategory, limitNum, offset]
     );
     const destinationIsoCode = await resolveDestinationIsoCode(req);
-    const dtos = await Promise.all(rows.map(async (row) => {
+    const dtos = await buildBuyerList(rows, async (row) => {
       let dto = toBuyerProductDto(row, lang);
       dto = await attachBuyerImages(dto, row.id);
       dto = await attachPrimaryFitment(dto, row.id, lang);
@@ -615,7 +641,7 @@ router.get('/products/:id/same-brand', async (req, res, next) => {
       dto = await attachSupplierSignals(dto, row.supplier_id);
       dto = await attachDeliveryEstimate(dto, destinationIsoCode);
       return dto;
-    }));
+    });
     res.json(dtos);
   } catch (err) {
     next(err);

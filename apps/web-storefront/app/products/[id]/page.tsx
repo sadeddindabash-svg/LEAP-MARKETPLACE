@@ -2,11 +2,14 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { AddToCartButton } from "@/components/AddToCartButton";
 import { WishlistButton } from "@/components/WishlistButton";
+import { JsonLd } from "@/components/JsonLd";
 import {
+  fetchCategories,
   fetchProductById,
   fetchProductReviews,
   resolveImageUrl,
 } from "@/lib/api";
+import { SITE_NAME, absoluteUrl, breadcrumbJsonLd, productDescription, productJsonLd, productTitle } from "@/lib/seo";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -21,31 +24,42 @@ export async function generateMetadata({
 }: PageProps): Promise<Metadata> {
   const { id } = await params;
   const product = await fetchProductById(id);
-  if (!product) return { title: "Part not found" };
+  if (!product) return { title: "Part not found", robots: { index: false, follow: false } };
+  // Built from what the product really has (name, part number, fitment, stock, price): see lib/seo.ts.
+  const title = productTitle(product);
+  const description = productDescription(product);
+  const images = product.images[0] ? [resolveImageUrl(product.images[0])] : undefined;
   return {
-    title: product.name,
-    description:
-      product.description ||
-      `${product.name} — real fitment, verified supplier, on Leap Auto Parts.`,
-    openGraph: {
-      title: product.name,
-      description: product.description || undefined,
-      images: product.images[0] ? [resolveImageUrl(product.images[0])] : undefined,
-    },
+    title,
+    description,
+    alternates: { canonical: `/products/${product.id}` },
+    openGraph: { title, description, url: absoluteUrl(`/products/${product.id}`), siteName: SITE_NAME, type: "website", images },
+    twitter: { card: images ? "summary_large_image" : "summary", title, description, images },
   };
 }
 
 export default async function ProductPage({ params }: PageProps) {
   const { id } = await params;
-  const [product, reviews] = await Promise.all([
+  const [product, reviews, categories] = await Promise.all([
     fetchProductById(id),
     fetchProductReviews(id),
+    fetchCategories(),
   ]);
 
   if (!product) notFound();
 
+  const categoryName = categories.find((c) => c.id === product.category)?.nameEn;
+  const productUrl = absoluteUrl(`/products/${product.id}`);
+
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
+      {/* Structured data: the price and stock a search result can show, the REAL review rating (only if real reviews exist), and the breadcrumb trail. */}
+      <JsonLd data={productJsonLd(product, reviews, { url: productUrl, imageUrls: product.images.map(resolveImageUrl), categoryName })} />
+      <JsonLd data={breadcrumbJsonLd([
+        { name: "Home", path: "/" },
+        ...(categoryName ? [{ name: categoryName, path: `/search?category=${encodeURIComponent(product.category)}` }] : []),
+        { name: product.name, path: `/products/${product.id}` },
+      ])} />
       <div className="grid md:grid-cols-2 gap-10">
         <div>
           <div className="aspect-square rounded-lg border border-line bg-white overflow-hidden">

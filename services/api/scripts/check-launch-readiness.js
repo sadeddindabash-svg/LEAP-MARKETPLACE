@@ -52,10 +52,19 @@ async function gatherFacts() {
         (SELECT count(*)::int FROM product_reviews r WHERE r.product_id = p.id AND r.status = 'approved') AS real
       FROM products p WHERE p.review_count > 0`)).filter((p) => p.shown > p.real);
 
+  // Active products whose shipping fee cannot be worked out: no weight and size of their own, and their part has none either. The catalog hides them from every
+  // buyer-facing list (and says "not found" on their page) rather than failing for everyone. Old products priced directly in USD never need a weight: they are not listed.
+  const unpriceableProducts = await one(`SELECT p.id, p.category, p.part FROM products p
+      LEFT JOIN category_parts cp ON cp.category_id = p.category AND lower(btrim(cp.name_en)) = lower(btrim(p.part))
+      WHERE p.status = 'active' AND p.currency_code = 'CNY'
+        AND NOT (p.weight_kg IS NOT NULL AND p.length_cm IS NOT NULL AND p.width_cm IS NOT NULL AND p.height_cm IS NOT NULL)
+        AND cp.weight_kg IS NULL
+      ORDER BY p.id`);
+
   const ownersWithoutTwoFactor = (await one(`SELECT email FROM users WHERE is_owner = true AND COALESCE(two_factor_enabled, false) = false ORDER BY email`)).map((r) => r.email);
   const realHubs = hubs.filter((h) => !rules.isTestHub(h)).length;
 
-  return { pendingMigrations: pending, databaseName, defaultPasswordAccounts, testAdminAccounts, testAccounts, testData, fakeReviewProducts, ownersWithoutTwoFactor, realHubs };
+  return { pendingMigrations: pending, databaseName, defaultPasswordAccounts, testAdminAccounts, testAccounts, testData, fakeReviewProducts, unpriceableProducts, ownersWithoutTwoFactor, realHubs };
 }
 
 (async () => {

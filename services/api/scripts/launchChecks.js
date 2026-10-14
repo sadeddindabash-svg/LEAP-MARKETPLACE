@@ -64,6 +64,9 @@ function evaluate(facts, env) {
   if (facts.fakeReviewProducts.length > 0) add('warn', 'fakeReviews', `${facts.fakeReviewProducts.length} product(s) show review counts that are not real: ${facts.fakeReviewProducts.slice(0, 4).map((p) => `${p.id} shows ${p.shown}, has ${p.real}`).join('; ')}`, 'The seed products carry invented ratings ("4.6 stars, 812 reviews"). Buyers would be told something untrue.', 'Set rating and review_count of these products to their real values (or 0).');
   else add('pass', 'fakeReviews', 'Product review counts match the real reviews');
 
+  if (facts.unpriceableProducts.length > 0) add('warn', 'unpriceableProducts', `${facts.unpriceableProducts.length} active product(s) cannot be priced, so buyers cannot see them: ${facts.unpriceableProducts.slice(0, 4).map((p) => `${p.id} (${p.category} / ${p.part})`).join('; ')}`, 'A product needs a weight and a size to work out its shipping fee: its own, or its part\'s. With neither, it is left out of every product list and its page says "not found".', 'In the admin portal open Categories, the category, and set the weight and size of the part (or give the product its own).');
+  else add('pass', 'unpriceableProducts', 'Every active product can be priced');
+
   if (facts.ownersWithoutTwoFactor.length > 0) add('warn', 'twoFactor', `The owner account(s) without two-factor sign-in: ${facts.ownersWithoutTwoFactor.join(', ')}`, 'The owner can do everything, so a stolen password is a total loss.', 'Sign in to the admin portal and turn two-factor on.');
   else add('pass', 'twoFactor', 'Every owner account has two-factor sign-in');
 

@@ -14,7 +14,7 @@ const READY_ENV = {
   S3_BUCKET: 'b', S3_ACCESS_KEY_ID: 'a', S3_SECRET_ACCESS_KEY: 's', GOOGLE_TRANSLATE_API_KEY: 'g',
 };
 const CLEAN_FACTS = { pendingMigrations: [], databaseName: 'leap_marketplace', defaultPasswordAccounts: [], testAdminAccounts: 0, testAccounts: 0,
-  testData: { orders: 0, products: 0, categories: 0, hubs: 0 }, fakeReviewProducts: [], ownersWithoutTwoFactor: [], realHubs: 2 };
+  testData: { orders: 0, products: 0, categories: 0, hubs: 0 }, fakeReviewProducts: [], unpriceableProducts: [], ownersWithoutTwoFactor: [], realHubs: 2 };
 
 const run = (facts = {}, env = {}) => Object.fromEntries(evaluate({ ...CLEAN_FACTS, ...facts }, { ...READY_ENV, ...env }).map((r) => [r.id, r]));
 const levelOf = (results, id) => results[id].level;
@@ -79,6 +79,16 @@ describe('the launch-readiness rules (pure)', () => {
     expect(levelOf(run(), 'payment')).toBe('pass');                                     // live Stripe key
     // the server's own rule: it will not start in production without a Stripe key, even when another provider is live
     expect(levelOf(run({}, { ...none, PAYPAL_CLIENT_ID: 'a', PAYPAL_CLIENT_SECRET: 'b', PAYPAL_ENVIRONMENT: 'production' }), 'stripeRequired')).toBe('warn');
+  });
+
+  it('CRITICAL: a product that cannot be priced is reported by name with the fix; with none it passes', () => {
+    const results = run({ unpriceableProducts: [{ id: 'p_1', category: 'brake', part: 'Front Brake Disc' }, { id: 'p_2', category: 'filters', part: 'Oil Filter' }] });
+    expect(levelOf(results, 'unpriceableProducts')).toBe('warn');
+    expect(results.unpriceableProducts.title).toContain('2 active product(s) cannot be priced');
+    expect(results.unpriceableProducts.title).toContain('p_1 (brake / Front Brake Disc)');
+    expect(results.unpriceableProducts.why).toContain('weight and a size');
+    expect(results.unpriceableProducts.fix).toContain('set the weight and size of the part');
+    expect(levelOf(run({}), 'unpriceableProducts')).toBe('pass');
   });
 
   it('the tracking secret, migrations, fake reviews, 2FA, hubs, push, storage and translation are judged as described', () => {

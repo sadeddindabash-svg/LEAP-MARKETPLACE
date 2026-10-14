@@ -4,6 +4,7 @@ import Link from "next/link";
 import { fetchCategories, fetchProductsPaginated, resolveImageUrl } from "@/lib/api";
 import { SaveSearchButton } from "@/components/SaveSearchButton";
 import { VehicleFilter } from "@/components/VehicleFilter";
+import { categoryPageDescription, categoryPageTitle, searchIndexing } from "@/lib/seo";
 
 const PAGE_SIZE = 24;
 
@@ -14,10 +15,21 @@ interface PageProps {
 export async function generateMetadata({
   searchParams,
 }: PageProps): Promise<Metadata> {
-  const { q } = await searchParams;
-  return {
-    title: q ? `Search results for "${q}"` : "Browse all parts",
-  };
+  const params = await searchParams;
+  const { q, category } = params;
+  // A category page is a real landing page: indexed, with its own title. Every other combination (a typed query, a vehicle filter, page 2...) is a variation of
+  // it: followed, but kept out of the index and pointing at the category page as the one real version (see searchIndexing in lib/seo.ts).
+  const { index, canonicalPath } = searchIndexing(params);
+  let title = q ? `Search results for "${q}"` : "Browse all parts";
+  let description: string | undefined;
+  if (!q && category) {
+    const categoryName = (await fetchCategories()).find((c) => c.id === category)?.nameEn;
+    if (categoryName) {
+      title = categoryPageTitle(categoryName);
+      description = categoryPageDescription(categoryName);
+    }
+  }
+  return { title, description, alternates: { canonical: canonicalPath }, robots: { index, follow: true } };
 }
 
 // Real Server Component -- re-fetches real, filtered results on every

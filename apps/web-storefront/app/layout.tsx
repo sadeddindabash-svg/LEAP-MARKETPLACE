@@ -6,6 +6,7 @@ import { AuthProvider } from "@/components/AuthProvider";
 import CartIcon from "@/components/CartIcon";
 import AccountLink from "@/components/AccountLink";
 import NotificationBell from "@/components/NotificationBell";
+import { SITE_NAME, siteUrl } from "@/lib/seo";
 import "./globals.css";
 
 // Real, confirmed with the person -- updated to match the real mobile
@@ -26,6 +27,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  // Every relative address in a page's metadata (canonical, share image) is resolved against this: set NEXT_PUBLIC_SITE_URL to the real https address.
+  metadataBase: new URL(siteUrl()),
+  openGraph: { siteName: SITE_NAME, type: "website" },
   title: {
     default: "Leap Auto Parts — Real parts, direct from verified suppliers",
     template: "%s | Leap Auto Parts",
