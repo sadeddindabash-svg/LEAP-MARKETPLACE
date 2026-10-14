@@ -4,7 +4,7 @@ const { emailLanguageForAddress, emailSubject } = require('../email/language');
 const db = require('../../../db/pool');
 const { requireAuth, optionalAuth, requirePageAccessIfAdmin, requireRole, requirePageAccess } = require('../auth/middleware');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
-const { withEffectiveShipping } = require('../shared/categoryShipping');
+const { withEffectiveShipping } = require('../shared/partShipping');
 const { validatePromoCode, calculateDiscountUsd, recordRedemption, checkAndGrantReferralReward } = require('../promotions/helpers');
 const { getLoyaltyDiscountPercentage } = require('../loyalty/helpers');
 const { sendTransactionalEmail } = require('../email/client');
@@ -116,7 +116,7 @@ router.post('/', async (req, res, next) => {
     // the client for amounts that determine what gets charged).
     const productIds = items.map((i) => i.productId);
     const { rows: products } = await client.query(
-      `SELECT id, price, currency_code, supplier_id, category, weight_kg, length_cm, width_cm, height_cm FROM products WHERE id = ANY($1::text[])`,
+      `SELECT id, price, currency_code, supplier_id, category, part, weight_kg, length_cm, width_cm, height_cm FROM products WHERE id = ANY($1::text[])`,
       [productIds]
     );
     const productById = Object.fromEntries(products.map((p) => [p.id, p]));
@@ -187,7 +187,7 @@ router.post('/', async (req, res, next) => {
         // (see the same handling in the catalog/cart modules for why).
         buyerUnitPrices[productId] = Number(product.price);
       } else {
-        // The weight and size of the product, else its category's (migration 103): the price LOCKED into the order uses the same ones the buyer saw.
+        // The weight and size of the product, else its part's (migration 104): the price LOCKED into the order uses the same ones the buyer saw.
         const shipped = await withEffectiveShipping(product, client);
         const result = await calculateBuyerPriceUsd({
           supplierCostCny: Number(product.price),

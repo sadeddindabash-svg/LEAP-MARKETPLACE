@@ -18,7 +18,7 @@ const stamp = () => `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 const pool = new Pool({ connectionString: TEST_DB_URL });
 afterAll(async () => { await pool.end(); });
 const adminToken = async () => (await login('admin@leap.dev', 'admin_dev_password_123')).token;
-const addPart = async (categoryId, nameEn, nameAr = 'قطعة اختبار') => fetch(`${BACKEND_URL}/catalog/categories/${categoryId}/parts`, { method: 'POST', headers: { ...json, Authorization: `Bearer ${await adminToken()}` }, body: JSON.stringify({ nameEn, nameAr }) });
+const addPart = async (categoryId, nameEn, nameAr = 'قطعة اختبار') => fetch(`${BACKEND_URL}/catalog/categories/${categoryId}/parts`, { method: 'POST', headers: { ...json, Authorization: `Bearer ${await adminToken()}` }, body: JSON.stringify({ nameEn, nameAr, weightKg: 5, lengthCm: 30, widthCm: 30, heightCm: 5 }) });
 const partsOf = (categoryId) => fetch(`${BACKEND_URL}/catalog/categories/${categoryId}/parts`).then((r) => r.json());
 
 describe.runIf(backendUp)('a category cannot have two parts with the same name (real backend)', () => {

@@ -5,7 +5,7 @@ const { requireAuth, requireRole, requirePageAccess } = require('../auth/middlew
 const { createNotification } = require('../notifications/helpers');
 const { logAdminAction } = require('../audit/helpers');
 const { validateFitment, tryMatchCategoryAndPart, tryMatchPosition, tryMatchDimensions, validateCompleteFields } = require('./productValidation');
-const { withEffectiveShipping, getCategoryShipping } = require('../shared/categoryShipping');
+const { withEffectiveShipping, getPartShipping } = require('../shared/partShipping');
 const { getSupplierAnalytics } = require('../supplierAnalytics/queries');
 const { getSupplierFinance } = require('../supplierFinance/queries');
 const { validateReturnAddress, getReturnAddress, saveReturnAddress } = require('../supplierReturnAddress/helpers');
@@ -173,8 +173,8 @@ function toProductDto(row) {
 // separate queries since they're separate tables (product_images,
 // product_fitment_entries), not columns on `products` itself.
 async function attachImagesAndFitment(dto) {
-  // The weight and size shown are the ones the shipping cost really uses: the product's own, else its category's (migration 103).
-  const shipped = await withEffectiveShipping({ category: dto.category, weight_kg: dto.weightKg, length_cm: dto.lengthCm, width_cm: dto.widthCm, height_cm: dto.heightCm });
+  // The weight and size shown are the ones the shipping cost really uses: the product's own, else its part's (migration 104).
+  const shipped = await withEffectiveShipping({ category: dto.category, part: dto.part, weight_kg: dto.weightKg, length_cm: dto.lengthCm, width_cm: dto.widthCm, height_cm: dto.heightCm });
   const num = (v) => (v === null || v === undefined ? null : Number(v));
   dto = { ...dto, weightKg: num(shipped.weight_kg), lengthCm: num(shipped.length_cm), widthCm: num(shipped.width_cm), heightCm: num(shipped.height_cm), shippingSource: shipped.shipping_source };
   const [imagesRes, fitmentRes] = await Promise.all([
@@ -429,10 +429,10 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
   }
 
   // ---- Validation (fail loudly and specifically, not with one generic message) ----
-  // When the product's category has a weight and package size set by the admin (migration 103), the supplier enters none of them: they are not required,
-  // and any sent anyway are ignored (the product then uses its category's, the same for every product in it).
-  const categoryShipping = await getCategoryShipping(category);
-  const shippingFromCategory = Boolean(categoryShipping);
+  // When the product's PART (the sub-category) has a weight and package size set by the admin (migration 104), the supplier enters none of them: they are not required,
+  // and any sent anyway are ignored (the product then uses its part's, the same for every product with that part).
+  const partShipping = await getPartShipping(category, part);
+  const shippingFromPart = Boolean(partShipping);
   const missing = [];
   if (!nameZh) missing.push('nameZh');
   if (!category) missing.push('category');
@@ -445,7 +445,7 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
   // 013's header comment: these will feed a real shipping-fee
   // calculation in the admin dashboard, which needs actual operable
   // numbers, not "about 2kg" as a string.
-  if (!shippingFromCategory) {
+  if (!shippingFromPart) {
     if (weightKg === undefined || weightKg === null) missing.push('weightKg');
     if (lengthCm === undefined || lengthCm === null) missing.push('lengthCm');
     if (widthCm === undefined || widthCm === null) missing.push('widthCm');
@@ -462,7 +462,7 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
   if (attributesError) {
     return res.status(400).json({ error: attributesError });
   }
-  if (!shippingFromCategory) {
+  if (!shippingFromPart) {
     if (weightKg !== undefined && weightKg !== null && weightKg <= 0) {
       return res.status(400).json({ error: 'weightKg must be a positive number' });
     }
@@ -569,8 +569,8 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
        VALUES ($1, $2, $3, $3, NULL, $4, $5, $6, $7, $8, $9, $10, $11, 'translating', $12, $13, $14, $15, $16)`,
       [id, req.user.supplierId, nameZh, descriptionZh || null, category, part, derivedPosition, oemNumber,
         price, currencyCode, stockQuantity || 0,
-        // a product whose category has a weight and size stores none of its own: it always uses the category's (migration 103)
-        shippingFromCategory ? null : weightKg, shippingFromCategory ? null : lengthCm, shippingFromCategory ? null : widthCm, shippingFromCategory ? null : heightCm, videoUrl || null]
+        // a product whose part has a weight and size stores none of its own: it always uses the part's (migration 104)
+        shippingFromPart ? null : weightKg, shippingFromPart ? null : lengthCm, shippingFromPart ? null : widthCm, shippingFromPart ? null : heightCm, videoUrl || null]
     );
 
     await client.query(
@@ -675,9 +675,9 @@ router.post('/me/products/bulk-import', requireAuth, requireRole('supplier'), as
 
       const { category, part } = await tryMatchCategoryAndPart(item.category, item.part, client);
       const position = tryMatchPosition(item.position);
-      // A row whose category has a weight and size set by the admin (migration 103) keeps none of its own; the category's are used.
-      const rowCategoryShipping = category ? await getCategoryShipping(category, client) : null;
-      const dims = rowCategoryShipping ? { weightKg: null, lengthCm: null, widthCm: null, heightCm: null } : tryMatchDimensions(item);
+      // A row whose part has a weight and size set by the admin (migration 104) keeps none of its own; the part's are used.
+      const rowPartShipping = category && part ? await getPartShipping(category, part, client) : null;
+      const dims = rowPartShipping ? { weightKg: null, lengthCm: null, widthCm: null, heightCm: null } : tryMatchDimensions(item);
 
       const id = `p_${Date.now()}_${i}`;
       await client.query(
@@ -787,10 +787,10 @@ router.patch('/me/products/:id/complete', requireAuth, requireRole('supplier'), 
 
     const { rows: reqRows } = await client.query('SELECT * FROM product_requirements WHERE id = 1');
     const requirements = reqRows[0] || { min_photos: 4, photos_required: true, video_required: true };
-    // A category with a weight and size set by the admin supplies them: the supplier enters none, and the product stores none of its own (migration 103).
-    const categoryShipping = await getCategoryShipping(category, client);
-    const shippingFromCategory = Boolean(categoryShipping);
-    const validation = validateCompleteFields({ category, part, position, weightKg, lengthCm, widthCm, heightCm, images, videoUrl, shippingFromCategory }, requirements);
+    // A part with a weight and size set by the admin supplies them: the supplier enters none, and the product stores none of its own (migration 104).
+    const partShipping = await getPartShipping(category, part, client);
+    const shippingFromPart = Boolean(partShipping);
+    const validation = validateCompleteFields({ category, part, position, weightKg, lengthCm, widthCm, heightCm, images, videoUrl, shippingFromPart }, requirements);
     if (!validation.valid) {
       return res.status(400).json({ error: validation.error });
     }
@@ -801,7 +801,7 @@ router.patch('/me/products/:id/complete', requireAuth, requireRole('supplier'), 
          category = $1, part = $2, position = $3, weight_kg = $4, length_cm = $5, width_cm = $6, height_cm = $7,
          video_url = $8, status = 'translating'
        WHERE id = $9`,
-      [category, part, position, shippingFromCategory ? null : weightKg, shippingFromCategory ? null : lengthCm, shippingFromCategory ? null : widthCm, shippingFromCategory ? null : heightCm, videoUrl || null, req.params.id]
+      [category, part, position, shippingFromPart ? null : weightKg, shippingFromPart ? null : lengthCm, shippingFromPart ? null : widthCm, shippingFromPart ? null : heightCm, videoUrl || null, req.params.id]
     );
     await client.query('DELETE FROM product_images WHERE product_id = $1', [req.params.id]);
     for (let i = 0; i < images.length; i++) {

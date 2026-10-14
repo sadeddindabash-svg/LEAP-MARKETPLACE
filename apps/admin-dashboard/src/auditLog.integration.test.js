@@ -160,7 +160,7 @@ describe.runIf(backendUp)('real admin audit log against a REAL running backend',
     const id = `audit_cat_test_${Date.now()}`;
     await fetch(`${BACKEND_URL}/catalog/categories`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ id, nameEn: 'Audit Cat Test', nameAr: 'اختبار', photoUrl: '/uploads/test.jpg', weightKg: 5, lengthCm: 30, widthCm: 30, heightCm: 5 }),
+      body: JSON.stringify({ id, nameEn: 'Audit Cat Test', nameAr: 'اختبار', photoUrl: '/uploads/test.jpg' }),
     });
 
     const createdLog = await fetch(`${BACKEND_URL}/admin/audit-log?action=category_created`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());

@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../../../db/pool');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
-const { withEffectiveShipping } = require('../shared/categoryShipping');
+const { withEffectiveShipping } = require('../shared/partShipping');
 const { findMatchingDiscountRule } = require('../pricing/discountRules');
 const { buildSupplierLabelMap } = require('../shared/supplierAnonymize');
 const { validatePromoCode, calculateDiscountUsd } = require('../promotions/helpers');
@@ -43,7 +43,7 @@ async function computeLivePrice(r) {
     const originalPrice = discountPercentage !== null ? basePrice : null;
     return { price, originalPrice, currencyCode: r.currency_code };
   }
-  // The weight and size of the product, else its category's (migration 103).
+  // The weight and size of the product, else its part's (migration 104).
   const shipped = await withEffectiveShipping(r);
   const result = await calculateBuyerPriceUsd({
     supplierCostCny: Number(r.price),
@@ -89,7 +89,7 @@ async function getFullCart(cartId, tokenBuyerId, lang) {
   const lockExpiresAt = lockActive ? new Date(new Date(checkoutLockedAt).getTime() + CHECKOUT_LOCK_DURATION_MS).toISOString() : null;
 
   const { rows } = await db.query(
-    `SELECT ci.product_id, ci.quantity, ci.locked_price, p.name, p.name_ar, p.price, p.currency_code, p.category, p.weight_kg, p.length_cm, p.width_cm, p.height_cm, p.stock_quantity, p.supplier_id
+    `SELECT ci.product_id, ci.quantity, ci.locked_price, p.name, p.name_ar, p.price, p.currency_code, p.category, p.part, p.weight_kg, p.length_cm, p.width_cm, p.height_cm, p.stock_quantity, p.supplier_id
      FROM cart_items ci
      JOIN products p ON p.id = ci.product_id
      WHERE ci.cart_id = $1`,
@@ -119,7 +119,7 @@ async function getFullCart(cartId, tokenBuyerId, lang) {
   // genuinely began.
   const items = await Promise.all(rows.map(async (r) => {
     const live = await computeLivePrice(r);
-    // The weight shown for the line: the product's, else its category's (migration 103); the same one the price was worked out from.
+    // The weight shown for the line: the product's, else its part's (migration 104); the same one the price was worked out from.
     const shippedRow = await withEffectiveShipping(r);
     const effectiveWeightKg = shippedRow.weight_kg === null ? null : Number(shippedRow.weight_kg);
     let price = live.price;
@@ -279,7 +279,7 @@ router.post('/:cartId/lock-prices', optionalAuth, async (req, res, next) => {
 
     if (!alreadyActive) {
       const { rows } = await db.query(
-        `SELECT ci.product_id, p.price, p.currency_code, p.category, p.weight_kg, p.length_cm, p.width_cm, p.height_cm
+        `SELECT ci.product_id, p.price, p.currency_code, p.category, p.part, p.weight_kg, p.length_cm, p.width_cm, p.height_cm
          FROM cart_items ci JOIN products p ON p.id = ci.product_id WHERE ci.cart_id = $1`,
         [req.params.cartId]
       );

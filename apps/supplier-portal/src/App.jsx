@@ -32,8 +32,8 @@ import {
 } from "./auth";
 import { vehicleSummary } from "./vehicleLabels";
 import VehiclePicker from "./VehiclePicker";
-import CategoryShippingBlock from "./CategoryShippingBlock";
-import { categoryShippingOf } from "./categoryShipping";
+import PartShippingBlock from "./PartShippingBlock";
+import { partShippingOf } from "./partShipping";
 import { useVehicleCascade } from "./vehicleCascade";
 
 /* ============================================================
@@ -734,9 +734,9 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
   // The vehicle picker (Brand, then Model, then Year): shared with Bulk upload. A vehicle already chosen by a buyer comes in as the starting point.
   const cascade = useVehicleCascade({ initialGenerationId: prefill?.generationId || "", initialYear: prefill?.year, onError: setError });
   const { selectedGenerationId, selectedYear } = cascade;
-  // A category whose weight and package size the admin has set supplies them: the supplier enters none, and the shipping cost uses the category's (migration 103).
-  const selectedCategory = categories.find((c) => c.id === category);
-  const categoryShipping = categoryShippingOf(selectedCategory);
+  // A PART (the sub-category) whose weight and package size the admin has set supplies them: the supplier enters none, and the shipping cost uses the part's (migration 104).
+  const selectedPart = parts.find((p) => p.nameEn === part);
+  const partShipping = partShippingOf(selectedPart);
 
   // Real categories, fetched once — a supplier picks from these, not a
   // hardcoded array, so an admin adding a category via the new
@@ -822,7 +822,7 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
     else if (!selectedYear) missing.push(lang === "zh" ? "年份" : "year");
     if (requirements.photosRequired && photos.length !== requirements.minPhotos) missing.push(lang === "zh" ? `${requirements.minPhotos} 张照片` : `exactly ${requirements.minPhotos} photos`);
     if (requirements.videoRequired && !video) missing.push(lang === "zh" ? "商品视频" : "product video");
-    if (!categoryShipping) {
+    if (!partShipping) {
       if (!weightKg) missing.push(lang === "zh" ? "重量" : "weight");
       if (!lengthCm) missing.push(lang === "zh" ? "长度" : "length");
       if (!widthCm) missing.push(lang === "zh" ? "宽度" : "width");
@@ -853,11 +853,11 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
           },
         images: photos.map((p) => p.url),
         videoUrl: video?.url || undefined,
-        // the category's weight and size are used; the supplier sends none (the server would ignore them anyway)
-        weightKg: categoryShipping ? undefined : parseFloat(weightKg),
-        lengthCm: categoryShipping ? undefined : parseFloat(lengthCm),
-        widthCm: categoryShipping ? undefined : parseFloat(widthCm),
-        heightCm: categoryShipping ? undefined : parseFloat(heightCm),
+        // the part's weight and size are used; the supplier sends none (the server would ignore them anyway)
+        weightKg: partShipping ? undefined : parseFloat(weightKg),
+        lengthCm: partShipping ? undefined : parseFloat(lengthCm),
+        widthCm: partShipping ? undefined : parseFloat(widthCm),
+        heightCm: partShipping ? undefined : parseFloat(heightCm),
         attributes: selectedAttributes,
         fulfillsRequestItemId: prefill?.fulfillsRequestItemId || undefined,
       });
@@ -991,8 +991,8 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
             <Field label={cascadeLabel("库存数量", "Stock quantity")}>
               <input type="number" style={inputStyle} placeholder="0" value={stock} onChange={(e) => setStock(e.target.value)} />
             </Field>
-            {categoryShipping ? (
-              <CategoryShippingBlock category={selectedCategory} shipping={categoryShipping} />
+            {partShipping ? (
+              <PartShippingBlock part={selectedPart} shipping={partShipping} />
             ) : (
               <>
               <Field label={cascadeLabel("重量 (kg)", "Weight (kg)")}>
@@ -1383,11 +1383,12 @@ function CompleteDraftForm({ draft, onCancel, onCompleted }) {
 
   const [categories, setCategories] = useState([]);
   const [category, setCategory] = useState(draft.category || '');
-  // A category whose weight and package size the admin has set supplies them: the supplier then enters none (migration 103).
-  const draftCategoryShipping = categoryShippingOf(categories.find((c) => c.id === category));
-  const needsDimensions = needsDimensionsFromSupplier && !draftCategoryShipping;
   const [parts, setParts] = useState([]);
   const [part, setPart] = useState(draft.part || '');
+  // A PART whose weight and package size the admin has set supplies them: the supplier then enters none (migration 104).
+  const draftPart = parts.find((p) => p.nameEn === part);
+  const draftPartShipping = partShippingOf(draftPart);
+  const needsDimensions = needsDimensionsFromSupplier && !draftPartShipping;
   const [position, setPosition] = useState(draft.position || POSITION_OPTIONS[0].id);
   const [weightKg, setWeightKg] = useState(draft.weightKg || '');
   const [lengthCm, setLengthCm] = useState(draft.lengthCm || '');
@@ -1518,8 +1519,8 @@ function CompleteDraftForm({ draft, onCancel, onCompleted }) {
           </Field>
         )}
 
-        {needsDimensionsFromSupplier && draftCategoryShipping && (
-          <CategoryShippingBlock category={categories.find((c) => c.id === category)} shipping={draftCategoryShipping} />
+        {needsDimensionsFromSupplier && draftPartShipping && (
+          <PartShippingBlock part={draftPart} shipping={draftPartShipping} />
         )}
         {needsDimensions && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>

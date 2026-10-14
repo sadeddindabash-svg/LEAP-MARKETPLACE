@@ -108,13 +108,13 @@ describe.runIf(backendUp)('category + parts reference system against a REAL runn
     const uniqueId = `test_cat_${Date.now()}`;
     const createRes = await fetch(`${BACKEND_URL}/catalog/categories`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-      body: JSON.stringify({ id: uniqueId, nameEn: 'Test Category', nameAr: 'فئة اختبار', photoUrl: '/uploads/fake-test-photo.jpg', weightKg: 5, lengthCm: 30, widthCm: 30, heightCm: 5 }),
+      body: JSON.stringify({ id: uniqueId, nameEn: 'Test Category', nameAr: 'فئة اختبار', photoUrl: '/uploads/fake-test-photo.jpg' }),
     });
     expect(createRes.status).toBe(201);
 
     const partRes = await fetch(`${BACKEND_URL}/catalog/categories/${uniqueId}/parts`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-      body: JSON.stringify({ nameEn: `Unique Part ${Date.now()}`, nameAr: 'جزء فريد' }),
+      body: JSON.stringify({ nameEn: `Unique Part ${Date.now()}`, nameAr: 'جزء فريد', weightKg: 5, lengthCm: 30, widthCm: 30, heightCm: 5 }),
     });
     expect(partRes.status).toBe(201);
     const part = await partRes.json();
@@ -146,11 +146,11 @@ describe.runIf(backendUp)('category + parts reference system against a REAL runn
     const uniqueId = `test_cat_parts_${Date.now()}`;
     await fetch(`${BACKEND_URL}/catalog/categories`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-      body: JSON.stringify({ id: uniqueId, nameEn: 'Test Category With Parts', nameAr: 'فئة تحتوي على أجزاء', photoUrl: '/uploads/fake-test-photo-2.jpg', weightKg: 5, lengthCm: 30, widthCm: 30, heightCm: 5 }),
+      body: JSON.stringify({ id: uniqueId, nameEn: 'Test Category With Parts', nameAr: 'فئة تحتوي على أجزاء', photoUrl: '/uploads/fake-test-photo-2.jpg' }),
     });
     await fetch(`${BACKEND_URL}/catalog/categories/${uniqueId}/parts`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-      body: JSON.stringify({ nameEn: `Attached Part ${Date.now()}`, nameAr: 'جزء مرفق' }),
+      body: JSON.stringify({ nameEn: `Attached Part ${Date.now()}`, nameAr: 'جزء مرفق', weightKg: 5, lengthCm: 30, widthCm: 30, heightCm: 5 }),
     });
     const deleteWithPartsRes = await fetch(`${BACKEND_URL}/catalog/categories/${uniqueId}`, {
       method: 'DELETE', headers: { Authorization: `Bearer ${adminToken}` },
@@ -168,7 +168,7 @@ describe.runIf(backendUp)('category + parts reference system against a REAL runn
     const partName = `DeleteGuardPart${Date.now()}`;
     const partRes = await fetch(`${BACKEND_URL}/catalog/categories/brake/parts`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-      body: JSON.stringify({ nameEn: partName, nameAr: `عربي ${partName}` }),
+      body: JSON.stringify({ nameEn: partName, nameAr: `عربي ${partName}`, weightKg: 5, lengthCm: 30, widthCm: 30, heightCm: 5 }),
     });
     expect(partRes.status).toBe(201);
     const part = (await partRes.json());

@@ -293,9 +293,10 @@ export const updateModelPhoto = (token, id, photoUrl) => fitmentMutate("PATCH", 
 // Real, new -- edit the name fields of any of the 7 levels, at any
 // time. Photo/id/sortOrder are unaffected by these -- each stays on
 // its own separate endpoint.
-// `shipping` ({ weightKg, lengthCm, widthCm, heightCm }) is optional: left out, only the names change; sent, all four are validated and saved together.
-export const updateCategory = (token, id, nameEn, nameAr, shipping) => fitmentMutate("PATCH", `/catalog/categories/${id}`, token, { nameEn, nameAr, ...(shipping || {}) });
-export const updatePart = (token, id, nameEn, nameAr) => fitmentMutate("PATCH", `/catalog/parts/${id}`, token, { nameEn, nameAr });
+export const updateCategory = (token, id, nameEn, nameAr) => fitmentMutate("PATCH", `/catalog/categories/${id}`, token, { nameEn, nameAr });
+// `shipping` ({ weightKg, lengthCm, widthCm, heightCm }) is optional: left out, only the names change; sent, all four are validated and saved together. A rename also
+// renames the part on the products that have it (they refer to it by name).
+export const updatePart = (token, id, nameEn, nameAr, shipping) => fitmentMutate("PATCH", `/catalog/parts/${id}`, token, { nameEn, nameAr, ...(shipping || {}) });
 export const updateBrand = (token, id, name, nameAr) => fitmentMutate("PATCH", `/fitment/brands/${id}`, token, { name, nameAr });
 export const updateModel = (token, id, name, nameAr) => fitmentMutate("PATCH", `/fitment/models/${id}`, token, { name, nameAr });
 export const updateGeneration = (token, id, name, yearStart, yearEnd) => fitmentMutate("PATCH", `/fitment/generations/${id}`, token, { name, yearStart, yearEnd });
@@ -480,12 +481,11 @@ export async function updateProductRequirements(token, patch) {
   return data;
 }
 
-// `shipping` = { weightKg, lengthCm, widthCm, heightCm }: required, the shipping cost of every product in the category uses it (backend migration 103).
-export async function createCategory(token, id, nameEn, nameAr, photoUrl, sortOrder, shipping) {
+export async function createCategory(token, id, nameEn, nameAr, photoUrl, sortOrder) {
   const response = await fetch(`${API_BASE_URL}/catalog/categories`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ id, nameEn, nameAr, photoUrl, sortOrder, ...(shipping || {}) }),
+    body: JSON.stringify({ id, nameEn, nameAr, photoUrl, sortOrder }),
   });
   if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
   const data = await response.json();
@@ -530,11 +530,12 @@ export async function fetchPartsForCategory(categoryId) {
   return response.json();
 }
 
-export async function createPart(token, categoryId, nameEn, nameAr, sortOrder, photoUrl) {
+// `shipping` = { weightKg, lengthCm, widthCm, heightCm }: required, the shipping cost of every product with this part uses it (backend migration 104).
+export async function createPart(token, categoryId, nameEn, nameAr, sortOrder, photoUrl, shipping) {
   const response = await fetch(`${API_BASE_URL}/catalog/categories/${categoryId}/parts`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ nameEn, nameAr, sortOrder, photoUrl }),
+    body: JSON.stringify({ nameEn, nameAr, sortOrder, photoUrl, ...(shipping || {}) }),
   });
   if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
   const data = await response.json();

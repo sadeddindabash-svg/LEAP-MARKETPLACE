@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
-const { withEffectiveShipping } = require('../shared/categoryShipping');
+const { withEffectiveShipping } = require('../shared/partShipping');
 const { findMatchingDiscountRule } = require('../pricing/discountRules');
 const { resolveDestinationIsoCode, calculateDeliveryDays } = require('../deliveryEstimate/engine');
 const { ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS, validateNameLength, validateDescriptionLength, validateProductAttributes } = require('../shared/productValidation');
@@ -107,7 +107,7 @@ function toBuyerProductDto(row, lang) {
 // same real matching logic too.
 
 async function attachBuyerPrice(dto, row) {
-  // The weight and size shipping is worked out from: the product's own complete set, else its category's (migration 103). The buyer sees the same ones.
+  // The weight and size shipping is worked out from: the product's own complete set, else its part's (migration 104). The buyer sees the same ones.
   const shipped = await withEffectiveShipping(row);
   const num = (v) => (v === null || v === undefined ? null : Number(v));
   dto = { ...dto, weightKg: num(shipped.weight_kg), lengthCm: num(shipped.length_cm), widthCm: num(shipped.width_cm), heightCm: num(shipped.height_cm) };
@@ -962,14 +962,14 @@ router.get('/admin/products', requireAuth, requireRole('admin'), requirePageAcce
     const pageSize = groupBy ? 500 : 30;
     const offset = (page - 1) * pageSize;
 
-    // The weight and size of a product: its own complete set, else its category's (migration 103). One SQL definition for display, filters and sorting.
+    // The weight and size of a product: its own complete set, else its part's (migration 104). One SQL definition for display, filters and sorting.
     const ownComplete = '(p.weight_kg IS NOT NULL AND p.length_cm IS NOT NULL AND p.width_cm IS NOT NULL AND p.height_cm IS NOT NULL)';
     const eff = (column) => `(CASE WHEN ${ownComplete} THEN p.${column} ELSE cs.${column} END)`;
     const effVolume = `(${eff('length_cm')} * ${eff('width_cm')} * ${eff('height_cm')})`;
 
     const baseFrom = `
       FROM products p
-      LEFT JOIN product_categories cs ON cs.id = p.category
+      LEFT JOIN category_parts cs ON cs.category_id = p.category AND lower(btrim(cs.name_en)) = lower(btrim(p.part))
       LEFT JOIN suppliers s ON s.id = p.supplier_id
       LEFT JOIN LATERAL (
         SELECT vb.name AS brand_name, pfe.year AS fitment_year
@@ -1052,8 +1052,8 @@ router.get('/admin/products/:id', requireAuth, requireRole('admin'), requirePage
     const { rows } = await db.query('SELECT * FROM products p WHERE p.id = $1', [req.params.id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
     const row = rows[0];
-    // weightKg / lengthCm / widthCm / heightCm below are the product's OWN values (null when it uses its category's): the edit form saves them back, so showing
-    // the category's here would silently copy them into the product. `effectiveShipping` says what the shipping cost really uses.
+    // weightKg / lengthCm / widthCm / heightCm below are the product's OWN values (null when it uses its part's): the edit form saves them back, so showing
+    // the part's here would silently copy them into the product. `effectiveShipping` says what the shipping cost really uses.
     const shipped = await withEffectiveShipping(row);
 
     const { rows: images } = await db.query('SELECT url FROM product_images WHERE product_id = $1 ORDER BY sort_order', [row.id]);
@@ -1311,10 +1311,10 @@ router.patch('/admin/products/:id', requireAuth, requireRole('admin'), requirePa
 // (the home screen's category grid, no longer hardcoded).
 // ============================================================
 
-// The weight and package size of a category: four numbers, each above zero, always together. Returns { error } or { values: { weightKg, lengthCm, widthCm, heightCm } }.
+// The weight and package size of a PART (the sub-category; migration 104): four numbers, each above zero, always together. Returns { error } or { values: { weightKg, lengthCm, widthCm, heightCm } }.
 // (The ceilings are only what the database columns can hold, so a typo is a clear 400 and not a database error.)
 const SHIPPING_FIELDS = [['weightKg', 'weight_kg', 99999], ['lengthCm', 'length_cm', 999999], ['widthCm', 'width_cm', 999999], ['heightCm', 'height_cm', 999999]];
-function parseCategoryShipping(body) {
+function parseShipping(body) {
   const values = {};
   for (const [field, , max] of SHIPPING_FIELDS) {
     const raw = body[field];
@@ -1328,15 +1328,15 @@ function parseCategoryShipping(body) {
 }
 
 function toCategoryDto(row) {
-  const num = (v) => (v === null || v === undefined ? null : Number(v));
-  return { id: row.id, nameEn: row.name_en, nameAr: row.name_ar, photoUrl: row.photo_url, sortOrder: row.sort_order, commissionPercent: Number(row.commission_percent),
-    // The admin-set weight and package size the shipping cost uses for every product in this category (null until set; migration 103). All four or none.
-    weightKg: num(row.weight_kg), lengthCm: num(row.length_cm), widthCm: num(row.width_cm), heightCm: num(row.height_cm),
-  };
+  return { id: row.id, nameEn: row.name_en, nameAr: row.name_ar, photoUrl: row.photo_url, sortOrder: row.sort_order, commissionPercent: Number(row.commission_percent) };
 }
 
 function toPartDto(row) {
-  return { id: row.id, categoryId: row.category_id, nameEn: row.name_en, nameAr: row.name_ar, sortOrder: row.sort_order, photoUrl: row.photo_url };
+  const num = (v) => (v === null || v === undefined ? null : Number(v));
+  return { id: row.id, categoryId: row.category_id, nameEn: row.name_en, nameAr: row.name_ar, sortOrder: row.sort_order, photoUrl: row.photo_url,
+    // The admin-set weight and package size the shipping cost uses for every product with this part (null until set; migration 104). All four or none.
+    weightKg: num(row.weight_kg), lengthCm: num(row.length_cm), widthCm: num(row.width_cm), heightCm: num(row.height_cm),
+  };
 }
 
 /**
@@ -1651,12 +1651,9 @@ router.post('/categories', requireAuth, requireRole('admin'), requirePageAccess(
     // created before this requirement existed.
     if (!nameAr || !nameAr.trim()) return res.status(400).json({ error: 'nameAr is required' });
     if (!photoUrl || !photoUrl.trim()) return res.status(400).json({ error: 'photoUrl is required' });
-    // The weight and package size are required too: the shipping cost of every product in the category uses them (migration 103).
-    const shipping = parseCategoryShipping(req.body);
-    if (shipping.error) return res.status(400).json({ error: shipping.error });
     await db.query(
-      'INSERT INTO product_categories (id, name_en, name_ar, photo_url, sort_order, weight_kg, length_cm, width_cm, height_cm) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
-      [id, nameEn, nameAr.trim(), photoUrl.trim(), sortOrder ?? 0, shipping.values.weightKg, shipping.values.lengthCm, shipping.values.widthCm, shipping.values.heightCm]
+      'INSERT INTO product_categories (id, name_en, name_ar, photo_url, sort_order) VALUES ($1, $2, $3, $4, $5)',
+      [id, nameEn, nameAr.trim(), photoUrl.trim(), sortOrder ?? 0]
     );
     const { rows } = await db.query('SELECT * FROM product_categories WHERE id = $1', [id]);
     await logAdminAction(req, 'category_created', 'category', id, { nameEn });
@@ -1679,19 +1676,9 @@ router.patch('/categories/:id', requireAuth, requireRole('admin'), requirePageAc
     const { nameEn, nameAr } = req.body || {};
     if (!nameEn || !nameEn.trim()) return res.status(400).json({ error: 'nameEn is required' });
     if (!nameAr || !nameAr.trim()) return res.status(400).json({ error: 'nameAr is required' });
-    // The weight and package size may be left out (names only, as before), but if ANY of the four is sent, all four must be valid (they only exist together).
-    const sentAny = SHIPPING_FIELDS.some(([field]) => req.body[field] !== undefined);
-    let shipping = null;
-    if (sentAny) {
-      shipping = parseCategoryShipping(req.body);
-      if (shipping.error) return res.status(400).json({ error: shipping.error });
-    }
-    const { rows } = shipping
-      ? await db.query('UPDATE product_categories SET name_en = $1, name_ar = $2, weight_kg = $4, length_cm = $5, width_cm = $6, height_cm = $7 WHERE id = $3 RETURNING *',
-          [nameEn.trim(), nameAr.trim(), req.params.id, shipping.values.weightKg, shipping.values.lengthCm, shipping.values.widthCm, shipping.values.heightCm])
-      : await db.query('UPDATE product_categories SET name_en = $1, name_ar = $2 WHERE id = $3 RETURNING *', [nameEn.trim(), nameAr.trim(), req.params.id]);
+    const { rows } = await db.query('UPDATE product_categories SET name_en = $1, name_ar = $2 WHERE id = $3 RETURNING *', [nameEn.trim(), nameAr.trim(), req.params.id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Category not found' });
-    await logAdminAction(req, 'category_updated', 'category', req.params.id, { nameEn: nameEn.trim(), ...(shipping ? { weightKg: shipping.values.weightKg, lengthCm: shipping.values.lengthCm, widthCm: shipping.values.widthCm, heightCm: shipping.values.heightCm } : {}) });
+    await logAdminAction(req, 'category_updated', 'category', req.params.id, { nameEn: nameEn.trim() });
     res.json(toCategoryDto(rows[0]));
   } catch (err) {
     next(err);
@@ -1772,6 +1759,9 @@ router.post('/categories/:id/parts', requireAuth, requireRole('admin'), requireP
     const { nameEn, nameAr, sortOrder, photoUrl } = req.body || {};
     if (!nameEn) return res.status(400).json({ error: 'nameEn is required' });
     if (!nameAr || !nameAr.trim()) return res.status(400).json({ error: 'nameAr is required' });
+    // The weight and package size are required: the shipping cost of every product with this part uses them (migration 104).
+    const shipping = parseShipping(req.body || {});
+    if (shipping.error) return res.status(400).json({ error: shipping.error });
     const categoryCheck = await db.query('SELECT id FROM product_categories WHERE id = $1', [req.params.id]);
     if (categoryCheck.rows.length === 0) return res.status(404).json({ error: 'Category not found' });
     // A category cannot have two parts with the same name (capitals and extra spaces ignored): migration 101.
@@ -1780,8 +1770,8 @@ router.post('/categories/:id/parts', requireAuth, requireRole('admin'), requireP
     const partId = `part_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`; // the random tail: two parts made in the same millisecond used to collide
     try {
       await db.query(
-        'INSERT INTO category_parts (id, category_id, name_en, name_ar, sort_order, photo_url) VALUES ($1, $2, $3, $4, $5, $6)',
-        [partId, req.params.id, nameEn.trim(), nameAr || null, sortOrder ?? 0, photoUrl?.trim() || null]
+        'INSERT INTO category_parts (id, category_id, name_en, name_ar, sort_order, photo_url, weight_kg, length_cm, width_cm, height_cm) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+          [partId, req.params.id, nameEn.trim(), nameAr || null, sortOrder ?? 0, photoUrl?.trim() || null, shipping.values.weightKg, shipping.values.lengthCm, shipping.values.widthCm, shipping.values.heightCm]
       );
     } catch (insertErr) {
       if (insertErr.code === '23505') return res.status(409).json({ error: `This category already has a part called "${nameEn.trim()}"` }); // two admins at once
@@ -1822,20 +1812,43 @@ router.delete('/parts/:id', requireAuth, requireRole('admin'), requirePageAccess
 // Real, new -- lets an admin edit an existing part's name fields at
 // any time (photo stays on its own separate endpoint below). nameAr
 // stays optional here, matching how a part is originally created.
+// Edits a part: its names, and optionally its weight and package size (migration 104). The four values may be left out (names only), but if ANY is sent all four
+// must be valid. A product refers to its part by NAME, so a rename carries the products of that part along in the same transaction: otherwise they would lose
+// the part, and with it the weight and size their shipping cost is worked out from.
 router.patch('/parts/:id', requireAuth, requireRole('admin'), requirePageAccess('categories'), async (req, res, next) => {
+  const client = await db.getPool().connect();
   try {
     const { nameEn, nameAr } = req.body || {};
     if (!nameEn || !nameEn.trim()) return res.status(400).json({ error: 'nameEn is required' });
     if (!nameAr || !nameAr.trim()) return res.status(400).json({ error: 'nameAr is required' });
-    const own = await db.query('SELECT category_id FROM category_parts WHERE id = $1', [req.params.id]);
+    const sentAny = SHIPPING_FIELDS.some(([field]) => req.body[field] !== undefined);
+    let shipping = null;
+    if (sentAny) {
+      shipping = parseShipping(req.body);
+      if (shipping.error) return res.status(400).json({ error: shipping.error });
+    }
+    const own = await client.query('SELECT category_id, name_en FROM category_parts WHERE id = $1', [req.params.id]);
     if (own.rows.length === 0) return res.status(404).json({ error: 'Part not found' });
-    const taken = await db.query('SELECT 1 FROM category_parts WHERE category_id = $1 AND lower(btrim(name_en)) = lower(btrim($2)) AND id != $3', [own.rows[0].category_id, nameEn, req.params.id]);
+    const taken = await client.query('SELECT 1 FROM category_parts WHERE category_id = $1 AND lower(btrim(name_en)) = lower(btrim($2)) AND id != $3', [own.rows[0].category_id, nameEn, req.params.id]);
     if (taken.rows.length > 0) return res.status(409).json({ error: `This category already has a part called "${nameEn.trim()}"` });
-    const { rows } = await db.query('UPDATE category_parts SET name_en = $1, name_ar = $2 WHERE id = $3 RETURNING *', [nameEn.trim(), nameAr.trim(), req.params.id]);
-    await logAdminAction(req, 'part_updated', 'part', req.params.id, { nameEn: nameEn.trim() });
+
+    await client.query('BEGIN');
+    const { rows } = shipping
+      ? await client.query('UPDATE category_parts SET name_en = $1, name_ar = $2, weight_kg = $4, length_cm = $5, width_cm = $6, height_cm = $7 WHERE id = $3 RETURNING *',
+        [nameEn.trim(), nameAr.trim(), req.params.id, shipping.values.weightKg, shipping.values.lengthCm, shipping.values.widthCm, shipping.values.heightCm])
+      : await client.query('UPDATE category_parts SET name_en = $1, name_ar = $2 WHERE id = $3 RETURNING *', [nameEn.trim(), nameAr.trim(), req.params.id]);
+    const oldName = own.rows[0].name_en;
+    if (oldName.trim() !== nameEn.trim()) {
+      await client.query('UPDATE products SET part = $1 WHERE category = $2 AND lower(btrim(part)) = lower(btrim($3))', [nameEn.trim(), own.rows[0].category_id, oldName]);
+    }
+    await client.query('COMMIT');
+    await logAdminAction(req, 'part_updated', 'part', req.params.id, { nameEn: nameEn.trim(), ...(shipping ? { weightKg: shipping.values.weightKg, lengthCm: shipping.values.lengthCm, widthCm: shipping.values.widthCm, heightCm: shipping.values.heightCm } : {}) });
     res.json(toPartDto(rows[0]));
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     next(err);
+  } finally {
+    client.release();
   }
 });
 

@@ -1,6 +1,6 @@
 const db = require('../../../db/pool');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
-const { withEffectiveShipping } = require('../shared/categoryShipping');
+const { withEffectiveShipping } = require('../shared/partShipping');
 const { createNotification } = require('../notifications/helpers');
 const messages = require('../notifications/messages');
 const { sendTransactionalEmail } = require('../email/client');
@@ -28,7 +28,7 @@ async function checkProductForPriceDrop(product) {
   if (product.currency_code !== 'CNY') {
     currentPriceUsd = Number(product.price);
   } else {
-    // The weight and size of the product, else its category's (migration 103).
+    // The weight and size of the product, else its part's (migration 104).
     const shipped = await withEffectiveShipping(product);
     const result = await calculateBuyerPriceUsd({
       supplierCostCny: Number(product.price),
