@@ -1,134 +1,101 @@
-import Link from "next/link";
+import Image from "next/image";
 import type { Metadata } from "next";
-import { fetchCategories, fetchProducts, resolveImageUrl } from "@/lib/api";
+import Link from "@/components/LocLink";
+import HeroPicker from "@/components/HeroPicker";
 import { JsonLd } from "@/components/JsonLd";
-import { websiteJsonLd } from "@/lib/seo";
+import ProductCard from "@/components/ProductCard";
+import { fetchCategories, fetchProducts, fetchVehicleBrands, resolveImageUrl } from "@/lib/api";
+import { pickName, t } from "@/lib/i18n";
+import { getLang } from "@/lib/lang";
+import { alternatesFor, websiteJsonLd } from "@/lib/seo";
 
-export const metadata: Metadata = { alternates: { canonical: "/" } };
+export async function generateMetadata(): Promise<Metadata> {
+  return { alternates: alternatesFor(await getLang(), "/") };
+}
 
-// Real Server Component -- this data is fetched and rendered into
-// real, crawlable HTML at request time, on the server. This is the
-// entire reason this app exists alongside the mobile app: a search
-// engine sees real product names, prices, and descriptions in the
-// initial HTML response, not an empty shell waiting for client-side
-// JavaScript to fill it in.
+const number = (n: number) => n.toLocaleString("en-US");      // Western digits in both languages, like the rest of the page
+
+// The home page ("Navy Workshop"): find a part for your car, shop by section and by brand, and the newest parts. A Server Component: everything here is real data, in real
+// HTML, in the page's language, which is the whole point of having this site next to the mobile app (a search engine reads it as it is).
 export default async function HomePage() {
-  const [categories, products] = await Promise.all([
-    fetchCategories(),
-    fetchProducts({ sort: "newest" }),
-  ]);
+  const lang = await getLang();
+  const [categories, products, brands] = await Promise.all([fetchCategories(), fetchProducts({ sort: "newest", lang }), fetchVehicleBrands()]);
+  const newest = products.slice(0, 8);
+  const stats: Array<[number, string]> = [[products.length, t(lang, "stat_parts")], [brands.length, t(lang, "stat_brands")], [categories.length, t(lang, "stat_sections")]];
 
   return (
     <div>
       <JsonLd data={websiteJsonLd()} />
-      <section className="border-b border-line bg-white">
-        <div className="mx-auto max-w-6xl px-6 py-16 md:py-24">
-          <h1 className="font-display font-bold text-5xl md:text-7xl leading-[0.95] tracking-tight max-w-3xl">
-            Find the exact part your car actually needs.
-          </h1>
-          <p className="mt-6 max-w-xl text-lg text-muted">
-            Real parts from verified suppliers, matched to your vehicle&rsquo;s
-            real fitment — not a guess from a part number search.
-          </p>
-          <div className="mt-8 flex gap-3">
-            <Link
-              href="/search"
-              className="inline-flex items-center rounded-md bg-signal px-6 py-3 text-on-signal font-semibold hover:bg-signal-dark transition-colors"
-            >
-              Browse parts
-            </Link>
-          </div>
+      <section className="mx-auto grid max-w-7xl items-center gap-12 px-4 pb-4 pt-12 sm:px-8 lg:grid-cols-[1.1fr_1fr]" aria-labelledby="home-h1">
+        <div>
+          <h1 id="home-h1" className="text-[clamp(34px,4.6vw,56px)] font-bold leading-[1.08] tracking-tight text-navy">{t(lang, "hero_title")}</h1>
+          <p className="mt-4 max-w-lg text-lg text-muted">{t(lang, "hero_lead")}</p>
         </div>
+        <HeroPicker />
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 pt-10 sm:px-8" aria-label="Leap Auto Parts">
+        <ul className="grid gap-4 sm:grid-cols-3">
+          {stats.map(([n, label]) => (
+            <li key={label} className="flex items-baseline gap-3 rounded-[14px] border border-line bg-white px-6 py-4">
+              <b className="text-3xl font-extrabold leading-none text-navy">{number(n)}</b>
+              <span className="text-[15px] text-muted">{label}</span>
+            </li>
+          ))}
+        </ul>
       </section>
 
       {categories.length > 0 && (
-        <section className="mx-auto max-w-6xl px-6 py-14">
-          <h2 className="font-display font-bold text-2xl tracking-tight mb-6">
-            Shop by category
-          </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-            {categories.map((c) => (
-              <Link
-                key={c.id}
-                href={`/search?category=${encodeURIComponent(c.id)}`}
-                className="rounded-lg border border-line bg-white overflow-hidden text-center hover:border-ink transition-colors"
-              >
-                {/* Real category photo (new) -- the backend has
-                    required a real photo on every category since
-                    migration 046, but this page never fetched or
-                    displayed it, showing a plain text button instead. */}
-                <div className="aspect-square bg-chalk relative overflow-hidden">
-                  {c.photoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- see this file's own comment above on why next/image isn't used yet
-                    <img
-                      src={resolveImageUrl(c.photoUrl)}
-                      alt={c.nameEn}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-muted text-xs">
-                      No photo
-                    </div>
-                  )}
-                </div>
-                <span className="block px-3 py-3 font-medium text-sm">{c.nameEn}</span>
-              </Link>
-            ))}
+        <section className="mx-auto max-w-7xl px-4 pt-16 sm:px-8" aria-labelledby="home-sections">
+          <div className="mb-6 flex flex-wrap items-baseline justify-between gap-4">
+            <h2 id="home-sections" className="text-3xl font-bold tracking-tight">{t(lang, "shop_by_section")}</h2>
+            <Link href="/search" className="font-bold text-navy underline underline-offset-4">{t(lang, "see_all_sections")}</Link>
           </div>
+          <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+            {categories.map((c) => (
+              <li key={c.id}>
+                <Link href={`/search?category=${encodeURIComponent(c.id)}`} className="flex h-full flex-col items-center gap-2.5 rounded-[14px] border border-line bg-white p-5 text-center transition-colors hover:border-navy">
+                  <span className="relative grid size-16 place-items-center overflow-hidden rounded-xl bg-signal text-navy">
+                    {c.photoUrl ? (
+                      <Image src={resolveImageUrl(c.photoUrl)} alt="" fill sizes="64px" className="object-cover" unoptimized />
+                    ) : (
+                      <svg aria-hidden="true" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 6a4 4 0 0 0 5 5l-8 8a2.5 2.5 0 0 1-4-4l8-8a4 4 0 0 0-1-1z" /></svg>
+                    )}
+                  </span>
+                  <span className="text-base font-bold">{pickName(lang, c.nameEn, c.nameAr)}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 
-      <section className="mx-auto max-w-6xl px-6 pb-20">
-        <h2 className="font-display font-bold text-2xl tracking-tight mb-6">
-          Recently listed
-        </h2>
-        {products.length === 0 ? (
-          <p className="text-muted">
-            No parts are listed right now — check back soon.
-          </p>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
-            {products.slice(0, 12).map((p) => (
-              <Link
-                key={p.id}
-                href={`/products/${p.id}`}
-                className="group rounded-lg border border-line bg-white overflow-hidden hover:border-ink transition-colors"
-              >
-                <div className="aspect-square bg-chalk relative overflow-hidden">
-                  {p.images[0] ? (
-                    // Real product photos, not placeholders -- an
-                    // <img> here (not next/image) deliberately, since
-                    // these come from a configurable, potentially
-                    // cloud-hosted origin decided at runtime by the
-                    // backend (see resolveImageUrl's own comment),
-                    // which next/image's static domain allowlist isn't
-                    // set up for in this project yet.
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={resolveImageUrl(p.images[0])}
-                      alt={p.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-muted text-sm">
-                      No photo
-                    </div>
-                  )}
-                </div>
-                <div className="p-3">
-                  <p className="font-medium text-sm line-clamp-2">{p.name}</p>
-                  <p className="mt-1 font-display font-bold text-lg">
-                    ${p.price.toFixed(2)}
-                  </p>
-                  {p.part && (
-                    <span className="plate-chip mt-2">{p.part}</span>
-                  )}
-                </div>
-              </Link>
+      {brands.length > 0 && (
+        <section className="mx-auto max-w-7xl px-4 pt-16 sm:px-8" aria-labelledby="home-brands">
+          <h2 id="home-brands" className="mb-6 text-3xl font-bold tracking-tight">{t(lang, "shop_by_brand")}</h2>
+          <ul className="flex flex-wrap gap-3">
+            {brands.slice(0, 24).map((b) => (
+              <li key={b.id}>
+                <Link href={`/search?q=${encodeURIComponent(b.name)}`} className="flex min-h-14 min-w-28 items-center justify-center rounded-[10px] border border-line bg-white px-5 text-[15px] font-extrabold uppercase tracking-wide hover:border-signal">
+                  {pickName(lang, b.name, b.nameAr)}
+                </Link>
+              </li>
             ))}
+          </ul>
+        </section>
+      )}
+
+      {newest.length > 0 && (
+        <section className="mx-auto max-w-7xl px-4 pb-4 pt-16 sm:px-8" aria-labelledby="home-newest">
+          <div className="mb-6 flex flex-wrap items-baseline justify-between gap-4">
+            <h2 id="home-newest" className="text-3xl font-bold tracking-tight">{t(lang, "newest_parts")}</h2>
+            <Link href="/search" className="font-bold text-navy underline underline-offset-4">{t(lang, "see_all_parts")}</Link>
           </div>
-        )}
-      </section>
+          <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {newest.map((p) => <ProductCard key={p.id} product={p} lang={lang} />)}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

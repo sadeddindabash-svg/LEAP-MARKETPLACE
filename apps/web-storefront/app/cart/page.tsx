@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/LocLink";
 import { useCart } from "@/components/CartProvider";
 
 // Real Client Component -- a cart is inherently interactive (quantity

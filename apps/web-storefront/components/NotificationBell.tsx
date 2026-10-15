@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/LocLink";
 import { useAuth, getAuthToken } from "@/components/AuthProvider";
+import { useT } from "@/components/LangProvider";
 import { fetchUnreadNotificationCount } from "@/lib/api";
 
 // Real unread-notification badge in the header, mirroring CartIcon's
@@ -20,6 +21,7 @@ const POLL_INTERVAL_MS = 30_000;
 
 export default function NotificationBell() {
   const { user, isLoading: authLoading } = useAuth();
+  const t = useT();
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
@@ -35,10 +37,11 @@ export default function NotificationBell() {
   if (authLoading || !user) return null;
 
   return (
-    <Link href="/notifications" className="relative text-muted hover:text-ink">
-      Alerts
+    <Link href="/notifications" className="relative flex min-h-11 min-w-11 flex-col items-center justify-center gap-0.5 rounded-lg px-2 text-xs font-semibold text-white hover:bg-white/10">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 17V11a6 6 0 0 1 12 0v6l2 2H4zM10 21h4" /></svg>
+      <span>{t("notifications")}</span>
       {unreadCount > 0 && (
-        <span className="absolute -top-2 -right-4 flex h-4 min-w-4 items-center justify-center rounded-full bg-signal px-1 text-[10px] font-bold text-on-signal">
+        <span className="absolute top-0 end-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-signal px-1 text-xs font-bold text-on-signal">
           {unreadCount}
         </span>
       )}

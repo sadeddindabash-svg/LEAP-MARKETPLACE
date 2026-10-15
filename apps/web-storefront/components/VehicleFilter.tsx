@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { useLocRouter } from "@/components/useLocRouter";
+import { useLang, useT } from "@/components/LangProvider";
+import { pickName } from "@/lib/i18n";
 import { VehicleBrand, VehicleModel, VehicleGeneration, fetchVehicleBrands, fetchModelsForBrand, fetchGenerationsForModel } from "@/lib/api";
 
 // Real vehicle-fitment filter (new) -- closes a real, confirmed gap:
@@ -16,8 +19,10 @@ import { VehicleBrand, VehicleModel, VehicleGeneration, fetchVehicleBrands, fetc
 // filtering server-side, the same way category/q already work; this
 // component's only job is to update the URL, not fetch products itself.
 export function VehicleFilter() {
-  const router = useRouter();
+  const router = useLocRouter();
   const searchParams = useSearchParams();
+  const lang = useLang();
+  const t = useT();
 
   const [brands, setBrands] = useState<VehicleBrand[]>([]);
   const [models, setModels] = useState<VehicleModel[]>([]);
@@ -69,10 +74,10 @@ export function VehicleFilter() {
   return (
     <div className="rounded-lg border border-line bg-white p-4">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="font-display font-bold text-lg">My vehicle</h2>
+        <h2 className="font-display font-bold text-lg">{t("my_vehicle")}</h2>
         {hasActiveFilter && (
           <button onClick={clearFilter} className="text-xs font-semibold text-muted hover:text-ink">
-            Clear
+            {t("clear")}
           </button>
         )}
       </div>
@@ -82,8 +87,8 @@ export function VehicleFilter() {
           onChange={(e) => { setSelectedBrandId(e.target.value); setSelectedModelId(""); setSelectedGenerationId(""); setSelectedYear(""); }}
           className="w-full rounded-md border border-line px-3 py-2 text-sm"
         >
-          <option value="">Select brand…</option>
-          {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          <option value="">{t("select_brand")}</option>
+          {brands.map((b) => <option key={b.id} value={b.id}>{pickName(lang, b.name, b.nameAr)}</option>)}
         </select>
 
         {selectedBrandId && (
@@ -92,8 +97,8 @@ export function VehicleFilter() {
             onChange={(e) => { setSelectedModelId(e.target.value); setSelectedGenerationId(""); setSelectedYear(""); }}
             className="w-full rounded-md border border-line px-3 py-2 text-sm"
           >
-            <option value="">Select model…</option>
-            {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            <option value="">{t("select_model")}</option>
+            {models.map((m) => <option key={m.id} value={m.id}>{pickName(lang, m.name, m.nameAr)}</option>)}
           </select>
         )}
 
@@ -113,9 +118,9 @@ export function VehicleFilter() {
             }}
             className="w-full rounded-md border border-line px-3 py-2 text-sm"
           >
-            <option value="">Select generation…</option>
+            <option value="">{t("select_generation")}</option>
             {generations.map((g) => (
-              <option key={g.id} value={g.id}>{g.name} ({g.yearStart}–{g.yearEnd || "present"})</option>
+              <option key={g.id} value={g.id}>{g.name} ({g.yearStart}–{g.yearEnd || t("present")})</option>
             ))}
           </select>
         )}
@@ -126,7 +131,7 @@ export function VehicleFilter() {
             onChange={(e) => { setSelectedYear(e.target.value); applyFilter(selectedGenerationId, e.target.value); }}
             className="w-full rounded-md border border-line px-3 py-2 text-sm"
           >
-            <option value="">Any year in this generation</option>
+            <option value="">{t("any_year")}</option>
             {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
           </select>
         )}

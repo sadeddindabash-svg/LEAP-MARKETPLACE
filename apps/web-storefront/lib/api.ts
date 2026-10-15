@@ -13,6 +13,8 @@
  * attachPrimaryFitment, toCategoryDto) rather than assumed.
  */
 
+import type { Lang } from "./i18n";
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
 
 export interface ProductSummary {
@@ -109,6 +111,8 @@ export async function fetchProducts(params: {
   // section for that exact real bug, already fixed there).
   generationId?: string;
   year?: number;
+  /** "ar" asks the server for Arabic product names and descriptions. */
+  lang?: Lang;
 } = {}): Promise<ProductSummary[]> {
   const query = new URLSearchParams();
   if (params.category) query.set("category", params.category);
@@ -116,6 +120,7 @@ export async function fetchProducts(params: {
   if (params.sort) query.set("sort", params.sort);
   if (params.generationId) query.set("generationId", params.generationId);
   if (params.year) query.set("year", String(params.year));
+  if (params.lang === "ar") query.set("lang", "ar");
   const qs = query.toString();
   const data = await apiGet<ProductSummary[]>(`/catalog/products${qs ? `?${qs}` : ""}`);
   return data ?? [];
@@ -138,6 +143,7 @@ export async function fetchProductsPaginated(params: {
   year?: number;
   page?: number;
   limit?: number;
+  lang?: Lang;
 } = {}): Promise<{ items: ProductSummary[]; total: number }> {
   const query = new URLSearchParams();
   if (params.category) query.set("category", params.category);
@@ -145,6 +151,7 @@ export async function fetchProductsPaginated(params: {
   if (params.sort) query.set("sort", params.sort);
   if (params.generationId) query.set("generationId", params.generationId);
   if (params.year) query.set("year", String(params.year));
+  if (params.lang === "ar") query.set("lang", "ar");
   query.set("page", String(params.page || 1));
   query.set("limit", String(params.limit || 24));
   const res = await fetch(`${API_BASE_URL}/catalog/products?${query.toString()}`, {
@@ -156,8 +163,8 @@ export async function fetchProductsPaginated(params: {
   return { items, total };
 }
 
-export async function fetchProductById(id: string): Promise<ProductDetail | null> {
-  return apiGet<ProductDetail>(`/catalog/products/${id}`);
+export async function fetchProductById(id: string, lang?: Lang): Promise<ProductDetail | null> {
+  return apiGet<ProductDetail>(`/catalog/products/${id}${lang === "ar" ? "?lang=ar" : ""}`);
 }
 
 export async function fetchProductReviews(id: string): Promise<ReviewsSummary> {
@@ -786,12 +793,15 @@ export async function sendReturnCaseMessage(caseId: string, message: string, aut
 export interface VehicleBrand {
   id: string;
   name: string;
+  nameAr?: string | null;
+  photoUrl?: string | null;
 }
 
 export interface VehicleModel {
   id: string;
   brandId: string;
   name: string;
+  nameAr?: string | null;
 }
 
 export interface VehicleGeneration {
@@ -800,6 +810,7 @@ export interface VehicleGeneration {
   name: string;
   yearStart: number;
   yearEnd: number | null;
+  photoUrl?: string | null;
 }
 
 export async function fetchVehicleBrands(): Promise<VehicleBrand[]> {

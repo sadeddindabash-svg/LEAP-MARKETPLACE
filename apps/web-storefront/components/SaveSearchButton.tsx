@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useAuth, getAuthToken } from "@/components/AuthProvider";
+import { useT } from "@/components/LangProvider";
 import { createSavedSearch } from "@/lib/api";
 
 interface Props {
@@ -18,6 +19,7 @@ export function SaveSearchButton({ searchTerm, category }: Props) {
   const [status, setStatus] = useState<"idle" | "prompting" | "saving" | "saved" | "error">("idle");
   const [label, setLabel] = useState(searchTerm || category || "");
   const [error, setError] = useState<string | null>(null);
+  const t = useT();
 
   if (!searchTerm && !category) return null;
   if (!user) return null;
@@ -28,10 +30,10 @@ export function SaveSearchButton({ searchTerm, category }: Props) {
     setStatus("saving");
     setError(null);
     try {
-      await createSavedSearch(token, { searchTerm, category, label: label.trim() || "My search" });
+      await createSavedSearch(token, { searchTerm, category, label: label.trim() || t("my_search") });
       setStatus("saved");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save");
+      setError(err instanceof Error ? err.message : t("failed_to_save"));
       setStatus("error");
     }
   };
@@ -42,11 +44,11 @@ export function SaveSearchButton({ searchTerm, category }: Props) {
         <input
           value={label}
           onChange={(e) => setLabel(e.target.value)}
-          placeholder="Name this search"
+          placeholder={t("name_this_search")}
           className="rounded-md border border-line px-2 py-1 text-xs"
         />
         <button onClick={handleSave} className="text-xs font-semibold text-signal">
-          Save
+          {t("save")}
         </button>
       </div>
     );
@@ -59,7 +61,7 @@ export function SaveSearchButton({ searchTerm, category }: Props) {
         disabled={status === "saving" || status === "saved"}
         className="text-xs font-semibold text-muted hover:text-ink"
       >
-        {status === "saved" ? "✓ Saved — we'll notify you of new matches" : "Save this search"}
+        {status === "saved" ? t("saved_search_done") : t("save_search")}
       </button>
       {error && <span className="text-xs text-red-600">{error}</span>}
     </div>

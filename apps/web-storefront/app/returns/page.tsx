@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { useLocRouter } from "@/components/useLocRouter";
+import Link from "@/components/LocLink";
 import { useAuth, getAuthToken } from "@/components/AuthProvider";
 import { ReturnCaseSummary, fetchMyReturnCases } from "@/lib/api";
 
@@ -19,7 +19,7 @@ import { ReturnCaseSummary, fetchMyReturnCases } from "@/lib/api";
 //   mirroring GET /order/:id's own established pattern exactly.
 export default function ReturnsPage() {
   const { user, isLoading: authLoading } = useAuth();
-  const router = useRouter();
+  const router = useLocRouter();
   const [cases, setCases] = useState<ReturnCaseSummary[]>([]);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState<string | null>(null);

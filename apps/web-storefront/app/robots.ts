@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { localizePath } from "@/lib/i18n";
 import { PRIVATE_PATHS, siteUrl } from "@/lib/seo";
 
 // Crawlers may read everything EXCEPT the pages that belong to one person (cart, checkout, login, orders...). Those pages also carry a noindex tag (a layout.tsx
@@ -6,7 +7,8 @@ import { PRIVATE_PATHS, siteUrl } from "@/lib/seo";
 // compares this list with the real folders, so a new private page cannot be forgotten.
 export default function robots(): MetadataRoute.Robots {
   return {
-    rules: { userAgent: "*", allow: "/", disallow: [...PRIVATE_PATHS] },
+    // each private page is blocked in BOTH languages (/cart and /ar/cart)
+    rules: { userAgent: "*", allow: "/", disallow: [...PRIVATE_PATHS, ...PRIVATE_PATHS.map((p) => localizePath("ar", p))] },
     sitemap: `${siteUrl()}/sitemap.xml`,
   };
 }

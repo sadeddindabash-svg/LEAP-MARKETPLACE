@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/LocLink";
 import { useAuth, getAuthToken } from "@/components/AuthProvider";
 import { OrderDetail, fetchOrderById } from "@/lib/api";
 

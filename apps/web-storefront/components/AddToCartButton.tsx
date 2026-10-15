@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useCart } from "@/components/CartProvider";
+import { useT } from "@/components/LangProvider";
 
 interface Props {
   productId: string;
@@ -14,6 +15,7 @@ interface Props {
 // plain, serializable props like these two.
 export function AddToCartButton({ productId, inStock }: Props) {
   const { addItem } = useCart();
+  const t = useT();
   const [quantity, setQuantity] = useState(1);
   const [status, setStatus] = useState<"idle" | "adding" | "added" | "error">("idle");
 
@@ -34,7 +36,7 @@ export function AddToCartButton({ productId, inStock }: Props) {
         disabled
         className="mt-6 w-full rounded-md bg-line px-6 py-3 text-muted font-semibold cursor-not-allowed"
       >
-        Out of stock
+        {t("out_of_stock")}
       </button>
     );
   }
@@ -46,7 +48,7 @@ export function AddToCartButton({ productId, inStock }: Props) {
           type="button"
           onClick={() => setQuantity((q) => Math.max(1, q - 1))}
           className="px-3 py-3 text-muted hover:text-ink"
-          aria-label="Decrease quantity"
+          aria-label={t("decrease_quantity")}
         >
           −
         </button>
@@ -55,7 +57,7 @@ export function AddToCartButton({ productId, inStock }: Props) {
           type="button"
           onClick={() => setQuantity((q) => q + 1)}
           className="px-3 py-3 text-muted hover:text-ink"
-          aria-label="Increase quantity"
+          aria-label={t("increase_quantity")}
         >
           +
         </button>
@@ -65,7 +67,7 @@ export function AddToCartButton({ productId, inStock }: Props) {
         disabled={status === "adding"}
         className="flex-1 rounded-md bg-signal px-6 py-3 text-on-signal font-semibold hover:bg-signal-dark transition-colors disabled:opacity-60"
       >
-        {status === "adding" ? "Adding…" : status === "added" ? "Added ✓" : status === "error" ? "Couldn't add — try again" : "Add to cart"}
+        {status === "adding" ? t("adding") : status === "added" ? `${t("added")} ✓` : status === "error" ? t("add_failed") : t("add_to_cart")}
       </button>
     </div>
   );

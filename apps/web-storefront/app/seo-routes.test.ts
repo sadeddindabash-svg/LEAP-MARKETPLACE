@@ -5,8 +5,10 @@ import type { ProductDetail, ProductSummary } from "@/lib/api";
 const base = { description: null, category: "brake", part: "Front Brake Disc", position: null, oemNumber: null, currencyCode: "USD", rating: null, reviewCount: 0, stockQuantity: 5, estimatedDeliveryDays: null, weightKg: null, status: "active", price: 10, images: [] };
 const summary = (id: string): ProductSummary => ({ ...base, id, name: `Part ${id}` });
 const detail: ProductDetail = { ...summary("p1"), name: "Front Brake Disc 300mm", oemNumber: "34116792217", brand: "BMW", model: "1 Series", year: 2017, fitsVehicleIds: [], images: ["/uploads/a.jpg"] };
+const lang = { current: "en" as "en" | "ar" };
 const state = { products: [summary("p1"), summary("p2")], categories: [{ id: "brake", nameEn: "Brake System", nameAr: "نظام الفرامل", photoUrl: null, sortOrder: 1 }, { id: "filters", nameEn: "Filters", nameAr: "فلاتر", photoUrl: null, sortOrder: 2 }] };
 
+vi.mock("@/lib/lang", () => ({ getLang: vi.fn(async () => lang.current) }));
 vi.mock("@/lib/api", () => ({
   fetchProducts: vi.fn(async () => state.products),
   fetchCategories: vi.fn(async () => state.categories),
@@ -15,7 +17,7 @@ vi.mock("@/lib/api", () => ({
   resolveImageUrl: (u: string) => `https://api.example.com${u}`,
 }));
 
-beforeEach(() => { vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://shop.example.com"); state.products = [summary("p1"), summary("p2")]; });
+beforeEach(() => { vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://shop.example.com"); state.products = [summary("p1"), summary("p2")]; lang.current = "en"; });
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe("robots.txt", () => {
@@ -23,33 +25,46 @@ describe("robots.txt", () => {
     const { default: robots } = await import("./robots");
     const { PRIVATE_PATHS } = await import("@/lib/seo");
     const r = robots() as { rules: { userAgent: string; allow: string; disallow: string[] }; sitemap: string };
-    expect(r.rules).toEqual({ userAgent: "*", allow: "/", disallow: [...PRIVATE_PATHS] });
-    expect(r.rules.disallow).toEqual(expect.arrayContaining(["/cart", "/checkout", "/login", "/orders", "/support"]));
+    expect(r.rules).toEqual({ userAgent: "*", allow: "/", disallow: [...PRIVATE_PATHS, ...PRIVATE_PATHS.map((p) => `/ar${p}`)] });
+    expect(r.rules.disallow).toEqual(expect.arrayContaining(["/cart", "/checkout", "/login", "/orders", "/support", "/ar/cart", "/ar/checkout", "/ar/login", "/ar/orders", "/ar/support"]));       // both languages
     expect(r.rules.disallow).not.toContain("/products");
     expect(r.rules.disallow).not.toContain("/search");
+    expect(r.rules.disallow).not.toContain("/ar/search");
     expect(r.sitemap).toBe("https://shop.example.com/sitemap.xml");
   });
 });
 
 describe("sitemap.xml", () => {
-  it("CRITICAL: lists the home page, the catalog, every CATEGORY page that has products, and every product, with full addresses", async () => {
+  it("CRITICAL: lists the home page, the catalog, every CATEGORY page that has products, and every product, each in English AND Arabic, with full addresses", async () => {
     const { default: sitemap } = await import("./sitemap");
     const urls = (await sitemap()).map((e) => e.url);
     expect(urls).toEqual([
-      "https://shop.example.com", "https://shop.example.com/search", "https://shop.example.com/search?category=brake",            // (Filters has no products in this catalog: not listed)
-      "https://shop.example.com/products/p1", "https://shop.example.com/products/p2",
+      "https://shop.example.com/", "https://shop.example.com/ar", "https://shop.example.com/search", "https://shop.example.com/ar/search",
+      "https://shop.example.com/search?category=brake", "https://shop.example.com/ar/search?category=brake",            // (Filters has no products in this catalog: not listed)
+      "https://shop.example.com/products/p1", "https://shop.example.com/ar/products/p1", "https://shop.example.com/products/p2", "https://shop.example.com/ar/products/p2",
     ]);
+  });
+  it("CRITICAL: each entry points at its other-language twin (that is how a search engine learns they are the same page)", async () => {
+    const { default: sitemap } = await import("./sitemap");
+    const entries = await sitemap();
+    const p1 = entries.find((e) => e.url === "https://shop.example.com/products/p1");
+    const p1ar = entries.find((e) => e.url === "https://shop.example.com/ar/products/p1");
+    const twins = { languages: { en: "https://shop.example.com/products/p1", ar: "https://shop.example.com/ar/products/p1" } };
+    expect(p1?.alternates).toEqual(twins);
+    expect(p1ar?.alternates).toEqual(twins);
   });
   it("CRITICAL: a category with NO products is left out (an empty landing page is thin content), a category with products is in", async () => {
     state.products = [{ ...summary("p1"), category: "filters" }];                  // only Filters has a product; Brake System has none
     const { default: sitemap } = await import("./sitemap");
     const urls = (await sitemap()).map((e) => e.url);
     expect(urls).toContain("https://shop.example.com/search?category=filters");
+    expect(urls).toContain("https://shop.example.com/ar/search?category=filters");
     expect(urls).not.toContain("https://shop.example.com/search?category=brake");
+    expect(urls).not.toContain("https://shop.example.com/ar/search?category=brake");
   });
   it("CRITICAL: no false 'modified now', no ignored hints: only addresses (products have no real updated date)", async () => {
     const { default: sitemap } = await import("./sitemap");
-    for (const entry of await sitemap()) expect(Object.keys(entry)).toEqual(["url"]);
+    for (const entry of await sitemap()) expect(Object.keys(entry).sort()).toEqual(["alternates", "url"]);
   });
   it("never lists a private page", async () => {
     const { default: sitemap } = await import("./sitemap");
@@ -57,13 +72,13 @@ describe("sitemap.xml", () => {
     const urls = (await sitemap()).map((e) => new URL(e.url).pathname);
     for (const p of PRIVATE_PATHS) expect(urls.some((u) => u === p || u.startsWith(`${p}/`)), p).toBe(false);
   });
-  it("stays within the 50,000 addresses Google reads from one file, warning loudly when products are left out", async () => {
+  it("stays within the 50,000 addresses Google reads from one file (two per product now: one per language), warning loudly when products are left out", async () => {
     state.products = Array.from({ length: 50010 }, (_, i) => summary(`x${i}`));       // all in category "brake"
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { default: sitemap } = await import("./sitemap");
     const entries = await sitemap();
     expect(entries).toHaveLength(50000);
-    expect(entries.slice(0, 4).map((e) => e.url)).toContain("https://shop.example.com/search?category=brake");       // (the generated products are in Brake System)
+    expect(entries.slice(0, 6).map((e) => e.url)).toContain("https://shop.example.com/search?category=brake");       // (the generated products are in Brake System)
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("left out"));
   });
 });
@@ -73,11 +88,23 @@ describe("the product page", () => {
     const { generateMetadata } = await import("./products/[id]/page");
     const m = await generateMetadata({ params: Promise.resolve({ id: "p1" }) });
     expect(m.title).toBe("Front Brake Disc 300mm – OEM 34116792217 – BMW 1 Series 2017");
-    expect(m.alternates?.canonical).toBe("/products/p1");
+    expect(m.alternates?.canonical).toBe("https://shop.example.com/products/p1");          // its OWN address
+    expect(m.alternates?.languages).toEqual({ en: "https://shop.example.com/products/p1", ar: "https://shop.example.com/ar/products/p1", "x-default": "https://shop.example.com/products/p1" });
     expect(m.robots).toBeUndefined();                                                        // indexable
     expect(m.description).toContain("OEM 34116792217");
     expect(m.openGraph).toMatchObject({ url: "https://shop.example.com/products/p1", siteName: "Leap Auto Parts", images: ["https://api.example.com/uploads/a.jpg"] });
     expect(m.twitter).toMatchObject({ card: "summary_large_image" });
+  });
+  it("CRITICAL: the Arabic product page is its own page: Arabic facts, the /ar address as canonical, and the same hreflang set", async () => {
+    lang.current = "ar";
+    const { generateMetadata } = await import("./products/[id]/page");
+    const m = await generateMetadata({ params: Promise.resolve({ id: "p1" }) });
+    expect(m.alternates?.canonical).toBe("https://shop.example.com/ar/products/p1");
+    expect(m.alternates?.languages).toMatchObject({ en: "https://shop.example.com/products/p1", ar: "https://shop.example.com/ar/products/p1" });
+    expect(m.description).toContain("رقم OEM 34116792217");
+    expect(m.description).toContain("تناسب BMW 1 Series 2017");
+    expect(m.description).toContain("متوفر.");
+    expect(m.openGraph).toMatchObject({ url: "https://shop.example.com/ar/products/p1", locale: "ar_AR" });
   });
   it("a product that does not exist is never indexed", async () => {
     const { generateMetadata } = await import("./products/[id]/page");
@@ -104,6 +131,27 @@ describe("the product page", () => {
     expect(product.aggregateRating).toBeUndefined();
     expect(crumbs.itemListElement.map((i) => i.name)).toEqual(["Home", "Brake System", "Front Brake Disc 300mm"]);
   });
+  it("in Arabic the breadcrumb and the category are Arabic and every address in the structured data is the /ar one", async () => {
+    lang.current = "ar";
+    const { default: ProductPage } = await import("./products/[id]/page");
+    const { JsonLd } = await import("@/components/JsonLd");
+    const tree = await ProductPage({ params: Promise.resolve({ id: "p1" }) });
+    const found: unknown[] = [];
+    const walk = (node: unknown): void => {
+      if (!node || typeof node !== "object") return;
+      if (Array.isArray(node)) return node.forEach(walk);
+      const el = node as { type?: unknown; props?: { data?: unknown; children?: unknown } };
+      if (el.type === JsonLd) found.push(el.props?.data);
+      walk(el.props?.children);
+    };
+    walk(tree);
+    const [product, crumbs] = found as [{ url: string; category: string; offers: { url: string } }, { itemListElement: Array<{ name: string; item: string }> }];
+    expect(product.category).toBe("نظام الفرامل");
+    expect(product.url).toBe("https://shop.example.com/ar/products/p1");
+    expect(product.offers.url).toBe("https://shop.example.com/ar/products/p1");
+    expect(crumbs.itemListElement.map((i) => i.name)).toEqual(["الرئيسية", "نظام الفرامل", "Front Brake Disc 300mm"]);
+    expect(crumbs.itemListElement.map((i) => i.item)).toEqual(["https://shop.example.com/ar", "https://shop.example.com/ar/search?category=brake", "https://shop.example.com/ar/products/p1"]);
+  });
 });
 
 describe("the search page", () => {
@@ -112,15 +160,29 @@ describe("the search page", () => {
     const category = await generateMetadata({ searchParams: Promise.resolve({ category: "brake" }) });
     expect(category.title).toBe("Brake System parts");
     expect(category.robots).toEqual({ index: true, follow: true });
-    expect(category.alternates?.canonical).toBe("/search?category=brake");
+    expect(category.alternates?.canonical).toBe("https://shop.example.com/search?category=brake");
     const typed = await generateMetadata({ searchParams: Promise.resolve({ category: "brake", q: "disc" }) });
     expect(typed.robots).toEqual({ index: false, follow: true });
-    expect(typed.alternates?.canonical).toBe("/search?category=brake");
+    expect(typed.alternates?.canonical).toBe("https://shop.example.com/search?category=brake");
     expect(typed.title).toBe('Search results for "disc"');
     const paged = await generateMetadata({ searchParams: Promise.resolve({ category: "brake", page: "3" }) });
     expect(paged.robots).toEqual({ index: false, follow: true });
     const all = await generateMetadata({ searchParams: Promise.resolve({}) });
     expect(all.title).toBe("Browse all parts");
-    expect(all.alternates?.canonical).toBe("/search");
+    expect(all.alternates?.canonical).toBe("https://shop.example.com/search");
+  });
+  it("CRITICAL: the Arabic category page has an Arabic title, its own /ar canonical, and stays indexed", async () => {
+    lang.current = "ar";
+    const { generateMetadata } = await import("./search/page");
+    const m = await generateMetadata({ searchParams: Promise.resolve({ category: "brake" }) });
+    expect(m.title).toBe("قطع نظام الفرامل");
+    expect(m.description).toContain("نظام الفرامل");
+    expect(m.alternates?.canonical).toBe("https://shop.example.com/ar/search?category=brake");
+    expect(m.alternates?.languages).toMatchObject({ en: "https://shop.example.com/search?category=brake", ar: "https://shop.example.com/ar/search?category=brake" });
+    expect(m.robots).toEqual({ index: true, follow: true });
+    const typed = await generateMetadata({ searchParams: Promise.resolve({ category: "brake", q: "قرص" }) });
+    expect(typed.title).toBe('نتائج البحث عن "قرص"');
+    expect(typed.robots).toEqual({ index: false, follow: true });
+    expect(typed.alternates?.canonical).toBe("https://shop.example.com/ar/search?category=brake");
   });
 });

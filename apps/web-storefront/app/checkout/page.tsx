@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useLocRouter } from "@/components/useLocRouter";
 import { useCart } from "@/components/CartProvider";
 import { useAuth, getAuthToken } from "@/components/AuthProvider";
 import { placeOrder } from "@/lib/order-api";
@@ -18,7 +18,7 @@ import { fetchMyAddresses, createAddress, SavedAddress, validatePromoCode } from
 // and optionally save it, or a guest gets the same manual-entry flow
 // as before.
 export default function CheckoutPage() {
-  const router = useRouter();
+  const router = useLocRouter();
   const { cart, total, isLoading } = useCart();
   const { user, isLoading: authLoading } = useAuth();
 

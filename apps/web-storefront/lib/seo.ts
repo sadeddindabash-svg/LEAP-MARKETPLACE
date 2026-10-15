@@ -3,6 +3,7 @@
 // The rule behind all of it: ONLY REAL DATA. A title, description or structured-data field is built from what the product really has; a field the product does not
 // have (a part brand, a condition, a rating nobody gave) is left out. Search engines penalise made-up data, and an invented review rating is the quickest way there.
 import type { ProductDetail, ReviewsSummary } from "./api";
+import { languageAlternates, localizePath, t, type Lang } from "./i18n";
 
 export const SITE_NAME = "Leap Auto Parts";
 
@@ -21,6 +22,14 @@ export function absoluteUrl(pathOrUrl: string): string {
  * (robots.ts) and a noindex tag (a layout.tsx in each of these folders). Both are tested against the real folders, so a new private page cannot be forgotten.
  */
 export const PRIVATE_PATHS = ["/cart", "/checkout", "/login", "/signup", "/orders", "/wishlist", "/notifications", "/returns", "/support", "/referrals", "/saved-searches"] as const;
+
+/**
+ * What a page tells search engines about its two language versions: its OWN address as the canonical one (/ar/... for the Arabic page, the plain address for English),
+ * and the hreflang links between them, so each language is indexed on its own and shown to the right searchers. `englishPath` is the unprefixed path, query included.
+ */
+export function alternatesFor(lang: Lang, englishPath: string) {
+  return { canonical: absoluteUrl(localizePath(lang, englishPath)), languages: languageAlternates(englishPath, absoluteUrl) };
+}
 
 /** Roughly what a search result shows of a title (the layout then adds " | Leap Auto Parts"). */
 export const TITLE_BUDGET = 62;
@@ -55,24 +64,24 @@ export function productTitle(p: TitleFields): string {
 }
 
 /** The snippet under the title: the product's own words (short), then the facts a buyer scans for: part number, fitment, stock, price, delivery. */
-export function productDescription(p: Pick<ProductDetail, "name" | "description" | "oemNumber" | "brand" | "model" | "year" | "stockQuantity" | "price" | "estimatedDeliveryDays">): string {
+export function productDescription(p: Pick<ProductDetail, "name" | "description" | "oemNumber" | "brand" | "model" | "year" | "stockQuantity" | "price" | "estimatedDeliveryDays">, lang: Lang = "en"): string {
   const vehicle = vehicleOf(p);
   const facts = [
-    p.oemNumber ? `OEM ${p.oemNumber}.` : null,
-    vehicle ? `Fits ${vehicle}.` : null,
-    p.stockQuantity > 0 ? "In stock." : "Currently out of stock.",
+    p.oemNumber ? t(lang, "desc_oem", { n: p.oemNumber }) : null,
+    vehicle ? t(lang, "desc_fits", { v: vehicle }) : null,
+    t(lang, p.stockQuantity > 0 ? "desc_in_stock" : "desc_out_of_stock"),
     `$${p.price.toFixed(2)}.`,
-    p.estimatedDeliveryDays ? `Estimated delivery ${p.estimatedDeliveryDays} days.` : null,
+    p.estimatedDeliveryDays ? t(lang, "desc_delivery", { n: p.estimatedDeliveryDays }) : null,
   ].filter(Boolean).join(" ");
   const lead = truncate(p.description || p.name, 90);
   return truncate(`${lead}${/[.!?…]$/.test(lead) ? "" : "."} ${facts}`, DESCRIPTION_BUDGET);
 }
 
-export function categoryPageTitle(name: string): string {
-  return `${name} parts`;
+export function categoryPageTitle(name: string, lang: Lang = "en"): string {
+  return t(lang, "category_title", { name });
 }
-export function categoryPageDescription(name: string): string {
-  return `Shop ${name} parts by vehicle fitment from verified suppliers, with real photos and clear prices.`;
+export function categoryPageDescription(name: string, lang: Lang = "en"): string {
+  return t(lang, "category_description", { name });
 }
 
 /**

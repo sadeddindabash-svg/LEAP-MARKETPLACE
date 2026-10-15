@@ -1,15 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { useLocRouter } from "@/components/useLocRouter";
+import Link from "@/components/LocLink";
 import { useAuth } from "@/components/AuthProvider";
 
 // Real login page -- a Client Component since it's a real,
 // interactive form with no SEO value.
 export default function LoginPage() {
   const { login } = useAuth();
-  const router = useRouter();
+  const router = useLocRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);

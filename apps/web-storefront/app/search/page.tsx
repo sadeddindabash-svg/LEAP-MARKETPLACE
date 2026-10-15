@@ -1,10 +1,13 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
-import Link from "next/link";
-import { fetchCategories, fetchProductsPaginated, resolveImageUrl } from "@/lib/api";
+import Link from "@/components/LocLink";
+import { fetchCategories, fetchProductsPaginated } from "@/lib/api";
+import ProductCard from "@/components/ProductCard";
+import { localizePath, pickName, t } from "@/lib/i18n";
+import { getLang } from "@/lib/lang";
 import { SaveSearchButton } from "@/components/SaveSearchButton";
 import { VehicleFilter } from "@/components/VehicleFilter";
-import { categoryPageDescription, categoryPageTitle, searchIndexing } from "@/lib/seo";
+import { alternatesFor, categoryPageDescription, categoryPageTitle, searchIndexing } from "@/lib/seo";
 
 const PAGE_SIZE = 24;
 
@@ -19,17 +22,19 @@ export async function generateMetadata({
   const { q, category } = params;
   // A category page is a real landing page: indexed, with its own title. Every other combination (a typed query, a vehicle filter, page 2...) is a variation of
   // it: followed, but kept out of the index and pointing at the category page as the one real version (see searchIndexing in lib/seo.ts).
+  const lang = await getLang();
   const { index, canonicalPath } = searchIndexing(params);
-  let title = q ? `Search results for "${q}"` : "Browse all parts";
+  let title = q ? t(lang, "search_results_for", { q }) : t(lang, "search_all_parts");
   let description: string | undefined;
   if (!q && category) {
-    const categoryName = (await fetchCategories()).find((c) => c.id === category)?.nameEn;
-    if (categoryName) {
-      title = categoryPageTitle(categoryName);
-      description = categoryPageDescription(categoryName);
+    const found = (await fetchCategories()).find((c) => c.id === category);
+    if (found) {
+      const categoryName = pickName(lang, found.nameEn, found.nameAr);
+      title = categoryPageTitle(categoryName, lang);
+      description = categoryPageDescription(categoryName, lang);
     }
   }
-  return { title, description, alternates: { canonical: canonicalPath }, robots: { index, follow: true } };
+  return { title, description, alternates: alternatesFor(lang, canonicalPath), robots: { index, follow: true } };
 }
 
 // Real Server Component -- re-fetches real, filtered results on every
@@ -39,10 +44,11 @@ export async function generateMetadata({
 // own, with its own real URL.
 export default async function SearchPage({ searchParams }: PageProps) {
   const { q, category, generationId, year, page } = await searchParams;
+  const lang = await getLang();
   const pageNum = Math.max(Number(page) || 1, 1);
   const [categories, { items: products, total }] = await Promise.all([
     fetchCategories(),
-    fetchProductsPaginated({ search: q, category, generationId, year: year ? Number(year) : undefined, page: pageNum, limit: PAGE_SIZE }),
+    fetchProductsPaginated({ search: q, category, generationId, year: year ? Number(year) : undefined, page: pageNum, limit: PAGE_SIZE, lang }),
   ]);
   const totalPages = Math.max(Math.ceil(total / PAGE_SIZE), 1);
 
@@ -63,12 +69,12 @@ export default async function SearchPage({ searchParams }: PageProps) {
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
-      <form action="/search" className="mb-8">
+      <form action={localizePath(lang, "/search")} className="mb-8">
         <input
           type="text"
           name="q"
           defaultValue={q}
-          placeholder="Search by part name, OEM number, or vehicle..."
+          placeholder={t(lang, "search_page_placeholder")}
           className="w-full rounded-md border border-line px-4 py-3 text-sm"
         />
       </form>
@@ -79,19 +85,19 @@ export default async function SearchPage({ searchParams }: PageProps) {
               (see app/checkout/confirmation/page.tsx's own comment for
               the full finding -- a real production build fails
               outright without one, not just a warning). */}
-          <Suspense fallback={<div className="rounded-lg border border-line bg-white p-4 text-sm text-muted">Loading…</div>}>
+          <Suspense fallback={<div className="rounded-lg border border-line bg-white p-4 text-sm text-muted">{t(lang, "search_loading")}</div>}>
             <VehicleFilter />
           </Suspense>
 
           <div>
-            <h2 className="font-display font-bold text-lg mb-3">Category</h2>
+            <h2 className="font-display font-bold text-lg mb-3">{t(lang, "category_label")}</h2>
             <ul className="space-y-1 text-sm">
               <li>
                 <Link
                   href={`/search${q ? `?q=${encodeURIComponent(q)}` : ""}`}
                   className={!category ? "font-semibold text-signal" : "text-muted hover:text-ink"}
                 >
-                  All categories
+                  {t(lang, "all_sections")}
                 </Link>
               </li>
               {categories.map((c) => (
@@ -100,7 +106,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
                     href={`/search?category=${encodeURIComponent(c.id)}${q ? `&q=${encodeURIComponent(q)}` : ""}`}
                     className={category === c.id ? "font-semibold text-signal" : "text-muted hover:text-ink"}
                   >
-                    {c.nameEn}
+                    {pickName(lang, c.nameEn, c.nameAr)}
                   </Link>
                 </li>
               ))}
@@ -111,48 +117,21 @@ export default async function SearchPage({ searchParams }: PageProps) {
         <div className="flex-1">
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm text-muted">
-              {total} part{total === 1 ? "" : "s"} found
-              {generationId && " matching your vehicle"}
+              {total === 1 ? t(lang, "parts_found_one") : t(lang, "parts_found", { n: total })}
+              {generationId && ` ${t(lang, "matching_vehicle")}`}
             </p>
             <SaveSearchButton searchTerm={q} category={category} />
           </div>
           {products.length === 0 ? (
             <p className="text-muted">
               {generationId
-                ? "No parts match your vehicle yet. Try browsing without the vehicle filter."
-                : "No parts match your search. Try a different term or category."}
+                ? t(lang, "no_parts_vehicle")
+                : t(lang, "no_parts_search")}
             </p>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
-              {products.map((p) => (
-                <Link
-                  key={p.id}
-                  href={`/products/${p.id}`}
-                  className="group rounded-lg border border-line bg-white overflow-hidden hover:border-ink transition-colors"
-                >
-                  <div className="aspect-square bg-chalk relative overflow-hidden">
-                    {p.images[0] ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={resolveImageUrl(p.images[0])}
-                        alt={p.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-muted text-sm">
-                        No photo
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-3">
-                    <p className="font-medium text-sm line-clamp-2">{p.name}</p>
-                    <p className="mt-1 font-display font-bold text-lg">
-                      ${p.price.toFixed(2)}
-                    </p>
-                  </div>
-                </Link>
-              ))}
-            </div>
+            <ul className="grid grid-cols-2 gap-5 md:grid-cols-3">
+              {products.map((p) => <ProductCard key={p.id} product={p} lang={lang} />)}
+            </ul>
           )}
 
           {/* Real pagination controls (new) -- closes a real, confirmed
@@ -162,23 +141,23 @@ export default async function SearchPage({ searchParams }: PageProps) {
               genuinely more than one real page -- an honest, not just
               cosmetic, hidden state. */}
           {totalPages > 1 && (
-            <nav className="mt-8 flex items-center justify-center gap-2" aria-label="Search results pages">
+            <nav className="mt-8 flex items-center justify-center gap-2" aria-label={t(lang, "search_pages_nav")}>
               <Link
                 href={pageHref(pageNum - 1)}
                 aria-disabled={pageNum <= 1}
                 className={`rounded-md border border-line px-3 py-1.5 text-sm ${pageNum <= 1 ? "pointer-events-none opacity-40" : "hover:border-ink"}`}
               >
-                Previous
+                {t(lang, "previous")}
               </Link>
               <span className="text-sm text-muted px-2">
-                Page {pageNum} of {totalPages}
+                {t(lang, "page_x_of_y", { page: pageNum, total: totalPages })}
               </span>
               <Link
                 href={pageHref(pageNum + 1)}
                 aria-disabled={pageNum >= totalPages}
                 className={`rounded-md border border-line px-3 py-1.5 text-sm ${pageNum >= totalPages ? "pointer-events-none opacity-40" : "hover:border-ink"}`}
               >
-                Next
+                {t(lang, "next")}
               </Link>
             </nav>
           )}

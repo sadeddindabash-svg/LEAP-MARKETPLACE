@@ -1,82 +1,47 @@
 import type { Metadata } from "next";
-import { Manrope, JetBrains_Mono } from "next/font/google";
-import Link from "next/link";
+import { IBM_Plex_Sans_Arabic, JetBrains_Mono, Outfit } from "next/font/google";
 import { CartProvider } from "@/components/CartProvider";
 import { AuthProvider } from "@/components/AuthProvider";
-import CartIcon from "@/components/CartIcon";
-import AccountLink from "@/components/AccountLink";
-import NotificationBell from "@/components/NotificationBell";
+import { LangProvider } from "@/components/LangProvider";
+import SiteFooter from "@/components/SiteFooter";
+import SiteHeader from "@/components/SiteHeader";
+import { isRtl, t } from "@/lib/i18n";
+import { getLang } from "@/lib/lang";
 import { SITE_NAME, siteUrl } from "@/lib/seo";
 import "./globals.css";
 
-// Real, confirmed with the person -- updated to match the real mobile
-// app's own current design exactly (apps/mobile/lib/core/theme.dart),
-// replacing the real previous 2-font split (Barlow Condensed for
-// display, Inter for body) with a single real Manrope font, matching
-// the mobile app's own real uniform typeface. JetBrains Mono is kept
-// for part numbers and the plate-chip fitment badge.
-const manrope = Manrope({
-  variable: "--font-manrope",
-  weight: ["400", "500", "600", "700", "800"],
-  subsets: ["latin"],
-});
-const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-jetbrains-mono",
-  weight: ["500", "600", "700"],
-  subsets: ["latin"],
-});
+// Outfit for English and IBM Plex Sans Arabic for Arabic (the theme is "Navy Workshop": see components/SiteHeader.tsx). JetBrains Mono stays for part numbers and the
+// plate-chip fitment badge.
+const outfit = Outfit({ variable: "--font-outfit", weight: ["400", "500", "600", "700", "800"], subsets: ["latin"] });
+const plexArabic = IBM_Plex_Sans_Arabic({ variable: "--font-arabic", weight: ["400", "500", "600", "700"], subsets: ["arabic"] });
+const jetbrainsMono = JetBrains_Mono({ variable: "--font-jetbrains-mono", weight: ["500", "600", "700"], subsets: ["latin"] });
 
-export const metadata: Metadata = {
-  // Every relative address in a page's metadata (canonical, share image) is resolved against this: set NEXT_PUBLIC_SITE_URL to the real https address.
-  metadataBase: new URL(siteUrl()),
-  openGraph: { siteName: SITE_NAME, type: "website" },
-  title: {
-    default: "Leap Auto Parts — Real parts, direct from verified suppliers",
-    template: "%s | Leap Auto Parts",
-  },
-  description:
-    "Browse genuine and aftermarket auto parts by vehicle fitment, with verified suppliers, real photos, and real buyer reviews.",
-};
+// The title, description and share card follow the page's language (the language is part of the address: /ar/... is Arabic).
+export async function generateMetadata(): Promise<Metadata> {
+  const lang = await getLang();
+  return {
+    // Every relative address in a page's metadata (canonical, share image) is resolved against this: set NEXT_PUBLIC_SITE_URL to the real https address.
+    metadataBase: new URL(siteUrl()),
+    openGraph: { siteName: SITE_NAME, type: "website", locale: lang === "ar" ? "ar_AR" : "en_US" },
+    title: { default: t(lang, "site_title"), template: lang === "ar" ? "%s | ليب لقطع السيارات" : "%s | Leap Auto Parts" },
+    description: t(lang, "site_description"),
+  };
+}
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const lang = await getLang();
   return (
-    <html
-      lang="en"
-      className={`${manrope.variable} ${jetbrainsMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col bg-chalk text-ink">
-        <AuthProvider>
-        <CartProvider>
-          <header className="border-b border-line bg-white sticky top-0 z-10">
-            <div className="mx-auto max-w-6xl px-6 h-16 flex items-center justify-between">
-              <Link
-                href="/"
-                className="font-display font-bold text-2xl tracking-tight text-ink"
-              >
-                LEAP<span className="text-signal">.</span>
-              </Link>
-              <nav className="flex items-center gap-6 text-sm font-medium">
-                <Link href="/search" className="text-muted hover:text-ink">
-                  Search
-                </Link>
-                <AccountLink />
-                <NotificationBell />
-                <CartIcon />
-              </nav>
-            </div>
-          </header>
-          <main className="flex-1">{children}</main>
-          <footer className="border-t border-line bg-white">
-            <div className="mx-auto max-w-6xl px-6 py-10 text-sm text-muted">
-              <p>© {new Date().getFullYear()} Leap Auto Parts.</p>
-            </div>
-          </footer>
-        </CartProvider>
-        </AuthProvider>
+    <html lang={lang} dir={isRtl(lang) ? "rtl" : "ltr"} className={`${outfit.variable} ${plexArabic.variable} ${jetbrainsMono.variable} h-full antialiased`}>
+      <body className="flex min-h-full flex-col bg-chalk text-ink">
+        <LangProvider lang={lang}>
+          <AuthProvider>
+            <CartProvider>
+              <SiteHeader lang={lang} />
+              <main id="main" className="flex-1">{children}</main>
+              <SiteFooter lang={lang} />
+            </CartProvider>
+          </AuthProvider>
+        </LangProvider>
       </body>
     </html>
   );

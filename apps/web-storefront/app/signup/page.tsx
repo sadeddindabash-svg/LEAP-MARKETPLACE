@@ -1,8 +1,9 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useLocRouter } from "@/components/useLocRouter";
+import Link from "@/components/LocLink";
 import { useAuth } from "@/components/AuthProvider";
 
 // Real referral code auto-fill (new) -- requires the same real
@@ -12,7 +13,7 @@ import { useAuth } from "@/components/AuthProvider";
 // see that file's own comment for the full finding).
 function SignupForm() {
   const { signup } = useAuth();
-  const router = useRouter();
+  const router = useLocRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

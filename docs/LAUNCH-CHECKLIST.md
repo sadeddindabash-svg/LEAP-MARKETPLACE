@@ -67,6 +67,8 @@ To clean test data (take a backup first; the tool prints the command): `node scr
 - [ ] Test products, test categories and fake review counts are removed **before** the sitemap is submitted (the readiness checker lists them): they would be indexed.
 - [ ] Open a few product pages in Google's [Rich Results Test](https://search.google.com/test/rich-results) to see the structured data is read.
 - [ ] Every product's weight and size can be worked out (its own, or its part's): the checker's "can be priced" line. A product that cannot be priced is **hidden from buyers**, and so from search.
+- [ ] The Arabic text in `apps/web-storefront/lib/i18n.ts` is read by a native speaker (the storefront serves Arabic under `/ar`, with its own address, canonical link and sitemap entries).
+- [ ] `NEXT_PUBLIC_LEGAL_BASE_URL` points at where the legal pages really live (terms, delivery, refund, privacy, cancellation), and the announcement lines in `lib/i18n.ts` say what is true on launch day.
 - [ ] Consider Google Merchant Center free listings (a product feed) and an Arabic version of the storefront: see `apps/web-storefront/README.md`, "SEO".
 
 ### Words and rules

@@ -2,7 +2,7 @@
 
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/LocLink";
 
 // Real order confirmation -- a real Client Component since it reads a
 // real orderId from the URL's search params after a real client-side

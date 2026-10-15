@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LocLink";
 
 export default function NotFound() {
   return (

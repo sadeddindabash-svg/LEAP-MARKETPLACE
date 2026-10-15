@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ProductDetail, ReviewsSummary } from "./api";
 import {
-  DESCRIPTION_BUDGET, PRIVATE_PATHS, TITLE_BUDGET, absoluteUrl, breadcrumbJsonLd, categoryPageDescription, categoryPageTitle, jsonLdString, productDescription,
+  DESCRIPTION_BUDGET, PRIVATE_PATHS, TITLE_BUDGET, absoluteUrl, alternatesFor, breadcrumbJsonLd, categoryPageDescription, categoryPageTitle, jsonLdString, productDescription,
   productJsonLd, productTitle, searchIndexing, siteUrl, truncate, websiteJsonLd,
 } from "./seo";
 
@@ -31,6 +31,27 @@ describe("addresses", () => {
   it("falls back to localhost only when no address is configured", () => {
     vi.stubEnv("NEXT_PUBLIC_SITE_URL", "");
     expect(siteUrl()).toBe("http://localhost:3001");
+  });
+});
+
+describe("alternatesFor: a page and its other-language twin", () => {
+  it("CRITICAL: each language's page names ITSELF as canonical and lists both languages and the default", () => {
+    expect(alternatesFor("en", "/products/p1")).toEqual({ canonical: "https://shop.example.com/products/p1", languages: { en: "https://shop.example.com/products/p1", ar: "https://shop.example.com/ar/products/p1", "x-default": "https://shop.example.com/products/p1" } });
+    expect(alternatesFor("ar", "/products/p1").canonical).toBe("https://shop.example.com/ar/products/p1");
+    expect(alternatesFor("ar", "/search?category=brake").canonical).toBe("https://shop.example.com/ar/search?category=brake");
+    expect(alternatesFor("ar", "/").canonical).toBe("https://shop.example.com/ar");
+  });
+});
+
+describe("the page text follows the language", () => {
+  it("product description facts and category titles come out in Arabic, and default to English", () => {
+    const p = { ...product, description: null };
+    expect(productDescription(p, "ar")).toContain("رقم OEM 34116792217.");
+    expect(productDescription(p, "ar")).toContain("التوصيل المتوقع خلال 5 أيام.");
+    expect(productDescription(p)).toContain("Estimated delivery 5 days.");
+    expect(categoryPageTitle("Brake System")).toBe("Brake System parts");
+    expect(categoryPageTitle("نظام الفرامل", "ar")).toBe("قطع نظام الفرامل");
+    expect(categoryPageDescription("نظام الفرامل", "ar")).toContain("نظام الفرامل");
   });
 });
 

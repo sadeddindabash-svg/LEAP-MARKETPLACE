@@ -715,3 +715,35 @@ suite: 29/29 passing.
 
 **Run the tests:** `cd apps/web-storefront && npm test` (the API integration tests need the backend running). They are not part of `scripts/run-tests.ps1`.
 
+## The storefront is being brought to the same features as the mobile app (stages)
+
+The mobile app has 44 screens and the storefront had far fewer. The full list of what is missing, and the design of every screen (theme "Navy Workshop", the colours of the Leap logo), is agreed; it is built in stages, each tested before the next:
+
+- **Stage 1a (done): foundation.** English and Arabic with real `/ar` addresses and right-to-left layout, the Navy Workshop theme, the new header, menu, footer and home page, Arabic names from the server on the home, search and product pages, and the search-engine work above kept correct for two languages.
+- **Stage 1b (next): garage and finding parts.** My garage and the "Shopping for" bar, VIN lookup, part-number search (typed, camera, barcode), the which-part wizard, shop by symptom, compare parts and OEM cross-reference, currency choice.
+- **Stage 1c: the full product page.** Alternatives, same brand and model, customer photos, writing a review with photos, price-drop and back-in-stock alerts, request a quote.
+- **Stage 2: buying.** Cart and checkout with payment (card, PayPal, Amazon Payment Services), promo code and loyalty discount, guest checkout, address book.
+- **Stage 3: after the sale.** Order timeline, tracking, cancel an order or a part, reorder, receipt, returns, support tickets and chat, contact us, report a bug.
+- **Stage 4: account and trust.** The account area with its sidebar, loyalty card, quote requests, two-step sign-in, change email.
+
+**Cut on purpose:** "Work with Leap" (the menu item and the "Join now" block of the existing website). Not on the web: app lock and the update gate; push notifications become email.
+
+## Languages: English and Arabic (`lib/i18n.ts`, `proxy.ts`)
+
+The language is part of the **address**: `/ar/search` is the Arabic search page, `/search` the English one. `proxy.ts` (Next 16's name for middleware) turns `/ar/...` into the normal route and passes the language to the page in a header (`x-leap-lang`), **always overwriting it**, so a visitor cannot choose the language by sending the header. Every page therefore exists once; nothing was moved.
+
+- **Server Components** read the language with `getLang()` (`lib/lang.ts`); **Client Components** with `useLang()` / `useT()` (`components/LangProvider.tsx`). Texts live in the two dictionaries in `lib/i18n.ts`: a key without an Arabic text is a compile error, a test checks the Arabic is real Arabic and that both languages use the same `{placeholders}`, and a missing translation falls back to English (never blank).
+- **Links and navigation keep the language automatically:** every `Link` in the storefront is `components/LocLink.tsx` (it adds `/ar` in Arabic and leaves full URLs and anchors alone), and `router.push` goes through `components/useLocRouter.ts`. Use those, not `next/link` or `useRouter`. A plain HTML `<form action>` must use `localizePath(lang, "/search")`.
+- **Names from the server** are asked for in the page's language (`lang=ar` on the product calls) and categories, brands and models use their Arabic name when they have one (`pickName`).
+- **Search engines:** each language's page names ITSELF as canonical, lists both languages with `hreflang` (`alternatesFor` in `lib/seo.ts`), the sitemap lists every page twice (English and `/ar`) pointing at each other, and robots blocks the private pages in both languages. The page's `<html lang dir>` is set from the address.
+- **Still English for now (their stage):** the cart, checkout, orders, returns, support, notifications, referrals, wishlist, login and sign-up pages (they already work in Arabic addresses and right-to-left, with English text). Where a page has Arabic, it has all of it.
+- **Arabic wording is a first version**, written to match the mobile app's own Arabic: have a native speaker review `lib/i18n.ts`.
+
+## Theme: "Navy Workshop" (`app/globals.css`, `components/SiteHeader.tsx`)
+
+Navy `#0B3146` and yellow `#F9B317` (from the logo), Outfit for English and IBM Plex Sans Arabic for Arabic (Outfit has no Arabic letters, so Arabic falls through to the second font). Header: thin bar (tagline, support, language), main bar (logo, search, account, wishlist, alerts, cart), menu (Home, Products, Sections), and a yellow announcement line. Tailwind logical utilities (`ms-`, `end-`, `start-`) are used in new code so right-to-left flips by itself; the older pages still use some left/right classes.
+
+**Settings:** `NEXT_PUBLIC_SITE_URL` (the public https address), `NEXT_PUBLIC_API_BASE_URL`, and `NEXT_PUBLIC_LEGAL_BASE_URL` (default `https://www.leapautoparts.com`: the footer links to the policy pages that already exist there, in the visitor's language, instead of copying them). The two announcement lines and the top tagline are texts in `lib/i18n.ts` (`announce_warehouse`, `announce_shipping`, `util_tagline`); they are the wording of the existing website, so edit them when they change.
+
+**Tests:** `npm test` (unit tests; `lib/api.integration.test.ts` needs the backend running). `lib/i18n.test.ts`, `proxy.test.ts`, `components/LocLink.test.tsx` and `app/pages-i18n.test.tsx` cover the language rules, the proxy, the links, the home page and the layout in both languages.
+

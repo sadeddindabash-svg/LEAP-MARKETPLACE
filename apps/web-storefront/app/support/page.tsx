@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { useLocRouter } from "@/components/useLocRouter";
+import Link from "@/components/LocLink";
 import { useAuth, getAuthToken } from "@/components/AuthProvider";
 import { SupportTicketSummary, fetchMyTickets, createSupportTicket } from "@/lib/api";
 
@@ -20,7 +20,7 @@ import { SupportTicketSummary, fetchMyTickets, createSupportTicket } from "@/lib
 //   /support/my-tickets/:id* were requireAuth only before this).
 export default function SupportPage() {
   const { user, isLoading: authLoading } = useAuth();
-  const router = useRouter();
+  const router = useLocRouter();
   const [tickets, setTickets] = useState<SupportTicketSummary[]>([]);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState<string | null>(null);

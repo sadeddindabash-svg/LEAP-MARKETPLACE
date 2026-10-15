@@ -18,23 +18,28 @@
  * separate, later phase -- not part of this change.
  */
 :root {
-  --color-ink: #14171c;
-  --color-chalk: #f5f6f8;
-  --color-line: #e4e6ea;
-  --color-signal: #f2a71b;
-  --color-signal-dark: #c4870d;
+  /* Theme A, "Navy Workshop": the colours of the Leap logo (yellow circle, navy letters) */
+  --color-navy: #0b3146;
+  --color-navy-deep: #07202f;
+  --color-ink: #14212b;
+  --color-chalk: #f4f6f8;
+  --color-line: #dde3e8;
+  --color-signal: #f9b317;
+  --color-signal-dark: #e39f0c;
   /* Real, new -- dark text-on-gold, matching the mobile app's own
      real onSignal token exactly. Gold is too light for white text to
      read well against it, matching the real site's own real contrast
      choice (dark text on every real gold button/pill there). */
-  --color-on-signal: #241a05;
+  --color-on-signal: #0b3146;
   --color-torque: #2a5fd9;
   --color-gauge: #1e9d6b;
   --color-amber: #b9791f;
-  --color-muted: #6b7280;
+  --color-muted: #53636f;
 }
 
 @theme inline {
+  --color-navy: var(--color-navy);
+  --color-navy-deep: var(--color-navy-deep);
   --color-ink: var(--color-ink);
   --color-chalk: var(--color-chalk);
   --color-line: var(--color-line);
@@ -45,8 +50,9 @@
   --color-gauge: var(--color-gauge);
   --color-amber: var(--color-amber);
   --color-muted: var(--color-muted);
-  --font-display: var(--font-manrope);
-  --font-body: var(--font-manrope);
+  /* Outfit for Latin text; Arabic falls through to IBM Plex Sans Arabic (Outfit has no Arabic letters) */
+  --font-display: var(--font-outfit), var(--font-arabic);
+  --font-body: var(--font-outfit), var(--font-arabic);
   --font-plate: var(--font-jetbrains-mono);
 }
 

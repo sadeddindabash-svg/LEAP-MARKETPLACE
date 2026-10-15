@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/LocLink";
 import { useAuth } from "@/components/AuthProvider";
 import { getAuthToken } from "@/components/AuthProvider";
 import { SavedSearch, fetchSavedSearches, deleteSavedSearch } from "@/lib/api";

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAuth, getAuthToken } from "@/components/AuthProvider";
+import { useT } from "@/components/LangProvider";
 import { checkWishlisted, addToWishlist, removeFromWishlist } from "@/lib/api";
 
 interface Props {
@@ -14,6 +15,7 @@ interface Props {
 // cart, which works for guests) -- prompts to log in rather than
 // silently doing nothing when signed out.
 export function WishlistButton({ productId }: Props) {
+  const t = useT();
   const { user, isLoading: authLoading } = useAuth();
   const [isWishlisted, setIsWishlisted] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
@@ -55,7 +57,7 @@ export function WishlistButton({ productId }: Props) {
   if (authLoading || isChecking) {
     return (
       <button disabled className="mt-3 w-full rounded-md border border-line px-6 py-3 text-muted font-semibold opacity-60">
-        ♡ Wishlist
+        {t("wishlist_loading")}
       </button>
     );
   }
@@ -66,7 +68,7 @@ export function WishlistButton({ productId }: Props) {
         href="/login"
         className="mt-3 flex w-full items-center justify-center rounded-md border border-line px-6 py-3 text-muted font-semibold hover:border-signal hover:text-signal transition-colors"
       >
-        ♡ Log in to save
+        {t("log_in_to_save")}
       </a>
     );
   }
@@ -79,7 +81,7 @@ export function WishlistButton({ productId }: Props) {
         isWishlisted ? "border-signal text-signal" : "border-line text-ink hover:border-signal hover:text-signal"
       }`}
     >
-      {isWishlisted ? "♥ Saved to wishlist" : "♡ Add to wishlist"}
+      {isWishlisted ? t("saved_to_wishlist") : t("add_to_wishlist")}
     </button>
   );
 }

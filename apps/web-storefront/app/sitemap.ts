@@ -1,10 +1,13 @@
 import type { MetadataRoute } from "next";
 import { fetchCategories, fetchProducts } from "@/lib/api";
-import { absoluteUrl, siteUrl } from "@/lib/seo";
+import { languageAlternates } from "@/lib/i18n";
+import { absoluteUrl } from "@/lib/seo";
 
 // Google reads at most this many URLs from one sitemap file. (When the catalog outgrows it, split it with generateSitemaps: see the Next.js docs.)
 const MAX_URLS = 50000;
 
+// Every page is listed once per language (English, and Arabic under /ar), each entry pointing at the other: that is how a search engine learns they are the same page.
+//
 // The pages worth finding: the home page, the full catalog, every CATEGORY page that has products (a real landing page for "brake parts", "filters"...), and
 // every product. A category with no products is left out: an empty landing page is thin content and does the site no good.
 //
@@ -13,18 +16,27 @@ const MAX_URLS = 50000;
 // products carry a real updated date.
 //
 // Regenerated as the product data is (see REVALIDATE_SECONDS in lib/api.ts), so new products appear without a rebuild.
+// One page, as its English and Arabic entries.
+function bothLanguages(path: string): MetadataRoute.Sitemap {
+  const alt = languageAlternates(path, absoluteUrl);
+  const languages = { en: alt.en, ar: alt.ar };
+  return [{ url: alt.en, alternates: { languages } }, { url: alt.ar, alternates: { languages } }];
+}
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [products, categories] = await Promise.all([fetchProducts(), fetchCategories()]);
 
   const withProducts = new Set(products.map((p) => p.category));
   const fixed: MetadataRoute.Sitemap = [
-    { url: siteUrl() },
-    { url: absoluteUrl("/search") },
-    ...categories.filter((c) => withProducts.has(c.id)).map((c) => ({ url: absoluteUrl(`/search?category=${encodeURIComponent(c.id)}`) })),
+    ...bothLanguages("/"),
+    ...bothLanguages("/search"),
+    ...categories.filter((c) => withProducts.has(c.id)).flatMap((c) => bothLanguages(`/search?category=${encodeURIComponent(c.id)}`)),
   ];
+  // (each product is two entries, so the room is counted in entries, not products)
   const room = Math.max(MAX_URLS - fixed.length, 0);
-  if (products.length > room) {
-    console.warn(`[sitemap] ${products.length} products but a sitemap file holds ${MAX_URLS} URLs: the last ${products.length - room} are left out. Split the sitemap.`);
+  const capacity = Math.floor(room / 2);
+  if (products.length > capacity) {
+    console.warn(`[sitemap] ${products.length} products but a sitemap file holds ${MAX_URLS} URLs (two per product, one per language): the last ${products.length - capacity} are left out. Split the sitemap.`);
   }
-  return [...fixed, ...products.slice(0, room).map((p) => ({ url: absoluteUrl(`/products/${p.id}`) }))];
+  return [...fixed, ...products.slice(0, capacity).flatMap((p) => bothLanguages(`/products/${p.id}`))];
 }
