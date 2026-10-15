@@ -34,6 +34,8 @@ export interface ProductSummary {
   status: string;
   price: number;
   images: string[];
+  /** The vehicle brand the part is for (the "More BYD parts" section is named by it). */
+  brand?: string | null;
   /** Sent by the server for every product; shown in compare. */
   isVerifiedSeller?: boolean;
   shipsFromCountry?: string | null;
@@ -587,6 +589,11 @@ export interface SubmittedReview {
   photos: string[];
 }
 
+/** An error from the server that keeps its machine-readable `code` (when it sends one), so the page can word the problem in the buyer's language. */
+export class ApiError extends Error {
+  constructor(message: string, public code?: string, public status?: number) { super(message); this.name = "ApiError"; }
+}
+
 export async function submitReview(
   token: string,
   params: { productId: string; rating: number; comment?: string; photos?: string[] }
@@ -597,7 +604,7 @@ export async function submitReview(
     body: JSON.stringify(params),
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || `Failed to submit review (${res.status})`);
+  if (!res.ok) throw new ApiError(body.error || `Failed to submit review (${res.status})`, body.code, res.status);
   return body;
 }
 
@@ -997,4 +1004,51 @@ export async function fetchPartsForCategory(categoryId: string): Promise<Categor
 export async function fetchDisplayRates(): Promise<Record<string, number>> {
   const data = await apiGet<{ rates: Record<string, number> }>("/pricing/display-rates");
   return data?.rates ?? {};
+}
+
+// ---------------------------------------------------------------- Stage 1c: the rest of the product page
+
+/** The sections under a product: the same part from other suppliers, similar parts, more of the brand. Each is the buyer-facing product shape, in the page's language. */
+async function productList(path: string, lang?: Lang, extra: Record<string, string | number> = {}): Promise<ProductSummary[]> {
+  const query = new URLSearchParams(Object.entries(extra).map(([k, v]) => [k, String(v)]));
+  if (lang === "ar") query.set("lang", "ar");
+  const qs = query.toString();
+  return (await apiGet<ProductSummary[]>(`${path}${qs ? `?${qs}` : ""}`)) ?? [];
+}
+/** The same OEM part number, listed by other suppliers (empty when the product has no OEM number). */
+export const fetchOemAlternatives = (id: string, lang?: Lang) => productList(`/catalog/products/${encodeURIComponent(id)}/oem-alternatives`, lang);
+/** Similar parts (the same part or category, and the same vehicle model). */
+export const fetchAlternatives = (id: string, lang?: Lang) => productList(`/catalog/products/${encodeURIComponent(id)}/alternatives`, lang);
+/** More parts for the same vehicle brand, 10 a page, without anything already shown above. */
+export const fetchSameBrand = (id: string, lang?: Lang, page = 1) => productList(`/catalog/products/${encodeURIComponent(id)}/same-brand`, lang, { page });
+
+/** A review as its author sees it (with its moderation status). */
+export interface MyReview {
+  id: number;
+  productId: string;
+  rating: number;
+  comment: string | null;
+  status: "pending" | "approved" | "rejected";
+  photos: string[];
+  isVerifiedPurchase: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+export async function fetchMyReviews(token: string): Promise<MyReview[]> {
+  const res = await fetch(`${API_BASE_URL}/reviews/me`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`Failed to load your reviews (${res.status})`);
+  return res.json();
+}
+
+/** Reports a review to the moderators, with the buyer's reason. */
+export async function flagReview(token: string, reviewId: number, reason: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/reviews/${reviewId}/flag`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ reason }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(body.error || `Failed to report the review (${res.status})`, body.code, res.status);
+  }
 }

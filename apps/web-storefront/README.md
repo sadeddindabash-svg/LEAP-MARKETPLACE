@@ -721,8 +721,8 @@ The mobile app has 44 screens and the storefront had far fewer. The full list of
 
 - **Stage 1a (done): foundation.** English and Arabic with real `/ar` addresses and right-to-left layout, the Navy Workshop theme, the new header, menu, footer and home page, Arabic names from the server on the home, search and product pages, and the search-engine work above kept correct for two languages.
 - **Stage 1b (done): garage and finding parts.** See "Stage 1b" below.
-- **Stage 1c (next): the full product page.** Alternatives, same brand and model, the OEM comparison (the same part number from other suppliers), customer photos, writing a review with photos, price-drop and back-in-stock alerts, request a quote.
-- **Stage 2: buying.** Cart and checkout with payment (card, PayPal, Amazon Payment Services), promo code and loyalty discount, guest checkout, address book.
+- **Stage 1c (done): the full product page.** See "Stage 1c" below.
+- **Stage 2 (next): buying.** Cart and checkout with payment (card, PayPal, Amazon Payment Services), promo code and loyalty discount, guest checkout, address book.
 - **Stage 3: after the sale.** Order timeline, tracking, cancel an order or a part, reorder, receipt, returns, support tickets and chat, contact us, report a bug.
 - **Stage 4: account and trust.** The account area with its sidebar, loyalty card, quote requests, two-step sign-in, change email.
 
@@ -761,4 +761,16 @@ Navy `#0B3146` and yellow `#F9B317` (from the logo), Outfit for English and IBM 
 - **Search-engine rules for the new pages:** `/find` is public and in the sitemap in both languages; `/garage` and `/compare` are private (noindex, blocked in robots in both languages).
 
 **Tests:** `npm test` (the new unit tests: `lib/vin`, `lib/currency`, `lib/symptoms`, `lib/garage`, `lib/compare`, `components/stage1b-providers`, `components/FindTools`, `app/stage1b-pages`). `lib/api.stage1b.integration.test.ts` runs the new calls against the real backend (the garage lifecycle, VIN decoding, the parts of a category, the part filter, the display rates, Arabic) and needs it running.
+
+## Stage 1c: the full product page (the mobile app's sections, in its order)
+
+The product page now has what the app's has. Each section is drawn only when it has something to show, and the lists are drawn on the SERVER (so they are in the page's HTML for a search engine); only the interactive parts run in the browser.
+
+- **Gallery:** every photo, arrows and thumbnails, the arrow keys (reversed in Arabic), the position announced to screen readers. **Share:** the device's share sheet where there is one, else the link is copied. **Confirmed fit:** shown when the buyer's default car is in the part's fit list (the app's rule, by generation). **Notify me when back in stock** on a sold-out part: like the app, the notification IS the wishlist (saving the part is how the buyer asks to be told).
+- **"Same part, other listings"** (the OEM comparison): the same OEM part number sold by other suppliers, with price, stock, delivery and verified sellers. **Reviews:** the average and count, three at a time, with photos and the verified-purchase mark. **Customer photos:** the photos buyers added to their reviews. **Similar products.** **"More {brand} parts"** and **Newest products**, ten at a time with "Show more" (more pages exactly when the last page the server sent was full).
+- **Writing a review (signed in):** a star rating (required), an optional comment, up to 3 photos (uploaded to the same endpoint the app uses). One review per buyer per part: writing again EDITS it, and it goes back to a moderator, so the buyer sees "awaiting review" or "not approved". Only buyers who received the part can review (the server's rule): refused, the page words it itself from the server's code (`review_requires_purchase`), in the buyer's language. **Reporting a review (signed in):** a reason is required. Rules in `lib/review.ts`.
+- **Not here, on purpose:** the app has **no price-drop alert button** (price drops are an automatic signal for wishlisted parts, so none was built), and no product video. **"Request a quote" and "Ask about this part"** are left to the stages that build quote requests and support (an empty link would help nobody).
+- **Bug found by the tests and fixed:** the newest-parts grid hid the current part BEFORE deciding whether more pages exist, so a full first page containing it looked short and "Show more" disappeared. It now decides on the page as the server sent it (`LoadMoreGrid`).
+
+**Tests:** `components/stage1c-components.test.tsx`, `components/ReviewsSection.test.tsx`, `app/stage1c-page.test.tsx`, `lib/review.test.ts`, and `lib/api.stage1c.integration.test.ts` against the real backend (other listings, similar, same brand paging, the review refusal code, editing without duplicating, reporting).
 

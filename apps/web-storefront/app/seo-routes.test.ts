@@ -14,6 +14,10 @@ vi.mock("@/lib/api", () => ({
   fetchCategories: vi.fn(async () => state.categories),
   fetchProductById: vi.fn(async (id: string) => (id === "p1" ? detail : null)),
   fetchProductReviews: vi.fn(async () => ({ averageRating: null, reviewCount: 0, reviews: [] })),
+  fetchOemAlternatives: vi.fn(async () => []),
+  fetchAlternatives: vi.fn(async () => []),
+  fetchSameBrand: vi.fn(async () => []),
+  fetchProductsPaginated: vi.fn(async () => ({ items: [], total: 0 })),
   resolveImageUrl: (u: string) => `https://api.example.com${u}`,
 }));
 
