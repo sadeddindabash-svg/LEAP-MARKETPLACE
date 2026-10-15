@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { stockedProduct } from './testSupport';
 import {
   addCartItem, cancelOrder, cancelSubOrder, confirmEnglishAddress, createAddress, createReturnCase, fetchAnnualSpend, fetchCart, fetchMyOrders, fetchMyReturnCases, fetchOrderById, fetchOrderReceipt,
-  fetchOrderTracking, fetchProducts, placeOrder,
+  fetchOrderTracking, placeOrder,
 } from './api';
 import { addressPayload, EMPTY_ADDRESS } from './address';
 import { isOrderCancellable, needsEnglishAddressCheck, reorderLines, subOrderStage } from './orders';
@@ -21,9 +22,7 @@ async function newBuyer() {
   return { token: token as string, id: user.id as string, email };
 }
 async function inStock() {
-  const found = (await fetchProducts()).find((p) => p.stockQuantity >= 5 && p.price > 0);
-  if (!found) throw new Error('No real product with enough stock: reseed the database');
-  return found;
+  return stockedProduct();          // restocks when earlier runs used the stock up (see testSupport.ts)
 }
 const addr = { recipientName: 'Stage Three', phone: '+968 9000 0000', country: 'Oman', city: 'Muscat', streetAddress: '12 Al Noor St' };
 async function buyerOrder(address: typeof addr = addr) {

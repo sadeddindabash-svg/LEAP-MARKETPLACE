@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { stockedProduct } from '@/lib/testSupport';
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 // END TO END, with the REAL order pages, the REAL cart and sign-in providers and the REAL backend and database: only the router is replaced. What the buyer does on the page is
@@ -15,7 +16,7 @@ import { LangProvider } from "@/components/LangProvider";
 import OrderPage from "./orders/[id]/page";
 import OrdersPage from "./orders/page";
 import TrackingPage from "./orders/[id]/tracking/page";
-import { createAddress, fetchCart, fetchMyReturnCases, fetchOrderById, fetchProducts, placeOrder } from "@/lib/api";
+import { createAddress, fetchCart, fetchMyReturnCases, fetchOrderById, placeOrder } from "@/lib/api";
 import { addressPayload, EMPTY_ADDRESS } from "@/lib/address";
 import { needsEnglishAddressCheck } from "@/lib/orders";
 
@@ -23,9 +24,7 @@ let n = 0;
 const T = { timeout: 25000 };
 const clearCookies = () => { for (const c of document.cookie.split("; ")) document.cookie = `${c.split("=")[0]}=; path=/; max-age=0`; };
 async function product() {
-  const found = (await fetchProducts()).find((p) => p.stockQuantity >= 5 && p.price > 0);
-  if (!found) throw new Error("No in-stock product: reseed the database");
-  return found;
+  return stockedProduct();          // restocks when earlier runs used the stock up (see lib/testSupport.ts)
 }
 async function newBuyer() {
   const email = `e2e3-${Date.now()}-${++n}@leap.dev`;

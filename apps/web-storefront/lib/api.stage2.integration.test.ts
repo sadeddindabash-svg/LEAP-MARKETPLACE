@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
+import { stockedProduct } from './testSupport';
 import {
-  addCartItem, applyCartPromoCode, createAddress, deleteAddress, fetchCart, fetchMyAddresses, fetchMyOrders, fetchPaymentMethodsForCountry, fetchProducts, lockCartPrices, placeOrder, setCartItemQuantity, updateAddress,
+  addCartItem, applyCartPromoCode, createAddress, deleteAddress, fetchCart, fetchMyAddresses, fetchMyOrders, fetchPaymentMethodsForCountry, lockCartPrices, placeOrder, setCartItemQuantity, updateAddress,
 } from './api';
 import { addressPayload, EMPTY_ADDRESS } from './address';
 import { supplierLabel, totals } from './cart';
@@ -27,9 +28,7 @@ async function adminToken(): Promise<string> {
   return (await res.json()).token;
 }
 async function inStock(minQuantity = 5, minPrice = 0) {
-  const found = (await fetchProducts()).find((p) => p.stockQuantity >= minQuantity && p.price >= minPrice);
-  if (!found) throw new Error('No real product with enough stock: reseed the database');
-  return found;
+  return stockedProduct(minPrice, minQuantity);          // restocks when earlier runs used the stock up (see testSupport.ts)
 }
 const cartId = () => `stage2-cart-${Date.now()}-${++counter}`;
 const oman = (over = {}) => ({ ...EMPTY_ADDRESS, label: 'Home', recipientName: 'Stage Two', phone: '+968 9000 0000', country: 'Oman', city: 'Muscat', streetAddress: '12 Al Noor St', ...over });

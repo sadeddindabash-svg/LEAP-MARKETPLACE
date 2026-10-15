@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { stockedProduct } from './testSupport';
 import { fetchCategories, fetchProducts, fetchProductById, fetchCart, addCartItem, fetchMyOrders, fetchOrderById, fetchWishlist, checkWishlisted, addToWishlist, removeFromWishlist, submitReview, fetchMyReferral, fetchNotifications, fetchUnreadNotificationCount, markNotificationRead, markAllNotificationsRead, resolveNotificationLink, fetchMyReturnCases, fetchReturnCase, sendReturnCaseMessage, placeOrder, fetchMyAddresses, createAddress, fetchVehicleBrands, fetchModelsForBrand, fetchGenerationsForModel, createSupportTicket, fetchMyTickets, fetchSupportTicket, sendSupportTicketMessage, validatePromoCode } from './api';
 
 const BACKEND_URL = 'http://localhost:4000';
@@ -34,10 +35,7 @@ const backendUp = await isBackendUp();
 // so every other existing call site (which doesn't care about price)
 // is unaffected.
 async function pickInStockProduct(minQuantity = 5, minPrice = 0) {
-  const products = await fetchProducts();
-  const found = products.find((p) => p.stockQuantity >= minQuantity && p.price >= minPrice);
-  if (!found) throw new Error(`No real product with at least ${minQuantity} in stock and price >= ${minPrice} -- reseed the database.`);
-  return found;
+  return stockedProduct(minPrice, minQuantity);          // restocks when earlier runs used the stock up (see testSupport.ts)
 }
 
 // The FIRST real test this app has ever had, against ANY backend

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { stockedProduct } from '@/lib/testSupport';
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 // END TO END, with the REAL pages, the REAL cart and sign-in providers and the REAL backend and database: only the router is replaced. A guest and a signed-in buyer each go
@@ -15,14 +16,12 @@ import { LangProvider } from "@/components/LangProvider";
 import CheckoutPage from "./checkout/page";
 import CartPage from "./cart/page";
 import AddressesPage from "./addresses/page";
-import { addCartItem, fetchMyAddresses, fetchMyOrders, fetchProducts } from "@/lib/api";
+import { addCartItem, fetchMyAddresses, fetchMyOrders } from "@/lib/api";
 
 let n = 0;
 const clearCookies = () => { for (const c of document.cookie.split("; ")) document.cookie = `${c.split("=")[0]}=; path=/; max-age=0`; };
 async function product() {
-  const found = (await fetchProducts()).find((p) => p.stockQuantity >= 5 && p.price > 0);
-  if (!found) throw new Error("No in-stock product: reseed the database");
-  return found;
+  return stockedProduct();          // restocks when earlier runs used the stock up (see lib/testSupport.ts)
 }
 async function newBuyer() {
   const email = `e2e-${Date.now()}-${++n}@leap.dev`;
