@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans_Arabic, JetBrains_Mono, Outfit } from "next/font/google";
 import { CartProvider } from "@/components/CartProvider";
+import { CurrencyProvider } from "@/components/CurrencyProvider";
+import { GarageProvider } from "@/components/GarageProvider";
 import { AuthProvider } from "@/components/AuthProvider";
 import { LangProvider } from "@/components/LangProvider";
 import SiteFooter from "@/components/SiteFooter";
@@ -35,11 +37,15 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       <body className="flex min-h-full flex-col bg-chalk text-ink">
         <LangProvider lang={lang}>
           <AuthProvider>
-            <CartProvider>
-              <SiteHeader lang={lang} />
-              <main id="main" className="flex-1">{children}</main>
-              <SiteFooter lang={lang} />
-            </CartProvider>
+            <GarageProvider>
+              <CurrencyProvider>
+                <CartProvider>
+                  <SiteHeader lang={lang} />
+                  <main id="main" className="flex-1">{children}</main>
+                  <SiteFooter lang={lang} />
+                </CartProvider>
+              </CurrencyProvider>
+            </GarageProvider>
           </AuthProvider>
         </LangProvider>
       </body>

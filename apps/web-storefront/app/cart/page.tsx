@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "@/components/LocLink";
+import { Price } from "@/components/Price";
 import { useCart } from "@/components/CartProvider";
 
 // Real Client Component -- a cart is inherently interactive (quantity
@@ -47,7 +48,7 @@ export default function CartPage() {
                 <p className="text-xs text-muted mt-1">Sold by {item.supplierName}</p>
               )}
               <p className="font-display font-bold text-lg mt-1">
-                ${item.price.toFixed(2)}
+                <Price usd={item.price} />
               </p>
             </div>
             <div className="flex items-center border border-line rounded-md">
@@ -79,7 +80,7 @@ export default function CartPage() {
 
       <div className="mt-8 flex items-center justify-between border-t border-line pt-6">
         <span className="font-display font-bold text-xl">Total</span>
-        <span className="font-display font-bold text-2xl">${total.toFixed(2)}</span>
+        <span className="font-display font-bold text-2xl"><Price usd={total} /></span>
       </div>
 
       <Link

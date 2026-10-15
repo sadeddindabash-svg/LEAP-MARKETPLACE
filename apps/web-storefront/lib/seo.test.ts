@@ -116,6 +116,10 @@ describe("which search pages are indexed", () => {
       expect(r.canonicalPath).toBe(params.category ? "/search?category=brake" : "/search");
     }
     expect(searchIndexing({ q: "   " }).index).toBe(true);           // an empty box is not a query
+    // a PART page is a landing page of its own: indexed, canonical to itself; with a vehicle, a query or page 2 it points back at the part page
+    expect(searchIndexing({ category: "brake", part: "Front Brake Disc" })).toEqual({ index: true, canonicalPath: "/search?category=brake&part=Front%20Brake%20Disc" });
+    expect(searchIndexing({ category: "brake", part: "Front Brake Disc", generationId: "g1", year: "2017" })).toEqual({ index: false, canonicalPath: "/search?category=brake&part=Front%20Brake%20Disc" });
+    expect(searchIndexing({ part: "Front Brake Disc" }).canonicalPath).toBe("/search");          // a part without its category is not a page of its own
     expect(searchIndexing({ category: "a&b" }).canonicalPath).toBe("/search?category=a%26b");
   });
   it("category pages have their own title and description", () => {
@@ -170,13 +174,14 @@ describe("structured data (JSON-LD)", () => {
 
 describe("private pages are kept out of search results, two ways, checked against the REAL folders", () => {
   const appDir = path.resolve(__dirname, "../app");
-  const PUBLIC_SECTIONS = ["products", "search"];                                        // the only sections meant for search engines
+  const PUBLIC_SECTIONS = ["products", "search", "find"];                                        // the only sections meant for search engines
 
   it("CRITICAL: every section of the site is either public on purpose or listed as private: a new private page cannot be forgotten", () => {
     const sections = fs.readdirSync(appDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => `/${e.name}`);
     const unknown = sections.filter((s) => !PRIVATE_PATHS.includes(s as (typeof PRIVATE_PATHS)[number]) && !PUBLIC_SECTIONS.includes(s.slice(1)));
     expect(unknown).toEqual([]);
     for (const p of PRIVATE_PATHS) expect(sections, `${p} is listed as private but has no folder`).toContain(p);
+    expect(PRIVATE_PATHS).toEqual(expect.arrayContaining(["/garage", "/compare"]));          // the garage and a comparison belong to one buyer
   });
 
   it("CRITICAL: each private section has a layout that says noindex, so even a crawler that ignores robots.txt keeps it out", async () => {

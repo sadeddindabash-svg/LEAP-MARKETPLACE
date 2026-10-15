@@ -4,9 +4,11 @@ import { fetchCategories } from "@/lib/api";
 import { pickName, t, type Lang } from "@/lib/i18n";
 import AccountMenu from "./AccountMenu";
 import CartIcon from "./CartIcon";
+import CurrencySwitcher from "./CurrencySwitcher";
 import HeaderSearch from "./HeaderSearch";
 import LanguageSwitcher from "./LanguageSwitcher";
 import NotificationBell from "./NotificationBell";
+import VehicleBar from "./VehicleBar";
 
 const actionClass = "relative flex min-h-11 min-w-11 flex-col items-center justify-center gap-0.5 rounded-lg px-2 text-xs font-semibold text-white hover:bg-white/10";
 
@@ -22,6 +24,7 @@ export default async function SiteHeader({ lang }: { lang: Lang }) {
           <span>{t(lang, "util_tagline")}</span>
           <span className="flex items-center gap-5">
             <Link href="/support" className="hover:underline">{t(lang, "support")}</Link>
+            <CurrencySwitcher />
             <LanguageSwitcher />
           </span>
         </div>
@@ -48,6 +51,7 @@ export default async function SiteHeader({ lang }: { lang: Lang }) {
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-1 px-4 sm:px-8">
           <Link href="/" className="flex min-h-12 items-center rounded-lg px-4 text-[15px] font-semibold hover:bg-chalk">{t(lang, "nav_home")}</Link>
           <Link href="/search" className="flex min-h-12 items-center rounded-lg px-4 text-[15px] font-semibold hover:bg-chalk">{t(lang, "nav_products")}</Link>
+          <Link href="/find" className="flex min-h-12 items-center rounded-lg px-4 text-[15px] font-semibold hover:bg-chalk">{t(lang, "find_a_part")}</Link>
           <details className="group relative">
             <summary className="flex min-h-12 cursor-pointer list-none items-center gap-1 rounded-lg px-4 text-[15px] font-semibold hover:bg-chalk">
               {t(lang, "nav_sections")}
@@ -62,6 +66,7 @@ export default async function SiteHeader({ lang }: { lang: Lang }) {
           </details>
         </div>
       </nav>
+      <VehicleBar />
       <div className="bg-signal text-sm font-semibold text-on-signal">
         <div className="mx-auto flex min-h-10 max-w-7xl flex-wrap items-center justify-center gap-x-8 gap-y-1 px-4 py-1 sm:px-8">
           <span>{t(lang, "announce_warehouse")}</span>

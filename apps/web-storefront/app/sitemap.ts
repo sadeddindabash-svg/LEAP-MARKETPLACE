@@ -30,6 +30,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const fixed: MetadataRoute.Sitemap = [
     ...bothLanguages("/"),
     ...bothLanguages("/search"),
+    ...bothLanguages("/find"),
     ...categories.filter((c) => withProducts.has(c.id)).flatMap((c) => bothLanguages(`/search?category=${encodeURIComponent(c.id)}`)),
   ];
   // (each product is two entries, so the room is counted in entries, not products)

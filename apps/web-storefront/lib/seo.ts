@@ -21,7 +21,7 @@ export function absoluteUrl(pathOrUrl: string): string {
  * Pages that belong to ONE person (their cart, orders, account...). They have nothing to offer a search engine, so they are kept out two ways: robots.txt
  * (robots.ts) and a noindex tag (a layout.tsx in each of these folders). Both are tested against the real folders, so a new private page cannot be forgotten.
  */
-export const PRIVATE_PATHS = ["/cart", "/checkout", "/login", "/signup", "/orders", "/wishlist", "/notifications", "/returns", "/support", "/referrals", "/saved-searches"] as const;
+export const PRIVATE_PATHS = ["/cart", "/checkout", "/login", "/signup", "/orders", "/wishlist", "/notifications", "/returns", "/support", "/referrals", "/saved-searches", "/garage", "/compare"] as const;
 
 /**
  * What a page tells search engines about its two language versions: its OWN address as the canonical one (/ar/... for the Arabic page, the plain address for English),
@@ -85,14 +85,17 @@ export function categoryPageDescription(name: string, lang: Lang = "en"): string
 }
 
 /**
- * Which search pages belong in Google. A category page ("/search?category=brake") is a real landing page and is indexed. Everything else is endless
+ * Which search pages belong in Google. A category page ("/search?category=brake") and a part page ("/search?category=brake&part=Front%20Brake%20Disc") are real landing pages and are indexed. Everything else is endless
  * near-duplicate variations (every typed query, every vehicle filter, page 2, 3...): crawled and followed, but kept out of the index, and pointing at the
  * category page as the one real version.
  */
-export function searchIndexing(params: { q?: string; category?: string; generationId?: string; year?: string; page?: string }): { index: boolean; canonicalPath: string } {
+export function searchIndexing(params: { q?: string; category?: string; part?: string; generationId?: string; year?: string; page?: string }): { index: boolean; canonicalPath: string } {
   const page = Number(params.page) || 1;
   const filtered = Boolean(params.q?.trim() || params.generationId || params.year) || page > 1;
-  return { index: !filtered, canonicalPath: params.category ? `/search?category=${encodeURIComponent(params.category)}` : "/search" };
+  // A PART page ("Front Brake Disc" in "Brake System") is a landing page of its own, like a category page: indexed, canonical to itself.
+  const category = params.category ? `/search?category=${encodeURIComponent(params.category)}` : "/search";
+  const canonicalPath = params.category && params.part ? `${category}&part=${encodeURIComponent(params.part)}` : category;
+  return { index: !filtered, canonicalPath };
 }
 
 // ---------------------------------------------------------------- structured data (schema.org, as JSON-LD)

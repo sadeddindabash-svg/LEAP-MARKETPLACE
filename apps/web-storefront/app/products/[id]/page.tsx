@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { AddToCartButton } from "@/components/AddToCartButton";
 import { WishlistButton } from "@/components/WishlistButton";
 import { JsonLd } from "@/components/JsonLd";
+import { Price } from "@/components/Price";
 import {
   fetchCategories,
   fetchProductById,
@@ -114,7 +115,7 @@ export default async function ProductPage({ params }: PageProps) {
             )}
           </div>
           <p className="mt-6 font-display font-bold text-4xl">
-            ${product.price.toFixed(2)}
+            <Price usd={product.price} />
           </p>
           <p
             className={`mt-1 text-sm font-medium ${

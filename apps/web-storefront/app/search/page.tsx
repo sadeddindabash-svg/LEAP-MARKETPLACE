@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "@/components/LocLink";
 import { fetchCategories, fetchProductsPaginated } from "@/lib/api";
+import FitsMyCarToggle from "@/components/FitsMyCarToggle";
 import ProductCard from "@/components/ProductCard";
 import { localizePath, pickName, t } from "@/lib/i18n";
 import { getLang } from "@/lib/lang";
@@ -12,14 +13,14 @@ import { alternatesFor, categoryPageDescription, categoryPageTitle, searchIndexi
 const PAGE_SIZE = 24;
 
 interface PageProps {
-  searchParams: Promise<{ q?: string; category?: string; generationId?: string; year?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; part?: string; generationId?: string; year?: string; page?: string }>;
 }
 
 export async function generateMetadata({
   searchParams,
 }: PageProps): Promise<Metadata> {
   const params = await searchParams;
-  const { q, category } = params;
+  const { q, category, part } = params;
   // A category page is a real landing page: indexed, with its own title. Every other combination (a typed query, a vehicle filter, page 2...) is a variation of
   // it: followed, but kept out of the index and pointing at the category page as the one real version (see searchIndexing in lib/seo.ts).
   const lang = await getLang();
@@ -30,7 +31,7 @@ export async function generateMetadata({
     const found = (await fetchCategories()).find((c) => c.id === category);
     if (found) {
       const categoryName = pickName(lang, found.nameEn, found.nameAr);
-      title = categoryPageTitle(categoryName, lang);
+      title = part ? `${part} — ${categoryName}` : categoryPageTitle(categoryName, lang);          // a part page is titled by its part
       description = categoryPageDescription(categoryName, lang);
     }
   }
@@ -43,12 +44,12 @@ export async function generateMetadata({
 // so a search engine can index each real filtered result page on its
 // own, with its own real URL.
 export default async function SearchPage({ searchParams }: PageProps) {
-  const { q, category, generationId, year, page } = await searchParams;
+  const { q, category, part, generationId, year, page } = await searchParams;
   const lang = await getLang();
   const pageNum = Math.max(Number(page) || 1, 1);
   const [categories, { items: products, total }] = await Promise.all([
     fetchCategories(),
-    fetchProductsPaginated({ search: q, category, generationId, year: year ? Number(year) : undefined, page: pageNum, limit: PAGE_SIZE, lang }),
+    fetchProductsPaginated({ search: q, category, part, generationId, year: year ? Number(year) : undefined, page: pageNum, limit: PAGE_SIZE, lang }),
   ]);
   const totalPages = Math.max(Math.ceil(total / PAGE_SIZE), 1);
 
@@ -56,10 +57,11 @@ export default async function SearchPage({ searchParams }: PageProps) {
   // filter (q, category, generationId, year) while only changing the
   // real page number, so paging through results doesn't silently drop
   // whatever the buyer was actually filtering by.
-  const pageHref = (p: number) => {
+  const pageHref = (p: number, dropPart = false) => {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (category) params.set("category", category);
+    if (part && !dropPart) params.set("part", part);
     if (generationId) params.set("generationId", generationId);
     if (year) params.set("year", year);
     if (p > 1) params.set("page", String(p));
@@ -86,6 +88,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
               the full finding -- a real production build fails
               outright without one, not just a warning). */}
           <Suspense fallback={<div className="rounded-lg border border-line bg-white p-4 text-sm text-muted">{t(lang, "search_loading")}</div>}>
+            <FitsMyCarToggle />
             <VehicleFilter />
           </Suspense>
 
@@ -120,6 +123,11 @@ export default async function SearchPage({ searchParams }: PageProps) {
               {total === 1 ? t(lang, "parts_found_one") : t(lang, "parts_found", { n: total })}
               {generationId && ` ${t(lang, "matching_vehicle")}`}
             </p>
+            {part && (
+              <Link href={pageHref(1, true)} className="inline-flex items-center gap-2 rounded-full bg-navy px-3 py-1 text-xs font-bold text-white">
+                {t(lang, "part_filter", { part })}<span aria-hidden="true">×</span><span className="sr-only">{t(lang, "clear")}</span>
+              </Link>
+            )}
             <SaveSearchButton searchTerm={q} category={category} />
           </div>
           {products.length === 0 ? (

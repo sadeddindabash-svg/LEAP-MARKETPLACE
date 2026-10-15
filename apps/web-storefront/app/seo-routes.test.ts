@@ -39,7 +39,7 @@ describe("sitemap.xml", () => {
     const { default: sitemap } = await import("./sitemap");
     const urls = (await sitemap()).map((e) => e.url);
     expect(urls).toEqual([
-      "https://shop.example.com/", "https://shop.example.com/ar", "https://shop.example.com/search", "https://shop.example.com/ar/search",
+      "https://shop.example.com/", "https://shop.example.com/ar", "https://shop.example.com/search", "https://shop.example.com/ar/search", "https://shop.example.com/find", "https://shop.example.com/ar/find",
       "https://shop.example.com/search?category=brake", "https://shop.example.com/ar/search?category=brake",            // (Filters has no products in this catalog: not listed)
       "https://shop.example.com/products/p1", "https://shop.example.com/ar/products/p1", "https://shop.example.com/products/p2", "https://shop.example.com/ar/products/p2",
     ]);
@@ -78,7 +78,7 @@ describe("sitemap.xml", () => {
     const { default: sitemap } = await import("./sitemap");
     const entries = await sitemap();
     expect(entries).toHaveLength(50000);
-    expect(entries.slice(0, 6).map((e) => e.url)).toContain("https://shop.example.com/search?category=brake");       // (the generated products are in Brake System)
+    expect(entries.slice(0, 8).map((e) => e.url)).toContain("https://shop.example.com/search?category=brake");       // (the generated products are in Brake System)
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("left out"));
   });
 });
@@ -170,6 +170,16 @@ describe("the search page", () => {
     const all = await generateMetadata({ searchParams: Promise.resolve({}) });
     expect(all.title).toBe("Browse all parts");
     expect(all.alternates?.canonical).toBe("https://shop.example.com/search");
+  });
+  it("CRITICAL: a PART page (Front Brake Disc in Brake System) is its own indexed landing page; with a query or a vehicle it is kept out and points back at the part page", async () => {
+    const { generateMetadata } = await import("./search/page");
+    const m = await generateMetadata({ searchParams: Promise.resolve({ category: "brake", part: "Front Brake Disc" }) });
+    expect(m.title).toBe("Front Brake Disc — Brake System");
+    expect(m.robots).toEqual({ index: true, follow: true });
+    expect(m.alternates?.canonical).toBe("https://shop.example.com/search?category=brake&part=Front%20Brake%20Disc");
+    const withCar = await generateMetadata({ searchParams: Promise.resolve({ category: "brake", part: "Front Brake Disc", generationId: "g1", year: "2017" }) });
+    expect(withCar.robots).toEqual({ index: false, follow: true });
+    expect(withCar.alternates?.canonical).toBe("https://shop.example.com/search?category=brake&part=Front%20Brake%20Disc");
   });
   it("CRITICAL: the Arabic category page has an Arabic title, its own /ar canonical, and stays indexed", async () => {
     lang.current = "ar";

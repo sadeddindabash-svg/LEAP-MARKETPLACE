@@ -34,6 +34,10 @@ export interface ProductSummary {
   status: string;
   price: number;
   images: string[];
+  /** Sent by the server for every product; shown in compare. */
+  isVerifiedSeller?: boolean;
+  shipsFromCountry?: string | null;
+  shipsFromCountryAr?: string | null;
 }
 
 export interface ProductDetail extends ProductSummary {
@@ -111,11 +115,14 @@ export async function fetchProducts(params: {
   // section for that exact real bug, already fixed there).
   generationId?: string;
   year?: number;
+  /** A part of the category, by its English name ("Front Brake Disc"): the server filters by it. */
+  part?: string;
   /** "ar" asks the server for Arabic product names and descriptions. */
   lang?: Lang;
 } = {}): Promise<ProductSummary[]> {
   const query = new URLSearchParams();
   if (params.category) query.set("category", params.category);
+  if (params.part) query.set("part", params.part);
   if (params.search) query.set("search", params.search);
   if (params.sort) query.set("sort", params.sort);
   if (params.generationId) query.set("generationId", params.generationId);
@@ -144,9 +151,11 @@ export async function fetchProductsPaginated(params: {
   page?: number;
   limit?: number;
   lang?: Lang;
+  part?: string;
 } = {}): Promise<{ items: ProductSummary[]; total: number }> {
   const query = new URLSearchParams();
   if (params.category) query.set("category", params.category);
+  if (params.part) query.set("part", params.part);
   if (params.search) query.set("search", params.search);
   if (params.sort) query.set("sort", params.sort);
   if (params.generationId) query.set("generationId", params.generationId);
@@ -913,4 +922,79 @@ export async function sendSupportTicketMessage(ticketId: string, message: string
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || `Failed to send message (${res.status})`);
   }
+}
+
+// ---------------------------------------------------------------- Stage 1b: garage, VIN, parts of a category, display rates
+
+/** A car the buyer saved: one generation and one year, with the names in both languages and the photo to show. */
+export interface GarageVehicle {
+  generationId: string;
+  year: number;
+  brand: string;
+  brandAr?: string | null;
+  model: string;
+  modelAr?: string | null;
+  generation: string;
+  yearStart: number;
+  yearEnd: number | null;
+  isDefault: boolean;
+  brandPhotoUrl?: string | null;
+  generationPhotoUrl?: string | null;
+}
+
+/** What a VIN says about its car (GET /fitment/vin-decode/:vin). */
+export interface VinDecode {
+  vin: string;
+  isValidCheckDigit: boolean;
+  make: string | null;
+  model: string | null;
+  modelYear: number | null;
+  source: string;
+}
+
+/** A part of a category (the sub-category: "Front Brake Disc" under "Brake System"). The English name is what the product filter takes. */
+export interface CategoryPart {
+  id: string;
+  categoryId: string;
+  nameEn: string;
+  nameAr: string | null;
+  sortOrder: number;
+  photoUrl?: string | null;
+}
+
+async function authedJson<T>(token: string, path: string, method: string, failure: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${token}`, ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `${failure} (${res.status})`);
+  }
+  return (res.status === 204 ? undefined : await res.json().catch(() => undefined)) as T;
+}
+
+export const fetchMyGarage = (token: string) => authedJson<GarageVehicle[]>(token, "/garage/me", "GET", "Failed to load your garage");
+export const addVehicleToGarage = (token: string, generationId: string, year: number) => authedJson<GarageVehicle>(token, "/garage/me", "POST", "Failed to save the vehicle", { generationId, year });
+export const removeVehicleFromGarage = (token: string, generationId: string, year: number) => authedJson<void>(token, `/garage/me/${encodeURIComponent(generationId)}/${year}`, "DELETE", "Failed to remove the vehicle");
+export const setDefaultVehicle = (token: string, generationId: string, year: number) => authedJson<void>(token, `/garage/me/${encodeURIComponent(generationId)}/${year}/default`, "PATCH", "Failed to set the default vehicle");
+
+/** Decodes a VIN. Throws with the server's own message when it is not a valid VIN (17 characters, no I, O or Q). */
+export async function decodeVin(vin: string): Promise<VinDecode> {
+  const res = await fetch(`${API_BASE_URL}/fitment/vin-decode/${encodeURIComponent(vin.trim().toUpperCase())}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Could not look up this VIN (${res.status})`);
+  return data as VinDecode;
+}
+
+export async function fetchPartsForCategory(categoryId: string): Promise<CategoryPart[]> {
+  const data = await apiGet<CategoryPart[]>(`/catalog/categories/${encodeURIComponent(categoryId)}/parts`);
+  return data ?? [];
+}
+
+/** USD to each currency, for DISPLAY only (the order is still placed in US dollars). */
+export async function fetchDisplayRates(): Promise<Record<string, number>> {
+  const data = await apiGet<{ rates: Record<string, number> }>("/pricing/display-rates");
+  return data?.rates ?? {};
 }
