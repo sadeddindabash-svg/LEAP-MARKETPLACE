@@ -142,7 +142,7 @@ describe("order confirmation", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Order placed");
     expect(screen.getByText("Order ord_7 placed successfully")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Create account" }).getAttribute("href")).toBe("/signup?email=sam%40example.com");
-    expect(screen.queryByRole("link", { name: "View your order" })).not.toBeInTheDocument();       // order pages for guests come with the orders stage
+    expect(screen.getByRole("link", { name: "View your order" }).getAttribute("href")).toBe("/orders/ord_7?guestEmail=sam%40example.com");       // a guest opens their order with their email
     fireEvent.click(screen.getByRole("button", { name: "Maybe later" }));
     expect(screen.queryByText("Save your order history")).not.toBeInTheDocument();
   });

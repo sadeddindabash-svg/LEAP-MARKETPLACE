@@ -33,7 +33,7 @@ function Confirmation() {
       )}
 
       <div className="mt-8 flex flex-wrap justify-center gap-3">
-        {user && orderId && <Link href={`/orders/${encodeURIComponent(orderId)}`} className="inline-flex min-h-12 items-center rounded-[10px] bg-signal px-6 font-bold text-on-signal hover:bg-signal-dark">{t("view_order")}</Link>}
+        {orderId && (user || guestEmail) && <Link href={`/orders/${encodeURIComponent(orderId)}${user || !guestEmail ? "" : `?guestEmail=${encodeURIComponent(guestEmail)}`}`} className="inline-flex min-h-12 items-center rounded-[10px] bg-signal px-6 font-bold text-on-signal hover:bg-signal-dark">{t("view_order")}</Link>}
         <Link href="/search" className="inline-flex min-h-12 items-center rounded-[10px] border-[1.5px] border-navy px-6 font-bold text-navy hover:bg-chalk">{t("continue_shopping")}</Link>
       </div>
     </div>

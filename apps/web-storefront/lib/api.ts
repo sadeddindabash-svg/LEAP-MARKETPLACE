@@ -457,6 +457,9 @@ export interface OrderSummary {
   total: number;
   currencyCode: string;
   placedAt: string;
+  guestEmail?: string | null;
+  /** The anonymised supplier labels ("Supplier LEAP-SLR-AB12"). */
+  supplierNames?: string[];
 }
 
 export interface HubShipmentEvent {
@@ -468,11 +471,15 @@ export interface HubShipmentEvent {
   photos: string[];
 }
 
+/** The photos the courier took when the parcel was delivered: the buyer's own evidence that it arrived. */
+export interface DeliveryProof { photos: Array<{ url: string; submittedAt: string }> }
+
 export interface HubShipment {
   id: number;
   status: string;
   updatedAt: string;
   events: HubShipmentEvent[];
+  deliveryProof?: DeliveryProof | null;
 }
 
 export interface OrderLineItem {
@@ -480,6 +487,7 @@ export interface OrderLineItem {
   name: string;
   quantity: number;
   unitPrice: number;
+  imageUrl?: string | null;
 }
 
 export interface SupplierSubOrder {
@@ -504,8 +512,15 @@ export interface OrderAddress {
   source: string;
 }
 
+/** The delivery address in English letters, for the inspection hub. `source` "auto" is a machine's guess nobody has confirmed yet. */
+export interface EnglishAddress {
+  recipientName: string; country: string; city: string; streetAddress: string; state: string | null;
+  source: "same" | "auto" | "buyer" | "admin" | string; confirmed: boolean; updatedAt: string | null;
+}
+
 export interface OrderDetail {
   id: string;
+  isReplacement?: boolean;
   userId: string | null;
   guestEmail: string | null;
   isGuestOrder: boolean;
@@ -515,8 +530,10 @@ export interface OrderDetail {
   discountAmount: number;
   promoCode: string | null;
   currencyCode: string;
+  waitForAllShipments?: boolean;
   placedAt: string;
   address: OrderAddress | null;
+  addressEnglish?: EnglishAddress | null;
   supplierSubOrders: SupplierSubOrder[];
 }
 
@@ -531,16 +548,29 @@ export async function fetchMyOrders(token: string): Promise<OrderSummary[]> {
   return res.json();
 }
 
-export async function fetchOrderById(token: string, orderId: string): Promise<OrderDetail> {
-  const res = await fetch(`${API_BASE_URL}/order/${orderId}`, {
-    headers: { Authorization: `Bearer ${token}` },
+/** Who is asking about an order: a signed-in buyer (token) or a guest (the email the order was placed with). */
+export interface OrderWho { token?: string | null; guestEmail?: string | null }
+
+async function orderCall<T>(path: string, who: OrderWho, init: { method?: string; body?: Record<string, unknown>; query?: Record<string, string> } = {}, failure = "Request failed"): Promise<T> {
+  const query = new URLSearchParams(init.query ?? {});
+  const method = init.method ?? "GET";
+  // A guest is identified by the email the order was placed with: in the query of a read, in the body of a change (that is where the server looks for it).
+  const guest = !who.token && who.guestEmail ? { guestEmail: who.guestEmail } : {};
+  if (method === "GET" && "guestEmail" in guest) query.set("guestEmail", guest.guestEmail as string);
+  const body = method === "GET" ? undefined : { ...(init.body ?? {}), ...guest };
+  const qs = query.toString();
+  const res = await fetch(`${API_BASE_URL}/order${path}${qs ? `?${qs}` : ""}`, {
+    method,
+    headers: { ...(who.token ? { Authorization: `Bearer ${who.token}` } : {}), ...(body ? { "Content-Type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(apiMessage(body.error) || apiMessage(`Failed to load order (${res.status})`));
-  }
-  return res.json();
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(apiMessage(data.error) || apiMessage(`${failure} (${res.status})`));
+  return data as T;
 }
+
+export const fetchOrderById = (token: string | null, orderId: string, guestEmail?: string | null) =>
+  orderCall<OrderDetail>(`/${encodeURIComponent(orderId)}`, { token, guestEmail }, {}, "Failed to load order");
 
 // ---------------- Real wishlist (client-side calls, new) ----------------
 // Same reasoning as saved searches/orders above -- real logged-in
@@ -1071,4 +1101,48 @@ export async function flagReview(token: string, reviewId: number, reason: string
     const body = await res.json().catch(() => ({}));
     throw new ApiError(body.error || `Failed to report the review (${res.status})`, body.code, res.status);
   }
+}
+
+// ---------------------------------------------------------------- Stage 3a: orders after the sale
+
+export interface AnnualSpend { year: number; orderCount: number; totalSpent: number; currencyCode: string }
+export const fetchAnnualSpend = (token: string, year?: number) => orderCall<AnnualSpend>("/me/annual-summary", { token }, { query: year ? { year: String(year) } : {} }, "Failed to load your spending");
+
+export interface TrackingStep { time: string; description: string; kind: string; location: string | null; source: string }
+export interface SubOrderTracking { subOrderId: number; supplierTrackingNumber: string | null; hubTrackingNumber: string | null; timeline: TrackingStep[]; isDelayed: boolean }
+export interface OrderTracking { orderId: string; subOrders: SubOrderTracking[] }
+/** The live tracking of every part of an order, with the steps in the page's language. */
+export const fetchOrderTracking = (orderId: string, who: OrderWho, lang?: Lang) =>
+  orderCall<OrderTracking>(`/${encodeURIComponent(orderId)}/tracking`, who, { query: lang === "ar" ? { lang: "ar" } : {} }, "Failed to load tracking");
+
+export const cancelOrder = (orderId: string, who: OrderWho) => orderCall<{ status?: string }>(`/${encodeURIComponent(orderId)}/cancel`, who, { method: "POST", body: {} }, "Failed to cancel the order");
+export const cancelSubOrder = (orderId: string, subOrderId: number, who: OrderWho) => orderCall<{ status?: string }>(`/${encodeURIComponent(orderId)}/sub-orders/${subOrderId}/cancel`, who, { method: "POST", body: {} }, "Failed to cancel this part");
+
+/** Confirms the English version of the address as it is, or with the buyer's edits (English letters only: the server refuses anything else). */
+export const confirmEnglishAddress = (orderId: string, who: OrderWho, edits?: { recipientName: string; country: string; city: string; streetAddress: string; state?: string }) =>
+  orderCall<EnglishAddress>(`/${encodeURIComponent(orderId)}/address-english/confirm`, who, { method: "PUT", body: edits ?? {} }, "Failed to confirm the address");
+
+/** The receipt as a PDF (the sign-in token goes in a header, not in the address, so it can never end up in a link, a history or a log). */
+export async function fetchOrderReceipt(orderId: string, who: OrderWho, lang?: Lang): Promise<Blob> {
+  const query = new URLSearchParams();
+  if (lang === "ar") query.set("lang", "ar");
+  if (!who.token && who.guestEmail) query.set("guestEmail", who.guestEmail);
+  const res = await fetch(`${API_BASE_URL}/order/${encodeURIComponent(orderId)}/receipt?${query.toString()}`, { headers: who.token ? { Authorization: `Bearer ${who.token}` } : {} });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(apiMessage(data.error) || apiMessage(`Failed to load the receipt (${res.status})`));
+  }
+  return res.blob();
+}
+
+/** A return request for one part of an order (the server enforces the return window after delivery). A guest gives their email; photos are for signed-in buyers. */
+export async function createReturnCase(input: { subOrderId: number; reason: string; message: string; photos?: string[] }, who: OrderWho): Promise<{ id: string }> {
+  const res = await fetch(`${API_BASE_URL}/returns`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(who.token ? { Authorization: `Bearer ${who.token}` } : {}) },
+    body: JSON.stringify({ ...input, ...(who.token ? {} : { guestEmail: who.guestEmail }) }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(apiMessage(data.error) || apiMessage(`Failed to send the return request (${res.status})`));
+  return data as { id: string };
 }

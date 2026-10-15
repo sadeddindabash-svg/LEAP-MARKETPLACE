@@ -72,6 +72,8 @@ To clean test data (take a backup first; the tool prints the command): `node scr
 - [ ] **Decide how payment is collected.** Today neither the app nor the website collects payment online (the checkout only lists the payment methods for the country and places the order). Before real customers order, decide how orders get paid; online payment means new work in the apps and on the server.
 - [ ] "Use my location" on the website calls OpenStreetMap's public service from the buyer's browser (as the app does from the phone). Check its usage rules against the expected volume, or put a geocoding service of your own behind it.
 - [ ] The new Arabic texts in `apps/web-storefront/lib/i18n.ts` (the cart, checkout and address book) are read by a native speaker.
+- [ ] The Arabic texts of the order pages (written for the web, not taken from the app) in `apps/web-storefront/lib/i18n.ts` are read by a native speaker.
+- [ ] The return window (`return_window_days`, 7 by default) says what you promise buyers: the website's "Request a return" is shown on every part and the server decides.
 - [ ] Consider Google Merchant Center free listings (a product feed) and an Arabic version of the storefront: see `apps/web-storefront/README.md`, "SEO".
 
 ### Words and rules
