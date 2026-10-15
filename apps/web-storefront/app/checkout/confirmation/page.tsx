@@ -1,55 +1,49 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "@/components/LocLink";
+import { useAuth } from "@/components/AuthProvider";
+import { useT } from "@/components/LangProvider";
 
-// Real order confirmation -- a real Client Component since it reads a
-// real orderId from the URL's search params after a real client-side
-// checkout submission. Never needs search-engine visibility.
-//
-// REAL BUG FOUND AND FIXED HERE: useSearchParams() requires a real
-// <Suspense> boundary around whatever uses it in the App Router --
-// without one, the real production build fails outright while trying
-// to prerender this page, rather than just warning. Confirmed by an
-// actual real build attempt, not assumed.
-function ConfirmationContent() {
-  const searchParams = useSearchParams();
-  const orderId = searchParams.get("orderId");
+function Confirmation() {
+  const params = useSearchParams();
+  const { user } = useAuth();
+  const t = useT();
+  const orderId = params.get("orderId");
+  const guestEmail = params.get("guestEmail");
+  const [later, setLater] = useState(false);
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-20 text-center">
-      <h1 className="font-display font-bold text-4xl">Order confirmed</h1>
-      {orderId && (
-        <p className="mt-3 text-muted">
-          Your order number is{" "}
-          <span className="font-plate font-semibold text-ink">{orderId}</span>
-        </p>
+    <div className="mx-auto max-w-2xl px-4 py-14 text-center sm:px-8">
+      <h1 className="text-[clamp(30px,4vw,42px)] font-bold tracking-tight text-navy">{t("order_placed_title")}</h1>
+      {orderId && <p className="mt-3 text-lg">{t("order_placed_with_id", { id: orderId })}</p>}
+      <p className="mt-3 text-muted">{t("order_confirmed_note")}</p>
+
+      {/* The app asks a guest, right after the order, whether to keep their order history in an account. */}
+      {guestEmail && !later && (
+        <section className="mx-auto mt-8 max-w-md rounded-[14px] border border-line border-t-[6px] border-t-signal bg-white p-6 text-start" aria-labelledby="guest-account">
+          <h2 id="guest-account" className="text-xl font-bold">{t("guest_account_title")}</h2>
+          <p className="mb-5 mt-2 text-muted">{t("guest_account_body")}</p>
+          <div className="flex flex-wrap gap-3">
+            <Link href={`/signup?email=${encodeURIComponent(guestEmail)}`} className="inline-flex min-h-12 items-center rounded-[10px] bg-signal px-6 font-bold text-on-signal hover:bg-signal-dark">{t("create_account")}</Link>
+            <button type="button" onClick={() => setLater(true)} className="inline-flex min-h-12 items-center rounded-[10px] border-[1.5px] border-navy px-5 font-bold text-navy hover:bg-chalk">{t("maybe_later")}</button>
+          </div>
+        </section>
       )}
-      <p className="mt-3 text-muted">
-        A confirmation email is on its way. You can track your order&apos;s status
-        by contacting support with your order number.
-      </p>
-      <Link
-        href="/search"
-        className="mt-8 inline-flex items-center rounded-md bg-signal px-6 py-3 text-on-signal font-semibold hover:bg-signal-dark transition-colors"
-      >
-        Continue browsing
-      </Link>
+
+      <div className="mt-8 flex flex-wrap justify-center gap-3">
+        {user && orderId && <Link href={`/orders/${encodeURIComponent(orderId)}`} className="inline-flex min-h-12 items-center rounded-[10px] bg-signal px-6 font-bold text-on-signal hover:bg-signal-dark">{t("view_order")}</Link>}
+        <Link href="/search" className="inline-flex min-h-12 items-center rounded-[10px] border-[1.5px] border-navy px-6 font-bold text-navy hover:bg-chalk">{t("continue_shopping")}</Link>
+      </div>
     </div>
   );
 }
 
-export default function OrderConfirmationPage() {
+export default function ConfirmationPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="mx-auto max-w-2xl px-6 py-20 text-center text-muted">
-          Loading…
-        </div>
-      }
-    >
-      <ConfirmationContent />
+    <Suspense fallback={null}>
+      <Confirmation />
     </Suspense>
   );
 }

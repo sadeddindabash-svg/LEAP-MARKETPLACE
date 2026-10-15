@@ -3,6 +3,9 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import { CartProvider, useCart } from './CartProvider';
 import CartIcon from './CartIcon';
 
+// The cart provider now asks who is signed in (it sends the buyer's token); these tests are about the badge, for a visitor who is not signed in.
+vi.mock('./AuthProvider', () => ({ useAuth: () => ({ user: null, isLoading: false }), getAuthToken: () => null }));
+
 // Second real test in this app's brand-new test suite -- a component-
 // level test (mocked fetch, jsdom), proving the OTHER half of the
 // toolchain works too, not just the real-backend integration style in

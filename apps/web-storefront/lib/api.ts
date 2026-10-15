@@ -14,6 +14,7 @@
  */
 
 import type { Lang } from "./i18n";
+import { apiMessage } from "./serverMessages";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
 
@@ -209,52 +210,60 @@ export interface CartItem {
   quantity: number;
   name: string;
   price: number;
+  /** The price before a reduction, when the part is on sale (shown struck through). */
+  originalPrice?: number | null;
+  /** The live price moved since the buyer's prices were locked. */
+  priceChanged?: boolean;
   currencyCode: string;
+  imageUrl?: string | null;
   supplierName: string | null;
-  // Real, live stock quantity (new) -- see services/api/src/modules/
-  // cart/routes.js's own comment on why this is an early warning, not
-  // a reservation.
+  weightKg?: number | null;
+  // Live stock quantity: an early warning, not a reservation (see services/api/src/modules/cart/routes.js).
   stockQuantity: number;
 }
 
 export interface Cart {
   cartId: string;
   items: CartItem[];
+  /** The promo code on the cart, and what it is (null when none, or when it stopped being valid). */
+  appliedPromoCode?: string | null;
+  appliedPromoDetails?: { code: string; type: string; value: number | null } | null;
+  promoDiscountUsd?: number;
+  /** The buyer's loyalty discount (only for a signed-in buyer, and only when the cart request carries their token). */
+  loyaltyDiscountPercentage?: number;
+  loyaltyDiscountUsd?: number;
+  /** The server applies ONE discount, the bigger of loyalty and promo. */
+  appliedDiscountSource?: "loyalty" | "promo" | "none";
+  appliedDiscountUsd?: number;
+  /** Prices are locked while the buyer checks out, so they cannot change under them. */
+  lockActive?: boolean;
+  lockExpiresAt?: string | null;
 }
 
-async function cartApiCall<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}/cart${path}`, {
+/** Who is asking and in which language: a signed-in buyer's token (so the server can apply THEIR loyalty discount and promo rules) and the page's language (Arabic names). */
+export interface CartCallOptions { token?: string | null; lang?: Lang }
+
+async function cartApiCall<T>(path: string, options?: RequestInit, who: CartCallOptions = {}): Promise<T> {
+  const url = `${API_BASE_URL}/cart${path}${who.lang === "ar" ? `${path.includes("?") ? "&" : "?"}lang=ar` : ""}`;
+  const res = await fetch(url, {
     ...options,
-    headers: { "Content-Type": "application/json", ...options?.headers },
+    headers: { "Content-Type": "application/json", ...(who.token ? { Authorization: `Bearer ${who.token}` } : {}), ...options?.headers },
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Cart request failed (${res.status})`);
+    throw new Error(apiMessage(body.error) || apiMessage(`Cart request failed (${res.status})`));
   }
   return res.json() as Promise<T>;
 }
 
-export function fetchCart(cartId: string): Promise<Cart> {
-  return cartApiCall<Cart>(`/${cartId}`);
-}
-
-export function addCartItem(cartId: string, productId: string, quantity: number): Promise<Cart> {
-  return cartApiCall<Cart>(`/${cartId}/items`, {
-    method: "POST",
-    body: JSON.stringify({ productId, quantity }),
-  });
-}
-
-export function setCartItemQuantity(cartId: string, productId: string, quantity: number): Promise<Cart> {
-  return cartApiCall<Cart>(`/${cartId}/items/${productId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ quantity }),
-  });
-}
-
-export function removeCartItem(cartId: string, productId: string): Promise<Cart> {
-  return cartApiCall<Cart>(`/${cartId}/items/${productId}`, { method: "DELETE" });
-}
+export const fetchCart = (cartId: string, who?: CartCallOptions) => cartApiCall<Cart>(`/${cartId}`, undefined, who);
+export const addCartItem = (cartId: string, productId: string, quantity: number, who?: CartCallOptions) => cartApiCall<Cart>(`/${cartId}/items`, { method: "POST", body: JSON.stringify({ productId, quantity }) }, who);
+export const setCartItemQuantity = (cartId: string, productId: string, quantity: number, who?: CartCallOptions) => cartApiCall<Cart>(`/${cartId}/items/${productId}`, { method: "PATCH", body: JSON.stringify({ quantity }) }, who);
+export const removeCartItem = (cartId: string, productId: string, who?: CartCallOptions) => cartApiCall<Cart>(`/${cartId}/items/${productId}`, { method: "DELETE" }, who);
+/** Freezes the prices for the checkout (the app does this the moment the checkout opens). A lock already running is left as it is. */
+export const lockCartPrices = (cartId: string, who?: CartCallOptions) => cartApiCall<Cart>(`/${cartId}/lock-prices`, { method: "POST" }, who);
+/** Puts a promo code on the cart (the server checks it; an invalid one is refused with the reason), or removes it with null. */
+export const applyCartPromoCode = (cartId: string, code: string | null, who?: CartCallOptions) => cartApiCall<Cart>(`/${cartId}/promo-code`, { method: "PATCH", body: JSON.stringify({ code }) }, who);
 
 // Real guest checkout -- POST /order with guestEmail + address (both
 // optional for a real guest per migration 030, but the storefront's
@@ -285,27 +294,43 @@ export interface PlaceOrderResult {
 // either. Renamed from placeGuestOrder to placeOrder to match its real,
 // dual (guest OR logged-in) purpose -- the only real caller
 // (app/checkout/page.tsx) is updated in the same pass.
+export interface PlaceOrderOptions {
+  /** The cart has parts from several suppliers: true waits and ships everything in ONE delivery (the app's "Wait and ship together"). */
+  waitForAllShipments?: boolean;
+  /** The same key sent twice returns the FIRST order, so a double click or a retry never places the order twice. */
+  idempotencyKey?: string;
+  lang?: Lang;
+}
+
 export async function placeOrder(
   items: Array<{ productId: string; quantity: number }>,
   auth: { userId?: string; guestEmail?: string },
   addressInput: { addressId: string } | { address: PlaceOrderAddress },
-  // Real promo code support (new) -- closes a real, confirmed gap: the
-  // backend has always fully supported a real promoCode on order
-  // placement (real server-side validation, real discount calculation
-  // -- see services/api/src/modules/promotions/helpers.js -- never a
-  // client-supplied discount amount), but this storefront's checkout
-  // never had anywhere to enter one. Optional so every existing caller
-  // (and every existing test) is completely unaffected.
-  promoCode?: string
+  promoCode?: string,
+  options: PlaceOrderOptions = {}
 ): Promise<PlaceOrderResult> {
-  const res = await fetch(`${API_BASE_URL}/order`, {
+  const res = await fetch(`${API_BASE_URL}/order${options.lang === "ar" ? "?lang=ar" : ""}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ items, ...auth, ...addressInput, ...(promoCode ? { promoCode } : {}) }),
+    body: JSON.stringify({
+      items, ...auth, ...addressInput,
+      ...(promoCode ? { promoCode } : {}),
+      ...(options.waitForAllShipments !== undefined ? { waitForAllShipments: options.waitForAllShipments } : {}),
+      ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
+    }),
   });
   const body = await res.json();
-  if (!res.ok) throw new Error(body.error || `Failed to place order (${res.status})`);
+  if (!res.ok) throw new Error(apiMessage(body.error) || apiMessage(`Failed to place order (${res.status})`));
   return body as PlaceOrderResult;
+}
+
+/** A way to pay that is available in a country (set up by the admin). In the app and here it is a CHOICE shown at checkout: no payment is collected online yet. */
+export interface PaymentMethod { id: string; nameEn: string; nameAr: string; photoUrl: string | null }
+
+/** The payment methods active for a country (its English name or its code). An unknown country simply has none. */
+export async function fetchPaymentMethodsForCountry(country: string): Promise<PaymentMethod[]> {
+  const data = await apiGet<PaymentMethod[]>(`/payment-methods/for-country/${encodeURIComponent(country)}`);
+  return data ?? [];
 }
 
 // Real, immediate promo-code validation (new) -- calls the backend's
@@ -343,9 +368,11 @@ export interface SavedAddress {
   recipientName: string;
   phone: string;
   country: string;
+  state?: string | null;
   city: string;
   streetAddress: string;
   postalCode: string | null;
+  nationalAddress?: string | null;
   isDefault: boolean;
   createdAt: string;
 }
@@ -356,24 +383,17 @@ export async function fetchMyAddresses(token: string): Promise<SavedAddress[]> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Failed to load addresses (${res.status})`);
+    throw new Error(apiMessage(body.error) || apiMessage(`Failed to load addresses (${res.status})`));
   }
   return res.json();
 }
 
-export async function createAddress(
-  token: string,
-  address: { label: string; recipientName: string; phone: string; country: string; city: string; streetAddress: string; postalCode?: string; isDefault?: boolean }
-): Promise<SavedAddress> {
-  const res = await fetch(`${API_BASE_URL}/addresses/me`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(address),
-  });
-  const body = await res.json();
-  if (!res.ok) throw new Error(body.error || `Failed to save address (${res.status})`);
-  return body as SavedAddress;
-}
+/** What the server takes for a saved address (see lib/address.ts addressPayload). */
+export interface AddressPayload { label: string; recipientName: string; phone: string; country: string; state?: string | null; city: string; streetAddress: string; postalCode?: string | null; nationalAddress?: string; isDefault?: boolean }
+
+export const createAddress = (token: string, address: AddressPayload) => authedJson<SavedAddress>(token, "/addresses/me", "POST", "Failed to save address", address);
+export const updateAddress = (token: string, id: string, updates: Partial<AddressPayload>) => authedJson<SavedAddress>(token, `/addresses/me/${encodeURIComponent(id)}`, "PATCH", "Failed to update address", updates);
+export const deleteAddress = (token: string, id: string) => authedJson<void>(token, `/addresses/me/${encodeURIComponent(id)}`, "DELETE", "Failed to delete address");
 
 // ---------------- Real saved searches (client-side calls) ----------------
 // Same reasoning as the cart section above -- these run in the
@@ -395,7 +415,7 @@ async function savedSearchApiCall<T>(path: string, token: string, options?: Requ
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...options?.headers },
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || `Saved search request failed (${res.status})`);
+  if (!res.ok) throw new Error(apiMessage(body.error) || apiMessage(`Saved search request failed (${res.status})`));
   return body as T;
 }
 
@@ -417,7 +437,7 @@ export async function deleteSavedSearch(token: string, id: number): Promise<void
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Failed to delete saved search (${res.status})`);
+    throw new Error(apiMessage(body.error) || apiMessage(`Failed to delete saved search (${res.status})`));
   }
 }
 
@@ -506,7 +526,7 @@ export async function fetchMyOrders(token: string): Promise<OrderSummary[]> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Failed to load orders (${res.status})`);
+    throw new Error(apiMessage(body.error) || apiMessage(`Failed to load orders (${res.status})`));
   }
   return res.json();
 }
@@ -517,7 +537,7 @@ export async function fetchOrderById(token: string, orderId: string): Promise<Or
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Failed to load order (${res.status})`);
+    throw new Error(apiMessage(body.error) || apiMessage(`Failed to load order (${res.status})`));
   }
   return res.json();
 }
@@ -536,7 +556,7 @@ export async function fetchWishlist(token: string): Promise<ProductSummary[]> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Failed to load wishlist (${res.status})`);
+    throw new Error(apiMessage(body.error) || apiMessage(`Failed to load wishlist (${res.status})`));
   }
   return res.json();
 }
@@ -557,7 +577,7 @@ export async function addToWishlist(token: string, productId: string): Promise<v
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Failed to add to wishlist (${res.status})`);
+    throw new Error(apiMessage(body.error) || apiMessage(`Failed to add to wishlist (${res.status})`));
   }
 }
 
@@ -568,7 +588,7 @@ export async function removeFromWishlist(token: string, productId: string): Prom
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Failed to remove from wishlist (${res.status})`);
+    throw new Error(apiMessage(body.error) || apiMessage(`Failed to remove from wishlist (${res.status})`));
   }
 }
 
@@ -623,7 +643,7 @@ export async function uploadReviewPhoto(token: string, file: File): Promise<stri
     body: formData,
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || `Failed to upload photo (${res.status})`);
+  if (!res.ok) throw new Error(apiMessage(body.error) || apiMessage(`Failed to upload photo (${res.status})`));
   return body.url;
 }
 
@@ -648,7 +668,7 @@ export async function fetchMyReferral(token: string): Promise<ReferralInfo> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Failed to load referral info (${res.status})`);
+    throw new Error(apiMessage(body.error) || apiMessage(`Failed to load referral info (${res.status})`));
   }
   return res.json();
 }
@@ -681,7 +701,7 @@ export async function fetchNotifications(token: string): Promise<Notification[]>
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Failed to load notifications (${res.status})`);
+    throw new Error(apiMessage(body.error) || apiMessage(`Failed to load notifications (${res.status})`));
   }
   return res.json();
 }
@@ -769,7 +789,7 @@ export async function fetchMyReturnCases(token: string): Promise<ReturnCaseSumma
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Failed to load return cases (${res.status})`);
+    throw new Error(apiMessage(body.error) || apiMessage(`Failed to load return cases (${res.status})`));
   }
   return res.json();
 }
@@ -782,7 +802,7 @@ export async function fetchReturnCase(caseId: string, auth: { token?: string; gu
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Return case not found (${res.status})`);
+    throw new Error(apiMessage(body.error) || apiMessage(`Return case not found (${res.status})`));
   }
   return res.json();
 }
@@ -795,7 +815,7 @@ export async function sendReturnCaseMessage(caseId: string, message: string, aut
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Failed to send message (${res.status})`);
+    throw new Error(apiMessage(body.error) || apiMessage(`Failed to send message (${res.status})`));
   }
 }
 
@@ -891,7 +911,7 @@ export async function createSupportTicket(
     body: JSON.stringify({ ...input, ...(auth.guestEmail ? { guestEmail: auth.guestEmail } : {}) }),
   });
   const body = await res.json();
-  if (!res.ok) throw new Error(body.error || `Failed to create ticket (${res.status})`);
+  if (!res.ok) throw new Error(apiMessage(body.error) || apiMessage(`Failed to create ticket (${res.status})`));
   return body;
 }
 
@@ -901,7 +921,7 @@ export async function fetchMyTickets(token: string): Promise<SupportTicketSummar
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Failed to load tickets (${res.status})`);
+    throw new Error(apiMessage(body.error) || apiMessage(`Failed to load tickets (${res.status})`));
   }
   return res.json();
 }
@@ -914,7 +934,7 @@ export async function fetchSupportTicket(ticketId: string, auth: { token?: strin
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Ticket not found (${res.status})`);
+    throw new Error(apiMessage(body.error) || apiMessage(`Ticket not found (${res.status})`));
   }
   return res.json();
 }
@@ -927,7 +947,7 @@ export async function sendSupportTicketMessage(ticketId: string, message: string
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Failed to send message (${res.status})`);
+    throw new Error(apiMessage(body.error) || apiMessage(`Failed to send message (${res.status})`));
   }
 }
 
@@ -977,7 +997,7 @@ async function authedJson<T>(token: string, path: string, method: string, failur
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || `${failure} (${res.status})`);
+    throw new Error(apiMessage(data.error) || apiMessage(`${failure} (${res.status})`));
   }
   return (res.status === 204 ? undefined : await res.json().catch(() => undefined)) as T;
 }
@@ -991,7 +1011,7 @@ export const setDefaultVehicle = (token: string, generationId: string, year: num
 export async function decodeVin(vin: string): Promise<VinDecode> {
   const res = await fetch(`${API_BASE_URL}/fitment/vin-decode/${encodeURIComponent(vin.trim().toUpperCase())}`);
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Could not look up this VIN (${res.status})`);
+  if (!res.ok) throw new Error(apiMessage(data.error) || apiMessage(`Could not look up this VIN (${res.status})`));
   return data as VinDecode;
 }
 
@@ -1036,7 +1056,7 @@ export interface MyReview {
 }
 export async function fetchMyReviews(token: string): Promise<MyReview[]> {
   const res = await fetch(`${API_BASE_URL}/reviews/me`, { headers: { Authorization: `Bearer ${token}` } });
-  if (!res.ok) throw new Error(`Failed to load your reviews (${res.status})`);
+  if (!res.ok) throw new Error(apiMessage(`Failed to load your reviews (${res.status})`));
   return res.json();
 }
 

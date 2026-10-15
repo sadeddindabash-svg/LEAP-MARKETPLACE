@@ -6,7 +6,7 @@ import { t, type DictKey, type Lang } from "@/lib/i18n";
 // Set NEXT_PUBLIC_LEGAL_BASE_URL if they move. (Odoo serves Arabic under /ar, and the privacy page's real address is spelled "privecy-policy".)
 const LEGAL_BASE = (process.env.NEXT_PUBLIC_LEGAL_BASE_URL || "https://www.leapautoparts.com").replace(/\/+$/, "");
 const LEGAL: Array<[DictKey, string]> = [["about_us", "about-us"], ["terms", "terms-conditions"], ["delivery_shipping", "delivery-shipping-policy"], ["refund_policy", "refund-policy"], ["privacy_policy", "privecy-policy"], ["cancellation_policy", "cancellation-replacement-policy"]];
-const ACCOUNT: Array<[DictKey, string]> = [["my_orders", "/orders"], ["returns", "/returns"], ["wishlist", "/wishlist"], ["saved_searches", "/saved-searches"], ["referrals", "/referrals"]];
+const ACCOUNT: Array<[DictKey, string]> = [["my_orders", "/orders"], ["returns", "/returns"], ["wishlist", "/wishlist"], ["saved_searches", "/saved-searches"], ["garage_title", "/garage"], ["addresses", "/addresses"], ["referrals", "/referrals"]];
 
 const head = "mb-3 text-sm font-bold uppercase tracking-wider text-signal";
 const link = "block py-1.5 text-[15px] hover:underline";

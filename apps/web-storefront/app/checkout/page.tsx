@@ -1,322 +1,268 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useLocRouter } from "@/components/useLocRouter";
+import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
+import Link from "@/components/LocLink";
+import AddressForm from "@/components/AddressFields";
+import { getAuthToken, useAuth } from "@/components/AuthProvider";
 import { useCart } from "@/components/CartProvider";
-import { useAuth, getAuthToken } from "@/components/AuthProvider";
-import { placeOrder } from "@/lib/order-api";
-import { fetchMyAddresses, createAddress, SavedAddress, validatePromoCode } from "@/lib/api";
+import { useCurrency } from "@/components/CurrencyProvider";
+import { useLang, useT } from "@/components/LangProvider";
+import { Price } from "@/components/Price";
+import { useLocRouter } from "@/components/useLocRouter";
+import {
+  createAddress, fetchMyAddresses, fetchPaymentMethodsForCountry, placeOrder, resolveImageUrl, type PaymentMethod, type SavedAddress,
+} from "@/lib/api";
+import { EMAIL_PATTERN, EMPTY_ADDRESS, addressPayload, addressProblem, type AddressFields } from "@/lib/address";
+import { hasMultipleSuppliers, loyaltyBeatsPromo, newIdempotencyKey, overStockItems } from "@/lib/cart";
+import { countryName } from "@/lib/countries";
+import type { DictKey } from "@/lib/i18n";
 
-// REAL BUG FOUND AND FIXED HERE: this page used to always place a
-// guest order (placeGuestOrder, always sending guestEmail) regardless
-// of whether a real buyer was actually logged in -- checked via
-// useAuth(), which this page never used at all before. Every single
-// order placed through this storefront became a guest order, buyer_id
-// null, completely disconnected from the real logged-in account. Now
-// genuinely account-aware: a logged-in buyer sees their real saved
-// addresses (up to 3, migration 017) and can pick one, add a new one
-// and optionally save it, or a guest gets the same manual-entry flow
-// as before.
+const card = "rounded-[14px] border border-line bg-white p-6";
+const input = "min-h-12 w-full rounded-[10px] border-[1.5px] border-[#c5d0d8] bg-white px-3 text-[15px] text-ink";
+const PROBLEM_TEXT: Record<string, DictKey> = { fill_every_field: "fill_every_field", country_not_served: "country_not_served", national_address_format: "national_address_format_error" };
+
+// The checkout, in the order the mobile app has it: who is ordering, where it goes, how it will be paid (the payment methods available for that country, as a choice: no payment
+// is collected online yet, in the app or here), "wait and ship together" when the cart has several suppliers, the summary with the discount the server applied, then place the order.
+// The same order can never be placed twice (a double click or a retry sends the same key, and the server answers with the first order).
 export default function CheckoutPage() {
-  const router = useLocRouter();
-  const { cart, total, isLoading } = useCart();
   const { user, isLoading: authLoading } = useAuth();
+  const { cart, isLoading, summary, lockPrices, applyPromo, clearAfterOrder } = useCart();
+  const lang = useLang();
+  const t = useT();
+  const { format } = useCurrency();
+  const router = useLocRouter();
 
   const [guestEmail, setGuestEmail] = useState("");
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[] | null>(null);
+  const [selectedId, setSelectedId] = useState<string>("new");                        // a saved address id, or "new"
+  const [fields, setFields] = useState<AddressFields>(EMPTY_ADDRESS);
+  const [saveNew, setSaveNew] = useState(true);
+  const [chosenPayment, setChosenPayment] = useState<string | null>(null);
+  const [methodsFor, setMethodsFor] = useState<{ country: string; methods: PaymentMethod[] } | null>(null);
+  const [waitAll, setWaitAll] = useState(false);
+  const [promoInput, setPromoInput] = useState("");
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [checkingPromo, setCheckingPromo] = useState(false);
+  const [placing, setPlacing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const keyRef = useRef<string | null>(null);
+  const lockedOnce = useRef(false);
 
-  const [recipientName, setRecipientName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [country, setCountry] = useState("");
-  const [city, setCity] = useState("");
-  const [streetAddress, setStreetAddress] = useState("");
-
-  // Real promo code support (new)
-  const [promoCodeInput, setPromoCodeInput] = useState("");
-  const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null);
-  const [promoCodeError, setPromoCodeError] = useState<string | null>(null);
-  const [isValidatingPromoCode, setIsValidatingPromoCode] = useState(false);
-
-  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
-  const [addressesLoaded, setAddressesLoaded] = useState(false);
-  const [selectedAddressId, setSelectedAddressId] = useState<string | "new" | null>(null);
-  const [saveNewAddress, setSaveNewAddress] = useState(true);
-  const [newAddressLabel, setNewAddressLabel] = useState("Home");
-
-  const [isPlacing, setIsPlacing] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
+  // like the app: the prices are held the moment the checkout opens
   useEffect(() => {
-    if (authLoading || !user) return;
+    if (lockedOnce.current || !cart || cart.items.length === 0) return;
+    lockedOnce.current = true;
+    lockPrices();
+  }, [cart, lockPrices]);
+
+  // a signed-in buyer's saved addresses (the default one is picked)
+  useEffect(() => {
+    if (!user) return;
     const token = getAuthToken();
     if (!token) return;
-    fetchMyAddresses(token)
-      .then((addrs) => {
-        setSavedAddresses(addrs);
-        setAddressesLoaded(true);
-        if (addrs.length > 0) {
-          const def = addrs.find((a) => a.isDefault) || addrs[0];
-          setSelectedAddressId(def.id);
-        } else {
-          setSelectedAddressId("new");
-        }
-      })
-      .catch(() => setAddressesLoaded(true));
-  }, [authLoading, user]);
+    let current = true;
+    fetchMyAddresses(token).then((list) => {
+      if (!current) return;
+      setSavedAddresses(list);
+      const pick = list.find((a) => a.isDefault) ?? list[0];
+      if (pick) setSelectedId(pick.id);
+    }).catch(() => { if (current) setSavedAddresses([]); });
+    return () => { current = false; };
+  }, [user]);
 
-  const handleApplyPromoCode = async () => {
-    if (!promoCodeInput.trim()) return;
-    setIsValidatingPromoCode(true);
-    setPromoCodeError(null);
-    try {
-      const token = getAuthToken();
-      const result = await validatePromoCode(promoCodeInput.trim(), token || undefined);
-      if (result.valid) {
-        setAppliedPromoCode(promoCodeInput.trim());
-      } else {
-        setAppliedPromoCode(null);
-        setPromoCodeError(result.reason);
-      }
-    } catch (err) {
-      setPromoCodeError(err instanceof Error ? err.message : "Could not check this code right now.");
-    } finally {
-      setIsValidatingPromoCode(false);
-    }
-  };
+  const savedPick = user && selectedId !== "new" ? savedAddresses?.find((a) => a.id === selectedId) : undefined;
+  const country = savedPick ? savedPick.country : fields.country;
 
-  const handleRemovePromoCode = () => {
-    setAppliedPromoCode(null);
-    setPromoCodeInput("");
-    setPromoCodeError(null);
-  };
+  // the payment methods for the country being delivered to
+  useEffect(() => {
+    if (!country) return;
+    let current = true;
+    fetchPaymentMethodsForCountry(country).then((methods) => { if (current) setMethodsFor({ country, methods }); }).catch(() => { if (current) setMethodsFor({ country, methods: [] }); });
+    return () => { current = false; };
+  }, [country]);
+  const methods = country && methodsFor?.country === country ? methodsFor.methods : null;      // null = still loading (or no country yet)
+  const payment = chosenPayment && methods?.some((m) => m.id === chosenPayment) ? chosenPayment : methods?.[0]?.id ?? null;
 
-  const handlePlaceOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!cart || cart.items.length === 0) return;
-    setErrorMessage(null);
-
-    const items = cart.items.map((i) => ({ productId: i.productId, quantity: i.quantity }));
-
-    try {
-      setIsPlacing(true);
-
-      if (user) {
-        if (selectedAddressId && selectedAddressId !== "new") {
-          const order = await placeOrder(items, { userId: user.id }, { addressId: selectedAddressId }, appliedPromoCode || undefined);
-          document.cookie = "leap_cart_id=; path=/; max-age=0";
-          router.push(`/checkout/confirmation?orderId=${order.id}`);
-          return;
-        }
-        if (!recipientName || !phone || !country || !city || !streetAddress) {
-          setErrorMessage("Please fill in every address field.");
-          setIsPlacing(false);
-          return;
-        }
-        const address = { recipientName, phone, country, city, streetAddress };
-        const order = await placeOrder(items, { userId: user.id }, { address }, appliedPromoCode || undefined);
-        // Real, optional save-for-next-time -- a separate real call,
-        // deliberately best-effort: a failure here shouldn't block an
-        // order that already succeeded.
-        if (saveNewAddress) {
-          const token = getAuthToken();
-          if (token) {
-            await createAddress(token, { label: newAddressLabel || "Address", ...address }).catch(() => {});
-          }
-        }
-        document.cookie = "leap_cart_id=; path=/; max-age=0";
-        router.push(`/checkout/confirmation?orderId=${order.id}`);
-        return;
-      }
-
-      // Real guest checkout (unchanged behavior from before this fix).
-      if (!guestEmail || !recipientName || !phone || !country || !city || !streetAddress) {
-        setErrorMessage("Please fill in every field.");
-        setIsPlacing(false);
-        return;
-      }
-      const order = await placeOrder(items, { guestEmail }, { address: { recipientName, phone, country, city, streetAddress } }, appliedPromoCode || undefined);
-      document.cookie = "leap_cart_id=; path=/; max-age=0";
-      router.push(`/checkout/confirmation?orderId=${order.id}`);
-    } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : "Failed to place order");
-    } finally {
-      setIsPlacing(false);
-    }
-  };
-
-  if (isLoading || authLoading) {
-    return <div className="mx-auto max-w-2xl px-6 py-16 text-muted">Loading…</div>;
-  }
-
+  if (isLoading || authLoading) return <div className="mx-auto max-w-3xl px-4 py-12 sm:px-8 text-muted" aria-busy="true">{t("search_loading")}</div>;
   if (!cart || cart.items.length === 0) {
     return (
-      <div className="mx-auto max-w-2xl px-6 py-16 text-center">
-        <h1 className="font-display font-bold text-3xl">Your cart is empty</h1>
-        <p className="mt-3 text-muted">Add a part to your cart before checking out.</p>
+      <div className="mx-auto max-w-3xl px-4 py-14 text-center sm:px-8">
+        <h1 className="text-3xl font-bold tracking-tight text-navy">{t("checkout")}</h1>
+        <p className="mb-6 mt-3 text-lg text-muted">{t("cart_empty")}</p>
+        <Link href="/search" className="inline-flex min-h-12 items-center rounded-[10px] bg-signal px-6 font-bold text-on-signal hover:bg-signal-dark">{t("browse_products")}</Link>
       </div>
     );
   }
 
-  const showManualForm = !user || selectedAddressId === "new";
+  const overStock = overStockItems(cart);
+  const several = hasMultipleSuppliers(cart);
+  const showForm = !user || selectedId === "new" || savedAddresses?.length === 0;
+
+  const applyCode = async () => {
+    const code = promoInput.trim();
+    if (!code) return;
+    setCheckingPromo(true); setPromoError(null);
+    try { await applyPromo(code); setPromoInput(""); } catch (e) { setPromoError(e instanceof Error ? e.message : t("generic_error")); } finally { setCheckingPromo(false); }
+  };
+
+  const place = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!user) {
+      if (!guestEmail.trim()) return setError(t("please_enter_email_order"));
+      if (!EMAIL_PATTERN.test(guestEmail.trim())) return setError(t("please_enter_valid_email"));
+    }
+    if (user && !showForm && !savedPick) return setError(t("please_select_address"));
+    if (showForm) {
+      const problem = addressProblem(fields, { needLabel: false });
+      if (problem) return setError(t(PROBLEM_TEXT[problem]));
+    }
+    if (overStock.length > 0) return;
+
+    const items = cart.items.map((i) => ({ productId: i.productId, quantity: i.quantity }));
+    const payload = showForm ? addressPayload(fields) : null;
+    const address = payload && { recipientName: payload.recipientName, phone: payload.phone, country: payload.country, city: payload.city, streetAddress: payload.streetAddress };
+    keyRef.current ??= newIdempotencyKey();
+    setPlacing(true);
+    try {
+      const order = await placeOrder(
+        items,
+        user ? { userId: user.id } : { guestEmail: guestEmail.trim() },
+        savedPick ? { addressId: savedPick.id } : { address: address! },
+        cart.appliedPromoCode ?? undefined,
+        { waitForAllShipments: waitAll && several, idempotencyKey: keyRef.current, lang },
+      );
+      // a new address typed by a signed-in buyer is kept for next time (best effort: the order is already placed)
+      const token = getAuthToken();
+      if (user && showForm && saveNew && token && payload) await createAddress(token, { ...payload, label: payload.label || t("address_fallback_label") }).catch(() => {});
+      clearAfterOrder();
+      router.push(`/checkout/confirmation?orderId=${encodeURIComponent(order.id)}${user ? "" : `&guestEmail=${encodeURIComponent(guestEmail.trim())}`}`);
+    } catch (err) {
+      if (!(err instanceof TypeError)) keyRef.current = null;                    // the server answered (a refusal): a new attempt is a new order. No answer at all: the retry keeps its key.
+      setError(err instanceof Error && err.message ? err.message : t("order_placement_error"));
+      setPlacing(false);
+    }
+  };
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-10">
-      <h1 className="font-display font-bold text-3xl mb-8">Checkout</h1>
+    <form onSubmit={place} noValidate className="mx-auto max-w-6xl px-4 py-10 sm:px-8">
+      <h1 className="mb-6 text-3xl font-bold tracking-tight text-navy">{t("checkout")}</h1>
+      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+        <div className="grid gap-6">
+          <section className={card} aria-labelledby={user ? "co-contact" : undefined}>
+            {user ? (
+              <><h2 id="co-contact" className="mb-1 text-xl font-bold">{t("ordering_as")}</h2><p className="text-muted">{user.email}</p></>
+            ) : (
+              <>
+                <p className="mb-3 text-sm text-muted">{t("guest_checkout_note")}</p>
+                <label htmlFor="co-email" className="mb-1.5 block text-[13px] font-bold text-navy">{t("email_for_confirmation")}</label>
+                <input id="co-email" type="email" inputMode="email" autoComplete="email" dir="ltr" className={input} value={guestEmail} onChange={(e) => setGuestEmail(e.target.value)} />
+                <p className="mt-3"><Link href="/login" className="text-sm font-semibold text-navy underline underline-offset-4">{t("have_account_login_instead")}</Link></p>
+              </>
+            )}
+          </section>
 
-      <form onSubmit={handlePlaceOrder} className="space-y-6">
-        {!user && (
-          <div>
-            <h2 className="font-display font-bold text-lg mb-3">Contact</h2>
-            <input
-              type="email"
-              placeholder="Email address"
-              value={guestEmail}
-              onChange={(e) => setGuestEmail(e.target.value)}
-              className="w-full rounded-md border border-line px-4 py-3 text-sm"
-            />
+          <section className={card} aria-labelledby="co-address">
+            <h2 id="co-address" className="mb-4 text-xl font-bold">{t("delivery_address")}</h2>
+            {user && savedAddresses && savedAddresses.length > 0 && (
+              <div className="mb-4 grid gap-2.5" role="radiogroup" aria-label={t("delivery_address")}>
+                {savedAddresses.map((a) => (
+                  <label key={a.id} className={`flex cursor-pointer items-start gap-3 rounded-xl border-[1.5px] p-3.5 ${selectedId === a.id ? "border-navy bg-[#f4f8fb]" : "border-line"}`}>
+                    <input type="radio" name="address" className="mt-1 size-5 accent-[#0b3146]" checked={selectedId === a.id} onChange={() => setSelectedId(a.id)} />
+                    <span><strong className="block">{a.label} · {a.recipientName}</strong><span className="text-sm text-muted">{a.streetAddress}, {a.city}, {countryName(lang, a.country)}</span></span>
+                  </label>
+                ))}
+                <label className={`flex cursor-pointer items-center gap-3 rounded-xl border-[1.5px] p-3.5 ${selectedId === "new" ? "border-navy bg-[#f4f8fb]" : "border-line"}`}>
+                  <input type="radio" name="address" className="size-5 accent-[#0b3146]" checked={selectedId === "new"} onChange={() => setSelectedId("new")} />
+                  <span className="font-semibold">{t("use_new_address")}</span>
+                </label>
+              </div>
+            )}
+            {user && savedAddresses && savedAddresses.length === 0 && <p className="mb-3 text-sm text-muted">{t("no_saved_addresses")}</p>}
+            {showForm && (
+              <>
+                <AddressForm idPrefix="co" value={fields} onChange={setFields} disabled={placing} />
+                {user && (
+                  <label className="mt-4 flex items-center gap-2.5 text-sm text-muted">
+                    <input type="checkbox" className="size-5 accent-[#0b3146]" checked={saveNew} onChange={(e) => setSaveNew(e.target.checked)} />
+                    {t("save_address_for_next_time")}
+                  </label>
+                )}
+              </>
+            )}
+          </section>
+
+          <section className={card} aria-labelledby="co-pay">
+            <h2 id="co-pay" className="mb-3 text-xl font-bold">{t("payment_method")}</h2>
+            {!country ? null : methods === null ? (
+              <p className="text-muted" aria-busy="true">{t("search_loading")}</p>
+            ) : methods.length === 0 ? (
+              <p className="text-sm text-muted">{t("no_payment_methods_for_country")}</p>
+            ) : (
+              <div className="grid gap-2.5" role="radiogroup" aria-label={t("payment_method")}>
+                {methods.map((m) => (
+                  <label key={m.id} className={`flex cursor-pointer items-center gap-3 rounded-xl border-[1.5px] p-3.5 ${payment === m.id ? "border-navy bg-[#f4f8fb]" : "border-line"}`}>
+                    <input type="radio" name="payment" className="size-5 accent-[#0b3146]" checked={payment === m.id} onChange={() => setChosenPayment(m.id)} />
+                    {m.photoUrl && <Image src={resolveImageUrl(m.photoUrl)} alt="" width={28} height={28} className="rounded object-contain" unoptimized />}
+                    <span className="font-semibold">{lang === "ar" && m.nameAr ? m.nameAr : m.nameEn}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {several && (
+            <label className={`${card} flex cursor-pointer items-start gap-3`}>
+              <input type="checkbox" role="switch" className="mt-1 size-5 accent-[#0b3146]" checked={waitAll} onChange={(e) => setWaitAll(e.target.checked)} />
+              <span><strong className="block">{t("wait_for_all_shipments_title")}</strong><span className="text-sm text-muted">{t("wait_for_all_shipments_subtitle")}</span></span>
+            </label>
+          )}
+        </div>
+
+        <aside className={card} aria-labelledby="co-summary">
+          <h2 id="co-summary" className="mb-4 text-xl font-bold">{t("order_summary")}</h2>
+          <ul className="mb-3 grid gap-2 text-sm">
+            {cart.items.map((i) => (
+              <li key={i.productId} className="flex justify-between gap-3"><span className="min-w-0 truncate">{i.name} × {i.quantity}</span><Price usd={i.price * i.quantity} className="font-semibold" /></li>
+            ))}
+          </ul>
+          <div className="flex justify-between border-t border-line py-2"><span>{t("subtotal")}</span><Price usd={summary.subtotal} /></div>
+          {summary.discount > 0 && (
+            <div className="flex justify-between py-2 font-semibold text-[#0f6b49]">
+              <span>{summary.source === "loyalty" ? t("loyalty_discount_line", { n: Math.round(summary.loyaltyPercent) }) : `${t("discount")}${summary.promoCode ? ` (${summary.promoCode})` : ""}`}</span>
+              <span>−<Price usd={summary.discount} /></span>
+            </div>
+          )}
+          <div className="mt-1 flex justify-between border-t-2 border-line pt-3 text-[22px] font-extrabold"><span>{t("total")}</span><Price usd={summary.total} /></div>
+          {loyaltyBeatsPromo(cart) && <p className="mt-2 text-sm text-muted">{t("loyalty_beats_promo", { amount: format(summary.discount) })}</p>}
+          {cart.lockActive && <p className="mt-2 text-xs text-muted">{t("price_locked_note")}</p>}
+
+          <div className="mt-4 border-t border-line pt-4">
+            {cart.appliedPromoCode ? (
+              <p className="flex items-center justify-between gap-3 text-sm font-semibold text-[#0f6b49]">
+                <span>{cart.appliedPromoCode} · {t("promo_applied")}</span>
+                <button type="button" className="text-sm font-bold text-navy underline underline-offset-4" onClick={() => { setPromoError(null); applyPromo(null).catch(() => {}); }}>{t("remove")}</button>
+              </p>
+            ) : (
+              <div className="flex gap-2">
+                <label htmlFor="co-promo" className="sr-only">{t("promo_code_field")}</label>
+                <input id="co-promo" className={input} placeholder={t("promo_code_field")} value={promoInput} dir="ltr" onChange={(e) => setPromoInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); applyCode(); } }} />
+                <button type="button" onClick={applyCode} disabled={checkingPromo || !promoInput.trim()} className="min-h-12 flex-none rounded-[10px] bg-navy px-5 font-bold text-white disabled:opacity-50">{checkingPromo ? t("checking") : t("apply")}</button>
+              </div>
+            )}
+            {promoError && <p role="alert" className="mt-2 text-sm font-semibold text-[#a12a21]">{promoError}</p>}
           </div>
-        )}
 
-        <div>
-          <h2 className="font-display font-bold text-lg mb-3">Delivery address</h2>
-
-          {user && addressesLoaded && savedAddresses.length > 0 && (
-            <div className="space-y-2 mb-4">
-              {savedAddresses.map((addr) => (
-                <label
-                  key={addr.id}
-                  className={`flex items-start gap-3 rounded-md border p-3 cursor-pointer ${selectedAddressId === addr.id ? "border-signal" : "border-line"}`}
-                >
-                  <input
-                    type="radio"
-                    name="address"
-                    checked={selectedAddressId === addr.id}
-                    onChange={() => setSelectedAddressId(addr.id)}
-                    className="mt-1"
-                  />
-                  <div className="text-sm">
-                    <p className="font-semibold">{addr.label}{addr.isDefault ? " · Default" : ""}</p>
-                    <p className="text-muted">{addr.recipientName} · {addr.phone}</p>
-                    <p className="text-muted">{addr.streetAddress}, {addr.city}, {addr.country}</p>
-                  </div>
-                </label>
-              ))}
-              <label
-                className={`flex items-center gap-3 rounded-md border p-3 cursor-pointer ${selectedAddressId === "new" ? "border-signal" : "border-line"}`}
-              >
-                <input
-                  type="radio"
-                  name="address"
-                  checked={selectedAddressId === "new"}
-                  onChange={() => setSelectedAddressId("new")}
-                />
-                <span className="text-sm font-semibold">Use a new address</span>
-              </label>
-            </div>
+          {overStock.length > 0 && (
+            <p role="alert" className="mt-4 text-sm font-semibold text-[#a12a21]">{t(overStock.length === 1 ? "stock_changed_one" : "stock_changed_many", { items: overStock.map((i) => i.name).join(", ") })}</p>
           )}
-
-          {showManualForm && (
-            <div className="space-y-3">
-              {user && (
-                <input
-                  placeholder="Label (e.g. Home, Work)"
-                  value={newAddressLabel}
-                  onChange={(e) => setNewAddressLabel(e.target.value)}
-                  className="w-full rounded-md border border-line px-4 py-3 text-sm"
-                />
-              )}
-              <input
-                placeholder="Recipient name"
-                value={recipientName}
-                onChange={(e) => setRecipientName(e.target.value)}
-                className="w-full rounded-md border border-line px-4 py-3 text-sm"
-              />
-              <input
-                placeholder="Phone"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="w-full rounded-md border border-line px-4 py-3 text-sm"
-              />
-              <input
-                placeholder="Country"
-                value={country}
-                onChange={(e) => setCountry(e.target.value)}
-                className="w-full rounded-md border border-line px-4 py-3 text-sm"
-              />
-              <input
-                placeholder="City"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                className="w-full rounded-md border border-line px-4 py-3 text-sm"
-              />
-              <input
-                placeholder="Street address"
-                value={streetAddress}
-                onChange={(e) => setStreetAddress(e.target.value)}
-                className="w-full rounded-md border border-line px-4 py-3 text-sm"
-              />
-              {user && (
-                <label className="flex items-center gap-2 text-sm text-muted">
-                  <input type="checkbox" checked={saveNewAddress} onChange={(e) => setSaveNewAddress(e.target.checked)} />
-                  Save this address for next time
-                </label>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Real promo code support (new) -- closes a real gap: the
-            backend has always fully supported this (real server-side
-            validation, real discount calculation, never a
-            client-supplied amount), checkout just never had anywhere
-            to enter one. Deliberately just an "is this code real right
-            now" check here, not a discount preview -- the actual
-            discount only ever comes from the real order-placement
-            response itself (this page's own `total`, computed
-            server-side). */}
-        <div>
-          {!appliedPromoCode ? (
-            <div className="flex gap-2">
-              <input
-                placeholder="Promo code"
-                value={promoCodeInput}
-                onChange={(e) => setPromoCodeInput(e.target.value)}
-                className="flex-1 rounded-md border border-line px-4 py-2 text-sm"
-              />
-              <button
-                type="button"
-                onClick={handleApplyPromoCode}
-                disabled={isValidatingPromoCode || !promoCodeInput.trim()}
-                className="rounded-md border border-line px-5 py-2 text-sm font-semibold hover:border-ink transition-colors disabled:opacity-60"
-              >
-                {isValidatingPromoCode ? "Checking…" : "Apply"}
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center justify-between rounded-md bg-chalk px-4 py-2">
-              <span className="text-sm font-semibold text-signal">"{appliedPromoCode}" applied</span>
-              <button type="button" onClick={handleRemovePromoCode} className="text-xs font-semibold text-muted hover:text-ink">
-                Remove
-              </button>
-            </div>
-          )}
-          {promoCodeError && <p className="mt-2 text-sm text-red-600">{promoCodeError}</p>}
-        </div>
-
-        <div className="border-t border-line pt-6 flex items-center justify-between">
-          <span className="font-display font-bold text-xl">Total</span>
-          <span className="font-display font-bold text-2xl">${total.toFixed(2)}</span>
-        </div>
-
-        {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
-
-        <button
-          type="submit"
-          disabled={isPlacing}
-          className="w-full rounded-md bg-signal px-6 py-3 text-on-signal font-semibold hover:bg-signal-dark transition-colors disabled:opacity-60"
-        >
-          {isPlacing ? "Placing order…" : "Place order"}
-        </button>
-      </form>
-    </div>
+          {error && <p role="alert" className="mt-4 text-sm font-semibold text-[#a12a21]">{error}</p>}
+          <button type="submit" disabled={placing || overStock.length > 0} className="mt-5 min-h-13 w-full rounded-[10px] bg-signal text-base font-bold text-on-signal hover:bg-signal-dark disabled:cursor-not-allowed disabled:opacity-50">
+            {placing ? t("placing_order") : t("place_order")}
+          </button>
+        </aside>
+      </div>
+    </form>
   );
 }

@@ -15,7 +15,7 @@ function SignupForm() {
   const { signup } = useAuth();
   const router = useLocRouter();
   const searchParams = useSearchParams();
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(searchParams.get("email") || "");          // the checkout's "create an account" step passes the guest's email
   const [password, setPassword] = useState("");
   const [referralCode, setReferralCode] = useState(searchParams.get("ref") || "");
   const [error, setError] = useState<string | null>(null);
