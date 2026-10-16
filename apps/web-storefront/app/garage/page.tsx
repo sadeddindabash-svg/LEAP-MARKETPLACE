@@ -8,7 +8,7 @@ import { useGarage } from "@/components/GarageProvider";
 import { useLang, useT } from "@/components/LangProvider";
 import VehicleCascade, { type VehicleChoice } from "@/components/VehicleCascade";
 import { resolveImageUrl, type GarageVehicle } from "@/lib/api";
-import { searchHrefFor, vehicleLabel, vehiclePhoto } from "@/lib/garage";
+import { searchHrefFor, vehicleLabel, vehicleName, vehiclePhoto } from "@/lib/garage";
 
 const button = "inline-flex min-h-11 items-center justify-center rounded-[10px] border-[1.5px] border-navy px-4 text-sm font-bold text-navy hover:bg-chalk disabled:opacity-50";
 
@@ -16,21 +16,25 @@ function CarCard({ car, busy, onDefault, onRemove }: { car: GarageVehicle; busy:
   const lang = useLang();
   const t = useT();
   const photo = vehiclePhoto(car);
+  // Laid out as a grid so the SAME buttons sit in the right place on every screen (they are in the page once):
+  // phones: a 130 x 130 photo with the details beside it, the buttons below both; from 640 px: a 250 x 250 photo with the details AND the buttons beside it (the buttons at the bottom).
   return (
-    <li className={`flex flex-wrap items-center gap-4 rounded-[14px] border-[1.5px] bg-white p-4 ${car.isDefault ? "border-navy" : "border-line"}`}>
-      <div className="relative grid h-24 w-36 flex-none place-items-center overflow-hidden rounded-xl bg-[#e6edf2]">
+    <li className={`grid grid-cols-[130px_minmax(0,1fr)] gap-3 rounded-[14px] border-[1.5px] bg-white p-3 sm:grid-cols-[250px_minmax(0,1fr)] sm:grid-rows-[1fr_auto] sm:gap-x-5 sm:gap-y-4 sm:p-4 ${car.isDefault ? "border-navy" : "border-line"}`}>
+      <div className="relative grid size-[130px] place-items-center overflow-hidden rounded-xl bg-[#e6edf2] sm:row-span-2 sm:size-[250px]">
         {photo ? (
-          <SafeImage src={resolveImageUrl(photo)} alt="" fill sizes="144px" className="object-cover" unoptimized />
+          <SafeImage src={resolveImageUrl(photo)} alt="" fill sizes="(min-width: 640px) 250px, 130px" className="object-cover" unoptimized />
         ) : (
-          <svg aria-hidden="true" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#0b3146" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 15v-3l2-5h14l2 5v3" /><circle cx="7.5" cy="16.5" r="1.8" /><circle cx="16.5" cy="16.5" r="1.8" /><path d="M5 12h14" /></svg>
+          <svg aria-hidden="true" className="size-12 sm:size-20" viewBox="0 0 24 24" fill="none" stroke="#0b3146" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 15v-3l2-5h14l2 5v3" /><circle cx="7.5" cy="16.5" r="1.8" /><circle cx="16.5" cy="16.5" r="1.8" /><path d="M5 12h14" /></svg>
         )}
       </div>
-      <div className="min-w-48 flex-1">
-        <strong className="block text-lg">{vehicleLabel(lang, car)}</strong>
-        {car.isDefault && <span className="mt-1 inline-flex rounded-full bg-navy px-3 py-0.5 text-xs font-bold text-white">{t("shopping_for_this")}</span>}
+      <div className="min-w-0">
+        <strong className="block text-base leading-snug [overflow-wrap:anywhere] sm:text-2xl">{vehicleName(lang, car)}</strong>
+        {car.generation && <p className="mt-1 text-sm text-muted [overflow-wrap:anywhere] sm:text-base">{car.generation}</p>}
+        <p className="text-sm text-muted sm:text-base">{t("garage_year", { year: car.year })}</p>
+        {car.isDefault && <span className="mt-2 inline-flex rounded-full bg-navy px-3 py-0.5 text-xs font-bold text-white">{t("shopping_for_this")}</span>}
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Link href={searchHrefFor(car)} className={button}>{t("shop_for_this")}</Link>
+      <div className="col-span-2 flex flex-col gap-2 sm:col-span-1 sm:self-end">
+        <Link href={searchHrefFor(car)} className={`${button} !bg-signal !border-signal !text-on-signal hover:!bg-signal-dark`}>{t("shop_for_this")}</Link>
         {!car.isDefault && <button type="button" className={button} disabled={busy} onClick={onDefault}>{t("make_default")}</button>}
         <button type="button" className={`${button} !border-[#a12a21] !text-[#a12a21]`} disabled={busy} onClick={onRemove} aria-label={`${t("remove")}: ${vehicleLabel(lang, car)}`}>{t("remove")}</button>
       </div>
@@ -67,15 +71,15 @@ export default function GaragePage() {
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
       <h1 className="text-3xl font-bold tracking-tight text-navy">{t("garage_title")}</h1>
       <p className="mb-8 mt-2 text-muted">{t("garage_intro")}</p>
-      <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
-        <section className="rounded-[14px] border border-line bg-white p-6" aria-labelledby="g-cars">
-          <h2 id="g-cars" className="mb-4 text-xl font-bold">{t("garage_your_cars")}</h2>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">          {/* the cars take the width (a 250 px photo needs room beside its details); the form is a slim column */}
+        <section aria-labelledby="g-cars">
+          <h2 id="g-cars" className="mb-4 text-xl font-bold text-navy">{t("garage_your_cars")}</h2>
           {garage.loading ? (
             <p className="text-muted" aria-busy="true">{t("search_loading")}</p>
           ) : garage.vehicles.length === 0 ? (
             <p className="text-muted">{t("garage_empty")}</p>
           ) : (
-            <ul className="grid gap-3">
+            <ul className="grid gap-4">
               {garage.vehicles.map((car) => (
                 <CarCard key={`${car.generationId}:${car.year}`} car={car} busy={busy} onDefault={() => run(() => garage.makeDefault(car))} onRemove={() => run(() => garage.remove(car))} />
               ))}

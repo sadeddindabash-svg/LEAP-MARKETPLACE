@@ -668,6 +668,7 @@ const EN = {
   error_page_title: "This page could not be loaded",
   error_page_body: "The shop may be starting up or temporarily unreachable. Nothing you did caused this.",
   try_again: "Try again",
+  garage_year: "Year {year}",
   copyright: "Copyright © Leap Auto Parts {year}",
 } as const;
 
@@ -1295,6 +1296,7 @@ const AR: Record<DictKey, string> = {
   error_page_title: "تعذّر تحميل هذه الصفحة",
   error_page_body: "قد يكون المتجر قيد التشغيل أو غير متاح مؤقتًا. لا علاقة لك بما حدث.",
   try_again: "حاول مرة أخرى",
+  garage_year: "السنة {year}",
   copyright: "حقوق النشر © ليب لقطع السيارات {year}",
 };
 

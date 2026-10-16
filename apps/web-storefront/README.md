@@ -860,3 +860,8 @@ The product page now has what the app's has. Each section is drawn only when it 
 - **Hosting**: the website is not online anywhere; it needs a server with https (see `docs/LAUNCH-CHECKLIST.md`).
 - **Older server risk**: a part with no weight or size can make the whole cart request fail on the server.
 
+## Changes made after review of the live pages
+
+- **Garage vehicle card (done):** the car photo is a **square**: **250 x 250 px** on screens from 640 px wide, with the name, the generation, the year, the "Shopping for this car" badge AND the buttons beside it (the buttons at the bottom of the details); on phones **130 x 130 px** with the details beside it and the buttons below. One car per row. Arabic mirrors it. The page gives the cars the whole left side (no panel around them) and keeps "Add a car" as a slim 340 px column, because a 250 px photo needs the room. Measured in a real browser: 250x250 at 1280 px and 800 px wide, 130x130 at 375 px, no sideways overflow, in English and Arabic. The photo is cropped to fill the square (`object-cover`); **uploaded car photos should be at least 500 px on each side** to stay sharp on high-resolution screens.
+- **Waiting for your confirmation (not started):** square product-card photos; dropdown menus that close by themselves; lazy loading instead of paging and "Load more"; the announcement bar edited in the admin portal; a limit of 5 cars in the garage (server, storefront and mobile app).
+

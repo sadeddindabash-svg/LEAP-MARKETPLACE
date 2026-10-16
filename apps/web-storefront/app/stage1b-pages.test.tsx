@@ -139,7 +139,9 @@ describe("garage page", () => {
     m.auth.current = { user: { id: "u1" }, isLoading: false };
     m.garage.current = { ...m.garage.current, signedIn: true, vehicles: [car(), car({ generationId: "g2", year: 2021, brand: "Geely", brandAr: null, model: "Coolray", isDefault: false })] };
     await open();
-    expect(screen.getByText("BYD Seal DM-i · 2024")).toBeInTheDocument();
+    expect(screen.getByText("BYD Seal DM-i")).toBeInTheDocument();                                          // the name, then the generation and the year on their own lines
+    expect(screen.getByText("Year 2024")).toBeInTheDocument();
+    expect(screen.getByText("Year 2021")).toBeInTheDocument();
     expect(screen.getAllByText("Shopping for this car")).toHaveLength(1);                                 // only the default one
     expect(screen.getAllByRole("link", { name: "Shop for this car" })[1].getAttribute("href")).toBe("/search?generationId=g2&year=2021");
     expect(screen.getAllByRole("button", { name: "Make default" })).toHaveLength(1);
@@ -147,6 +149,19 @@ describe("garage page", () => {
     await waitFor(() => expect(m.garage.current.makeDefault).toHaveBeenCalledWith(expect.objectContaining({ generationId: "g2", year: 2021 })));
     fireEvent.click(screen.getByRole("button", { name: "Remove: Geely Coolray · 2021" }));
     await waitFor(() => expect(m.garage.current.remove).toHaveBeenCalledWith(expect.objectContaining({ generationId: "g2" })));
+  });
+
+  it("CRITICAL: the car photo is a SQUARE: 250 x 250 on large screens and 130 x 130 on phones, and each button is in the page once (the layout moves them, it does not repeat them)", async () => {
+    m.auth.current = { user: { id: "u1" }, isLoading: false };
+    m.garage.current = { ...m.garage.current, signedIn: true, vehicles: [car({ generation: "G1", generationPhotoUrl: "/uploads/car.jpg" })] };
+    const { container } = await open();
+    const frame = container.querySelector("li > div") as HTMLElement;
+    expect(frame.className).toContain("size-[130px]");
+    expect(frame.className).toContain("sm:size-[250px]");
+    expect(frame.className).not.toMatch(/\bh-\d|\bw-\d/);                                  // never a rectangle again (the old h-24 w-36)
+    expect(screen.getAllByRole("link", { name: "Shop for this car" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /Remove/ })).toHaveLength(1);
+    expect(screen.getByText("G1")).toBeInTheDocument();                                            // the generation has its own line
   });
 
   it("CRITICAL: a car is added only once a complete brand, model and year is chosen, and a failure is a plain message", async () => {
@@ -168,7 +183,8 @@ describe("garage page", () => {
     m.garage.current = { ...m.garage.current, signedIn: true, vehicles: [car()] };
     await open("ar");
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("مركبتي");
-    expect(screen.getByText("بي واي دي Seal DM-i · 2024")).toBeInTheDocument();
+    expect(screen.getByText("بي واي دي Seal DM-i")).toBeInTheDocument();          // the Arabic brand name
+    expect(screen.getByText("السنة 2024")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "تسوق لهذه المركبة" }).getAttribute("href")).toBe("/ar/search?generationId=g1&year=2024");
   });
 });
