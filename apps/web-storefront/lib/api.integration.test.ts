@@ -597,25 +597,13 @@ describe.runIf(backendUp)('vehicle fitment cascade + product filter against a RE
     expect(f20!.yearEnd).toBe(2019);
   });
 
-  it('CRITICAL: filtering products by a real generation genuinely narrows to real matching products, not zero and not everything', async (ctx) => {
-    // Which car has products depends on the data in THIS database (it is not something the test creates), so look for one that really has products instead of assuming a
-    // particular car. A database with no vehicle fitment on any product cannot prove the filter works: that is reported as skipped, with the reason, not as a failure.
+  it('CRITICAL: filtering products by a real generation+year genuinely narrows to real matching products, not zero and not everything', async () => {
     const allProducts = await fetchProducts();
-    let found: { generationId: string; count: number } | null = null;
-    let tried = 0;
-    search: for (const brand of await fetchVehicleBrands()) {
-      for (const model of await fetchModelsForBrand(brand.id)) {
-        for (const generation of await fetchGenerationsForModel(model.id)) {
-          if (++tried > 300) break search;
-          const matching = await fetchProducts({ generationId: generation.id });
-          if (matching.length > 0) { found = { generationId: generation.id, count: matching.length }; break search; }
-        }
-      }
-    }
-    if (!found) return ctx.skip(`No product in this database has vehicle fitment (looked at ${tried} generations), so the vehicle filter cannot be checked here.`);
-    expect(found.count).toBeGreaterThan(0);
-    expect(found.count).toBeLessThan(allProducts.length);
-  }, 60000);
+    const filtered = await fetchProducts({ generationId: 'gen_bmw_1_series_f20', year: 2018 });
+
+    expect(filtered.length).toBeGreaterThan(0);
+    expect(filtered.length).toBeLessThan(allProducts.length);
+  });
 
   it('a nonexistent generation genuinely returns zero real products, not an error or everything', async () => {
     const filtered = await fetchProducts({ generationId: 'not-a-real-generation', year: 2018 });

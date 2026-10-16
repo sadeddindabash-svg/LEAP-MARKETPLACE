@@ -42,6 +42,7 @@ describe("addresses carry the language", () => {
 
 describe("the dictionaries", () => {
   const NEUTRAL = new Set<string>(["rating_value"]);
+  const REORDERED = new Set<string>(["member_label"]);          // only placeholders, no letters of their own: the Arabic must DIFFER from the English (it puts the word first)
   const keys = Object.keys(DICTIONARIES.en) as DictKey[];
   const placeholders = (s: string) => (s.match(/\{\w+\}/g) || []).sort().join(",");
 
@@ -52,6 +53,7 @@ describe("the dictionaries", () => {
     const bad = keys.filter((k) => {
       const ar = DICTIONARIES.ar[k];
       if (k === "other_language_name") return ar !== "English";
+      if (REORDERED.has(k)) return ar === DICTIONARIES.en[k];
       if (NEUTRAL.has(k)) return ar !== DICTIONARIES.en[k];                      // only numbers and brackets: identical in both languages on purpose
       return !ar.trim() || !/[\u0600-\u06FF]/.test(ar) || ar === DICTIONARIES.en[k];
     });

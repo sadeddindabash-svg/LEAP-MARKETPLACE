@@ -919,6 +919,7 @@ export interface SupportTicketDetail {
   priority: string;
   createdAt: string;
   updatedAt: string;
+  resolutionHelpful?: boolean | null;
   messages: SupportTicketMessage[];
 }
 
@@ -929,6 +930,9 @@ export interface SupportTicketSummary {
   status: string;
   priority: string;
   updatedAt: string;
+  createdAt?: string;
+  /** null until the buyer says whether the resolution helped (only asked once the ticket is resolved or closed). */
+  resolutionHelpful?: boolean | null;
 }
 
 export async function createSupportTicket(
@@ -1145,4 +1149,57 @@ export async function createReturnCase(input: { subOrderId: number; reason: stri
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(apiMessage(data.error) || apiMessage(`Failed to send the return request (${res.status})`));
   return data as { id: string };
+}
+
+// ---------------------------------------------------------------- Stage 3b: ticket feedback and bug reports
+
+/** "Was this resolution helpful?": only accepted once the ticket is resolved or closed (the server refuses it before, and says so). */
+export async function submitTicketFeedback(ticketId: string, helpful: boolean, auth: { token?: string | null; guestEmail?: string | null }): Promise<{ id: string; resolutionHelpful: boolean }> {
+  const res = await fetch(`${API_BASE_URL}/support/my-tickets/${encodeURIComponent(ticketId)}/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}) },
+    body: JSON.stringify({ helpful, ...(!auth.token && auth.guestEmail ? { guestEmail: auth.guestEmail } : {}) }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(apiMessage(data.error) || apiMessage(`Failed to send feedback (${res.status})`));
+  return data;
+}
+
+/** A bug report (anyone may send one; a screenshot is a photo uploaded first, which needs a signed-in buyer, like the app). */
+export async function submitBugReport(input: { description: string; screenshotUrl?: string | null; deviceInfo?: string }, token?: string | null): Promise<{ id: number; createdAt: string }> {
+  const res = await fetch(`${API_BASE_URL}/bug-reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(input),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(apiMessage(data.error) || apiMessage(`Failed to send the report (${res.status})`));
+  return data;
+}
+
+// ---------------------------------------------------------------- Stage 4a: account and sign-in security
+
+/** One loyalty tier. `color` and `icon` are names the server sends ("amber", "award"); lib/loyalty.ts turns them into what the page shows. */
+export interface LoyaltyTier { id: number | string; name: string; nameAr?: string | null; color: string; icon: string; discountPercentage: number; spendThreshold: number }
+export interface LoyaltyStatus { currentTier: LoyaltyTier | null; nextTier: LoyaltyTier | null; progressPercent: number; lifetimeSpend: number; amountToNextTier: number | null; allTiers: LoyaltyTier[] }
+export const fetchLoyaltyStatus = (token: string) => authedJson<LoyaltyStatus>(token, "/loyalty/me", "GET", "Failed to load your loyalty status");
+
+/** Changes the sign-in email (the current password is asked for). The server answers with a NEW sign-in token for the new email, which the page must adopt. */
+export const changeEmail = (token: string, newEmail: string, currentPassword: string) =>
+  authedJson<{ token: string; user: { id: string; email: string; name: string | null; role: string } }>(token, "/auth/me/email", "PATCH", "Failed to change your email", { newEmail, currentPassword });
+export const updateAvatar = (token: string, avatarUrl: string | null) => authedJson<{ avatarUrl: string | null }>(token, "/auth/me/avatar", "PATCH", "Failed to update your photo", { avatarUrl });
+/** Deletes the account (the password confirms it): personal info goes, the order history is kept. */
+export const deleteAccount = (token: string, password: string) => authedJson<void>(token, "/auth/me/delete", "POST", "Failed to delete the account", { password });
+
+export const setupTwoFactor = (token: string) => authedJson<{ secret: string; qrCodeDataUrl: string }>(token, "/auth/2fa/setup", "POST", "Failed to start two-factor setup");
+export const confirmTwoFactor = (token: string, code: string) => authedJson<unknown>(token, "/auth/2fa/confirm", "POST", "Failed to turn on two-factor authentication", { code });
+export const disableTwoFactor = (token: string, password: string) => authedJson<unknown>(token, "/auth/2fa/disable", "POST", "Failed to turn off two-factor authentication", { password });
+
+/** Asks for a reset email. The answer is always the same whether or not the address is registered (so nobody can find out who has an account). The link opens a page the SERVER serves. */
+export async function forgotPassword(email: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/auth/forgot-password`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(apiMessage(data.error) || apiMessage(`Failed to send the reset link (${res.status})`));
+  }
 }

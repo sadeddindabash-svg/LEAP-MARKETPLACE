@@ -1,73 +1,79 @@
 "use client";
 
-import { useState } from "react";
-import { useLocRouter } from "@/components/useLocRouter";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "@/components/LocLink";
+import AuthCard from "@/components/AuthCard";
 import { useAuth } from "@/components/AuthProvider";
+import { useT } from "@/components/LangProvider";
+import { useLocRouter } from "@/components/useLocRouter";
+import { isSixDigitCode, normalizeCode, safeNext } from "@/lib/auth";
 
-// Real login page -- a Client Component since it's a real,
-// interactive form with no SEO value.
-export default function LoginPage() {
-  const { login } = useAuth();
+const input = "min-h-12 w-full rounded-[10px] border-[1.5px] border-[#c5d0d8] bg-white px-3 text-[15px] text-ink";
+const label = "mb-1.5 block text-[13px] font-bold text-navy";
+const primary = "mt-2 min-h-12 w-full rounded-[10px] bg-signal text-base font-bold text-on-signal hover:bg-signal-dark disabled:opacity-60";
+
+function LoginForm() {
+  const { login, completeTwoFactor } = useAuth();
+  const t = useT();
   const router = useLocRouter();
+  const next = safeNext(useSearchParams().get("next")) ?? "/";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [awaiting, setAwaiting] = useState<string | null>(null);        // the userId, once the password was right and a code is needed
   const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setIsSubmitting(true);
-    try {
-      await login(email, password);
-      router.push("/");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
-    } finally {
-      setIsSubmitting(false);
+    if (awaiting) {
+      if (!isSixDigitCode(code)) return setError(t("two_factor_login_prompt"));
+      setBusy(true);
+      try { await completeTwoFactor(awaiting, normalizeCode(code)); router.push(next); }
+      catch (err) { setError(err instanceof Error && err.message ? err.message : t("login_failed")); }
+      finally { setBusy(false); }
+      return;
     }
+    setBusy(true);
+    try {
+      const result = await login(email.trim(), password);
+      if (result.status === "two_factor") setAwaiting(result.userId);
+      else router.push(next);
+    } catch (err) { setError(err instanceof Error && err.message ? err.message : t("login_failed")); }
+    finally { setBusy(false); }
   };
 
   return (
-    <div className="mx-auto max-w-sm px-6 py-16">
-      <h1 className="font-display font-bold text-3xl">Log in</h1>
-      <form onSubmit={handleSubmit} className="mt-8 space-y-4">
-        <div>
-          <label className="block text-sm font-medium mb-1">Email</label>
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-md border border-line px-3 py-2 text-sm"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">Password</label>
-          <input
-            type="password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-md border border-line px-3 py-2 text-sm"
-          />
-        </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="w-full rounded-md bg-signal px-6 py-3 text-on-signal font-semibold hover:bg-signal-dark transition-colors disabled:opacity-60"
-        >
-          {isSubmitting ? "Logging in…" : "Log in"}
-        </button>
+    <AuthCard title={awaiting ? t("two_factor_title") : t("login_title")} subtitle={awaiting ? t("two_factor_login_prompt") : t("login_subtitle")}>
+      <form onSubmit={submit} noValidate className="grid gap-4">
+        {awaiting ? (
+          <div>
+            <label htmlFor="lg-code" className={label}>{t("code_six_digits")}</label>
+            <input id="lg-code" className={`${input} text-center font-plate text-xl tracking-[0.4em]`} inputMode="numeric" autoComplete="one-time-code" dir="ltr" maxLength={7} autoFocus value={code} onChange={(e) => setCode(e.target.value)} />
+          </div>
+        ) : (
+          <>
+            <div><label htmlFor="lg-email" className={label}>{t("email_label")}</label><input id="lg-email" type="email" autoComplete="email" dir="ltr" className={input} value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+            <div><label htmlFor="lg-password" className={label}>{t("password_label")}</label><input id="lg-password" type="password" autoComplete="current-password" className={input} value={password} onChange={(e) => setPassword(e.target.value)} /></div>
+          </>
+        )}
+        {error && <p role="alert" className="text-sm font-semibold text-[#a12a21]">{error}</p>}
+        <button type="submit" disabled={busy} className={primary}>{busy ? t("signing_in") : awaiting ? t("verify_label") : t("login_title")}</button>
+        {awaiting ? (
+          <button type="button" className="text-sm font-semibold text-navy underline underline-offset-4" onClick={() => { setAwaiting(null); setCode(""); setError(null); }}>{t("back")}</button>
+        ) : (
+          <div className="flex flex-wrap justify-between gap-3 text-sm font-semibold text-navy">
+            <Link href="/forgot-password" className="underline underline-offset-4">{t("forgot_password_q")}</Link>
+            <Link href={next === "/" ? "/signup" : `/signup?next=${encodeURIComponent(next)}`} className="underline underline-offset-4">{t("no_account_signup")}</Link>
+          </div>
+        )}
       </form>
-      <p className="mt-6 text-sm text-muted">
-        Don&apos;t have an account?{" "}
-        <Link href="/signup" className="text-signal font-medium">
-          Sign up
-        </Link>
-      </p>
-    </div>
+    </AuthCard>
   );
+}
+
+export default function LoginPage() {
+  return <Suspense fallback={null}><LoginForm /></Suspense>;
 }

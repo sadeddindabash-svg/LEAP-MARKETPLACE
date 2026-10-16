@@ -2,98 +2,56 @@
 
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { useLocRouter } from "@/components/useLocRouter";
 import Link from "@/components/LocLink";
+import AuthCard from "@/components/AuthCard";
 import { useAuth } from "@/components/AuthProvider";
+import { useT } from "@/components/LangProvider";
+import { useLocRouter } from "@/components/useLocRouter";
+import { PASSWORD_MIN, safeNext } from "@/lib/auth";
+import { EMAIL_PATTERN } from "@/lib/address";
 
-// Real referral code auto-fill (new) -- requires the same real
-// <Suspense> boundary around useSearchParams() as
-// app/checkout/confirmation/page.tsx already established (a real
-// production build fails outright without one, not just a warning;
-// see that file's own comment for the full finding).
+const input = "min-h-12 w-full rounded-[10px] border-[1.5px] border-[#c5d0d8] bg-white px-3 text-[15px] text-ink";
+const label = "mb-1.5 block text-[13px] font-bold text-navy";
+
 function SignupForm() {
   const { signup } = useAuth();
+  const t = useT();
   const router = useLocRouter();
-  const searchParams = useSearchParams();
-  const [email, setEmail] = useState(searchParams.get("email") || "");          // the checkout's "create an account" step passes the guest's email
+  const params = useSearchParams();
+  const next = safeNext(params.get("next")) ?? "/";
+  const [email, setEmail] = useState(params.get("email") || "");          // the checkout's "create an account" step passes the guest's email
   const [password, setPassword] = useState("");
-  const [referralCode, setReferralCode] = useState(searchParams.get("ref") || "");
+  const [name, setName] = useState("");
+  const [referralCode, setReferralCode] = useState(params.get("ref") || "");
   const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setIsSubmitting(true);
-    try {
-      await signup(email, password, referralCode.trim() || undefined);
-      router.push("/");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign up failed");
-    } finally {
-      setIsSubmitting(false);
-    }
+    if (!EMAIL_PATTERN.test(email.trim())) return setError(t("please_enter_valid_email"));
+    if (password.length < PASSWORD_MIN) return setError(t("password_too_short"));
+    setBusy(true);
+    try { await signup(email.trim(), password, referralCode.trim() || undefined, name.trim() || undefined); router.push(next); }
+    catch (err) { setError(err instanceof Error && err.message ? err.message : t("something_went_wrong")); }
+    finally { setBusy(false); }
   };
 
   return (
-    <div className="mx-auto max-w-sm px-6 py-16">
-      <h1 className="font-display font-bold text-3xl">Sign up</h1>
-      <form onSubmit={handleSubmit} className="mt-8 space-y-4">
-        <div>
-          <label className="block text-sm font-medium mb-1">Email</label>
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-md border border-line px-3 py-2 text-sm"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">Password</label>
-          <input
-            type="password"
-            required
-            minLength={8}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-md border border-line px-3 py-2 text-sm"
-          />
-          <p className="mt-1 text-xs text-muted">At least 8 characters.</p>
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">Referral code (optional)</label>
-          <input
-            type="text"
-            value={referralCode}
-            onChange={(e) => setReferralCode(e.target.value)}
-            placeholder="e.g. ABCD1234"
-            className="w-full rounded-md border border-line px-3 py-2 text-sm font-plate uppercase"
-          />
-        </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="w-full rounded-md bg-signal px-6 py-3 text-on-signal font-semibold hover:bg-signal-dark transition-colors disabled:opacity-60"
-        >
-          {isSubmitting ? "Signing up…" : "Sign up"}
-        </button>
+    <AuthCard title={t("create_account")} subtitle={t("signup_subtitle")}>
+      <form onSubmit={submit} noValidate className="grid gap-4">
+        <div><label htmlFor="su-email" className={label}>{t("email_label")}</label><input id="su-email" type="email" autoComplete="email" dir="ltr" className={input} value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+        <div><label htmlFor="su-password" className={label}>{t("password_label")}</label><input id="su-password" type="password" autoComplete="new-password" className={input} value={password} onChange={(e) => setPassword(e.target.value)} /><p className="mt-1 text-xs text-muted">{t("at_least_8_chars")}</p></div>
+        <div><label htmlFor="su-name" className={label}>{t("name_optional")}</label><input id="su-name" autoComplete="name" className={input} value={name} onChange={(e) => setName(e.target.value)} /></div>
+        <div><label htmlFor="su-ref" className={label}>{t("referral_code_optional")}</label><input id="su-ref" dir="ltr" className={`${input} font-plate`} value={referralCode} onChange={(e) => setReferralCode(e.target.value)} /></div>
+        {error && <p role="alert" className="text-sm font-semibold text-[#a12a21]">{error}</p>}
+        <button type="submit" disabled={busy} className="mt-2 min-h-12 w-full rounded-[10px] bg-signal text-base font-bold text-on-signal hover:bg-signal-dark disabled:opacity-60">{busy ? t("creating_account") : t("create_account")}</button>
+        <Link href={next === "/" ? "/login" : `/login?next=${encodeURIComponent(next)}`} className="text-center text-sm font-semibold text-navy underline underline-offset-4">{t("already_have_account")}</Link>
       </form>
-      <p className="mt-6 text-sm text-muted">
-        Already have an account?{" "}
-        <Link href="/login" className="text-signal font-medium">
-          Log in
-        </Link>
-      </p>
-    </div>
+    </AuthCard>
   );
 }
 
 export default function SignupPage() {
-  return (
-    <Suspense fallback={<div className="mx-auto max-w-sm px-6 py-16 text-muted">Loading…</div>}>
-      <SignupForm />
-    </Suspense>
-  );
+  return <Suspense fallback={null}><SignupForm /></Suspense>;
 }

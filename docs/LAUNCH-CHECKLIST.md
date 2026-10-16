@@ -74,6 +74,12 @@ To clean test data (take a backup first; the tool prints the command): `node scr
 - [ ] The new Arabic texts in `apps/web-storefront/lib/i18n.ts` (the cart, checkout and address book) are read by a native speaker.
 - [ ] The Arabic texts of the order pages (written for the web, not taken from the app) in `apps/web-storefront/lib/i18n.ts` are read by a native speaker.
 - [ ] The return window (`return_window_days`, 7 by default) says what you promise buyers: the website's "Request a return" is shown on every part and the server decides.
+- [ ] **Decide who reads bug reports.** The website's and the app's "Report a bug" save the report in the `bug_reports` table, and nothing in the admin dashboard shows it yet.
+- [ ] The Arabic texts of the support, returns and bug report pages (written for the web, not taken from the app) in `apps/web-storefront/lib/i18n.ts` are read by a native speaker.
+- [ ] Decide whether a guest's email should match a ticket or a return ignoring capitals, as it does for orders (a small server change in `services/api/src/modules/support` and `returns`).
+- [ ] **The website runs on https in production.** The sign-in cookie is `Secure` only when the site is on https, and a sign-in over plain http can be read on the network.
+- [ ] The password-reset email opens a page served by the BACKEND (`/reset-password?token=...`). Check how it looks and that it is in the language you want (it is not part of the new storefront look).
+- [ ] The new Arabic texts of the account and sign-in pages (the ones written for the web, not taken from the app) in `apps/web-storefront/lib/i18n.ts` are read by a native speaker.
 - [ ] Consider Google Merchant Center free listings (a product feed) and an Arabic version of the storefront: see `apps/web-storefront/README.md`, "SEO".
 
 ### Words and rules
