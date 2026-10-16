@@ -59,7 +59,7 @@ export default function WishlistPage() {
           <Link href="/search" className="inline-flex min-h-12 items-center rounded-[10px] bg-signal px-6 font-bold text-on-signal hover:bg-signal-dark">{t("browse_products")}</Link>
         </div>
       ) : (
-        <ul className="mt-6 grid gap-3">
+        <ul className="mt-6 grid grid-cols-[minmax(0,1fr)] gap-3">          {/* minmax(0,…): a row can shrink below its longest unbroken word instead of pushing the page sideways */}
           {list.map((p) => (
             <li key={p.id} className="flex items-center gap-4 rounded-[14px] border border-line bg-white p-4">
               {compareMode && (
