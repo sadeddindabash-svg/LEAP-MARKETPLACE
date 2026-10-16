@@ -1,116 +1,88 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "@/components/LocLink";
-import { useAuth, getAuthToken } from "@/components/AuthProvider";
-import { ReferralInfo, fetchMyReferral } from "@/lib/api";
+import SignInPrompt from "@/components/SignInPrompt";
+import { getAuthToken, useAuth } from "@/components/AuthProvider";
+import { useLang, useT } from "@/components/LangProvider";
+import { fetchMyReferral, fetchReferralHistory, type ReferralHistoryEntry, type ReferralInfo } from "@/lib/api";
+import { localizePath } from "@/lib/i18n";
+import { formatDate } from "@/lib/orders";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3001";
+const outline = "inline-flex min-h-11 items-center justify-center rounded-[10px] border-[1.5px] border-navy px-5 text-sm font-bold text-navy hover:bg-chalk";
 
-// Real referrals page (new) -- a buyer's own real referral code, real
-// stats, and a real shareable link. Same login-gated pattern as
-// orders/wishlist/saved-searches. Reuses GET /referrals/me, the same
-// endpoint the mobile app already uses -- a code is created on first
-// request if the buyer doesn't have one yet, so there's no separate
-// "generate a code" action needed here.
+// Refer a friend, like the app: the buyer's code (copy it, or share the sign-up link with it), what it earns, how many were referred, the reward cap, and who joined.
 export default function ReferralsPage() {
-  const { user, isLoading: authLoading } = useAuth();
-  const [referral, setReferral] = useState<ReferralInfo | null>(null);
-  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
-  const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const { user, isLoading } = useAuth();
+  const lang = useLang();
+  const t = useT();
+  const [info, setInfo] = useState<ReferralInfo | null>(null);
+  const [history, setHistory] = useState<ReferralHistoryEntry[]>([]);
+  const [failed, setFailed] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
-    if (authLoading) return;
-    if (!user) {
-      Promise.resolve().then(() => setLoadState("ready"));
-      return;
-    }
+    if (!user) return;
     const token = getAuthToken();
     if (!token) return;
-    fetchMyReferral(token)
-      .then((data) => { setReferral(data); setLoadState("ready"); })
-      .catch((err) => { setError(err.message); setLoadState("error"); });
-  }, [authLoading, user]);
+    let current = true;
+    fetchMyReferral(token).then((i) => { if (current) setInfo(i); }).catch(() => { if (current) setFailed(true); });
+    fetchReferralHistory(token).then((h) => { if (current) setHistory(h); }).catch(() => {});
+    return () => { current = false; };
+  }, [user]);
 
-  const referralLink = referral ? `${SITE_URL}/signup?ref=${referral.code}` : "";
+  if (isLoading) return <div className="mx-auto max-w-2xl px-4 py-10 sm:px-8" aria-busy="true">{t("search_loading")}</div>;
+  if (!user) return <SignInPrompt messageKey="login_for_referrals" next="/referrals" />;
 
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(referralLink);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  // the sign-up link that carries the code (in the page's language)
+  const link = info ? `${typeof window !== "undefined" ? window.location.origin : ""}${localizePath(lang, `/signup?ref=${encodeURIComponent(info.code)}`)}` : "";
+  const copy = async (text: string, message: string) => {
+    try { await navigator.clipboard.writeText(text); setNote(message); } catch { setNote(null); }
+  };
+  const share = async () => {
+    const text = t("referral_share_text", { url: link });
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      try { await navigator.share({ text }); return; } catch { /* the buyer closed the share sheet: nothing to do */ }
+    }
+    await copy(text, t("share_copied"));
   };
 
-  if (authLoading || loadState === "loading") {
-    return <div className="mx-auto max-w-2xl px-6 py-16 text-muted">Loading…</div>;
-  }
-
-  if (!user) {
-    return (
-      <div className="mx-auto max-w-2xl px-6 py-16 text-center">
-        <h1 className="font-display font-bold text-3xl">Refer a friend</h1>
-        <p className="mt-3 text-muted">Log in to get your own referral link.</p>
-        <Link
-          href="/login"
-          className="mt-6 inline-flex items-center rounded-md bg-signal px-6 py-3 text-on-signal font-semibold hover:bg-signal-dark transition-colors"
-        >
-          Log in
-        </Link>
-      </div>
-    );
-  }
-
-  if (loadState === "error" || !referral) {
-    return (
-      <div className="mx-auto max-w-2xl px-6 py-16">
-        <h1 className="font-display font-bold text-3xl">Refer a friend</h1>
-        <p className="mt-4 text-sm text-red-600">{error || "Could not load your referral info."}</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="mx-auto max-w-2xl px-6 py-16">
-      <h1 className="font-display font-bold text-3xl">Refer a friend</h1>
-      <p className="mt-2 text-muted">
-        Share your link. When a friend signs up with it, you both benefit.
-      </p>
-
-      <div className="mt-8 rounded-lg border border-line bg-white p-4">
-        <p className="text-xs font-semibold text-muted uppercase">Your code</p>
-        <p className="mt-1 font-plate font-bold text-2xl tracking-wide">{referral.code}</p>
-
-        <p className="mt-4 text-xs font-semibold text-muted uppercase">Your link</p>
-        <div className="mt-1 flex gap-2">
-          <input
-            readOnly
-            value={referralLink}
-            className="flex-1 rounded-md border border-line bg-canvas px-3 py-2 text-sm text-muted"
-          />
-          <button
-            onClick={handleCopy}
-            className="rounded-md bg-signal px-4 py-2 text-sm text-on-signal font-semibold hover:bg-signal-dark transition-colors flex-shrink-0"
-          >
-            {copied ? "Copied ✓" : "Copy"}
-          </button>
+    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-8">
+      <h1 className="text-3xl font-bold tracking-tight text-navy">{t("referrals")}</h1>
+      <p className="mb-6 mt-2 text-muted">{t("referral_explainer")}</p>
+      {failed && <p role="alert" className="font-semibold text-[#a12a21]">{t("load_error_generic")}</p>}
+      {!info && !failed && <p className="text-muted" aria-busy="true">{t("search_loading")}</p>}
+      {info && (
+        <div className="grid gap-5">
+          <section className="rounded-[14px] border border-line border-t-[6px] border-t-signal bg-white p-6" aria-labelledby="ref-code">
+            <h2 id="ref-code" className="text-sm font-bold uppercase tracking-wide text-muted">{t("your_referral_code")}</h2>
+            <p className="my-2 font-plate text-3xl font-bold tracking-widest text-navy" dir="ltr">{info.code}</p>
+            <div className="flex flex-wrap gap-3">
+              <button type="button" className={outline} onClick={() => copy(info.code, t("code_copied"))}>{t("copy_code")}</button>
+              <button type="button" className="inline-flex min-h-11 items-center rounded-[10px] bg-signal px-5 text-sm font-bold text-on-signal hover:bg-signal-dark" onClick={share}>{t("share")}</button>
+            </div>
+            <p aria-live="polite" className="mt-3 min-h-5 text-sm font-semibold text-[#0f6b49]">{note}</p>
+            <p className="break-all text-xs text-muted"><span className="font-bold">{t("referral_link_label")}: </span><span dir="ltr">{link}</span></p>
+          </section>
+          <ul className="grid gap-4 sm:grid-cols-2">
+            <li className="rounded-[14px] border border-line bg-white p-5"><p className="text-3xl font-extrabold text-navy">{info.totalReferred}</p><p className="text-sm font-semibold text-muted">{t("people_referred")}</p></li>
+            <li className="rounded-[14px] border border-line bg-white p-5"><p className="text-3xl font-extrabold text-navy">{info.rewardsEarned}<span className="text-lg font-semibold text-muted"> / {info.maxRewards}</span></p><p className="text-sm font-semibold text-muted">{t("rewards_earned")}</p></li>
+          </ul>
+          {info.capReached && <p role="status" className="rounded-xl bg-[#fdf1d6] p-4 font-semibold text-[#7a4e00]">{t("referral_cap_reached")}</p>}
+          {history.length > 0 && (
+            <section aria-labelledby="ref-history" className="rounded-[14px] border border-line bg-white p-5">
+              <h2 id="ref-history" className="mb-3 text-lg font-bold">{t("referral_history")}</h2>
+              <ul className="grid gap-2.5">
+                {history.map((h, i) => (
+                  <li key={`${h.joinedAt}-${i}`} className="flex items-center justify-between gap-3 text-sm">
+                    <span className="font-semibold">{h.firstName ? t("referral_member_joined", { name: h.firstName }) : t("referral_new_member")}</span>
+                    <span className="flex items-center gap-2 text-muted">{formatDate(lang, h.joinedAt)}{h.rewardGranted && <span role="img" aria-label={t("reward_earned_mark")} className="font-bold text-[#0f6b49]">✓</span>}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </div>
-      </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-4">
-        <div className="rounded-lg border border-line bg-white p-4 text-center">
-          <p className="text-2xl font-bold">{referral.totalReferred}</p>
-          <p className="text-xs text-muted mt-1">Friends referred</p>
-        </div>
-        <div className="rounded-lg border border-line bg-white p-4 text-center">
-          <p className="text-2xl font-bold">{referral.rewardsEarned} / {referral.maxRewards}</p>
-          <p className="text-xs text-muted mt-1">Rewards earned</p>
-        </div>
-      </div>
-
-      {referral.capReached && (
-        <p className="mt-4 text-sm text-muted">
-          You&apos;ve reached the maximum number of referral rewards. Thanks for spreading the word!
-        </p>
       )}
     </div>
   );

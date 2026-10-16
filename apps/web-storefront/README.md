@@ -726,7 +726,7 @@ The mobile app has 44 screens and the storefront had far fewer. The full list of
 - **Stage 3a (done): orders after the sale.** See "Stage 3a" below.
 - **Stage 3b (done): returns and support.** See "Stage 3b" below.
 - **Stage 4a (done): account and sign-in security.** See "Stage 4a" below.
-- **Stage 4b (next): the rest of the account.** Quote requests ("My requests"), referrals with their history, notifications, wishlist and saved searches in the new look and in Arabic.
+- **Stage 4b (done): the rest of the account.** Quote requests, referrals, notifications, wishlist and saved searches. See "Stage 4b" below. **That completes the list of stages.** What is still open is listed at the end of this file.
 
 **Cut on purpose:** "Work with Leap" (the menu item and the "Join now" block of the existing website). Not on the web: app lock and the update gate; push notifications become email.
 
@@ -839,4 +839,24 @@ The product page now has what the app's has. Each section is drawn only when it 
 - **Texts:** 83 of the new texts are the app's own English and Arabic; about 17 are written for the web and need a native speaker's review (`lib/i18n.ts`).
 
 **Tests:** `npm test` (the new ones: `lib/stage4-logic`, `components/stage4-auth`, `app/stage4-pages`). With the backend running, `npm run test:integration` runs `lib/api.stage4.integration.test.ts` (the **whole two-step lifecycle with REAL authenticator codes**: setup, a wrong code refused, confirm, the password alone giving NO token, the code giving one, then turning it off; changing the email; the photo; loyalty; the neutral reset answer; deleting an account) and `app/stage4-e2e.integration.test.tsx` (the REAL login, sign-up, account, change-email, two-factor and forgot-password pages with the REAL sign-in provider against the REAL server; the first test reproduces the original two-step bug through the real login page). The authenticator codes are made by `lib/testTotp.ts` (checked against the RFC 6238 test vectors). Nothing has been run in a real browser.
+
+## Stage 4b: quote requests, referrals, notifications, saved searches, wishlist (the mobile app's own rules)
+
+- **My requests / Request a quote** (`/part-requests`, `/part-requests/new`, `/part-requests/<id>`; the app's "part requests"): a buyer asks the Leap team to find a part the shop does not carry. They pick the car (their garage car in one tap, or brand, model and year), list up to 20 parts (a name, an optional description, a quantity, an optional photo), and send it. The Leap staff make each part through the supplier portal and the buyer gets a **quote valid for 7 days**. **Statuses and rules** (`lib/quotes.ts`): *draft* (only a draft can be added to; "Continue this request" reopens it), *submitted* (waiting; can be cancelled), *quoted* (each part is priced and ready, priced but still waiting for approval, or unavailable; quantities can be changed and parts removed while the quote is valid; "Add to cart" puts the READY parts in the buyer's cart and goes to it), *ordered*, *cancelled*. A request can be cancelled only before it is quoted. **Expiry:** the server only stores a date; a quote past its date is shown as **Expired** and cannot be ordered (the server refuses it as well). The app does not work this out itself (it only knows a status called "expired"): the website does, so a buyer never sees an "Add to cart" that is about to fail. The total counts only the ready parts. The requests are private to their buyer (another buyer gets "not found").
+- **Referrals** (`/referrals`): the buyer's code, the people referred and the rewards earned out of the maximum, the app's explainer and its message when the cap is reached, **Copy code**, **Share** (the app's sentence with the sign-up link that carries the code, in the page's language; the browser's share sheet when it has one, else the text is copied) and the **history** of who joined (first names only, with a mark where the reward was earned).
+- **Notifications** (`/notifications`): newest first with the unread ones marked and "time ago"; opening one marks it read and goes to what it is about (an order, a ticket, a product, a saved search); "Mark all read". The titles and texts come from the server already in the page's language.
+- **Saved searches** (`/saved-searches`): each with its words, when it was last checked ("Not checked yet" for a new one), it opens the search, and deleting asks first. **Wishlist** (`/wishlist`): in the new look and in Arabic; out-of-stock parts say the buyer will be told when they are back; the compare mode is unchanged.
+- **The account side menu and the account menu** now include My requests. **A visitor who is not signed in** is asked to sign in and is brought back to the same page (`lib/auth.ts` `loginHrefFor`).
+- **Texts:** 60 of the new texts are the app's own English and Arabic; the rest are written for the web (Arabic to be reviewed), and the empty saved-searches text says "search page" instead of the app's "search screen".
+
+**Tests:** `npm test` (the new ones: `lib/stage4b-logic`, `app/stage4b-pages`). With the backend running, `npm run test:integration` runs `lib/api.stage4b.integration.test.ts` (the quote request lifecycle with the 20-part limit, locking after sending and cancelling, privacy between buyers, a real referred sign-up appearing in the referrer's history, saved searches, the wishlist, notifications) and `app/stage4b-e2e.integration.test.tsx` (the REAL pages with the REAL providers against the REAL server: a quote request made by choosing BMW 1 Series 2017 from the real vehicle lists, adding two parts and sending it, then cancelled from its page; the real list, referrals, saved searches and wishlist). **Not tested against the real server:** the *quoted* state of a request (a Leap staff member making and approving the parts through the supplier portal): it is covered by the page tests with fixed answers only.
+
+## What is still open (after all stages)
+
+- **Online payment is not collected** by the app or the website (see Stage 2): a decision for you, and new work in both apps and the server.
+- **Reading a printed part number from a photo** (OCR) is not on the web (barcodes are).
+- **Never run in a real browser, and the production build was never run** (it needs Google Fonts): please run `npm run build` and look at every page.
+- **Arabic**: the texts written for the web (not taken from the app) need a native speaker's review (`lib/i18n.ts`).
+- **Hosting**: the website is not online anywhere; it needs a server with https (see `docs/LAUNCH-CHECKLIST.md`).
+- **Older server risk**: a part with no weight or size can make the whole cart request fail on the server.
 

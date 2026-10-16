@@ -17,7 +17,7 @@ export default function AccountMenu() {
   if (!user) {
     return <Link href="/login" className={trigger}>{userIcon}<span>{t("sign_in")}</span></Link>;
   }
-  const items: Array<[string, Parameters<typeof t>[0]]> = [["/account", "account_hub_title"], ["/orders", "my_orders"], ["/returns", "returns"], ["/wishlist", "wishlist"], ["/saved-searches", "saved_searches"], ["/garage", "garage_title"], ["/addresses", "addresses"], ["/referrals", "referrals"], ["/support", "support"]];
+  const items: Array<[string, Parameters<typeof t>[0]]> = [["/account", "account_hub_title"], ["/orders", "my_orders"], ["/part-requests", "my_requests_title"], ["/returns", "returns"], ["/wishlist", "wishlist"], ["/saved-searches", "saved_searches"], ["/garage", "garage_title"], ["/addresses", "addresses"], ["/referrals", "referrals"], ["/support", "support"]];
   return (
     <details className="relative">
       <summary className={trigger} aria-label={t("account_menu")}>{userIcon}<span>{t("account")}</span></summary>

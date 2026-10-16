@@ -2,101 +2,70 @@
 
 import { useEffect, useState } from "react";
 import Link from "@/components/LocLink";
-import { useAuth } from "@/components/AuthProvider";
-import { getAuthToken } from "@/components/AuthProvider";
-import { SavedSearch, fetchSavedSearches, deleteSavedSearch } from "@/lib/api";
+import SignInPrompt from "@/components/SignInPrompt";
+import { getAuthToken, useAuth } from "@/components/AuthProvider";
+import { useLang, useT } from "@/components/LangProvider";
+import { deleteSavedSearch, fetchSavedSearches, type SavedSearch } from "@/lib/api";
+import { savedSearchHref } from "@/lib/savedSearch";
+import { timeAgo } from "@/lib/time";
 
-// Real saved searches management page -- requires a real logged-in
-// account, so this is a Client Component checking auth state directly
-// rather than anything server-rendered (no SEO value in a buyer's own
-// private list).
+const outline = "inline-flex min-h-10 items-center justify-center rounded-[10px] border-[1.5px] border-navy px-4 text-sm font-bold text-navy hover:bg-chalk";
+
+// Saved searches: each one is checked for new matches (the buyer gets a notification), shown with when it was last checked; it opens the search, and can be deleted (asked first).
 export default function SavedSearchesPage() {
-  const { user, isLoading: authLoading } = useAuth();
-  const [searches, setSearches] = useState<SavedSearch[]>([]);
-  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const { user, isLoading } = useAuth();
+  const lang = useLang();
+  const t = useT();
+  const [items, setItems] = useState<SavedSearch[] | null>(null);
+  const [confirm, setConfirm] = useState<SavedSearch | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (authLoading) return;
-    if (!user) {
-      Promise.resolve().then(() => setLoadState("ready"));
-      return;
-    }
+    if (!user) return;
     const token = getAuthToken();
     if (!token) return;
-    fetchSavedSearches(token)
-      .then((data) => { setSearches(data); setLoadState("ready"); })
-      .catch((err) => { setError(err.message); setLoadState("error"); });
-  }, [authLoading, user]);
+    let current = true;
+    fetchSavedSearches(token).then((s) => { if (current) setItems(s); }).catch(() => { if (current) { setError(t("load_error_generic")); setItems([]); } });
+    return () => { current = false; };
+  }, [user, t]);
 
-  const handleDelete = async (id: number) => {
+  if (isLoading) return <div className="mx-auto max-w-2xl px-4 py-10 sm:px-8" aria-busy="true">{t("search_loading")}</div>;
+  if (!user) return <SignInPrompt messageKey="login_for_saved_searches" next="/saved-searches" />;
+
+  const remove = async (s: SavedSearch) => {
     const token = getAuthToken();
     if (!token) return;
-    try {
-      await deleteSavedSearch(token, id);
-      setSearches((prev) => prev.filter((s) => s.id !== id));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete");
-    }
+    try { await deleteSavedSearch(token, s.id); setItems((cur) => cur && cur.filter((x) => x.id !== s.id)); setConfirm(null); }
+    catch (e) { setError(e instanceof Error && e.message ? e.message : t("generic_error")); }
   };
 
-  if (authLoading || loadState === "loading") {
-    return <div className="mx-auto max-w-2xl px-6 py-16 text-muted">Loading…</div>;
-  }
-
-  if (!user) {
-    return (
-      <div className="mx-auto max-w-2xl px-6 py-16 text-center">
-        <h1 className="font-display font-bold text-3xl">Saved searches</h1>
-        <p className="mt-3 text-muted">
-          Log in to save searches and get notified when new matching parts are listed.
-        </p>
-        <Link
-          href="/login"
-          className="mt-6 inline-flex items-center rounded-md bg-signal px-6 py-3 text-on-signal font-semibold hover:bg-signal-dark transition-colors"
-        >
-          Log in
-        </Link>
-      </div>
-    );
-  }
-
   return (
-    <div className="mx-auto max-w-2xl px-6 py-16">
-      <h1 className="font-display font-bold text-3xl">Saved searches</h1>
-      <p className="mt-2 text-muted">
-        We&apos;ll notify you when new parts match one of these.
-      </p>
-
-      {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
-
-      {searches.length === 0 ? (
-        <p className="mt-8 text-muted">
-          No saved searches yet.{" "}
-          <Link href="/search" className="text-signal font-medium">
-            Start a search
-          </Link>{" "}
-          and save it from there.
-        </p>
+    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-8">
+      <h1 className="mb-6 text-3xl font-bold tracking-tight text-navy">{t("saved_searches")}</h1>
+      {error && <p role="alert" className="mb-4 text-sm font-semibold text-[#a12a21]">{error}</p>}
+      {items === null ? <p className="text-muted" aria-busy="true">{t("search_loading")}</p> : items.length === 0 ? (
+        <p className="rounded-[14px] border border-line bg-white p-6 text-muted">{t("saved_searches_empty")}</p>
       ) : (
-        <div className="mt-8 space-y-3">
-          {searches.map((s) => (
-            <div key={s.id} className="flex items-center justify-between rounded-lg border border-line bg-white p-4">
-              <div>
-                <p className="font-semibold text-sm">{s.label}</p>
-                <p className="text-xs text-muted mt-1">
-                  {s.searchTerm ? `"${s.searchTerm}"` : ""}{s.searchTerm && s.category ? " · " : ""}{s.category || ""}
-                </p>
+        <ul className="grid gap-3">
+          {items.map((s) => (
+            <li key={s.id} className="rounded-[14px] border border-line bg-white p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-48 flex-1">
+                  <Link href={savedSearchHref(s)} className="font-bold hover:underline">{s.label}</Link>
+                  <p className="text-sm text-muted">{[s.searchTerm, s.category].filter(Boolean).join(" · ")}</p>
+                  <p className="text-xs text-muted">{s.lastCheckedAt ? `${t("last_checked")} ${timeAgo(lang, s.lastCheckedAt)}` : t("not_checked_yet")}</p>
+                </div>
+                <button type="button" className="text-sm font-bold text-[#a12a21] underline underline-offset-4" onClick={() => setConfirm(s)} aria-label={`${t("delete")}: ${s.label}`}>{t("delete")}</button>
               </div>
-              <button
-                onClick={() => handleDelete(s.id)}
-                className="text-xs font-semibold text-muted hover:text-ink"
-              >
-                Remove
-              </button>
-            </div>
+              {confirm?.id === s.id && (
+                <div role="alertdialog" aria-label={t("delete_saved_search_q", { label: s.label })} className="mt-3 rounded-xl border border-[#e6b8b3] bg-[#fdf2f1] p-4">
+                  <p className="mb-3 font-semibold">{t("delete_saved_search_q", { label: s.label })}</p>
+                  <div className="flex flex-wrap gap-3"><button type="button" className={outline} onClick={() => setConfirm(null)}>{t("cancel")}</button><button type="button" className="inline-flex min-h-10 items-center rounded-[10px] bg-[#a12a21] px-5 text-sm font-bold text-white" onClick={() => remove(s)}>{t("delete")}</button></div>
+                </div>
+              )}
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </div>
   );

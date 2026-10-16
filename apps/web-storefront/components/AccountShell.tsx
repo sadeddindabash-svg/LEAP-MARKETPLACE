@@ -8,7 +8,7 @@ import { useT } from "./LangProvider";
 import { splitLang, type DictKey } from "@/lib/i18n";
 
 const ITEMS: Array<[string, DictKey]> = [
-  ["/account", "account_hub_title"], ["/account/loyalty", "loyalty_my_tier_title"], ["/orders", "orders_and_returns"], ["/returns", "my_returns"], ["/addresses", "addresses"],
+  ["/account", "account_hub_title"], ["/account/loyalty", "loyalty_my_tier_title"], ["/orders", "orders_and_returns"], ["/part-requests", "my_requests_title"], ["/returns", "my_returns"], ["/addresses", "addresses"],
   ["/garage", "garage_title"], ["/wishlist", "wishlist"], ["/saved-searches", "saved_searches"], ["/referrals", "referrals"], ["/account/change-email", "change_email"],
   ["/account/two-factor", "two_factor_auth_label"], ["/contact", "contact_us_label"],
 ];

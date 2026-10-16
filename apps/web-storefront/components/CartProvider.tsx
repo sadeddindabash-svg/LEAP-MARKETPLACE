@@ -43,6 +43,8 @@ interface CartContextValue {
   lockPrices: () => Promise<void>;
   /** Puts a promo code on the cart, or removes it with null. THROWS the server's reason when the code is not valid. */
   applyPromo: (code: string | null) => Promise<void>;
+  /** Reads the cart again from the server (something else put items in it, like placing an order from a quote). */
+  refreshCart: () => Promise<void>;
   /** After an order: a brand new empty cart, so the count in the header drops at once (not only after a reload). */
   clearAfterOrder: () => void;
 }
@@ -119,6 +121,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setCart(await applyCartPromoCode(cartId, code, who()));
   }, [cartId, who]);
 
+  const refreshCart = useCallback(async () => {
+    if (!cartId) return;
+    try { setCart(await fetchCart(cartId, who())); } catch { /* the cart on screen stays as it was */ }
+  }, [cartId, who]);
+
   const clearAfterOrder = useCallback(() => {
     const id = crypto.randomUUID();
     writeCartIdCookie(id);
@@ -133,9 +140,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
       cart, isLoading, error,
       itemCount: countOf(source), total: subtotalOf(source),
       summary: totalsOf({ items: source.items, appliedDiscountUsd: cart?.appliedDiscountUsd, appliedDiscountSource: cart?.appliedDiscountSource, loyaltyDiscountPercentage: cart?.loyaltyDiscountPercentage, appliedPromoCode: cart?.appliedPromoCode }),
-      addItem, updateQuantity, removeItem, lockPrices, applyPromo, clearAfterOrder,
+      addItem, updateQuantity, removeItem, lockPrices, applyPromo, refreshCart, clearAfterOrder,
     };
-  }, [cart, isLoading, error, addItem, updateQuantity, removeItem, lockPrices, applyPromo, clearAfterOrder]);
+  }, [cart, isLoading, error, addItem, updateQuantity, removeItem, lockPrices, applyPromo, refreshCart, clearAfterOrder]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }
