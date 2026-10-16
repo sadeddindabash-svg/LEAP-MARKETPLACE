@@ -29,6 +29,7 @@ import ShareButton from "./ShareButton";
 import NotifyWhenInStock from "./NotifyWhenInStock";
 import OemComparison from "./OemComparison";
 import LoadMoreGrid, { PAGE_SIZE } from "./LoadMoreGrid";
+import { installFakeObserver } from "./testObserver";
 import CustomerPhotos from "./CustomerPhotos";
 import { LangProvider } from "./LangProvider";
 
@@ -176,58 +177,67 @@ describe("same part, other listings", () => {
   });
 });
 
-describe("load more (same brand, newest)", () => {
+describe("the lists at the bottom of a product page (same brand, newest): lazy loading", () => {
   const page = (from: number, n: number) => Array.from({ length: n }, (_, i) => product(`p${from + i}`));
   const sameBrand = (initial: ProductSummary[]) => en(<LoadMoreGrid id="b" title="More BYD parts" initial={initial} source={{ kind: "sameBrand", productId: "cur" }} />);
+  const asked: string[] = [];
+  let reply: Array<{ items: ProductSummary[] }> = [];
+  beforeEach(() => {
+    asked.length = 0; reply = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => { asked.push(url); return { ok: true, status: 200, json: async () => reply.shift() ?? { items: [] } } as Response; }));
+  });
+  afterEach(() => { vi.unstubAllGlobals(); });
 
-  it("draws nothing without products; a short first page has no 'Show more' (the app's rule: more pages only when the page was full)", () => {
+  it("draws nothing without products, and a short first page is simply the whole list: nothing is loaded afterwards", () => {
     expect(sameBrand([]).container).toBeEmptyDOMElement();
   });
-  it("a short page has no button", () => {
+  it("a short page is complete: it never starts watching for more", () => {
+    const view = installFakeObserver();
     sameBrand(page(1, PAGE_SIZE - 1));
-    expect(screen.queryByRole("button", { name: "Show more" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "More BYD parts" })).toBeInTheDocument();
+    expect(view.listening()).toBe(0);
+    expect(screen.queryByRole("button", { name: /more/i })).not.toBeInTheDocument();                        // and there is no 'Show more' button at all any more
   });
 
-  it("CRITICAL: a full page offers more; 'Show more' asks for the NEXT page of that part's brand and adds it without repeating anything", async () => {
-    m.fetchSameBrand.mockResolvedValue([...page(11, 10), product("p1")]);          // the next page repeats one already shown
+  it("CRITICAL: a full page keeps going by itself: it asks the website's door for that part's brand, NEXT page, and adds it without repeating anything", async () => {
+    const view = installFakeObserver();
+    reply = [{ items: [...page(11, 10), product("p1")] }];                              // the next page repeats one already shown
     sameBrand(page(1, PAGE_SIZE));
     expect(screen.getAllByRole("listitem")).toHaveLength(10);
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Show more" })); });
-    expect(m.fetchSameBrand).toHaveBeenCalledWith("cur", "en", 2);
-    await waitFor(() => expect(screen.getAllByRole("listitem")).toHaveLength(20));          // 10 + 10 new, the repeat dropped
+    await act(async () => { view.reveal(); });
+    expect(asked).toEqual(["/api/products?kind=sameBrand&page=2&limit=10&productId=cur"]);
+    await waitFor(() => expect(screen.getAllByRole("listitem")).toHaveLength(20));        // 10 + 10 new, the repeat dropped
   });
 
-  it("the end of the list removes the button, and a failure is a plain message", async () => {
-    m.fetchSameBrand.mockResolvedValueOnce(page(11, 3));
-    sameBrand(page(1, PAGE_SIZE));
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Show more" })); });
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Show more" })).not.toBeInTheDocument());
-    expect(screen.getAllByRole("listitem")).toHaveLength(13);
-  });
-  it("a failed load is a plain message and the button stays", async () => {
-    m.fetchSameBrand.mockRejectedValue(new Error("down"));
-    sameBrand(page(1, PAGE_SIZE));
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Show more" })); });
-    expect(await screen.findByRole("alert")).toHaveTextContent("Something went wrong. Please try again.");
-    expect(screen.getByRole("button", { name: "Show more" })).toBeInTheDocument();
-  });
-
-  it("CRITICAL: the newest list never shows the part being looked at, yet a full page that CONTAINED it still offers more (the button must not vanish)", async () => {
-    m.fetchProductsPaginated.mockResolvedValue({ items: [...page(11, 9), product("cur")], total: 99 });
+  it("CRITICAL: the newest list never shows the part being looked at, yet a full page that CONTAINED it keeps loading (it must not stop early)", async () => {
+    const view = installFakeObserver();
+    reply = [{ items: [...page(11, 9), product("cur")] }];
     ar(<LoadMoreGrid id="n" title="أحدث المنتجات" initial={[...page(1, 9), product("cur")]} source={{ kind: "newest", excludeId: "cur" }} />);
     expect(screen.getAllByRole("listitem")).toHaveLength(9);                       // ten arrived, nine are shown
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "عرض المزيد" })); });
-    expect(m.fetchProductsPaginated).toHaveBeenCalledWith({ sort: "newest", page: 2, limit: 10, lang: "ar" });
+    await act(async () => { view.reveal(); });
+    expect(asked).toEqual(["/api/products?kind=newest&page=2&limit=10&lang=ar"]);
     await waitFor(() => expect(screen.getAllByRole("listitem")).toHaveLength(18));
     expect(screen.queryByText("Part cur")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "عرض المزيد" })).toBeInTheDocument();   // that page was full too, so there may be more
+    expect(view.listening()).toBe(1);                                              // that page was full too, so there may be more
   });
 
-  it("a newest page that really was short ends the list", async () => {
-    m.fetchProductsPaginated.mockResolvedValue({ items: page(11, 4), total: 14 });
+  it("CRITICAL: stops after two more pages and offers 'See all parts' instead (these lists sit above the footer)", async () => {
+    installFakeObserver({ alwaysVisible: true });
+    reply = [{ items: page(11, 10) }, { items: page(21, 10) }, { items: page(31, 10) }];
+    sameBrand(page(1, PAGE_SIZE));
+    await waitFor(() => expect(screen.getAllByRole("listitem")).toHaveLength(30));
+    await act(async () => { await Promise.resolve(); });
+    expect(asked).toHaveLength(2);
+    expect(screen.getByRole("link", { name: "See all parts" }).getAttribute("href")).toBe("/search");
+  });
+
+  it("a newest page that really was short ends the list (nothing more is asked)", async () => {
+    const view = installFakeObserver();
+    reply = [{ items: page(11, 4) }];
     en(<LoadMoreGrid id="n" title="Newest products" initial={page(1, 10)} source={{ kind: "newest", excludeId: "cur" }} />);
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Show more" })); });
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Show more" })).not.toBeInTheDocument());
+    await act(async () => { view.reveal(); });
+    await waitFor(() => expect(screen.getAllByRole("listitem")).toHaveLength(14));
+    expect(view.listening()).toBe(0);
   });
 });
 

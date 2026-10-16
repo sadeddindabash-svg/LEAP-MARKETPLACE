@@ -1,4 +1,5 @@
 const express = require('express');
+const { createListCache } = require('./listCache');
 const crypto = require('crypto');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
@@ -19,6 +20,9 @@ const { moveItem } = require('../../lib/reorder');
  * data now survives a server restart, unlike the earlier in-memory version.
  */
 const router = express.Router();
+
+// Lists that CONTINUE a buyer's scrolling (?more=1) share one computation for a minute (CATALOG_LIST_CACHE_MS to change it, 0 to switch it off).
+const continuationCache = createListCache({ ttlMs: process.env.CATALOG_LIST_CACHE_MS !== undefined ? Number(process.env.CATALOG_LIST_CACHE_MS) : 60 * 1000, max: 100 });
 
 // Resolves which language's name/description a buyer sees, masking away
 // the underlying name_ar/description_ar columns behind a single clean
@@ -357,93 +361,75 @@ function buildProductMatchQuery({ category, part, vehicleId, search, generationI
 
 router.get('/products', async (req, res, next) => {
   try {
-    const { category, part, vehicleId, search, sort, lang, generationId, year, minPrice, maxPrice, maxDeliveryDays, page, limit } = req.query;
+    const { category, part, vehicleId, search, sort, lang, generationId, year, minPrice, maxPrice, maxDeliveryDays, page, limit, more } = req.query;
+    // ?more=1 means "this CONTINUES a list the buyer is already scrolling through" (the website's lazy loading): it does not count as a new search, and it may use the
+    // short-lived cache of the computed list (see listCache.js). Every other request is exactly as before: computed fresh, and logged.
+    const isContinuation = more === '1';
     const { sql: baseSql, params } = buildProductMatchQuery({ category, part, vehicleId, search, generationId, year });
     let sql = baseSql;
 
-    // Real search query logging (new) -- the foundation for real,
-    // genuinely computed trending searches (see the new
-    // GET /trending-searches below), not fabricated example terms.
-    // Only real, non-trivial text searches count (>= 3 chars,
-    // matching the same real minimum length the mobile app's own
-    // search-as-you-type debounce already uses) -- a 1-2 character
-    // fragment from someone still typing isn't a real completed
-    // search worth counting toward what's genuinely trending.
-    // Fire-and-forget, matching the same real pattern already
-    // established for email/push: a real logging failure must never
-    // affect the real search results being returned right now.
-    if (typeof search === 'string' && search.trim().length >= 3) {
+    // Real search query logging (new) -- the foundation for real, genuinely computed trending searches (see the new GET /trending-searches below), not fabricated
+    // example terms. Only real, non-trivial text searches count (>= 3 chars, matching the same real minimum length the mobile app's own search-as-you-type
+    // debounce already uses). Fire-and-forget: a real logging failure must never affect the real search results being returned right now.
+    if (!isContinuation && typeof search === 'string' && search.trim().length >= 3) {
       db.query('INSERT INTO search_log (query, user_id) VALUES ($1, $2)', [search.trim(), null]).catch((err) => {
         console.error('[search-log] Failed to log a real search query:', err.message);
       });
     }
 
-    // Real, explicit ordering -- this endpoint previously had NO
-    // ORDER BY at all (whatever order Postgres happened to return was
-    // incidental, not a real guarantee). "newest" is a real, confirmed
-    // filter option on the home feed; the default (no sort param)
-    // stays unordered-by-date for now, matching prior behavior for
-    // category/search browsing where recency isn't the point.
-    // Deliberately NOT handling sort=price_asc/price_desc here in SQL --
-    // see below for why.
-    if (sort === 'newest') sql += ' ORDER BY p.created_at DESC';
+    // A STABLE order, always. This endpoint used to have no ORDER BY unless sort=newest, so "whatever order Postgres returned" was incidental and could differ between
+    // two requests: harmless for one page, wrong for a buyer who scrolls (page 2 might repeat or skip what page 1 showed). Oldest first is what the unordered list
+    // looked like in practice; the id breaks ties so two products created in the same instant never swap places. The price sorts (below) are stable over this order.
+    // Deliberately NOT handling sort=price_asc/price_desc here in SQL -- see below for why.
+    sql += sort === 'newest' ? ' ORDER BY p.created_at DESC, p.id' : ' ORDER BY p.created_at, p.id';
 
-    const { rows } = await db.query(sql, params);
     const destinationIsoCode = await resolveDestinationIsoCode(req);
-    let dtos = await buildBuyerList(rows, async (r) => {
-      let dto = toBuyerProductDto(r, lang);
-      dto = await attachBuyerImages(dto, r.id);
-      dto = await attachPrimaryFitment(dto, r.id, lang);
-      dto = await attachPartTranslation(dto, r, lang);
-      dto = await attachBuyerPrice(dto, r);
-      dto = await attachSupplierSignals(dto, r.supplier_id);
-      dto = await attachDeliveryEstimate(dto, destinationIsoCode);
-      return dto;
-    });
 
-    // Real price range filter + price sort -- deliberately applied
-    // HERE, in application code, after attachBuyerPrice runs, not as SQL
-    // WHERE/ORDER BY clauses. Buyer-facing price is NOT a raw column: a
-    // CNY-priced product's real buyer price is computed via the pricing
-    // engine's currency conversion + fee calculation (see
-    // attachBuyerPrice above), so `p.price` in the database is often the
-    // supplier's own CNY cost, not what a buyer actually sees or should
-    // be filtered/sorted by.
-    if (minPrice !== undefined) {
-      const min = Number(minPrice);
-      dtos = dtos.filter((d) => d.price >= min);
-    }
-    if (maxPrice !== undefined) {
-      const max = Number(maxPrice);
-      dtos = dtos.filter((d) => d.price <= max);
-    }
-    // Real ships-within-X-days filter (#10) -- estimatedDeliveryDays is
-    // now a real, calculated value (see attachDeliveryEstimate above,
-    // already run on every DTO in the .map() block above this point),
-    // not a raw stored column.
-    if (maxDeliveryDays !== undefined) {
-      const maxDays = Number(maxDeliveryDays);
-      dtos = dtos.filter((d) => d.estimatedDeliveryDays <= maxDays);
-    }
-    if (sort === 'price_asc') dtos.sort((a, b) => a.price - b.price);
-    else if (sort === 'price_desc') dtos.sort((a, b) => b.price - a.price);
+    // The whole matching list, with every real attachment and the price filter/sort: the expensive part, kept in one function so a continuation request can share it.
+    const computeList = async () => {
+      const { rows } = await db.query(sql, params);
+      let dtos = await buildBuyerList(rows, async (r) => {
+        let dto = toBuyerProductDto(r, lang);
+        dto = await attachBuyerImages(dto, r.id);
+        dto = await attachPrimaryFitment(dto, r.id, lang);
+        dto = await attachPartTranslation(dto, r, lang);
+        dto = await attachBuyerPrice(dto, r);
+        dto = await attachSupplierSignals(dto, r.supplier_id);
+        dto = await attachDeliveryEstimate(dto, destinationIsoCode);
+        return dto;
+      });
 
-    // Real pagination (new), deliberately opt-in and fully backward
-    // compatible: this endpoint previously had none at all (see the
-    // real gap this closes -- growing to 100+ real products this
-    // session alone made every existing caller fetch the ENTIRE
-    // catalog on every request). Applied as a FINAL slice, after the
-    // price filter/sort above -- pagination at the SQL level would
-    // paginate BEFORE that filtering, since buyer price isn't a raw
-    // column, giving genuinely wrong pages (e.g. page 1 could show
-    // fewer than the real page size if some of that page's raw rows
-    // get filtered out afterward). The real total count (after
-    // filtering, before slicing) is exposed via a response header
-    // rather than changing the response body's shape -- every
-    // existing caller (mobile, web-storefront's own non-paginated
-    // calls, admin dashboard) still gets back a bare array exactly as
-    // before when it doesn't ask for a page; only a caller that
-    // explicitly passes page/limit gets a real, correctly-sliced page.
+      // Real price range filter + price sort -- deliberately applied HERE, in application code, after attachBuyerPrice runs, not as SQL WHERE/ORDER BY clauses.
+      // Buyer-facing price is NOT a raw column: a CNY-priced product's real buyer price is computed via the pricing engine's currency conversion + fee calculation
+      // (see attachBuyerPrice above), so `p.price` in the database is often the supplier's own CNY cost, not what a buyer actually sees or should be filtered/sorted by.
+      if (minPrice !== undefined) {
+        const min = Number(minPrice);
+        dtos = dtos.filter((d) => d.price >= min);
+      }
+      if (maxPrice !== undefined) {
+        const max = Number(maxPrice);
+        dtos = dtos.filter((d) => d.price <= max);
+      }
+      // Real ships-within-X-days filter (#10) -- estimatedDeliveryDays is a real, calculated value (see attachDeliveryEstimate above), not a raw stored column.
+      if (maxDeliveryDays !== undefined) {
+        const maxDays = Number(maxDeliveryDays);
+        dtos = dtos.filter((d) => d.estimatedDeliveryDays <= maxDays);
+      }
+      if (sort === 'price_asc') dtos.sort((a, b) => a.price - b.price);
+      else if (sort === 'price_desc') dtos.sort((a, b) => b.price - a.price);
+      return dtos;
+    };
+
+    // The answer depends on everything that shaped it, INCLUDING the destination (delivery estimates differ by country): all of it is in the key.
+    let dtos = isContinuation
+      ? await continuationCache.get(JSON.stringify({ category, part, vehicleId, search, sort, lang, generationId, year, minPrice, maxPrice, maxDeliveryDays, destinationIsoCode }), computeList)
+      : await computeList();
+
+    // Real pagination, deliberately opt-in and fully backward compatible: every existing caller (mobile, the website's own non-paginated calls, admin dashboard)
+    // still gets back a bare array exactly as before when it doesn't ask for a page; only a caller that passes page/limit gets a correctly-sliced page. Applied as a
+    // FINAL slice (after the price filter/sort) because buyer price isn't a raw column, so paginating in SQL would paginate BEFORE that filtering. The real total count
+    // (after filtering, before slicing) is exposed via a response header rather than changing the response body's shape. The slice makes a NEW array: a cached list is
+    // never changed.
     const totalCount = dtos.length;
     res.set('X-Total-Count', String(totalCount));
     if (page !== undefined || limit !== undefined) {

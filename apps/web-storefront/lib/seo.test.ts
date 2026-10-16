@@ -174,11 +174,12 @@ describe("structured data (JSON-LD)", () => {
 
 describe("private pages are kept out of search results, two ways, checked against the REAL folders", () => {
   const appDir = path.resolve(__dirname, "../app");
-  const PUBLIC_SECTIONS = ["products", "search", "find"];                                        // the only sections meant for search engines
+  const PUBLIC_SECTIONS = ["products", "search", "find", "contact"];                                        // the only sections meant for search engines
+  const NOT_PAGES = ["api"];                                                                                // doors the website's own pages call (lazy loading): not pages, and robots.txt keeps crawlers out
 
   it("CRITICAL: every section of the site is either public on purpose or listed as private: a new private page cannot be forgotten", () => {
     const sections = fs.readdirSync(appDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => `/${e.name}`);
-    const unknown = sections.filter((s) => !PRIVATE_PATHS.includes(s as (typeof PRIVATE_PATHS)[number]) && !PUBLIC_SECTIONS.includes(s.slice(1)));
+    const unknown = sections.filter((s) => !PRIVATE_PATHS.includes(s as (typeof PRIVATE_PATHS)[number]) && !PUBLIC_SECTIONS.includes(s.slice(1)) && !NOT_PAGES.includes(s.slice(1)));
     expect(unknown).toEqual([]);
     for (const p of PRIVATE_PATHS) expect(sections, `${p} is listed as private but has no folder`).toContain(p);
     expect(PRIVATE_PATHS).toEqual(expect.arrayContaining(["/garage", "/compare"]));          // the garage and a comparison belong to one buyer

@@ -14,7 +14,7 @@ const link = "block py-1.5 text-[15px] hover:underline";
 export default function SiteFooter({ lang }: { lang: Lang }) {
   const legalPrefix = lang === "ar" ? `${LEGAL_BASE}/ar` : LEGAL_BASE;
   return (
-    <footer className="mt-16 bg-navy-deep text-[#e6edf2]">
+    <footer id="site-footer" className="mt-16 bg-navy-deep text-[#e6edf2]">
       <div className="mx-auto grid max-w-7xl gap-8 px-4 pb-10 pt-14 sm:px-8 md:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr]">
         <div>
           <Image src="/leap-logo.png" alt="Leap Auto Parts" width={64} height={64} className="rounded-full" />

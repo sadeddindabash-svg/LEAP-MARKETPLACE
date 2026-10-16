@@ -673,6 +673,15 @@ const EN = {
   garage_full_title: "Your garage is full",
   garage_count_of: "{n} of {max}",
   garage_open: "Open my garage",
+  grid_loading: "Loading more parts…",
+  grid_error: "We couldn't load more parts.",
+  grid_slow_down: "You're going quickly. Wait a moment, then try again.",
+  grid_end: "That's all {n} parts.",
+  grid_progress: "{shown} of {total} parts shown",
+  grid_shown: "{shown} parts shown",
+  grid_skip: "Skip the list of parts",
+  grid_see_all: "See all parts",
+  grid_back_to_start: "Back to the first parts",
   copyright: "Copyright © Leap Auto Parts {year}",
 } as const;
 
@@ -1305,6 +1314,15 @@ const AR: Record<DictKey, string> = {
   garage_full_title: "قائمة مركباتك ممتلئة",
   garage_count_of: "{n} من {max}",
   garage_open: "افتح مركبتي",
+  grid_loading: "جارٍ تحميل المزيد من القطع…",
+  grid_error: "تعذّر تحميل المزيد من القطع.",
+  grid_slow_down: "أنت تتصفح بسرعة. انتظر لحظة ثم حاول مرة أخرى.",
+  grid_end: "هذه كل القطع ({n}).",
+  grid_progress: "تم عرض {shown} من {total} قطعة",
+  grid_shown: "تم عرض {shown} قطعة",
+  grid_skip: "تخطَّ قائمة القطع",
+  grid_see_all: "عرض كل القطع",
+  grid_back_to_start: "العودة إلى أول القطع",
   copyright: "حقوق النشر © ليب لقطع السيارات {year}",
 };
 

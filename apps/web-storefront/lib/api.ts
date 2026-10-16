@@ -156,6 +156,8 @@ export async function fetchProductsPaginated(params: {
   limit?: number;
   lang?: Lang;
   part?: string;
+  /** This CONTINUES a list the buyer is already scrolling through (lazy loading): the server may answer from its short-lived cache of the computed list and does not count it as a new search. */
+  more?: boolean;
 } = {}): Promise<{ items: ProductSummary[]; total: number; unreachable?: boolean }> {
   const query = new URLSearchParams();
   if (params.category) query.set("category", params.category);
@@ -165,6 +167,7 @@ export async function fetchProductsPaginated(params: {
   if (params.generationId) query.set("generationId", params.generationId);
   if (params.year) query.set("year", String(params.year));
   if (params.lang === "ar") query.set("lang", "ar");
+  if (params.more) query.set("more", "1");
   query.set("page", String(params.page || 1));
   query.set("limit", String(params.limit || 24));
   let res: Response;

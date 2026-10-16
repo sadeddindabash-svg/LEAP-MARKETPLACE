@@ -8,7 +8,7 @@ import { PRIVATE_PATHS, siteUrl } from "@/lib/seo";
 export default function robots(): MetadataRoute.Robots {
   return {
     // each private page is blocked in BOTH languages (/cart and /ar/cart)
-    rules: { userAgent: "*", allow: "/", disallow: [...PRIVATE_PATHS, ...PRIVATE_PATHS.map((p) => localizePath("ar", p))] },
+    rules: { userAgent: "*", allow: "/", disallow: [...PRIVATE_PATHS, ...PRIVATE_PATHS.map((p) => localizePath("ar", p)), "/api/"] },          // /api/ is the door the lists load their next page through: not for crawlers
     sitemap: `${siteUrl()}/sitemap.xml`,
   };
 }

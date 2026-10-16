@@ -8,7 +8,7 @@ import { Price } from "./Price";
 export default function ProductCard({ product: p, lang }: { product: ProductSummary; lang: Lang }) {
   const inStock = p.stockQuantity > 0;
   return (
-    <li className="group flex flex-col overflow-hidden rounded-[14px] border border-line bg-white transition-colors hover:border-navy">
+    <li className="group flex flex-col overflow-hidden rounded-[14px] border border-line bg-white transition-colors [contain-intrinsic-size:auto_440px] [content-visibility:auto] hover:border-navy">          {/* a long list: the browser skips drawing cards far off screen (lighter on a phone) */}
       <Link href={`/products/${p.id}`} className="flex flex-1 flex-col">
         {/* A true SQUARE. A real photo is drawn WHOLE (object-contain) inside a small margin, so a long part (a wiper blade) is never cut off; no photo shows the icon on grey. */}
         <div className={`relative aspect-square ${p.images[0] ? "border-b border-line bg-white" : "bg-[#e6edf2]"}`}>

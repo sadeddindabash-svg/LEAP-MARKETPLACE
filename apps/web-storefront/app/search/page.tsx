@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import Link from "@/components/LocLink";
 import { fetchCategories, fetchProductsPaginated } from "@/lib/api";
 import FitsMyCarToggle from "@/components/FitsMyCarToggle";
-import ProductCard from "@/components/ProductCard";
+import InfiniteProductGrid from "@/components/InfiniteProductGrid";
 import { localizePath, pickName, t } from "@/lib/i18n";
 import { getLang } from "@/lib/lang";
 import { SaveSearchButton } from "@/components/SaveSearchButton";
@@ -140,9 +140,20 @@ export default async function SearchPage({ searchParams }: PageProps) {
                   : t(lang, "no_parts_search")}
             </p>
           ) : (
-            <ul className="grid grid-cols-2 gap-5 md:grid-cols-3">
-              {products.map((p) => <ProductCard key={p.id} product={p} lang={lang} />)}
-            </ul>
+            <>
+              {pageNum > 1 && <p className="mb-4"><Link href={pageHref(1)} className="text-sm font-bold text-navy underline underline-offset-4">{t(lang, "grid_back_to_start")}</Link></p>}
+              {/* The first page is drawn here, on the server (in the page's HTML); the rest loads as the buyer scrolls. The key starts a fresh list whenever the search or a filter changes. */}
+              <InfiniteProductGrid
+                key={`${q ?? ""}|${category ?? ""}|${part ?? ""}|${generationId ?? ""}|${year ?? ""}|${pageNum}`}
+                id="results"
+                source={{ kind: "search", params: { q, category, part, generationId, year: year ? Number(year) : undefined } }}
+                initial={products}
+                total={total}
+                startPage={pageNum}
+                pageSize={PAGE_SIZE}
+                gridClassName="grid grid-cols-2 gap-5 md:grid-cols-3"
+              />
+            </>
           )}
 
           {/* Real pagination controls (new) -- closes a real, confirmed
@@ -152,25 +163,36 @@ export default async function SearchPage({ searchParams }: PageProps) {
               genuinely more than one real page -- an honest, not just
               cosmetic, hidden state. */}
           {totalPages > 1 && (
-            <nav className="mt-8 flex items-center justify-center gap-2" aria-label={t(lang, "search_pages_nav")}>
-              <Link
-                href={pageHref(pageNum - 1)}
-                aria-disabled={pageNum <= 1}
-                className={`rounded-md border border-line px-3 py-1.5 text-sm ${pageNum <= 1 ? "pointer-events-none opacity-40" : "hover:border-ink"}`}
-              >
-                {t(lang, "previous")}
-              </Link>
-              <span className="text-sm text-muted px-2">
-                {t(lang, "page_x_of_y", { page: pageNum, total: totalPages })}
-              </span>
-              <Link
-                href={pageHref(pageNum + 1)}
-                aria-disabled={pageNum >= totalPages}
-                className={`rounded-md border border-line px-3 py-1.5 text-sm ${pageNum >= totalPages ? "pointer-events-none opacity-40" : "hover:border-ink"}`}
-              >
-                {t(lang, "next")}
-              </Link>
-            </nav>
+            <>
+              {/* Without JavaScript the list cannot load itself: ordinary links to the other pages. */}
+              <noscript>
+                <nav className="mt-8 flex items-center justify-center gap-2" aria-label={t(lang, "search_pages_nav")}>
+                  <Link
+                    href={pageHref(pageNum - 1)}
+                    aria-disabled={pageNum <= 1}
+                    className={`rounded-md border border-line px-3 py-1.5 text-sm ${pageNum <= 1 ? "pointer-events-none opacity-40" : "hover:border-ink"}`}
+                  >
+                    {t(lang, "previous")}
+                  </Link>
+                  <span className="text-sm text-muted px-2">
+                    {t(lang, "page_x_of_y", { page: pageNum, total: totalPages })}
+                  </span>
+                  <Link
+                    href={pageHref(pageNum + 1)}
+                    aria-disabled={pageNum >= totalPages}
+                    className={`rounded-md border border-line px-3 py-1.5 text-sm ${pageNum >= totalPages ? "pointer-events-none opacity-40" : "hover:border-ink"}`}
+                  >
+                    {t(lang, "next")}
+                  </Link>
+                </nav>
+
+              </noscript>
+              {/* With JavaScript the same links stay in the page, out of sight, so a search engine can still follow them to every page of results. */}
+              <div aria-hidden="true" className="sr-only">
+                <Link href={pageHref(Math.max(pageNum - 1, 1))} tabIndex={-1}>{t(lang, "previous")}</Link>
+                <Link href={pageHref(Math.min(pageNum + 1, totalPages))} tabIndex={-1}>{t(lang, "next")}</Link>
+              </div>
+            </>
           )}
         </div>
       </div>

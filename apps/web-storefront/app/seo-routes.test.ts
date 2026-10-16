@@ -29,7 +29,7 @@ describe("robots.txt", () => {
     const { default: robots } = await import("./robots");
     const { PRIVATE_PATHS } = await import("@/lib/seo");
     const r = robots() as { rules: { userAgent: string; allow: string; disallow: string[] }; sitemap: string };
-    expect(r.rules).toEqual({ userAgent: "*", allow: "/", disallow: [...PRIVATE_PATHS, ...PRIVATE_PATHS.map((p) => `/ar${p}`)] });
+    expect(r.rules).toEqual({ userAgent: "*", allow: "/", disallow: [...PRIVATE_PATHS, ...PRIVATE_PATHS.map((p) => `/ar${p}`), "/api/"] });          // /api/ is the lists' door for their next page: not for crawlers
     expect(r.rules.disallow).toEqual(expect.arrayContaining(["/cart", "/checkout", "/login", "/orders", "/support", "/ar/cart", "/ar/checkout", "/ar/login", "/ar/orders", "/ar/support"]));       // both languages
     expect(r.rules.disallow).not.toContain("/products");
     expect(r.rules.disallow).not.toContain("/search");
@@ -43,7 +43,7 @@ describe("sitemap.xml", () => {
     const { default: sitemap } = await import("./sitemap");
     const urls = (await sitemap()).map((e) => e.url);
     expect(urls).toEqual([
-      "https://shop.example.com/", "https://shop.example.com/ar", "https://shop.example.com/search", "https://shop.example.com/ar/search", "https://shop.example.com/find", "https://shop.example.com/ar/find",
+      "https://shop.example.com/", "https://shop.example.com/ar", "https://shop.example.com/search", "https://shop.example.com/ar/search", "https://shop.example.com/find", "https://shop.example.com/ar/find", "https://shop.example.com/contact", "https://shop.example.com/ar/contact",
       "https://shop.example.com/search?category=brake", "https://shop.example.com/ar/search?category=brake",            // (Filters has no products in this catalog: not listed)
       "https://shop.example.com/products/p1", "https://shop.example.com/ar/products/p1", "https://shop.example.com/products/p2", "https://shop.example.com/ar/products/p2",
     ]);
@@ -82,7 +82,7 @@ describe("sitemap.xml", () => {
     const { default: sitemap } = await import("./sitemap");
     const entries = await sitemap();
     expect(entries).toHaveLength(50000);
-    expect(entries.slice(0, 8).map((e) => e.url)).toContain("https://shop.example.com/search?category=brake");       // (the generated products are in Brake System)
+    expect(entries.slice(0, 10).map((e) => e.url)).toContain("https://shop.example.com/search?category=brake");       // (the generated products are in Brake System)
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("left out"));
   });
 });
