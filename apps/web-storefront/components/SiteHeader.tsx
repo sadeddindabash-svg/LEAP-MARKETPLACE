@@ -7,6 +7,7 @@ import AccountMenu from "./AccountMenu";
 import CartIcon from "./CartIcon";
 import CurrencySwitcher from "./CurrencySwitcher";
 import { Suspense } from "react";
+import NavDropdown from "./NavDropdown";
 import HeaderSearch from "./HeaderSearch";
 import LanguageSwitcher from "./LanguageSwitcher";
 import NotificationBell from "./NotificationBell";
@@ -54,18 +55,16 @@ export default async function SiteHeader({ lang }: { lang: Lang }) {
           <Link href="/" className="flex min-h-12 items-center rounded-lg px-4 text-[15px] font-semibold hover:bg-chalk">{t(lang, "nav_home")}</Link>
           <Link href="/search" className="flex min-h-12 items-center rounded-lg px-4 text-[15px] font-semibold hover:bg-chalk">{t(lang, "nav_products")}</Link>
           <Link href="/find" className="flex min-h-12 items-center rounded-lg px-4 text-[15px] font-semibold hover:bg-chalk">{t(lang, "find_a_part")}</Link>
-          <details className="group relative">
-            <summary className="flex min-h-12 cursor-pointer list-none items-center gap-1 rounded-lg px-4 text-[15px] font-semibold hover:bg-chalk">
-              {t(lang, "nav_sections")}
-              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
-            </summary>
-            <div className="absolute start-0 top-full z-30 grid max-h-[70vh] w-[min(92vw,640px)] grid-cols-2 gap-1 overflow-auto rounded-xl border border-line bg-white p-3 shadow-lg sm:grid-cols-3">
-              {categories.map((c) => (
+          <NavDropdown
+            trigger={<>{t(lang, "nav_sections")}<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-data-[open=true]:rotate-180"><path d="M6 9l6 6 6-6" /></svg></>}
+            triggerClassName="flex min-h-12 cursor-pointer items-center gap-1 rounded-lg px-4 text-[15px] font-semibold hover:bg-chalk"
+            panelClassName="absolute start-0 top-full z-30 grid max-h-[70vh] w-[min(92vw,640px)] grid-cols-2 gap-1 overflow-auto rounded-xl border border-line bg-white p-3 shadow-lg sm:grid-cols-3"
+          >
+            {categories.map((c) => (
                 <Link key={c.id} href={`/search?category=${encodeURIComponent(c.id)}`} className="rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-chalk">{pickName(lang, c.nameEn, c.nameAr)}</Link>
               ))}
-              <Link href="/search" className="rounded-lg px-3 py-2.5 text-sm font-bold text-navy underline hover:bg-chalk">{t(lang, "all_sections")}</Link>
-            </div>
-          </details>
+            <Link href="/search" className="rounded-lg px-3 py-2.5 text-sm font-bold text-navy underline hover:bg-chalk">{t(lang, "all_sections")}</Link>
+          </NavDropdown>
         </div>
       </nav>
       <VehicleBar />
