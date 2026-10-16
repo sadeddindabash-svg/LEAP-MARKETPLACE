@@ -80,8 +80,6 @@ To clean test data (take a backup first; the tool prints the command): `node scr
 - [ ] **The website runs on https in production.** The sign-in cookie is `Secure` only when the site is on https, and a sign-in over plain http can be read on the network.
 - [ ] The password-reset email opens a page served by the BACKEND (`/reset-password?token=...`). Check how it looks and that it is in the language you want (it is not part of the new storefront look).
 - [ ] The new Arabic texts of the account and sign-in pages (the ones written for the web, not taken from the app) in `apps/web-storefront/lib/i18n.ts` are read by a native speaker.
-- [ ] **Part requests need someone to answer them.** A buyer's "request a quote" waits until Leap staff make and price each part through the supplier portal (as the Leap Supplier account); a quote is then valid for 7 days. Decide who watches that queue, and how fast, before buyers can use the page.
-- [ ] The Arabic texts of My requests, referrals, notifications, saved searches and the wishlist that were written for the web are read by a native speaker.
 - [ ] Consider Google Merchant Center free listings (a product feed) and an Arabic version of the storefront: see `apps/web-storefront/README.md`, "SEO".
 
 ### Words and rules

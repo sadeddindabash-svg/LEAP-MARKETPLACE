@@ -244,8 +244,7 @@ describe("the account menu", () => {
     const first = show(<AccountShell><p>content</p></AccountShell>);
     expect(screen.getByRole("link", { name: "My tier" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("link", { name: "My account" }).getAttribute("aria-current")).toBeNull();
-    expect(screen.getAllByRole("link")).toHaveLength(13);
-    expect(screen.getByRole("link", { name: "My Requests" }).getAttribute("href")).toBe("/part-requests");
+    expect(screen.getAllByRole("link")).toHaveLength(12);
     first.unmount();
     m.path.current = "/ar/account/change-email";
     show(<AccountShell><p>content</p></AccountShell>, "ar");

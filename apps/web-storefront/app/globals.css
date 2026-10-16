@@ -51,9 +51,10 @@
   --color-amber: var(--color-amber);
   --color-muted: var(--color-muted);
   /* Outfit for Latin text; Arabic falls through to IBM Plex Sans Arabic (Outfit has no Arabic letters) */
-  --font-display: var(--font-outfit), var(--font-arabic);
-  --font-body: var(--font-outfit), var(--font-arabic);
-  --font-plate: var(--font-jetbrains-mono);
+  /* every list ends in a GENERIC family, so when the web fonts cannot be loaded (blocked, offline) the page falls back to a plain sans-serif, not the browser's serif */
+  --font-display: var(--font-outfit), var(--font-arabic), system-ui, sans-serif;
+  --font-body: var(--font-outfit), var(--font-arabic), system-ui, sans-serif;
+  --font-plate: var(--font-jetbrains-mono), ui-monospace, monospace;
 }
 
 body {

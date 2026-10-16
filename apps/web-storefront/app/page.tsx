@@ -62,7 +62,7 @@ export default async function HomePage() {
                       <svg aria-hidden="true" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 6a4 4 0 0 0 5 5l-8 8a2.5 2.5 0 0 1-4-4l8-8a4 4 0 0 0-1-1z" /></svg>
                     )}
                   </span>
-                  <span className="text-base font-bold">{pickName(lang, c.nameEn, c.nameAr)}</span>
+                  <span className="line-clamp-2 w-full min-w-0 text-base font-bold [overflow-wrap:anywhere]">{pickName(lang, c.nameEn, c.nameAr)}</span>
                 </Link>
               </li>
             ))}

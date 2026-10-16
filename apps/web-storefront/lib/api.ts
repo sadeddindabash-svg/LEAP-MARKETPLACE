@@ -725,8 +725,8 @@ export interface Notification {
   createdAt: string;
 }
 
-export async function fetchNotifications(token: string, lang?: Lang): Promise<Notification[]> {
-  const res = await fetch(`${API_BASE_URL}/notifications/me${lang === "ar" ? "?lang=ar" : ""}`, {
+export async function fetchNotifications(token: string): Promise<Notification[]> {
+  const res = await fetch(`${API_BASE_URL}/notifications/me`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
@@ -1203,53 +1203,3 @@ export async function forgotPassword(email: string): Promise<void> {
     throw new Error(apiMessage(data.error) || apiMessage(`Failed to send the reset link (${res.status})`));
   }
 }
-
-// ---------------------------------------------------------------- Stage 4b: quote requests ("My requests"), referral history
-
-export type QuoteItemStatus = "pending" | "priced" | "unavailable" | string;
-export interface QuoteRequestItem {
-  id: number;
-  name: string;
-  description: string | null;
-  referencePhotoUrl: string | null;
-  quantity: number;
-  status: QuoteItemStatus;
-  /** Set once the Leap team made the part (a real product): the price is the buyer's own, in US dollars. */
-  productId: string | null;
-  price?: number;
-  currencyCode?: string;
-  /** The made product has been approved and can be bought. */
-  readyToOrder?: boolean;
-}
-export type QuoteRequestStatus = "draft" | "submitted" | "quoted" | "ordered" | "cancelled" | string;
-export interface QuoteRequest {
-  id: string;
-  generationId: string;
-  year: number;
-  brand: string | null;
-  model: string | null;
-  generation: string | null;
-  status: QuoteRequestStatus;
-  createdAt: string;
-  submittedAt: string | null;
-  quotedAt: string | null;
-  /** A quote is valid for 7 days from when it was sent. */
-  expiresAt: string | null;
-  items: QuoteRequestItem[];
-}
-
-export const createQuoteRequest = (token: string, generationId: string, year: number) => authedJson<QuoteRequest>(token, "/quote-requests", "POST", "Failed to start the request", { generationId, year });
-export const fetchMyQuoteRequests = (token: string) => authedJson<QuoteRequest[]>(token, "/quote-requests/mine", "GET", "Failed to load your requests");
-export const fetchQuoteRequest = (token: string, id: string) => authedJson<QuoteRequest>(token, `/quote-requests/${encodeURIComponent(id)}`, "GET", "Failed to load this request");
-export const addQuoteRequestItem = (token: string, id: string, item: { name: string; description?: string | null; referencePhotoUrl?: string | null; quantity?: number }) =>
-  authedJson<QuoteRequest>(token, `/quote-requests/${encodeURIComponent(id)}/items`, "POST", "Failed to add the part", item);
-export const updateQuoteRequestItem = (token: string, id: string, itemId: number, changes: { quantity?: number; name?: string; description?: string | null; referencePhotoUrl?: string | null }) =>
-  authedJson<QuoteRequest>(token, `/quote-requests/${encodeURIComponent(id)}/items/${itemId}`, "PATCH", "Failed to change the part", changes);
-export const deleteQuoteRequestItem = (token: string, id: string, itemId: number) => authedJson<QuoteRequest>(token, `/quote-requests/${encodeURIComponent(id)}/items/${itemId}`, "DELETE", "Failed to remove the part");
-export const submitQuoteRequest = (token: string, id: string) => authedJson<QuoteRequest>(token, `/quote-requests/${encodeURIComponent(id)}/submit`, "POST", "Failed to send the request");
-export const cancelQuoteRequest = (token: string, id: string) => authedJson<QuoteRequest>(token, `/quote-requests/${encodeURIComponent(id)}/cancel`, "POST", "Failed to cancel the request");
-/** Puts the quote's ready items in the given cart (the buyer then checks out as usual). */
-export const placeQuoteRequestOrder = (token: string, id: string, cartId: string) => authedJson<QuoteRequest>(token, `/quote-requests/${encodeURIComponent(id)}/place-order`, "POST", "Failed to add the quote to your cart", { cartId });
-
-export interface ReferralHistoryEntry { firstName: string | null; joinedAt: string; rewardGranted: boolean }
-export const fetchReferralHistory = (token: string) => authedJson<ReferralHistoryEntry[]>(token, "/referrals/me/history", "GET", "Failed to load the referral history");

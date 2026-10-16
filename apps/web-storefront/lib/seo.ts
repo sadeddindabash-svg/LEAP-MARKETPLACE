@@ -21,7 +21,7 @@ export function absoluteUrl(pathOrUrl: string): string {
  * Pages that belong to ONE person (their cart, orders, account...). They have nothing to offer a search engine, so they are kept out two ways: robots.txt
  * (robots.ts) and a noindex tag (a layout.tsx in each of these folders). Both are tested against the real folders, so a new private page cannot be forgotten.
  */
-export const PRIVATE_PATHS = ["/cart", "/checkout", "/login", "/signup", "/orders", "/wishlist", "/notifications", "/returns", "/support", "/referrals", "/saved-searches", "/garage", "/compare", "/addresses", "/report-bug", "/account", "/forgot-password", "/part-requests"] as const;
+export const PRIVATE_PATHS = ["/cart", "/checkout", "/login", "/signup", "/orders", "/wishlist", "/notifications", "/returns", "/support", "/referrals", "/saved-searches", "/garage", "/compare", "/addresses", "/report-bug", "/account", "/forgot-password"] as const;
 
 /**
  * What a page tells search engines about its two language versions: its OWN address as the canonical one (/ar/... for the Arabic page, the plain address for English),
