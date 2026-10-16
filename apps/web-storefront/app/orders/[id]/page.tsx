@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useState } from "react";
-import Image from "next/image";
+import SafeImage from "@/components/SafeImage";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "@/components/LocLink";
 import EnglishAddressCard from "@/components/EnglishAddressCard";
@@ -33,7 +33,7 @@ function Part({ order, so, who, canCancelPart, onCancel, busy }: { order: OrderD
       <ul className="mt-4 grid gap-3">
         {so.items.map((i) => (
           <li key={`${i.productId}`} className="flex items-center gap-3">
-            <span className="relative size-14 flex-none overflow-hidden rounded-lg bg-[#e6edf2]">{i.imageUrl && <Image src={resolveImageUrl(i.imageUrl)} alt="" fill sizes="56px" className="object-cover" unoptimized />}</span>
+            <span className="relative size-14 flex-none overflow-hidden rounded-lg bg-[#e6edf2]">{i.imageUrl && <SafeImage src={resolveImageUrl(i.imageUrl)} alt="" fill sizes="56px" className="object-cover" unoptimized />}</span>
             <Link href={`/products/${i.productId}`} className="min-w-0 flex-1 font-semibold hover:underline">{i.name} <span className="font-normal text-muted">× {i.quantity}</span></Link>
             <Price usd={i.unitPrice * i.quantity} className="font-bold" />
           </li>
@@ -43,7 +43,7 @@ function Part({ order, so, who, canCancelPart, onCancel, busy }: { order: OrderD
         <div className="mt-4">
           <p className="mb-2 text-sm font-bold">{t("delivery_proof_title")}</p>
           <div className="flex flex-wrap gap-2">
-            {proof.map((p) => <a key={p.url} href={resolveImageUrl(p.url)} target="_blank" rel="noreferrer" className="relative block size-20 overflow-hidden rounded-lg bg-[#e6edf2]"><Image src={resolveImageUrl(p.url)} alt={t("delivery_proof_title")} fill sizes="80px" className="object-cover" unoptimized /></a>)}
+            {proof.map((p) => <a key={p.url} href={resolveImageUrl(p.url)} target="_blank" rel="noreferrer" className="relative block size-20 overflow-hidden rounded-lg bg-[#e6edf2]"><SafeImage src={resolveImageUrl(p.url)} alt={t("delivery_proof_title")} fill sizes="80px" className="object-cover" unoptimized /></a>)}
           </div>
         </div>
       )}
@@ -162,7 +162,7 @@ function OrderView({ orderId }: { orderId: string }) {
           <section className="rounded-[14px] border border-line bg-white p-5" aria-labelledby="ship-to">
             <h2 id="ship-to" className="mb-2 text-lg font-bold">{t("shipping_to")}</h2>
             <p>{order.address.recipientName}</p>
-            <p className="text-muted">{order.address.streetAddress}, {order.address.city}, {countryName(lang, order.address.country)}</p>
+            <p className="text-muted"><bdi>{order.address.streetAddress}, {order.address.city}</bdi>, {countryName(lang, order.address.country)}</p>
             <p className="text-sm text-muted" dir="ltr">{order.address.phone}</p>
             {order.waitForAllShipments && <p className="mt-2 text-sm font-semibold text-navy">{t("wait_ship_together_note")}</p>}
           </section>

@@ -1,5 +1,5 @@
-import Image from "next/image";
 import { resolveImageUrl, type ReviewsSummary } from "@/lib/api";
+import SafeImage from "@/components/SafeImage";
 import { customerPhotos } from "@/lib/review";
 import { t, type Lang } from "@/lib/i18n";
 
@@ -14,7 +14,7 @@ export default function CustomerPhotos({ reviews, lang }: { reviews: ReviewsSumm
         {photos.map((url) => (
           <li key={url}>
             <a href={resolveImageUrl(url)} target="_blank" rel="noopener noreferrer" className="relative block aspect-square overflow-hidden rounded-xl border border-line bg-white">
-              <Image src={resolveImageUrl(url)} alt={t(lang, "customer_photos")} fill sizes="(min-width: 1024px) 16vw, 25vw" className="object-cover" unoptimized />
+              <SafeImage src={resolveImageUrl(url)} alt={t(lang, "customer_photos")} fill sizes="(min-width: 1024px) 16vw, 25vw" className="object-cover" unoptimized />
             </a>
           </li>
         ))}

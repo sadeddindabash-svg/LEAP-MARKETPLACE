@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
+import SafeImage from "@/components/SafeImage";
 import Link from "@/components/LocLink";
 import { ApiError, fetchMyReviews, flagReview, resolveImageUrl, submitReview, uploadReviewPhoto, type MyReview, type ReviewsSummary } from "@/lib/api";
 import { MAX_REVIEW_PHOTOS, REVIEW_BATCH, canAddPhoto, myReviewOf, reviewErrorKey, reviewState, wholeStars } from "@/lib/review";
@@ -113,7 +113,7 @@ export default function ReviewsSection({ productId, summary }: { productId: stri
               {r.photos.length > 0 && (
                 <ul className="mt-3 flex gap-2">
                   {r.photos.map((url) => (
-                    <li key={url}><a href={resolveImageUrl(url)} target="_blank" rel="noopener noreferrer" className="relative block size-16 overflow-hidden rounded-lg border border-line"><Image src={resolveImageUrl(url)} alt={t("customer_photos")} fill sizes="64px" className="object-cover" unoptimized /></a></li>
+                    <li key={url}><a href={resolveImageUrl(url)} target="_blank" rel="noopener noreferrer" className="relative block size-16 overflow-hidden rounded-lg border border-line"><SafeImage src={resolveImageUrl(url)} alt={t("customer_photos")} fill sizes="64px" className="object-cover" unoptimized /></a></li>
                   ))}
                 </ul>
               )}
@@ -163,7 +163,7 @@ export default function ReviewsSection({ productId, summary }: { productId: stri
               <ul className="mb-3 flex flex-wrap gap-2">
                 {photos.map((url) => (
                   <li key={url} className="relative size-20 overflow-hidden rounded-lg border border-line">
-                    <Image src={resolveImageUrl(url)} alt="" fill sizes="80px" className="object-cover" unoptimized />
+                    <SafeImage src={resolveImageUrl(url)} alt="" fill sizes="80px" className="object-cover" unoptimized />
                     <button type="button" aria-label={t("remove_photo")} onClick={() => setPhotos((cur) => cur.filter((p) => p !== url))} className="absolute end-1 top-1 grid size-6 place-items-center rounded-full bg-white/90 text-xs font-bold text-[#a12a21]">×</button>
                   </li>
                 ))}

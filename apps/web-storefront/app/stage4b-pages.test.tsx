@@ -77,7 +77,7 @@ describe("my requests", () => {
     m.api.fetchMyQuoteRequests.mockResolvedValue([req({ status: "quoted", expiresAt: future })]);
     show(<MyRequestsPage />, "ar");
     expect(await screen.findByText("تم التسعير")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("طلباتي");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("طلبات القطع");          // not "طلباتي": that already means "my orders"
   });
 });
 

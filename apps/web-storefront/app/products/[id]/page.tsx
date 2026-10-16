@@ -89,7 +89,7 @@ export default async function ProductPage({ params }: PageProps) {
 
         <div>
           <div className="flex items-start justify-between gap-3">
-            <h1 className="font-display font-bold text-4xl tracking-tight">
+            <h1 className="font-display min-w-0 font-bold text-4xl tracking-tight [overflow-wrap:anywhere]">
               {product.name}
             </h1>
             <ShareButton title={product.name} />

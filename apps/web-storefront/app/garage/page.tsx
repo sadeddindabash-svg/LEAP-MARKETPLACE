@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
+import SafeImage from "@/components/SafeImage";
 import Link from "@/components/LocLink";
 import { useAuth } from "@/components/AuthProvider";
 import { useGarage } from "@/components/GarageProvider";
@@ -20,7 +20,7 @@ function CarCard({ car, busy, onDefault, onRemove }: { car: GarageVehicle; busy:
     <li className={`flex flex-wrap items-center gap-4 rounded-[14px] border-[1.5px] bg-white p-4 ${car.isDefault ? "border-navy" : "border-line"}`}>
       <div className="relative grid h-24 w-36 flex-none place-items-center overflow-hidden rounded-xl bg-[#e6edf2]">
         {photo ? (
-          <Image src={resolveImageUrl(photo)} alt="" fill sizes="144px" className="object-cover" unoptimized />
+          <SafeImage src={resolveImageUrl(photo)} alt="" fill sizes="144px" className="object-cover" unoptimized />
         ) : (
           <svg aria-hidden="true" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#0b3146" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 15v-3l2-5h14l2 5v3" /><circle cx="7.5" cy="16.5" r="1.8" /><circle cx="16.5" cy="16.5" r="1.8" /><path d="M5 12h14" /></svg>
         )}

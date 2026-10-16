@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
+import SafeImage from "@/components/SafeImage";
 import Link from "@/components/LocLink";
 import LoyaltyCard from "@/components/LoyaltyCard";
 import { getAuthToken, useAuth } from "@/components/AuthProvider";
@@ -71,7 +71,7 @@ export default function AccountPage() {
     <div className="grid gap-6">
       <section className="flex flex-wrap items-center gap-5 rounded-[14px] border border-line bg-white p-5" aria-labelledby="acc-h">
         <span className="relative grid size-20 flex-none place-items-center overflow-hidden rounded-full bg-navy text-3xl font-bold text-white">
-          {user.avatarUrl ? <Image src={resolveImageUrl(user.avatarUrl)} alt="" fill sizes="80px" className="object-cover" unoptimized /> : <span aria-hidden="true">{(user.name || user.email).charAt(0).toUpperCase()}</span>}
+          {user.avatarUrl ? <SafeImage src={resolveImageUrl(user.avatarUrl)} alt="" fill sizes="80px" className="object-cover" unoptimized /> : <span aria-hidden="true">{(user.name || user.email).charAt(0).toUpperCase()}</span>}
         </span>
         <div className="min-w-0 flex-1">
           <h1 id="acc-h" className="truncate text-2xl font-bold text-navy">{user.name || user.email}</h1>

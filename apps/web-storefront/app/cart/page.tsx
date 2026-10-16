@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
+import SafeImage from "@/components/SafeImage";
 import Link from "@/components/LocLink";
 import { useCart } from "@/components/CartProvider";
 import { useT } from "@/components/LangProvider";
@@ -18,7 +18,7 @@ function Line({ item, onChange, onRemove, busy }: { item: CartItem; onChange: (q
   return (
     <li className="grid grid-cols-[88px_minmax(0,1fr)] gap-4 border-b border-line py-5 last:border-b-0 sm:grid-cols-[104px_minmax(0,1fr)_auto]">
       <Link href={`/products/${item.productId}`} className="relative block h-24 overflow-hidden rounded-xl bg-[#e6edf2]">
-        {item.imageUrl && <Image src={resolveImageUrl(item.imageUrl)} alt="" fill sizes="104px" className="object-cover" unoptimized />}
+        {item.imageUrl && <SafeImage src={resolveImageUrl(item.imageUrl)} alt="" fill sizes="104px" className="object-cover" unoptimized />}
       </Link>
       <div className="min-w-0">
         <Link href={`/products/${item.productId}`} className="line-clamp-2 text-[17px] font-bold leading-snug hover:underline">{item.name}</Link>

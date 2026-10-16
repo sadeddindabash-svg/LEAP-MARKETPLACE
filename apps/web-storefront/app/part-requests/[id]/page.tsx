@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useState } from "react";
-import Image from "next/image";
+import SafeImage from "@/components/SafeImage";
 import { useParams } from "next/navigation";
 import Link from "@/components/LocLink";
 import QuoteStatusPill from "@/components/QuoteStatusPill";
@@ -21,7 +21,7 @@ function Item({ item, adjustable, busy, onQuantity, onRemove }: { item: QuoteReq
   return (
     <li className="rounded-xl border border-line bg-white p-4">
       <div className="flex items-center gap-3">
-        <span className="relative size-14 flex-none overflow-hidden rounded-lg bg-[#e6edf2]">{item.referencePhotoUrl && <Image src={resolveImageUrl(item.referencePhotoUrl)} alt="" fill sizes="56px" className="object-cover" unoptimized />}</span>
+        <span className="relative size-14 flex-none overflow-hidden rounded-lg bg-[#e6edf2]">{item.referencePhotoUrl && <SafeImage src={resolveImageUrl(item.referencePhotoUrl)} alt="" fill sizes="56px" className="object-cover" unoptimized />}</span>
         <div className="min-w-0 flex-1">
           <p className="font-bold">{item.name}</p>
           {item.description && <p className="text-sm text-muted">{item.description}</p>}

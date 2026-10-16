@@ -1217,7 +1217,7 @@ const AR: Record<DictKey, string> = {
   account_deleted_note: "تم حذف حسابك.",
   loading_account: "جارٍ تحميل حسابك…",
   quote_request_title: "طلب عرض سعر",
-  my_requests_title: "طلباتي",
+  my_requests_title: "طلبات القطع",
   new_request: "طلب جديد",
   no_requests_yet: "لا توجد طلبات بعد.",
   request_items_one: "1 قطعة",

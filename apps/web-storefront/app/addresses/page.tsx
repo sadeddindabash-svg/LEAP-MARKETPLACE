@@ -96,7 +96,7 @@ export default function AddressesPage() {
                 <div className="min-w-56 flex-1">
                   <p className="flex items-center gap-2 font-bold">{a.label}{a.isDefault && <span className="rounded-full bg-navy px-2.5 py-0.5 text-xs font-bold text-white">{t("default_label")}</span>}</p>
                   <p className="mt-1">{a.recipientName}</p>
-                  <p className="text-muted">{a.streetAddress}, {a.city}, {countryName(lang, a.country)}</p>
+                  <p className="text-muted"><bdi>{a.streetAddress}, {a.city}</bdi>, {countryName(lang, a.country)}</p>
                   <p className="text-sm text-muted" dir="ltr">{a.phone}</p>
                 </div>
                 {confirmDelete === a.id ? (

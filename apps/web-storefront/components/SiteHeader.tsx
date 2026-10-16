@@ -6,6 +6,7 @@ import { pickName, t, type Lang } from "@/lib/i18n";
 import AccountMenu from "./AccountMenu";
 import CartIcon from "./CartIcon";
 import CurrencySwitcher from "./CurrencySwitcher";
+import { Suspense } from "react";
 import HeaderSearch from "./HeaderSearch";
 import LanguageSwitcher from "./LanguageSwitcher";
 import NotificationBell from "./NotificationBell";
@@ -26,7 +27,7 @@ export default async function SiteHeader({ lang }: { lang: Lang }) {
           <span className="flex items-center gap-5">
             <Link href="/support" className="hover:underline">{t(lang, "support")}</Link>
             <CurrencySwitcher />
-            <LanguageSwitcher />
+            <Suspense fallback={null}><LanguageSwitcher /></Suspense>
           </span>
         </div>
       </div>

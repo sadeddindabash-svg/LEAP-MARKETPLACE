@@ -125,7 +125,7 @@ describe("order detail: seeing it", () => {
     expect(screen.getAllByText("Supplier LEAP-SLR-AB12")).toHaveLength(2);
     expect(screen.getByRole("list", { name: "Shipped" })).toBeInTheDocument();                               // the first part is on its way
     expect(screen.getByText("Part 1")).toBeInTheDocument();
-    expect(screen.getByText("1 Main St, Muscat, Oman")).toBeInTheDocument();
+    expect(screen.getByText((_, el) => el?.tagName === "P" && el.textContent === "1 Main St, Muscat, Oman")).toBeInTheDocument();
     expect(screen.getByText("Discount (SAVE10)")).toBeInTheDocument();
     expect(screen.getByText("$90")).toBeInTheDocument();
   });

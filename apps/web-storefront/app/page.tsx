@@ -1,5 +1,5 @@
-import Image from "next/image";
 import type { Metadata } from "next";
+import SafeImage from "@/components/SafeImage";
 import Link from "@/components/LocLink";
 import HeroPicker from "@/components/HeroPicker";
 import { JsonLd } from "@/components/JsonLd";
@@ -57,7 +57,7 @@ export default async function HomePage() {
                 <Link href={`/search?category=${encodeURIComponent(c.id)}`} className="flex h-full flex-col items-center gap-2.5 rounded-[14px] border border-line bg-white p-5 text-center transition-colors hover:border-navy">
                   <span className="relative grid size-16 place-items-center overflow-hidden rounded-xl bg-signal text-navy">
                     {c.photoUrl ? (
-                      <Image src={resolveImageUrl(c.photoUrl)} alt="" fill sizes="64px" className="object-cover" unoptimized />
+                      <SafeImage src={resolveImageUrl(c.photoUrl)} alt="" fill sizes="64px" className="object-cover" unoptimized />
                     ) : (
                       <svg aria-hidden="true" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 6a4 4 0 0 0 5 5l-8 8a2.5 2.5 0 0 1-4-4l8-8a4 4 0 0 0-1-1z" /></svg>
                     )}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
+import SafeImage from "@/components/SafeImage";
 import Link from "@/components/LocLink";
 import AddressForm from "@/components/AddressFields";
 import { getAuthToken, useAuth } from "@/components/AuthProvider";
@@ -170,7 +170,7 @@ export default function CheckoutPage() {
                 {savedAddresses.map((a) => (
                   <label key={a.id} className={`flex cursor-pointer items-start gap-3 rounded-xl border-[1.5px] p-3.5 ${selectedId === a.id ? "border-navy bg-[#f4f8fb]" : "border-line"}`}>
                     <input type="radio" name="address" className="mt-1 size-5 accent-[#0b3146]" checked={selectedId === a.id} onChange={() => setSelectedId(a.id)} />
-                    <span><strong className="block">{a.label} · {a.recipientName}</strong><span className="text-sm text-muted">{a.streetAddress}, {a.city}, {countryName(lang, a.country)}</span></span>
+                    <span><strong className="block">{a.label} · {a.recipientName}</strong><span className="text-sm text-muted"><bdi>{a.streetAddress}, {a.city}</bdi>, {countryName(lang, a.country)}</span></span>
                   </label>
                 ))}
                 <label className={`flex cursor-pointer items-center gap-3 rounded-xl border-[1.5px] p-3.5 ${selectedId === "new" ? "border-navy bg-[#f4f8fb]" : "border-line"}`}>
@@ -204,7 +204,7 @@ export default function CheckoutPage() {
                 {methods.map((m) => (
                   <label key={m.id} className={`flex cursor-pointer items-center gap-3 rounded-xl border-[1.5px] p-3.5 ${payment === m.id ? "border-navy bg-[#f4f8fb]" : "border-line"}`}>
                     <input type="radio" name="payment" className="size-5 accent-[#0b3146]" checked={payment === m.id} onChange={() => setChosenPayment(m.id)} />
-                    {m.photoUrl && <Image src={resolveImageUrl(m.photoUrl)} alt="" width={28} height={28} className="rounded object-contain" unoptimized />}
+                    {m.photoUrl && <SafeImage src={resolveImageUrl(m.photoUrl)} alt="" width={28} height={28} className="rounded object-contain" unoptimized />}
                     <span className="font-semibold">{lang === "ar" && m.nameAr ? m.nameAr : m.nameEn}</span>
                   </label>
                 ))}

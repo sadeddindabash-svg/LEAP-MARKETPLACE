@@ -1,168 +1,74 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback } from "react";
+import SafeImage from "@/components/SafeImage";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "@/components/LocLink";
-import { useAuth, getAuthToken } from "@/components/AuthProvider";
-import { ReturnCaseDetail, fetchReturnCase, sendReturnCaseMessage, resolveImageUrl } from "@/lib/api";
+import { EmailGate, MessageThread, ReplyForm, StatusPill } from "@/components/MessageThread";
+import { getAuthToken, useAuth } from "@/components/AuthProvider";
+import { useLang, useT } from "@/components/LangProvider";
+import { useLocRouter } from "@/components/useLocRouter";
+import { usePolled } from "@/components/usePolled";
+import { fetchReturnCase, resolveImageUrl, sendReturnCaseMessage } from "@/lib/api";
+import { statusLabel } from "@/lib/orders";
+import { CONVERSATION_POLL_MS } from "@/lib/support";
 
-// Real return case detail + thread (new). Requires the same real
-// <Suspense> boundary around useSearchParams() as the signup page and
-// checkout confirmation already established (a real production build
-// fails outright without one).
-function ReturnCaseContent() {
-  const params = useParams();
-  const caseId = params.id as string;
-  const searchParams = useSearchParams();
-  const urlGuestEmail = searchParams.get("guestEmail");
-
+function ReturnCase({ caseId }: { caseId: string }) {
   const { user, isLoading: authLoading } = useAuth();
-  const [guestEmailInput, setGuestEmailInput] = useState(urlGuestEmail || "");
-  const [activeGuestEmail, setActiveGuestEmail] = useState(urlGuestEmail);
+  const lang = useLang();
+  const t = useT();
+  const router = useLocRouter();
+  const guestEmail = useSearchParams().get("guestEmail");
+  const token = user ? getAuthToken() : null;
+  const canSee = !!token || !!guestEmail;
+  const auth = { token: token ?? undefined, guestEmail: token ? undefined : guestEmail ?? undefined };
+  const load = useCallback(() => fetchReturnCase(caseId, { token: token ?? undefined, guestEmail: token ? undefined : guestEmail ?? undefined }), [caseId, token, guestEmail]);
+  const { data: rc, error, loading, reload } = usePolled(load, CONVERSATION_POLL_MS, !authLoading && canSee);
 
-  const [returnCase, setReturnCase] = useState<ReturnCaseDetail | null>(null);
-  const [loadState, setLoadState] = useState<"loading" | "ready" | "error" | "needs-email">("loading");
-  const [error, setError] = useState<string | null>(null);
-  const [replyText, setReplyText] = useState("");
-  const [isSending, setIsSending] = useState(false);
-
-  const load = () => {
-    const token = getAuthToken();
-    if (!token && !activeGuestEmail) {
-      setLoadState("needs-email");
-      return;
-    }
-    setLoadState("loading");
-    fetchReturnCase(caseId, { token: token || undefined, guestEmail: activeGuestEmail || undefined })
-      .then((data) => { setReturnCase(data); setLoadState("ready"); })
-      .catch((err) => { setError(err.message); setLoadState("error"); });
-  };
-
-  useEffect(() => {
-    if (authLoading) return;
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, user, activeGuestEmail, caseId]);
-
-  const handleEmailSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!guestEmailInput.trim()) return;
-    setActiveGuestEmail(guestEmailInput.trim());
-  };
-
-  const handleReply = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!replyText.trim()) return;
-    setIsSending(true);
-    try {
-      const token = getAuthToken();
-      await sendReturnCaseMessage(caseId, replyText.trim(), { token: token || undefined, guestEmail: activeGuestEmail || undefined });
-      setReplyText("");
-      load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to send message");
-    } finally {
-      setIsSending(false);
-    }
-  };
-
-  if (authLoading || loadState === "loading") {
-    return <div className="mx-auto max-w-2xl px-6 py-16 text-muted">Loading…</div>;
-  }
-
-  if (loadState === "needs-email") {
+  if (authLoading) return <div className="mx-auto max-w-3xl px-4 py-10 sm:px-8" aria-busy="true">{t("search_loading")}</div>;
+  if (!canSee) {
     return (
-      <div className="mx-auto max-w-2xl px-6 py-16">
-        <h1 className="font-display font-bold text-3xl">{caseId}</h1>
-        <p className="mt-2 text-muted">
-          Enter the email this return was filed under to view it.
-        </p>
-        <form onSubmit={handleEmailSubmit} className="mt-6 flex gap-2">
-          <input
-            type="email"
-            required
-            value={guestEmailInput}
-            onChange={(e) => setGuestEmailInput(e.target.value)}
-            className="flex-1 rounded-md border border-line px-3 py-2 text-sm"
-            placeholder="you@example.com"
-          />
-          <button type="submit" className="rounded-md bg-signal px-5 py-2 text-sm text-on-signal font-semibold hover:bg-signal-dark transition-colors">
-            View
-          </button>
-        </form>
+      <div className="mx-auto max-w-3xl px-4 py-12 sm:px-8">
+        <h1 className="mb-4 text-2xl font-bold">{t("my_returns_title")} {caseId}</h1>
+        <EmailGate prompt={t("return_email_prompt")} onSubmit={(email) => router.push(`/returns/${encodeURIComponent(caseId)}?guestEmail=${encodeURIComponent(email)}`)} />
       </div>
     );
   }
-
-  if (loadState === "error" || !returnCase) {
+  if (loading) return <div className="mx-auto max-w-3xl px-4 py-10 sm:px-8 text-muted" aria-busy="true">{t("search_loading")}</div>;
+  if (!rc) {
+    const notFound = /not found|غير موجود/i.test(error?.message ?? "");
     return (
-      <div className="mx-auto max-w-2xl px-6 py-16">
-        <h1 className="font-display font-bold text-3xl">{caseId}</h1>
-        <p className="mt-4 text-sm text-red-600">{error || "Return case not found."}</p>
-        <Link href="/returns" className="mt-6 inline-block text-signal font-medium">
-          Back to returns
-        </Link>
+      <div className="mx-auto max-w-3xl px-4 py-12 sm:px-8">
+        {notFound ? <h1 className="text-2xl font-bold">{t("order_not_found")}</h1> : <p role="alert" className="font-semibold text-[#a12a21]">{t("return_load_error")} {error?.message}</p>}
+        <p className="mt-3"><Link href="/returns" className="font-bold text-navy underline underline-offset-4">{t("back_to_returns")}</Link></p>
       </div>
     );
   }
-
+  const orderHref = `/orders/${encodeURIComponent(rc.orderId)}${!token && guestEmail ? `?guestEmail=${encodeURIComponent(guestEmail)}` : ""}`;
   return (
-    <div className="mx-auto max-w-2xl px-6 py-16">
-      <Link href="/returns" className="text-sm text-muted hover:text-ink">
-        ← Back to returns
-      </Link>
-
-      <div className="mt-4 flex items-center justify-between">
-        <h1 className="font-display font-bold text-2xl">{returnCase.reason}</h1>
-        <span className="text-xs font-semibold uppercase text-signal">{returnCase.status.replace(/_/g, " ")}</span>
-      </div>
-      <p className="mt-1 text-sm text-muted">Order {returnCase.orderId}</p>
-
-      {returnCase.photos.length > 0 && (
-        <div className="mt-6 flex gap-2 overflow-x-auto">
-          {returnCase.photos.map((url, i) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img key={i} src={resolveImageUrl(url)} alt="" className="h-20 w-20 rounded-md object-cover flex-shrink-0" />
-          ))}
+    <div className="mx-auto max-w-3xl px-4 py-10 sm:px-8">
+      <p className="mb-2"><Link href="/returns" className="text-sm font-semibold text-navy underline underline-offset-4">{t("back_to_returns")}</Link></p>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-navy">{rc.reason}</h1>
+          <p className="text-sm text-muted">{t("for_order")} <Link href={orderHref} className="font-plate font-semibold underline underline-offset-4" dir="ltr">{rc.orderId}</Link></p>
         </div>
-      )}
-
-      <div className="mt-6 space-y-3">
-        {returnCase.messages.map((m, i) => (
-          <div key={i} className={`flex ${m.senderRole === "admin" ? "justify-start" : "justify-end"}`}>
-            <div className={`max-w-[75%] rounded-lg px-4 py-2 text-sm ${m.senderRole === "admin" ? "bg-chalk text-ink" : "bg-ink text-white"}`}>
-              {m.message}
-            </div>
-          </div>
-        ))}
+        <StatusPill label={statusLabel(lang, rc.status)} done={rc.status === "completed"} />
       </div>
-
-      {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
-
-      <form onSubmit={handleReply} className="mt-6 flex gap-2">
-        <input
-          type="text"
-          value={replyText}
-          onChange={(e) => setReplyText(e.target.value)}
-          placeholder="Type a message…"
-          className="flex-1 rounded-md border border-line px-3 py-2 text-sm"
-        />
-        <button
-          type="submit"
-          disabled={isSending}
-          className="rounded-md bg-signal px-5 py-2 text-sm text-on-signal font-semibold hover:bg-signal-dark transition-colors disabled:opacity-60"
-        >
-          {isSending ? "Sending…" : "Send"}
-        </button>
-      </form>
+      {rc.photos.length > 0 && (
+        <section className="mb-6" aria-label={t("return_photos")}>
+          <ul className="flex flex-wrap gap-2">
+            {rc.photos.map((url) => <li key={url}><a href={resolveImageUrl(url)} target="_blank" rel="noreferrer" className="relative block size-24 overflow-hidden rounded-lg bg-[#e6edf2]"><SafeImage src={resolveImageUrl(url)} alt={t("return_photos")} fill sizes="96px" className="object-cover" unoptimized /></a></li>)}
+          </ul>
+        </section>
+      )}
+      <MessageThread messages={rc.messages} />
+      <ReplyForm onSend={async (text) => { await sendReturnCaseMessage(rc.id, text, auth); reload(); }} />
     </div>
   );
 }
 
 export default function ReturnCasePage() {
-  return (
-    <Suspense fallback={<div className="mx-auto max-w-2xl px-6 py-16 text-muted">Loading…</div>}>
-      <ReturnCaseContent />
-    </Suspense>
-  );
+  const { id } = useParams<{ id: string }>();
+  return <Suspense fallback={null}><ReturnCase caseId={id} /></Suspense>;
 }

@@ -1,5 +1,5 @@
-import Image from "next/image";
 import Link from "@/components/LocLink";
+import SafeImage from "@/components/SafeImage";
 import { resolveImageUrl, type ProductSummary } from "@/lib/api";
 import { t, type Lang } from "@/lib/i18n";
 import { Price } from "./Price";
@@ -12,7 +12,7 @@ export default function ProductCard({ product: p, lang }: { product: ProductSumm
       <Link href={`/products/${p.id}`} className="flex flex-1 flex-col">
         <div className="relative flex h-44 items-center justify-center bg-[#e6edf2]">
           {p.images[0] ? (
-            <Image src={resolveImageUrl(p.images[0])} alt={p.name} fill sizes="(min-width: 1024px) 25vw, 50vw" className="object-cover" unoptimized />
+            <SafeImage src={resolveImageUrl(p.images[0])} alt={p.name} fill sizes="(min-width: 1024px) 25vw, 50vw" className="object-cover" unoptimized />
           ) : (
             <svg aria-hidden="true" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#0b3146" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="2.5" /><path d="M12 4v3M12 17v3M4 12h3M17 12h3" /></svg>
           )}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
+import SafeImage from "@/components/SafeImage";
 import Link from "@/components/LocLink";
 import SignInPrompt from "@/components/SignInPrompt";
 import { getAuthToken, useAuth } from "@/components/AuthProvider";
@@ -67,7 +67,7 @@ export default function WishlistPage() {
                   disabled={!selected.includes(p.id) && selected.length >= COMPARE_MAX}
                   onChange={() => setSelected((cur) => (cur.includes(p.id) ? cur.filter((id) => id !== p.id) : [...cur, p.id]))} />
               )}
-              <span className="relative size-16 flex-none overflow-hidden rounded-lg bg-[#e6edf2]">{p.images[0] && <Image src={resolveImageUrl(p.images[0])} alt="" fill sizes="64px" className="object-cover" unoptimized />}</span>
+              <span className="relative size-16 flex-none overflow-hidden rounded-lg bg-[#e6edf2]">{p.images[0] && <SafeImage src={resolveImageUrl(p.images[0])} alt="" fill sizes="64px" className="object-cover" unoptimized />}</span>
               <Link href={`/products/${p.id}`} className="min-w-0 flex-1">
                 <p className="truncate font-bold">{p.name}</p>
                 <p className="text-sm text-muted"><Price usd={p.price} /></p>

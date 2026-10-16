@@ -1,8 +1,8 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import SafeImage from "@/components/SafeImage";
 import { useSearchParams } from "next/navigation";
-import Image from "next/image";
 import Link from "@/components/LocLink";
 import { getAuthToken, useAuth } from "@/components/AuthProvider";
 import { useGarage } from "@/components/GarageProvider";
@@ -96,7 +96,7 @@ function NewRequest() {
               <ul className="grid gap-3">
                 {request.items.map((item) => (
                   <li key={item.id} className="flex items-center gap-3 rounded-xl border border-line p-3">
-                    <span className="relative size-14 flex-none overflow-hidden rounded-lg bg-[#e6edf2]">{item.referencePhotoUrl && <Image src={resolveImageUrl(item.referencePhotoUrl)} alt="" fill sizes="56px" className="object-cover" unoptimized />}</span>
+                    <span className="relative size-14 flex-none overflow-hidden rounded-lg bg-[#e6edf2]">{item.referencePhotoUrl && <SafeImage src={resolveImageUrl(item.referencePhotoUrl)} alt="" fill sizes="56px" className="object-cover" unoptimized />}</span>
                     <div className="min-w-0 flex-1"><p className="font-bold">{item.name}</p>{item.description && <p className="truncate text-sm text-muted">{item.description}</p>}<p className="text-xs text-muted">{t("qty_label", { n: item.quantity })}</p></div>
                     <button type="button" disabled={busy} aria-label={`${t("remove")}: ${item.name}`} onClick={() => run(async (token) => setRequest(await deleteQuoteRequestItem(token, request.id, item.id)))} className="grid size-9 place-items-center rounded-full text-lg font-bold text-[#a12a21] hover:bg-[#fdf2f1]">×</button>
                   </li>

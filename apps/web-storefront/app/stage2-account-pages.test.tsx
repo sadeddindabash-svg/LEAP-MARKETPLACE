@@ -44,7 +44,7 @@ describe("address book", () => {
 
   it("CRITICAL: lists the saved addresses with the default one marked, and shows the country in the page's language", async () => {
     show(<AddressesPage />);
-    expect(await screen.findByText("1 Main St, Muscat, Oman")).toBeInTheDocument();
+    expect(await screen.findByText((_, el) => el?.tagName === "P" && el.textContent === "1 Main St, Muscat, Oman")).toBeInTheDocument();          // the street and city sit in a <bdi> (see below)
     const home = screen.getByText("Home").closest("li") as HTMLElement;
     expect(within(home).getByText("Default")).toBeInTheDocument();
     expect(within(home).queryByRole("button", { name: "Set as default" })).not.toBeInTheDocument();
@@ -56,7 +56,7 @@ describe("address book", () => {
     show(<AddressesPage />, "ar");
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("العناوين");
     const omanAr = COUNTRIES.find((c) => c.en === "Oman")!.ar;
-    expect(screen.getAllByText(new RegExp(`(Muscat|Sohar), ${omanAr}$`)).length).toBe(2);         // the city is what the buyer typed; the COUNTRY is shown in Arabic
+    expect(screen.getAllByText((_, el) => el?.tagName === "P" && new RegExp(`(Muscat|Sohar), ${omanAr}$`).test(el.textContent ?? "")).length).toBe(2);         // the city is what the buyer typed; the COUNTRY is shown in Arabic
     expect(screen.queryByText(/Muscat, Oman/)).not.toBeInTheDocument();
     expect(screen.getAllByText("افتراضي").length).toBe(1);
   });

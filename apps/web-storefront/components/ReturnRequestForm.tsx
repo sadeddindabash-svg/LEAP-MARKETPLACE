@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
+import SafeImage from "@/components/SafeImage";
 import Link from "@/components/LocLink";
 import { createReturnCase, resolveImageUrl, uploadReviewPhoto, type OrderWho } from "@/lib/api";
 import { useT } from "./LangProvider";
@@ -67,7 +67,7 @@ export default function ReturnRequestForm({ subOrderId, who, onClose }: { subOrd
           <div className="flex flex-wrap gap-2">
             {photos.map((url, i) => (
               <div key={i} className="relative size-20 overflow-hidden rounded-lg bg-[#e6edf2]">
-                {url && <Image src={resolveImageUrl(url)} alt="" fill sizes="80px" className="object-cover" unoptimized />}
+                {url && <SafeImage src={resolveImageUrl(url)} alt="" fill sizes="80px" className="object-cover" unoptimized />}
                 {url && <button type="button" aria-label={t("remove_photo")} onClick={() => setPhotos((p) => p.filter((_, j) => j !== i))} className="absolute end-1 top-1 grid size-6 place-items-center rounded-full bg-black/70 text-xs font-bold text-white">×</button>}
               </div>
             ))}
