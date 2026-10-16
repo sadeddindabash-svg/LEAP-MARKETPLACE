@@ -82,6 +82,16 @@ describe("signing in", () => {
     expect(getAuthToken()).toBeNull();
   });
 
+  it("CRITICAL: when the server cannot be reached the buyer reads a clear message, not the browser's 'Failed to fetch', and nothing is signed in", async () => {
+    mount();
+    await waitFor(() => expect(who()).toBe("nobody"));
+    globalThis.fetch = vi.fn(async () => { throw new TypeError("Failed to fetch"); }) as unknown as typeof fetch;
+    await act(async () => { await expect(api().login("sam@example.com", "pw123456")).rejects.toThrow("We can't reach the server. Please check your connection and try again."); });
+    expect(getAuthToken()).toBeNull();
+    setErrorLanguage("ar");
+    await act(async () => { await expect(api().login("sam@example.com", "pw123456")).rejects.toThrow(/[\u0600-\u06FF]/); });
+  });
+
   it("errors are in the page's language when the app has a translation, English otherwise", async () => {
     mount();
     await waitFor(() => expect(who()).toBe("nobody"));

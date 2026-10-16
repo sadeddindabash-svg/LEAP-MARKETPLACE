@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "@/components/LocLink";
 import { fetchCategories } from "@/lib/api";
+import { isShopReachable } from "@/lib/net";
 import { pickName, t, type Lang } from "@/lib/i18n";
 import AccountMenu from "./AccountMenu";
 import CartIcon from "./CartIcon";
@@ -15,7 +16,7 @@ const actionClass = "relative flex min-h-11 min-w-11 flex-col items-center justi
 // The header of every page, in the "Navy Workshop" theme: a thin bar (tagline, support, language), the main bar (logo, search, account, wishlist, alerts, cart), the menu
 // (Home, Products, Sections) and a yellow announcement line. A Server Component: the menu's section names come from the real categories, in the page's language.
 export default async function SiteHeader({ lang }: { lang: Lang }) {
-  const categories = await fetchCategories();
+  const [categories, reachable] = await Promise.all([fetchCategories(), isShopReachable(process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000")]);
   return (
     <header>
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:start-2 focus:top-2 focus:z-50 focus:rounded-lg focus:bg-signal focus:px-4 focus:py-2 focus:font-bold focus:text-on-signal">{t(lang, "skip_to_content")}</a>
@@ -67,6 +68,7 @@ export default async function SiteHeader({ lang }: { lang: Lang }) {
         </div>
       </nav>
       <VehicleBar />
+      {!reachable && <p role="alert" className="bg-[#a12a21] px-4 py-2 text-center text-sm font-semibold text-white">{t(lang, "shop_unreachable")}</p>}
       <div className="bg-signal text-sm font-semibold text-on-signal">
         <div className="mx-auto flex min-h-10 max-w-7xl flex-wrap items-center justify-center gap-x-8 gap-y-1 px-4 py-1 sm:px-8">
           <span>{t(lang, "announce_warehouse")}</span>

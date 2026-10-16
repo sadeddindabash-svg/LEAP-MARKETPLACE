@@ -15,6 +15,7 @@
 
 import type { Lang } from "./i18n";
 import { apiMessage } from "./serverMessages";
+import { NetworkError, netFetch } from "./net";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
 
@@ -85,7 +86,7 @@ const REVALIDATE_SECONDS = 60;
 
 async function apiGet<T>(path: string): Promise<T | null> {
   try {
-    const res = await fetch(`${API_BASE_URL}${path}`, {
+    const res = await netFetch(`${API_BASE_URL}${path}`, {
       next: { revalidate: REVALIDATE_SECONDS },
     });
     if (!res.ok) return null;
@@ -155,7 +156,7 @@ export async function fetchProductsPaginated(params: {
   limit?: number;
   lang?: Lang;
   part?: string;
-} = {}): Promise<{ items: ProductSummary[]; total: number }> {
+} = {}): Promise<{ items: ProductSummary[]; total: number; unreachable?: boolean }> {
   const query = new URLSearchParams();
   if (params.category) query.set("category", params.category);
   if (params.part) query.set("part", params.part);
@@ -166,9 +167,13 @@ export async function fetchProductsPaginated(params: {
   if (params.lang === "ar") query.set("lang", "ar");
   query.set("page", String(params.page || 1));
   query.set("limit", String(params.limit || 24));
-  const res = await fetch(`${API_BASE_URL}/catalog/products?${query.toString()}`, {
-    next: { revalidate: REVALIDATE_SECONDS },
-  });
+  let res: Response;
+  try {
+    res = await netFetch(`${API_BASE_URL}/catalog/products?${query.toString()}`, { next: { revalidate: REVALIDATE_SECONDS } });
+  } catch (e) {
+    if (e instanceof NetworkError) return { items: [], total: 0, unreachable: true };
+    throw e;
+  }
   if (!res.ok) return { items: [], total: 0 };
   const items = (await res.json()) as ProductSummary[];
   const total = Number(res.headers.get("X-Total-Count") || items.length);
@@ -245,7 +250,7 @@ export interface CartCallOptions { token?: string | null; lang?: Lang }
 
 async function cartApiCall<T>(path: string, options?: RequestInit, who: CartCallOptions = {}): Promise<T> {
   const url = `${API_BASE_URL}/cart${path}${who.lang === "ar" ? `${path.includes("?") ? "&" : "?"}lang=ar` : ""}`;
-  const res = await fetch(url, {
+  const res = await netFetch(url, {
     ...options,
     headers: { "Content-Type": "application/json", ...(who.token ? { Authorization: `Bearer ${who.token}` } : {}), ...options?.headers },
   });
@@ -309,7 +314,7 @@ export async function placeOrder(
   promoCode?: string,
   options: PlaceOrderOptions = {}
 ): Promise<PlaceOrderResult> {
-  const res = await fetch(`${API_BASE_URL}/order${options.lang === "ar" ? "?lang=ar" : ""}`, {
+  const res = await netFetch(`${API_BASE_URL}/order${options.lang === "ar" ? "?lang=ar" : ""}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -346,7 +351,7 @@ export async function fetchPaymentMethodsForCountry(country: string): Promise<Pa
 // would risk it silently drifting out of sync with the real backend
 // logic over time.
 export async function validatePromoCode(code: string, token?: string): Promise<{ valid: true } | { valid: false; reason: string }> {
-  const res = await fetch(`${API_BASE_URL}/promo-codes/validate`, {
+  const res = await netFetch(`${API_BASE_URL}/promo-codes/validate`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify({ code }),
@@ -378,7 +383,7 @@ export interface SavedAddress {
 }
 
 export async function fetchMyAddresses(token: string): Promise<SavedAddress[]> {
-  const res = await fetch(`${API_BASE_URL}/addresses/me`, {
+  const res = await netFetch(`${API_BASE_URL}/addresses/me`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
@@ -410,7 +415,7 @@ export interface SavedSearch {
 }
 
 async function savedSearchApiCall<T>(path: string, token: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}/saved-searches${path}`, {
+  const res = await netFetch(`${API_BASE_URL}/saved-searches${path}`, {
     ...options,
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...options?.headers },
   });
@@ -431,7 +436,7 @@ export function createSavedSearch(
 }
 
 export async function deleteSavedSearch(token: string, id: number): Promise<void> {
-  const res = await fetch(`${API_BASE_URL}/saved-searches/me/${id}`, {
+  const res = await netFetch(`${API_BASE_URL}/saved-searches/me/${id}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -538,7 +543,7 @@ export interface OrderDetail {
 }
 
 export async function fetchMyOrders(token: string): Promise<OrderSummary[]> {
-  const res = await fetch(`${API_BASE_URL}/order`, {
+  const res = await netFetch(`${API_BASE_URL}/order`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
@@ -559,7 +564,7 @@ async function orderCall<T>(path: string, who: OrderWho, init: { method?: string
   if (method === "GET" && "guestEmail" in guest) query.set("guestEmail", guest.guestEmail as string);
   const body = method === "GET" ? undefined : { ...(init.body ?? {}), ...guest };
   const qs = query.toString();
-  const res = await fetch(`${API_BASE_URL}/order${path}${qs ? `?${qs}` : ""}`, {
+  const res = await netFetch(`${API_BASE_URL}/order${path}${qs ? `?${qs}` : ""}`, {
     method,
     headers: { ...(who.token ? { Authorization: `Bearer ${who.token}` } : {}), ...(body ? { "Content-Type": "application/json" } : {}) },
     body: body ? JSON.stringify(body) : undefined,
@@ -581,7 +586,7 @@ export const fetchOrderById = (token: string | null, orderId: string, guestEmail
 // rather than a separate wishlist-specific shape).
 
 export async function fetchWishlist(token: string): Promise<ProductSummary[]> {
-  const res = await fetch(`${API_BASE_URL}/wishlist/me`, {
+  const res = await netFetch(`${API_BASE_URL}/wishlist/me`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
@@ -592,7 +597,7 @@ export async function fetchWishlist(token: string): Promise<ProductSummary[]> {
 }
 
 export async function checkWishlisted(token: string, productId: string): Promise<boolean> {
-  const res = await fetch(`${API_BASE_URL}/wishlist/me/${productId}`, {
+  const res = await netFetch(`${API_BASE_URL}/wishlist/me/${productId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) return false;
@@ -601,7 +606,7 @@ export async function checkWishlisted(token: string, productId: string): Promise
 }
 
 export async function addToWishlist(token: string, productId: string): Promise<void> {
-  const res = await fetch(`${API_BASE_URL}/wishlist/me/${productId}`, {
+  const res = await netFetch(`${API_BASE_URL}/wishlist/me/${productId}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -612,7 +617,7 @@ export async function addToWishlist(token: string, productId: string): Promise<v
 }
 
 export async function removeFromWishlist(token: string, productId: string): Promise<void> {
-  const res = await fetch(`${API_BASE_URL}/wishlist/me/${productId}`, {
+  const res = await netFetch(`${API_BASE_URL}/wishlist/me/${productId}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -648,7 +653,7 @@ export async function submitReview(
   token: string,
   params: { productId: string; rating: number; comment?: string; photos?: string[] }
 ): Promise<SubmittedReview> {
-  const res = await fetch(`${API_BASE_URL}/reviews`, {
+  const res = await netFetch(`${API_BASE_URL}/reviews`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(params),
@@ -667,7 +672,7 @@ export async function submitReview(
 export async function uploadReviewPhoto(token: string, file: File): Promise<string> {
   const formData = new FormData();
   formData.append("image", file);
-  const res = await fetch(`${API_BASE_URL}/uploads/product-image`, {
+  const res = await netFetch(`${API_BASE_URL}/uploads/product-image`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: formData,
@@ -693,7 +698,7 @@ export interface ReferralInfo {
 }
 
 export async function fetchMyReferral(token: string): Promise<ReferralInfo> {
-  const res = await fetch(`${API_BASE_URL}/referrals/me`, {
+  const res = await netFetch(`${API_BASE_URL}/referrals/me`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
@@ -725,8 +730,8 @@ export interface Notification {
   createdAt: string;
 }
 
-export async function fetchNotifications(token: string): Promise<Notification[]> {
-  const res = await fetch(`${API_BASE_URL}/notifications/me`, {
+export async function fetchNotifications(token: string, lang?: Lang): Promise<Notification[]> {
+  const res = await netFetch(`${API_BASE_URL}/notifications/me${lang === "ar" ? "?lang=ar" : ""}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
@@ -737,7 +742,7 @@ export async function fetchNotifications(token: string): Promise<Notification[]>
 }
 
 export async function fetchUnreadNotificationCount(token: string): Promise<number> {
-  const res = await fetch(`${API_BASE_URL}/notifications/me/unread-count`, {
+  const res = await netFetch(`${API_BASE_URL}/notifications/me/unread-count`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) return 0;
@@ -746,14 +751,14 @@ export async function fetchUnreadNotificationCount(token: string): Promise<numbe
 }
 
 export async function markNotificationRead(token: string, id: number): Promise<void> {
-  await fetch(`${API_BASE_URL}/notifications/me/${id}/read`, {
+  await netFetch(`${API_BASE_URL}/notifications/me/${id}/read`, {
     method: "PATCH",
     headers: { Authorization: `Bearer ${token}` },
   });
 }
 
 export async function markAllNotificationsRead(token: string): Promise<void> {
-  await fetch(`${API_BASE_URL}/notifications/me/read-all`, {
+  await netFetch(`${API_BASE_URL}/notifications/me/read-all`, {
     method: "PATCH",
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -814,7 +819,7 @@ export interface ReturnCaseSummary {
 }
 
 export async function fetchMyReturnCases(token: string): Promise<ReturnCaseSummary[]> {
-  const res = await fetch(`${API_BASE_URL}/returns/my-cases`, {
+  const res = await netFetch(`${API_BASE_URL}/returns/my-cases`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
@@ -827,7 +832,7 @@ export async function fetchMyReturnCases(token: string): Promise<ReturnCaseSumma
 export async function fetchReturnCase(caseId: string, auth: { token?: string; guestEmail?: string }): Promise<ReturnCaseDetail> {
   const url = new URL(`${API_BASE_URL}/returns/my-cases/${caseId}`);
   if (auth.guestEmail) url.searchParams.set("guestEmail", auth.guestEmail);
-  const res = await fetch(url.toString(), {
+  const res = await netFetch(url.toString(), {
     headers: auth.token ? { Authorization: `Bearer ${auth.token}` } : {},
   });
   if (!res.ok) {
@@ -838,7 +843,7 @@ export async function fetchReturnCase(caseId: string, auth: { token?: string; gu
 }
 
 export async function sendReturnCaseMessage(caseId: string, message: string, auth: { token?: string; guestEmail?: string }): Promise<void> {
-  const res = await fetch(`${API_BASE_URL}/returns/my-cases/${caseId}/messages`, {
+  const res = await netFetch(`${API_BASE_URL}/returns/my-cases/${caseId}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}) },
     body: JSON.stringify({ message, ...(auth.guestEmail ? { guestEmail: auth.guestEmail } : {}) }),
@@ -939,7 +944,7 @@ export async function createSupportTicket(
   input: { subject: string; message: string; orderId?: string },
   auth: { token?: string; guestEmail?: string }
 ): Promise<{ id: string }> {
-  const res = await fetch(`${API_BASE_URL}/support/tickets`, {
+  const res = await netFetch(`${API_BASE_URL}/support/tickets`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}) },
     body: JSON.stringify({ ...input, ...(auth.guestEmail ? { guestEmail: auth.guestEmail } : {}) }),
@@ -950,7 +955,7 @@ export async function createSupportTicket(
 }
 
 export async function fetchMyTickets(token: string): Promise<SupportTicketSummary[]> {
-  const res = await fetch(`${API_BASE_URL}/support/my-tickets`, {
+  const res = await netFetch(`${API_BASE_URL}/support/my-tickets`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
@@ -963,7 +968,7 @@ export async function fetchMyTickets(token: string): Promise<SupportTicketSummar
 export async function fetchSupportTicket(ticketId: string, auth: { token?: string; guestEmail?: string }): Promise<SupportTicketDetail> {
   const url = new URL(`${API_BASE_URL}/support/my-tickets/${ticketId}`);
   if (auth.guestEmail) url.searchParams.set("guestEmail", auth.guestEmail);
-  const res = await fetch(url.toString(), {
+  const res = await netFetch(url.toString(), {
     headers: auth.token ? { Authorization: `Bearer ${auth.token}` } : {},
   });
   if (!res.ok) {
@@ -974,7 +979,7 @@ export async function fetchSupportTicket(ticketId: string, auth: { token?: strin
 }
 
 export async function sendSupportTicketMessage(ticketId: string, message: string, auth: { token?: string; guestEmail?: string }): Promise<void> {
-  const res = await fetch(`${API_BASE_URL}/support/my-tickets/${ticketId}/messages`, {
+  const res = await netFetch(`${API_BASE_URL}/support/my-tickets/${ticketId}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}) },
     body: JSON.stringify({ message, ...(auth.guestEmail ? { guestEmail: auth.guestEmail } : {}) }),
@@ -1024,7 +1029,7 @@ export interface CategoryPart {
 }
 
 async function authedJson<T>(token: string, path: string, method: string, failure: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const res = await netFetch(`${API_BASE_URL}${path}`, {
     method,
     headers: { Authorization: `Bearer ${token}`, ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -1043,7 +1048,7 @@ export const setDefaultVehicle = (token: string, generationId: string, year: num
 
 /** Decodes a VIN. Throws with the server's own message when it is not a valid VIN (17 characters, no I, O or Q). */
 export async function decodeVin(vin: string): Promise<VinDecode> {
-  const res = await fetch(`${API_BASE_URL}/fitment/vin-decode/${encodeURIComponent(vin.trim().toUpperCase())}`);
+  const res = await netFetch(`${API_BASE_URL}/fitment/vin-decode/${encodeURIComponent(vin.trim().toUpperCase())}`);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(apiMessage(data.error) || apiMessage(`Could not look up this VIN (${res.status})`));
   return data as VinDecode;
@@ -1089,14 +1094,14 @@ export interface MyReview {
   updatedAt: string;
 }
 export async function fetchMyReviews(token: string): Promise<MyReview[]> {
-  const res = await fetch(`${API_BASE_URL}/reviews/me`, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await netFetch(`${API_BASE_URL}/reviews/me`, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) throw new Error(apiMessage(`Failed to load your reviews (${res.status})`));
   return res.json();
 }
 
 /** Reports a review to the moderators, with the buyer's reason. */
 export async function flagReview(token: string, reviewId: number, reason: string): Promise<void> {
-  const res = await fetch(`${API_BASE_URL}/reviews/${reviewId}/flag`, {
+  const res = await netFetch(`${API_BASE_URL}/reviews/${reviewId}/flag`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ reason }),
@@ -1131,7 +1136,7 @@ export async function fetchOrderReceipt(orderId: string, who: OrderWho, lang?: L
   const query = new URLSearchParams();
   if (lang === "ar") query.set("lang", "ar");
   if (!who.token && who.guestEmail) query.set("guestEmail", who.guestEmail);
-  const res = await fetch(`${API_BASE_URL}/order/${encodeURIComponent(orderId)}/receipt?${query.toString()}`, { headers: who.token ? { Authorization: `Bearer ${who.token}` } : {} });
+  const res = await netFetch(`${API_BASE_URL}/order/${encodeURIComponent(orderId)}/receipt?${query.toString()}`, { headers: who.token ? { Authorization: `Bearer ${who.token}` } : {} });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(apiMessage(data.error) || apiMessage(`Failed to load the receipt (${res.status})`));
@@ -1141,7 +1146,7 @@ export async function fetchOrderReceipt(orderId: string, who: OrderWho, lang?: L
 
 /** A return request for one part of an order (the server enforces the return window after delivery). A guest gives their email; photos are for signed-in buyers. */
 export async function createReturnCase(input: { subOrderId: number; reason: string; message: string; photos?: string[] }, who: OrderWho): Promise<{ id: string }> {
-  const res = await fetch(`${API_BASE_URL}/returns`, {
+  const res = await netFetch(`${API_BASE_URL}/returns`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(who.token ? { Authorization: `Bearer ${who.token}` } : {}) },
     body: JSON.stringify({ ...input, ...(who.token ? {} : { guestEmail: who.guestEmail }) }),
@@ -1155,7 +1160,7 @@ export async function createReturnCase(input: { subOrderId: number; reason: stri
 
 /** "Was this resolution helpful?": only accepted once the ticket is resolved or closed (the server refuses it before, and says so). */
 export async function submitTicketFeedback(ticketId: string, helpful: boolean, auth: { token?: string | null; guestEmail?: string | null }): Promise<{ id: string; resolutionHelpful: boolean }> {
-  const res = await fetch(`${API_BASE_URL}/support/my-tickets/${encodeURIComponent(ticketId)}/feedback`, {
+  const res = await netFetch(`${API_BASE_URL}/support/my-tickets/${encodeURIComponent(ticketId)}/feedback`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}) },
     body: JSON.stringify({ helpful, ...(!auth.token && auth.guestEmail ? { guestEmail: auth.guestEmail } : {}) }),
@@ -1167,7 +1172,7 @@ export async function submitTicketFeedback(ticketId: string, helpful: boolean, a
 
 /** A bug report (anyone may send one; a screenshot is a photo uploaded first, which needs a signed-in buyer, like the app). */
 export async function submitBugReport(input: { description: string; screenshotUrl?: string | null; deviceInfo?: string }, token?: string | null): Promise<{ id: number; createdAt: string }> {
-  const res = await fetch(`${API_BASE_URL}/bug-reports`, {
+  const res = await netFetch(`${API_BASE_URL}/bug-reports`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify(input),
@@ -1197,9 +1202,59 @@ export const disableTwoFactor = (token: string, password: string) => authedJson<
 
 /** Asks for a reset email. The answer is always the same whether or not the address is registered (so nobody can find out who has an account). The link opens a page the SERVER serves. */
 export async function forgotPassword(email: string): Promise<void> {
-  const res = await fetch(`${API_BASE_URL}/auth/forgot-password`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+  const res = await netFetch(`${API_BASE_URL}/auth/forgot-password`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(apiMessage(data.error) || apiMessage(`Failed to send the reset link (${res.status})`));
   }
 }
+
+// ---------------------------------------------------------------- Stage 4b: quote requests ("My requests"), referral history
+
+export type QuoteItemStatus = "pending" | "priced" | "unavailable" | string;
+export interface QuoteRequestItem {
+  id: number;
+  name: string;
+  description: string | null;
+  referencePhotoUrl: string | null;
+  quantity: number;
+  status: QuoteItemStatus;
+  /** Set once the Leap team made the part (a real product): the price is the buyer's own, in US dollars. */
+  productId: string | null;
+  price?: number;
+  currencyCode?: string;
+  /** The made product has been approved and can be bought. */
+  readyToOrder?: boolean;
+}
+export type QuoteRequestStatus = "draft" | "submitted" | "quoted" | "ordered" | "cancelled" | string;
+export interface QuoteRequest {
+  id: string;
+  generationId: string;
+  year: number;
+  brand: string | null;
+  model: string | null;
+  generation: string | null;
+  status: QuoteRequestStatus;
+  createdAt: string;
+  submittedAt: string | null;
+  quotedAt: string | null;
+  /** A quote is valid for 7 days from when it was sent. */
+  expiresAt: string | null;
+  items: QuoteRequestItem[];
+}
+
+export const createQuoteRequest = (token: string, generationId: string, year: number) => authedJson<QuoteRequest>(token, "/quote-requests", "POST", "Failed to start the request", { generationId, year });
+export const fetchMyQuoteRequests = (token: string) => authedJson<QuoteRequest[]>(token, "/quote-requests/mine", "GET", "Failed to load your requests");
+export const fetchQuoteRequest = (token: string, id: string) => authedJson<QuoteRequest>(token, `/quote-requests/${encodeURIComponent(id)}`, "GET", "Failed to load this request");
+export const addQuoteRequestItem = (token: string, id: string, item: { name: string; description?: string | null; referencePhotoUrl?: string | null; quantity?: number }) =>
+  authedJson<QuoteRequest>(token, `/quote-requests/${encodeURIComponent(id)}/items`, "POST", "Failed to add the part", item);
+export const updateQuoteRequestItem = (token: string, id: string, itemId: number, changes: { quantity?: number; name?: string; description?: string | null; referencePhotoUrl?: string | null }) =>
+  authedJson<QuoteRequest>(token, `/quote-requests/${encodeURIComponent(id)}/items/${itemId}`, "PATCH", "Failed to change the part", changes);
+export const deleteQuoteRequestItem = (token: string, id: string, itemId: number) => authedJson<QuoteRequest>(token, `/quote-requests/${encodeURIComponent(id)}/items/${itemId}`, "DELETE", "Failed to remove the part");
+export const submitQuoteRequest = (token: string, id: string) => authedJson<QuoteRequest>(token, `/quote-requests/${encodeURIComponent(id)}/submit`, "POST", "Failed to send the request");
+export const cancelQuoteRequest = (token: string, id: string) => authedJson<QuoteRequest>(token, `/quote-requests/${encodeURIComponent(id)}/cancel`, "POST", "Failed to cancel the request");
+/** Puts the quote's ready items in the given cart (the buyer then checks out as usual). */
+export const placeQuoteRequestOrder = (token: string, id: string, cartId: string) => authedJson<QuoteRequest>(token, `/quote-requests/${encodeURIComponent(id)}/place-order`, "POST", "Failed to add the quote to your cart", { cartId });
+
+export interface ReferralHistoryEntry { firstName: string | null; joinedAt: string; rewardGranted: boolean }
+export const fetchReferralHistory = (token: string) => authedJson<ReferralHistoryEntry[]>(token, "/referrals/me/history", "GET", "Failed to load the referral history");

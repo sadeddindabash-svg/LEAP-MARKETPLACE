@@ -47,7 +47,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
   const { q, category, part, generationId, year, page } = await searchParams;
   const lang = await getLang();
   const pageNum = Math.max(Number(page) || 1, 1);
-  const [categories, { items: products, total }] = await Promise.all([
+  const [categories, { items: products, total, unreachable }] = await Promise.all([
     fetchCategories(),
     fetchProductsPaginated({ search: q, category, part, generationId, year: year ? Number(year) : undefined, page: pageNum, limit: PAGE_SIZE, lang }),
   ]);
@@ -132,9 +132,11 @@ export default async function SearchPage({ searchParams }: PageProps) {
           </div>
           {products.length === 0 ? (
             <p className="text-muted">
-              {generationId
-                ? t(lang, "no_parts_vehicle")
-                : t(lang, "no_parts_search")}
+              {unreachable
+                ? t(lang, "shop_unreachable")
+                : generationId
+                  ? t(lang, "no_parts_vehicle")
+                  : t(lang, "no_parts_search")}
             </p>
           ) : (
             <ul className="grid grid-cols-2 gap-5 md:grid-cols-3">

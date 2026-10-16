@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from "react";
 import { apiMessage } from "@/lib/serverMessages";
+import { netFetch } from "@/lib/net";
 
 /**
  * Account sign-in for the web storefront. A cookie holds the JWT (30 days, like the cart id cookie in CartProvider.tsx) so a session survives a page refresh. It is written with
@@ -56,7 +57,7 @@ function clearTokenCookie() {
 }
 
 async function postJson(path: string, payload: unknown, failure: string) {
-  const res = await fetch(`${API_BASE_URL}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  const res = await netFetch(`${API_BASE_URL}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(apiMessage(body.error) || apiMessage(failure));
   return body;
@@ -72,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       Promise.resolve().then(() => setIsLoading(false));
       return;
     }
-    fetch(`${API_BASE_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+    netFetch(`${API_BASE_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error("Session expired"))))
       .then(setUser)
       .catch(() => clearTokenCookie())
@@ -110,7 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshUser = useCallback(async () => {
     const token = readTokenCookie();
     if (!token) return;
-    const res = await fetch(`${API_BASE_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await netFetch(`${API_BASE_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
     if (res.ok) setUser(await res.json());
   }, []);
 

@@ -112,3 +112,6 @@ export function apiMessage(message: string | null | undefined): string {
   if (!message) return "";
   return errorLang === "ar" ? localizeServerMessage(message) : message;
 }
+
+/** What a buyer reads when the server cannot be reached at all (instead of the browser's own "Failed to fetch"). */
+export const networkMessage = (): string => (errorLang === "ar" ? "تعذّر الوصول إلى الخادم. تحقق من اتصالك وحاول مرة أخرى." : "We can't reach the server. Please check your connection and try again.");
