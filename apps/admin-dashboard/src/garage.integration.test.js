@@ -291,3 +291,68 @@ describe.runIf(backendUp)('My Garage default vehicle against a REAL running back
     expect(res.status).toBe(404);
   });
 });
+
+// THE LIMIT: a buyer can save up to 5 cars. Real seeded cars: BMW 1 Series F20 (2015-2019) gives five different years, Toyota Camry XV70 (2018-2023) is the sixth.
+describe.runIf(backendUp)('garage limit: up to 5 saved cars, against a REAL running backend', () => {
+  const FULL_MESSAGE = 'You can save up to 5 vehicles. Remove one to add another.';
+  const post = (token, generationId, year) => fetch(`${BACKEND_URL}/garage/me`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ generationId, year }),
+  });
+  const list = async (token) => (await fetch(`${BACKEND_URL}/garage/me`, { headers: { Authorization: `Bearer ${token}` } })).json();
+  const fillFive = async (token) => { for (const year of [2015, 2016, 2017, 2018, 2019]) expect((await post(token, 'gen_bmw_1_series_f20', year)).status).toBe(201); };
+
+  it('CRITICAL: five cars can be saved and the SIXTH is refused with the message (and nothing is saved); the first car stays the default', async () => {
+    const token = await signupBuyer();
+    await fillFive(token);
+    const sixth = await post(token, 'gen_toyota_camry_xv70', 2019);
+    expect(sixth.status).toBe(400);
+    expect((await sixth.json()).error).toBe(FULL_MESSAGE);
+    const saved = await list(token);
+    expect(saved).toHaveLength(5);
+    expect(saved.filter((v) => v.isDefault)).toHaveLength(1);
+    expect(saved.find((v) => v.isDefault).year).toBe(2015);
+  });
+
+  it('CRITICAL: saving a car the buyer ALREADY has is not an error and not a new car, even when the garage is full', async () => {
+    const token = await signupBuyer();
+    await fillFive(token);
+    const again = await post(token, 'gen_bmw_1_series_f20', 2017);
+    expect(again.status).toBe(201);
+    expect(await list(token)).toHaveLength(5);
+  });
+
+  it('removing a car frees a place: the car that was refused can then be saved', async () => {
+    const token = await signupBuyer();
+    await fillFive(token);
+    expect((await post(token, 'gen_toyota_camry_xv70', 2019)).status).toBe(400);
+    await fetch(`${BACKEND_URL}/garage/me/gen_bmw_1_series_f20/2019`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    expect((await post(token, 'gen_toyota_camry_xv70', 2019)).status).toBe(201);
+    expect(await list(token)).toHaveLength(5);
+  });
+
+  it('CRITICAL: three adds at the SAME moment on four saved cars let exactly ONE through (two quick taps cannot slip a sixth car in)', async () => {
+    const token = await signupBuyer();
+    for (const year of [2015, 2016, 2017, 2018]) await post(token, 'gen_bmw_1_series_f20', year);
+    const results = await Promise.all([post(token, 'gen_bmw_1_series_f20', 2019), post(token, 'gen_toyota_camry_xv70', 2018), post(token, 'gen_toyota_camry_xv70', 2019)]);
+    const statuses = results.map((r) => r.status).sort();
+    expect(statuses).toEqual([201, 400, 400]);
+    expect(await list(token)).toHaveLength(5);
+  });
+
+  it('the limit is per buyer: one full garage does not stop another buyer', async () => {
+    const full = await signupBuyer();
+    await fillFive(full);
+    const other = await signupBuyer();
+    expect((await post(other, 'gen_toyota_camry_xv70', 2019)).status).toBe(201);
+  });
+
+  it('a wrong car or year is still refused for its own reason, not as "full"', async () => {
+    const token = await signupBuyer();
+    await fillFive(token);
+    const badYear = await post(token, 'gen_toyota_camry_xv70', 1999);
+    expect(badYear.status).toBe(400);
+    expect((await badYear.json()).error).toMatch(/outside this generation/);
+    expect((await post(token, 'gen_does_not_exist', 2019)).status).toBe(404);
+  });
+});
+

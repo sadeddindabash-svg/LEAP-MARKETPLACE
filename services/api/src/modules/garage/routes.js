@@ -2,6 +2,11 @@ const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth } = require('../auth/middleware');
 
+// How many cars one buyer can save. The website (lib/garage.ts) and the mobile app (garage_screen.dart) hold the same number to show "3 of 5"; tests fail if they
+// ever disagree. The message is written out WORD FOR WORD because the app and the website translate it by matching this exact text (a test finds it here).
+const MAX_GARAGE_VEHICLES = 5;
+const GARAGE_FULL_MESSAGE = 'You can save up to 5 vehicles. Remove one to add another.';
+
 /**
  * Garage module — BUY-004, BUY-010–012. A buyer's saved vehicles.
  *
@@ -92,17 +97,34 @@ router.post('/me', requireAuth, async (req, res, next) => {
       return res.status(400).json({ error: `${yearNum} is outside this generation's real year range` });
     }
 
-    // Real, reasonable default (new) -- a buyer's very FIRST saved
-    // vehicle automatically becomes their real default, since there's
-    // no meaningful choice to make with only one. Checked BEFORE the
-    // insert below so this genuinely reflects "had zero before this."
-    const { rows: existingRows } = await db.query('SELECT 1 FROM user_saved_generations WHERE buyer_id = $1 LIMIT 1', [req.user.sub]);
-    const isFirstVehicle = existingRows.length === 0;
-
-    await db.query(
-      `INSERT INTO user_saved_generations (buyer_id, generation_id, year, is_default) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
-      [req.user.sub, generationId, yearNum, isFirstVehicle]
-    );
+    // A buyer can save up to MAX_GARAGE_VEHICLES cars. The count and the insert happen in ONE transaction, and one buyer's adds are taken one after the other
+    // (an advisory lock on the buyer): without that, two quick taps could both read "4 cars" and both save, leaving 6. Saving a car the buyer ALREADY has is not
+    // an error and not a new car, so it is allowed even when the garage is full. A buyer who had MORE than the limit before it existed keeps their cars (nothing is
+    // deleted); they simply cannot add another until they are below it.
+    const client = await db.getPool().connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`garage:${req.user.sub}`]);
+      const { rows: saved } = await client.query('SELECT generation_id, year FROM user_saved_generations WHERE buyer_id = $1', [req.user.sub]);
+      const alreadySaved = saved.some((r) => r.generation_id === generationId && Number(r.year) === yearNum);
+      if (!alreadySaved && saved.length >= MAX_GARAGE_VEHICLES) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: GARAGE_FULL_MESSAGE });
+      }
+      // Real, reasonable default (new) -- a buyer's very FIRST saved vehicle automatically becomes their real default, since there's no meaningful choice to
+      // make with only one. Decided from the same rows counted above, so it genuinely reflects "had zero before this."
+      const isFirstVehicle = saved.length === 0;
+      await client.query(
+        `INSERT INTO user_saved_generations (buyer_id, generation_id, year, is_default) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+        [req.user.sub, generationId, yearNum, isFirstVehicle]
+      );
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
     const { rows } = await db.query(
       `${SAVED_GENERATION_SELECT} WHERE usg.buyer_id = $1 AND usg.generation_id = $2 AND usg.year = $3`,
       [req.user.sub, generationId, yearNum]
@@ -186,3 +208,5 @@ router.delete('/me/:generationId/:year', requireAuth, async (req, res, next) => 
 });
 
 module.exports = router;
+module.exports.MAX_GARAGE_VEHICLES = MAX_GARAGE_VEHICLES;
+module.exports.GARAGE_FULL_MESSAGE = GARAGE_FULL_MESSAGE;

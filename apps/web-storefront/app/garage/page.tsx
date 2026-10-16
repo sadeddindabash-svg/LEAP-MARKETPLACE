@@ -8,7 +8,7 @@ import { useGarage } from "@/components/GarageProvider";
 import { useLang, useT } from "@/components/LangProvider";
 import VehicleCascade, { type VehicleChoice } from "@/components/VehicleCascade";
 import { resolveImageUrl, type GarageVehicle } from "@/lib/api";
-import { searchHrefFor, vehicleLabel, vehicleName, vehiclePhoto } from "@/lib/garage";
+import { MAX_GARAGE_VEHICLES, isGarageFull, searchHrefFor, vehicleLabel, vehicleName, vehiclePhoto } from "@/lib/garage";
 
 const button = "inline-flex min-h-11 items-center justify-center rounded-[10px] border-[1.5px] border-navy px-4 text-sm font-bold text-navy hover:bg-chalk disabled:opacity-50";
 
@@ -49,11 +49,11 @@ export default function GaragePage() {
   const t = useT();
   const [choice, setChoice] = useState<VehicleChoice | null>(null);
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
 
   const run = async (action: () => Promise<void>) => {
-    setBusy(true); setFailed(false);
-    try { await action(); } catch { setFailed(true); } finally { setBusy(false); }
+    setBusy(true); setProblem(null);
+    try { await action(); } catch (err) { setProblem(err instanceof Error && err.message ? err.message : t("generic_error")); } finally { setBusy(false); }
   };
 
   if (isLoading) return <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8" aria-busy="true">{t("search_loading")}</div>;
@@ -73,7 +73,7 @@ export default function GaragePage() {
       <p className="mb-8 mt-2 text-muted">{t("garage_intro")}</p>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">          {/* the cars take the width (a 250 px photo needs room beside its details); the form is a slim column */}
         <section aria-labelledby="g-cars">
-          <h2 id="g-cars" className="mb-4 text-xl font-bold text-navy">{t("garage_your_cars")}</h2>
+          <h2 id="g-cars" className="mb-4 text-xl font-bold text-navy">{t("garage_your_cars")}{garage.vehicles.length > 0 && <span className="font-normal text-muted"> · {t("garage_count_of", { n: garage.vehicles.length, max: MAX_GARAGE_VEHICLES })}</span>}</h2>
           {garage.loading ? (
             <p className="text-muted" aria-busy="true">{t("search_loading")}</p>
           ) : garage.vehicles.length === 0 ? (
@@ -86,15 +86,22 @@ export default function GaragePage() {
             </ul>
           )}
         </section>
-        <section className="self-start rounded-[14px] border border-line border-t-[6px] border-t-signal bg-white p-6" aria-labelledby="g-add">
-          <h2 id="g-add" className="mb-4 text-xl font-bold">{t("garage_add_car")}</h2>
-          <form onSubmit={(e) => { e.preventDefault(); if (choice) run(() => garage.add(choice.generationId, choice.year)); }}>
-            <div className="[&>div]:grid-cols-1"><VehicleCascade idPrefix="ga" onChange={setChoice} /></div>
-            <button type="submit" disabled={!choice || busy} className="mt-4 min-h-12 w-full rounded-[10px] bg-signal font-bold text-on-signal hover:bg-signal-dark disabled:cursor-not-allowed disabled:opacity-50">{busy ? t("saving") : t("garage_add_button")}</button>
-          </form>
-          <p className="mt-3"><Link href="/find?tab=vin" className="text-sm font-semibold text-navy underline underline-offset-4">{t("garage_add_by_vin")}</Link></p>
-          {failed && <p role="alert" className="mt-3 text-sm font-semibold text-[#a12a21]">{t("generic_error")}</p>}
-        </section>
+        {isGarageFull(garage.vehicles.length) ? (
+          <section className="self-start rounded-[14px] border border-line border-t-[6px] border-t-signal bg-white p-6" aria-labelledby="g-add">
+            <h2 id="g-add" className="text-xl font-bold">{t("garage_full_title")}</h2>
+            <p className="mt-2 text-muted">{t("garage_limit_note")}</p>
+          </section>
+        ) : (
+          <section className="self-start rounded-[14px] border border-line border-t-[6px] border-t-signal bg-white p-6" aria-labelledby="g-add">
+            <h2 id="g-add" className="mb-4 text-xl font-bold">{t("garage_add_car")}</h2>
+            <form onSubmit={(e) => { e.preventDefault(); if (choice) run(() => garage.add(choice.generationId, choice.year)); }}>
+              <div className="[&>div]:grid-cols-1"><VehicleCascade idPrefix="ga" onChange={setChoice} /></div>
+              <button type="submit" disabled={!choice || busy} className="mt-4 min-h-12 w-full rounded-[10px] bg-signal font-bold text-on-signal hover:bg-signal-dark disabled:cursor-not-allowed disabled:opacity-50">{busy ? t("saving") : t("garage_add_button")}</button>
+            </form>
+            <p className="mt-3"><Link href="/find?tab=vin" className="text-sm font-semibold text-navy underline underline-offset-4">{t("garage_add_by_vin")}</Link></p>
+            {problem && <p role="alert" className="mt-3 text-sm font-semibold text-[#a12a21]">{problem}</p>}
+          </section>
+        )}
       </div>
     </div>
   );

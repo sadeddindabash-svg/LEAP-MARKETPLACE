@@ -669,6 +669,10 @@ const EN = {
   error_page_body: "The shop may be starting up or temporarily unreachable. Nothing you did caused this.",
   try_again: "Try again",
   garage_year: "Year {year}",
+  garage_limit_note: "You can save up to 5 vehicles. Remove one to add another.",
+  garage_full_title: "Your garage is full",
+  garage_count_of: "{n} of {max}",
+  garage_open: "Open my garage",
   copyright: "Copyright © Leap Auto Parts {year}",
 } as const;
 
@@ -1297,6 +1301,10 @@ const AR: Record<DictKey, string> = {
   error_page_body: "قد يكون المتجر قيد التشغيل أو غير متاح مؤقتًا. لا علاقة لك بما حدث.",
   try_again: "حاول مرة أخرى",
   garage_year: "السنة {year}",
+  garage_limit_note: "يمكنك حفظ 5 مركبات كحد أقصى. احذف إحداها لإضافة مركبة أخرى.",
+  garage_full_title: "قائمة مركباتك ممتلئة",
+  garage_count_of: "{n} من {max}",
+  garage_open: "افتح مركبتي",
   copyright: "حقوق النشر © ليب لقطع السيارات {year}",
 };
 

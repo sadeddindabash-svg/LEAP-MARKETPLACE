@@ -25,3 +25,12 @@ export function defaultVehicle(list: GarageVehicle[]): GarageVehicle | null {
 export function searchHrefFor(v: Pick<GarageVehicle, "generationId" | "year">): string {
   return `/search?generationId=${encodeURIComponent(v.generationId)}&year=${v.year}`;
 }
+
+/**
+ * How many cars a buyer can save. The SERVER enforces it (services/api/src/modules/garage/routes.js, the same number); this is only so the page can show "3 of 5" and not offer
+ * what the server would refuse. A real-server test fails if the two ever disagree.
+ */
+export const MAX_GARAGE_VEHICLES = 5;
+/** The garage is full when the buyer has the limit (or, from before the limit existed, more): they can keep every car but cannot add another. */
+export const isGarageFull = (count: number): boolean => count >= MAX_GARAGE_VEHICLES;
+

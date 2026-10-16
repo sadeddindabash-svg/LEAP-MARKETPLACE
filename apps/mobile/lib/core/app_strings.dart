@@ -190,6 +190,7 @@ class AppStrings {
     'garage_login_prompt': {'en': 'Log in to save vehicles and get fitment-confirmed parts.', 'ar': 'سجّل الدخول لحفظ مركباتك والحصول على قطع مؤكدة التوافق.'},
     'could_not_load_garage': {'en': 'Could not load your garage:', 'ar': 'تعذر تحميل مركباتك:'},
     'add_a_vehicle': {'en': 'Add a vehicle', 'ar': 'أضف مركبة'},
+    'garage_limit_note': {'en': 'You can save up to 5 vehicles. Remove one to add another.', 'ar': 'يمكنك حفظ 5 مركبات كحد أقصى. احذف إحداها لإضافة مركبة أخرى.'},
 
     // ---- Add vehicle ----
     'choose_a_make': {'en': 'Choose a make', 'ar': 'اختر الماركة'},

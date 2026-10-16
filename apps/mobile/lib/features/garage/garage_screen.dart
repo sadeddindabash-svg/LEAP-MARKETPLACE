@@ -12,6 +12,10 @@ import '../../services/api_client.dart';
 import '../search/vehicle_filter_sheet.dart';
 import '../../widgets/skeleton.dart';
 
+/// How many vehicles a buyer can save. The SERVER enforces the same number (services/api/src/modules/garage/routes.js); this is only so the screen can show
+/// "3 / 5" and not open the add sheet when the garage is full. A test on the website's side fails if the two ever disagree.
+const int kMaxGarageVehicles = 5;
+
 /// BUY-004, BUY-010–012: saved vehicles ("My Garage") drive the fitment
 /// filter across the rest of the app.
 ///
@@ -126,7 +130,13 @@ class _GarageScreenState extends State<GarageScreen> {
     );
   }
 
+  bool get _isFull => (_vehicles?.length ?? 0) >= kMaxGarageVehicles;
+
   Future<void> _addVehicle() async {
+    if (_isFull) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr(context, 'garage_limit_note'))));
+      return;
+    }
     final selection = await showModalBottomSheet<VehicleFilterSelection>(
       context: context,
       isScrollControlled: true,
@@ -328,6 +338,7 @@ class _GarageScreenState extends State<GarageScreen> {
             ),
           OutlinedButton.icon(
             onPressed: _addVehicle,
+            style: _isFull ? OutlinedButton.styleFrom(foregroundColor: Theme.of(context).disabledColor) : null,
             icon: const Icon(Icons.add),
             label: Text(tr(context, 'add_a_vehicle')),
           ),
@@ -337,7 +348,16 @@ class _GarageScreenState extends State<GarageScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text(tr(context, 'my_garage'))),
+      appBar: AppBar(
+        title: Text(tr(context, 'my_garage')),
+        actions: [
+          if (_vehicles != null && _vehicles!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsetsDirectional.only(end: 16),
+              child: Center(child: Text('${_vehicles!.length} / $kMaxGarageVehicles')),
+            ),
+        ],
+      ),
       body: body,
     );
   }

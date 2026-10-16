@@ -97,6 +97,7 @@ const Map<String, String> kServerMessagesAr = {
 
   // ---- Products, garage, searches, notifications ----
   'Product not found': 'المنتج غير موجود',
+  'You can save up to 5 vehicles. Remove one to add another.': 'يمكنك حفظ 5 مركبات كحد أقصى. احذف إحداها لإضافة مركبة أخرى.',
   'Saved vehicle not found': 'السيارة المحفوظة غير موجودة',
   'Vehicle generation not found in the reference catalog': 'لم يتم العثور على هذه السيارة في الكتالوج',
   'Saved search not found': 'البحث المحفوظ غير موجود',

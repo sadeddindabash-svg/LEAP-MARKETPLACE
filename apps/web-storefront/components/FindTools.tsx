@@ -7,7 +7,7 @@ import { barcodeSupported, readBarcode, readBarcodeFromFile } from "@/lib/barcod
 import { pickName, type DictKey } from "@/lib/i18n";
 import { SYMPTOMS } from "@/lib/symptoms";
 import { matchVin, type VinMatch } from "@/lib/vin";
-import { vehicleLabel } from "@/lib/garage";
+import { vehicleLabel, isGarageFull } from "@/lib/garage";
 import { useGarage } from "./GarageProvider";
 import { useLang, useT } from "./LangProvider";
 import { useLocRouter } from "./useLocRouter";
@@ -136,16 +136,17 @@ function VinLookup() {
   const lang = useLang();
   const t = useT();
   const garage = useGarage();
+  const garageFull = isGarageFull(garage.vehicles.length);
   const [vin, setVin] = useState("");
   const [state, setState] = useState<{ kind: "idle" } | { kind: "loading" } | { kind: "error"; message: string } | { kind: "result"; match: VinMatch }>({ kind: "idle" });
   const [added, setAdded] = useState(false);
-  const [saveError, setSaveError] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const clean = vin.trim().toUpperCase();
     if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(clean)) return setState({ kind: "error", message: t("vin_invalid") });
-    setState({ kind: "loading" }); setAdded(false); setSaveError(false);
+    setState({ kind: "loading" }); setAdded(false); setSaveError(null);
     try {
       const decoded = await decodeVin(clean);
       const brands = await fetchVehicleBrands();
@@ -177,14 +178,17 @@ function VinLookup() {
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <Link href={searchHref({}, { generationId: match.generation.id, year: match.year })} className={primary}>{t("picker_cta")}</Link>
               {garage.signedIn ? (
-                <button type="button" className={secondary} disabled={added} onClick={async () => { try { await garage.add(match.generation.id, match.year); setAdded(true); } catch { setSaveError(true); } }}>
+                <button type="button" className={secondary} disabled={added || garageFull} onClick={async () => { try { await garage.add(match.generation.id, match.year); setAdded(true); } catch (err) { setSaveError(err instanceof Error && err.message ? err.message : t("generic_error")); } }}>
                   {added ? t("vin_added") : t("garage_add_button")}
                 </button>
               ) : (
                 <Link href="/login" className="text-sm font-semibold text-navy underline underline-offset-4">{t("vin_sign_in_to_save")}</Link>
               )}
             </div>
-            {saveError && <p role="alert" className="mt-2 text-sm font-semibold text-[#a12a21]">{t("generic_error")}</p>}
+            {garage.signedIn && garageFull && !added && (
+              <p className="mt-2 text-sm font-semibold text-[#7a4e00]">{t("garage_full_title")}. {t("garage_limit_note")} <Link href="/garage" className="underline underline-offset-4">{t("garage_open")}</Link></p>
+            )}
+            {saveError && <p role="alert" className="mt-2 text-sm font-semibold text-[#a12a21]">{saveError}</p>}
           </div>
         )}
         {match?.status === "no_generation" && <><p>{t("vin_no_generation", { label: match.label })}</p><PickAndGo /></>}

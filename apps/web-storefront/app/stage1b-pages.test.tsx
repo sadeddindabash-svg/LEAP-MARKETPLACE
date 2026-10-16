@@ -164,6 +164,45 @@ describe("garage page", () => {
     expect(screen.getByText("G1")).toBeInTheDocument();                                            // the generation has its own line
   });
 
+  it("CRITICAL: the page counts the cars ('3 of 5'); with room it offers 'Add a car', and at 5 the form is REPLACED by 'Your garage is full' with the reason", async () => {
+    m.auth.current = { user: { id: "u1" }, isLoading: false };
+    const cars = (n: number) => Array.from({ length: n }, (_, i) => car({ generationId: `g${i}`, year: 2020 + i, isDefault: i === 0 }));
+    m.garage.current = { ...m.garage.current, signedIn: true, vehicles: cars(3) };
+    const first = await open();
+    expect(screen.getByText(/· 3 of 5/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add to my garage" })).toBeInTheDocument();
+    expect(screen.queryByText("Your garage is full")).not.toBeInTheDocument();
+    first.unmount();
+    m.garage.current = { ...m.garage.current, vehicles: cars(5) };
+    await open();
+    expect(screen.getByText(/· 5 of 5/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Your garage is full" })).toBeInTheDocument();
+    expect(screen.getByText("You can save up to 5 vehicles. Remove one to add another.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add to my garage" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Add by VIN instead" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Remove/ })).toHaveLength(5);                           // removing is still possible: that is how a place is freed
+  });
+
+  it("a buyer who had MORE than 5 before the limit existed sees all of them (nothing hidden) and cannot add; the counter tells the truth", async () => {
+    m.auth.current = { user: { id: "u1" }, isLoading: false };
+    m.garage.current = { ...m.garage.current, signedIn: true, vehicles: Array.from({ length: 7 }, (_, i) => car({ generationId: `g${i}`, year: 2020, isDefault: i === 0 })) };
+    await open();
+    expect(screen.getByText(/· 7 of 5/)).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Remove/ })).toHaveLength(7);
+    expect(screen.getByRole("heading", { name: "Your garage is full" })).toBeInTheDocument();
+  });
+
+  it("a refusal from the server shows ITS message (in Arabic on the Arabic site); an Arabic buyer reads the same rule", async () => {
+    m.auth.current = { user: { id: "u1" }, isLoading: false };
+    m.garage.current = { ...m.garage.current, signedIn: true, vehicles: [] };
+    await open("ar");
+    expect(screen.queryByText("Your garage is full")).not.toBeInTheDocument();
+    m.garage.current.add.mockRejectedValueOnce(new Error("يمكنك حفظ 5 مركبات كحد أقصى. احذف إحداها لإضافة مركبة أخرى."));
+    fireEvent.click(screen.getByRole("button", { name: "pick a car" }));
+    fireEvent.click(screen.getByRole("button", { name: "أضف إلى مركبتي" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("يمكنك حفظ 5 مركبات كحد أقصى");
+  });
+
   it("CRITICAL: a car is added only once a complete brand, model and year is chosen, and a failure is a plain message", async () => {
     m.auth.current = { user: { id: "u1" }, isLoading: false };
     m.garage.current = { ...m.garage.current, signedIn: true, vehicles: [] };
@@ -171,7 +210,7 @@ describe("garage page", () => {
     expect(screen.getByText("You have no saved cars yet.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add to my garage" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "pick a car" }));
-    m.garage.current.add.mockRejectedValueOnce(new Error("no"));
+    m.garage.current.add.mockRejectedValueOnce(new Error(""));                                          // no message from the server: the plain one
     fireEvent.click(screen.getByRole("button", { name: "Add to my garage" }));
     await waitFor(() => expect(m.garage.current.add).toHaveBeenCalledWith("g9", 2020));
     expect(await screen.findByRole("alert")).toHaveTextContent("Something went wrong. Please try again.");

@@ -141,6 +141,33 @@ describe("find a car by its VIN", () => {
     expect(await screen.findByRole("button", { name: "Added to your garage" })).toBeDisabled();
   });
 
+  it("CRITICAL: with the garage FULL (5 cars) the Add button is greyed out and says why, with a way to the garage; with room it is not", async () => {
+    m.garage.current = { ...m.garage.current, signedIn: true, vehicles: Array.from({ length: 5 }, (_, i) => ({ generationId: `g${i}`, year: 2020 })) };
+    vinTab();
+    await lookUp("LGXC16DG2N0000001");
+    expect(await screen.findByRole("button", { name: "Add to my garage" })).toBeDisabled();
+    expect(screen.getByText(/Your garage is full\. You can save up to 5 vehicles. Remove one to add another./)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open my garage" }).getAttribute("href")).toBe("/garage");
+    expect(m.garage.current.add).not.toHaveBeenCalled();
+  });
+
+  it("room for another (4 cars): the button works and no 'full' note is shown", async () => {
+    m.garage.current = { ...m.garage.current, signedIn: true, vehicles: Array.from({ length: 4 }, (_, i) => ({ generationId: `g${i}`, year: 2020 })) };
+    vinTab();
+    await lookUp("LGXC16DG2N0000001");
+    expect(await screen.findByRole("button", { name: "Add to my garage" })).toBeEnabled();
+    expect(screen.queryByText(/Your garage is full/)).not.toBeInTheDocument();
+  });
+
+  it("a refusal from the server (another device filled the garage) shows the server's own message, not a vague error", async () => {
+    signedIn(true);
+    m.garage.current.add.mockRejectedValueOnce(new Error("You can save up to 5 vehicles. Remove one to add another."));
+    vinTab();
+    await lookUp("LGXC16DG2N0000001");
+    fireEvent.click(await screen.findByRole("button", { name: "Add to my garage" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("You can save up to 5 vehicles. Remove one to add another.");
+  });
+
   it("signed out, the car is found but saving needs a sign-in (and says so)", async () => {
     vinTab();
     await lookUp("LGXC16DG2N0000001");
