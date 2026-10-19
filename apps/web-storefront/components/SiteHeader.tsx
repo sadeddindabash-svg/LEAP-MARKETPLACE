@@ -16,7 +16,7 @@ import VehicleBar from "./VehicleBar";
 const actionClass = "relative flex min-h-11 min-w-11 flex-col items-center justify-center gap-0.5 rounded-lg px-2 text-xs font-semibold text-white hover:bg-white/10";
 
 // The header of every page, in the "Navy Workshop" theme: a thin bar (tagline, support, language), the main bar (logo, search, account, wishlist, alerts, cart), the menu
-// (Home, Products, Sections) and a yellow announcement line. A Server Component: the menu's section names come from the real categories, in the page's language.
+// (Home, Products, Sections). A Server Component: the menu's section names come from the real categories, in the page's language.
 export default async function SiteHeader({ lang }: { lang: Lang }) {
   const [categories, reachable] = await Promise.all([fetchCategories(), isShopReachable(process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000")]);
   return (
@@ -69,12 +69,6 @@ export default async function SiteHeader({ lang }: { lang: Lang }) {
       </nav>
       <VehicleBar />
       {!reachable && <p role="alert" className="bg-[#a12a21] px-4 py-2 text-center text-sm font-semibold text-white">{t(lang, "shop_unreachable")}</p>}
-      <div className="bg-signal text-sm font-semibold text-on-signal">
-        <div className="mx-auto flex min-h-10 max-w-7xl flex-wrap items-center justify-center gap-x-8 gap-y-1 px-4 py-1 sm:px-8">
-          <span>{t(lang, "announce_warehouse")}</span>
-          <span>{t(lang, "announce_shipping")}</span>
-        </div>
-      </div>
     </header>
   );
 }

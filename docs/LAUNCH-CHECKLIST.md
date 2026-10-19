@@ -86,6 +86,7 @@ To clean test data (take a backup first; the tool prints the command): `node scr
 - [ ] **The product list's order is now stable** (oldest first; the id breaks ties) for the website AND the mobile app; before, it had no order. Check you are happy with oldest-first as the default, or tell the developer which order buyers should see.
 - [ ] **Restart the backend** after this change (the list cache and the stable order live there). `CATALOG_LIST_CACHE_MS` (default 60000, 0 = off) sets how long a scrolled list is shared; a price or stock change shows in later pages within that time.
 - [ ] The first page of a product list is still computed in full on every request (about 0.6 s with 150 parts, and it grows with the catalog): plan real paging in the database before the catalog gets large.
+- [ ] **Home page announcements.** Run the migration (`node db/migrate.js`, adds 105) and restart the backend. Open the admin portal > Settings > "Home page announcements" and write the real announcements (English required, Arabic recommended). They show on the home page only; a change appears within about 15 seconds. Check the Arabic text with a native speaker.
 - [ ] Consider Google Merchant Center free listings (a product feed) and an Arabic version of the storefront: see `apps/web-storefront/README.md`, "SEO".
 
 ### Words and rules

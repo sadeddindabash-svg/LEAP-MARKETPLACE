@@ -23,7 +23,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchSupplierMessagesInbox, fetchSupplierMessageThread, sendSupplierMessage, createTicketForOrder,
   fetchPromoCodes, createPromoCode, updatePromoCode, deletePromoCode,
   fetchAdminUsers, createAdminUser, updateAdminPermissions, deleteAdminUser,
-  fetchPayoutsOwed, fetchPayoutHistory, recordPayout, fetchSupplierPayoutMethod, fetchReturnWindow, updateReturnWindow, fetchReceiptFooter, updateReceiptFooter, updateCategoryCommission, sendTestEmail,
+  fetchPayoutsOwed, fetchPayoutHistory, recordPayout, fetchSupplierPayoutMethod, fetchReturnWindow, updateReturnWindow, fetchReceiptFooter, fetchAnnouncements, updateAnnouncements, updateReceiptFooter, updateCategoryCommission, sendTestEmail,
   fetchPendingReviews, moderateReview, fetchRequireVerifiedPurchase, updateRequireVerifiedPurchase,
   fetchAuditLog,
   fetchSupplierAnalytics,
@@ -7978,13 +7978,124 @@ function ReceiptFooterSection() {
   );
 }
 
+// The moving announcement line at the top of the website's HOME page (and nowhere else): up to 5 announcements, each with English text (required) and Arabic text (optional:
+// without it the Arabic site shows the English). The English site scrolls it from right to left and the Arabic site from left to right: the preview below shows both.
+const MAX_ANNOUNCEMENTS = 5;
+const ANNOUNCEMENT_MAX_LENGTH = 150;
+
+function AnnouncementsSection({ onSessionExpired }) {
+  const [rows, setRows] = useState([]);
+  const [loadState, setLoadState] = useState("loading");
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [savedMessage, setSavedMessage] = useState(null);
+
+  useEffect(() => {
+    fetchAnnouncements()
+      .then((data) => { setRows(data.announcements ?? []); setLoadState("ready"); })
+      .catch((err) => { setErrorMessage(err.message); setLoadState("error"); });
+  }, []);
+
+  const change = (index, field, value) => { setSavedMessage(null); setRows((cur) => cur.map((r, i) => (i === index ? { ...r, [field]: value } : r))); };
+  const remove = (index) => { setSavedMessage(null); setRows((cur) => cur.filter((_, i) => i !== index)); };
+  const add = () => { setSavedMessage(null); setRows((cur) => (cur.length >= MAX_ANNOUNCEMENTS ? cur : [...cur, { en: "", ar: "" }])); };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    setErrorMessage(null);
+    setSavedMessage(null);
+    try {
+      // a row left completely empty is simply not saved
+      const toSave = rows.filter((r) => r.en.trim() !== "" || (r.ar || "").trim() !== "");
+      const data = await updateAnnouncements(getStoredToken(), toSave);
+      setRows(data.announcements ?? []);
+      setSavedMessage("Saved. The home page shows the change within about a minute.");
+    } catch (err) {
+      if (err instanceof SessionExpiredError) { onSessionExpired(); return; }
+      setErrorMessage(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const preview = rows.filter((r) => r.en.trim() !== "");
+  const strip = (lang) => {
+    const texts = preview.map((r) => (lang === "ar" && (r.ar || "").trim() !== "" ? r.ar : r.en));
+    const copy = (key, hidden) => (
+      <div key={key} aria-hidden={hidden || undefined} style={{ display: "flex", gap: 28, padding: "0 14px", minWidth: 560, flex: "none", alignItems: "center" }}>
+        {texts.map((t, i) => (<span key={i} style={{ display: "contents" }}><span>{t}</span><span style={{ opacity: 0.55 }}>●</span></span>))}
+      </div>
+    );
+    return (
+      <div className={lang === "ar" ? "leap-ann-ar" : "leap-ann-en"} dir={lang === "ar" ? "rtl" : "ltr"} data-testid={`announcement-preview-${lang}`}
+        style={{ ...body, background: C.signal, color: C.onSignal, borderRadius: 8, overflow: "hidden", height: 32, lineHeight: "32px", fontSize: 12.5, fontWeight: 600 }}>
+        <div className="leap-ann-track" style={{ display: "flex", width: "max-content", whiteSpace: "nowrap" }}>{copy("a", false)}{copy("b", true)}</div>
+      </div>
+    );
+  };
+
+  return (
+    <Card title="Home page announcements" style={{ flex: 1, minWidth: 420 }}>
+      <style>{`
+        @keyframes leapAnnRtl { from { transform: translateX(0) } to { transform: translateX(-50%) } }
+        @keyframes leapAnnLtr { from { transform: translateX(0) } to { transform: translateX(50%) } }
+        .leap-ann-en .leap-ann-track { animation: leapAnnRtl 22s linear infinite }
+        .leap-ann-ar .leap-ann-track { animation: leapAnnLtr 22s linear infinite }
+        @media (prefers-reduced-motion: reduce) { .leap-ann-track { animation: none !important } }
+      `}</style>
+      <div style={{ padding: 20 }}>
+        <div style={{ ...body, fontSize: 12.5, color: C.muted, marginBottom: 14 }}>
+          A line of moving text at the top of the website's home page only (no other page shows it). Up to {MAX_ANNOUNCEMENTS}. English is required; if the Arabic is empty, the Arabic site shows the English text. The English site moves it from right to left, the Arabic site from left to right.
+        </div>
+        {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 12 }}>{errorMessage}</div>}
+        {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}
+        {loadState === "ready" && (
+          <div>
+            {rows.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, marginBottom: 12 }}>No announcements: the home page shows no bar.</div>}
+            {rows.map((row, i) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "22px minmax(0,1fr) minmax(0,1fr) 28px", gap: 8, alignItems: "center", marginBottom: 8 }}>
+                <span style={{ ...body, fontSize: 12, color: C.muted, textAlign: "center" }}>{i + 1}</span>
+                <input aria-label={`Announcement ${i + 1}, English`} value={row.en} maxLength={ANNOUNCEMENT_MAX_LENGTH} onChange={(e) => change(i, "en", e.target.value)} placeholder="English"
+                  style={{ ...body, boxSizing: "border-box", width: "100%", border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 10px", fontSize: 13 }} />
+                <input aria-label={`Announcement ${i + 1}, Arabic`} dir="rtl" value={row.ar || ""} maxLength={ANNOUNCEMENT_MAX_LENGTH} onChange={(e) => change(i, "ar", e.target.value)} placeholder="Arabic (optional)"
+                  style={{ ...body, boxSizing: "border-box", width: "100%", border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 10px", fontSize: 13 }} />
+                <button aria-label={`Remove announcement ${i + 1}`} onClick={() => remove(i)} style={{ ...body, border: "none", background: "none", color: C.muted, cursor: "pointer", fontSize: 18, padding: 0 }}>×</button>
+              </div>
+            ))}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "12px 0 16px" }}>
+              <button onClick={add} disabled={rows.length >= MAX_ANNOUNCEMENTS}
+                style={{ ...body, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 600, cursor: rows.length >= MAX_ANNOUNCEMENTS ? "not-allowed" : "pointer", opacity: rows.length >= MAX_ANNOUNCEMENTS ? 0.5 : 1 }}>
+                Add announcement
+              </button>
+              <span style={{ ...body, fontSize: 12, color: C.muted }}>{rows.length} of {MAX_ANNOUNCEMENTS}</span>
+            </div>
+
+            <div style={{ ...body, fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 4 }}>Preview: English site (right to left)</div>
+            <div style={{ marginBottom: 10 }}>{preview.length > 0 ? strip("en") : <div style={{ ...body, fontSize: 12, color: C.muted }}>Nothing to show yet.</div>}</div>
+            <div style={{ ...body, fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 4 }}>Preview: Arabic site (left to right)</div>
+            <div style={{ marginBottom: 16 }}>{preview.length > 0 ? strip("ar") : <div style={{ ...body, fontSize: 12, color: C.muted }}>Nothing to show yet.</div>}</div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <button disabled={isSaving} onClick={handleSave}
+                style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: isSaving ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSaving ? "not-allowed" : "pointer" }}>
+                {isSaving ? "Saving…" : "Save"}
+              </button>
+              {!isSaving && savedMessage && <span style={{ ...body, fontSize: 12, color: C.gauge }}>{savedMessage}</span>}
+            </div>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 // Real, exact set of every action type this codebase actually logs
 // (confirmed by grepping every real logAdminAction(...) call site, not
 // guessed) -- used to populate a real filter dropdown rather than free
 // text an admin would have to already know the exact internal string for.
 const AUDIT_ACTION_TYPES = [
   'admin_account_created', 'admin_account_removed', 'admin_permissions_changed',
-  'category_commission_changed', 'fx_rate_mode_changed', 'fx_rate_set_manual',
+  'category_commission_changed', 'announcements_changed', 'fx_rate_mode_changed', 'fx_rate_set_manual',
   'payout_recorded', 'promo_code_created', 'require_verified_purchase_toggled',
   'return_window_changed', 'review_approve', 'review_dismiss_flags', 'review_reject',
   'supplier_verification',
@@ -8200,6 +8311,7 @@ function SettingsPage({ currentUser, onSessionExpired }) {
         </div>
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
           <ReceiptFooterSection />
+          <AnnouncementsSection onSessionExpired={onSessionExpired} />
         </div>
       </div>
     </div>

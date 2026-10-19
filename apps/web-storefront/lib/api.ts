@@ -1261,3 +1261,25 @@ export const placeQuoteRequestOrder = (token: string, id: string, cartId: string
 
 export interface ReferralHistoryEntry { firstName: string | null; joinedAt: string; rewardGranted: boolean }
 export const fetchReferralHistory = (token: string) => authedJson<ReferralHistoryEntry[]>(token, "/referrals/me/history", "GET", "Failed to load the referral history");
+
+// ---------------------------------------------------------------- the home page's announcement line
+
+import type { Announcement } from "./announcements";
+/** How long the website keeps the announcements before asking again. Short on purpose: it is one tiny setting, and an admin who saves a change expects to see it on the home page within seconds, not minutes (the lists of products are cached longer). */
+export const ANNOUNCEMENTS_REVALIDATE_SECONDS = 10;
+
+/** The announcements an admin set. Anything wrong (the shop unreachable, an odd answer) means no bar: the home page always loads. */
+export async function fetchAnnouncements(): Promise<Announcement[]> {
+  try {
+    const res = await netFetch(`${API_BASE_URL}/platform-settings/announcements`, { next: { revalidate: ANNOUNCEMENTS_REVALIDATE_SECONDS } });
+    if (!res.ok) return [];
+    const body = await res.json();
+    if (!Array.isArray(body?.announcements)) return [];
+    return body.announcements
+      .filter((x: unknown): x is Announcement => !!x && typeof (x as Announcement).en === "string" && (x as Announcement).en.trim() !== "")
+      .map((x: Announcement) => ({ en: x.en, ar: typeof x.ar === "string" ? x.ar : "" }))
+      .slice(0, 5);
+  } catch {
+    return [];
+  }
+}

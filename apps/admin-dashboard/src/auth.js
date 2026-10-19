@@ -800,6 +800,25 @@ export async function updateReceiptFooter(token, footerNoteEn, footerNoteAr) {
   return data;
 }
 
+// The moving announcement line at the top of the website's HOME page. Reading is public (the website shows it to every visitor); saving needs an admin.
+export async function fetchAnnouncements() {
+  const response = await fetch(`${API_BASE_URL}/platform-settings/announcements`);
+  if (!response.ok) throw new Error(`Failed to load the announcements (${response.status})`);
+  return response.json();
+}
+
+export async function updateAnnouncements(token, announcements) {
+  const response = await fetch(`${API_BASE_URL}/platform-settings/announcements`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ announcements }),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
 // Real "send test email" (new) -- lets an admin verify real SMTP
 // configuration works without waiting for a real customer event
 // (order, shipment, payout) to trigger a real transactional email

@@ -4,7 +4,8 @@ import Link from "@/components/LocLink";
 import HeroPicker from "@/components/HeroPicker";
 import { JsonLd } from "@/components/JsonLd";
 import ProductCard from "@/components/ProductCard";
-import { fetchCategories, fetchProducts, fetchVehicleBrands, resolveImageUrl } from "@/lib/api";
+import AnnouncementBar from "@/components/AnnouncementBar";
+import { fetchAnnouncements, fetchCategories, fetchProducts, fetchVehicleBrands, resolveImageUrl } from "@/lib/api";
 import { pickName, t } from "@/lib/i18n";
 import { getLang } from "@/lib/lang";
 import { alternatesFor, websiteJsonLd } from "@/lib/seo";
@@ -19,12 +20,14 @@ const number = (n: number) => n.toLocaleString("en-US");      // Western digits 
 // HTML, in the page's language, which is the whole point of having this site next to the mobile app (a search engine reads it as it is).
 export default async function HomePage() {
   const lang = await getLang();
-  const [categories, products, brands] = await Promise.all([fetchCategories(), fetchProducts({ sort: "newest", lang }), fetchVehicleBrands()]);
+  const [categories, products, brands, announcements] = await Promise.all([fetchCategories(), fetchProducts({ sort: "newest", lang }), fetchVehicleBrands(), fetchAnnouncements()]);
   const newest = products.slice(0, 8);
   const stats: Array<[number, string]> = [[products.length, t(lang, "stat_parts")], [brands.length, t(lang, "stat_brands")], [categories.length, t(lang, "stat_sections")]];
 
   return (
     <div>
+      {/* The announcement line belongs to the HOME page only: it is no longer in the header, so no other page has it. */}
+      <AnnouncementBar announcements={announcements} />
       <JsonLd data={websiteJsonLd()} />
       <section className="mx-auto grid max-w-7xl items-center gap-12 px-4 pb-4 pt-12 sm:px-8 lg:grid-cols-[1.1fr_1fr]" aria-labelledby="home-h1">
         <div>

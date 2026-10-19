@@ -5,6 +5,7 @@ import type { ProductSummary } from "@/lib/api";
 
 // The home page and the root layout, rendered in each language. The API and the language lookup are replaced by fixed values.
 const lang = { current: "en" as "en" | "ar" };
+const announcements = { current: [{ en: "Opening Middle East warehouse in Saudi Arabia", ar: "افتتاح مستودع الشرق الأوسط في السعودية" }, { en: "International shipping in 3-7 days", ar: "" }] as Array<{ en: string; ar: string }> };
 const product = (id: string, name: string): ProductSummary => ({ id, name, description: null, category: "brake", part: "Front Brake Disc", position: null, oemNumber: "34116792217", currencyCode: "USD", rating: null, reviewCount: 0, stockQuantity: 5, estimatedDeliveryDays: 7, weightKg: null, status: "active", price: 43, images: [] });
 
 vi.mock("@/lib/lang", () => ({ getLang: vi.fn(async () => lang.current) }));
@@ -14,18 +15,42 @@ vi.mock("@/lib/api", () => ({
   fetchCategories: vi.fn(async () => [{ id: "brake", nameEn: "Brake System", nameAr: "نظام الفرامل", photoUrl: null, sortOrder: 1, commissionPercent: 10 }]),
   fetchProducts: vi.fn(async () => [product("p1", "Front Brake Disc"), product("p2", "Oil Filter")]),
   fetchVehicleBrands: vi.fn(async () => [{ id: "b1", name: "BYD", nameAr: "بي واي دي", photoUrl: null }, { id: "b2", name: "Geely", nameAr: null, photoUrl: null }]),
+  fetchAnnouncements: vi.fn(async () => announcements.current),
   fetchModelsForBrand: vi.fn(async () => []),
   fetchGenerationsForModel: vi.fn(async () => []),
   resolveImageUrl: (u: string) => u,
 }));
 
-beforeEach(() => { lang.current = "en"; vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://shop.example.com"); });
+beforeEach(() => { announcements.current = [{ en: "Opening Middle East warehouse in Saudi Arabia", ar: "افتتاح مستودع الشرق الأوسط في السعودية" }, { en: "International shipping in 3-7 days", ar: "" }]; lang.current = "en"; vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://shop.example.com"); });
 
 async function renderHome(l: "en" | "ar") {
   lang.current = l;
   const { default: HomePage } = await import("./page");
   render(<LangProvider lang={l}>{await HomePage()}</LangProvider>);
 }
+
+describe("home page: the announcement line", () => {
+  it("CRITICAL: the home page starts with the admin's announcements, in English on the English site", async () => {
+    await renderHome("en");
+    const bar = screen.getByRole("region", { name: "Announcements" });
+    expect(bar.getAttribute("data-lang")).toBe("en");
+    expect(within(bar).getAllByText("Opening Middle East warehouse in Saudi Arabia").length).toBeGreaterThan(0);
+    expect(bar.parentElement?.firstElementChild).toBe(bar);                                    // it is the FIRST thing on the page
+  });
+  it("CRITICAL: on the Arabic site it is Arabic where the admin wrote Arabic and English where they did not, and it moves the other way", async () => {
+    await renderHome("ar");
+    const bar = screen.getByRole("region", { name: "الإعلانات" });
+    expect(bar.getAttribute("data-lang")).toBe("ar");
+    expect(within(bar).getAllByText("افتتاح مستودع الشرق الأوسط في السعودية").length).toBeGreaterThan(0);
+    expect(within(bar).getAllByText("International shipping in 3-7 days").length).toBeGreaterThan(0);
+  });
+  it("with no announcements the home page has no bar (and still loads)", async () => {
+    announcements.current = [];
+    await renderHome("en");
+    expect(screen.queryByRole("region", { name: "Announcements" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
+  });
+});
 
 describe("home page", () => {
   it("CRITICAL: in English it speaks English and links to the English pages", async () => {

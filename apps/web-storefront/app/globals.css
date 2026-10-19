@@ -79,3 +79,21 @@ body {
   color: var(--color-ink);
   white-space: nowrap;
 }
+
+/* The home page's moving announcement line (components/AnnouncementBar.tsx). One continuous line made of TWO identical copies; the track moves by exactly one copy (50%), so the loop has no
+   jump. English reads left to right and moves from RIGHT to LEFT (0 to -50%); Arabic is laid out right to left and moves from LEFT to RIGHT (0 to +50%: in a right-to-left row the
+   second copy sits on the left). Each copy is at least as wide as the screen, so a short announcement still crosses the whole bar. */
+.leap-ticker { overflow: hidden; }
+.leap-ticker-track { display: flex; width: max-content; white-space: nowrap; animation: leap-ticker-rtl var(--ticker-seconds, 30s) linear infinite; }
+.leap-ticker[data-lang="ar"] .leap-ticker-track { animation-name: leap-ticker-ltr; }
+.leap-ticker-copy { display: flex; flex: none; align-items: center; gap: 2rem; padding-inline: 1rem; min-width: 100vw; min-height: 2.5rem; }
+.leap-ticker:hover .leap-ticker-track { animation-play-state: paused; }
+.leap-ticker-static { display: none; }
+@keyframes leap-ticker-rtl { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes leap-ticker-ltr { from { transform: translateX(0); } to { transform: translateX(50%); } }
+/* A visitor whose device asks for less motion gets the announcements still, centred and wrapped, not moving. */
+@media (prefers-reduced-motion: reduce) {
+  .leap-ticker-track { display: none; }
+  .leap-ticker-static { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.25rem 2rem; padding: 0.5rem 1rem; }
+}
+

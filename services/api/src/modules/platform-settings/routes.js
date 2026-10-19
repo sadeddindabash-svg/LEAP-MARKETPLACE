@@ -1,8 +1,8 @@
 const express = require('express');
+const { MAX_ANNOUNCEMENTS, validateAnnouncements, parseStored } = require('./announcements');
 const db = require('../../../db/pool');
 const { requireAuth, requireRole } = require('../auth/middleware');
 const { logAdminAction } = require('../audit/helpers');
-const { isEmailConfigured, sendEmail } = require('../email/client');
 
 /**
  * Real, generic admin-configurable platform settings (migration 024).
@@ -76,124 +76,28 @@ router.patch('/require-verified-purchase-for-reviews', requireAuth, requireRole(
   }
 });
 
-// POST /settings/test-email — real gap closed here: an admin
-// configuring real SMTP credentials had no way to verify email
-// delivery actually works without waiting for a real customer event
-// (an order, a shipment, a payout) to trigger a real transactional
-// email first. Sends a real test email to the admin's OWN account
-// email — deliberately uses sendEmail directly (which throws on
-// failure), not sendTransactionalEmail (which always swallows errors
-// and falls back to a console log) — an admin explicitly asking "does
-// this work?" needs the real, honest answer, not a silent fallback.
-router.post('/test-email', requireAuth, requireRole('admin'), async (req, res, next) => {
+// The moving announcement line at the top of the website's HOME page (see announcements.js). One JSON value in the same generic platform_settings store as the settings
+// above. READING is public (the website shows it to every visitor, like min-app-version); only an admin can CHANGE it, and every change is written to the audit log.
+router.get('/announcements', async (req, res, next) => {
   try {
-    if (!isEmailConfigured()) {
-      return res.status(400).json({ error: 'No real SMTP credentials are configured (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM_EMAIL) — set these environment variables first.' });
-    }
-    const { rows } = await db.query('SELECT email FROM users WHERE id = $1', [req.user.sub]);
-    if (rows.length === 0 || !rows[0].email) {
-      return res.status(400).json({ error: 'Could not find a real email address on your own admin account.' });
-    }
-    const recipientEmail = rows[0].email;
-    await sendEmail({
-      to: recipientEmail,
-      subject: 'Leap — test email',
-      html: `<p>This is a real test email from your Leap platform's admin settings.</p><p>If you're reading this, your real SMTP configuration is working correctly.</p>`,
-      text: `This is a real test email from your Leap platform's admin settings.\n\nIf you're reading this, your real SMTP configuration is working correctly.`,
-    });
-    await logAdminAction(req, 'test_email_sent', 'platform_setting', 'smtp', { recipientEmail });
-    res.json({ sent: true, recipientEmail });
-  } catch (err) {
-    // A real, honest failure reason -- not swallowed, this is exactly
-    // what an admin explicitly testing SMTP needs to see (bad
-    // credentials, wrong host/port, connection timeout, etc.).
-    res.status(502).json({ error: `Real SMTP delivery failed: ${err.message}` });
-  }
-});
-
-/**
- * Real, minimum-required mobile app version (new) -- reuses the same
- * generic platform_settings key-value store already established for
- * the return window and review-verification settings above, no new
- * migration needed.
- *
- * CONFIRMED, deliberate design: this real check endpoint is
- * genuinely PUBLIC (no requireAuth) -- a real guest hasn't logged in
- * yet, and the whole real point is to catch an outdated real app
- * before it even gets that far. Returns null (not an error) when no
- * real minimum has ever been configured, so the mobile app's own
- * real comparison logic can treat "not configured" and "no update
- * needed" identically without a special case.
- */
-router.get('/min-app-version', async (req, res, next) => {
-  try {
-    const { rows } = await db.query("SELECT value FROM platform_settings WHERE key = 'min_app_version'");
-    res.json({ minVersion: rows[0]?.value ?? null });
+    const { rows } = await db.query("SELECT value FROM platform_settings WHERE key = 'storefront_announcements'");
+    res.json({ announcements: rows.length ? parseStored(rows[0].value) : [], max: MAX_ANNOUNCEMENTS });
   } catch (err) {
     next(err);
   }
 });
 
-// CONFIRMED format: a real semantic version string (e.g. "1.4.0"),
-// validated here so an admin can't accidentally save a real typo that
-// would silently break every real client's own comparison logic.
-router.patch('/min-app-version', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.patch('/announcements', requireAuth, requireRole('admin'), async (req, res, next) => {
   try {
-    const { minVersion } = req.body || {};
-    if (typeof minVersion !== 'string' || !/^\d+\.\d+\.\d+$/.test(minVersion.trim())) {
-      return res.status(400).json({ error: 'minVersion must be a real semantic version string, e.g. "1.4.0"' });
-    }
+    const checked = validateAnnouncements((req.body || {}).announcements);
+    if (!checked.ok) return res.status(400).json({ error: checked.error });
     await db.query(
-      `INSERT INTO platform_settings (key, value, updated_at) VALUES ('min_app_version', $1, now())
+      `INSERT INTO platform_settings (key, value, updated_at) VALUES ('storefront_announcements', $1, now())
        ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = now()`,
-      [minVersion.trim()]
+      [JSON.stringify(checked.value)]
     );
-    await logAdminAction(req, 'min_app_version_changed', 'platform_setting', 'min_app_version', { minVersion: minVersion.trim() });
-    res.json({ minVersion: minVersion.trim() });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// Real, admin-configurable footer note shown at the bottom of every
-// real order receipt PDF (see order/routes.js's own GET /:id/receipt).
-// Reuses the same generic platform_settings key-value store already
-// established for the settings above -- no new migration needed.
-// Empty string is a valid, deliberate value (no footer note shown at
-// all), distinct from "never configured" -- both resolve to '' here
-// on the real receipt PDF either way, so this doesn't need its own
-// special-cased null handling the way min-app-version does.
-router.get('/receipt-footer', requireAuth, requireRole('admin'), async (req, res, next) => {
-  try {
-    const { rows } = await db.query("SELECT key, value FROM platform_settings WHERE key IN ('receipt_footer_note_en', 'receipt_footer_note_ar')");
-    const byKey = Object.fromEntries(rows.map((r) => [r.key, r.value]));
-    res.json({ footerNoteEn: byKey.receipt_footer_note_en ?? '', footerNoteAr: byKey.receipt_footer_note_ar ?? '' });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.patch('/receipt-footer', requireAuth, requireRole('admin'), async (req, res, next) => {
-  try {
-    const { footerNoteEn, footerNoteAr } = req.body || {};
-    if (typeof footerNoteEn !== 'string' || typeof footerNoteAr !== 'string') {
-      return res.status(400).json({ error: 'footerNoteEn and footerNoteAr must both be strings' });
-    }
-    if (footerNoteEn.length > 500 || footerNoteAr.length > 500) {
-      return res.status(400).json({ error: 'Each footer note must be 500 characters or fewer' });
-    }
-    await db.query(
-      `INSERT INTO platform_settings (key, value, updated_at) VALUES ('receipt_footer_note_en', $1, now())
-       ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = now()`,
-      [footerNoteEn.trim()]
-    );
-    await db.query(
-      `INSERT INTO platform_settings (key, value, updated_at) VALUES ('receipt_footer_note_ar', $1, now())
-       ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = now()`,
-      [footerNoteAr.trim()]
-    );
-    await logAdminAction(req, 'receipt_footer_changed', 'platform_setting', 'receipt_footer_note', { footerNoteEn: footerNoteEn.trim(), footerNoteAr: footerNoteAr.trim() });
-    res.json({ footerNoteEn: footerNoteEn.trim(), footerNoteAr: footerNoteAr.trim() });
+    await logAdminAction(req, 'announcements_changed', 'platform_setting', 'storefront_announcements', { count: checked.value.length, announcements: checked.value });
+    res.json({ announcements: checked.value, max: MAX_ANNOUNCEMENTS });
   } catch (err) {
     next(err);
   }
