@@ -62,6 +62,22 @@ test('one dictionary line changes: the key, nothing else; a missing key is an er
   assert.throws(() => L.replaceDictionaryArabic(src, 'bad key!', 'x'), /not a valid key/);
 });
 
+test('app texts: entries on one line, over several lines, and long texts split into pieces are all read, and changed without touching their neighbours', () => {
+  const src = "const m = {\n  'one': {'en': 'One', 'ar': 'واحد'},\n  'two': {\n    'en': 'Two isn\\'t here',\n    'ar': 'اثنان',\n  },\n  'three': {\n    'en': 'first part '\n        'second part',\n    'ar': 'الجزء الأول '\n        'الجزء الثاني',\n  },\n  'four': {'en': 'Four', 'ar': 'أربعة'},\n};\n";
+  const tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'leap-arabic-')), 'app_strings.dart');
+  fs.writeFileSync(tmp, src);
+  const read = L.readAppStrings(tmp);
+  assert.deepEqual(Object.keys(read), ['one', 'two', 'three', 'four']);
+  assert.equal(read.two.en, "Two isn't here");
+  assert.equal(read.three.en, 'first part second part');
+  assert.equal(read.three.ar, 'الجزء الأول الجزء الثاني');
+  const out = L.replaceAppStringArabic(src, 'three', 'جديد');
+  assert.match(out, /'three': \{\n    'en': 'first part '\n        'second part',\n    'ar': 'جديد',\n  \},/);
+  assert.equal(out.replace("'جديد'", "'الجزء الأول '\n        'الجزء الثاني'"), src);                  // everything else is exactly as before
+  assert.match(L.replaceAppStringArabic(src, 'two', 'ب'), /'ar': 'ب',\n  \},/);
+  assert.match(L.replaceAppStringArabic(src, 'one', 'ج'), /'one': \{'en': 'One', 'ar': 'ج'\},/);
+});
+
 test('server messages: the website file and the app file are changed together, including a text with an apostrophe', () => {
   const ts = 'export const SERVER_MESSAGES_AR: Record<string, string> = {\n  "You can\'t go": "قديم",\n  "Other": "آخر",\n};\n';
   const dart = "const Map<String, String> kServerMessagesAr = {\n  \"You can't go\": 'قديم',\n  'Other': 'آخر',\n};\n";

@@ -1,0 +1,91 @@
+{
+ "description": "The changes of leap_garage_versions.zip to the mobile app, as small edits to apply to YOUR files (instead of replacing them). Each insertion is anchored on ONE existing line; each change names only the lines it changes.",
+ "files": {
+  "apps/mobile/lib/models/vehicle.dart": [
+   {
+    "old": "  final String? generationPhotoUrl;",
+    "new": "  final String? generationPhotoUrl;\n  // The VERSION of this car (backend migration 107): null for a car saved before versions existed and for a year that has none. versionCount is how many versions\n  // the car's year has, so a car with no version can offer \"Choose its version\".\n  final String? versionId;\n  final String? versionName;\n  final String? versionNameAr;\n  final String? versionEngine;\n  final String? versionEngineAr;\n  final int? versionSeats;\n  final String? versionPhotoUrl;\n  final int versionCount;"
+   },
+   {
+    "old": "    this.generationPhotoUrl,",
+    "new": "    this.generationPhotoUrl,\n    this.versionId,\n    this.versionName,\n    this.versionNameAr,\n    this.versionEngine,\n    this.versionEngineAr,\n    this.versionSeats,\n    this.versionPhotoUrl,\n    this.versionCount = 0,"
+   },
+   {
+    "old": "    for (final url in [generationPhotoUrl, brandPhotoUrl]) {",
+    "new": "    for (final url in [versionPhotoUrl, generationPhotoUrl, brandPhotoUrl]) {"
+   },
+   {
+    "old": "  String get id => '$generationId-$year';",
+    "new": "  // Two versions of one year are two cars, so the version is part of the id.\n  String get id => '$generationId-$year-${versionId ?? ''}';\n\n  bool get hasVersion => versionId != null;\n  // The version's name and engine in the app's language (the English text where there is no Arabic one).\n  String? versionNameFor(bool isArabic) => isArabic && (versionNameAr ?? '').isNotEmpty ? versionNameAr : versionName;\n  String? versionEngineFor(bool isArabic) => isArabic && (versionEngineAr ?? '').isNotEmpty ? versionEngineAr : versionEngine;"
+   },
+   {
+    "old": "  factory Vehicle.fromJson(Map<String, dynamic> json) => Vehicle(\n        generationId: json['generationId'] as String,\n        year: json['year'] as int,\n        brand: json['brand'] as String,\n        brandAr: json['brandAr'] as String?,\n        model: json['model'] as String,\n        modelAr: json['modelAr'] as String?,\n        generation: json['generation'] as String,\n        yearStart: json['yearStart'] as int,\n        yearEnd: json['yearEnd'] as int?,\n        isDefault: json['isDefault'] as bool? ?? false,\n        brandPhotoUrl: json['brandPhotoUrl'] as String?,\n        modelPhotoUrl: json['modelPhotoUrl'] as String?,\n        generationPhotoUrl: json['generationPhotoUrl'] as String?,\n      );",
+    "new": "  factory Vehicle.fromJson(Map<String, dynamic> json) {\n    final version = json['version'] as Map<String, dynamic>?;\n    return Vehicle(\n      generationId: json['generationId'] as String,\n      year: json['year'] as int,\n      brand: json['brand'] as String,\n      brandAr: json['brandAr'] as String?,\n      model: json['model'] as String,\n      modelAr: json['modelAr'] as String?,\n      generation: json['generation'] as String,\n      yearStart: json['yearStart'] as int,\n      yearEnd: json['yearEnd'] as int?,\n      isDefault: json['isDefault'] as bool? ?? false,\n      brandPhotoUrl: json['brandPhotoUrl'] as String?,\n      modelPhotoUrl: json['modelPhotoUrl'] as String?,\n      generationPhotoUrl: json['generationPhotoUrl'] as String?,\n      versionId: json['versionId'] as String?,\n      versionName: version?['name'] as String?,\n      versionNameAr: version?['nameAr'] as String?,\n      versionEngine: version?['engine'] as String?,\n      versionEngineAr: version?['engineAr'] as String?,\n      versionSeats: version?['seats'] as int?,\n      versionPhotoUrl: version?['photoUrl'] as String?,\n      versionCount: json['versionCount'] as int? ?? 0,\n    );\n  }"
+   },
+   {
+    "old": "        'generationPhotoUrl': generationPhotoUrl,",
+    "new": "        'generationPhotoUrl': generationPhotoUrl,\n        'versionId': versionId,\n        'versionCount': versionCount,\n        'version': versionId == null\n            ? null\n            : {'name': versionName, 'nameAr': versionNameAr, 'engine': versionEngine, 'engineAr': versionEngineAr, 'seats': versionSeats, 'photoUrl': versionPhotoUrl},"
+   },
+   {
+    "old": "      };",
+    "new": "      };\n}\n\n/// \"1 seat\", \"5 seats\"; in Arabic the right form for each number: \"مقعد واحد\", \"مقعدان\", \"5 مقاعد\", \"11 مقعدًا\" (the same as the website).\nString seatsText(bool isArabic, int seats) {\n  if (!isArabic) return seats == 1 ? '1 seat' : '$seats seats';\n  if (seats == 1) return 'مقعد واحد';\n  if (seats == 2) return 'مقعدان';\n  return seats > 10 ? '$seats مقعدًا' : '$seats مقاعد';"
+   }
+  ],
+  "apps/mobile/lib/services/api_client.dart": [
+   {
+    "old": "  Future<List<Vehicle>> addVehicleToGarage(String token, String generationId, int year) async {",
+    "new": "  Future<List<Vehicle>> addVehicleToGarage(String token, String generationId, int year, {String? versionId}) async {"
+   },
+   {
+    "old": "      Uri.parse('$baseUrl/garage/me'),\n      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},\n      body: jsonEncode({'generationId': generationId, 'year': year}),\n    );\n    if (response.statusCode >= 400) {",
+    "new": "      Uri.parse('$baseUrl/garage/me'),\n      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},\n      body: jsonEncode({'generationId': generationId, 'year': year, if (versionId != null) 'versionId': versionId}),\n    );\n    if (response.statusCode >= 400) {"
+   },
+   {
+    "old": "  Future<List<Vehicle>> removeVehicleFromGarage(String token, String generationId, int year) async {\n    final response = await _client.delete(Uri.parse('$baseUrl/garage/me/$generationId/$year'), headers: {'Authorization': 'Bearer $token'});",
+    "new": "  Future<List<Vehicle>> removeVehicleFromGarage(String token, String generationId, int year, {String? versionId}) async {\n    final query = versionId == null ? '' : '?versionId=${Uri.encodeQueryComponent(versionId)}';\n    final response = await _client.delete(Uri.parse('$baseUrl/garage/me/$generationId/$year$query'), headers: {'Authorization': 'Bearer $token'});"
+   },
+   {
+    "old": "  Future<List<Vehicle>> setDefaultVehicle(String token, String generationId, int year) async {\n    final response = await _client.patch(Uri.parse('$baseUrl/garage/me/$generationId/$year/default'), headers: {'Authorization': 'Bearer $token'});",
+    "new": "  Future<List<Vehicle>> setDefaultVehicle(String token, String generationId, int year, {String? versionId}) async {\n    final query = versionId == null ? '' : '?versionId=${Uri.encodeQueryComponent(versionId)}';\n    final response = await _client.patch(Uri.parse('$baseUrl/garage/me/$generationId/$year/default$query'), headers: {'Authorization': 'Bearer $token'});"
+   },
+   {
+    "old": "    if (response.statusCode != 200) throw ApiException('Failed to set default vehicle (${response.statusCode})');",
+    "new": "    if (response.statusCode != 200) throw ApiException('Failed to set default vehicle (${response.statusCode})');\n    final list = jsonDecode(response.body) as List;\n    return list.map((v) => Vehicle.fromJson(v as Map<String, dynamic>)).toList();\n  }\n\n  /// The versions of a vehicle year (an empty list when it has none).\n  Future<List<dynamic>> fetchVersionsForGeneration(String generationId) async {\n    final response = await _client.get(Uri.parse('$baseUrl/fitment/generations/$generationId/versions'));\n    if (response.statusCode != 200) throw ApiException('Failed to load versions (${response.statusCode})');\n    return jsonDecode(response.body) as List<dynamic>;\n  }\n\n  /// Gives a car saved before versions existed its version. Answers the whole garage.\n  Future<List<Vehicle>> chooseGarageVersion(String token, String generationId, int year, String versionId) async {\n    final response = await _client.patch(\n      Uri.parse('$baseUrl/garage/me/$generationId/$year/version'),\n      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},\n      body: jsonEncode({'versionId': versionId}),\n    );\n    if (response.statusCode >= 400) {\n      final body = jsonDecode(response.body) as Map<String, dynamic>;\n      throw ApiException(body['error'] as String? ?? 'Failed to save the version (${response.statusCode})');\n    }"
+   }
+  ],
+  "apps/mobile/lib/features/garage/garage_screen.dart": [
+   {
+    "old": "class GarageScreen extends StatefulWidget {",
+    "new": "/// A version's name and its engine and seats, in the app's language (the English text where there is no Arabic one).\nString _versionTitle(Map<String, dynamic> v, bool isAr) {\n  final ar = v['nameAr'] as String?;\n  return isAr && ar != null && ar.isNotEmpty ? ar : (v['name'] as String? ?? '');\n}\n\nString _versionDetails(Map<String, dynamic> v, bool isAr) {\n  final engineAr = v['engineAr'] as String?;\n  final engine = isAr && engineAr != null && engineAr.isNotEmpty ? engineAr : (v['engine'] as String? ?? '');\n  final seats = v['seats'];\n  return seats is int ? '$engine · ${seatsText(isAr, seats)}' : engine;\n}\n\nclass GarageScreen extends StatefulWidget {"
+   },
+   {
+    "old": "      final updatedGarage = await ApiClient().removeVehicleFromGarage(auth.token!, v.generationId, v.year);",
+    "new": "      final updatedGarage = await ApiClient().removeVehicleFromGarage(auth.token!, v.generationId, v.year, versionId: v.versionId);"
+   },
+   {
+    "old": "      final updatedGarage = await ApiClient().setDefaultVehicle(auth.token!, v.generationId, v.year);",
+    "new": "      final updatedGarage = await ApiClient().setDefaultVehicle(auth.token!, v.generationId, v.year, versionId: v.versionId);"
+   },
+   {
+    "old": "      final updatedGarage = await ApiClient().addVehicleToGarage(auth.token!, selection.generationId, selection.year ?? selection.yearStart);",
+    "new": "      final year = selection.year ?? selection.yearStart;\n      // A year that has versions needs its version chosen (the server asks for it too): the buyer taps one in a list. Closing the list saves nothing.\n      String? versionId;\n      final versions = await ApiClient().fetchVersionsForGeneration(selection.generationId);\n      if (versions.isNotEmpty) {\n        if (!mounted) return;\n        versionId = await _pickVersion(versions);\n        if (versionId == null) return;\n      }\n      final updatedGarage = await ApiClient().addVehicleToGarage(auth.token!, selection.generationId, year, versionId: versionId);\n      if (mounted) {\n        setState(() => _vehicles = updatedGarage);\n        context.read<GarageState>().notifyGarageChanged();\n      }\n    } on ApiException catch (e) {\n      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));\n    }\n  }\n\n  /// The list of a year's versions (name, engine and seats): the buyer taps one. Null when the list is closed without choosing.\n  Future<String?> _pickVersion(List<dynamic> versions) {\n    final isAr = context.read<LanguageState>().isArabic;\n    return showModalBottomSheet<String>(\n      context: context,\n      isScrollControlled: true,\n      builder: (sheetContext) => SafeArea(\n        child: ListView(\n          shrinkWrap: true,\n          children: [\n            Padding(\n              padding: const EdgeInsets.all(16),\n              child: Text(tr(sheetContext, 'choose_version_title'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),\n            ),\n            ...versions.map((raw) {\n              final v = raw as Map<String, dynamic>;\n              return ListTile(\n                title: Text(_versionTitle(v, isAr)),\n                subtitle: Text(_versionDetails(v, isAr)),\n                onTap: () => Navigator.of(sheetContext).pop(v['id'] as String),\n              );\n            }),\n          ],\n        ),\n      ),\n    );\n  }\n\n  /// Gives a car saved before versions existed (a car with no version) its version.\n  Future<void> _chooseVersion(Vehicle v) async {\n    final auth = context.read<AuthState>();\n    try {\n      final versions = await ApiClient().fetchVersionsForGeneration(v.generationId);\n      if (!mounted || versions.isEmpty) return;\n      final versionId = await _pickVersion(versions);\n      if (versionId == null) return;\n      final updatedGarage = await ApiClient().chooseGarageVersion(auth.token!, v.generationId, v.year, versionId);"
+   },
+   {
+    "old": "                  Text(v.subLabel, style: TextStyle(fontSize: 12.5, color: palette.muted)),",
+    "new": "                  Text(v.subLabel, style: TextStyle(fontSize: 12.5, color: palette.muted)),\n                  if (v.hasVersion) ...[\n                    const SizedBox(height: 4),\n                    Text(v.versionNameFor(isAr) ?? '', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: palette.ink)),\n                    if ((v.versionEngineFor(isAr) ?? '').isNotEmpty) Text(v.versionEngineFor(isAr)!, style: TextStyle(fontSize: 12.5, color: palette.muted)),\n                    if (v.versionSeats != null) Text(seatsText(isAr, v.versionSeats!), style: TextStyle(fontSize: 12.5, color: palette.muted)),\n                  ] else if (v.versionCount > 0) ...[\n                    const SizedBox(height: 4),\n                    Text(tr(context, 'garage_no_version'), style: TextStyle(fontSize: 12.5, color: palette.muted)),\n                    TextButton(onPressed: () => _chooseVersion(v), child: Text(tr(context, 'garage_choose_version'))),\n                  ],"
+   }
+  ],
+  "apps/mobile/lib/core/app_strings.dart": [
+   {
+    "old": "    'add_a_vehicle': {'en': 'Add a vehicle', 'ar': 'أضف مركبة'},",
+    "new": "    'garage_no_version': {'en': 'No version chosen', 'ar': 'لم تُحدَّد الفئة'},\n    'garage_choose_version': {'en': 'Choose its version', 'ar': 'اختر فئة هذه المركبة'},\n    'choose_version_title': {'en': 'Choose the version', 'ar': 'اختر الفئة'},\n    'add_a_vehicle': {'en': 'Add a vehicle', 'ar': 'أضف مركبة'},"
+   }
+  ],
+  "apps/mobile/lib/core/server_messages.dart": [
+   {
+    "old": "  'Saved vehicle not found': 'السيارة المحفوظة غير موجودة',",
+    "new": "  'Choose the version of this car': 'اختر فئة هذه المركبة',\n  'That version does not belong to this year': 'هذه الفئة ليست من هذه السنة',\n  'You already have this car with that version': 'لديك هذه المركبة بهذه الفئة بالفعل',\n  'This car already has a version': 'لهذه المركبة فئة محددة بالفعل',\n  'Saved vehicle not found': 'السيارة المحفوظة غير موجودة',"
+   }
+  ]
+ }
+}

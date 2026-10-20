@@ -99,17 +99,24 @@ function replaceServerArabicDart(src, english, text) {
 }
 
 // ------------------------------------------------------------------------------------------------ the app's own texts (lib/core/app_strings.dart):   'key': {'en': '...', 'ar': '...'},
+// An entry may span several lines, and a long text may be split into pieces (Dart joins neighbouring string literals):
+//   'key': {'en': '...', 'ar': '...'},            or            'key': {\n    'en': 'first part '\n        'second part',\n    'ar': '...',\n  },
+const DART_LITERALS = `(?:${DART_LITERAL})(?:\\s*(?:${DART_LITERAL}))*`;
+/** The text of one or more neighbouring Dart string literals, joined. */
+function parseDartStrings(sequence) {
+  return [...sequence.matchAll(new RegExp(DART_LITERAL, 'g'))].map((m) => parseDartString(m[0])).join('');
+}
 function readAppStrings(file) {
   const src = read(file);
-  const re = new RegExp(`^\\s*'(\\w+)':\\s*\\{'en':\\s*(${DART_LITERAL}),\\s*'ar':\\s*(${DART_LITERAL})\\s*\\}`, 'gm');
+  const re = new RegExp(`^\\s*'(\\w+)':\\s*\\{\\s*'en':\\s*(${DART_LITERALS})\\s*,\\s*'ar':\\s*(${DART_LITERALS})\\s*,?\\s*\\}`, 'gm');
   const out = {};
   let m;
-  while ((m = re.exec(src))) out[m[1]] = { en: parseDartString(m[2]), ar: parseDartString(m[3]) };
+  while ((m = re.exec(src))) out[m[1]] = { en: parseDartStrings(m[2]), ar: parseDartStrings(m[3]) };
   return out;
 }
 function replaceAppStringArabic(src, key, text) {
   if (!/^\w+$/.test(key)) throw new Error(`"${key}" is not a valid key`);
-  const re = new RegExp(`^(\\s*'${key}':\\s*\\{'en':\\s*(?:${DART_LITERAL}),\\s*'ar':\\s*)(?:${DART_LITERAL})(\\s*\\}.*)$`, 'gm');
+  const re = new RegExp(`(^\\s*'${key}':\\s*\\{\\s*'en':\\s*(?:${DART_LITERALS})\\s*,\\s*'ar':\\s*)(?:${DART_LITERALS})(\\s*,?\\s*\\})`, 'gm');
   const found = src.match(re) || [];
   if (found.length !== 1) throw new Error(found.length === 0 ? `the app text "${key}" was not found in app_strings.dart` : `the app text "${key}" appears ${found.length} times in app_strings.dart`);
   return src.replace(re, (_m, head, tail) => `${head}${dartQuote(text)}${tail}`);
@@ -157,5 +164,5 @@ function usageMap(webSource, keys) {
 module.exports = {
   DEFAULT_ROOT, paths, loadExcel, read, escapeRe, placeholders, hasArabicLetters,
   readDictionaries, replaceDictionaryArabic, readServerMessagesTs, replaceServerArabicTs, replaceServerArabicDart, parseDartString, dartQuote,
-  readAppStrings, replaceAppStringArabic, usageMap,
+  readAppStrings, replaceAppStringArabic, parseDartStrings, usageMap,
 };
