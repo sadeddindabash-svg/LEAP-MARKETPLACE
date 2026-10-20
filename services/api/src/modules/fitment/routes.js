@@ -1045,9 +1045,35 @@ router.patch('/versions/:id/photo', requireAuth, requireRole('admin'), requirePa
 
 router.delete('/versions/:id', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
-    const { rows } = await db.query('DELETE FROM vehicle_versions WHERE id = $1 RETURNING name', [req.params.id]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Version not found' });
-    await logAdminAction(req, 'version_deleted', 'version', req.params.id, { name: rows[0].name });
+    // Buyers who saved this version in My Garage keep their car as a car of that YEAR (the saved row's version becomes empty). Two things need care, in one transaction:
+    //  - a buyer who ALSO has the same car without a version would end up with it twice: that duplicate is removed;
+    //  - if a removed car was the buyer's default, their newest remaining car becomes the default (a garage always has one).
+    const client = await db.getPool().connect();
+    let name;
+    try {
+      await client.query('BEGIN');
+      const { rows: removed } = await client.query(
+        `DELETE FROM user_saved_generations s USING user_saved_generations o
+          WHERE s.version_id = $1 AND o.buyer_id = s.buyer_id AND o.generation_id = s.generation_id AND o.year = s.year AND o.version_id IS NULL
+          RETURNING s.buyer_id, s.is_default`, [req.params.id]);
+      const { rows } = await client.query('DELETE FROM vehicle_versions WHERE id = $1 RETURNING name', [req.params.id]);
+      if (rows.length === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Version not found' }); }
+      name = rows[0].name;
+      const buyers = [...new Set(removed.filter((r) => r.is_default).map((r) => r.buyer_id))];
+      if (buyers.length > 0) {
+        await client.query(
+          `UPDATE user_saved_generations u SET is_default = true
+            WHERE u.buyer_id = ANY($1) AND NOT EXISTS (SELECT 1 FROM user_saved_generations d WHERE d.buyer_id = u.buyer_id AND d.is_default)
+              AND (u.generation_id, u.year, COALESCE(u.version_id, '')) = (SELECT x.generation_id, x.year, COALESCE(x.version_id, '') FROM user_saved_generations x WHERE x.buyer_id = u.buyer_id ORDER BY x.created_at DESC LIMIT 1)`, [buyers]);
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+    await logAdminAction(req, 'version_deleted', 'version', req.params.id, { name });
     res.status(204).end();
   } catch (err) {
     next(err);

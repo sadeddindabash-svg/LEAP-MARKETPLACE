@@ -1,19 +1,31 @@
 import type { GarageVehicle } from "./api";
-import { pickName, type Lang } from "./i18n";
+import { pickName, t, type Lang } from "./i18n";
 
 /** "BYD Seal DM-i": the car's name in the page's language (the Arabic brand and model when they have one). */
 export function vehicleName(lang: Lang, v: Pick<GarageVehicle, "brand" | "brandAr" | "model" | "modelAr">): string {
   return `${pickName(lang, v.brand, v.brandAr)} ${pickName(lang, v.model, v.modelAr)}`.trim();
 }
 
-/** "BYD Seal DM-i · 2024". */
-export function vehicleLabel(lang: Lang, v: Pick<GarageVehicle, "brand" | "brandAr" | "model" | "modelAr" | "year">): string {
-  return `${vehicleName(lang, v)} · ${v.year}`;
+/** "BYD Seal DM-i · 2024", and "AITO M5 · 2022 · AWD Flagship" when the car has a version (in the page's language). */
+export function vehicleLabel(lang: Lang, v: Pick<GarageVehicle, "brand" | "brandAr" | "model" | "modelAr" | "year"> & { version?: { name: string; nameAr?: string | null } | null }): string {
+  const base = `${vehicleName(lang, v)} · ${v.year}`;
+  return v.version ? `${base} · ${pickName(lang, v.version.name, v.version.nameAr)}` : base;
 }
 
-/** A car's picture is its YEAR photo, else its BRAND photo, else none (the screen then shows a generic icon): the same order as the mobile app. */
-export function vehiclePhoto(v: Pick<GarageVehicle, "generationPhotoUrl" | "brandPhotoUrl">): string | null {
-  return v.generationPhotoUrl || v.brandPhotoUrl || null;
+/** A car's picture is its VERSION's photo, else its YEAR photo, else its BRAND photo, else none (the screen then shows a generic icon). */
+export function vehiclePhoto(v: Pick<GarageVehicle, "generationPhotoUrl" | "brandPhotoUrl"> & { version?: { photoUrl?: string | null } | null }): string | null {
+  return v.version?.photoUrl || v.generationPhotoUrl || v.brandPhotoUrl || null;
+}
+
+/** What tells two saved cars apart: the year's id, the year, and the version (two versions of one year are two cars; no version is its own kind). */
+export function vehicleKey(v: Pick<GarageVehicle, "generationId" | "year"> & { versionId?: string | null }): string {
+  return `${v.generationId}:${v.year}:${v.versionId ?? ""}`;
+}
+
+/** "1 seat", "2 seats", "5 seats" and in Arabic "مقعد واحد", "مقعدان", "5 مقاعد", "11 مقعدًا" (the right form for each number). */
+export function seatsText(lang: Lang, seats: number): string {
+  const key = seats === 1 ? "seats_one" : seats === 2 ? "seats_two" : lang === "ar" && seats > 10 ? "seats_many" : "seats_other";
+  return t(lang, key, { n: seats });
 }
 
 /** The car that drives "Shopping for" and "Fits my car": the one marked default, else the first saved. */

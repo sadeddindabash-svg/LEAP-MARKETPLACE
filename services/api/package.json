@@ -22,6 +22,7 @@
     "bidi-js": "^1.0.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
     "express": "^4.19.2",
     "firebase-admin": "^12.7.0",
     "geoip-lite": "^1.4.10",

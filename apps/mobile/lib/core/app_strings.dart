@@ -189,6 +189,9 @@ class AppStrings {
     'account_settings_header': {'en': 'Account Settings', 'ar': 'إعدادات الحساب'},
     'garage_login_prompt': {'en': 'Log in to save vehicles and get fitment-confirmed parts.', 'ar': 'سجّل الدخول لحفظ مركباتك والحصول على قطع مؤكدة التوافق.'},
     'could_not_load_garage': {'en': 'Could not load your garage:', 'ar': 'تعذر تحميل مركباتك:'},
+    'garage_no_version': {'en': 'No version chosen', 'ar': 'لم تُحدَّد الفئة'},
+    'garage_choose_version': {'en': 'Choose its version', 'ar': 'اختر فئة هذه المركبة'},
+    'choose_version_title': {'en': 'Choose the version', 'ar': 'اختر الفئة'},
     'add_a_vehicle': {'en': 'Add a vehicle', 'ar': 'أضف مركبة'},
     'garage_limit_note': {'en': 'You can save up to 5 vehicles. Remove one to add another.', 'ar': 'يمكنك حفظ 5 مركبات كحد أقصى. احذف إحداها لإضافة مركبة أخرى.'},
 

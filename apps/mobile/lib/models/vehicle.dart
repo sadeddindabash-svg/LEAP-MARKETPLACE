@@ -39,6 +39,16 @@ class Vehicle {
   // Photo of this exact vehicle YEAR (generation; backend migration 102): required for every year added since, but nullable because years that existed
   // before then have none. The most specific picture of the buyer's saved vehicle, so it comes first (see heroPhotoUrl).
   final String? generationPhotoUrl;
+  // The VERSION of this car (backend migration 107): null for a car saved before versions existed and for a year that has none. versionCount is how many versions
+  // the car's year has, so a car with no version can offer "Choose its version".
+  final String? versionId;
+  final String? versionName;
+  final String? versionNameAr;
+  final String? versionEngine;
+  final String? versionEngineAr;
+  final int? versionSeats;
+  final String? versionPhotoUrl;
+  final int versionCount;
 
   const Vehicle({
     required this.generationId,
@@ -54,12 +64,20 @@ class Vehicle {
     this.brandPhotoUrl,
     this.modelPhotoUrl,
     this.generationPhotoUrl,
+    this.versionId,
+    this.versionName,
+    this.versionNameAr,
+    this.versionEngine,
+    this.versionEngineAr,
+    this.versionSeats,
+    this.versionPhotoUrl,
+    this.versionCount = 0,
   });
 
   /// The picture of this vehicle: the YEAR photo first (a photo of this exact vehicle), then the BRAND's; null when there is none (callers then show a
   /// generic car icon). The model's photo is no longer used: models do not take a photo in Vehicle Data. Empty text counts as no photo.
   String? get heroPhotoUrl {
-    for (final url in [generationPhotoUrl, brandPhotoUrl]) {
+    for (final url in [versionPhotoUrl, generationPhotoUrl, brandPhotoUrl]) {
       if (url != null && url.isNotEmpty) return url;
     }
     return null;
@@ -69,7 +87,13 @@ class Vehicle {
   // widget keys -- deletion always needs the real (generationId, year)
   // pair, not this string, since that composite is the real backend
   // primary key (migration 044).
-  String get id => '$generationId-$year';
+  // Two versions of one year are two cars, so the version is part of the id.
+  String get id => '$generationId-$year-${versionId ?? ''}';
+
+  bool get hasVersion => versionId != null;
+  // The version's name and engine in the app's language (the English text where there is no Arabic one).
+  String? versionNameFor(bool isArabic) => isArabic && (versionNameAr ?? '').isNotEmpty ? versionNameAr : versionName;
+  String? versionEngineFor(bool isArabic) => isArabic && (versionEngineAr ?? '').isNotEmpty ? versionEngineAr : versionEngine;
 
   // Real, confirmed with the person -- brand/model names in Arabic
   // when the app's own language is Arabic, closing the real gap
@@ -94,21 +118,32 @@ class Vehicle {
   // A year added through Vehicle Data is a one-year entry named by the year (generation "2021", year 2021): show just "2021", not "2021 · 2021".
   String get subLabel => generation.trim() == '$year' ? '$year' : '$generation · $year';
 
-  factory Vehicle.fromJson(Map<String, dynamic> json) => Vehicle(
-        generationId: json['generationId'] as String,
-        year: json['year'] as int,
-        brand: json['brand'] as String,
-        brandAr: json['brandAr'] as String?,
-        model: json['model'] as String,
-        modelAr: json['modelAr'] as String?,
-        generation: json['generation'] as String,
-        yearStart: json['yearStart'] as int,
-        yearEnd: json['yearEnd'] as int?,
-        isDefault: json['isDefault'] as bool? ?? false,
-        brandPhotoUrl: json['brandPhotoUrl'] as String?,
-        modelPhotoUrl: json['modelPhotoUrl'] as String?,
-        generationPhotoUrl: json['generationPhotoUrl'] as String?,
-      );
+  factory Vehicle.fromJson(Map<String, dynamic> json) {
+    final version = json['version'] as Map<String, dynamic>?;
+    return Vehicle(
+      generationId: json['generationId'] as String,
+      year: json['year'] as int,
+      brand: json['brand'] as String,
+      brandAr: json['brandAr'] as String?,
+      model: json['model'] as String,
+      modelAr: json['modelAr'] as String?,
+      generation: json['generation'] as String,
+      yearStart: json['yearStart'] as int,
+      yearEnd: json['yearEnd'] as int?,
+      isDefault: json['isDefault'] as bool? ?? false,
+      brandPhotoUrl: json['brandPhotoUrl'] as String?,
+      modelPhotoUrl: json['modelPhotoUrl'] as String?,
+      generationPhotoUrl: json['generationPhotoUrl'] as String?,
+      versionId: json['versionId'] as String?,
+      versionName: version?['name'] as String?,
+      versionNameAr: version?['nameAr'] as String?,
+      versionEngine: version?['engine'] as String?,
+      versionEngineAr: version?['engineAr'] as String?,
+      versionSeats: version?['seats'] as int?,
+      versionPhotoUrl: version?['photoUrl'] as String?,
+      versionCount: json['versionCount'] as int? ?? 0,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
         'generationId': generationId,
@@ -124,7 +159,20 @@ class Vehicle {
         'brandPhotoUrl': brandPhotoUrl,
         'modelPhotoUrl': modelPhotoUrl,
         'generationPhotoUrl': generationPhotoUrl,
+        'versionId': versionId,
+        'versionCount': versionCount,
+        'version': versionId == null
+            ? null
+            : {'name': versionName, 'nameAr': versionNameAr, 'engine': versionEngine, 'engineAr': versionEngineAr, 'seats': versionSeats, 'photoUrl': versionPhotoUrl},
       };
+}
+
+/// "1 seat", "5 seats"; in Arabic the right form for each number: "مقعد واحد", "مقعدان", "5 مقاعد", "11 مقعدًا" (the same as the website).
+String seatsText(bool isArabic, int seats) {
+  if (!isArabic) return seats == 1 ? '1 seat' : '$seats seats';
+  if (seats == 1) return 'مقعد واحد';
+  if (seats == 2) return 'مقعدان';
+  return seats > 10 ? '$seats مقعدًا' : '$seats مقاعد';
 }
 
 /// How a vehicle year ENTRY is written in lists: a one-year entry named by its year (name "2021", 2021 to 2021) is just "2021"; an older entry (a name like

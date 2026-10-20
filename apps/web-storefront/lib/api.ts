@@ -1009,6 +1009,21 @@ export interface GarageVehicle {
   isDefault: boolean;
   brandPhotoUrl?: string | null;
   generationPhotoUrl?: string | null;
+  /** The VERSION of the car (a row of the vehicle data the admin adds): null for a car saved before versions existed and for a year that has none. */
+  versionId?: string | null;
+  version?: GarageVersion | null;
+  /** How many versions this car's year has: a car with none chosen but versionCount above 0 can be given its version ("Choose its version"). */
+  versionCount?: number;
+}
+
+export interface GarageVersion { id: string; name: string; nameAr?: string | null; engine: string; engineAr?: string | null; seats: number; photoUrl?: string | null }
+
+/** One version of a vehicle year, as the choosing step lists it (the Chinese texts are for suppliers and are not shown on the website). */
+export interface VehicleVersion { id: string; generationId: string; name: string; nameAr?: string | null; nameZh?: string | null; engine: string; engineAr?: string | null; engineZh?: string | null; seats: number; photoUrl?: string | null; sortOrder?: number }
+
+/** The versions of a year (empty when it has none, or when they could not be read: the server then asks for the version if one is needed). */
+export async function fetchVersionsForGeneration(generationId: string): Promise<VehicleVersion[]> {
+  return (await apiGet<VehicleVersion[]>(`/fitment/generations/${encodeURIComponent(generationId)}/versions`)) ?? [];
 }
 
 /** What a VIN says about its car (GET /fitment/vin-decode/:vin). */
@@ -1045,9 +1060,13 @@ async function authedJson<T>(token: string, path: string, method: string, failur
 }
 
 export const fetchMyGarage = (token: string) => authedJson<GarageVehicle[]>(token, "/garage/me", "GET", "Failed to load your garage");
-export const addVehicleToGarage = (token: string, generationId: string, year: number) => authedJson<GarageVehicle>(token, "/garage/me", "POST", "Failed to save the vehicle", { generationId, year });
-export const removeVehicleFromGarage = (token: string, generationId: string, year: number) => authedJson<void>(token, `/garage/me/${encodeURIComponent(generationId)}/${year}`, "DELETE", "Failed to remove the vehicle");
-export const setDefaultVehicle = (token: string, generationId: string, year: number) => authedJson<void>(token, `/garage/me/${encodeURIComponent(generationId)}/${year}/default`, "PATCH", "Failed to set the default vehicle");
+// A car is its brand, model, year and (when the year has versions) VERSION. Removing and choosing the default act on that exact car.
+const versionQuery = (versionId?: string | null) => (versionId ? `?versionId=${encodeURIComponent(versionId)}` : "");
+export const addVehicleToGarage = (token: string, generationId: string, year: number, versionId?: string | null) => authedJson<GarageVehicle>(token, "/garage/me", "POST", "Failed to save the vehicle", { generationId, year, ...(versionId ? { versionId } : {}) });
+export const removeVehicleFromGarage = (token: string, generationId: string, year: number, versionId?: string | null) => authedJson<void>(token, `/garage/me/${encodeURIComponent(generationId)}/${year}${versionQuery(versionId)}`, "DELETE", "Failed to remove the vehicle");
+export const setDefaultVehicle = (token: string, generationId: string, year: number, versionId?: string | null) => authedJson<void>(token, `/garage/me/${encodeURIComponent(generationId)}/${year}/default${versionQuery(versionId)}`, "PATCH", "Failed to set the default vehicle");
+/** Gives a car saved before versions existed (a car with no version) its version. Answers the whole garage. */
+export const chooseGarageVersion = (token: string, generationId: string, year: number, versionId: string) => authedJson<GarageVehicle[]>(token, `/garage/me/${encodeURIComponent(generationId)}/${year}/version`, "PATCH", "Failed to save the version", { versionId });
 
 /** Decodes a VIN. Throws with the server's own message when it is not a valid VIN (17 characters, no I, O or Q). */
 export async function decodeVin(vin: string): Promise<VinDecode> {

@@ -2,12 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "@/components/LocLink";
-import { decodeVin, fetchGenerationsForModel, fetchModelsForBrand, fetchPartsForCategory, fetchVehicleBrands, type CategoryPart, type ProductCategory } from "@/lib/api";
+import { decodeVin, fetchGenerationsForModel, fetchModelsForBrand, fetchPartsForCategory, fetchVehicleBrands, fetchVersionsForGeneration, type CategoryPart, type ProductCategory, type VehicleVersion } from "@/lib/api";
 import { barcodeSupported, readBarcode, readBarcodeFromFile } from "@/lib/barcode";
 import { pickName, type DictKey } from "@/lib/i18n";
 import { SYMPTOMS } from "@/lib/symptoms";
 import { matchVin, type VinMatch } from "@/lib/vin";
-import { vehicleLabel, isGarageFull } from "@/lib/garage";
+import { vehicleLabel, isGarageFull, seatsText } from "@/lib/garage";
 import { useGarage } from "./GarageProvider";
 import { useLang, useT } from "./LangProvider";
 import { useLocRouter } from "./useLocRouter";
@@ -141,12 +141,15 @@ function VinLookup() {
   const [state, setState] = useState<{ kind: "idle" } | { kind: "loading" } | { kind: "error"; message: string } | { kind: "result"; match: VinMatch }>({ kind: "idle" });
   const [added, setAdded] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // The found car's year may have versions: then saving it to the garage needs the version chosen (as in My Garage).
+  const [versions, setVersions] = useState<VehicleVersion[]>([]);
+  const [versionId, setVersionId] = useState("");
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const clean = vin.trim().toUpperCase();
     if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(clean)) return setState({ kind: "error", message: t("vin_invalid") });
-    setState({ kind: "loading" }); setAdded(false); setSaveError(null);
+    setState({ kind: "loading" }); setAdded(false); setSaveError(null); setVersions([]); setVersionId("");
     try {
       const decoded = await decodeVin(clean);
       const brands = await fetchVehicleBrands();
@@ -157,6 +160,13 @@ function VinLookup() {
   };
 
   const match = state.kind === "result" ? state.match : null;
+  const resolvedGenerationId = match && match.status === "resolved" ? match.generation.id : null;
+  useEffect(() => {
+    if (!resolvedGenerationId || !garage.signedIn) return;
+    let current = true;
+    fetchVersionsForGeneration(resolvedGenerationId).then((list) => { if (current) setVersions(list); });
+    return () => { current = false; };
+  }, [resolvedGenerationId, garage.signedIn]);
   const carName = match && match.status === "resolved" ? `${pickName(lang, match.brand.name, match.brand.nameAr)} ${pickName(lang, match.model.name, match.model.nameAr)} · ${match.year}` : "";
 
   return (
@@ -175,10 +185,20 @@ function VinLookup() {
         {match?.status === "resolved" && (
           <div>
             <p className="font-bold text-[#0f6b49]">{t("vin_found", { label: carName })}</p>
+            {garage.signedIn && versions.length > 0 && !added && (
+              <div className="mt-3 max-w-xl">
+                <label htmlFor="vin-version" className="mb-1.5 block text-[13px] font-bold text-navy">{t("picker_version")}</label>
+                <select id="vin-version" className={field} value={versionId} onChange={(e) => setVersionId(e.target.value)}>
+                  <option value="">{t("picker_choose_version")}</option>
+                  {versions.map((v) => <option key={v.id} value={v.id}>{`${pickName(lang, v.name, v.nameAr)} · ${pickName(lang, v.engine, v.engineAr)} · ${seatsText(lang, v.seats)}`}</option>)}
+                </select>
+                {!versionId && <p className="mt-1.5 text-[13px] text-muted">{t("picker_version_needed")}</p>}
+              </div>
+            )}
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <Link href={searchHref({}, { generationId: match.generation.id, year: match.year })} className={primary}>{t("picker_cta")}</Link>
               {garage.signedIn ? (
-                <button type="button" className={secondary} disabled={added || garageFull} onClick={async () => { try { await garage.add(match.generation.id, match.year); setAdded(true); } catch (err) { setSaveError(err instanceof Error && err.message ? err.message : t("generic_error")); } }}>
+                <button type="button" className={secondary} disabled={added || garageFull || (versions.length > 0 && !versionId)} onClick={async () => { try { await (versionId ? garage.add(match.generation.id, match.year, versionId) : garage.add(match.generation.id, match.year)); setAdded(true); } catch (err) { setSaveError(err instanceof Error && err.message ? err.message : t("generic_error")); } }}>
                   {added ? t("vin_added") : t("garage_add_button")}
                 </button>
               ) : (

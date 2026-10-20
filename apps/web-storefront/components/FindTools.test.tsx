@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ProductCategory } from "@/lib/api";
+import { t } from "@/lib/i18n";
 
 // The four ways to find a part, with the server, the garage and the barcode reader replaced by fixed values.
 const m = vi.hoisted(() => ({
@@ -11,6 +12,7 @@ const m = vi.hoisted(() => ({
   brands: vi.fn(),
   models: vi.fn(),
   gens: vi.fn(),
+  versions: vi.fn<(...a: unknown[]) => Promise<unknown[]>>(async () => []),
 }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: m.push, replace: vi.fn() }), useSearchParams: () => new URLSearchParams(), usePathname: () => "/find" }));
@@ -26,6 +28,7 @@ vi.mock("@/lib/api", () => ({
   fetchVehicleBrands: () => m.brands(),
   fetchModelsForBrand: (...a: unknown[]) => m.models(...a),
   fetchGenerationsForModel: (...a: unknown[]) => m.gens(...a),
+  fetchVersionsForGeneration: (...a: unknown[]) => m.versions(...a),
 }));
 
 import FindTools from "./FindTools";
@@ -44,6 +47,7 @@ beforeEach(() => {
   m.brands.mockResolvedValue([{ id: "b1", name: "BYD", nameAr: "بي واي دي" }]);
   m.models.mockResolvedValue([{ id: "m1", brandId: "b1", name: "Seal DM-i" }]);
   m.gens.mockResolvedValue([{ id: "gen1", modelId: "m1", name: "2024-on", yearStart: 2024, yearEnd: null }]);
+  m.versions.mockResolvedValue([]);
   m.decode.mockResolvedValue({ vin: "X", isValidCheckDigit: true, make: "BYD", model: "Seal", modelYear: 2024, source: "local" });
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
@@ -166,6 +170,44 @@ describe("find a car by its VIN", () => {
     await lookUp("LGXC16DG2N0000001");
     fireEvent.click(await screen.findByRole("button", { name: "Add to my garage" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("You can save up to 5 vehicles. Remove one to add another.");
+  });
+
+  const VERSIONS = [{ id: "v1", generationId: "gen1", name: "AWD Flagship", nameAr: "دفع كلي فلاجشيب", engine: "1.5T range extender (365 kW)", engineAr: "1.5 لتر", seats: 5 }, { id: "v2", generationId: "gen1", name: "RWD Standard", nameAr: "دفع خلفي", engine: "Electric (200 kW)", engineAr: "كهربائي", seats: 6 }];
+  it("CRITICAL: when the found car's year has versions, saving it to the garage needs the version chosen: the button stays off until then, and the version is sent", async () => {
+    m.versions.mockResolvedValue(VERSIONS);
+    signedIn(true);
+    vinTab();
+    await lookUp("LGXC16DG2N0000001");
+    const select = await screen.findByLabelText("Version");
+    expect(m.versions).toHaveBeenCalledWith("gen1");
+    expect(screen.getByRole("button", { name: "Add to my garage" })).toBeDisabled();
+    expect(screen.getByText("Choose the version to save this car")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "AWD Flagship · 1.5T range extender (365 kW) · 5 seats" })).toBeInTheDocument();
+    fireEvent.change(select, { target: { value: "v2" } });
+    expect(screen.getByRole("button", { name: "Add to my garage" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Add to my garage" }));
+    await waitFor(() => expect(m.garage.current.add).toHaveBeenCalledWith("gen1", 2024, "v2"));
+    expect(await screen.findByRole("button", { name: "Added to your garage" })).toBeDisabled();
+  });
+
+  it("the versions are shown in Arabic on the Arabic site, with the seats in the right Arabic form", async () => {
+    m.versions.mockResolvedValue(VERSIONS);
+    signedIn(true);
+    tool({ initialTab: "vin", lang: "ar" });
+    fireEvent.change(screen.getByLabelText(t("ar", "vin_label")), { target: { value: "LGXC16DG2N0000001" } });
+    fireEvent.click(screen.getByRole("button", { name: t("ar", "vin_button") }));
+    expect(await screen.findByLabelText("الفئة")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "دفع كلي فلاجشيب · 1.5 لتر · 5 مقاعد" })).toBeInTheDocument();
+  });
+
+  it("a found car whose year has NO versions is saved exactly as before (no version step, no version sent); signed out there is no version step at all", async () => {
+    signedIn(true);
+    vinTab();
+    await lookUp("LGXC16DG2N0000001");
+    await screen.findByText("Found: BYD Seal DM-i · 2024");
+    expect(screen.queryByLabelText("Version")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add to my garage" }));
+    await waitFor(() => expect(m.garage.current.add).toHaveBeenCalledWith("gen1", 2024));
   });
 
   it("signed out, the car is found but saving needs a sign-in (and says so)", async () => {

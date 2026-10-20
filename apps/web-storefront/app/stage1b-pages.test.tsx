@@ -6,7 +6,9 @@ import type { ProductDetail } from "@/lib/api";
 const m = vi.hoisted(() => ({
   lang: { current: "en" as "en" | "ar" },
   auth: { current: { user: null as { id: string } | null, isLoading: false } },
-  garage: { current: { vehicles: [] as unknown[], defaultVehicle: null as unknown, signedIn: false, loading: false, add: vi.fn(), remove: vi.fn(), makeDefault: vi.fn() } },
+  garage: { current: { vehicles: [] as unknown[], defaultVehicle: null as unknown, signedIn: false, loading: false, add: vi.fn(), remove: vi.fn(), makeDefault: vi.fn(), chooseVersion: vi.fn() } },
+  versions: vi.fn<(...a: unknown[]) => Promise<unknown[]>>(async () => []),
+  cascadeProps: { current: {} as Record<string, unknown> },
   products: {} as Record<string, unknown>,
   fetchProductById: vi.fn(),
   wishlist: [] as unknown[],
@@ -17,11 +19,15 @@ vi.mock("@/lib/lang", () => ({ getLang: vi.fn(async () => m.lang.current) }));
 vi.mock("@/components/AuthProvider", () => ({ useAuth: () => m.auth.current, getAuthToken: () => "tok" }));
 vi.mock("@/components/GarageProvider", () => ({ useGarage: () => m.garage.current }));
 vi.mock("@/components/VehicleCascade", () => ({
-  default: ({ onChange }: { onChange: (c: { generationId: string; year: number; label: string } | null) => void }) => <button type="button" onClick={() => onChange({ generationId: "g9", year: 2020, label: "x" })}>pick a car</button>,
+  default: (props: { onChange: (c: { generationId: string; year: number; label: string; versionId?: string } | null) => void; withVersions?: boolean }) => {
+    m.cascadeProps.current = props;
+    return (<><button type="button" onClick={() => props.onChange({ generationId: "g9", year: 2020, label: "x" })}>pick a car</button><button type="button" onClick={() => props.onChange({ generationId: "g9", year: 2020, label: "x", versionId: "ver_9" })}>pick a versioned car</button></>);
+  },
 }));
 vi.mock("@/components/FindTools", () => ({ default: (props: { categories: unknown[]; initialTab: string }) => { m.toolsProps.current = props; return <div data-testid="tools" data-tab={props.initialTab} data-count={props.categories.length} />; } }));
 vi.mock("@/lib/api", () => ({
   fetchProductById: (...a: unknown[]) => m.fetchProductById(...a),
+  fetchVersionsForGeneration: (...a: unknown[]) => m.versions(...a),
   fetchCategories: vi.fn(async () => [{ id: "brake", nameEn: "Brake System", nameAr: "نظام الفرامل", photoUrl: null, sortOrder: 1, commissionPercent: 10 }]),
   fetchWishlist: vi.fn(async () => m.wishlist),
   removeFromWishlist: vi.fn(async () => {}),
@@ -40,7 +46,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   m.lang.current = "en";
   m.auth.current = { user: null, isLoading: false };
-  m.garage.current = { vehicles: [], defaultVehicle: null, signedIn: false, loading: false, add: vi.fn(), remove: vi.fn(), makeDefault: vi.fn() };
+  m.garage.current = { vehicles: [], defaultVehicle: null, signedIn: false, loading: false, add: vi.fn(), remove: vi.fn(), makeDefault: vi.fn(), chooseVersion: vi.fn() };
+  m.versions.mockReset(); m.versions.mockResolvedValue([]);
   m.fetchProductById.mockImplementation(async (id: string) => (id.startsWith("x") ? null : product(id, id === "p2" ? { rating: null, reviewCount: 0, stockQuantity: 0, estimatedDeliveryDays: null, weightKg: null, isVerifiedSeller: false, shipsFromCountry: null, oemNumber: null, price: 31 } : {})));
 });
 
@@ -122,6 +129,66 @@ describe("find page", () => {
 describe("garage page", () => {
   const car = (over = {}) => ({ generationId: "g1", year: 2024, brand: "BYD", brandAr: "بي واي دي", model: "Seal DM-i", modelAr: null, generation: "2024", yearStart: 2024, yearEnd: 2024, isDefault: true, ...over });
   const open = async (lang: "en" | "ar" = "en") => { const { default: GaragePage } = await import("./garage/page"); return render(wrap(lang, <GaragePage />)); };
+
+  const VERSION = { id: "v1", name: "AWD Flagship", nameAr: "دفع كلي فلاجشيب", engine: "1.5T petrol range extender (365 kW)", engineAr: "1.5 لتر موسع مدى", seats: 5, photoUrl: "/uploads/v1.png" };
+  it("CRITICAL: a car with a version shows the version, its engine and seats (in Arabic on the Arabic site), and its year line is not repeated as a name", async () => {
+    m.auth.current = { user: { id: "u1" }, isLoading: false };
+    m.garage.current = { ...m.garage.current, signedIn: true, vehicles: [car({ versionId: "v1", version: VERSION, versionCount: 3 })] };
+    const { unmount } = await open();
+    const card = screen.getByTestId("car-version");
+    expect(within(card).getByText("AWD Flagship")).toBeInTheDocument();
+    expect(within(card).getByText("1.5T petrol range extender (365 kW)")).toBeInTheDocument();
+    expect(within(card).getByText("5 seats")).toBeInTheDocument();
+    expect(screen.queryByText("2024")).not.toBeInTheDocument();                                              // generation "2024" equals the year: shown once, as "Year 2024"
+    expect(screen.queryByText("Choose its version")).not.toBeInTheDocument();
+    unmount();
+    m.lang.current = "ar";
+    await open("ar");
+    expect(within(screen.getByTestId("car-version")).getByText("دفع كلي فلاجشيب")).toBeInTheDocument();
+    expect(within(screen.getByTestId("car-version")).getByText("5 مقاعد")).toBeInTheDocument();
+  });
+
+  it("CRITICAL: the add form always asks for versions, and a car chosen with a version is saved WITH it (a car without one exactly as before)", async () => {
+    m.auth.current = { user: { id: "u1" }, isLoading: false };
+    m.garage.current = { ...m.garage.current, signedIn: true, vehicles: [] };
+    await open();
+    expect(m.cascadeProps.current.withVersions).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "pick a versioned car" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add to my garage" }));
+    await waitFor(() => expect(m.garage.current.add).toHaveBeenCalledWith("g9", 2020, "ver_9"));
+    m.garage.current.add.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "pick a car" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add to my garage" }));
+    await waitFor(() => expect(m.garage.current.add).toHaveBeenCalledWith("g9", 2020));
+  });
+
+  it("CRITICAL: a car saved before versions existed, whose year now has some, says so and offers \"Choose its version\"; saving gives it the chosen one. A car whose year has none offers nothing", async () => {
+    m.auth.current = { user: { id: "u1" }, isLoading: false };
+    m.versions.mockResolvedValue([VERSION, { ...VERSION, id: "v2", name: "RWD Standard", engine: "Electric (200 kW)", seats: 6 }]);
+    const old = car({ versionId: null, version: null, versionCount: 2 });
+    m.garage.current = { ...m.garage.current, signedIn: true, vehicles: [old, car({ generationId: "g2", year: 2021, brand: "Geely", brandAr: null, model: "Coolray", isDefault: false, versionCount: 0 })] };
+    await open();
+    expect(screen.getAllByText("No version chosen")).toHaveLength(1);                                         // only the car whose year has versions
+    expect(screen.getAllByRole("button", { name: "Choose its version" })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Choose its version" }));
+    await waitFor(() => expect(m.versions).toHaveBeenCalledWith("g1"));
+    expect(screen.getByRole("button", { name: "Save the version" })).toBeDisabled();
+    fireEvent.change(await screen.findByLabelText("Version"), { target: { value: "v2" } });
+    expect(screen.getByRole("option", { name: "RWD Standard · Electric (200 kW) · 6 seats" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save the version" }));
+    await waitFor(() => expect(m.garage.current.chooseVersion).toHaveBeenCalledWith(expect.objectContaining({ generationId: "g1", year: 2024 }), "v2"));
+  });
+
+  it("CRITICAL: two versions of the same year are two cars on the page, and removing one names ITS version", async () => {
+    m.auth.current = { user: { id: "u1" }, isLoading: false };
+    const a = car({ versionId: "v1", version: VERSION, versionCount: 2 }), b = car({ versionId: "v2", version: { ...VERSION, id: "v2", name: "RWD Standard" }, versionCount: 2, isDefault: false });
+    m.garage.current = { ...m.garage.current, signedIn: true, vehicles: [a, b] };
+    await open();
+    expect(screen.getAllByTestId("car-version")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Remove: BYD Seal DM-i · 2024 · RWD Standard" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Remove: BYD Seal DM-i · 2024 · RWD Standard" }));
+    await waitFor(() => expect(m.garage.current.remove).toHaveBeenCalledWith(expect.objectContaining({ versionId: "v2" })));
+  });
 
   it("waits while the sign-in state is being read, and signed out asks to sign in instead of showing a garage", async () => {
     m.auth.current = { user: null, isLoading: true };

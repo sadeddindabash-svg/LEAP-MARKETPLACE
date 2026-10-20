@@ -405,11 +405,11 @@ class ApiClient {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
-  Future<List<Vehicle>> addVehicleToGarage(String token, String generationId, int year) async {
+  Future<List<Vehicle>> addVehicleToGarage(String token, String generationId, int year, {String? versionId}) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/garage/me'),
       headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
-      body: jsonEncode({'generationId': generationId, 'year': year}),
+      body: jsonEncode({'generationId': generationId, 'year': year, if (versionId != null) 'versionId': versionId}),
     );
     if (response.statusCode >= 400) {
       final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -418,8 +418,9 @@ class ApiClient {
     return fetchMyGarage(token);
   }
 
-  Future<List<Vehicle>> removeVehicleFromGarage(String token, String generationId, int year) async {
-    final response = await _client.delete(Uri.parse('$baseUrl/garage/me/$generationId/$year'), headers: {'Authorization': 'Bearer $token'});
+  Future<List<Vehicle>> removeVehicleFromGarage(String token, String generationId, int year, {String? versionId}) async {
+    final query = versionId == null ? '' : '?versionId=${Uri.encodeQueryComponent(versionId)}';
+    final response = await _client.delete(Uri.parse('$baseUrl/garage/me/$generationId/$year$query'), headers: {'Authorization': 'Bearer $token'});
     if (response.statusCode != 200) throw ApiException('Failed to remove vehicle (${response.statusCode})');
     final list = jsonDecode(response.body) as List;
     return list.map((v) => Vehicle.fromJson(v as Map<String, dynamic>)).toList();
@@ -428,9 +429,32 @@ class ApiClient {
   /// Real "set as default" (new, migration 047) -- already returns the
   /// real, updated full list directly (mirrors add/removeVehicleFromGarage
   /// above), so a caller can use it directly rather than fetching again.
-  Future<List<Vehicle>> setDefaultVehicle(String token, String generationId, int year) async {
-    final response = await _client.patch(Uri.parse('$baseUrl/garage/me/$generationId/$year/default'), headers: {'Authorization': 'Bearer $token'});
+  Future<List<Vehicle>> setDefaultVehicle(String token, String generationId, int year, {String? versionId}) async {
+    final query = versionId == null ? '' : '?versionId=${Uri.encodeQueryComponent(versionId)}';
+    final response = await _client.patch(Uri.parse('$baseUrl/garage/me/$generationId/$year/default$query'), headers: {'Authorization': 'Bearer $token'});
     if (response.statusCode != 200) throw ApiException('Failed to set default vehicle (${response.statusCode})');
+    final list = jsonDecode(response.body) as List;
+    return list.map((v) => Vehicle.fromJson(v as Map<String, dynamic>)).toList();
+  }
+
+  /// The versions of a vehicle year (an empty list when it has none).
+  Future<List<dynamic>> fetchVersionsForGeneration(String generationId) async {
+    final response = await _client.get(Uri.parse('$baseUrl/fitment/generations/$generationId/versions'));
+    if (response.statusCode != 200) throw ApiException('Failed to load versions (${response.statusCode})');
+    return jsonDecode(response.body) as List<dynamic>;
+  }
+
+  /// Gives a car saved before versions existed its version. Answers the whole garage.
+  Future<List<Vehicle>> chooseGarageVersion(String token, String generationId, int year, String versionId) async {
+    final response = await _client.patch(
+      Uri.parse('$baseUrl/garage/me/$generationId/$year/version'),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      body: jsonEncode({'versionId': versionId}),
+    );
+    if (response.statusCode >= 400) {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      throw ApiException(body['error'] as String? ?? 'Failed to save the version (${response.statusCode})');
+    }
     final list = jsonDecode(response.body) as List;
     return list.map((v) => Vehicle.fromJson(v as Map<String, dynamic>)).toList();
   }

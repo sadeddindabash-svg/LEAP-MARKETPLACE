@@ -681,6 +681,16 @@ const EN = {
   grid_skip: "Skip the list of parts",
   grid_see_all: "See all parts",
   grid_back_to_start: "Back to the first parts",
+  picker_version: "Version",
+  picker_choose_version: "Choose version",
+  picker_version_needed: "Choose the version to save this car",
+  garage_choose_version: "Choose its version",
+  garage_no_version: "No version chosen",
+  garage_version_save: "Save the version",
+  seats_one: "1 seat",
+  seats_two: "2 seats",
+  seats_other: "{n} seats",
+  seats_many: "{n} seats",
   copyright: "Copyright © Leap Auto Parts {year}",
 } as const;
 
@@ -1321,6 +1331,16 @@ const AR: Record<DictKey, string> = {
   grid_skip: "تخطَّ قائمة القطع",
   grid_see_all: "عرض كل القطع",
   grid_back_to_start: "العودة إلى أول القطع",
+  picker_version: "الفئة",
+  picker_choose_version: "اختر الفئة",
+  picker_version_needed: "اختر الفئة لحفظ هذه المركبة",
+  garage_choose_version: "اختر فئة هذه المركبة",
+  garage_no_version: "لم تُحدَّد الفئة",
+  garage_version_save: "حفظ الفئة",
+  seats_one: "مقعد واحد",
+  seats_two: "مقعدان",
+  seats_other: "{n} مقاعد",
+  seats_many: "{n} مقعدًا",
   copyright: "حقوق النشر © ليب لقطع السيارات {year}",
 };
 

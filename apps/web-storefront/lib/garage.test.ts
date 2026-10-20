@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import type { GarageVehicle } from "./api";
-import { defaultVehicle, searchHrefFor, vehicleLabel, vehicleName, vehiclePhoto } from "./garage";
+import { defaultVehicle, searchHrefFor, seatsText, vehicleKey, vehicleLabel, vehicleName, vehiclePhoto } from "./garage";
 import { barcodeSupported, readBarcode, readBarcodeFromFile } from "./barcode";
 
 const car = (over: Partial<GarageVehicle> = {}): GarageVehicle => ({ generationId: "g1", year: 2024, brand: "BYD", brandAr: "بي واي دي", model: "Seal DM-i", modelAr: null, generation: "2024", yearStart: 2024, yearEnd: 2024, isDefault: false, ...over });
@@ -62,3 +62,30 @@ describe("barcode reading", () => {
     expect(close).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("a saved car with a VERSION", () => {
+  const version = { id: "v1", name: "AWD Flagship", nameAr: "دفع كلي فلاجشيب", engine: "1.5T", engineAr: "1.5 لتر", seats: 5, photoUrl: "/uploads/v.png" };
+  it("CRITICAL: the label adds the version in the page's language (English name where there is no Arabic one); a car without one is labelled as before", () => {
+    expect(vehicleLabel("en", car({ version }))).toBe("BYD Seal DM-i · 2024 · AWD Flagship");
+    expect(vehicleLabel("ar", car({ version }))).toBe("بي واي دي Seal DM-i · 2024 · دفع كلي فلاجشيب");
+    expect(vehicleLabel("ar", car({ version: { ...version, nameAr: null } }))).toBe("بي واي دي Seal DM-i · 2024 · AWD Flagship");
+    expect(vehicleLabel("en", car({ version: null }))).toBe("BYD Seal DM-i · 2024");
+    expect(vehicleLabel("en", car())).toBe("BYD Seal DM-i · 2024");
+  });
+  it("CRITICAL: the picture is the version's photo, else the year's, else the brand's, else none", () => {
+    expect(vehiclePhoto(car({ version, generationPhotoUrl: "/y.png", brandPhotoUrl: "/b.png" }))).toBe("/uploads/v.png");
+    expect(vehiclePhoto(car({ version: { ...version, photoUrl: null }, generationPhotoUrl: "/y.png", brandPhotoUrl: "/b.png" }))).toBe("/y.png");
+    expect(vehiclePhoto(car({ version: null, generationPhotoUrl: null, brandPhotoUrl: "/b.png" }))).toBe("/b.png");
+    expect(vehiclePhoto(car({ version: null, generationPhotoUrl: null, brandPhotoUrl: null }))).toBeNull();
+  });
+  it("CRITICAL: two versions of one year are two different cars (and a car with no version is a third kind)", () => {
+    const keys = [vehicleKey(car()), vehicleKey(car({ versionId: "a" })), vehicleKey(car({ versionId: "b" })), vehicleKey(car({ versionId: null })), vehicleKey(car({ year: 2023 }))];
+    expect(new Set(keys).size).toBe(4);                                              // no version and null are the same kind
+    expect(keys[0]).toBe(keys[3]);
+  });
+  it("seats are written in the right form: 1 seat, 2 seats, 5 seats; Arabic: مقعد واحد, مقعدان, 5 مقاعد, 11 مقعدًا", () => {
+    expect([1, 2, 5, 12].map((n) => seatsText("en", n))).toEqual(["1 seat", "2 seats", "5 seats", "12 seats"]);
+    expect([1, 2, 5, 10, 11, 12].map((n) => seatsText("ar", n))).toEqual(["مقعد واحد", "مقعدان", "5 مقاعد", "10 مقاعد", "11 مقعدًا", "12 مقعدًا"]);
+  });
+});
+

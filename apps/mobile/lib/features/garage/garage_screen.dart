@@ -47,6 +47,19 @@ const int kMaxGarageVehicles = 5;
 ///
 /// Requires login — there's no guest "garage" concept, unlike guest
 /// checkout; saving a vehicle only makes sense tied to an account.
+/// A version's name and its engine and seats, in the app's language (the English text where there is no Arabic one).
+String _versionTitle(Map<String, dynamic> v, bool isAr) {
+  final ar = v['nameAr'] as String?;
+  return isAr && ar != null && ar.isNotEmpty ? ar : (v['name'] as String? ?? '');
+}
+
+String _versionDetails(Map<String, dynamic> v, bool isAr) {
+  final engineAr = v['engineAr'] as String?;
+  final engine = isAr && engineAr != null && engineAr.isNotEmpty ? engineAr : (v['engine'] as String? ?? '');
+  final seats = v['seats'];
+  return seats is int ? '$engine · ${seatsText(isAr, seats)}' : engine;
+}
+
 class GarageScreen extends StatefulWidget {
   const GarageScreen({super.key});
 
@@ -83,7 +96,7 @@ class _GarageScreenState extends State<GarageScreen> {
       // directly from the real DELETE response. Set directly into
       // _vehicles (a plain field, not wrapped in a new Future handed to
       // a FutureBuilder) -- see this file's own header comment for why.
-      final updatedGarage = await ApiClient().removeVehicleFromGarage(auth.token!, v.generationId, v.year);
+      final updatedGarage = await ApiClient().removeVehicleFromGarage(auth.token!, v.generationId, v.year, versionId: v.versionId);
       if (mounted) {
         setState(() => _vehicles = updatedGarage);
         context.read<GarageState>().notifyGarageChanged();
@@ -99,7 +112,7 @@ class _GarageScreenState extends State<GarageScreen> {
       // Same safe, direct pattern as add/_remove above -- see this
       // file's own header comment for why a Future.value()/
       // FutureBuilder replacement was never used here.
-      final updatedGarage = await ApiClient().setDefaultVehicle(auth.token!, v.generationId, v.year);
+      final updatedGarage = await ApiClient().setDefaultVehicle(auth.token!, v.generationId, v.year, versionId: v.versionId);
       if (mounted) {
         setState(() => _vehicles = updatedGarage);
         context.read<GarageState>().notifyGarageChanged();
@@ -158,7 +171,62 @@ class _GarageScreenState extends State<GarageScreen> {
       // the buyer's own exact car), unlike search where "any year"
       // genuinely means "don't narrow." Falls back to the generation's
       // own real starting year, never a placeholder.
-      final updatedGarage = await ApiClient().addVehicleToGarage(auth.token!, selection.generationId, selection.year ?? selection.yearStart);
+      final year = selection.year ?? selection.yearStart;
+      // A year that has versions needs its version chosen (the server asks for it too): the buyer taps one in a list. Closing the list saves nothing.
+      String? versionId;
+      final versions = await ApiClient().fetchVersionsForGeneration(selection.generationId);
+      if (versions.isNotEmpty) {
+        if (!mounted) return;
+        versionId = await _pickVersion(versions);
+        if (versionId == null) return;
+      }
+      final updatedGarage = await ApiClient().addVehicleToGarage(auth.token!, selection.generationId, year, versionId: versionId);
+      if (mounted) {
+        setState(() => _vehicles = updatedGarage);
+        context.read<GarageState>().notifyGarageChanged();
+      }
+    } on ApiException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  /// The list of a year's versions (name, engine and seats): the buyer taps one. Null when the list is closed without choosing.
+  Future<String?> _pickVersion(List<dynamic> versions) {
+    final isAr = context.read<LanguageState>().isArabic;
+    return showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(tr(sheetContext, 'choose_version_title'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+            ),
+            ...versions.map((raw) {
+              final v = raw as Map<String, dynamic>;
+              return ListTile(
+                title: Text(_versionTitle(v, isAr)),
+                subtitle: Text(_versionDetails(v, isAr)),
+                onTap: () => Navigator.of(sheetContext).pop(v['id'] as String),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Gives a car saved before versions existed (a car with no version) its version.
+  Future<void> _chooseVersion(Vehicle v) async {
+    final auth = context.read<AuthState>();
+    try {
+      final versions = await ApiClient().fetchVersionsForGeneration(v.generationId);
+      if (!mounted || versions.isEmpty) return;
+      final versionId = await _pickVersion(versions);
+      if (versionId == null) return;
+      final updatedGarage = await ApiClient().chooseGarageVersion(auth.token!, v.generationId, v.year, versionId);
       if (mounted) {
         setState(() => _vehicles = updatedGarage);
         context.read<GarageState>().notifyGarageChanged();
@@ -322,6 +390,16 @@ class _GarageScreenState extends State<GarageScreen> {
                   ),
                   const SizedBox(height: 2),
                   Text(v.subLabel, style: TextStyle(fontSize: 12.5, color: palette.muted)),
+                  if (v.hasVersion) ...[
+                    const SizedBox(height: 4),
+                    Text(v.versionNameFor(isAr) ?? '', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: palette.ink)),
+                    if ((v.versionEngineFor(isAr) ?? '').isNotEmpty) Text(v.versionEngineFor(isAr)!, style: TextStyle(fontSize: 12.5, color: palette.muted)),
+                    if (v.versionSeats != null) Text(seatsText(isAr, v.versionSeats!), style: TextStyle(fontSize: 12.5, color: palette.muted)),
+                  ] else if (v.versionCount > 0) ...[
+                    const SizedBox(height: 4),
+                    Text(tr(context, 'garage_no_version'), style: TextStyle(fontSize: 12.5, color: palette.muted)),
+                    TextButton(onPressed: () => _chooseVersion(v), child: Text(tr(context, 'garage_choose_version'))),
+                  ],
                   const SizedBox(height: 14),
                   // Real, now centered rather than stretched full-width
                   // -- confirmed against a real rendered mockup, since

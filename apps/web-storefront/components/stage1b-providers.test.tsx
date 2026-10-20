@@ -12,6 +12,7 @@ const m = vi.hoisted(() => ({
   add: vi.fn(async () => ({})),
   makeDefault: vi.fn(async () => undefined),
   remove: vi.fn(async () => undefined),
+  choose: vi.fn(async () => [] as unknown[]),
   rates: { current: {} as Record<string, number> },
 }));
 
@@ -22,6 +23,7 @@ vi.mock("@/lib/api", () => ({
   addVehicleToGarage: (...a: unknown[]) => m.add(...(a as [])),
   removeVehicleFromGarage: (...a: unknown[]) => m.remove(...(a as [])),
   setDefaultVehicle: (...a: unknown[]) => m.makeDefault(...(a as [])),
+  chooseGarageVersion: (...a: unknown[]) => m.choose(...(a as [])),
   fetchDisplayRates: vi.fn(async () => m.rates.current),
 }));
 
@@ -43,6 +45,10 @@ function Probe() {
       <button onClick={() => g.add("g2", 2021)}>add</button>
       <button onClick={() => g.makeDefault({ generationId: "g2", year: 2021 })}>default</button>
       <button onClick={() => g.remove({ generationId: "g1", year: 2024 })}>remove</button>
+      <button onClick={() => g.add("g2", 2021, "ver_a")}>add-version</button>
+      <button onClick={() => g.makeDefault({ generationId: "g2", year: 2021, versionId: "ver_a" })}>default-version</button>
+      <button onClick={() => g.remove({ generationId: "g2", year: 2021, versionId: "ver_a" })}>remove-version</button>
+      <button onClick={() => g.chooseVersion({ generationId: "g1", year: 2024 }, "ver_z")}>choose-version</button>
     </div>
   );
 }
@@ -80,12 +86,27 @@ describe("the garage", () => {
     render(<GarageProvider><Probe /></GarageProvider>);
     await waitFor(() => expect(state().n).toBe(2));
     await act(async () => { fireEvent.click(screen.getByText("add")); });
-    expect(m.add).toHaveBeenCalledWith("tok", "g2", 2021);
+    expect(m.add).toHaveBeenCalledWith("tok", "g2", 2021, undefined);                       // a car without a version: none is sent
     await act(async () => { fireEvent.click(screen.getByText("default")); });
-    expect(m.makeDefault).toHaveBeenCalledWith("tok", "g2", 2021);
+    expect(m.makeDefault).toHaveBeenCalledWith("tok", "g2", 2021, undefined);
     await act(async () => { fireEvent.click(screen.getByText("remove")); });
-    expect(m.remove).toHaveBeenCalledWith("tok", "g1", 2024);
+    expect(m.remove).toHaveBeenCalledWith("tok", "g1", 2024, undefined);
     expect(m.fetchMyGarage).toHaveBeenCalledTimes(4);                  // once on sign-in, then once after each of the three changes
+  });
+
+  it("CRITICAL: adding, choosing the default and removing a car all name its VERSION, and \"choose its version\" sends the version for that exact car; each is followed by a reload", async () => {
+    signIn("u1");
+    render(<GarageProvider><Probe /></GarageProvider>);
+    await waitFor(() => expect(state().n).toBe(2));
+    await act(async () => { fireEvent.click(screen.getByText("add-version")); });
+    expect(m.add).toHaveBeenCalledWith("tok", "g2", 2021, "ver_a");
+    await act(async () => { fireEvent.click(screen.getByText("default-version")); });
+    expect(m.makeDefault).toHaveBeenCalledWith("tok", "g2", 2021, "ver_a");
+    await act(async () => { fireEvent.click(screen.getByText("remove-version")); });
+    expect(m.remove).toHaveBeenCalledWith("tok", "g2", 2021, "ver_a");
+    await act(async () => { fireEvent.click(screen.getByText("choose-version")); });
+    expect(m.choose).toHaveBeenCalledWith("tok", "g1", 2024, "ver_z");
+    expect(m.fetchMyGarage).toHaveBeenCalledTimes(5);
   });
 
   it("CRITICAL: when somebody else signs in, the previous buyer's cars are never shown to them", async () => {

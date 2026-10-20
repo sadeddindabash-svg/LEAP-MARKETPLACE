@@ -1,18 +1,49 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import SafeImage from "@/components/SafeImage";
 import Link from "@/components/LocLink";
 import { useAuth } from "@/components/AuthProvider";
 import { useGarage } from "@/components/GarageProvider";
 import { useLang, useT } from "@/components/LangProvider";
 import VehicleCascade, { type VehicleChoice } from "@/components/VehicleCascade";
-import { resolveImageUrl, type GarageVehicle } from "@/lib/api";
-import { MAX_GARAGE_VEHICLES, isGarageFull, searchHrefFor, vehicleLabel, vehicleName, vehiclePhoto } from "@/lib/garage";
+import { fetchVersionsForGeneration, resolveImageUrl, type GarageVehicle, type VehicleVersion } from "@/lib/api";
+import { MAX_GARAGE_VEHICLES, isGarageFull, searchHrefFor, seatsText, vehicleKey, vehicleLabel, vehicleName, vehiclePhoto } from "@/lib/garage";
+import { pickName } from "@/lib/i18n";
 
 const button = "inline-flex min-h-11 items-center justify-center rounded-[10px] border-[1.5px] border-navy px-4 text-sm font-bold text-navy hover:bg-chalk disabled:opacity-50";
 
-function CarCard({ car, busy, onDefault, onRemove }: { car: GarageVehicle; busy: boolean; onDefault: () => void; onRemove: () => void }) {
+/** For a car saved BEFORE versions existed whose year now has some: "Choose its version" opens the list, and saving gives the car its version. */
+function ChooseVersion({ car, busy, onSave }: { car: GarageVehicle; busy: boolean; onSave: (versionId: string) => void }) {
+  const lang = useLang();
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const [versions, setVersions] = useState<VehicleVersion[]>([]);
+  const [picked, setPicked] = useState("");
+  useEffect(() => {
+    if (!open) return;
+    let current = true;
+    fetchVersionsForGeneration(car.generationId).then((list) => { if (current) setVersions(list); });
+    return () => { current = false; };
+  }, [open, car.generationId]);
+  return (
+    <div className="mt-2">
+      <span className="inline-flex rounded-full bg-[#fdf3e1] px-2.5 py-0.5 text-xs font-bold text-[#8a5a12]">{t("garage_no_version")}</span>{" "}
+      <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="text-sm font-semibold text-navy underline underline-offset-4">{t("garage_choose_version")}</button>
+      {open && (
+        <div className="mt-2 grid gap-2">
+          <select aria-label={t("picker_version")} value={picked} onChange={(e) => setPicked(e.target.value)} className="min-h-11 w-full rounded-[10px] border-[1.5px] border-[#c5d0d8] bg-white px-3 text-sm text-ink">
+            <option value="">{t("picker_choose_version")}</option>
+            {versions.map((v) => <option key={v.id} value={v.id}>{`${pickName(lang, v.name, v.nameAr)} · ${pickName(lang, v.engine, v.engineAr)} · ${seatsText(lang, v.seats)}`}</option>)}
+          </select>
+          <button type="button" className={button} disabled={!picked || busy} onClick={() => onSave(picked)}>{t("garage_version_save")}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CarCard({ car, busy, onDefault, onRemove, onChooseVersion }: { car: GarageVehicle; busy: boolean; onDefault: () => void; onRemove: () => void; onChooseVersion: (versionId: string) => void }) {
   const lang = useLang();
   const t = useT();
   const photo = vehiclePhoto(car);
@@ -29,8 +60,16 @@ function CarCard({ car, busy, onDefault, onRemove }: { car: GarageVehicle; busy:
       </div>
       <div className="min-w-0">
         <strong className="block text-base leading-snug [overflow-wrap:anywhere] sm:text-2xl">{vehicleName(lang, car)}</strong>
-        {car.generation && <p className="mt-1 text-sm text-muted [overflow-wrap:anywhere] sm:text-base">{car.generation}</p>}
+        {car.generation && car.generation !== String(car.year) && <p className="mt-1 text-sm text-muted [overflow-wrap:anywhere] sm:text-base">{car.generation}</p>}
         <p className="text-sm text-muted sm:text-base">{t("garage_year", { year: car.year })}</p>
+        {car.version && (
+          <div className="mt-1" data-testid="car-version">
+            <p className="text-sm font-semibold [overflow-wrap:anywhere] sm:text-lg">{pickName(lang, car.version.name, car.version.nameAr)}</p>
+            <p className="text-sm text-muted [overflow-wrap:anywhere] sm:text-base">{pickName(lang, car.version.engine, car.version.engineAr)}</p>
+            <p className="text-sm text-muted sm:text-base">{seatsText(lang, car.version.seats)}</p>
+          </div>
+        )}
+        {!car.version && (car.versionCount ?? 0) > 0 && <ChooseVersion car={car} busy={busy} onSave={onChooseVersion} />}
         {car.isDefault && <span className="mt-2 inline-flex rounded-full bg-navy px-3 py-0.5 text-xs font-bold text-white">{t("shopping_for_this")}</span>}
       </div>
       <div className="col-span-2 flex flex-col gap-2 sm:col-span-1 sm:self-end">
@@ -81,7 +120,7 @@ export default function GaragePage() {
           ) : (
             <ul className="grid gap-4">
               {garage.vehicles.map((car) => (
-                <CarCard key={`${car.generationId}:${car.year}`} car={car} busy={busy} onDefault={() => run(() => garage.makeDefault(car))} onRemove={() => run(() => garage.remove(car))} />
+                <CarCard key={vehicleKey(car)} car={car} busy={busy} onChooseVersion={(versionId) => run(() => garage.chooseVersion(car, versionId))} onDefault={() => run(() => garage.makeDefault(car))} onRemove={() => run(() => garage.remove(car))} />
               ))}
             </ul>
           )}
@@ -94,8 +133,8 @@ export default function GaragePage() {
         ) : (
           <section className="self-start rounded-[14px] border border-line border-t-[6px] border-t-signal bg-white p-6" aria-labelledby="g-add">
             <h2 id="g-add" className="mb-4 text-xl font-bold">{t("garage_add_car")}</h2>
-            <form onSubmit={(e) => { e.preventDefault(); if (choice) run(() => garage.add(choice.generationId, choice.year)); }}>
-              <div className="[&>div]:grid-cols-1"><VehicleCascade idPrefix="ga" onChange={setChoice} /></div>
+            <form onSubmit={(e) => { e.preventDefault(); if (choice) run(() => (choice.versionId ? garage.add(choice.generationId, choice.year, choice.versionId) : garage.add(choice.generationId, choice.year))); }}>
+              <div className="[&>div]:grid-cols-1"><VehicleCascade idPrefix="ga" onChange={setChoice} withVersions /></div>
               <button type="submit" disabled={!choice || busy} className="mt-4 min-h-12 w-full rounded-[10px] bg-signal font-bold text-on-signal hover:bg-signal-dark disabled:cursor-not-allowed disabled:opacity-50">{busy ? t("saving") : t("garage_add_button")}</button>
             </form>
             <p className="mt-3"><Link href="/find?tab=vin" className="text-sm font-semibold text-navy underline underline-offset-4">{t("garage_add_by_vin")}</Link></p>
