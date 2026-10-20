@@ -39,3 +39,5 @@ export const fetchAdminParts = (token, categoryId) => call("GET", `/categories/$
 export const editCategoryDetails = (token, id, fields) => call("PATCH", `/categories/${encodeURIComponent(id)}`, token, fields);
 export const editPartDetails = (token, id, fields) => call("PATCH", `/parts/${encodeURIComponent(id)}`, token, fields);
 export const reviewPartSizes = (token, ids) => call("POST", "/parts/review", token, { ids });
+export const previewCatalogCleanup = (token, alsoProducts) => call("GET", `/cleanup/preview${alsoProducts ? "?alsoProducts=1" : ""}`, token);
+export const commitCatalogCleanup = (token, fields) => call("POST", "/cleanup/commit", token, fields);

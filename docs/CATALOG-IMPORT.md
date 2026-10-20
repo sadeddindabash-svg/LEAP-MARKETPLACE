@@ -23,6 +23,18 @@ What you get: on the admin **Categories** page, two new tabs.
 4. `cd services\api` and `npm run migrate` (migration 108: adds only missing columns and one table; safe to run twice).
 5. Restart the backend and the admin dashboard. Sign in as an admin who may open **Categories**.
 
+## Start clean (optional): remove the old catalog first
+
+If the categories and parts made by hand before the catalog are only test data, remove them first so the imported catalog stands alone (no merging into old categories, no look-alike warnings). On the **Import from Excel** tab, open **Optional: start clean**.
+
+1. Press **Check what the old catalog contains**. It shows how many old categories and parts would be removed, which categories stay (and why), and removes nothing.
+2. Tick **Also delete the test products that use the old catalog** if those products are only test data. A product that has ever been in an order is never deleted (order history keeps its products); its category stays.
+3. Type `REMOVE OLD` and press **Remove the old catalog**. It all happens in one step or not at all, and it is written to the audit log. Then download the list of what was removed.
+
+"Old" means a category or part that no import created and that has no catalog code. Anything an import created or filled with a catalog code is never touched. A part is removed only if no product uses it; a category only if it has no parts left and no product uses it. A deleted product's images, reviews and wishlist entries go with it, and its lines are removed from shoppers' carts.
+
+Recommended order for a database that holds only test data: **start clean, then import**.
+
 ## Use it
 
 1. Categories, **Import from Excel**, choose `Leap_Parts_Catalog.xlsx`, **Check file**. Read the numbers, the warnings, and any row marked Problem (each says its row and why). Nothing is saved yet.
@@ -41,12 +53,12 @@ What you get: on the admin **Categories** page, two new tabs.
 
 ## Tests
 
-* API (20 tests, real HTTP with the real login and database): create or prepare a test database whose name ends in `_test`, then
+* API (28 tests, real HTTP with the real login and database): create or prepare a test database whose name ends in `_test`, then
   `set DATABASE_URL=postgresql://USER:PASSWORD@localhost:5432/YOUR_test_DB` and `node --test test/catalogImport.test.js` in `services\api`. They assume the standard seed (6 categories, 36 parts, 3 products, `admin@leap.dev`); if your seed differs, a few counts in the tests need adjusting. The file refuses to run on a database whose name does not end in `_test`.
-* Admin screens (22 tests): `npx vitest run src/CatalogImportPanel.test.jsx src/CatalogEditorPanel.test.jsx src/CategoriesTabs.test.jsx` in `apps\admin-dashboard`.
+* Admin screens (the three catalog test files): `npx vitest run src/CatalogImportPanel.test.jsx src/CatalogEditorPanel.test.jsx src/CategoriesTabs.test.jsx` in `apps\admin-dashboard`.
 
 ## What was and was not checked
 
-Checked: all of the above tests; 16 deliberate breaks of the server code and 12 of the screens were each caught by the tests; the two patch scripts were run on the ORIGINAL files and give exactly the patched files; a real browser logged in, checked and imported the real workbook, edited a part and saw a mistake refused, with no browser errors.
+Checked: all of the above tests; 22 deliberate breaks of the server code and 16 of the screens were each caught by the tests; the two patch scripts were run on the ORIGINAL files and give exactly the patched files; a real browser logged in, checked and imported the real workbook, edited a part and saw a mistake refused, with no browser errors.
 
 Not checked: the whole server was not started (the working copy used for the build lacked some of your files), so the one-line mount in `catalog/routes.js` was only syntax-checked, and the new endpoints were exercised through a small stand-in server that uses your real login, permission check, audit log and database. Please run the steps above once on your own machine and tell me anything that behaves differently. The Arabic and Chinese texts were written for the catalog and should be reviewed by native speakers.

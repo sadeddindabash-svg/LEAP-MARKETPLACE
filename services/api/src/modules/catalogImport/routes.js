@@ -18,6 +18,7 @@ const { runImport, newBatchId } = require('./plan');
 const { buildTemplate } = require('./template');
 const { ensurePlaceholders } = require('./placeholders');
 const details = require('./details');
+const { runCleanup } = require('./cleanup');
 
 const router = express.Router();
 const guard = [requireAuth, requireRole('admin'), requirePageAccess('categories')];
@@ -147,6 +148,40 @@ router.get('/categories/:id/parts', ...guard, async (req, res, next) => {
     const { rows } = await db.query('SELECT * FROM category_parts WHERE category_id = $1 ORDER BY sort_order, name_en', [req.params.id]);
     res.json(rows.map(details.partDto));
   } catch (err) { next(err); }
+});
+
+// Start clean: remove the old catalog (see cleanup.js). The preview runs the removal and ROLLS IT BACK; the commit needs the exact confirmation text and runs under the same lock as an import.
+router.get('/cleanup/preview', ...guard, async (req, res, next) => {
+  let client;
+  try {
+    client = await db.getPool().connect();
+    await client.query('BEGIN');
+    const out = await runCleanup(client, { alsoProducts: req.query.alsoProducts === '1' || req.query.alsoProducts === 'true' });
+    await client.query('ROLLBACK');
+    res.json(out);
+  } catch (err) {
+    if (client) await client.query('ROLLBACK').catch(() => {});
+    next(err);
+  } finally { if (client) client.release(); }
+});
+const CLEANUP_CONFIRMATION = 'REMOVE OLD';
+router.post('/cleanup/commit', ...guard, async (req, res, next) => {
+  let client;
+  try {
+    const body = req.body || {};
+    if (String(body.confirm || '').trim() !== CLEANUP_CONFIRMATION) return res.status(400).json({ error: `Type ${CLEANUP_CONFIRMATION} to confirm. Nothing was removed.` });
+    client = await db.getPool().connect();
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['catalog_import']);
+    const out = await runCleanup(client, { alsoProducts: body.alsoProducts === true });
+    await client.query('COMMIT');
+    await logAdminAction(req, 'catalog_cleanup', 'catalog_cleanup', null, { ...out.counts, alsoProducts: body.alsoProducts === true, removedCategories: out.removed.categories.map((c) => c.name) });
+    res.json({ removedNow: true, ...out });
+  } catch (err) {
+    if (client) await client.query('ROLLBACK').catch(() => {});
+    if (err && err.code === '23503') return res.status(409).json({ error: 'Something else still uses part of the old catalog, so nothing was removed.' });
+    next(err);
+  } finally { if (client) client.release(); }
 });
 
 router.get('/health', ...guard, async (req, res, next) => { try { res.json(await details.health(db)); } catch (err) { next(err); } });

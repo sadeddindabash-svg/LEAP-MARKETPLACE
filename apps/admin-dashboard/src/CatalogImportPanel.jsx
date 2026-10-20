@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Download, FileSpreadsheet, Check, AlertTriangle, Undo2 } from "lucide-react";
 import { C, body } from "./theme";
 import { SessionExpiredError, getStoredToken } from "./auth";
-import { previewCatalogImport, commitCatalogImport, downloadCatalogTemplate, fetchCatalogHealth, fetchCatalogBatches, undoCatalogBatch } from "./catalogAdminApi";
+import { previewCatalogImport, commitCatalogImport, downloadCatalogTemplate, fetchCatalogHealth, fetchCatalogBatches, undoCatalogBatch, previewCatalogCleanup, commitCatalogCleanup } from "./catalogAdminApi";
 import { exportToExcel } from "./exportToExcel";
 
 // "Import from Excel" on the Categories page: choose the parts catalog file, CHECK it (nothing is saved), read what will happen, then IMPORT (all or nothing). Below: how complete the
@@ -40,6 +40,7 @@ export default function CatalogImportPanel({ onSessionExpired }) {
   const [batches, setBatches] = useState([]);
   const [undoing, setUndoing] = useState(null);            // the batch id waiting for "yes, undo it"
   const [undone, setUndone] = useState(null);
+  const [clean, setClean] = useState({ open: false, alsoProducts: false, preview: null, confirm: "", busy: false, result: null });
 
   const fail = useCallback((err) => {
     if (err instanceof SessionExpiredError) { onSessionExpired(); return; }
@@ -75,6 +76,22 @@ export default function CatalogImportPanel({ onSessionExpired }) {
     try { setUndone(await undoCatalogBatch(getStoredToken(), id)); setUndoing(null); refresh(); }
     catch (err) { setUndoing(null); fail(err); }
   };
+  const loadCleanup = async (alsoProducts) => {
+    setClean((c) => ({ ...c, open: true, alsoProducts, busy: true, result: null })); setError(null);
+    try { const preview = await previewCatalogCleanup(getStoredToken(), alsoProducts); setClean((c) => ({ ...c, preview, busy: false })); }
+    catch (err) { setClean((c) => ({ ...c, busy: false })); fail(err); }
+  };
+  const runCleanup = async () => {
+    setClean((c) => ({ ...c, busy: true })); setError(null);
+    try { const result = await commitCatalogCleanup(getStoredToken(), { confirm: clean.confirm, alsoProducts: clean.alsoProducts }); setClean((c) => ({ ...c, busy: false, result, preview: null, confirm: "" })); refresh(); }
+    catch (err) { setClean((c) => ({ ...c, busy: false })); fail(err); }
+  };
+  const downloadRemoved = () => exportToExcel({
+    sheetName: "Removed", filename: "Old_catalog_removed.xlsx",
+    columns: [{ header: "Type", key: "type", width: 12 }, { header: "Id", key: "id", width: 24 }, { header: "Name", key: "name", width: 40 }, { header: "Category", key: "category", width: 24 }],
+    rows: [...clean.result.removed.categories.map((r) => ({ type: "Category", id: r.id, name: r.name, category: "" })), ...clean.result.removed.parts.map((r) => ({ type: "Part", id: r.id, name: r.name, category: r.category })),
+      ...clean.result.removed.products.map((r) => ({ type: "Product", id: r.id, name: r.name, category: r.category }))],
+  });
   const reset = () => { setFile(null); setPreview(null); setResult(null); setError(null); setPhase("idle"); setMode("skip"); setUndone(null); };
   const handleReport = () => exportToExcel({
     sheetName: "Import check", filename: `Catalog_import_report_${preview.fileName.replace(/\.xlsx$/i, "")}.xlsx`,
@@ -106,6 +123,50 @@ export default function CatalogImportPanel({ onSessionExpired }) {
           Categories are created if missing; nothing that exists is renamed or deleted. New items get a "photo coming soon" placeholder until a real photo is added.
         </div>
         <button onClick={handleTemplate} style={button(false, false)}><Download size={14} /> Download the template (.xlsx)</button>
+      </div>
+
+      <div style={box}>
+        <div style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 4 }}>Optional: start clean (remove the old catalog first)</div>
+        <div style={{ ...body, fontSize: 12.5, color: C.muted, marginBottom: 10 }}>
+          Removes the categories and parts that were made by hand before the parts catalog, so the imported catalog stands alone. It only removes what no product uses, and never anything an import created.
+          Nothing is removed until you check the list and type the confirmation.
+        </div>
+        {!clean.open && !clean.result && <button onClick={() => loadCleanup(false)} style={button(false, false)}>Check what the old catalog contains</button>}
+        {clean.open && clean.preview && !clean.result && (
+          <div>
+            {clean.busy ? <div style={{ ...body, fontSize: 12.5, color: C.muted, marginBottom: 10 }}>Checking…</div> : (
+            <>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+              {tile(clean.preview.counts.categories, "old categories to remove")}
+              {tile(clean.preview.counts.parts, "old parts to remove")}
+              {clean.alsoProducts && tile(clean.preview.counts.products, "test products to remove", clean.preview.counts.products > 0)}
+              {tile(clean.preview.counts.categoriesKept, "old categories that stay", clean.preview.counts.categoriesKept > 0)}
+            </div>
+            {clean.preview.hasImports && <div style={{ ...body, fontSize: 12.5, color: "#8A5A12", background: "#FDF3E1", borderRadius: 8, padding: 10, marginBottom: 8 }}>A catalog import already exists. Categories or parts you added by hand since then, without a catalog code, are counted as old too.</div>}
+            {clean.preview.removed.categories.length > 0 && <div style={{ ...body, fontSize: 12.5, color: C.ink, marginBottom: 6 }}>Categories that will be removed: {clean.preview.removed.categories.map((c) => c.name).join(", ")}</div>}
+            {clean.preview.kept.categories.map((c) => <div key={c.id} style={{ ...body, fontSize: 12.5, color: "#8A5A12", marginBottom: 4 }}>Stays: "{c.name}": {c.reason}</div>)}
+            {clean.preview.kept.products.map((p) => <div key={p.id} style={{ ...body, fontSize: 12.5, color: "#8A5A12", marginBottom: 4 }}>Stays: product "{p.name}": {p.reason}</div>)}
+            </>
+            )}
+            <label style={{ ...body, fontSize: 12.5, color: C.ink, display: "flex", gap: 6, alignItems: "center", margin: "10px 0" }}>
+              <input type="checkbox" checked={clean.alsoProducts} onChange={(e) => loadCleanup(e.target.checked)} disabled={clean.busy} /> Also delete the test products that use the old catalog (a product that has been in an order is never deleted)
+            </label>
+            {clean.preview.counts.categories + clean.preview.counts.parts + clean.preview.counts.products === 0 ? <div style={{ ...body, fontSize: 12.5, color: C.muted }}>There is nothing old to remove.</div> : (
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <input aria-label="Confirmation" placeholder="Type REMOVE OLD" value={clean.confirm} onChange={(e) => setClean((c) => ({ ...c, confirm: e.target.value }))} style={{ ...body, fontSize: 13, padding: "7px 10px", border: `1px solid ${C.line}`, borderRadius: 8, width: 180 }} />
+                <button disabled={clean.confirm !== "REMOVE OLD" || clean.busy} onClick={runCleanup} style={button(true, clean.confirm !== "REMOVE OLD" || clean.busy)}>{clean.busy ? "Working…" : "Remove the old catalog"}</button>
+                <button onClick={() => setClean({ open: false, alsoProducts: false, preview: null, confirm: "", busy: false, result: null })} style={button(false, false)}>Cancel</button>
+              </div>
+            )}
+          </div>
+        )}
+        {clean.result && (
+          <div role="status">
+            <div style={{ ...body, fontSize: 12.5, color: "#16794F", fontWeight: 700, marginBottom: 6 }}>Old catalog removed: {plural(clean.result.counts.categories, "category", "categories")}, {plural(clean.result.counts.parts, "part", "parts")}{clean.result.counts.products ? `, ${plural(clean.result.counts.products, "product", "products")}` : ""}.</div>
+            {clean.result.kept.categories.length > 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, marginBottom: 6 }}>{plural(clean.result.kept.categories.length, "old category stays", "old categories stay")} because products still use {clean.result.kept.categories.length === 1 ? "it" : "them"}.</div>}
+            <button onClick={downloadRemoved} style={button(false, false)}><Download size={14} /> Download the list of what was removed (.xlsx)</button>
+          </div>
+        )}
       </div>
 
       {error && <div role="alert" style={{ ...body, fontSize: 12.5, color: C.red, background: "#FBE7E5", borderRadius: 8, padding: 10, marginBottom: 14 }}>{error}</div>}

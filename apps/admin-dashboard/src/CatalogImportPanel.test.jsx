@@ -18,20 +18,23 @@ function preview(over = {}) {
   };
 }
 const HEALTH = { categories: { total: 8, inCatalog: 2, withoutRealPhoto: 2 }, parts: { total: 39, inCatalog: 3, withoutRealPhoto: 3, onEstimatedSize: 3 }, productsPricedOnEstimates: 1 };
+const CLEAN = { removed: { categories: [{ id: 'engine', name: 'Engine' }, { id: 'lighting', name: 'Lighting' }], parts: [{ id: 'p1', name: 'Oil Filter', category: 'engine' }], products: [] },
+  kept: { categories: [{ id: 'brake', name: 'Brake System', products: 1, parts: 7, reason: '1 product(s) still use it' }], products: [] }, hasImports: false, counts: { categories: 4, parts: 36, products: 0, categoriesKept: 2, productsKept: 0 } };
 let calls, answers;
 function mockFetch() {
   calls = [];
   answers = {
     preview: () => ({ status: 200, body: preview() }), commit: () => ({ status: 201, body: { imported: true, batchId: 'cimp_1', ...preview() } }), health: () => ({ status: 200, body: HEALTH }),
+    cleanupPreview: () => ({ status: 200, body: CLEAN }), cleanupCommit: () => ({ status: 200, body: { removedNow: true, ...CLEAN } }),
     batches: () => ({ status: 200, body: [] }), undo: () => ({ status: 200, body: { undone: true, partsRemoved: 3, categoriesRemoved: 2, partsKeptBecauseInUse: 0, categoriesKeptBecauseInUse: 0, olderPartsFilledAndKept: 0, note: 'Blanks that the import filled on rows that already existed are kept.' } }),
   };
   globalThis.fetch = vi.fn(async (url, options) => {
     const u = String(url).replace(/^https?:\/\/[^/]+/, ''); const method = options?.method || 'GET';
     const form = options?.body instanceof FormData ? { file: options.body.get('file'), mode: options.body.get('mode') } : null;
-    calls.push({ method, url: u, auth: options?.headers?.Authorization, form });
+    calls.push({ method, url: u, auth: options?.headers?.Authorization, form, json: typeof options?.body === 'string' ? JSON.parse(options.body) : null });
     if (u.endsWith('/import/template')) return { ok: true, status: 200, blob: async () => new Blob(['x']) };
-    const which = u.endsWith('/preview') ? 'preview' : u.endsWith('/commit') ? 'commit' : u.endsWith('/health') ? 'health' : u.endsWith('/undo') ? 'undo' : 'batches';
-    const a = answers[which]();
+    const which = u.includes('/cleanup/preview') ? 'cleanupPreview' : u.includes('/cleanup/commit') ? 'cleanupCommit' : u.endsWith('/preview') ? 'preview' : u.endsWith('/commit') ? 'commit' : u.endsWith('/health') ? 'health' : u.endsWith('/undo') ? 'undo' : 'batches';
+    const a = await answers[which]();
     return { ok: a.status < 400, status: a.status, json: async () => a.body };
   });
 }
@@ -127,5 +130,71 @@ describe('CatalogImportPanel', () => {
     await chooseAndCheck();
     fireEvent.click(screen.getByRole('button', { name: /import 2 categories and 3 parts/i }));
     const alerts = await screen.findAllByRole('alert'); expect(alerts.some((a) => /nothing was imported/.test(a.textContent))).toBe(true); expect(alerts.length).toBe(2); expect(screen.getByText(/"Middle" is not accepted/)).toBeInTheDocument();
+  });
+
+  it('start clean: shows what would be removed and what stays, and removes nothing yet', async () => {
+    render(<CatalogImportPanel onSessionExpired={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /check what the old catalog contains/i }));
+    expect(await screen.findByText('old categories to remove')).toBeInTheDocument(); expect(screen.getByText('old parts to remove').previousSibling).toHaveTextContent('36');
+    expect(screen.getByText(/Categories that will be removed: Engine, Lighting/)).toBeInTheDocument(); expect(screen.getByText(/Stays: "Brake System": 1 product\(s\) still use it/)).toBeInTheDocument();
+    expect(calls.some((c) => c.url.includes('/cleanup/commit'))).toBe(false); expect(calls.find((c) => c.url.includes('/cleanup/preview')).url).not.toMatch(/alsoProducts/);
+  });
+
+  it('start clean: the Remove button stays off until the exact confirmation is typed, then removes and offers the list', async () => {
+    render(<CatalogImportPanel onSessionExpired={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /check what the old catalog contains/i })); await screen.findByText('old parts to remove');
+    const remove = screen.getByRole('button', { name: /remove the old catalog/i }); expect(remove).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Confirmation'), { target: { value: 'remove old' } }); expect(remove).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Confirmation'), { target: { value: 'REMOVE OLD' } }); expect(remove).toBeEnabled(); fireEvent.click(remove);
+    expect(await screen.findByText(/Old catalog removed: 4 categories, 36 parts/)).toBeInTheDocument();
+    const commit = calls.find((c) => c.url.includes('/cleanup/commit')); expect(commit.method).toBe('POST'); expect(commit.json).toEqual({ confirm: 'REMOVE OLD', alsoProducts: false });
+    fireEvent.click(screen.getByRole('button', { name: /download the list of what was removed/i })); expect(exportToExcel).toHaveBeenCalledTimes(1);
+    expect(exportToExcel.mock.calls[0][0].rows.map((r) => r.name)).toEqual(['Engine', 'Lighting', 'Oil Filter']);
+  });
+
+  it('start clean: the products option re-checks the list with products, shows what stays, and is sent with the removal', async () => {
+    const withProducts = { ...CLEAN, removed: { ...CLEAN.removed, products: [{ id: 'p1', name: 'Test brake pad', category: 'brake', part: null }] }, kept: { categories: [], products: [{ id: 'p2', name: 'Ordered pad', category: 'engine', part: null, reason: 'it has been in an order: order history keeps its products' }] }, counts: { ...CLEAN.counts, products: 1, productsKept: 1, categoriesKept: 0 } };
+    answers.cleanupPreview = () => ({ status: 200, body: withProducts });
+    render(<CatalogImportPanel onSessionExpired={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /check what the old catalog contains/i })); await screen.findByText('old parts to remove');
+    fireEvent.click(screen.getByLabelText(/also delete the test products/i));
+    expect(await screen.findByText('test products to remove')).toBeInTheDocument(); expect(screen.getByText(/Stays: product "Ordered pad": it has been in an order/)).toBeInTheDocument();
+    expect(calls.filter((c) => c.url.includes('/cleanup/preview')).pop().url).toMatch(/alsoProducts=1/);
+    fireEvent.change(screen.getByLabelText('Confirmation'), { target: { value: 'REMOVE OLD' } }); fireEvent.click(screen.getByRole('button', { name: /remove the old catalog/i }));
+    await screen.findByText(/Old catalog removed/); expect(calls.find((c) => c.url.includes('/cleanup/commit')).json.alsoProducts).toBe(true);
+  });
+
+  it('start clean: says so when there is nothing old to remove, and warns when an import already exists', async () => {
+    answers.cleanupPreview = () => ({ status: 200, body: { ...CLEAN, hasImports: true, removed: { categories: [], parts: [], products: [] }, kept: { categories: [], products: [] }, counts: { categories: 0, parts: 0, products: 0, categoriesKept: 0, productsKept: 0 } } });
+    render(<CatalogImportPanel onSessionExpired={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /check what the old catalog contains/i }));
+    expect(await screen.findByText('There is nothing old to remove.')).toBeInTheDocument(); expect(screen.getByText(/A catalog import already exists/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Confirmation')).not.toBeInTheDocument();
+  });
+
+  it('start clean: a refusal from the server is shown and nothing is reported as removed', async () => {
+    answers.cleanupCommit = () => ({ status: 409, body: { error: 'Something else still uses part of the old catalog, so nothing was removed.' } });
+    render(<CatalogImportPanel onSessionExpired={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /check what the old catalog contains/i })); await screen.findByText('old parts to remove');
+    fireEvent.change(screen.getByLabelText('Confirmation'), { target: { value: 'REMOVE OLD' } }); fireEvent.click(screen.getByRole('button', { name: /remove the old catalog/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/nothing was removed/); expect(screen.queryByText(/Old catalog removed/)).not.toBeInTheDocument();
+  });
+
+  it('start clean: an expired session returns to the login', async () => {
+    answers.cleanupPreview = () => ({ status: 401, body: { error: 'x' } }); const expired = vi.fn();
+    render(<CatalogImportPanel onSessionExpired={expired} />); fireEvent.click(screen.getByRole('button', { name: /check what the old catalog contains/i }));
+    await waitFor(() => expect(expired).toHaveBeenCalled());
+  });
+
+  it('start clean: while the list reloads after the products option is ticked, no old numbers are shown and Remove stays off', async () => {
+    const withProducts = { ...CLEAN, counts: { ...CLEAN.counts, categories: 6, products: 2 } }; let release; let calls = 0;
+    answers.cleanupPreview = () => (++calls === 1 ? { status: 200, body: CLEAN } : new Promise((resolve) => { release = () => resolve({ status: 200, body: withProducts }); }));
+    render(<CatalogImportPanel onSessionExpired={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /check what the old catalog contains/i })); await screen.findByText('old parts to remove');
+    fireEvent.change(screen.getByLabelText('Confirmation'), { target: { value: 'REMOVE OLD' } });
+    fireEvent.click(screen.getByLabelText(/also delete the test products/i));
+    expect(await screen.findByText('Checking…')).toBeInTheDocument(); expect(screen.queryByText('old categories to remove')).not.toBeInTheDocument(); expect(screen.getByRole('button', { name: /working|remove the old catalog/i })).toBeDisabled();
+    release();
+    expect(await screen.findByText('test products to remove')).toBeInTheDocument(); expect(screen.getByText('test products to remove').previousSibling).toHaveTextContent('2'); expect(screen.getByText('old categories to remove').previousSibling).toHaveTextContent('6');
   });
 });
