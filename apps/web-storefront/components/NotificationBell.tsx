@@ -28,7 +28,9 @@ export default function NotificationBell() {
     if (authLoading || !user) return;
     const token = getAuthToken();
     if (!token) return;
-    const load = () => fetchUnreadNotificationCount(token).then(setUnreadCount);
+    // A check that cannot reach the server (it is stopped or restarting, or the connection dropped) must not throw: it is a background refresh of a small badge. The badge keeps
+    // its last number and the next check, 30 seconds later, tries again.
+    const load = () => fetchUnreadNotificationCount(token).then(setUnreadCount).catch(() => {});
     load();
     const interval = setInterval(load, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
