@@ -3,6 +3,9 @@ const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { logAdminAction } = require('../audit/helpers');
 const { moveItem } = require('../../lib/reorder');
+const multer = require('multer');
+const { MIN_CATALOG_DIMENSION_PX, MAX_FILE_SIZE_BYTES, ALLOWED_MIME_TYPES, inspectImage, saveImage } = require('../uploads/imageRules');
+const { validateVersionFields, optionalName, cleanLine } = require('./vehicleRules');
 
 /**
  * Fitment module — Year/Make/Model/Trim reference data (Phase 1, BUY-010).
@@ -61,7 +64,7 @@ router.get('/brands', async (req, res, next) => {
     // nameAr/photoUrl (new, migration 046) -- may be null for a brand
     // created before this requirement existed; a real, honest gap for
     // old data, not hidden.
-    res.json(rows.map((r) => ({ id: r.id, name: r.name, nameAr: r.name_ar, photoUrl: r.photo_url, sortOrder: r.sort_order })));
+    res.json(rows.map((r) => ({ id: r.id, name: r.name, nameAr: r.name_ar, nameZh: r.name_zh || null, photoUrl: r.photo_url, sortOrder: r.sort_order })));
   } catch (err) {
     next(err);
   }
@@ -70,7 +73,7 @@ router.get('/brands', async (req, res, next) => {
 router.get('/brands/:brandId/models', async (req, res, next) => {
   try {
     const { rows } = await db.query('SELECT * FROM vehicle_models WHERE brand_id = $1 ORDER BY sort_order ASC', [req.params.brandId]);
-    res.json(rows.map((r) => ({ id: r.id, brandId: r.brand_id, name: r.name, nameAr: r.name_ar, photoUrl: r.photo_url, sortOrder: r.sort_order })));
+    res.json(rows.map((r) => ({ id: r.id, brandId: r.brand_id, name: r.name, nameAr: r.name_ar, nameZh: r.name_zh || null, photoUrl: r.photo_url, sortOrder: r.sort_order })));
   } catch (err) {
     next(err);
   }
@@ -138,7 +141,7 @@ function isUniqueViolation(err) {
 // POST /fitment/brands  { name }
 router.post('/brands', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
-    const { name, nameAr, photoUrl } = req.body || {};
+    const { name, nameAr, nameZh, photoUrl } = req.body || {};
     if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' });
     // Required going forward (new, migration 046) -- an explicit real
     // requirement, not just an optional nicety like categories' own
@@ -146,14 +149,15 @@ router.post('/brands', requireAuth, requireRole('admin'), requirePageAccess('veh
     // retroactively break brands created before this requirement
     // existed.
     if (!nameAr || !nameAr.trim()) return res.status(400).json({ error: 'nameAr is required' });
+    if (!nameZh || typeof nameZh !== 'string' || !nameZh.trim()) return res.status(400).json({ error: 'nameZh is required (the Chinese name)' });
     // A brand needs all three: English name, Arabic name and a photo.
     if (!photoUrl || typeof photoUrl !== 'string' || !photoUrl.trim()) return res.status(400).json({ error: 'photoUrl is required' });
     const photo = photoUrl.trim();
     const id = `brand_${Date.now()}`;
     const { rows: maxRows } = await db.query('SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM vehicle_brands');
-    await db.query('INSERT INTO vehicle_brands (id, name, name_ar, photo_url, sort_order) VALUES ($1, $2, $3, $4, $5)', [id, name.trim(), nameAr.trim(), photo, maxRows[0].max_order + 10]);
+    await db.query('INSERT INTO vehicle_brands (id, name, name_ar, name_zh, photo_url, sort_order) VALUES ($1, $2, $3, $4, $5, $6)', [id, name.trim(), nameAr.trim(), cleanLine(nameZh), photo, maxRows[0].max_order + 10]);
     await logAdminAction(req, 'brand_created', 'brand', id, { name: name.trim() });
-    res.status(201).json({ id, name: name.trim(), nameAr: nameAr.trim(), photoUrl: photo, sortOrder: maxRows[0].max_order + 10 });
+    res.status(201).json({ id, name: name.trim(), nameAr: nameAr.trim(), nameZh: cleanLine(nameZh), photoUrl: photo, sortOrder: maxRows[0].max_order + 10 });
   } catch (err) {
     if (isUniqueViolation(err)) return res.status(409).json({ error: `A brand named "${req.body.name}" already exists` });
     next(err);
@@ -170,13 +174,15 @@ router.post('/brands', requireAuth, requireRole('admin'), requirePageAccess('veh
 // created.
 router.patch('/brands/:id', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
-    const { name, nameAr } = req.body || {};
+    const { name, nameAr, nameZh } = req.body || {};
     if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' });
     if (!nameAr || !nameAr.trim()) return res.status(400).json({ error: 'nameAr is required' });
-    const { rows } = await db.query('UPDATE vehicle_brands SET name = $1, name_ar = $2 WHERE id = $3 RETURNING *', [name.trim(), nameAr.trim(), req.params.id]);
+    const zh = optionalName(nameZh);
+    if (zh === undefined) return res.status(400).json({ error: 'nameZh cannot be blank (the Chinese name)' });
+    const { rows } = await db.query('UPDATE vehicle_brands SET name = $1, name_ar = $2, name_zh = COALESCE($4, name_zh) WHERE id = $3 RETURNING *', [name.trim(), nameAr.trim(), req.params.id, zh]);
     if (rows.length === 0) return res.status(404).json({ error: 'Brand not found' });
     await logAdminAction(req, 'brand_updated', 'brand', req.params.id, { name: name.trim() });
-    res.json({ id: rows[0].id, name: rows[0].name, nameAr: rows[0].name_ar, photoUrl: rows[0].photo_url });
+    res.json({ id: rows[0].id, name: rows[0].name, nameAr: rows[0].name_ar, nameZh: rows[0].name_zh || null, photoUrl: rows[0].photo_url });
   } catch (err) {
     if (isUniqueViolation(err)) return res.status(409).json({ error: `A brand named "${req.body.name}" already exists` });
     next(err);
@@ -232,16 +238,17 @@ router.delete('/brands/:id', requireAuth, requireRole('admin'), requirePageAcces
 router.post('/brands/:brandId/models', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
     // A model takes only its English and Arabic names. (A photo sent along is ignored: models have no photo; see migration 102.)
-    const { name, nameAr } = req.body || {};
+    const { name, nameAr, nameZh } = req.body || {};
     if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' });
     if (!nameAr || !nameAr.trim()) return res.status(400).json({ error: 'nameAr is required' });
+    if (!nameZh || typeof nameZh !== 'string' || !nameZh.trim()) return res.status(400).json({ error: 'nameZh is required (the Chinese name)' });
     const brandCheck = await db.query('SELECT id FROM vehicle_brands WHERE id = $1', [req.params.brandId]);
     if (brandCheck.rows.length === 0) return res.status(404).json({ error: 'Brand not found' });
     const id = `model_${Date.now()}`;
     const { rows: maxRows } = await db.query('SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM vehicle_models WHERE brand_id = $1', [req.params.brandId]);
-    await db.query('INSERT INTO vehicle_models (id, brand_id, name, name_ar, photo_url, sort_order) VALUES ($1, $2, $3, $4, $5, $6)', [id, req.params.brandId, name.trim(), nameAr.trim(), null, maxRows[0].max_order + 10]);
+    await db.query('INSERT INTO vehicle_models (id, brand_id, name, name_ar, name_zh, photo_url, sort_order) VALUES ($1, $2, $3, $4, $5, $6, $7)', [id, req.params.brandId, name.trim(), nameAr.trim(), cleanLine(nameZh), null, maxRows[0].max_order + 10]);
     await logAdminAction(req, 'model_created', 'model', id, { name: name.trim(), brandId: req.params.brandId });
-    res.status(201).json({ id, brandId: req.params.brandId, name: name.trim(), nameAr: nameAr.trim(), photoUrl: null, sortOrder: maxRows[0].max_order + 10 });
+    res.status(201).json({ id, brandId: req.params.brandId, name: name.trim(), nameAr: nameAr.trim(), nameZh: cleanLine(nameZh), photoUrl: null, sortOrder: maxRows[0].max_order + 10 });
   } catch (err) {
     next(err);
   }
@@ -255,13 +262,15 @@ router.post('/brands/:brandId/models', requireAuth, requireRole('admin'), requir
 // time (photo stays on its own separate endpoint below).
 router.patch('/models/:id', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
   try {
-    const { name, nameAr } = req.body || {};
+    const { name, nameAr, nameZh } = req.body || {};
     if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' });
     if (!nameAr || !nameAr.trim()) return res.status(400).json({ error: 'nameAr is required' });
-    const { rows } = await db.query('UPDATE vehicle_models SET name = $1, name_ar = $2 WHERE id = $3 RETURNING *', [name.trim(), nameAr.trim(), req.params.id]);
+    const zh = optionalName(nameZh);
+    if (zh === undefined) return res.status(400).json({ error: 'nameZh cannot be blank (the Chinese name)' });
+    const { rows } = await db.query('UPDATE vehicle_models SET name = $1, name_ar = $2, name_zh = COALESCE($4, name_zh) WHERE id = $3 RETURNING *', [name.trim(), nameAr.trim(), req.params.id, zh]);
     if (rows.length === 0) return res.status(404).json({ error: 'Model not found' });
     await logAdminAction(req, 'model_updated', 'model', req.params.id, { name: name.trim() });
-    res.json({ id: rows[0].id, brandId: rows[0].brand_id, name: rows[0].name, nameAr: rows[0].name_ar, photoUrl: rows[0].photo_url, sortOrder: rows[0].sort_order });
+    res.json({ id: rows[0].id, brandId: rows[0].brand_id, name: rows[0].name, nameAr: rows[0].name_ar, nameZh: rows[0].name_zh || null, photoUrl: rows[0].photo_url, sortOrder: rows[0].sort_order });
   } catch (err) {
     next(err);
   }
@@ -919,6 +928,127 @@ router.post('/vin-model-patterns/resolve-conflict', requireAuth, requireRole('ad
     );
     await logAdminAction(req, 'vin_model_pattern_conflict_resolved', 'vin_model_pattern', normalizedPrefix, { wmi: normalizedWmi, chosenBrand });
     res.json({ wmi: normalizedWmi, prefix: normalizedPrefix, brand: chosenBrand, model });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ============================================================
+// Photo door for VEHICLE and CATEGORY photos (400 px minimum)
+// ============================================================
+// The vehicle screens (brand, year, version) and the Categories screen upload their photos here. The shortest side must be at least 400 px (a bigger picture is fine).
+// This is a SEPARATE, admin-only door: POST /uploads/product-image, used for product, hub and review photos, keeps its 800 px minimum and is not touched.
+// (It lives in this module so that it needs no change to how the server's modules are mounted; the Categories screen simply calls this address too.)
+const catalogUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_FILE_SIZE_BYTES },
+  fileFilter: (req, file, cb) => {
+    if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) return cb(new Error(`Unsupported file type: ${file.mimetype}. Allowed: ${ALLOWED_MIME_TYPES.join(', ')}`));
+    cb(null, true);
+  },
+});
+
+// POST /fitment/catalog-image  (multipart/form-data, field name "image")  ->  { url, width, height, storage }
+router.post('/catalog-image', requireAuth, requireRole('admin'), (req, res, next) => {
+  catalogUpload.single('image')(req, res, async (err) => {
+    if (err) return res.status(400).json({ error: err.message });
+    if (!req.file) return res.status(400).json({ error: 'No image file provided (expected field name "image")' });
+    try {
+      const checked = inspectImage(req.file.buffer, MIN_CATALOG_DIMENSION_PX);
+      if (!checked.ok) return res.status(400).json({ error: checked.error });
+      const saved = await saveImage(req.file.buffer, checked.mime);
+      res.status(201).json({ url: saved.url, width: checked.width, height: checked.height, storage: saved.storage });
+    } catch (e) {
+      next(e);
+    }
+  });
+});
+
+// ============================================================
+// Versions: the level under a Year (version name, engine, seats, photo)
+// ============================================================
+// A version belongs to a Year (vehicle_generations). Its name and engine are written in English, Arabic and Chinese (all required), the seats are a number from 1 to 12,
+// and the photo is required when adding one by hand (a version that came from the Excel import may have none yet: the list marks it and "Add photo" fixes it, exactly
+// as for years). The same version name with the same engine cannot be added twice to one year.
+function toVersionDto(r) {
+  return {
+    id: r.id, generationId: r.generation_id,
+    name: r.name, nameAr: r.name_ar, nameZh: r.name_zh,
+    engine: r.engine, engineAr: r.engine_ar, engineZh: r.engine_zh,
+    seats: r.seats, photoUrl: r.photo_url || null, sortOrder: r.sort_order,
+  };
+}
+
+router.get('/generations/:generationId/versions', async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT * FROM vehicle_versions WHERE generation_id = $1 ORDER BY sort_order ASC, name ASC', [req.params.generationId]);
+    res.json(rows.map(toVersionDto));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/generations/:generationId/versions', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const checked = validateVersionFields(req.body);
+    if (!checked.ok) return res.status(400).json({ error: checked.error });
+    const photoUrl = typeof (req.body || {}).photoUrl === 'string' ? req.body.photoUrl.trim() : '';
+    if (!photoUrl) return res.status(400).json({ error: 'photoUrl is required' });
+    const genCheck = await db.query('SELECT id FROM vehicle_generations WHERE id = $1', [req.params.generationId]);
+    if (genCheck.rows.length === 0) return res.status(404).json({ error: 'Year not found' });
+    const v = checked.value;
+    const id = `ver_${Date.now()}${Math.floor(Math.random() * 1000)}`;
+    const { rows: maxRows } = await db.query('SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM vehicle_versions WHERE generation_id = $1', [req.params.generationId]);
+    const { rows } = await db.query(
+      `INSERT INTO vehicle_versions (id, generation_id, name, name_ar, name_zh, engine, engine_ar, engine_zh, seats, photo_url, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+      [id, req.params.generationId, v.name, v.nameAr, v.nameZh, v.engine, v.engineAr, v.engineZh, v.seats, photoUrl, maxRows[0].max_order + 10]
+    );
+    await logAdminAction(req, 'version_created', 'version', id, { name: v.name, generationId: req.params.generationId });
+    res.status(201).json(toVersionDto(rows[0]));
+  } catch (err) {
+    if (isUniqueViolation(err)) return res.status(409).json({ error: 'This version with this engine already exists for this year' });
+    next(err);
+  }
+});
+
+router.patch('/versions/:id', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const checked = validateVersionFields(req.body);
+    if (!checked.ok) return res.status(400).json({ error: checked.error });
+    const v = checked.value;
+    const { rows } = await db.query(
+      `UPDATE vehicle_versions SET name = $1, name_ar = $2, name_zh = $3, engine = $4, engine_ar = $5, engine_zh = $6, seats = $7 WHERE id = $8 RETURNING *`,
+      [v.name, v.nameAr, v.nameZh, v.engine, v.engineAr, v.engineZh, v.seats, req.params.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Version not found' });
+    await logAdminAction(req, 'version_updated', 'version', req.params.id, { name: v.name });
+    res.json(toVersionDto(rows[0]));
+  } catch (err) {
+    if (isUniqueViolation(err)) return res.status(409).json({ error: 'This version with this engine already exists for this year' });
+    next(err);
+  }
+});
+
+router.patch('/versions/:id/photo', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const photoUrl = typeof (req.body || {}).photoUrl === 'string' ? req.body.photoUrl.trim() : '';
+    if (!photoUrl) return res.status(400).json({ error: 'photoUrl is required' });
+    const { rows } = await db.query('UPDATE vehicle_versions SET photo_url = $1 WHERE id = $2 RETURNING *', [photoUrl, req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Version not found' });
+    await logAdminAction(req, 'version_photo_changed', 'version', req.params.id, {});
+    res.json(toVersionDto(rows[0]));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/versions/:id', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query('DELETE FROM vehicle_versions WHERE id = $1 RETURNING name', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Version not found' });
+    await logAdminAction(req, 'version_deleted', 'version', req.params.id, { name: rows[0].name });
+    res.status(204).end();
   } catch (err) {
     next(err);
   }

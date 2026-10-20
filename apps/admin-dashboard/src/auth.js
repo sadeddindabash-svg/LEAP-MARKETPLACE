@@ -274,7 +274,7 @@ async function fitmentMutate(method, path, token, body) {
   return data;
 }
 
-export const createBrand = (token, name, nameAr, photoUrl) => fitmentMutate("POST", "/fitment/brands", token, { name, nameAr, photoUrl });
+export const createBrand = (token, name, nameAr, photoUrl, nameZh) => fitmentMutate("POST", "/fitment/brands", token, { name, nameAr, nameZh, photoUrl });
 export const deleteBrand = (token, id) => fitmentMutate("DELETE", `/fitment/brands/${id}`, token);
 export const fetchVinWmiCodes = (token) => authedGet("/fitment/vin-wmi-codes", token);
 export const saveVinWmiCode = (token, wmiPrefix, make, country) => fitmentMutate("POST", "/fitment/vin-wmi-codes", token, { wmiPrefix, make, country });
@@ -286,7 +286,8 @@ export const deleteVinModelPattern = (token, prefix) => fitmentMutate("DELETE", 
 export const bulkUploadVinModelPatterns = (token, rows) => fitmentMutate("POST", "/fitment/vin-model-patterns/bulk-upload", token, { rows });
 export const resolveVinModelPatternConflict = (token, wmi, chosenBrand, prefix, model, year, type) =>
   fitmentMutate("POST", "/fitment/vin-model-patterns/resolve-conflict", token, { wmi, chosenBrand, prefix, model, year, type });
-export const createModel = (token, brandId, name, nameAr, photoUrl) => fitmentMutate("POST", `/fitment/brands/${brandId}/models`, token, { name, nameAr, photoUrl });
+// A model takes its English, Arabic and Chinese names (no photo).
+export const createModel = (token, brandId, name, nameAr, nameZh) => fitmentMutate("POST", `/fitment/brands/${brandId}/models`, token, { name, nameAr, nameZh });
 export const deleteModel = (token, id) => fitmentMutate("DELETE", `/fitment/models/${id}`, token);
 export const updateModelPhoto = (token, id, photoUrl) => fitmentMutate("PATCH", `/fitment/models/${id}/photo`, token, { photoUrl });
 
@@ -297,8 +298,8 @@ export const updateCategory = (token, id, nameEn, nameAr) => fitmentMutate("PATC
 // `shipping` ({ weightKg, lengthCm, widthCm, heightCm }) is optional: left out, only the names change; sent, all four are validated and saved together. A rename also
 // renames the part on the products that have it (they refer to it by name).
 export const updatePart = (token, id, nameEn, nameAr, shipping) => fitmentMutate("PATCH", `/catalog/parts/${id}`, token, { nameEn, nameAr, ...(shipping || {}) });
-export const updateBrand = (token, id, name, nameAr) => fitmentMutate("PATCH", `/fitment/brands/${id}`, token, { name, nameAr });
-export const updateModel = (token, id, name, nameAr) => fitmentMutate("PATCH", `/fitment/models/${id}`, token, { name, nameAr });
+export const updateBrand = (token, id, name, nameAr, nameZh) => fitmentMutate("PATCH", `/fitment/brands/${id}`, token, { name, nameAr, ...(nameZh ? { nameZh } : {}) });
+export const updateModel = (token, id, name, nameAr, nameZh) => fitmentMutate("PATCH", `/fitment/models/${id}`, token, { name, nameAr, ...(nameZh ? { nameZh } : {}) });
 export const updateGeneration = (token, id, name, yearStart, yearEnd) => fitmentMutate("PATCH", `/fitment/generations/${id}`, token, { name, yearStart, yearEnd });
 export const updateEngine = (token, id, name) => fitmentMutate("PATCH", `/fitment/engines/${id}`, token, { name });
 export const updateTransmission = (token, id, name) => fitmentMutate("PATCH", `/fitment/transmissions/${id}`, token, { name });
@@ -309,6 +310,17 @@ export const createYear = (token, modelId, year, photoUrl) =>
 // Add or replace the photo of an existing year (also how years created before the year photo existed get one).
 export const updateGenerationPhoto = (token, id, photoUrl) => fitmentMutate("PATCH", `/fitment/generations/${id}/photo`, token, { photoUrl });
 export const deleteGeneration = (token, id) => fitmentMutate("DELETE", `/fitment/generations/${id}`, token);
+// The level under a Year: versions (name, engine, seats, photo), written in English, Arabic and Chinese.
+export async function fetchVersionsForGeneration(generationId) {
+  const response = await fetch(`${API_BASE_URL}/fitment/generations/${generationId}/versions`);
+  if (!response.ok) throw new Error(`Failed to load versions (${response.status})`);
+  return response.json();
+}
+// `fields`: { name, nameAr, nameZh, engine, engineAr, engineZh, seats } (and photoUrl when adding)
+export const createVersion = (token, generationId, fields) => fitmentMutate("POST", `/fitment/generations/${generationId}/versions`, token, fields);
+export const updateVersion = (token, id, fields) => fitmentMutate("PATCH", `/fitment/versions/${id}`, token, fields);
+export const updateVersionPhoto = (token, id, photoUrl) => fitmentMutate("PATCH", `/fitment/versions/${id}/photo`, token, { photoUrl });
+export const deleteVersion = (token, id) => fitmentMutate("DELETE", `/fitment/versions/${id}`, token);
 export const createEngine = (token, generationId, name) => fitmentMutate("POST", `/fitment/generations/${generationId}/engines`, token, { name });
 export const deleteEngine = (token, id) => fitmentMutate("DELETE", `/fitment/engines/${id}`, token);
 export const createTransmission = (token, generationId, name) => fitmentMutate("POST", `/fitment/generations/${generationId}/transmissions`, token, { name });
@@ -502,6 +514,22 @@ export async function uploadImage(token, file) {
   const formData = new FormData();
   formData.append("image", file);
   const response = await fetch(`${API_BASE_URL}/uploads/product-image`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Upload failed (${response.status})`);
+  return data; // { url, width, height, storage }
+}
+
+// Photos of VEHICLES (brand, year, version) and of CATEGORIES go through this door: the shortest side must be at least 400 px (bigger is fine). Every other photo
+// (products, parts, payment methods...) keeps using uploadImage above, with its 800 px minimum.
+export async function uploadCatalogImage(token, file) {
+  const formData = new FormData();
+  formData.append("image", file);
+  const response = await fetch(`${API_BASE_URL}/fitment/catalog-image`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: formData,

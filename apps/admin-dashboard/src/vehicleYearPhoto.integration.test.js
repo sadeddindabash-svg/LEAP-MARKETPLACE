@@ -24,8 +24,8 @@ const nextYear = new Date().getFullYear() + 1;
 
 async function newModel(token) {
   const suffix = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
-  const brand = await post('/fitment/brands', token, { name: `Three Step Brand ${suffix}`, nameAr: 'علامة', photoUrl: '/uploads/brand.png' }).then((r) => r.json());
-  const model = await post(`/fitment/brands/${brand.id}/models`, token, { name: `Three Step Model ${suffix}`, nameAr: 'موديل' }).then((r) => r.json());
+  const brand = await post('/fitment/brands', token, { name: `Three Step Brand ${suffix}`, nameAr: 'علامة', nameZh: '中文', photoUrl: '/uploads/brand.png' }).then((r) => r.json());
+  const model = await post(`/fitment/brands/${brand.id}/models`, token, { name: `Three Step Model ${suffix}`, nameAr: 'موديل', nameZh: '中文' }).then((r) => r.json());
   return { brand, model };
 }
 const yearsOf = (modelId) => fetch(`${BACKEND_URL}/fitment/models/${modelId}/generations`).then((r) => r.json());
@@ -35,9 +35,9 @@ describe.runIf(backendUp)('adding a vehicle in three steps (real backend)', () =
   it('CRITICAL: a BRAND needs all three: English name, Arabic name AND a photo (each missing one is refused, nothing is created)', async () => {
     const token = await adminToken();
     const suffix = Date.now();
-    const cases = [['no English name', { nameAr: 'ع', photoUrl: '/uploads/b.png' }, 'name is required'], ['no Arabic name', { name: `B ${suffix}`, photoUrl: '/uploads/b.png' }, 'nameAr is required'],
-      ['no photo', { name: `B ${suffix}`, nameAr: 'ع' }, 'photoUrl is required'], ['blank photo', { name: `B ${suffix}`, nameAr: 'ع', photoUrl: '   ' }, 'photoUrl is required'],
-      ['photo not text', { name: `B ${suffix}`, nameAr: 'ع', photoUrl: 5 }, 'photoUrl is required']];
+    const cases = [['no English name', { nameAr: 'ع', nameZh: '中文', photoUrl: '/uploads/b.png' }, 'name is required'], ['no Arabic name', { name: `B ${suffix}`, photoUrl: '/uploads/b.png' }, 'nameAr is required'],
+      ['no photo', { name: `B ${suffix}`, nameAr: 'ع', nameZh: '中文' }, 'photoUrl is required'], ['blank photo', { name: `B ${suffix}`, nameAr: 'ع', nameZh: '中文', photoUrl: '   ' }, 'photoUrl is required'],
+      ['photo not text', { name: `B ${suffix}`, nameAr: 'ع', nameZh: '中文', photoUrl: 5 }, 'photoUrl is required']];
     for (const [label, body, error] of cases) {
       const res = await post('/fitment/brands', token, body);
       expect(res.status, label).toBe(400);
@@ -45,20 +45,20 @@ describe.runIf(backendUp)('adding a vehicle in three steps (real backend)', () =
     }
     const brands = await fetch(`${BACKEND_URL}/fitment/brands`).then((r) => r.json());
     expect(brands.some((b) => b.name === `B ${suffix}`)).toBe(false);                                  // none of the refusals created a brand
-    const ok = await post('/fitment/brands', token, { name: `Full Brand ${suffix}`, nameAr: 'علامة كاملة', photoUrl: ' /uploads/brand.png ' });
+    const ok = await post('/fitment/brands', token, { name: `Full Brand ${suffix}`, nameAr: 'علامة كاملة', nameZh: '中文', photoUrl: ' /uploads/brand.png ' });
     expect(ok.status).toBe(201);
-    expect(await ok.json()).toMatchObject({ name: `Full Brand ${suffix}`, nameAr: 'علامة كاملة', photoUrl: '/uploads/brand.png' });
+    expect(await ok.json()).toMatchObject({ name: `Full Brand ${suffix}`, nameAr: 'علامة كاملة', nameZh: '中文', photoUrl: '/uploads/brand.png' });
   }, 60000);
 
   it('CRITICAL: a MODEL needs only its English and Arabic names; it has no photo (one sent along is ignored)', async () => {
     const token = await adminToken();
     const { brand } = await newModel(token);
-    expect((await post(`/fitment/brands/${brand.id}/models`, token, { nameAr: 'موديل' })).status).toBe(400);
+    expect((await post(`/fitment/brands/${brand.id}/models`, token, { nameAr: 'موديل', nameZh: '中文' })).status).toBe(400);
     expect((await post(`/fitment/brands/${brand.id}/models`, token, { name: 'Only English' })).status).toBe(400);
-    const ok = await post(`/fitment/brands/${brand.id}/models`, token, { name: 'Names Only', nameAr: 'أسماء فقط' });
+    const ok = await post(`/fitment/brands/${brand.id}/models`, token, { name: 'Names Only', nameAr: 'أسماء فقط', nameZh: '中文' });
     expect(ok.status).toBe(201);
     expect((await ok.json()).photoUrl).toBeNull();
-    const sneaky = await post(`/fitment/brands/${brand.id}/models`, token, { name: 'Sneaky', nameAr: 'خفي', photoUrl: '/uploads/should-not-be-kept.jpg' });
+    const sneaky = await post(`/fitment/brands/${brand.id}/models`, token, { name: 'Sneaky', nameAr: 'خفي', nameZh: '中文', photoUrl: '/uploads/should-not-be-kept.jpg' });
     expect(sneaky.status).toBe(201);
     expect((await sneaky.json()).photoUrl).toBeNull();                                                  // models have no photo
     const models = await fetch(`${BACKEND_URL}/fitment/brands/${brand.id}/models`).then((r) => r.json());

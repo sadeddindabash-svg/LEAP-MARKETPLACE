@@ -6,6 +6,7 @@ import { sidebarEntries, groupOfPage, accessibleChildren, landingPage, TAB_LABEL
 import GroupTabs from "./components/GroupTabs";
 import { FONT_IMPORT, C, disp, body, mono } from "./theme";
 import { PlateChip, Badge, Stars, KpiCard, Card, Th, Td, ConfirmDialog, EditDialog, EnlargeablePhoto } from "./components/ui";
+import VersionsPanel from "./VersionsPanel";
 import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, fetchSupplierById, verifySupplier, updateSupplierCountry, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
   fetchCountriesList, fetchWarehouseCountries, fetchCountryGroups, createCountryGroup, deleteCountryGroup, addCountryGroupMember, removeCountryGroupMember,
   fetchAdminProducts, fetchAdminProductDetail, updateAdminProduct,
@@ -18,7 +19,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fet
   fetchDiscountRules, createDiscountRule, updateDiscountRule, deleteDiscountRule,
   fetchLoyaltyTiers, createLoyaltyTier, updateLoyaltyTier, deleteLoyaltyTier,
   fetchFlaggedShipments,
-  fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart, uploadImage, updateCategoryPhoto, updatePartPhoto, updateGenerationPhoto, createYear, moveCategory, movePart, moveBrand, moveModel, updateBrandPhoto, updateCategory, updatePart, updateBrand, updateModel, updateGeneration, fetchPaymentMethods, fetchAvailableCountries, fetchAvailableProviders, createPaymentMethod, updatePaymentMethod, updatePaymentMethodPhoto, movePaymentMethod, activatePaymentMethodCountry, deactivatePaymentMethodCountry, deletePaymentMethod, setPaymentMethodActive, bulkSetPaymentMethodCountries,
+  fetchCategories, createCategory, deleteCategory, fetchPartsForCategory, createPart, deletePart, uploadImage, uploadCatalogImage, updateCategoryPhoto, updatePartPhoto, updateGenerationPhoto, createYear, moveCategory, movePart, moveBrand, moveModel, updateBrandPhoto, updateCategory, updatePart, updateBrand, updateModel, updateGeneration, fetchPaymentMethods, fetchAvailableCountries, fetchAvailableProviders, createPaymentMethod, updatePaymentMethod, updatePaymentMethodPhoto, movePaymentMethod, activatePaymentMethodCountry, deactivatePaymentMethodCountry, deletePaymentMethod, setPaymentMethodActive, bulkSetPaymentMethodCountries,
   fetchPaymentProviders, savePaymentProviderCredentials, deletePaymentProviderCredentials,
   fetchSupplierMessagesInbox, fetchSupplierMessageThread, sendSupplierMessage, createTicketForOrder,
   fetchPromoCodes, createPromoCode, updatePromoCode, deletePromoCode,
@@ -3348,9 +3349,10 @@ function VehicleDataPage({ onSessionExpired }) {
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  // Brand: English name, Arabic name, photo (all required)
+  // Brand: English name, Arabic name, Chinese name, photo (all required)
   const [newBrandName, setNewBrandName] = useState("");
   const [newBrandNameAr, setNewBrandNameAr] = useState("");
+  const [newBrandNameZh, setNewBrandNameZh] = useState("");
   const [newBrandPhotoFile, setNewBrandPhotoFile] = useState(null);
   const [newBrandPhotoPreview, setNewBrandPhotoPreview] = useState(null);
   const [isUploadingBrandPhoto, setIsUploadingBrandPhoto] = useState(false);
@@ -3358,6 +3360,7 @@ function VehicleDataPage({ onSessionExpired }) {
   // Model: English name, Arabic name (nothing else)
   const [newModelName, setNewModelName] = useState("");
   const [newModelNameAr, setNewModelNameAr] = useState("");
+  const [newModelNameZh, setNewModelNameZh] = useState("");
   // Year: the year (English digits) and a photo, both required
   const [newYear, setNewYear] = useState("");
   const [newYearPhotoFile, setNewYearPhotoFile] = useState(null);
@@ -3376,7 +3379,7 @@ function VehicleDataPage({ onSessionExpired }) {
 
   const openBrand = (brand) => {
     setSelectedBrand(brand); setSelectedModel(null);
-    setNewModelName(""); setNewModelNameAr(""); setErrorMessage(null);
+    setNewModelName(""); setNewModelNameAr(""); setNewModelNameZh(""); setErrorMessage(null);
     fetchModelsForBrand(brand.id).then(setModels).catch((e) => setErrorMessage(e.message));
   };
   const openModel = (model) => {
@@ -3406,16 +3409,17 @@ function VehicleDataPage({ onSessionExpired }) {
   const handleAddBrand = async () => {
     if (!newBrandName.trim()) { setErrorMessage("English name is required."); return; }
     if (!newBrandNameAr.trim()) { setErrorMessage("Arabic name is required."); return; }
+    if (!newBrandNameZh.trim()) { setErrorMessage("Chinese name is required."); return; }
     if (!newBrandPhotoFile) { setErrorMessage("A photo is required."); return; }
     setIsSubmitting(true); setErrorMessage(null);
     try {
       const token = getStoredToken();
       setIsUploadingBrandPhoto(true);
-      const upload = await uploadImage(token, newBrandPhotoFile);
+      const upload = await uploadCatalogImage(token, newBrandPhotoFile);
       setIsUploadingBrandPhoto(false);
-      await createBrand(token, newBrandName.trim(), newBrandNameAr.trim(), upload.url);
+      await createBrand(token, newBrandName.trim(), newBrandNameAr.trim(), upload.url, newBrandNameZh.trim());
       loadBrands();
-      setNewBrandName(""); setNewBrandNameAr(""); setNewBrandPhotoFile(null); setNewBrandPhotoPreview(null);
+      setNewBrandName(""); setNewBrandNameAr(""); setNewBrandNameZh(""); setNewBrandPhotoFile(null); setNewBrandPhotoPreview(null);
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
       setErrorMessage(err.message);
@@ -3425,9 +3429,10 @@ function VehicleDataPage({ onSessionExpired }) {
   const handleAddModel = async () => {
     if (!newModelName.trim()) { setErrorMessage("English name is required."); return; }
     if (!newModelNameAr.trim()) { setErrorMessage("Arabic name is required."); return; }
+    if (!newModelNameZh.trim()) { setErrorMessage("Chinese name is required."); return; }
     setIsSubmitting(true); setErrorMessage(null);
     try {
-      await createModel(getStoredToken(), selectedBrand.id, newModelName.trim(), newModelNameAr.trim());
+      await createModel(getStoredToken(), selectedBrand.id, newModelName.trim(), newModelNameAr.trim(), newModelNameZh.trim());
       openBrand(selectedBrand);
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
@@ -3446,7 +3451,7 @@ function VehicleDataPage({ onSessionExpired }) {
     try {
       const token = getStoredToken();
       setIsUploadingYearPhoto(true);
-      const upload = await uploadImage(token, newYearPhotoFile);
+      const upload = await uploadCatalogImage(token, newYearPhotoFile);
       setIsUploadingYearPhoto(false);
       await createYear(token, selectedModel.id, Number(year), upload.url);
       setNewYear(""); setNewYearPhotoFile(null); setNewYearPhotoPreview(null);
@@ -3489,8 +3494,8 @@ function VehicleDataPage({ onSessionExpired }) {
     setErrorMessage(null);
     try {
       const token = getStoredToken();
-      if (kind === "brand") { await updateBrand(token, item.id, values.name.trim(), values.nameAr.trim()); loadBrands(); }
-      else if (kind === "model") { await updateModel(token, item.id, values.name.trim(), values.nameAr?.trim()); openBrand(selectedBrand); }
+      if (kind === "brand") { await updateBrand(token, item.id, values.name.trim(), values.nameAr.trim(), values.nameZh?.trim()); loadBrands(); }
+      else if (kind === "model") { await updateModel(token, item.id, values.name.trim(), values.nameAr?.trim(), values.nameZh?.trim()); openBrand(selectedBrand); }
       else if (kind === "generation") { await updateGeneration(token, item.id, values.name.trim(), parseInt(values.yearStart, 10), values.yearEnd ? parseInt(values.yearEnd, 10) : undefined); openModel(selectedModel); }
       setPendingEdit(null);
     } catch (err) {
@@ -3508,7 +3513,7 @@ function VehicleDataPage({ onSessionExpired }) {
     setErrorMessage(null);
     try {
       const token = getStoredToken();
-      const uploadResult = await uploadImage(token, file);
+      const uploadResult = await uploadCatalogImage(token, file);
       await updateBrandPhoto(token, id, uploadResult.url);
       loadBrands();
     } catch (err) {
@@ -3526,7 +3531,7 @@ function VehicleDataPage({ onSessionExpired }) {
     setErrorMessage(null);
     try {
       const token = getStoredToken();
-      const uploadResult = await uploadImage(token, file);
+      const uploadResult = await uploadCatalogImage(token, file);
       await updateGenerationPhoto(token, id, uploadResult.url);
       openModel(selectedModel);
     } catch (err) {
@@ -3556,7 +3561,7 @@ function VehicleDataPage({ onSessionExpired }) {
     <>
       <label style={{ ...body, display: "flex", alignItems: "center", gap: 6, border: `1px solid ${file ? C.line : C.red}`, borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", color: C.ink, background: C.card }}>
         <ImagePlus size={14} />
-        {file ? "Photo selected" : "Choose photo (required)"}
+        {file ? "Photo selected" : "Choose photo (required, at least 400 px)"}
         <input type="file" accept="image/jpeg,image/png,image/webp" onChange={onSelect} style={{ display: "none" }} />
       </label>
       {preview && <img src={preview} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
@@ -3588,7 +3593,7 @@ function VehicleDataPage({ onSessionExpired }) {
 
   return (
     <div>
-      <TopBar title="Vehicle Data" subtitle="Add a vehicle in three steps: Brand, then Model, then Year. Also the VIN decoder's own data tables" />
+      <TopBar title="Vehicle Data" subtitle="Add a vehicle step by step: Brand, Model, Year, then its Versions. Names in English, Arabic and Chinese. Also the VIN decoder's own data tables" />
       <div style={{ padding: "24px 24px 0" }}>
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
           {[["brands", "Brands"], ["wmi", "VIN WMI"], ["patterns", "VIN model patterns"]].map(([id, label]) => (
@@ -3609,6 +3614,7 @@ function VehicleDataPage({ onSessionExpired }) {
                   <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
                     <input value={newBrandName} onChange={(e) => setNewBrandName(e.target.value)} placeholder="English name (e.g. Nissan)" style={fieldStyle} />
                     <input value={newBrandNameAr} onChange={(e) => setNewBrandNameAr(e.target.value)} placeholder="Arabic name (required)" dir="rtl" style={fieldStyle} />
+                    <input value={newBrandNameZh} onChange={(e) => setNewBrandNameZh(e.target.value)} placeholder="Chinese name (required)" style={fieldStyle} />
                     {photoPicker(newBrandPhotoFile, newBrandPhotoPreview, handleBrandPhotoSelect)}
                     {addButton(handleAddBrand, isUploadingBrandPhoto)}
                   </div>
@@ -3628,6 +3634,7 @@ function VehicleDataPage({ onSessionExpired }) {
                         <div onClick={() => openBrand(b)} style={{ cursor: "pointer" }}>
                           <span style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>{b.name}</span>
                           {b.nameAr && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }} dir="rtl">{b.nameAr}</span>}
+                          {b.nameZh && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }}>{b.nameZh}</span>}
                         </div>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -3646,6 +3653,7 @@ function VehicleDataPage({ onSessionExpired }) {
                   <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
                     <input value={newModelName} onChange={(e) => setNewModelName(e.target.value)} placeholder={`New model under ${selectedBrand.name} (e.g. Focus)`} style={fieldStyle} />
                     <input value={newModelNameAr} onChange={(e) => setNewModelNameAr(e.target.value)} placeholder="Arabic name (required)" dir="rtl" style={fieldStyle} />
+                    <input value={newModelNameZh} onChange={(e) => setNewModelNameZh(e.target.value)} placeholder="Chinese name (required)" style={fieldStyle} />
                     {addButton(handleAddModel, false)}
                   </div>
                   {models.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No models yet.</div>}
@@ -3656,6 +3664,7 @@ function VehicleDataPage({ onSessionExpired }) {
                         <div onClick={() => openModel(m)} style={{ cursor: "pointer" }}>
                           <span style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>{m.name}</span>
                           {m.nameAr && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }} dir="rtl">{m.nameAr}</span>}
+                          {m.nameZh && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }}>{m.nameZh}</span>}
                         </div>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -3680,7 +3689,8 @@ function VehicleDataPage({ onSessionExpired }) {
                   {sortedYears.map((g) => {
                     const single = isSingleYearEntry(g);
                     return (
-                      <div key={g.id} style={rowStyle}>
+                      <div key={g.id}>
+                      <div style={rowStyle}>
                         <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10 }}>
                           <label onClick={(e) => e.stopPropagation()} title="Click to add or replace this photo" style={{ position: "relative", width: 28, height: 28, borderRadius: 6, flexShrink: 0, cursor: replacingYearPhotoId === g.id ? "default" : "pointer", display: "block" }}>
                             {g.photoUrl ? (
@@ -3706,6 +3716,8 @@ function VehicleDataPage({ onSessionExpired }) {
                           <button onClick={() => setPendingDelete({ kind: "generation", id: g.id, label: g.name })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }} aria-label={`Delete ${g.name}`}><X size={14} color={C.red} /></button>
                         </div>
                       </div>
+                      <VersionsPanel generation={g} onSessionExpired={onSessionExpired} />
+                      </div>
                     );
                   })}
                 </>
@@ -3727,9 +3739,11 @@ function VehicleDataPage({ onSessionExpired }) {
           pendingEdit.kind === "brand" ? [
             { key: "name", label: "Name", value: pendingEdit.item.name },
             { key: "nameAr", label: "Arabic name", value: pendingEdit.item.nameAr, dir: "rtl" },
+            { key: "nameZh", label: "Chinese name", value: pendingEdit.item.nameZh || "" },
           ] : pendingEdit.kind === "model" ? [
             { key: "name", label: "Name", value: pendingEdit.item.name },
             { key: "nameAr", label: "Arabic name (required)", value: pendingEdit.item.nameAr, dir: "rtl" },
+            { key: "nameZh", label: "Chinese name", value: pendingEdit.item.nameZh || "" },
           ] : [
             { key: "name", label: "Name", value: pendingEdit.item.name },
             { key: "yearStart", label: "Start year", value: pendingEdit.item.yearStart, type: "number" },
@@ -5818,7 +5832,7 @@ function CategoriesPage({ onSessionExpired }) {
       // upload failure is caught before the category itself is
       // created, same reasoning as the Add Brand form above.
       setIsUploadingCatPhoto(true);
-      const uploadResult = await uploadImage(token, newCatPhotoFile);
+      const uploadResult = await uploadCatalogImage(token, newCatPhotoFile);
       setIsUploadingCatPhoto(false);
       await createCategory(token, newCatId.trim(), newCatNameEn.trim(), newCatNameAr.trim(), uploadResult.url, categories.length * 10 + 10);
       setNewCatId(""); setNewCatNameEn(""); setNewCatNameAr(""); setNewCatPhotoFile(null); setNewCatPhotoPreview(null);
@@ -5848,7 +5862,7 @@ function CategoriesPage({ onSessionExpired }) {
     setErrorMessage(null);
     try {
       const token = getStoredToken();
-      const uploadResult = await uploadImage(token, file);
+      const uploadResult = await uploadCatalogImage(token, file);
       await updateCategoryPhoto(token, categoryId, uploadResult.url);
       loadCategories();
     } catch (err) {
@@ -8095,7 +8109,7 @@ function AnnouncementsSection({ onSessionExpired }) {
 // text an admin would have to already know the exact internal string for.
 const AUDIT_ACTION_TYPES = [
   'admin_account_created', 'admin_account_removed', 'admin_permissions_changed',
-  'category_commission_changed', 'announcements_changed', 'fx_rate_mode_changed', 'fx_rate_set_manual',
+  'category_commission_changed', 'announcements_changed', 'version_created', 'version_updated', 'version_photo_changed', 'version_deleted', 'fx_rate_mode_changed', 'fx_rate_set_manual',
   'payout_recorded', 'promo_code_created', 'require_verified_purchase_toggled',
   'return_window_changed', 'review_approve', 'review_dismiss_flags', 'review_reject',
   'supplier_verification',

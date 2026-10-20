@@ -27,7 +27,7 @@ function mockFetchRouter({ categories = MOCK_CATEGORIES, parts = MOCK_PARTS, cal
       cats = [...cats, newCat];
       return ok(newCat, 201);
     }
-    if (method === 'POST' && u.endsWith('/uploads/product-image')) return ok({ url: '/uploads/fake-category-photo.jpg', width: 1000, height: 1000, storage: 'local' }, 201);
+    if (method === 'POST' && (u.endsWith('/uploads/product-image') || u.endsWith('/fitment/catalog-image'))) { calls.push({ method, url: u, body: null }); return ok({ url: '/uploads/fake-category-photo.jpg', width: 1000, height: 1000, storage: 'local' }, 201); }
     if (u.endsWith('/catalog/categories')) return ok(cats);
     if (method === 'POST' && u.match(/\/catalog\/categories\/.+\/parts$/)) {
       const b = JSON.parse(options.body);
@@ -289,5 +289,36 @@ describe('Categories page — real category/part reference management (mocked fe
     await screen.findAllByText('Length (cm) is required.');
     expect(dialogInput('Weight (kg)').value).toBe('2');
     expect(dialogInput('English name').value).toBe('Brake Line');
+  });
+
+  it('CRITICAL: a CATEGORY\'s photo goes through the 400 px door (and never the 800 px one)', async () => {
+    const calls = [];
+    globalThis.fetch = mockFetchRouter({ calls });
+    render(<LeapAdminApp />);
+    await loginAndGoToCategories();
+    await waitFor(() => screen.getByPlaceholderText(/id \(e\.g\./i));
+    fireEvent.change(screen.getByPlaceholderText(/id \(e\.g\./i), { target: { value: 'tires' } });
+    fireEvent.change(screen.getByPlaceholderText(/^english name$/i), { target: { value: 'Tires' } });
+    fireEvent.change(screen.getByPlaceholderText(/arabic name/i), { target: { value: 'إطارات' } });
+    fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [new File(['x'], 'category.png', { type: 'image/png' })] } });
+    fireEvent.click(screen.getByRole('button', { name: /add category/i }));
+    await waitFor(() => expect(screen.getByText('Tires')).toBeInTheDocument());
+    expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/fitment/catalog-image'))).toBe(true);
+    expect(calls.some((c) => c.url.endsWith('/uploads/product-image'))).toBe(false);
+  });
+
+  it('CRITICAL: a PART\'s photo still goes through the 800 px door, exactly as before (and never the 400 px one)', async () => {
+    const calls = [];
+    globalThis.fetch = mockFetchRouter({ calls });
+    render(<LeapAdminApp />);
+    await loginAndGoToCategories();
+    await openBrakeParts();
+    fillPartNames();
+    fillShipping({ weightKg: '2', lengthCm: '20', widthCm: '15', heightCm: '10' });
+    fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [new File(['x'], 'part.png', { type: 'image/png' })] } });
+    addPart();
+    await waitFor(() => expect(screen.getByText('Brake Fluid')).toBeInTheDocument());
+    expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/uploads/product-image'))).toBe(true);
+    expect(calls.some((c) => c.url.endsWith('/fitment/catalog-image'))).toBe(false);
   });
 });

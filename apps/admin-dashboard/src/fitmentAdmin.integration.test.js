@@ -20,7 +20,7 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
     const anonRes = await fetch(`${BACKEND_URL}/fitment/brands`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: `Test Brand ${Date.now()}`, nameAr: 'علامة اختبار', photoUrl: '/uploads/test-brand.png' }),
+      body: JSON.stringify({ name: `Test Brand ${Date.now()}`, nameAr: 'علامة اختبار', nameZh: '中文', photoUrl: '/uploads/test-brand.png' }),
     });
     expect(anonRes.status).toBe(401);
 
@@ -28,7 +28,7 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
     const supplierRes = await fetch(`${BACKEND_URL}/fitment/brands`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supplierToken}` },
-      body: JSON.stringify({ name: `Test Brand ${Date.now()}`, nameAr: 'علامة اختبار', photoUrl: '/uploads/test-brand.png' }),
+      body: JSON.stringify({ name: `Test Brand ${Date.now()}`, nameAr: 'علامة اختبار', nameZh: '中文', photoUrl: '/uploads/test-brand.png' }),
     });
     expect(supplierRes.status).toBe(403);
   });
@@ -38,13 +38,13 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
     const name = `Dup Test Brand ${Date.now()}`;
     const first = await fetch(`${BACKEND_URL}/fitment/brands`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name, nameAr: 'علامة اختبار', photoUrl: '/uploads/test-brand.png' }),
+      body: JSON.stringify({ name, nameAr: 'علامة اختبار', nameZh: '中文', photoUrl: '/uploads/test-brand.png' }),
     });
     expect(first.status).toBe(201);
 
     const second = await fetch(`${BACKEND_URL}/fitment/brands`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name, nameAr: 'علامة اختبار', photoUrl: '/uploads/test-brand.png' }),
+      body: JSON.stringify({ name, nameAr: 'علامة اختبار', nameZh: '中文', photoUrl: '/uploads/test-brand.png' }),
     });
     expect(second.status).toBe(409);
   });
@@ -55,13 +55,13 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
 
     const brandRes = await fetch(`${BACKEND_URL}/fitment/brands`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: `E2E Brand ${suffix}`, nameAr: 'علامة اختبار', photoUrl: '/uploads/test-brand.png' }),
+      body: JSON.stringify({ name: `E2E Brand ${suffix}`, nameAr: 'علامة اختبار', nameZh: '中文', photoUrl: '/uploads/test-brand.png' }),
     });
     const brand = await brandRes.json();
 
     const modelRes = await fetch(`${BACKEND_URL}/fitment/brands/${brand.id}/models`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: 'E2E Model', nameAr: 'موديل اختبار' }),
+      body: JSON.stringify({ name: 'E2E Model', nameAr: 'موديل اختبار', nameZh: '中文' }),
     });
     const model = await modelRes.json();
     expect(model.brandId).toBe(brand.id);
@@ -107,12 +107,12 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
     const { token } = await login('admin@leap.dev', 'admin_dev_password_123');
     const brandRes = await fetch(`${BACKEND_URL}/fitment/brands`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: `Range Test ${Date.now()}`, nameAr: 'اختبار النطاق', photoUrl: '/uploads/test-brand.png' }),
+      body: JSON.stringify({ name: `Range Test ${Date.now()}`, nameAr: 'اختبار النطاق', nameZh: '中文', photoUrl: '/uploads/test-brand.png' }),
     });
     const brand = await brandRes.json();
     const modelRes = await fetch(`${BACKEND_URL}/fitment/brands/${brand.id}/models`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: 'Year Test Model', nameAr: 'موديل اختبار السنة' }),
+      body: JSON.stringify({ name: 'Year Test Model', nameAr: 'موديل اختبار السنة', nameZh: '中文' }),
     });
     const model = await modelRes.json();
     for (const year of [1949, 3000, 'abcd', '21']) {
@@ -128,7 +128,7 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
     const { token } = await login('admin@leap.dev', 'admin_dev_password_123');
     const brandRes = await fetch(`${BACKEND_URL}/fitment/brands`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: `Delete Test Brand ${Date.now()}`, nameAr: 'علامة اختبار', photoUrl: '/uploads/test-brand.png' }),
+      body: JSON.stringify({ name: `Delete Test Brand ${Date.now()}`, nameAr: 'علامة اختبار', nameZh: '中文', photoUrl: '/uploads/test-brand.png' }),
     });
     const brand = await brandRes.json();
 
@@ -153,12 +153,12 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
     const suffix = Date.now();
     const brandRes = await fetch(`${BACKEND_URL}/fitment/brands`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-      body: JSON.stringify({ name: `Protection Test Brand ${suffix}`, nameAr: 'علامة اختبار', photoUrl: '/uploads/test-brand.png' }),
+      body: JSON.stringify({ name: `Protection Test Brand ${suffix}`, nameAr: 'علامة اختبار', nameZh: '中文', photoUrl: '/uploads/test-brand.png' }),
     });
     const brand = await brandRes.json();
     const modelRes = await fetch(`${BACKEND_URL}/fitment/brands/${brand.id}/models`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
-      body: JSON.stringify({ name: 'Protection Test Model', nameAr: 'موديل اختبار الحماية' }),
+      body: JSON.stringify({ name: 'Protection Test Model', nameAr: 'موديل اختبار الحماية', nameZh: '中文' }),
     });
     const model = await modelRes.json();
     const genRes = await fetch(`${BACKEND_URL}/fitment/models/${model.id}/generations`, {
@@ -198,12 +198,12 @@ describe.runIf(backendUp)('admin fitment cascade management against a REAL runni
     const { token } = await login('admin@leap.dev', 'admin_dev_password_123');
     const brandRes = await fetch(`${BACKEND_URL}/fitment/brands`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: `Cascade Test Brand ${Date.now()}`, nameAr: 'علامة اختبار', photoUrl: '/uploads/test-brand.png' }),
+      body: JSON.stringify({ name: `Cascade Test Brand ${Date.now()}`, nameAr: 'علامة اختبار', nameZh: '中文', photoUrl: '/uploads/test-brand.png' }),
     });
     const brand = await brandRes.json();
     const modelRes = await fetch(`${BACKEND_URL}/fitment/brands/${brand.id}/models`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: 'Cascade Test Model', nameAr: 'موديل اختبار التسلسل' }),
+      body: JSON.stringify({ name: 'Cascade Test Model', nameAr: 'موديل اختبار التسلسل', nameZh: '中文' }),
     });
     const model = await modelRes.json();
     await fetch(`${BACKEND_URL}/fitment/models/${model.id}/generations`, {

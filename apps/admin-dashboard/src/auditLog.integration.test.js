@@ -146,7 +146,7 @@ describe.runIf(backendUp)('real admin audit log against a REAL running backend',
     const name = `AuditBrandTest${Date.now()}`;
     const created = await fetch(`${BACKEND_URL}/fitment/brands`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name, nameAr: 'اختبار', photoUrl: '/uploads/test.jpg' }),
+      body: JSON.stringify({ name, nameAr: 'اختبار', nameZh: '中文', photoUrl: '/uploads/test.jpg' }),
     }).then((r) => r.json());
 
     const log = await fetch(`${BACKEND_URL}/admin/audit-log?action=brand_created`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
@@ -160,7 +160,7 @@ describe.runIf(backendUp)('real admin audit log against a REAL running backend',
     const id = `audit_cat_test_${Date.now()}`;
     await fetch(`${BACKEND_URL}/catalog/categories`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ id, nameEn: 'Audit Cat Test', nameAr: 'اختبار', photoUrl: '/uploads/test.jpg' }),
+      body: JSON.stringify({ id, nameEn: 'Audit Cat Test', nameAr: 'اختبار', nameZh: '中文', photoUrl: '/uploads/test.jpg' }),
     });
 
     const createdLog = await fetch(`${BACKEND_URL}/admin/audit-log?action=category_created`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
