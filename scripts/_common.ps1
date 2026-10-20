@@ -2,6 +2,8 @@
 # in the machine's legacy code page, which mangles anything else.
 
 $script:LeapPorts = [ordered]@{ backend = 4000; admin = 5173; supplier = 5174; hub = 5175 }
+# Packages the backend needs that may not be installed yet on a PC that received the Excel import by patch zip (start-leap installs them if they are missing).
+$script:LeapApiExtras = @('exceljs', 'jszip')
 
 function Write-Step([string]$Text)  { Write-Host $Text -ForegroundColor Cyan }
 function Write-Ok([string]$Text)    { Write-Host ("  [OK] " + $Text) -ForegroundColor Green }
@@ -38,9 +40,11 @@ function Test-TcpPort([string]$HostName, [int]$Port, [int]$TimeoutMs = 1500) {
 }
 
 # Polls a URL until it answers 200 (and, optionally, the answer passes $Accept). Returns the response, or $null on timeout.
-function Wait-ForUrl([string]$Url, [int]$TimeoutSeconds = 40, [scriptblock]$Accept = { param($r) $true }) {
+# $GiveUp is checked on every round: when it returns $true the wait ends at once (used to stop waiting for a backend whose log already shows why it crashed).
+function Wait-ForUrl([string]$Url, [int]$TimeoutSeconds = 40, [scriptblock]$Accept = { param($r) $true }, [scriptblock]$GiveUp = { $false }) {
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   while ((Get-Date) -lt $deadline) {
+    if (& $GiveUp) { return $null }
     try {
       $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 3
       if (& $Accept $response) { return $response }
@@ -89,5 +93,61 @@ function Start-InNewWindow([string]$Title, [string]$Directory, [string]$Command)
   $shellPath = (Get-Process -Id $PID).Path
   $dir = $Directory -replace "'", "''"
   $inner = "try { `$Host.UI.RawUI.WindowTitle = '$Title' } catch { }; Set-Location -LiteralPath '$dir'; $Command"
-  Start-Process -FilePath $shellPath -ArgumentList ('-NoExit -NoProfile -Command "' + $inner + '"') | Out-Null
+  # -ExecutionPolicy Bypass: the new window must be allowed to run a script file too (run-backend.ps1); the window start-leap.cmd opened has it, a new one does not inherit it.
+  Start-Process -FilePath $shellPath -ArgumentList ('-NoExit -NoProfile -ExecutionPolicy Bypass -Command "' + $inner + '"') | Out-Null
 }
+
+# Names from $Names that are NOT installed in <Dir>\node_modules.
+function Get-MissingPackages([string]$Dir, [string[]]$Names) {
+  $missing = @()
+  foreach ($name in $Names) {
+    if (-not (Test-Path -LiteralPath (Join-Path $Dir (Join-Path 'node_modules' (Join-Path $name 'package.json'))))) { $missing += $name }
+  }
+  return $missing
+}
+
+# The last lines of a log file, indented, so the reason a server did not start is shown right here instead of "read its window". Returns those lines.
+function Show-LogTail([string]$Path, [int]$Lines = 25) {
+  if (-not (Test-Path -LiteralPath $Path)) { Write-Warn ("No log was written (" + $Path + ")."); return @() }
+  $tail = @(Get-Content -LiteralPath $Path -Tail $Lines -ErrorAction SilentlyContinue)
+  foreach ($line in $tail) { Write-Host ("    | " + $line) -ForegroundColor DarkGray }
+  return $tail
+}
+
+# Reads what a server printed when it failed to start and says in plain words what is wrong. Returns $null for anything it does not recognise.
+# Kind 'module' also carries MissingModule: the package name only (never a path), so it can be installed.
+function Get-StartupHint([string[]]$Lines) {
+  $text = ($Lines -join "`n")
+  if ($text -match "Cannot find module '(@[^'/]+/[^'/]+|[^'./\\@][^'/]*)") {
+    return @{ Kind = 'module'; MissingModule = $Matches[1]; Text = ("A package the backend needs is not installed: " + $Matches[1] + ".") }
+  }
+  if ($text -match 'EADDRINUSE') { return @{ Kind = 'port'; Text = "The backend's port is already used by another program. Close the old backend window (or run scripts\stop-leap.cmd) and start again." } }
+  if ($text -match 'password authentication failed') { return @{ Kind = 'database'; Text = "The database refused the user name or password. Check DATABASE_URL in services\api\.env." } }
+  if ($text -match 'ECONNREFUSED' -and $text -match ':5\d{3}') { return @{ Kind = 'database'; Text = "The backend could not reach the database. Check that PostgreSQL is running and that the port in services\api\.env is right." } }
+  if ($text -match '(column|relation|table) "[^"]+"( of relation "[^"]+")? does not exist') { return @{ Kind = 'migration'; Text = "The database is missing something this version needs: run  node db\migrate.js  in services\api, then start again." } }
+  return $null
+}
+
+# May this package be installed automatically? Only plain package names that the backend is known to need: the extras above, or anything listed in services\api\package.json.
+function Test-InstallablePackage([string]$ApiDir, [string]$Name) {
+  if ($Name -notmatch '^(@[a-z0-9._-]+/)?[a-z0-9._-]+$') { return $false }
+  if ($script:LeapApiExtras -contains $Name) { return $true }
+  $packageFile = Join-Path $ApiDir 'package.json'
+  if (-not (Test-Path -LiteralPath $packageFile)) { return $false }
+  try {
+    $json = Get-Content -LiteralPath $packageFile -Raw | ConvertFrom-Json
+    foreach ($section in 'dependencies', 'optionalDependencies') {
+      if ($json.$section -and ($json.$section.PSObject.Properties.Name -contains $Name)) { return $true }
+    }
+  } catch { }
+  return $false
+}
+
+# One line of a program's output as plain text. PowerShell wraps each line a program writes to its ERROR output in an error record (and shows an empty one as
+# "System.Management.Automation.RemoteException"): this turns either kind back into the text the program wrote.
+function ConvertTo-PlainLine($Item) {
+  $text = if ($Item -is [System.Management.Automation.ErrorRecord]) { $Item.Exception.Message } else { [string]$Item }
+  if ($text -eq 'System.Management.Automation.RemoteException') { return '' }
+  return $text
+}
+

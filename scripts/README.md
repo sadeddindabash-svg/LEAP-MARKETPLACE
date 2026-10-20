@@ -8,6 +8,9 @@ One command to bring Leap up for local development, and one to take it down.
 | `scripts\stop-leap.cmd` | Double-click to stop everything |
 | `scripts\start-leap.ps1` | The same thing from PowerShell: `powershell -ExecutionPolicy Bypass -File scripts\start-leap.ps1` |
 | `scripts\stop-leap.ps1` | `powershell -ExecutionPolicy Bypass -File scripts\stop-leap.ps1` |
+| `scripts\check-mobile.cmd` | Double-click to check the mobile app: `flutter pub get`, `flutter analyze`, `flutter test`, with a clear PASSED / FAILED (needs Flutter installed). See "Checking the mobile app" below |
+| `scripts\run-backend.ps1` | Used by `start-leap` inside the backend window: shows what the backend prints AND saves it in `logs\backend.log`. You do not run it yourself |
+| `scripts\make-arabic-review.js`, `scripts\apply-arabic-review.js` | The Arabic review: build the workbook for a native speaker, then apply the corrections. See "The Arabic review" below |
 
 `-ExecutionPolicy Bypass` is needed because Windows blocks scripts by default; the `.cmd` files add it for you. The scripts work out where the project is from **their own location**, so there is no folder to edit.
 
@@ -24,9 +27,28 @@ It finishes by printing the addresses. **It is safe to run again at any time**, 
 
 Options: `-Only backend` / `-Only admin,hub` (start just those), `-SkipMigrate` (not recommended), `-Open` (open the admin portal in your browser).
 
+## When the backend does not start (logs and self-repair)
+`start-leap` now saves everything it prints about a run in **`logs\start-leap.log`** and everything the backend prints in **`logs\backend.log`** (the `logs` folder is created for you), so there is always something to send even when a window closes.
+- If the backend does not answer, `start-leap` shows **the last lines the backend printed, right in its own window**, and names the likely cause in plain words: a missing package, the port already in use, the database refusing or not answering, or a migration that has not been run. A crash it recognises is noticed in about a second instead of after 40.
+- **A missing package is repaired by itself:** if the cause is a missing package that the backend is known to need (`exceljs`, `jszip`, or anything listed in `services\api\package.json`), it runs `npm install` for that one package and starts the backend once more. A package that is NOT listed is never installed behind your back: it is named, and you decide.
+- Before starting, it also checks that `exceljs` and `jszip` (needed by the Excel import of vehicle data) are installed, and installs them if they are not.
+- Test of these decisions: `powershell -ExecutionPolicy Bypass -File scripts\test-start-helpers.ps1` (exit code 0 = all passed).
+
+## Checking the mobile app (`check-mobile.cmd`)
+Runs `flutter pub get`, `flutter analyze` and `flutter test` inside `apps\mobile` and says in plain words whether the app is fine: **errors** from analyze and failing tests make it FAIL, warnings and hints are shown but do not. Everything Flutter printed is saved in `logs\mobile-check.log`. `-SkipTests` only analyzes. If it reports errors in `add_vehicle_screen.dart`: that is an old screen nothing uses any more (it calls functions that no longer exist); delete it (`del apps\mobile\lib\features\garage\add_vehicle_screen.dart`) and run the check again.
+
+## The Arabic review
+1. `node scripts\make-arabic-review.js` builds **`Leap_Arabic_Review.xlsx`** from the CURRENT texts (website, server messages, app): texts written for the website or added since the last review are on the sheets to review (new ones first, highlighted), a glossary of the repeated words, the automatic checks, and a **wording consistency** check (for example how many texts say سيارة and how many مركبة). Needs `exceljs` (`npm install exceljs jszip` in `services\api`).
+2. A native speaker fills **Approved?** (Yes / No / Unsure) and, for No, **Corrected Arabic**.
+3. `node scripts\apply-arabic-review.js Leap_Arabic_Review.xlsx` shows what it WOULD change (a dry run). Add `--write` to apply. It changes only the corrected texts (website `i18n.ts`; server messages in BOTH `serverMessages.ts` and `server_messages.dart`, so the two stay identical; `app_strings.dart`), **refuses** a correction whose `{placeholders}` differ from the English text or that has no Arabic letters, reports Yes-with-a-correction as a conflict, lists Unsure rows without applying them, and compares with what is really in the code (so applying the same file twice is harmless).
+4. Then run the website tests (`npm test` in `apps\web-storefront`) and `node scripts\make-arabic-review.js --update-baseline` to mark the texts as reviewed.
+Tests of both tools: `node --test scripts\arabic-review.test.js`.
+
 ## What was tested (and what was not)
 
 Run for real under PowerShell 7.4, with a stand-in for the one Windows-only command (`Get-NetTCPConnection`): the full start (all four servers answer); the stop (all four ports freed); a port held by a **non-node** program (refused, the program left running); the database being **down** (clear message, nothing started); a **failing migration** (real error shown, nothing started, nothing recorded); a folder whose name has a **space and an apostrophe**; start-up repeated while everything is already running. All three scripts parse with PowerShell's own parser, are plain ASCII, and avoid PowerShell-7-only syntax.
+
+**The log, hint and self-repair part of `start-leap`** (and `check-mobile`) was run for real under PowerShell 7.4 on Linux with a stand-in backend and a stand-in `flutter`: a healthy start, a missing package that is listed (installed, backend started on the second try), a missing package that is not listed (not installed), a refused database, an unrecognised crash, and the installation of absent packages before the start. **Not run on Windows PowerShell 5.1**, so if its window shows something odd, send `logs\start-leap.log`.
 
 **Not tested:** on **Windows PowerShell 5.1** itself (what a Windows PC runs), the real Windows port and service commands, and the separate windows: none exist in the sandbox. The one known difference (5.1 treats program output on stderr as an error) is handled in the migration step. If anything misbehaves, tell me what the window printed.
 

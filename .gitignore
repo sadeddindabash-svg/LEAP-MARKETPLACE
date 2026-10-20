@@ -54,3 +54,5 @@ services/api/backups/
 
 # JVM crash logs the Android build can leave next to a project (hs_err_pid<number>.log)
 hs_err_pid*.log
+# written by scripts\start-leap and scripts\check-mobile
+logs/

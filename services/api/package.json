@@ -29,6 +29,7 @@
     "get-video-duration": "^5.0.0",
     "image-size": "^2.0.2",
     "jsonwebtoken": "^9.0.3",
+    "jszip": "^3.10.2",
     "multer": "^2.2.0",
     "nodemailer": "^9.0.3",
     "otplib": "^13.4.1",
