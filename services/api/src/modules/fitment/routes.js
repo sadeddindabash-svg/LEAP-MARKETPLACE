@@ -1054,4 +1054,7 @@ router.delete('/versions/:id', requireAuth, requireRole('admin'), requirePageAcc
   }
 });
 
+// The Excel import of vehicle data (preview, commit, template): see ../vehicleImport. It checks the admin and Vehicle Data access itself.
+router.use('/import', require('../vehicleImport/routes'));
+
 module.exports = router;

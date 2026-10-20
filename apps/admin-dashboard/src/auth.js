@@ -321,6 +321,27 @@ export const createVersion = (token, generationId, fields) => fitmentMutate("POS
 export const updateVersion = (token, id, fields) => fitmentMutate("PATCH", `/fitment/versions/${id}`, token, fields);
 export const updateVersionPhoto = (token, id, photoUrl) => fitmentMutate("PATCH", `/fitment/versions/${id}/photo`, token, { photoUrl });
 export const deleteVersion = (token, id) => fitmentMutate("DELETE", `/fitment/versions/${id}`, token);
+// The Excel import of vehicle data (see the server's modules/vehicleImport). The preview writes nothing; the import sends the file again and saves everything or nothing.
+// A refusal that comes with a full explanation (the file has problems) carries it in `error.payload`.
+async function sendVehicleImport(path, token, file, mode) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("mode", mode);
+  const response = await fetch(`${API_BASE_URL}/fitment/import/${path}`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) { const error = new Error(data.error || `Request failed (${response.status})`); error.payload = data; throw error; }
+  return data;
+}
+export const previewVehicleImport = (token, file, mode = "skip") => sendVehicleImport("preview", token, file, mode);
+export const commitVehicleImport = (token, file, mode = "skip") => sendVehicleImport("commit", token, file, mode);
+export async function downloadVehicleImportTemplate(token) {
+  const response = await fetch(`${API_BASE_URL}/fitment/import/template`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) throw new Error(`Could not download the template (${response.status})`);
+  return response.blob();
+}
+
 export const createEngine = (token, generationId, name) => fitmentMutate("POST", `/fitment/generations/${generationId}/engines`, token, { name });
 export const deleteEngine = (token, id) => fitmentMutate("DELETE", `/fitment/engines/${id}`, token);
 export const createTransmission = (token, generationId, name) => fitmentMutate("POST", `/fitment/generations/${generationId}/transmissions`, token, { name });

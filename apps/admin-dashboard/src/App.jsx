@@ -7,6 +7,7 @@ import GroupTabs from "./components/GroupTabs";
 import { FONT_IMPORT, C, disp, body, mono } from "./theme";
 import { PlateChip, Badge, Stars, KpiCard, Card, Th, Td, ConfirmDialog, EditDialog, EnlargeablePhoto } from "./components/ui";
 import VersionsPanel from "./VersionsPanel";
+import VehicleImportPanel from "./VehicleImportPanel";
 import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, fetchSupplierById, verifySupplier, updateSupplierCountry, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
   fetchCountriesList, fetchWarehouseCountries, fetchCountryGroups, createCountryGroup, deleteCountryGroup, addCountryGroupMember, removeCountryGroupMember,
   fetchAdminProducts, fetchAdminProductDetail, updateAdminProduct,
@@ -3593,10 +3594,10 @@ function VehicleDataPage({ onSessionExpired }) {
 
   return (
     <div>
-      <TopBar title="Vehicle Data" subtitle="Add a vehicle step by step: Brand, Model, Year, then its Versions. Names in English, Arabic and Chinese. Also the VIN decoder's own data tables" />
+      <TopBar title="Vehicle Data" subtitle="Add a vehicle step by step: Brand, Model, Year, then its Versions, by hand or by importing an Excel sheet. Names in English, Arabic and Chinese. Also the VIN decoder's own data tables" />
       <div style={{ padding: "24px 24px 0" }}>
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-          {[["brands", "Brands"], ["wmi", "VIN WMI"], ["patterns", "VIN model patterns"]].map(([id, label]) => (
+          {[["brands", "Brands"], ["import", "Import from Excel"], ["wmi", "VIN WMI"], ["patterns", "VIN model patterns"]].map(([id, label]) => (
             <button key={id} onClick={() => setActiveTab(id)} style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: activeTab === id ? C.ink : C.line, color: activeTab === id ? "#fff" : C.muted, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{label}</button>
           ))}
         </div>
@@ -3755,6 +3756,11 @@ function VehicleDataPage({ onSessionExpired }) {
         errorMessage={errorMessage}
         isSaving={isSavingEdit}
       />
+      {activeTab === "import" && (
+        <div style={{ padding: "0 24px 24px" }}>
+          <VehicleImportPanel onSessionExpired={onSessionExpired} onGoToBrands={() => setActiveTab("brands")} />
+        </div>
+      )}
       {activeTab === "wmi" && (
         <div style={{ padding: "0 24px 24px" }}>
           <VinWmiCodesSettings onSessionExpired={onSessionExpired} />
@@ -8109,7 +8115,7 @@ function AnnouncementsSection({ onSessionExpired }) {
 // text an admin would have to already know the exact internal string for.
 const AUDIT_ACTION_TYPES = [
   'admin_account_created', 'admin_account_removed', 'admin_permissions_changed',
-  'category_commission_changed', 'announcements_changed', 'version_created', 'version_updated', 'version_photo_changed', 'version_deleted', 'fx_rate_mode_changed', 'fx_rate_set_manual',
+  'category_commission_changed', 'announcements_changed', 'version_created', 'version_updated', 'version_photo_changed', 'version_deleted', 'vehicle_import', 'fx_rate_mode_changed', 'fx_rate_set_manual',
   'payout_recorded', 'promo_code_created', 'require_verified_purchase_toggled',
   'return_window_changed', 'review_approve', 'review_dismiss_flags', 'review_reject',
   'supplier_verification',
