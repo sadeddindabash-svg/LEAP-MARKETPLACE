@@ -138,14 +138,26 @@ test('a missing column, and a file that is not Excel, give a plain message', asy
   const b = await upload('/import/preview', Buffer.from('not a spreadsheet')); assert.equal(b.status, 400); assert.match(b.body.error, /could not be read/);
 });
 
-test('a new category whose name equals an existing category ID is refused (a supplier file could not tell them apart)', async () => {
-  await db.query("INSERT INTO product_categories (id, name_en, name_ar, sort_order) VALUES ('fuel', 'Petrol Things', 'بنزين', 990)");
+test('a sheet category whose name is the ID of an existing category (under another name) uses it, says so, and never renames or duplicates it', async () => {
+  await db.query("UPDATE product_categories SET name_en = 'Lighting & Lamps' WHERE id = 'lighting'");           // the situation of a real database: the id is "lighting", the name is not
   try {
     const out = await upload('/import/preview', fixture());
-    const bad = out.body.rows.filter((r) => r.status === 'error' && r.category === 'Fuel');
-    assert.ok(bad.length > 0, 'the Fuel rows are refused'); assert.match(bad[0].messages.map((m) => m.text).join(' '), /same as the id of an existing category/);
-    assert.equal((await upload('/import/commit', fixture())).status, 400);
-  } finally { await db.query("DELETE FROM product_categories WHERE id = 'fuel'"); }
+    assert.equal(out.status, 200); assert.equal(out.body.summary.rowsWithErrors, 0, JSON.stringify(out.body.rows.filter((r) => r.status === 'error').slice(0, 2)));
+    assert.ok(out.body.notes.some((n) => /matched the existing category "Lighting & Lamps" by its id "lighting"/.test(n)), 'the preview says which category was used');
+    assert.equal((await upload('/import/commit', fixture())).status, 201);
+    assert.equal(await count("SELECT count(*) AS n FROM product_categories WHERE lower(name_en) = 'lighting' OR lower(id) = 'lighting'"), 1, 'no second Lighting category was created');
+    assert.equal((await db.query("SELECT name_en, code FROM product_categories WHERE id = 'lighting'")).rows[0].name_en, 'Lighting & Lamps', 'its own name was not touched');
+    assert.equal((await db.query("SELECT code FROM product_categories WHERE id = 'lighting'")).rows[0].code, 'LGT', 'its blanks were filled');
+    assert.equal(await count("SELECT count(*) AS n FROM category_parts WHERE category_id = 'lighting' AND code LIKE 'LGT-%'"), 29, 'the 29 lighting parts went into it');
+  } finally { await db.query("UPDATE product_categories SET name_en = 'Lighting' WHERE id = 'lighting'"); }
+});
+
+test('a name that is the ID of one category and the NAME of another is refused as ambiguous', async () => {
+  await db.query("INSERT INTO product_categories (id, name_en, name_ar, sort_order) VALUES ('fuel', 'Petrol Things', 'بنزين', 990), ('t_other', 'Fuel', 'وقود', 991)");
+  const out = await upload('/import/preview', fixture());
+  const bad = out.body.rows.filter((r) => r.status === 'error' && r.category === 'Fuel');
+  assert.ok(bad.length > 0, 'the Fuel rows are refused'); assert.match(bad[0].messages.map((m) => m.text).join(' '), /id of the category "Petrol Things" and the name of another category/);
+  assert.equal((await upload('/import/commit', fixture())).status, 400);
 });
 
 test('a look-alike of an existing category is reported, never merged', async () => {

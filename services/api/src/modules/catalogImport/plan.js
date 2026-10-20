@@ -38,6 +38,7 @@ async function runImport(q, items, mode, { apply = false, batchId = null, placeh
   const { rows: cats } = await q.query('SELECT id, name_en, name_ar, name_zh, code, sort_order FROM product_categories');
   const byCode = new Map(cats.filter((c) => c.code).map((c) => [key(c.code), c]));
   const byName = new Map(cats.map((c) => [key(c.name_en), c]));
+  const byId = new Map(cats.map((c) => [key(c.id), c]));
   const idsTaken = new Set(cats.map((c) => key(c.id)));
   let nextCategoryOrder = cats.reduce((m, c) => Math.max(m, c.sort_order || 0), 0);
   const state = new Map();                                                            // main code -> { id, isNew, row, error }
@@ -47,10 +48,14 @@ async function runImport(q, items, mode, { apply = false, batchId = null, placeh
   for (const item of okItems) {
     const m = item.data.main, ck = key(m.code);
     if (state.has(ck)) continue;
-    const byC = byCode.get(ck), byN = byName.get(key(m.en));
+    const byC = byCode.get(ck), byN = byName.get(key(m.en)), byI = byId.get(key(m.en));
     if (byC && byN && byC.id !== byN.id) { state.set(ck, { error: `Category code ${m.code} belongs to "${byC.name_en}", but the name "${m.en}" belongs to another category ("${byN.name_en}")` }); continue; }
-    const existing = byC || byN || null;
+    // a name that is the ID of one category and the NAME of another is ambiguous (the supplier import looks a category up by id or name): refused. A name that is only the id of an existing category
+    // IS that category, as far as the supplier import is concerned, so it is used (and keeps its own name), never refused and never duplicated.
+    if (byN && byI && byN.id !== byI.id) { state.set(ck, { error: `The name "${m.en}" is the id of the category "${byI.name_en}" and the name of another category: a supplier file could not tell them apart. Rename one of them first.` }); continue; }
+    const existing = byC || byN || byI || null;
     if (existing) {
+      if (!byC && !byN) note(`id:${existing.id}`, `Category "${m.en}" matched the existing category "${existing.name_en}" by its id "${existing.id}" (the supplier import would pick it too). It keeps its name; the new parts are added to it.`);
       if (existing.code && key(existing.code) !== ck) { state.set(ck, { error: `A category called "${existing.name_en}" already exists with the code ${existing.code}, not ${m.code}` }); continue; }
       const blank = (v) => v === null || v === undefined || String(v).trim() === '';
       const fill = {};
@@ -70,7 +75,7 @@ async function runImport(q, items, mode, { apply = false, batchId = null, placeh
       state.set(ck, { id: existing.id, isNew: false, row: existing, name: existing.name_en });
       continue;
     }
-    if (idsTaken.has(key(m.en))) { state.set(ck, { error: `The new category name "${m.en}" is the same as the id of an existing category: a supplier file naming it could not tell them apart. Rename one of them first.` }); continue; }
+    if (idsTaken.has(key(m.en))) { state.set(ck, { error: `(safety net: it cannot happen while ids are matched above) The new category name "${m.en}" is the same as the id of an existing category: a supplier file naming it could not tell them apart. Rename one of them first.` }); continue; }
     let id = `cat_${m.code.toLowerCase()}`; for (let n = 2; idsTaken.has(key(id)); n++) id = `cat_${m.code.toLowerCase()}_${n}`;
     idsTaken.add(key(id));
     nextCategoryOrder += 10;

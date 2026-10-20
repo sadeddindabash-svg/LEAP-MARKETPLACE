@@ -1894,6 +1894,9 @@ router.post('/parts/:id/move', requireAuth, requireRole('admin'), requirePageAcc
   }
 });
 
+// bulk parts catalog import, editing of every catalog field, undo and health (modules/catalogImport)
+router.use('/admin', require('../catalogImport/routes'));
+
 module.exports = router;
 // Real product DTO helpers, exported for reuse by other modules that
 // need to render a real buyer-facing product (e.g. the wishlist module) —

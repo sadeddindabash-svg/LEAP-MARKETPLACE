@@ -45,13 +45,25 @@ async function validateFitment({ generationId, year, engineId, transmissionId },
 // during the real per-item completion step. Returns the real matched
 // ids/names if valid, or null if not -- never throws.
 async function tryMatchCategoryAndPart(category, part, client) {
-  if (!category) return { category: null, part: null };
-  const categoryCheck = await client.query('SELECT id FROM product_categories WHERE id = $1 OR name_en = $1', [category]);
-  if (categoryCheck.rows.length === 0) return { category: null, part: null };
+  // catalog import: a part CODE (BRK-001) names one part, so it works even when the category is left blank
+  if (!category) {
+    if (!part) return { category: null, part: null };
+    const byCode = await client.query('SELECT category_id, name_en FROM category_parts WHERE lower(code) = lower($1)', [part]);
+    return byCode.rows.length === 1 ? { category: byCode.rows[0].category_id, part: byCode.rows[0].name_en } : { category: null, part: null };
+  }
+  // exact id or English name first, exactly as before; then the catalog code, then the Chinese or Arabic name. A name that fits more than one category is NOT guessed.
+  let categoryCheck = await client.query('SELECT id FROM product_categories WHERE id = $1 OR name_en = $1', [category]);
+  if (categoryCheck.rows.length === 0) {
+    categoryCheck = await client.query('SELECT id FROM product_categories WHERE lower(code) = lower($1) OR name_zh = $1 OR name_ar = $1', [category]);
+    if (categoryCheck.rows.length !== 1) return { category: null, part: null };
+  }
   const realCategoryId = categoryCheck.rows[0].id;
   if (!part) return { category: realCategoryId, part: null };
-  const partCheck = await client.query('SELECT name_en FROM category_parts WHERE category_id = $1 AND name_en = $2', [realCategoryId, part]);
-  if (partCheck.rows.length === 0) return { category: realCategoryId, part: null };
+  let partCheck = await client.query('SELECT name_en FROM category_parts WHERE category_id = $1 AND name_en = $2', [realCategoryId, part]);
+  if (partCheck.rows.length === 0) {
+    partCheck = await client.query('SELECT name_en FROM category_parts WHERE category_id = $1 AND (lower(code) = lower($2) OR name_zh = $2 OR name_ar = $2)', [realCategoryId, part]);
+    if (partCheck.rows.length !== 1) return { category: realCategoryId, part: null };
+  }
   return { category: realCategoryId, part: partCheck.rows[0].name_en };
 }
 
