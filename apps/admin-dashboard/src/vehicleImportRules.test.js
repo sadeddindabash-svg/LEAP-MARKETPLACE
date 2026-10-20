@@ -1,12 +1,13 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
 import { createRequire } from 'module';
-import { makeSheet, row, HEADERS } from './testSheets.js';
+import { makeSheet, row, HEADERS, prefixMainNamespace } from './testSheets.js';
 
 const require = createRequire(import.meta.url);
 const { parseWorkbook, ImportError } = require('../../../services/api/src/modules/vehicleImport/parser.js');
 const { validateRows } = require('../../../services/api/src/modules/vehicleImport/rules.js');
 const columns = require('../../../services/api/src/modules/vehicleImport/columns.js');
+const { unprefixMainNamespace } = require('../../../services/api/src/modules/vehicleImport/normalize.js');
 
 const check = async (rows, options) => { const parsed = await parseWorkbook(await makeSheet(rows, options)); return { parsed, items: validateRows(parsed.rows) }; };
 const errorsOf = (item) => item.messages.filter((m) => m.level === 'error').map((m) => m.text);
@@ -32,7 +33,7 @@ describe('reading the sheet', () => {
     await expect(check([row()], { headers: without })).rejects.toThrow(/座位数/);
   });
   it('a file that is not an Excel file, and a sheet with no headers, are refused with a clear message', async () => {
-    await expect(parseWorkbook(Buffer.from('this is not a spreadsheet'))).rejects.toThrow(/not a valid \.xlsx/);
+    await expect(parseWorkbook(Buffer.from('this is not a spreadsheet'))).rejects.toThrow(/could not be read as an Excel \(\.xlsx\) file/);
     await expect(check([row()], { headers: ['A', 'B', 'C'] })).rejects.toThrow(/No sheet with the expected headers/);
     await expect(parseWorkbook(Buffer.from('x'))).rejects.toBeInstanceOf(ImportError);
   });
@@ -99,3 +100,41 @@ describe('checking every row', () => {
     expect(errorsOf(items[1]).join(' ')).toMatch(/Engine \(Arabic\) is longer than 200/);
   });
 });
+
+// Some programs write a valid .xlsx with a PREFIX on every spreadsheet tag (<x:workbook>, <x:sheets>...). Excel and others read it; the reading library did not, and the importer
+// answered "not a valid .xlsx file" for a file that was fine (the ARCFOX sheet). The importer now rewrites such a file in memory and reads it.
+describe('a valid file written with prefixed XML tags', () => {
+  const rows = () => [row({ picture: [400, 400] }), row({ version: 'B' }), row({ version: 'C', year: 2023, yearAr: 2023, yearZh: 2023, picture: [500, 500] })];
+
+  it('CRITICAL: is read exactly like the same file in Excel\'s own style (same rows, same texts, every picture on its own row)', async () => {
+    const plain = await makeSheet(rows());
+    const prefixed = await prefixMainNamespace(plain);
+    const { default: JSZip } = await import('jszip');
+    const workbookXml = await (await JSZip.loadAsync(prefixed)).file('xl/workbook.xml').async('string');
+    expect(workbookXml).toMatch(/<x:workbook xmlns:x=/);                                  // it really is written in the other style
+    const a = await parseWorkbook(plain), b = await parseWorkbook(prefixed);
+    expect(b.rows.map((r) => r.rowNumber)).toEqual(a.rows.map((r) => r.rowNumber));
+    expect(b.rows.map((r) => r.values)).toEqual(a.rows.map((r) => r.values));
+    expect(b.rows.map((r) => !!r.picture)).toEqual([true, false, true]);
+    expect(b.pictureCount).toBe(2);
+    expect(validateRows(b.rows).every((i) => i.ok)).toBe(true);
+  });
+
+  it('works whatever the prefix is called, and a damaged file is still refused with the clear message', async () => {
+    const prefixed = await prefixMainNamespace(await makeSheet(rows()), 'ss');
+    expect((await parseWorkbook(prefixed)).rows).toHaveLength(3);
+    await expect(parseWorkbook(prefixed.subarray(0, 600))).rejects.toThrow(/could not be read as an Excel \(\.xlsx\) file/);
+  });
+
+  it('the rewrite touches only a part that uses a prefix for the spreadsheet namespace; Excel-style parts, other namespaces and prefixed attributes are left alone', () => {
+    const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+    const excel = `<?xml version="1.0"?><workbook xmlns="${NS}"><sheets><sheet name="A"/></sheets></workbook>`;
+    expect(unprefixMainNamespace(excel)).toBe(excel);
+    expect(unprefixMainNamespace(`<x:workbook xmlns:x="${NS}"><x:sheets><x:sheet name="A"/></x:sheets></x:workbook>`)).toBe(`<workbook xmlns="${NS}"><sheets><sheet name="A"/></sheets></workbook>`);
+    const withAttribute = `<x:workbook xmlns:x="${NS}"><x:sheet x:name="A"/></x:workbook>`;
+    expect(unprefixMainNamespace(withAttribute)).toBe(withAttribute);                       // an attribute uses the prefix: not safe to rewrite, left as it is
+    const drawing = '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"><xdr:oneCellAnchor/></xdr:wsDr>';
+    expect(unprefixMainNamespace(drawing)).toBe(drawing);
+  });
+});
+

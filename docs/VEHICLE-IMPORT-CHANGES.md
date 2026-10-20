@@ -3,7 +3,7 @@
 Included as whole files in `leap_vehicle_data_stage2.zip`. **Apply `leap_vehicle_data_stage1.zip` first** (this zip builds on it: its `fitment/routes.js`, `auth.js` and `App.jsx` contain stage 1 too). If you have changed those three files since, apply the edits below by hand instead of overwriting.
 
 ## Before you start
-1. In `services\api` run: `npm install exceljs` (the server reads the Excel file with it; this also adds it to `package.json`).
+1. In `services\api` run: `npm install exceljs jszip` (the server reads the Excel file with `exceljs`; `jszip` is used to rewrite files written in a different XML style, see below; this also adds both to `package.json`).
 2. Restart the backend (no new migration: stage 1's migration 106 already has everything).
 3. If the backend sits behind a web server or proxy, allow request bodies of at least **60 MB** (for example nginx `client_max_body_size 60m`), because a sheet with 100+ pictures is large (your AITO sheet is 17.6 MB).
 
@@ -25,3 +25,7 @@ Included as whole files in `leap_vehicle_data_stage2.zip`. **Apply `leap_vehicle
 
 ## How it was checked, and what was not
 Your real AITO sheet through the real server and database and the real admin screens in a browser (13 checks): 135 rows, 112 pictures matched to their rows, 23 rows without a picture, 5 models, 12 years, 135 versions; a second import adds nothing; checking writes nothing. Tests: 13 + 12 + 13 new ones, and every one of the 24 deliberate breaks I tried was caught. **Not run here:** your full backend and the rest of your integration tests (my rebuilt copy lacks parts of your project). Please run your usual `npm test` and integration tests after applying.
+
+## Files written by other programs (the ARCFOX sheet)
+Some programs (for example ones built on Microsoft's Open XML SDK) write a valid `.xlsx` whose XML tags carry a prefix (`<x:workbook>`, `<x:sheets>`). Excel opens it, but the reading library failed and the importer wrongly answered "not a valid .xlsx file". The importer now reads such a file by rewriting it in memory into Excel's style first (`vehicleImport/normalize.js`; your file is never changed). A file that really is damaged is still refused, now with this message: "This file could not be read as an Excel (.xlsx) file. Open it in Excel and save it again as an Excel Workbook (.xlsx), then try again." and the real reason is written to the backend's log (`[vehicle-import] cannot read the uploaded file: ...`). Extra columns in a sheet (the ARCFOX sheet has five notes columns after the Chinese block) are ignored: columns are found by their header names.
+The integration test can also run your ARCFOX sheet: set `LEAP_ARCFOX_XLSX` to its path (skipped otherwise).

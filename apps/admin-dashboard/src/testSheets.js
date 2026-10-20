@@ -1,5 +1,6 @@
 // Test support: builds a small .xlsx in the import's layout (English block, the picture column, Arabic block, Chinese block), with real pictures placed over the cells.
 import ExcelJS from 'exceljs';
+import JSZip from 'jszip';
 import { makePng } from './testImages.js';
 
 export const HEADERS = ['Brand', 'Model', 'Year', 'Version', 'Engine', 'Seats', 'Vehicle Photo', 'الماركة', 'الموديل', 'السنة', 'الفئة', 'المحرك', 'عدد المقاعد', '品牌', '车型', '年份', '版本', '发动机', '座位数'];
@@ -37,3 +38,22 @@ export async function makeSheet(rows, { headers = HEADERS, sheetName = 'Vehicles
   });
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
+
+const MAIN_NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+/**
+ * The SAME workbook written the way some programs (built on Microsoft's Open XML SDK) write it: every tag of the main spreadsheet namespace carries a prefix
+ * (<x:workbook xmlns:x="...">, <x:sheets>...) instead of Excel's own style (<workbook xmlns="...">). A valid file that exceljs cannot read until it is rewritten.
+ */
+export async function prefixMainNamespace(buffer, prefix = 'x') {
+  const zip = await JSZip.loadAsync(buffer);
+  for (const name of Object.keys(zip.files)) {
+    if (zip.files[name].dir || !/^xl\/(workbook\.xml|styles\.xml|sharedStrings\.xml|worksheets\/[^/]+\.xml)$/.test(name)) continue;
+    const xml = await zip.file(name).async('string');
+    const out = xml
+      .replace(new RegExp(`\\sxmlns="${MAIN_NS}"`), ` xmlns:${prefix}="${MAIN_NS}"`)
+      .replace(/<(\/?)([A-Za-z][\w]*)(?=[\s/>])/g, `<$1${prefix}:$2`);
+    zip.file(name, out);
+  }
+  return Buffer.from(await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
+}
+

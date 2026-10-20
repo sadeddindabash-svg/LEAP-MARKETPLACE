@@ -2,6 +2,7 @@
 const ExcelJS = require('exceljs');
 const { cleanLine } = require('../fitment/vehicleRules');
 const { FIELDS, PHOTO_HEADER, LANGS, MAX_ROWS } = require('./columns');
+const { normalizeWorkbookPackage } = require('./normalize');
 
 class ImportError extends Error {
   constructor(message, status = 400) { super(message); this.status = status; }
@@ -33,8 +34,24 @@ function findHeaderRow(ws) {
 }
 
 async function parseWorkbook(buffer) {
-  const wb = new ExcelJS.Workbook();
-  try { await wb.xlsx.load(buffer); } catch { throw new ImportError('This is not a valid .xlsx file. Save the sheet as an Excel Workbook (.xlsx) and try again.'); }
+  let wb = new ExcelJS.Workbook();
+  try {
+    await wb.xlsx.load(buffer);
+  } catch (firstError) {
+    // A valid file written in another XML style (see normalize.js) fails here with a vague error: read it again, rewritten in memory into Excel's style.
+    let reason = firstError;
+    wb = new ExcelJS.Workbook();
+    try {
+      const rewritten = await normalizeWorkbookPackage(buffer);
+      if (!rewritten) throw firstError;
+      await wb.xlsx.load(rewritten);
+    } catch (secondError) {
+      reason = secondError;
+      // the real reason goes to the server's log, so a file that still cannot be read can be diagnosed
+      console.warn(`[vehicle-import] cannot read the uploaded file: ${reason && reason.message}`);
+      throw new ImportError('This file could not be read as an Excel (.xlsx) file. Open it in Excel and save it again as an Excel Workbook (.xlsx), then try again. (If it keeps failing, send the file to the Leap team: it may be damaged or written by a tool this importer does not support.)');
+    }
+  }
   let ws = null, headerRow = null;
   for (const sheet of wb.worksheets) { const r = findHeaderRow(sheet); if (r) { ws = sheet; headerRow = r; break; } }
   if (!ws) throw new ImportError('No sheet with the expected headers was found. The first row needs the headers of the template (Brand, Model, Year, Version, Engine, Seats, Vehicle Photo, then the Arabic and Chinese columns). Download the template to see them.');

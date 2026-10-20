@@ -78,7 +78,7 @@ describe.runIf(backendUp)('Excel import of vehicle data, against a REAL running 
 
   it('a file that is not Excel, and no file at all, are refused in plain words', async () => {
     const bad = await send(admin, 'preview', Buffer.from('not a spreadsheet'));
-    expect(bad.status).toBe(400); expect(bad.body.error).toMatch(/not a valid \.xlsx/);
+    expect(bad.status).toBe(400); expect(bad.body.error).toMatch(/could not be read as an Excel \(\.xlsx\) file/);
     const none = await send(admin, 'preview', null);
     expect(none.status).toBe(400); expect(none.body.error).toMatch(/No file was sent/);
   });
@@ -206,6 +206,22 @@ describe.runIf(backendUp)('Excel import of vehicle data, against a REAL running 
     expect(await versionsOf(brand.id)).toHaveLength(3);
     expect(await (await json(null, 'GET', `/fitment/brands/${brand.id}/models`)).json()).toHaveLength(1);
   });
+
+  const ARC = process.env.LEAP_ARCFOX_XLSX;
+  it.runIf(!!ARC && fs.existsSync(ARC || ''))('YOUR REAL ARCFOX SHEET (written in the other XML style that used to be refused): 150 rows, 105 pictures, 45 without, 12 models, 26 years: imported once, a second time adds nothing', async () => {
+    const file = fs.readFileSync(ARC);
+    const existing = (await (await json(null, 'GET', '/fitment/brands')).json()).find((b) => b.name === 'ARCFOX');
+    if (existing) await json(admin, 'DELETE', `/fitment/brands/${existing.id}`);
+    const brand = await (await json(admin, 'POST', '/fitment/brands', { name: 'ARCFOX', nameAr: 'أركفوكس', nameZh: '极狐', photoUrl: '/uploads/brand.png' })).json(); brands.push(brand.id);
+    const preview = await send(admin, 'preview', file);
+    expect(preview.status).toBe(200);
+    expect(preview.body.summary).toMatchObject({ rows: 150, rowsWithErrors: 0, picturesFound: 105, newModels: 12, newYears: 26, newVersions: 150, newWithoutPicture: 45 });
+    expect((await send(admin, 'commit', file)).status).toBe(201);
+    const all = await versionsOf(brand.id);
+    expect(all).toHaveLength(150); expect(all.filter((x) => !x.version.photoUrl)).toHaveLength(45);
+    expect((await send(admin, 'commit', file)).status).toBe(400);
+    expect(await versionsOf(brand.id)).toHaveLength(150);
+  }, 120000);
 
   const REAL = process.env.LEAP_AITO_XLSX;
   it.runIf(!!REAL && fs.existsSync(REAL || ''))('YOUR REAL AITO SHEET: 135 rows, 112 pictures matched to their rows, 23 rows without a picture, 5 models, 12 years: imported once, and a second time adds nothing', async () => {
