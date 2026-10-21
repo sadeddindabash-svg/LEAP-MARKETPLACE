@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { AddToCartButton } from "@/components/AddToCartButton";
-import ConfirmedFit from "@/components/ConfirmedFit";
+import FitCheck from "@/components/FitCheck";
 import CustomerPhotos from "@/components/CustomerPhotos";
 import LoadMoreGrid from "@/components/LoadMoreGrid";
 import NotifyWhenInStock from "@/components/NotifyWhenInStock";
@@ -103,7 +103,7 @@ export default async function ProductPage({ params }: PageProps) {
               </span>
             )}
           </div>
-          <ConfirmedFit fitsVehicleIds={product.fitsVehicleIds} />
+          <FitCheck fitCars={product.fitCars} fitCarCount={product.fitCarCount} fitKeys={product.fitKeys} fitsVehicleIds={product.fitsVehicleIds} />
           <p className="mt-6 font-display font-bold text-4xl">
             <Price usd={product.price} />
           </p>

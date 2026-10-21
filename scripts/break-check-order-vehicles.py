@@ -41,6 +41,8 @@ SCREENS = [
  ("the cars the supplier was not sent are not counted", "apps/supplier-portal/src/OrderVehicle.jsx", "const hidden = Math.max(0, (vehicle.carCount || 0) - (vehicle.cars || []).length);", "const hidden = 0;"),
  ("a part that fits any car is not explained", "apps/supplier-portal/src/OrderVehicle.jsx", ") : <div style={{ ...font, fontSize: 12.5, color: C.muted }}>{t.fitsAny}</div>}", ") : null}"),
  ("the same car is counted twice in the list", "apps/supplier-portal/src/OrderVehicle.jsx", "const distinct = new Set(vehicles.flatMap((v) => (v.cars || []).map(key)));", "const distinct = new Set(vehicles.flatMap((v) => (v.cars || []).map((c, i) => key(c) + i + Math.random())));"),
+ ("the part photo is not square", "apps/supplier-portal/src/OrderVehicle.jsx", "<Photo url={vehicle.partPhotoUrl} width={96} height={96}", "<Photo url={vehicle.partPhotoUrl} width={96} height={72}"),
+ ("the small photos in the list are not square", "apps/supplier-portal/src/OrderVehicle.jsx", "<Photo url={first.partPhotoUrl} width={32} height={32}", "<Photo url={first.partPhotoUrl} width={32} height={24}"),
  ("an item with no vehicle information crashes the screen", "apps/supplier-portal/src/OrderVehicle.jsx", "  if (!vehicle) return null;\n  const caption", "  const caption"),
  ("the orders list has no Part → Car column", "apps/supplier-portal/src/App.jsx", "<Th>{carHeader(lang)}</Th>", ""),
  ("the order detail shows no part and car", "apps/supplier-portal/src/App.jsx", "<OrderVehicle vehicle={it.vehicle} />", ""),
@@ -56,15 +58,40 @@ STOREFRONT = [
  ("the product page does not pass the cars to the fit message", "apps/web-storefront/app/products/[id]/page.tsx", " fitKeys={product.fitKeys}", ""),
  ("the cart shows no fit message", "apps/web-storefront/app/cart/page.tsx", "\n        <FitCheck productId={item.productId} />", ""),
 ]
-mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"server": SERVER, "screens": SCREENS, "storefront": STOREFRONT}[mode]
+TILE = "apps/web-storefront/components/TileRow.tsx"; HOME = "apps/web-storefront/app/page.tsx"; SEARCH = "apps/web-storefront/app/search/page.tsx"
+UI_STOREFRONT = [
+ ("a row shows ALL the tiles (no More tile, no one-row rule)", TILE, "const shown = fits || open ? tiles.length : columns - 1;", "const shown = tiles.length;"),
+ ("the More tile has no room in the row (it wraps to a second row)", TILE, "const shown = fits || open ? tiles.length : columns - 1;", "const shown = fits || open ? tiles.length : columns;"),
+ ("the tiles that are not shown are removed from the page (a search engine no longer reads them)", TILE, "{tiles.map((tile, i) => <li key={i} hidden={i >= shown}>{tile}</li>)}", "{tiles.slice(0, shown).map((tile, i) => <li key={i}>{tile}</li>)}"),
+ ("the More tile never says Show fewer", TILE, "{open ? fewerLabel : moreLabel}", "{moreLabel}"),
+ ("the More tile does not tell a screen reader whether it is open", TILE, "aria-expanded={open} ", ""),
+ ("the totals are the length of a fetched list again", HOME, "{ icon: \"parts\", n: totals.parts,", "{ icon: \"parts\", n: products.length,"),
+ ("a missing total crashes the home page instead of leaving the row out", HOME, "const stats = totals ? [", "const stats = true ? ["),
+ ("the See all parts link is back", HOME, "{t(lang, \"newest_parts\")}</h2>", "{t(lang, \"newest_parts\")}</h2><Link href=\"/search\">{t(lang, \"see_all_parts\")}</Link>"),
+ ("a brand tile has no name", HOME, "{pickName(lang, b.name, b.nameAr)}</span>", "</span>"),
+ ("the newest parts stop after two more pages", HOME, "total={null} pageSize={NEWEST_PAGE_SIZE} gridClassName", "total={null} pageSize={NEWEST_PAGE_SIZE} maxExtraPages={2} gridClassName"),
+ ("the products page is back to three columns", SEARCH, " md:grid-cols-3 lg:grid-cols-4\"", " md:grid-cols-3\""),
+ ("the section chip keeps the section when it is cleared", SEARCH, "    const params = new URLSearchParams();\n    if (q) params.set(\"q\", q);\n    if (generationId) params.set(\"generationId\", generationId);", "    const params = new URLSearchParams();\n    if (category) params.set(\"category\", category);\n    if (q) params.set(\"q\", q);\n    if (generationId) params.set(\"generationId\", generationId);"),
+ ("the section chip forgets the vehicle when it is cleared", SEARCH, "    if (q) params.set(\"q\", q);\n    if (generationId) params.set(\"generationId\", generationId);\n    if (year) params.set(\"year\", year);\n    const qs = params.toString();\n    return `/search${qs ? `?${qs}` : \"\"}`;\n  })();", "    if (q) params.set(\"q\", q);\n    const qs = params.toString();\n    return `/search${qs ? `?${qs}` : \"\"}`;\n  })();"),
+ ("the section chip is not shown", SEARCH, "{sectionName && (", "{false && ("),
+]
+UI_SERVER = [
+ ("the parts total counts parts that are not active", "services/api/src/modules/siteStats/stats.js", "\"SELECT count(*) AS n FROM products WHERE status = 'active'\"", "\"SELECT count(*) AS n FROM products\""),
+ ("the countries total counts a market on compliance hold", "services/api/src/modules/siteStats/stats.js", "LAUNCH_MARKETS.filter((m) => !COMPLIANCE_HOLD_COUNTRY_CODES.has(m.countryCode)).length", "LAUNCH_MARKETS.length"),
+ ("the totals are not kept for a minute", "services/api/src/modules/catalog/routes.js", "res.set('Cache-Control', 'public, max-age=60');", ""),
+ ("the models total counts brands", "services/api/src/modules/siteStats/stats.js", "'SELECT count(*) AS n FROM vehicle_models'", "'SELECT count(*) AS n FROM vehicle_brands'"),
+]
+mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER}[mode]
 lo, hi = (int(sys.argv[2]), int(sys.argv[3])) if len(sys.argv) > 3 else (1, len(BREAKS))
 def fresh():
     subprocess.run(["su", "postgres", "-c", "psql -q -c 'DROP DATABASE IF EXISTS leap_catalog_import_test' -c \"CREATE DATABASE leap_catalog_import_test TEMPLATE leap_marketplace_dev OWNER leap_dev\""], check=True, capture_output=True)
 def run():
+    if mode == "uiserver": return subprocess.run(["node", "--test", "test/siteStats.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
+    if mode == "uistorefront": return subprocess.run(["npx", "vitest", "run", "components/TileRow.test.tsx", "app/pages-i18n.test.tsx", "app/searchLayout.test.tsx", "app/homeLazy.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=200).returncode
     if mode == "server": return subprocess.run(["node", "--test", "test/orderVehicles.test.js", "test/productCars.test.js", "test/orderVehiclesReplacement.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "screens": return subprocess.run(["npx", "vitest", "run", "src/OrderVehicle.test.jsx", "src/OrderVehicleFlow.test.jsx"], cwd=SP, capture_output=True, text=True, timeout=150).returncode
     return subprocess.run(["npx", "vitest", "run", "components/FitCheck.test.tsx", "app/stage1c-page.test.tsx", "app/cartFitCheck.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=150).returncode
-if mode == "server": fresh()
+if mode in ("server", "uiserver"): fresh()
 if run() != 0: sys.exit("The tests do not pass on the UNBROKEN code, so a break check would prove nothing.")
 print("baseline: the tests pass on the unbroken code\n", flush=True); caught = 0
 for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
@@ -73,10 +100,10 @@ for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
     if src.count(old) != 1: print(f"{n:2d}. SKIPPED (the line to break was not found exactly once): {what}"); continue
     shutil.copy(path, path + ".keep"); open(path, "w", encoding="utf-8").write(src.replace(old, new))
     try:
-        if mode == "server": fresh()
+        if mode in ("server", "uiserver"): fresh()
         failed = run() != 0
     finally: shutil.move(path + ".keep", path)
     caught += failed; print(f"{n:2d}. {'CAUGHT ' if failed else 'MISSED!'}  {what}", flush=True)
 print(f"\n{caught} of {sum(1 for i in range(1, len(BREAKS) + 1) if lo <= i <= hi)} breaks were caught")
-if mode == "server": fresh()
+if mode in ("server", "uiserver"): fresh()
 print("code restored; the tests pass again:", "yes" if run() == 0 else "NO (investigate)")

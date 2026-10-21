@@ -29,7 +29,7 @@ import CustomerPhotos from "@/components/CustomerPhotos";
 import ProductSection from "@/components/ProductSection";
 import LoadMoreGrid from "@/components/LoadMoreGrid";
 import ProductGallery from "@/components/ProductGallery";
-import ConfirmedFit from "@/components/ConfirmedFit";
+import FitCheck from "@/components/FitCheck";
 import NotifyWhenInStock from "@/components/NotifyWhenInStock";
 import ShareButton from "@/components/ShareButton";
 
@@ -41,7 +41,7 @@ async function render(lang: "en" | "ar" = "en") {
   m.lang.current = lang;
   const { default: ProductPage } = await import("./products/[id]/page");
   const found: El[] = [];
-  const watched = [OemComparison, ReviewsSection, CustomerPhotos, ProductSection, LoadMoreGrid, ProductGallery, ConfirmedFit, NotifyWhenInStock, ShareButton];
+  const watched = [OemComparison, ReviewsSection, CustomerPhotos, ProductSection, LoadMoreGrid, ProductGallery, FitCheck, NotifyWhenInStock, ShareButton];
   const walk = (node: unknown): void => {
     if (!node || typeof node !== "object") return;
     if (Array.isArray(node)) return node.forEach(walk);
@@ -66,7 +66,7 @@ beforeEach(() => {
 describe("the full product page", () => {
   it("CRITICAL: the sections come in the mobile app's order: other listings, reviews, customer photos, similar parts, more of the brand, newest", async () => {
     const found = await render();
-    expect(names(found.filter((e) => !["ProductGallery", "ConfirmedFit", "NotifyWhenInStock", "ShareButton"].includes((e.type as { name: string }).name)))).toEqual(
+    expect(names(found.filter((e) => !["ProductGallery", "FitCheck", "NotifyWhenInStock", "ShareButton"].includes((e.type as { name: string }).name)))).toEqual(
       ["OemComparison", "ReviewsSection", "CustomerPhotos", "ProductSection", "LoadMoreGrid", "LoadMoreGrid"]);
   });
 
@@ -74,7 +74,13 @@ describe("the full product page", () => {
     const found = await render();
     expect(found.find((e) => e.type === ProductGallery)?.props).toMatchObject({ images: ["https://api.example.com/a.jpg", "https://api.example.com/b.jpg"], alt: "Front Brake Disc" });
     expect(found.find((e) => e.type === ShareButton)?.props.title).toBe("Front Brake Disc");
-    expect(found.find((e) => e.type === ConfirmedFit)?.props.fitsVehicleIds).toEqual(["g1", "g2"]);
+    expect(found.find((e) => e.type === FitCheck)?.props.fitsVehicleIds).toEqual(["g1", "g2"]);
+  });
+
+  it("the fit message gets the cars the part fits, how many, and a key of each, so it can tell whether the buyer's own car is one of them", async () => {
+    m.product.current = detail({ fitCars: [{ generationId: "g1", year: 2024, brand: "BYD", model: "Seal" }], fitCarCount: 7, fitKeys: ["g1|2024", "g2|2023"] });
+    const found = await render();
+    expect(found.find((e) => e.type === FitCheck)?.props).toMatchObject({ fitCarCount: 7, fitKeys: ["g1|2024", "g2|2023"], fitCars: [{ generationId: "g1", year: 2024, brand: "BYD", model: "Seal" }] });
   });
 
   it("CRITICAL: 'Notify me when back in stock' appears only on a part that is sold out", async () => {

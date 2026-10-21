@@ -49,6 +49,10 @@ export interface ProductDetail extends ProductSummary {
   model: string | null;
   year: number | null;
   fitsVehicleIds: string[];
+  /** The first cars the product fits, how many in all, and a "generation|year" key for each one (the "fits your car?" message). */
+  fitCars?: { generationId: string; year: number | null; brand: string | null; brandAr?: string | null; model: string | null; modelAr?: string | null }[];
+  fitCarCount?: number;
+  fitKeys?: string[];
 }
 
 export interface ProductCategory {

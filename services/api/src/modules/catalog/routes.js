@@ -2,6 +2,7 @@ const express = require('express');
 const { createListCache } = require('./listCache');
 const crypto = require('crypto');
 const db = require('../../../db/pool');
+const { loadBuyerFit } = require('../orderVehicles/productCars');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { calculateBuyerPriceUsd, MissingShippingDataError } = require('../pricing/engine');
 const { withEffectiveShipping } = require('../shared/partShipping');
@@ -472,6 +473,7 @@ router.get('/products/:id', async (req, res, next) => {
     res.json({
       ...dto,
       fitsVehicleIds: fitmentResult.rows.map((r) => r.vehicle_id),
+      ...(await loadBuyerFit(db, req.params.id)),      // the cars it fits (names, how many, and a key of each) for the "fits your car?" message
       attributes: attrRows.map((a) => ({ name: a.attribute_name, value: a.attribute_value })),
     });
   } catch (err) {

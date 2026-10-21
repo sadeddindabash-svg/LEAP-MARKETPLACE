@@ -46,6 +46,18 @@ describe('OrderVehicle (under an item)', () => {
   });
 });
 
+describe('the photos are SQUARE', () => {
+  const squares = (container) => [...container.querySelectorAll('img')].map((img) => { const box = img.parentElement.style; return [box.width, box.height]; });
+  it('in the order detail the part photo and the car photo are the same width and height', () => {
+    const { container } = inLang('en', <OrderVehicle vehicle={vehicle([car()])} />);
+    const boxes = squares(container); expect(boxes).toHaveLength(2); for (const [w, h] of boxes) expect(w).toBe(h);
+  });
+  it('and so are the small ones in the orders list', () => {
+    const { container } = inLang('en', <OrderVehicleCell items={[{ vehicle: vehicle([car()]) }]} />);
+    const boxes = squares(container); expect(boxes).toHaveLength(2); for (const [w, h] of boxes) expect(w).toBe(h);
+  });
+});
+
 describe('OrderVehicleCell (in the orders list)', () => {
   const cell = (items, lang = 'en') => inLang(lang, <OrderVehicleCell items={items} />);
   it('the first item with a car: part photo, arrow, car photo and the car', () => {

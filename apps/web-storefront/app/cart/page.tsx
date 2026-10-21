@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import SafeImage from "@/components/SafeImage";
+import FitCheck from "@/components/FitCheck";
 import Link from "@/components/LocLink";
 import { useCart } from "@/components/CartProvider";
 import { useT } from "@/components/LangProvider";
@@ -23,6 +24,7 @@ function Line({ item, onChange, onRemove, busy }: { item: CartItem; onChange: (q
       <div className="min-w-0">
         <Link href={`/products/${item.productId}`} className="line-clamp-2 text-[17px] font-bold leading-snug hover:underline">{item.name}</Link>
         {item.supplierName && <p className="mt-0.5 text-sm text-muted">{supplierLabel(item.supplierName, t("supplier_word"))}</p>}
+        <FitCheck productId={item.productId} />
         {item.priceChanged && <p role="status" className="mt-2 text-sm font-semibold text-[#7a4e00]">{t("price_updated_since_added")}</p>}
         <div className="mt-3 flex flex-wrap items-center gap-4">
           <div role="group" aria-label={String(item.quantity)} className="inline-flex items-center rounded-[10px] border-[1.5px] border-[#c5d0d8] bg-white">

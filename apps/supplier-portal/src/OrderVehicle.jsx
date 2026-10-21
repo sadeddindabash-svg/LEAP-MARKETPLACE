@@ -44,11 +44,11 @@ export default function OrderVehicle({ vehicle }) {
   const hidden = Math.max(0, (vehicle.carCount || 0) - (vehicle.cars || []).length);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8, flexWrap: "wrap" }}>
-      <div><Photo url={vehicle.partPhotoUrl} width={110} height={82} label={t.part} Icon={Package} />{caption(t.part)}</div>
+      <div><Photo url={vehicle.partPhotoUrl} width={96} height={96} label={t.part} Icon={Package} />{caption(t.part)}</div>
       {car ? (
         <>
           <ArrowRight size={26} color={C.muted} aria-hidden="true" />
-          <div><Photo url={car.photoUrl} width={110} height={82} label={carTitle(car, lang)} Icon={Car} />{caption(t.fitsThis)}</div>
+          <div><Photo url={car.photoUrl} width={96} height={96} label={carTitle(car, lang)} Icon={Car} />{caption(t.fitsThis)}</div>
           <div style={{ ...font, fontSize: 12.5, lineHeight: 1.55, color: C.ink, minWidth: 0 }}>
             <div><strong>{carTitle(car, lang)}</strong></div>
             {carDetail(car) ? <div style={{ color: C.muted }}>{carDetail(car)}</div> : null}
@@ -69,7 +69,7 @@ export function OrderVehicleCell({ items }) {
   const muted = (text) => <span style={{ ...font, fontSize: 12.5, color: C.muted }}>{text}</span>;
   if (vehicles.length === 0) return muted("—");
   const first = vehicles.find((v) => v.cars && v.cars.length) || null;
-  if (!first) return <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Photo url={vehicles[0].partPhotoUrl} width={38} height={28} label={t.part} Icon={Package} />{muted(t.fitsAnyShort)}</span>;
+  if (!first) return <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Photo url={vehicles[0].partPhotoUrl} width={32} height={32} label={t.part} Icon={Package} />{muted(t.fitsAnyShort)}</span>;
   const car = first.cars[0];
   const key = (c) => `${carTitle(c, "en")}|${carDetail(c)}`;
   const distinct = new Set(vehicles.flatMap((v) => (v.cars || []).map(key)));
@@ -77,9 +77,9 @@ export function OrderVehicleCell({ items }) {
   const extra = distinct.size - 1 + hidden;
   return (
     <span style={{ ...font, fontSize: 12.5, color: C.ink, display: "inline-flex", alignItems: "center", gap: 6 }}>
-      <Photo url={first.partPhotoUrl} width={38} height={28} label={t.part} Icon={Package} />
+      <Photo url={first.partPhotoUrl} width={32} height={32} label={t.part} Icon={Package} />
       <ArrowRight size={14} color={C.muted} aria-hidden="true" />
-      <Photo url={car.photoUrl} width={38} height={28} label={carTitle(car, lang)} Icon={Car} />
+      <Photo url={car.photoUrl} width={32} height={32} label={carTitle(car, lang)} Icon={Car} />
       <span>{carTitle(car, lang)}{extra > 0 ? <span style={{ color: C.muted }}> {t.more(extra)}</span> : null}</span>
     </span>
   );

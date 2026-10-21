@@ -1,7 +1,7 @@
 const express = require('express');
 const { describeControls, refuseChange } = require('./orderRules');
 const db = require('../../../db/pool');
-const { loadLineVehicles } = require('../orderVehicles/read');
+const { loadProductCars } = require('../orderVehicles/productCars');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { createNotification } = require('../notifications/helpers');
 const { logAdminAction } = require('../audit/helpers');
@@ -938,7 +938,7 @@ router.get('/me/orders', requireAuth, requireRole('supplier'), async (req, res, 
          WHERE oli.sub_order_id = $1`,
         [so.id]
       );
-      const vehicles = await loadLineVehicles(db, items.map((i) => i.line_id));      // only the lines of THIS supplier's sub-order
+      const productCars = await loadProductCars(db, items.map((i) => i.product_id));      // the part's photo and the car(s) it is listed for: never the buyer's car
       result.push({
         subOrderId: so.id,
         orderId: so.order_id,
@@ -951,7 +951,7 @@ router.get('/me/orders', requireAuth, requireRole('supplier'), async (req, res, 
         placedAt: so.placed_at,
           // What this supplier may do right now (see ./orderRules.js): the portal shows only these, the server enforces them.
           ...describeControls({ status: so.status, hubShipmentStatus: so.hub_shipment_status }),
-          items: items.map((i) => ({ productId: i.product_id, name: i.name, quantity: i.quantity, unitPrice: Number(i.unit_price), vehicle: vehicles.get(i.line_id) || null })),
+          items: items.map((i) => ({ productId: i.product_id, name: i.name, quantity: i.quantity, unitPrice: Number(i.unit_price), vehicle: productCars.get(i.product_id) || null })),
       });
     }
     res.json(result);
