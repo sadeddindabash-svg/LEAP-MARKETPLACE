@@ -10,6 +10,7 @@ import { matchVin, type VinMatch } from "@/lib/vin";
 import { vehicleLabel, isGarageFull, seatsText } from "@/lib/garage";
 import { useGarage } from "./GarageProvider";
 import { useLang, useT } from "./LangProvider";
+import PhotoBox from "./PhotoBox";
 import { useLocRouter } from "./useLocRouter";
 import VehicleCascade, { type VehicleChoice } from "./VehicleCascade";
 
@@ -85,7 +86,7 @@ function VehicleWizard({ categories }: { categories: ProductCategory[] }) {
           <h2 id="wizard-h" className="mb-3 text-xl font-bold">{t("wizard_which_section")}</h2>
           <ul className="grid gap-3 sm:grid-cols-3">
             {categories.map((c) => (
-              <li key={c.id}><button type="button" onClick={() => chooseSection(c)} className="flex min-h-16 w-full items-center rounded-xl border-[1.5px] border-line bg-white px-4 text-start font-bold hover:border-navy">{pickName(lang, c.nameEn, c.nameAr)}</button></li>
+              <li key={c.id}><button type="button" onClick={() => chooseSection(c)} className="flex min-h-20 w-full items-center gap-3 rounded-xl border-[1.5px] border-line bg-white px-3 text-start font-bold hover:border-navy"><PhotoBox src={c.photoUrl} className="size-14" sizes="56px" /><span className="min-w-0 [overflow-wrap:anywhere]">{pickName(lang, c.nameEn, c.nameAr)}</span></button></li>
             ))}
           </ul>
           <button type="button" className={`${secondary} mt-5`} onClick={() => setStep("vehicle")}>{t("back")}</button>
@@ -103,8 +104,8 @@ function VehicleWizard({ categories }: { categories: ProductCategory[] }) {
             <ul className="grid gap-3 sm:grid-cols-3">
               {parts.map((p) => (
                 <li key={p.id}>
-                  <button type="button" onClick={() => router.push(searchHref({ category: section.id, part: p.nameEn }, car))} className="flex min-h-16 w-full items-center rounded-xl border-[1.5px] border-line bg-white px-4 text-start font-bold hover:border-navy">
-                    {pickName(lang, p.nameEn, p.nameAr)}
+                  <button type="button" onClick={() => router.push(searchHref({ category: section.id, part: p.nameEn }, car))} className="flex min-h-20 w-full items-center gap-3 rounded-xl border-[1.5px] border-line bg-white px-3 text-start font-bold hover:border-navy">
+                    <PhotoBox src={p.photoUrl} className="size-14" sizes="56px" /><span className="min-w-0 [overflow-wrap:anywhere]">{pickName(lang, p.nameEn, p.nameAr)}</span>
                   </button>
                 </li>
               ))}

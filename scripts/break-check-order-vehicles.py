@@ -81,12 +81,32 @@ UI_SERVER = [
  ("the totals are not kept for a minute", "services/api/src/modules/catalog/routes.js", "res.set('Cache-Control', 'public, max-age=60');", ""),
  ("the models total counts brands", "services/api/src/modules/siteStats/stats.js", "'SELECT count(*) AS n FROM vehicle_models'", "'SELECT count(*) AS n FROM vehicle_brands'"),
 ]
-mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER}[mode]
+BTT = "apps/web-storefront/components/BackToTop.tsx"; FT = "apps/web-storefront/components/FindTools.tsx"; HDR = "apps/web-storefront/components/SiteHeader.tsx"
+UI2_STOREFRONT = [
+ ("the back-to-top button is always shown, even at the top", BTT, "const update = () => setVisible(window.scrollY > SHOW_AFTER_PX);", "const update = () => setVisible(true);"),
+ ("the back-to-top button appears after only a little scrolling", BTT, "const SHOW_AFTER_PX = 400;", "const SHOW_AFTER_PX = 0;"),
+ ("the back-to-top button ignores a device that asks for less motion", BTT, "behavior: reduce ? \"auto\" : \"smooth\"", "behavior: \"smooth\""),
+ ("the back-to-top button is on the left even in English (not the end side)", BTT, " end-6 ", " left-6 "),
+ ("the back-to-top button has no Arabic label", BTT, "LABEL[lang] ?? LABEL.en", "LABEL.en"),
+ ("the back-to-top button keeps listening after the page is left", BTT, "return () => window.removeEventListener(\"scroll\", update);", "return () => {};"),
+ ("pressing the back-to-top button does nothing", BTT, "window.scrollTo({ top: 0, behavior: reduce ? \"auto\" : \"smooth\" });", ""),
+ ("the root layout has no back-to-top button", "apps/web-storefront/app/layout.tsx", "\n                  <BackToTop />", ""),
+ ("a menu ignores the positioning it is given", "apps/web-storefront/components/NavDropdown.tsx", "className={`group ${rootClassName}`}", "className=\"group relative\""),
+ ("the Sections menu is back to two columns on a wide screen", HDR, "shadow-lg sm:grid-cols-3 lg:grid-cols-4", "shadow-lg sm:grid-cols-2"),
+ ("the Sections menu is placed against its own button again (it can run off the screen)", HDR, "\n            rootClassName=\"\"", ""),
+ ("find a part: the sections are back to three columns", FT, "<ul className=\"grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4\">\n            {categories.map((c) => (", "<ul className=\"grid gap-3 sm:grid-cols-3\">\n            {categories.map((c) => ("),
+ ("find a part: the parts are back to three columns", FT, "<ul className=\"grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4\">\n              {parts.map((p) => (", "<ul className=\"grid gap-3 sm:grid-cols-3\">\n              {parts.map((p) => ("),
+ ("the strip's boxes are not stretched to the same height", SEARCH, "lg:flex-row lg:items-stretch", "lg:flex-row lg:items-start"),
+ ("the Fits my car switch is not as tall as the My vehicle card", "apps/web-storefront/components/FitsMyCarToggle.tsx", "flex h-full w-full items-center", "flex w-full items-center"),
+ ("the My vehicle card is not as tall as the Fits my car switch", "apps/web-storefront/components/VehicleFilter.tsx", "className=\"h-full rounded-lg", "className=\"rounded-lg"),
+]
+mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
 lo, hi = (int(sys.argv[2]), int(sys.argv[3])) if len(sys.argv) > 3 else (1, len(BREAKS))
 def fresh():
     subprocess.run(["su", "postgres", "-c", "psql -q -c 'DROP DATABASE IF EXISTS leap_catalog_import_test' -c \"CREATE DATABASE leap_catalog_import_test TEMPLATE leap_marketplace_dev OWNER leap_dev\""], check=True, capture_output=True)
 def run():
     if mode == "uiserver": return subprocess.run(["node", "--test", "test/siteStats.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
+    if mode == "ui2storefront": return subprocess.run(["npx", "vitest", "run", "components/BackToTop.test.tsx", "components/NavDropdownRoot.test.tsx", "components/FitsMyCarHeight.test.tsx", "components/FindToolsColumns.test.tsx", "components/SiteHeaderMenu.test.tsx", "app/layoutBackToTop.test.tsx", "app/searchLayout.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=200).returncode
     if mode == "uistorefront": return subprocess.run(["npx", "vitest", "run", "components/TileRow.test.tsx", "app/pages-i18n.test.tsx", "app/searchLayout.test.tsx", "app/homeLazy.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=200).returncode
     if mode == "server": return subprocess.run(["node", "--test", "test/orderVehicles.test.js", "test/productCars.test.js", "test/orderVehiclesReplacement.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "screens": return subprocess.run(["npx", "vitest", "run", "src/OrderVehicle.test.jsx", "src/OrderVehicleFlow.test.jsx"], cwd=SP, capture_output=True, text=True, timeout=150).returncode

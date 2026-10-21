@@ -108,11 +108,11 @@ export default function GaragePage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
-      <h1 className="text-3xl font-bold tracking-tight text-navy">{t("garage_title")}</h1>
+      <div className="flex flex-wrap items-baseline gap-x-3"><h1 className="text-3xl font-bold tracking-tight text-navy">{t("garage_title")}</h1>{garage.vehicles.length > 0 && <span className="text-xl font-normal text-muted">· {t("garage_your_cars")} {t("garage_count_of", { n: garage.vehicles.length, max: MAX_GARAGE_VEHICLES })}</span>}</div>
       <p className="mb-8 mt-2 text-muted">{t("garage_intro")}</p>
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">          {/* the cars take the width (a 250 px photo needs room beside its details); the form is a slim column */}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">          {/* the cars take the width (a 250 px photo needs room beside its details); the form is a slim column */}
         <section aria-labelledby="g-cars">
-          <h2 id="g-cars" className="mb-4 text-xl font-bold text-navy">{t("garage_your_cars")}{garage.vehicles.length > 0 && <span className="font-normal text-muted"> · {t("garage_count_of", { n: garage.vehicles.length, max: MAX_GARAGE_VEHICLES })}</span>}</h2>
+          <h2 id="g-cars" className="sr-only">{t("garage_your_cars")}{garage.vehicles.length > 0 && <span className="font-normal text-muted"> · {t("garage_count_of", { n: garage.vehicles.length, max: MAX_GARAGE_VEHICLES })}</span>}</h2>
           {garage.loading ? (
             <p className="text-muted" aria-busy="true">{t("search_loading")}</p>
           ) : garage.vehicles.length === 0 ? (

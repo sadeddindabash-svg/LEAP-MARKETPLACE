@@ -3,6 +3,7 @@ const { createListCache } = require('./listCache');
 const crypto = require('crypto');
 const db = require('../../../db/pool');
 const { loadBuyerFit } = require('../orderVehicles/productCars');
+const { loadSiteStats } = require('../siteStats/stats');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { calculateBuyerPriceUsd, MissingShippingDataError } = require('../pricing/engine');
 const { withEffectiveShipping } = require('../shared/partShipping');
@@ -21,6 +22,16 @@ const { moveItem } = require('../../lib/reorder');
  * data now survives a server restart, unlike the earlier in-memory version.
  */
 const router = express.Router();
+
+// The four real totals of the storefront's home page (parts, brands, models, countries): counted by the server, public, and kept for a minute.
+router.get('/stats', async (req, res, next) => {
+  try {
+    res.set('Cache-Control', 'public, max-age=60');
+    res.json(await loadSiteStats(db));
+  } catch (err) {
+    next(err);
+  }
+});
 
 // Lists that CONTINUE a buyer's scrolling (?more=1) share one computation for a minute (CATALOG_LIST_CACHE_MS to change it, 0 to switch it off).
 const continuationCache = createListCache({ ttlMs: process.env.CATALOG_LIST_CACHE_MS !== undefined ? Number(process.env.CATALOG_LIST_CACHE_MS) : 60 * 1000, max: 100 });

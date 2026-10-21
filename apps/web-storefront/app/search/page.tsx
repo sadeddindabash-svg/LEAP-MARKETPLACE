@@ -52,6 +52,16 @@ export default async function SearchPage({ searchParams }: PageProps) {
     fetchProductsPaginated({ search: q, category, part, generationId, year: year ? Number(year) : undefined, page: pageNum, limit: PAGE_SIZE, lang }),
   ]);
   const totalPages = Math.max(Math.ceil(total / PAGE_SIZE), 1);
+  // The section being looked at, as a chip above the results (the list of sections that used to stand in a left column is gone: sections are chosen from the menu and the home page).
+  const sectionName = category ? (() => { const c = categories.find((x) => x.id === category); return c ? pickName(lang, c.nameEn, c.nameAr) : category; })() : null;
+  const clearSectionHref = (() => {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (generationId) params.set("generationId", generationId);
+    if (year) params.set("year", year);
+    const qs = params.toString();
+    return `/search${qs ? `?${qs}` : ""}`;
+  })();
 
   // Real pagination link builder -- preserves every other real active
   // filter (q, category, generationId, year) while only changing the
@@ -70,7 +80,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
   };
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-10">
+    <div className="mx-auto max-w-7xl px-6 py-10">
       <form action={localizePath(lang, "/search")} className="mb-8">
         <input
           type="text"
@@ -81,43 +91,22 @@ export default async function SearchPage({ searchParams }: PageProps) {
         />
       </form>
 
-      {/* Phones: the filters stack ABOVE the results (a fixed 224 px sidebar beside them left two 90 px product columns and pushed the page sideways); from 1024 px they sit beside them. */}
+      {/* The vehicle sits in a strip ABOVE the results (it was a card in a left column, which left room for only three columns of parts). A real <Suspense> boundary is required around
+          useSearchParams() (see app/checkout/confirmation/page.tsx's own comment: a real production build fails outright without one). */}
+      <Suspense fallback={<div className="mb-6 rounded-lg border border-line bg-white p-4 text-sm text-muted">{t(lang, "search_loading")}</div>}>
+        <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-start">
+          <div className="empty:hidden lg:w-72 lg:shrink-0"><FitsMyCarToggle /></div>
+          <div className="min-w-0 flex-1"><VehicleFilter /></div>
+        </div>
+      </Suspense>
+      {sectionName && (
+        <p className="mb-4">
+          <Link href={clearSectionHref} className="inline-flex items-center gap-2 rounded-full bg-navy px-3 py-1 text-xs font-bold text-white">
+            {t(lang, "section_filter", { section: sectionName })}<span aria-hidden="true">×</span><span className="sr-only">{t(lang, "clear")}</span>
+          </Link>
+        </p>
+      )}
       <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
-        <aside className="w-full space-y-6 lg:w-56 lg:shrink-0">
-          {/* Real <Suspense> boundary required around useSearchParams()
-              (see app/checkout/confirmation/page.tsx's own comment for
-              the full finding -- a real production build fails
-              outright without one, not just a warning). */}
-          <Suspense fallback={<div className="rounded-lg border border-line bg-white p-4 text-sm text-muted">{t(lang, "search_loading")}</div>}>
-            <FitsMyCarToggle />
-            <VehicleFilter />
-          </Suspense>
-
-          <div>
-            <h2 className="font-display font-bold text-lg mb-3">{t(lang, "category_label")}</h2>
-            <ul className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-2 text-sm sm:-mx-8 sm:px-8 lg:mx-0 lg:block lg:space-y-1 lg:overflow-visible lg:px-0 lg:pb-0">          {/* phones: a swipeable row of chips; desktop: the list */}
-              <li>
-                <Link
-                  href={`/search${q ? `?q=${encodeURIComponent(q)}` : ""}`}
-                  className={`shrink-0 whitespace-nowrap rounded-full border border-line bg-white px-3 py-1.5 lg:whitespace-normal lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:[overflow-wrap:anywhere] ${!category ? "font-semibold text-signal" : "text-muted hover:text-ink"}`}
-                >
-                  {t(lang, "all_sections")}
-                </Link>
-              </li>
-              {categories.map((c) => (
-                <li key={c.id}>
-                  <Link
-                    href={`/search?category=${encodeURIComponent(c.id)}${q ? `&q=${encodeURIComponent(q)}` : ""}`}
-                    className={`shrink-0 whitespace-nowrap rounded-full border border-line bg-white px-3 py-1.5 lg:whitespace-normal lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:[overflow-wrap:anywhere] ${category === c.id ? "font-semibold text-signal" : "text-muted hover:text-ink"}`}
-                  >
-                    {pickName(lang, c.nameEn, c.nameAr)}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </aside>
-
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm text-muted">
@@ -151,7 +140,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
                 total={total}
                 startPage={pageNum}
                 pageSize={PAGE_SIZE}
-                gridClassName="grid grid-cols-2 gap-5 md:grid-cols-3"
+                gridClassName="grid grid-cols-2 gap-5 md:grid-cols-3 lg:grid-cols-4"
               />
             </>
           )}

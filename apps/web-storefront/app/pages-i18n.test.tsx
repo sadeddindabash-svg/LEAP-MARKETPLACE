@@ -16,6 +16,7 @@ vi.mock("@/lib/api", () => ({
   fetchProducts: vi.fn(async () => [product("p1", "Front Brake Disc"), product("p2", "Oil Filter")]),
   fetchVehicleBrands: vi.fn(async () => [{ id: "b1", name: "BYD", nameAr: "بي واي دي", photoUrl: null }, { id: "b2", name: "Geely", nameAr: null, photoUrl: null }]),
   fetchAnnouncements: vi.fn(async () => announcements.current),
+  fetchSiteStats: vi.fn(async () => ({ parts: 1284, brands: 48, models: 312, countries: 39 })),
   fetchModelsForBrand: vi.fn(async () => []),
   fetchGenerationsForModel: vi.fn(async () => []),
   resolveImageUrl: (u: string) => u,
@@ -81,10 +82,37 @@ describe("home page", () => {
     }
   });
 
-  it("the stats are real counts (parts, brands, sections), not claims", async () => {
+  it("the four totals are the REAL ones the server counted (not the length of a list), each with its picture tile", async () => {
     await renderHome("en");
-    const stats = within(screen.getByLabelText("Leap Auto Parts"));
-    expect(stats.getAllByRole("listitem").map((li) => li.textContent)).toEqual(["2parts", "2vehicle brands", "1sections"]);
+    const totals = within(screen.getByLabelText("Leap Auto Parts"));
+    expect(totals.getAllByRole("listitem").map((li) => li.textContent)).toEqual(["1,284Parts", "48Brands", "312Models", "39Countries"]);
+    expect(totals.getAllByRole("listitem").every((li) => li.querySelector("svg"))).toBe(true);
+  });
+
+  it("the totals have Arabic labels in the Arabic site", async () => {
+    await renderHome("ar");
+    expect(within(screen.getByLabelText("Leap Auto Parts")).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["1,284القطع", "48الماركات", "312الطرازات", "39الدول"]);
+  });
+
+  it("when the server cannot give the totals the row is left out, rather than showing numbers that are not true", async () => {
+    const { fetchSiteStats } = await import("@/lib/api");
+    vi.mocked(fetchSiteStats).mockResolvedValueOnce(null);
+    await renderHome("en");
+    expect(screen.queryByLabelText("Leap Auto Parts")).not.toBeInTheDocument();
+  });
+
+  it("there is no \"See all parts\" or \"See all sections\" link any more (the newest parts load as you scroll, and More opens the sections)", async () => {
+    await renderHome("en");
+    expect(screen.queryByText("See all parts")).not.toBeInTheDocument(); expect(screen.queryByText("See all sections")).not.toBeInTheDocument();
+  });
+
+  it("many sections and brands: one row with a More tile each (and a brand shows its name)", async () => {
+    const { fetchCategories, fetchVehicleBrands } = await import("@/lib/api");
+    vi.mocked(fetchCategories).mockResolvedValueOnce(Array.from({ length: 20 }, (_, i) => ({ id: `s${i}`, nameEn: `Section ${i}`, nameAr: null, photoUrl: null, sortOrder: i, commissionPercent: 10 })) as never);
+    vi.mocked(fetchVehicleBrands).mockResolvedValueOnce(Array.from({ length: 30 }, (_, i) => ({ id: `b${i}`, name: `Brand ${i}`, nameAr: null, photoUrl: null })));
+    await renderHome("en");
+    expect(screen.getByRole("button", { name: "More sections" })).toBeInTheDocument(); expect(screen.getByRole("button", { name: "More brands" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Brand 0" })).toBeInTheDocument();
   });
 });
 

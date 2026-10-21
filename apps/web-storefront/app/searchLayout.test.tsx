@@ -34,6 +34,12 @@ describe("the products page layout", () => {
     const results = screen.getByTestId("results");
     expect(before(screen.getByTestId("fits-toggle"), results)).toBe(true); expect(before(screen.getByTestId("vehicle-filter"), results)).toBe(true);
   });
+  it("on a wide screen the switch and the vehicle card sit side by side and stretch to the SAME height", async () => {
+    await show();
+    const row = screen.getByTestId("fits-toggle").parentElement!.parentElement!;
+    expect(row.className.split(" ")).toContain("lg:flex-row"); expect(row.className.split(" ")).toContain("lg:items-stretch");
+    expect(row.contains(screen.getByTestId("vehicle-filter"))).toBe(true);
+  });
   it("the parts are in four columns on a wide screen (three on a tablet, two on a phone)", async () => {
     await show();
     const cls = screen.getByTestId("results").className;

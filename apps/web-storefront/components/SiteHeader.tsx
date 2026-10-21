@@ -8,6 +8,7 @@ import CartIcon from "./CartIcon";
 import CurrencySwitcher from "./CurrencySwitcher";
 import { Suspense } from "react";
 import NavDropdown from "./NavDropdown";
+import PhotoBox from "./PhotoBox";
 import HeaderSearch from "./HeaderSearch";
 import LanguageSwitcher from "./LanguageSwitcher";
 import NotificationBell from "./NotificationBell";
@@ -58,10 +59,10 @@ export default async function SiteHeader({ lang }: { lang: Lang }) {
           <NavDropdown
             trigger={<>{t(lang, "nav_sections")}<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-data-[open=true]:rotate-180"><path d="M6 9l6 6 6-6" /></svg></>}
             triggerClassName="flex min-h-12 cursor-pointer items-center gap-1 rounded-lg px-4 text-[15px] font-semibold hover:bg-chalk"
-            panelClassName="absolute start-0 top-full z-30 grid max-h-[70vh] w-[min(92vw,640px)] grid-cols-2 gap-1 overflow-auto rounded-xl border border-line bg-white p-3 shadow-lg sm:grid-cols-3"
+            panelClassName="absolute start-0 top-full z-30 grid max-h-[70vh] w-[min(92vw,600px)] grid-cols-1 gap-1 overflow-auto rounded-xl border border-line bg-white p-3 shadow-lg sm:grid-cols-2"
           >
             {categories.map((c) => (
-                <Link key={c.id} href={`/search?category=${encodeURIComponent(c.id)}`} className="rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-chalk">{pickName(lang, c.nameEn, c.nameAr)}</Link>
+                <Link key={c.id} href={`/search?category=${encodeURIComponent(c.id)}`} className="flex items-center gap-3 rounded-lg px-2 py-2 text-sm font-medium hover:bg-chalk"><PhotoBox src={c.photoUrl} className="size-10" sizes="40px" /><span className="min-w-0 [overflow-wrap:anywhere]">{pickName(lang, c.nameEn, c.nameAr)}</span></Link>
               ))}
             <Link href="/search" className="rounded-lg px-3 py-2.5 text-sm font-bold text-navy underline hover:bg-chalk">{t(lang, "all_sections")}</Link>
           </NavDropdown>

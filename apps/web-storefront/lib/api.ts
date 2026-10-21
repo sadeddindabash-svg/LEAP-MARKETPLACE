@@ -187,6 +187,12 @@ export async function fetchProductsPaginated(params: {
   return { items, total };
 }
 
+/** The four real totals of the home page (counted by the server). */
+export interface SiteStats { parts: number; brands: number; models: number; countries: number }
+export async function fetchSiteStats(): Promise<SiteStats | null> {
+  return apiGet<SiteStats>("/catalog/stats");
+}
+
 export async function fetchProductById(id: string, lang?: Lang): Promise<ProductDetail | null> {
   return apiGet<ProductDetail>(`/catalog/products/${id}${lang === "ar" ? "?lang=ar" : ""}`);
 }
