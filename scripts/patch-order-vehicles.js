@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
  * Shows the supplier which CAR each part of an order is for. When an order is placed, the server reads the buyer's My Garage and records the car for each order line (the buyer does
- * nothing new); the supplier portal then shows it, with its photo and a check against the product's fitment list. This changes three files that already exist in your project:
+ * nothing new); the supplier portal then shows it, with its photo and a check against the product's fitment list. This changes four files that already exist in your project:
  *
  *   1. services/api/src/modules/order/routes.js     one require and one call, just before the order is committed. The call can never stop an order (it runs in a savepoint).
  *   2. services/api/src/modules/supplier/routes.js  GET /supplier/me/orders gives each item its car (only the lines of the supplier's own sub-order are looked up).
  *   3. apps/supplier-portal/src/App.jsx             a "Car" column in the orders list and the car under each item in the order detail (the screens themselves are the new file OrderVehicle.jsx).
+ *   4. services/api/src/modules/faultCases/helpers.js   a REPLACEMENT order is for the same car as the part it replaces: the car is copied onto it (also in a savepoint: it can never stop a replacement).
  *
  *   node scripts/patch-order-vehicles.js            dry run: says what it would change, writes nothing
  *   node scripts/patch-order-vehicles.js --write    applies it (each file is saved as <file>.before-order-vehicles first)
@@ -55,6 +56,14 @@ const edits = [
       const body = out.slice(start, end);
       if (start < 0 || body.split('colSpan={5}').length !== 2) return null;
       return out.slice(0, start) + body.replace('colSpan={5}', 'colSpan={6}') + out.slice(end);
+    } },
+  { file: 'services/api/src/modules/faultCases/helpers.js', what: 'copy the car onto a replacement order',
+    done: (s) => s.includes('copyLineVehicles'),
+    apply: (s) => {
+      let out = replaceOnce(s, "const messages = require('../notifications/messages');", "const messages = require('../notifications/messages');\nconst { copyLineVehicles } = require('../orderVehicles/copy');");
+      if (out === null) return null;
+      const loop = "  for (const item of items) {\n    await client.query('INSERT INTO order_line_items (sub_order_id, product_id, quantity, unit_price) VALUES ($1, $2, $3, $4)', [newSub[0].id, item.productId, item.quantity, item.unitPrice]);\n  }\n";
+      return replaceOnce(out, loop, loop + "  // The replacement is for the SAME car as the part it replaces: copy it, so the supplier sees it too (it can never stop the replacement: see orderVehicles/copy.js).\n  await copyLineVehicles(client, { fromSubOrderId: original.id, toSubOrderId: newSub[0].id });\n");
     } },
 ];
 

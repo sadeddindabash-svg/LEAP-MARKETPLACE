@@ -31,6 +31,7 @@ import {
   fetchPartRequestQueue, fetchPartRequestDetail, sendPartRequestQuote,
 } from "./auth";
 import { vehicleSummary } from "./vehicleLabels";
+import OrderVehicle, { OrderVehicleCell, carHeader } from "./OrderVehicle";
 import VehiclePicker from "./VehiclePicker";
 import PartShippingBlock from "./PartShippingBlock";
 import { partShippingOf } from "./partShipping";
@@ -2280,7 +2281,7 @@ function OrderDetailPanel({ order, onBack, onUpdated }) {
             <div style={{ padding: 6 }}>
               {order.items.map((it, i) => (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "12px 12px", borderBottom: i < order.items.length - 1 ? `1px solid ${C.line}` : "none" }}>
-                  <span style={{ ...font, fontSize: 13, fontWeight: 600 }}>{it.name}</span>
+                  <div style={{ minWidth: 0 }}><span style={{ ...font, fontSize: 13, fontWeight: 600 }}>{it.name}</span><OrderVehicle vehicle={it.vehicle} /></div>
                   <span style={{ ...font, fontSize: 12.5, color: C.muted }}>{o.qty} × {it.quantity} · ${Number(it.unitPrice).toFixed(2)}</span>
                 </div>
               ))}
@@ -2439,10 +2440,10 @@ function OrdersPage({ onOpen }) {
         {loadState === "ready" && (
           <Card>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead><tr><Th>{t.orders.thId}</Th><Th>{t.orders.thItems}</Th><Th align="right">{t.orders.thAmount}</Th><Th>{t.orders.thStatus}</Th><Th></Th></tr></thead>
+              <thead><tr><Th>{t.orders.thId}</Th><Th>{t.orders.thItems}</Th><Th>{carHeader(lang)}</Th><Th align="right">{t.orders.thAmount}</Th><Th>{t.orders.thStatus}</Th><Th></Th></tr></thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={5} style={{ textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>{lang === "zh" ? "暂无订单" : "No orders yet."}</td></tr>
+                  <tr><td colSpan={6} style={{ textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>{lang === "zh" ? "暂无订单" : "No orders yet."}</td></tr>
                 )}
                 {filtered.map(o => {
                   const amount = o.items.reduce((sum, i) => sum + Number(i.unitPrice) * i.quantity, 0);
@@ -2450,6 +2451,7 @@ function OrdersPage({ onOpen }) {
                     <tr key={o.subOrderId} onClick={() => onOpen(o)} style={{ cursor: "pointer" }}>
                       <Td><PlateChip small>{o.orderId}</PlateChip></Td>
                       <Td style={{ maxWidth: 260 }}>{o.items.map(i => i.name).join(lang === "zh" ? "，" : ", ")}</Td>
+                      <Td style={{ minWidth: 150 }}><OrderVehicleCell items={o.items} /></Td>
                       <Td align="right" style={{ fontWeight: 700 }}>${amount.toFixed(2)}</Td>
                       <Td><Badge label={t.statusOrder[o.status] || o.status} statusKey={o.status} /></Td>
                       <Td align="right"><ChevronRight size={15} color={C.muted} /></Td>

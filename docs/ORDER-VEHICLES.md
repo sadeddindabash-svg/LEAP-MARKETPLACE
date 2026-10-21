@@ -15,9 +15,12 @@
 * A supplier only ever receives the cars of the lines of **their own** sub-orders.
 * Orders placed before this existed show no car (a dash); there is no backfill.
 
+## Replacement orders
+When an admin confirms a **replacement** for a faulty part, the replacement order is for the same car as the part it replaces, so the supplier who must send it sees that car too. The car is **copied from the original order line** (matched by product), not worked out again from the buyer's garage today, and it can never stop a replacement (it runs in a savepoint). A replacement of a part from an order placed before this existed has no car.
+
 ## Apply (from the project root)
 1. Unzip over the project folder (it only adds files).
-2. Patch the three existing files (dry run first):
+2. Patch the four existing files (dry run first). If you applied an earlier version of this change, run it again: the files already done say "already" and only the new one is patched:
    ```
    node scripts\patch-order-vehicles.js
    node scripts\patch-order-vehicles.js --write
@@ -36,12 +39,9 @@
 3. Place a second order with a product that does **not** list the car: the supplier sees the warning "Not in this product's fitment list: please check before sending".
 
 ## Tests
-* API (13 tests, a real order through the real `POST /orders`, the real supplier endpoint, the real database): use a test database whose name ends in `_test` with migration 110 applied, then `set DATABASE_URL=...` and `node --test test/orderVehicles.test.js` in `services\api`. They assume the standard seed (`supplier@leap.dev`, supplier `s1`).
+* API (18 tests: a real order through the real `POST /orders`, a real fault case through the real `confirmReplacement`, the real supplier endpoint, the real database): use a test database whose name ends in `_test` with migration 110 applied, then `set DATABASE_URL=...` and `node --test test/orderVehicles.test.js test/orderVehiclesReplacement.test.js` in `services\api`. They assume the standard seed (`supplier@leap.dev`, supplier `s1`, hub `hub_guangzhou`).
 * Supplier portal (16 tests): `npx vitest run src/OrderVehicle.test.jsx src/OrderVehicleFlow.test.jsx` in `apps\supplier-portal`.
 
 ## What was and was not checked
-Checked: the tests above; 11 deliberate breaks of the server code and 8 of the screens were each caught; the patch script turns your original files into exactly the patched ones; a real browser read five real orders in the supplier portal in Chinese and English, with the photos loading and no errors.
+Checked: the tests above; 15 deliberate breaks of the server code and 8 of the screens were each caught; the patch script turns your original files into exactly the patched ones; a real browser read five real orders in the supplier portal in Chinese and English, with the photos loading and no errors.
 Not checked: the whole server was never started (the working copy used for the build lacked some of your files), so the real `POST /orders` and supplier endpoint ran with tiny stand-ins for four unrelated missing files; please do the 3-step check above on your machine. The portal's table and card styling in the screenshots came from a stand-in for your UI kit, so judge the final look on your own portal. The mobile app, the admin Orders page and the hub portal do not show the car yet.
-
-## Known gap
-**Replacement orders** (created when an admin confirms a replacement for a faulty part) are made by a different piece of code and do not carry the car yet: the supplier sees a dash for them. Copying the car from the original order line is a small addition.

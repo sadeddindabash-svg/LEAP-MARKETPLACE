@@ -13,6 +13,7 @@ const { createNotification } = require('../notifications/helpers');
 const { buildTrackingTimeline } = require('../tracking/liveTracking');
 const { buildSupplierLabelMap } = require('../shared/supplierAnonymize');
 const { logAdminAction } = require('../audit/helpers');
+const { recordOrderVehicles } = require('../orderVehicles/record');
 const { loadProofForShipment } = require('../deliveryProof/helpers');
 const { receiptItemsFor, receiptTitleFor } = require('./receiptHelpers');
 const { refreshEnglishAddress, ensureEnglishAddress, toEnglishDto, validateEnglishAddress, saveEnglishAddress, confirmEnglishAddressAsIs } = require('../addressEnglish/helpers');
@@ -305,6 +306,9 @@ router.post('/', async (req, res, next) => {
       }
       supplierSubOrders.push({ subOrderId, supplierId, status: 'pending', items: lineItems });
     }
+
+    // Which car each part is for, read from the buyer's My Garage (the buyer does nothing new). It can never stop an order: see orderVehicles/record.js.
+    await recordOrderVehicles(client, { orderId, userId: userId || null });
 
     await client.query('COMMIT');
 

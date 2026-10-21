@@ -1,6 +1,7 @@
 const express = require('express');
 const { describeControls, refuseChange } = require('./orderRules');
 const db = require('../../../db/pool');
+const { loadLineVehicles } = require('../orderVehicles/read');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { createNotification } = require('../notifications/helpers');
 const { logAdminAction } = require('../audit/helpers');
@@ -932,11 +933,12 @@ router.get('/me/orders', requireAuth, requireRole('supplier'), async (req, res, 
     const result = [];
     for (const so of subOrders) {
       const { rows: items } = await db.query(
-        `SELECT oli.product_id, oli.quantity, oli.unit_price, p.name
+        `SELECT oli.id AS line_id, oli.product_id, oli.quantity, oli.unit_price, p.name
          FROM order_line_items oli JOIN products p ON p.id = oli.product_id
          WHERE oli.sub_order_id = $1`,
         [so.id]
       );
+      const vehicles = await loadLineVehicles(db, items.map((i) => i.line_id));      // only the lines of THIS supplier's sub-order
       result.push({
         subOrderId: so.id,
         orderId: so.order_id,
@@ -949,7 +951,7 @@ router.get('/me/orders', requireAuth, requireRole('supplier'), async (req, res, 
         placedAt: so.placed_at,
           // What this supplier may do right now (see ./orderRules.js): the portal shows only these, the server enforces them.
           ...describeControls({ status: so.status, hubShipmentStatus: so.hub_shipment_status }),
-          items: items.map((i) => ({ productId: i.product_id, name: i.name, quantity: i.quantity, unitPrice: Number(i.unit_price) })),
+          items: items.map((i) => ({ productId: i.product_id, name: i.name, quantity: i.quantity, unitPrice: Number(i.unit_price), vehicle: vehicles.get(i.line_id) || null })),
       });
     }
     res.json(result);
