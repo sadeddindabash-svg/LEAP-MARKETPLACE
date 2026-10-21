@@ -26,10 +26,9 @@ vi.mock("@/lib/api", () => ({
 import OemComparison from "@/components/OemComparison";
 import ReviewsSection from "@/components/ReviewsSection";
 import CustomerPhotos from "@/components/CustomerPhotos";
-import ProductSection from "@/components/ProductSection";
-import LoadMoreGrid from "@/components/LoadMoreGrid";
+import LazyProductRow from "@/components/LazyProductRow";
+import ProductDetails from "@/components/ProductDetails";
 import ProductGallery from "@/components/ProductGallery";
-import FitCheck from "@/components/FitCheck";
 import NotifyWhenInStock from "@/components/NotifyWhenInStock";
 import ShareButton from "@/components/ShareButton";
 
@@ -41,7 +40,7 @@ async function render(lang: "en" | "ar" = "en") {
   m.lang.current = lang;
   const { default: ProductPage } = await import("./products/[id]/page");
   const found: El[] = [];
-  const watched = [OemComparison, ReviewsSection, CustomerPhotos, ProductSection, LoadMoreGrid, ProductGallery, FitCheck, NotifyWhenInStock, ShareButton];
+  const watched = [OemComparison, ReviewsSection, CustomerPhotos, LazyProductRow, ProductGallery, ProductDetails, NotifyWhenInStock, ShareButton];
   const walk = (node: unknown): void => {
     if (!node || typeof node !== "object") return;
     if (Array.isArray(node)) return node.forEach(walk);
@@ -64,55 +63,63 @@ beforeEach(() => {
 });
 
 describe("the full product page", () => {
-  it("CRITICAL: the sections come in the mobile app's order: other listings, reviews, customer photos, similar parts, more of the brand, newest", async () => {
-    const found = await render();
-    expect(names(found.filter((e) => !["ProductGallery", "FitCheck", "NotifyWhenInStock", "ShareButton"].includes((e.type as { name: string }).name)))).toEqual(
-      ["OemComparison", "ReviewsSection", "CustomerPhotos", "ProductSection", "LoadMoreGrid", "LoadMoreGrid"]);
+  const ROW = ["ProductDetails", "OemComparison", "ReviewsSection", "CustomerPhotos", "LazyProductRow", "LazyProductRow", "LazyProductRow"];
+  const content = (els: El[]) => els.filter((e) => !["ProductGallery", "NotifyWhenInStock", "ShareButton"].includes((e.type as { name: string }).name));
+
+  it("CRITICAL: the sections come in this order: the details under the photos, other listings, reviews, customer photos, more parts of the same model, of the same brand, the newest", async () => {
+    expect(names(content(await render()))).toEqual(ROW);
   });
 
-  it("the gallery gets every photo with the real address, the share button the part's name, and the fit badge the part's fit list", async () => {
+  it("the gallery gets every photo with the real address, and the share button the part's name", async () => {
     const found = await render();
     expect(found.find((e) => e.type === ProductGallery)?.props).toMatchObject({ images: ["https://api.example.com/a.jpg", "https://api.example.com/b.jpg"], alt: "Front Brake Disc" });
     expect(found.find((e) => e.type === ShareButton)?.props.title).toBe("Front Brake Disc");
-    expect(found.find((e) => e.type === FitCheck)?.props.fitsVehicleIds).toEqual(["g1", "g2"]);
   });
 
-  it("the fit message gets the cars the part fits, how many, and a key of each, so it can tell whether the buyer's own car is one of them", async () => {
-    m.product.current = detail({ fitCars: [{ generationId: "g1", year: 2024, brand: "BYD", model: "Seal" }], fitCarCount: 7, fitKeys: ["g1|2024", "g2|2023"] });
-    const found = await render();
-    expect(found.find((e) => e.type === FitCheck)?.props).toMatchObject({ fitCarCount: 7, fitKeys: ["g1|2024", "g2|2023"], fitCars: [{ generationId: "g1", year: 2024, brand: "BYD", model: "Seal" }] });
+  it("the details block is given the part and the language", async () => {
+    const found = await render("ar");
+    expect(found.find((e) => e.type === ProductDetails)?.props).toMatchObject({ lang: "ar" });
+    expect((found.find((e) => e.type === ProductDetails)?.props.product as { id: string }).id).toBe("cur");
+  });
+
+  it("the 'This part fits ... Your car ...' note is NOT on the product page any more (it stays in the cart)", async () => {
+    const { default: ProductPage } = await import("./products/[id]/page");
+    const text = JSON.stringify(await ProductPage({ params: Promise.resolve({ id: "cur" }) }), (k, v) => (typeof v === "function" ? (v as { name?: string }).name : v));
+    expect(text).not.toContain("FitCheck");
   });
 
   it("CRITICAL: 'Notify me when back in stock' appears only on a part that is sold out", async () => {
     expect((await render()).some((e) => e.type === NotifyWhenInStock)).toBe(false);
     m.product.current = detail({ stockQuantity: 0 });
-    const found = await render();
-    expect(found.find((e) => e.type === NotifyWhenInStock)?.props.productId).toBe("cur");
+    expect((await render()).find((e) => e.type === NotifyWhenInStock)?.props.productId).toBe("cur");
   });
 
-  it("CRITICAL: the sections are fed from the right sources: the brand grid is named by the brand the server sent and pages the same part; the newest grid is given the FULL first page and told which part to hide", async () => {
+  it("CRITICAL: the three rows ask for the right lists: the model row and the brand row stop after two more batches of 8; the newest row never stops and hides this part", async () => {
+    const rows = (await render()).filter((e) => e.type === LazyProductRow).map((e) => e.props);
+    expect(rows[0]).toMatchObject({ id: "model-h", title: "More parts for BYD Seal", source: { kind: "sameModel", productId: "cur" }, pageSize: 8, maxExtraPages: 2 });
+    expect(rows[1]).toMatchObject({ id: "brand-h", title: "More BYD parts", source: { kind: "sameBrand", productId: "cur" }, pageSize: 8, maxExtraPages: 2 });
+    expect(rows[2]).toMatchObject({ id: "newest-h", title: "Newest products", source: { kind: "newest" }, pageSize: 8, hiddenId: "cur" });
+    expect(rows[2].maxExtraPages).toBeUndefined();
+  });
+
+  it("the page does not fetch the three lists itself (each row asks when it is scrolled to), so it opens faster", async () => {
+    await render(); const api = await import("@/lib/api");
+    expect(vi.mocked(api.fetchSameBrand)).not.toHaveBeenCalled(); expect(vi.mocked(api.fetchAlternatives)).not.toHaveBeenCalled(); expect(vi.mocked(api.fetchProductsPaginated)).not.toHaveBeenCalled();
+  });
+
+  it("a part that fits any car (no brand, no model) has no model row and no brand row, but still has the newest row", async () => {
+    m.product.current = detail({ brand: null, model: null, year: null });
+    expect(names(content(await render()))).toEqual(["ProductDetails", "OemComparison", "ReviewsSection", "CustomerPhotos", "LazyProductRow"]);
+  });
+
+  it("CRITICAL: in Arabic the row titles are the app's Arabic", async () => {
+    const rows = (await render("ar")).filter((e) => e.type === LazyProductRow).map((e) => e.props);
+    expect(rows[0].title).toBe("المزيد من القطع لـ BYD Seal"); expect(rows[1].title).toBe("المزيد من قطع BYD"); expect(rows[2].title).toBe("أحدث المنتجات");
+  });
+
+  it("the other listings and the reviews still get their data", async () => {
     const found = await render();
-    const grids = found.filter((e) => e.type === LoadMoreGrid);
-    expect(grids[0].props).toMatchObject({ title: "More BYD parts", source: { kind: "sameBrand", productId: "cur" } });
-    expect((grids[0].props.initial as unknown[]).length).toBe(10);
-    expect(grids[1].props).toMatchObject({ title: "Newest products", source: { kind: "newest", excludeId: "cur" } });
-    expect((grids[1].props.initial as unknown[]).length).toBe(10);                      // the page as the server sent it, not shortened
-    expect(found.find((e) => e.type === ProductSection)?.props).toMatchObject({ title: "Similar products" });
     expect(found.find((e) => e.type === OemComparison)?.props.products).toHaveLength(1);
     expect((found.find((e) => e.type === ReviewsSection)?.props.summary as { reviewCount: number }).reviewCount).toBe(1);
-  });
-
-  it("with no brand grid results the title falls back to the part's own brand", async () => {
-    m.sameBrand.current = [];
-    const grid = (await render()).filter((e) => e.type === LoadMoreGrid)[0];
-    expect(grid.props.title).toBe("More BYD parts");
-  });
-
-  it("CRITICAL: in Arabic the section titles are the app's Arabic", async () => {
-    const grids = (await render("ar")).filter((e) => e.type === LoadMoreGrid);
-    expect(grids[0].props.title).toBe("المزيد من قطع BYD");
-    expect(grids[1].props.title).toBe("أحدث المنتجات");
-    const found = await render("ar");
-    expect(found.find((e) => e.type === ProductSection)?.props.title).toBe("منتجات مماثلة");
   });
 });

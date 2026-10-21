@@ -192,12 +192,21 @@ PP_ADMIN = [
  ("the fields have no length limit", HTS, "maxLength={MAX[name]} ", ""),
  ("the preview ignores the chosen size", HTS, "fontSize: PREVIEW_PX[name][draft[name].size]", "fontSize: 20"),
 ]
-mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
+SP = "apps/web-storefront/app/page.tsx"
+SPACING = [
+ ("the space above Shop by section is back to 64 px", SP, 'px-4 pt-8 sm:px-8" aria-labelledby="home-sections"', 'px-4 pt-16 sm:px-8" aria-labelledby="home-sections"'),
+ ("the space above Shop by brand is back to 64 px", SP, 'px-4 pt-8 sm:px-8" aria-labelledby="home-brands"', 'px-4 pt-16 sm:px-8" aria-labelledby="home-brands"'),
+ ("the space above Newest parts is back to 64 px", SP, 'pb-4 pt-8 sm:px-8" aria-labelledby="home-newest"', 'pb-4 pt-16 sm:px-8" aria-labelledby="home-newest"'),
+ ("the space under the hero (above the totals) was changed too", SP, 'px-4 pt-10 sm:px-8" aria-label="Leap Auto Parts"', 'px-4 pt-5 sm:px-8" aria-label="Leap Auto Parts"'),
+ ("a margin is added between the blocks", SP, 'px-4 pt-8 sm:px-8" aria-labelledby="home-brands"', 'px-4 pt-8 mt-8 sm:px-8" aria-labelledby="home-brands"'),
+]
+mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
 lo, hi = (int(sys.argv[2]), int(sys.argv[3])) if len(sys.argv) > 3 else (1, len(BREAKS))
 def fresh():
     subprocess.run(["su", "postgres", "-c", "psql -q -c 'DROP DATABASE IF EXISTS leap_catalog_import_test' -c \"CREATE DATABASE leap_catalog_import_test TEMPLATE leap_marketplace_dev OWNER leap_dev\""], check=True, capture_output=True)
 def run():
     if mode == "uiserver": return subprocess.run(["node", "--test", "test/siteStats.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
+    if mode == "spacing": return subprocess.run(["npx", "vitest", "run", "app/homeSpacing.test.tsx", "app/homeText.test.tsx", "app/homePictures.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=200).returncode
     if mode == "ppserver": return subprocess.run(["node", "--test", "test/homeText.test.js", "test/productPage.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "ppadmin": return subprocess.run(["npx", "vitest", "run", "src/HomeTextSection.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
     if mode == "ppstorefront": return subprocess.run(["npx", "vitest", "run", "components/ProductDetails.test.tsx", "components/LazyProductRow.test.tsx", "components/VehicleFilterOrder.test.tsx", "components/FitsMyCarLabel.test.tsx", "app/stage1c-page.test.tsx", "app/homeText.test.tsx", "components/SiteHeaderTopBar.test.tsx", "lib/gridSourceModel.test.ts", "lib/homeText.test.ts", "app/api/products/routeSameModel.test.ts"], cwd=SF, capture_output=True, text=True, timeout=250).returncode

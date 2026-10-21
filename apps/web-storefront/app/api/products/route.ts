@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchProductsPaginated, fetchSameBrand } from "@/lib/api";
+import { fetchProductsPaginated, fetchSameBrand, fetchSameModel } from "@/lib/api";
 import { parseGridQuery } from "@/lib/gridSource";
 import { NetworkError } from "@/lib/net";
 import { createRateLimiter } from "@/lib/rateLimit";
@@ -24,8 +24,9 @@ export async function GET(request: NextRequest) {
 
   let result: { items: unknown[]; total: number | null; unreachable?: boolean };
   try {
-    if (source.kind === "sameBrand") {
-      result = { items: await fetchSameBrand(source.productId, lang, page), total: null };            // this list has no total: a full page means there may be more
+    if (source.kind === "sameBrand" || source.kind === "sameModel") {
+      const fetchList = source.kind === "sameBrand" ? fetchSameBrand : fetchSameModel;
+      result = { items: await fetchList(source.productId, lang, page, limit), total: null };            // this list has no total: a full page means there may be more
     } else if (source.kind === "newest") {
       result = await fetchProductsPaginated({ sort: "newest", page, limit, lang, more: true });
     } else {

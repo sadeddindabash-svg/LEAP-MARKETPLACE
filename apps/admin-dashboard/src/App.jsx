@@ -6,6 +6,7 @@ import { sidebarEntries, groupOfPage, accessibleChildren, landingPage, TAB_LABEL
 import GroupTabs from "./components/GroupTabs";
 import { FONT_IMPORT, C, disp, body, mono } from "./theme";
 import HomePicturesSection from "./HomePicturesSection";
+import HomeTextSection from "./HomeTextSection";
 import { PlateChip, Badge, Stars, KpiCard, Card, Th, Td, ConfirmDialog, EditDialog, EnlargeablePhoto } from "./components/ui";
 import VersionsPanel from "./VersionsPanel";
 import VehicleImportPanel from "./VehicleImportPanel";
@@ -8338,6 +8339,7 @@ function SettingsPage({ currentUser, onSessionExpired }) {
           <ReceiptFooterSection />
           <AnnouncementsSection onSessionExpired={onSessionExpired} />
           <HomePicturesSection onSessionExpired={onSessionExpired} />
+          <HomeTextSection onSessionExpired={onSessionExpired} />
         </div>
       </div>
     </div>

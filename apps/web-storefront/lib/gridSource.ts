@@ -6,6 +6,7 @@ import type { Lang } from "./i18n";
 export type GridSource =
   | { kind: "search"; params: { q?: string; category?: string; part?: string; generationId?: string; year?: number } }
   | { kind: "sameBrand"; productId: string }
+  | { kind: "sameModel"; productId: string }
   | { kind: "newest" };
 
 export const GRID_DEFAULT_PAGE_SIZE = 24;
@@ -16,7 +17,7 @@ const MAX_PAGE = 1000;
 export function gridQuery(source: GridSource, page: number, pageSize: number, lang: Lang): string {
   const q = new URLSearchParams({ kind: source.kind, page: String(page), limit: String(pageSize) });
   if (lang === "ar") q.set("lang", "ar");
-  if (source.kind === "sameBrand") q.set("productId", source.productId);
+  if (source.kind === "sameBrand" || source.kind === "sameModel") q.set("productId", source.productId);
   if (source.kind === "search") {
     const { q: text, category, part, generationId, year } = source.params;
     if (text) q.set("q", text);
@@ -46,11 +47,11 @@ export function parseGridQuery(sp: URLSearchParams): ParsedGrid | { error: strin
   if (limit === null) return { error: `limit must be a whole number from 1 to ${GRID_MAX_PAGE_SIZE}` };
   const lang: Lang = sp.get("lang") === "ar" ? "ar" : "en";
   if (kind === "newest") return { source: { kind: "newest" }, page, limit, lang };
-  if (kind === "sameBrand") {
+  if (kind === "sameBrand" || kind === "sameModel") {
     const productId = sp.get("productId") ?? "";
-    return ID.test(productId) ? { source: { kind: "sameBrand", productId }, page, limit, lang } : { error: "productId is missing or not valid" };
+    return ID.test(productId) ? { source: { kind, productId }, page, limit, lang } : { error: "productId is missing or not valid" };
   }
-  if (kind !== "search") return { error: "kind must be search, sameBrand or newest" };
+  if (kind !== "search") return { error: "kind must be search, sameBrand, sameModel or newest" };
   const params: { q?: string; category?: string; part?: string; generationId?: string; year?: number } = {};
   const text = sp.get("q");
   if (text) { if (text.length > 200) return { error: "q is too long" }; params.q = text; }

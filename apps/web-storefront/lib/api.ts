@@ -14,6 +14,7 @@
  */
 
 import type { Lang } from "./i18n";
+import type { HomeText } from "./homeText";
 import { apiMessage } from "./serverMessages";
 import { NetworkError, netFetch } from "./net";
 
@@ -33,6 +34,11 @@ export interface ProductSummary {
   stockQuantity: number;
   estimatedDeliveryDays: number | null;
   weightKg: number | null;
+  /** The size (cm) the shipping is worked out from, and whether it is only the part's typical size (shown as approximate). */
+  lengthCm?: number | null;
+  widthCm?: number | null;
+  heightCm?: number | null;
+  sizeApprox?: boolean;
   status: string;
   price: number;
   images: string[];
@@ -185,6 +191,16 @@ export async function fetchProductsPaginated(params: {
   const items = (await res.json()) as ProductSummary[];
   const total = Number(res.headers.get("X-Total-Count") || items.length);
   return { items, total };
+}
+
+/** The texts the admin set for the home page (top bar, headline, sub-headline), or null when the shop cannot be reached (the website then uses its own wording). */
+export async function fetchHomeText(): Promise<HomeText | null> {
+  try {
+    const data = await apiGet<{ text: HomeText }>("/platform-settings/home-text");
+    return data?.text ?? null;
+  } catch {
+    return null;            // the shop cannot be reached: the website uses its own wording
+  }
 }
 
 /** The pictures the admin chose for the four home page tiles (an address, or null: the tile then shows its icon). */
@@ -1118,7 +1134,9 @@ export const fetchOemAlternatives = (id: string, lang?: Lang) => productList(`/c
 /** Similar parts (the same part or category, and the same vehicle model). */
 export const fetchAlternatives = (id: string, lang?: Lang) => productList(`/catalog/products/${encodeURIComponent(id)}/alternatives`, lang);
 /** More parts for the same vehicle brand, 10 a page, without anything already shown above. */
-export const fetchSameBrand = (id: string, lang?: Lang, page = 1) => productList(`/catalog/products/${encodeURIComponent(id)}/same-brand`, lang, { page });
+export const fetchSameBrand = (id: string, lang?: Lang, page = 1, limit?: number) => productList(`/catalog/products/${encodeURIComponent(id)}/same-brand`, lang, limit ? { page, limit } : { page });
+/** More parts for the same vehicle MODEL (any section), without the part itself. */
+export const fetchSameModel = (id: string, lang?: Lang, page = 1, limit?: number) => productList(`/catalog/products/${encodeURIComponent(id)}/same-model`, lang, limit ? { page, limit } : { page });
 
 /** A review as its author sees it (with its moderation status). */
 export interface MyReview {

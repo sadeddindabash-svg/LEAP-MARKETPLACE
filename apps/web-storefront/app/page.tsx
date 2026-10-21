@@ -6,7 +6,9 @@ import HeroPicker from "@/components/HeroPicker";
 import { JsonLd } from "@/components/JsonLd";
 import InfiniteProductGrid from "@/components/InfiniteProductGrid";
 import AnnouncementBar from "@/components/AnnouncementBar";
-import { fetchAnnouncements, fetchCategories, fetchHomePictures, fetchProducts, fetchSiteStats, fetchVehicleBrands } from "@/lib/api";
+import { fetchAnnouncements, fetchCategories, fetchHomePictures, fetchHomeText, fetchProducts, fetchSiteStats, fetchVehicleBrands } from "@/lib/api";
+import { homeFontStyle } from "@/lib/homeFonts";
+import { HEADLINE_SIZE_CLASS, SUBHEADLINE_SIZE_CLASS, pickHomeText } from "@/lib/homeText";
 import { pickName, t } from "@/lib/i18n";
 import { getLang } from "@/lib/lang";
 import { alternatesFor, websiteJsonLd } from "@/lib/seo";
@@ -30,7 +32,7 @@ const tileClass = "flex h-full flex-col items-center gap-2.5 rounded-[14px] bord
 // HTML, in the page's language, which is the whole point of having this site next to the mobile app (a search engine reads it as it is).
 export default async function HomePage() {
   const lang = await getLang();
-  const [categories, products, brands, announcements, totals, pictures] = await Promise.all([fetchCategories(), fetchProducts({ sort: "newest", lang }), fetchVehicleBrands(), fetchAnnouncements(), fetchSiteStats(), fetchHomePictures()]);
+  const [categories, products, brands, announcements, totals, pictures, homeText] = await Promise.all([fetchCategories(), fetchProducts({ sort: "newest", lang }), fetchVehicleBrands(), fetchAnnouncements(), fetchSiteStats(), fetchHomePictures(), fetchHomeText()]);
   const newest = products.slice(0, NEWEST_PAGE_SIZE);
   // The four real totals counted by the server (not the length of a list that was fetched). If the server cannot give them, the row is left out rather than showing numbers that are not true.
   const stats = totals ? [
@@ -45,8 +47,8 @@ export default async function HomePage() {
       <JsonLd data={websiteJsonLd()} />
       <section className="mx-auto grid max-w-7xl items-center gap-12 px-4 pb-4 pt-12 sm:px-8 lg:grid-cols-[1.1fr_1fr]" aria-labelledby="home-h1">
         <div>
-          <h1 id="home-h1" className="text-[clamp(34px,4.6vw,56px)] font-bold leading-[1.08] tracking-tight text-navy">{t(lang, "hero_title")}</h1>
-          <p className="mt-4 max-w-lg text-lg text-muted">{t(lang, "hero_lead")}</p>
+          <h1 id="home-h1" style={homeFontStyle(homeText?.headline.font)} className={`${HEADLINE_SIZE_CLASS[homeText?.headline.size ?? "large"]} font-bold leading-[1.08] tracking-tight text-navy`}>{pickHomeText(homeText?.headline, lang, t(lang, "hero_title"))}</h1>
+          <p style={homeFontStyle(homeText?.subheadline.font)} className={`mt-4 max-w-lg ${SUBHEADLINE_SIZE_CLASS[homeText?.subheadline.size ?? "medium"]} text-muted`}>{pickHomeText(homeText?.subheadline, lang, t(lang, "hero_lead"))}</p>
         </div>
         <HeroPicker />
       </section>

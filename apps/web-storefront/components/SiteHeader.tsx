@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "@/components/LocLink";
-import { fetchCategories } from "@/lib/api";
+import { fetchCategories, fetchHomeText } from "@/lib/api";
+import { pickHomeText } from "@/lib/homeText";
 import { isShopReachable } from "@/lib/net";
 import { pickName, t, type Lang } from "@/lib/i18n";
 import AccountMenu from "./AccountMenu";
@@ -19,13 +20,13 @@ const actionClass = "relative flex min-h-11 min-w-11 flex-col items-center justi
 // The header of every page, in the "Navy Workshop" theme: a thin bar (tagline, support, language), the main bar (logo, search, account, wishlist, alerts, cart), the menu
 // (Home, Products, Sections). A Server Component: the menu's section names come from the real categories, in the page's language.
 export default async function SiteHeader({ lang }: { lang: Lang }) {
-  const [categories, reachable] = await Promise.all([fetchCategories(), isShopReachable(process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000")]);
+  const [categories, reachable, homeText] = await Promise.all([fetchCategories(), isShopReachable(process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000"), fetchHomeText()]);
   return (
     <header>
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:start-2 focus:top-2 focus:z-50 focus:rounded-lg focus:bg-signal focus:px-4 focus:py-2 focus:font-bold focus:text-on-signal">{t(lang, "skip_to_content")}</a>
       <div className="bg-navy-deep text-[13px] text-[#c9d6de]">
         <div className="mx-auto flex min-h-9 max-w-7xl flex-wrap items-center justify-between gap-x-6 px-4 sm:px-8">
-          <span>{t(lang, "util_tagline")}</span>
+          <span>{pickHomeText(homeText?.topBar, lang, t(lang, "util_tagline"))}</span>
           <span className="flex items-center gap-5">
             <Link href="/support" className="hover:underline">{t(lang, "support")}</Link>
             <CurrencySwitcher />

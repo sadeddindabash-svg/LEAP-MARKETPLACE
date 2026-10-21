@@ -146,7 +146,7 @@ async function attachBuyerPrice(dto, row) {
   // The weight and size shipping is worked out from: the product's own complete set, else its part's (migration 104). The buyer sees the same ones.
   const shipped = await withEffectiveShipping(row);
   const num = (v) => (v === null || v === undefined ? null : Number(v));
-  dto = { ...dto, weightKg: num(shipped.weight_kg), lengthCm: num(shipped.length_cm), widthCm: num(shipped.width_cm), heightCm: num(shipped.height_cm) };
+  dto = { ...dto, weightKg: num(shipped.weight_kg), lengthCm: num(shipped.length_cm), widthCm: num(shipped.width_cm), heightCm: num(shipped.height_cm), sizeApprox: shipped.shipping_source === 'part' };      // a size taken from the part (not entered by the supplier for this product) is shown as approximate
   // Real, previously-internal-only price snapshot (#59) -- exposes
   // the same real last_known_buyer_price_usd already recorded by the
   // scheduled price-drop check (migration 038), letting the mobile
@@ -624,11 +624,49 @@ router.get('/products/:id/same-brand', async (req, res, next) => {
          AND p.id NOT IN (
            SELECT pfe2.product_id FROM product_fitment_entries pfe2
            JOIN vehicle_generations vg2 ON vg2.id = pfe2.generation_id
-           JOIN products p2 ON p2.id = pfe2.product_id
-           WHERE vg2.model_id = $3 AND p2.category = $4
+           WHERE vg2.model_id = $3
          )
-       ORDER BY p.rating DESC NULLS LAST, p.id ASC LIMIT $5 OFFSET $6`,
-      [brandId, req.params.id, modelId, currentCategory, limitNum, offset]
+       ORDER BY p.rating DESC NULLS LAST, p.id ASC LIMIT $4 OFFSET $5`,
+      [brandId, req.params.id, modelId, limitNum, offset]
+    );
+    const destinationIsoCode = await resolveDestinationIsoCode(req);
+    const dtos = await buildBuyerList(rows, async (row) => {
+      let dto = toBuyerProductDto(row, lang);
+      dto = await attachBuyerImages(dto, row.id);
+      dto = await attachPrimaryFitment(dto, row.id, lang);
+      dto = await attachPartTranslation(dto, row, lang);
+      dto = await attachBuyerPrice(dto, row);
+      dto = await attachSupplierSignals(dto, row.supplier_id);
+      dto = await attachDeliveryEstimate(dto, destinationIsoCode);
+      return dto;
+    });
+    res.json(dtos);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /products/:id/same-model -- the other parts that fit the SAME vehicle model as this part (in any section): the "More parts for <model>" row of the product page.
+// The same-brand row below it leaves these out, so no part is shown in both rows.
+router.get('/products/:id/same-model', async (req, res, next) => {
+  try {
+    const { lang, page, limit } = req.query;
+    const limitNum = Math.min(Math.max(Number(limit) || 10, 1), 50);
+    const pageNum = Math.max(Number(page) || 1, 1);
+    const offset = (pageNum - 1) * limitNum;
+    const { rows: currentRows } = await db.query('SELECT id FROM products WHERE id = $1', [req.params.id]);
+    if (currentRows.length === 0) return res.status(404).json({ error: 'Product not found' });
+    const { rows: fitmentRows } = await db.query(
+      `SELECT vg.model_id FROM product_fitment_entries pfe JOIN vehicle_generations vg ON vg.id = pfe.generation_id
+       WHERE pfe.product_id = $1 ORDER BY pfe.id ASC LIMIT 1`, [req.params.id]);
+    if (fitmentRows.length === 0) return res.json([]);
+    const { rows } = await db.query(
+      `SELECT DISTINCT p.* FROM products p
+       JOIN product_fitment_entries pfe ON pfe.product_id = p.id
+       JOIN vehicle_generations vg ON vg.id = pfe.generation_id
+       WHERE vg.model_id = $1 AND p.id != $2 AND p.stock_quantity > 0 AND p.status = 'active'
+       ORDER BY p.rating DESC NULLS LAST, p.id ASC LIMIT $3 OFFSET $4`,
+      [fitmentRows[0].model_id, req.params.id, limitNum, offset]
     );
     const destinationIsoCode = await resolveDestinationIsoCode(req);
     const dtos = await buildBuyerList(rows, async (row) => {

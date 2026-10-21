@@ -16,6 +16,9 @@ const router = express.Router();
 // The four pictures beside Parts / Brands / Models / Countries on the home page (see homePictures.js).
 router.use('/home-pictures', require('./homePictures'));
 
+// The editable texts of the home page: top bar message, headline and sub-headline, with font and size (see homeText.js).
+router.use('/home-text', require('./homeText'));
+
 const MIN_RETURN_WINDOW_DAYS = 3;
 const MAX_RETURN_WINDOW_DAYS = 7;
 

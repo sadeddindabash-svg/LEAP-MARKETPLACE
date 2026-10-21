@@ -22,7 +22,7 @@ describe("the door for the next page of a list", () => {
     await ask("kind=newest&page=2&limit=10");
     expect(m.paginated).toHaveBeenCalledWith({ sort: "newest", page: 2, limit: 10, lang: "en", more: true });
     const res = await ask("kind=sameBrand&productId=p_9&page=2");
-    expect(m.sameBrand).toHaveBeenCalledWith("p_9", "en", 2);
+    expect(m.sameBrand).toHaveBeenCalledWith("p_9", "en", 2, 24);
     expect(await res.json()).toEqual({ items: [{ id: "p2" }], total: null });
   });
   it("CRITICAL: a question that is not valid is refused (400) and NEVER reaches the shop's API", async () => {

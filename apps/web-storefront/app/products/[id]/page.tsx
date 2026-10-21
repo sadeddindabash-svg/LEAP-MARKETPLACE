@@ -1,26 +1,22 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { AddToCartButton } from "@/components/AddToCartButton";
-import FitCheck from "@/components/FitCheck";
 import CustomerPhotos from "@/components/CustomerPhotos";
-import LoadMoreGrid from "@/components/LoadMoreGrid";
+import LazyProductRow from "@/components/LazyProductRow";
 import NotifyWhenInStock from "@/components/NotifyWhenInStock";
 import OemComparison from "@/components/OemComparison";
 import ProductGallery from "@/components/ProductGallery";
-import ProductSection from "@/components/ProductSection";
+import ProductDetails from "@/components/ProductDetails";
 import ReviewsSection from "@/components/ReviewsSection";
 import ShareButton from "@/components/ShareButton";
 import { WishlistButton } from "@/components/WishlistButton";
 import { JsonLd } from "@/components/JsonLd";
 import { Price } from "@/components/Price";
 import {
-  fetchAlternatives,
   fetchCategories,
   fetchOemAlternatives,
   fetchProductById,
   fetchProductReviews,
-  fetchProductsPaginated,
-  fetchSameBrand,
   resolveImageUrl,
 } from "@/lib/api";
 import { pickName, localizePath, t } from "@/lib/i18n";
@@ -58,15 +54,13 @@ export async function generateMetadata({
 export default async function ProductPage({ params }: PageProps) {
   const { id } = await params;
   const lang = await getLang();
-  // The product and everything under it, fetched together: the other listings of the same OEM number, similar parts, more of the brand, the newest parts.
-  const [product, reviews, categories, oemMatches, alternatives, sameBrand, newest] = await Promise.all([
+  // The product and what the page needs at once: its reviews, the sections, the other listings of the same OEM number. The three rows of parts at the bottom (same model, same brand, newest) are NOT fetched
+  // here: each one asks for itself when the buyer scrolls close to it (components/LazyProductRow.tsx).
+  const [product, reviews, categories, oemMatches] = await Promise.all([
     fetchProductById(id, lang),
     fetchProductReviews(id),
     fetchCategories(),
     fetchOemAlternatives(id, lang),
-    fetchAlternatives(id, lang),
-    fetchSameBrand(id, lang, 1),
-    fetchProductsPaginated({ sort: "newest", page: 1, limit: 10, lang }),
   ]);
 
   if (!product) notFound();
@@ -85,7 +79,10 @@ export default async function ProductPage({ params }: PageProps) {
         { name: product.name, path: localizePath(lang, `/products/${product.id}`) },
       ])} />
       <div className="grid md:grid-cols-2 gap-10">
-        <ProductGallery images={product.images.map(resolveImageUrl)} alt={product.name} />
+        <div>
+          <ProductGallery images={product.images.map(resolveImageUrl)} alt={product.name} />
+          <ProductDetails product={product} lang={lang} />
+        </div>
 
         <div>
           <div className="flex items-start justify-between gap-3">
@@ -103,7 +100,6 @@ export default async function ProductPage({ params }: PageProps) {
               </span>
             )}
           </div>
-          <FitCheck fitCars={product.fitCars} fitCarCount={product.fitCarCount} fitKeys={product.fitKeys} fitsVehicleIds={product.fitsVehicleIds} />
           <p className="mt-6 font-display font-bold text-4xl">
             <Price usd={product.price} />
           </p>
@@ -145,9 +141,11 @@ export default async function ProductPage({ params }: PageProps) {
       <OemComparison products={oemMatches} lang={lang} />
       <ReviewsSection productId={product.id} summary={reviews} />
       <CustomerPhotos reviews={reviews.reviews} lang={lang} />
-      <ProductSection id="similar-h" title={t(lang, "similar_products")} products={alternatives} lang={lang} />
-      <LoadMoreGrid id="brand-h" title={t(lang, "more_brand_parts", { brand: sameBrand[0]?.brand ?? product.brand ?? "" })} initial={sameBrand} source={{ kind: "sameBrand", productId: product.id }} />
-      <LoadMoreGrid id="newest-h" title={t(lang, "newest_products")} initial={newest.items} source={{ kind: "newest", excludeId: product.id }} />
+      {(product.model || (product.fitCarCount ?? 0) > 0) && (
+        <LazyProductRow id="model-h" title={t(lang, "more_model_parts", { name: [product.brand, product.model].filter(Boolean).join(" ") })} source={{ kind: "sameModel", productId: product.id }} pageSize={8} maxExtraPages={2} />
+      )}
+      {product.brand && <LazyProductRow id="brand-h" title={t(lang, "more_brand_parts", { brand: product.brand })} source={{ kind: "sameBrand", productId: product.id }} pageSize={8} maxExtraPages={2} />}
+      <LazyProductRow id="newest-h" title={t(lang, "newest_products")} source={{ kind: "newest" }} pageSize={8} hiddenId={product.id} />
     </div>
   );
 }

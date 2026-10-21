@@ -11,6 +11,7 @@ const product = (id: string, name: string): ProductSummary => ({ id, name, descr
 vi.mock("@/lib/lang", () => ({ getLang: vi.fn(async () => lang.current) }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }), usePathname: () => "/", useSearchParams: () => new URLSearchParams() }));
 vi.mock("next/font/google", () => ({ Outfit: () => ({ variable: "f1" }), IBM_Plex_Sans_Arabic: () => ({ variable: "f2" }), JetBrains_Mono: () => ({ variable: "f3" }) }));
+vi.mock("@/lib/homeFonts", () => ({ homeFontStyle: (font?: string) => (font && font !== "default" ? { fontFamily: `Font ${font}` } : undefined) }));
 vi.mock("@/lib/api", () => ({
   fetchCategories: vi.fn(async () => [{ id: "brake", nameEn: "Brake System", nameAr: "نظام الفرامل", photoUrl: null, sortOrder: 1, commissionPercent: 10 }]),
   fetchProducts: vi.fn(async () => [product("p1", "Front Brake Disc"), product("p2", "Oil Filter")]),
@@ -18,6 +19,7 @@ vi.mock("@/lib/api", () => ({
   fetchAnnouncements: vi.fn(async () => announcements.current),
   fetchSiteStats: vi.fn(async () => ({ parts: 1284, brands: 48, models: 312, countries: 39 })),
   fetchHomePictures: vi.fn(async () => ({ parts: null, brands: null, models: null, countries: null })),
+  fetchHomeText: vi.fn(async () => null),
   fetchModelsForBrand: vi.fn(async () => []),
   fetchGenerationsForModel: vi.fn(async () => []),
   resolveImageUrl: (u: string) => u,

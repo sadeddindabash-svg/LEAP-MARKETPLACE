@@ -47,14 +47,12 @@ export function VehicleFilter() {
     fetchGenerationsForModel(selectedModelId).then(setGenerations);
   }, [selectedModelId]);
 
-  const selectedGeneration = generations.find((g) => g.id === selectedGenerationId);
-  const yearOptions: number[] = selectedGeneration
-    ? Array.from(
-        { length: (selectedGeneration.yearEnd || new Date().getFullYear()) - selectedGeneration.yearStart + 1 },
-        (_, i) => selectedGeneration.yearStart + i
-      )
-    : [];
-
+  // The steps are Brand -> Model -> YEAR -> GENERATION (the same order as My Garage). The years offered are every year any generation of the model covers; once a year is chosen, only the generations
+  // that cover it are offered, and when there is just one it is chosen for the buyer.
+  const currentYear = new Date().getFullYear();
+  const covers = (g: VehicleGeneration, year: number) => g.yearStart <= year && year <= (g.yearEnd || currentYear);
+  const yearOptions: number[] = Array.from(new Set(generations.flatMap((g) => Array.from({ length: (g.yearEnd || currentYear) - g.yearStart + 1 }, (_, i) => g.yearStart + i)))).sort((x, y) => y - x);
+  const generationsForYear = selectedYear ? generations.filter((g) => covers(g, Number(selectedYear))) : [];
   const applyFilter = (generationId: string, year: string) => {
     const params = new URLSearchParams(searchParams.toString());
     if (generationId) params.set("generationId", generationId); else params.delete("generationId");
@@ -83,6 +81,7 @@ export function VehicleFilter() {
       </div>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <select
+          aria-label={t("select_brand")}
           value={selectedBrandId}
           onChange={(e) => { setSelectedBrandId(e.target.value); setSelectedModelId(""); setSelectedGenerationId(""); setSelectedYear(""); }}
           className="w-full rounded-md border border-line px-3 py-2 text-sm"
@@ -93,6 +92,7 @@ export function VehicleFilter() {
 
         {selectedBrandId && (
           <select
+            aria-label={t("select_model")}
             value={selectedModelId}
             onChange={(e) => { setSelectedModelId(e.target.value); setSelectedGenerationId(""); setSelectedYear(""); }}
             className="w-full rounded-md border border-line px-3 py-2 text-sm"
@@ -102,37 +102,35 @@ export function VehicleFilter() {
           </select>
         )}
 
-        {selectedModelId && (
+        {selectedModelId && yearOptions.length > 0 && (
           <select
-            value={selectedGenerationId}
+            aria-label={t("select_year")}
+            value={selectedYear}
             onChange={(e) => {
-              setSelectedGenerationId(e.target.value);
-              setSelectedYear("");
-              // A single-year generation has only one real possible
-              // year -- apply it immediately rather than making the
-              // buyer pick from a list of one.
-              const gen = generations.find((g) => g.id === e.target.value);
-              if (gen && gen.yearEnd === gen.yearStart) {
-                applyFilter(e.target.value, String(gen.yearStart));
-              }
+              const year = e.target.value;
+              setSelectedYear(year);
+              setSelectedGenerationId("");
+              const fitting = year ? generations.filter((g) => covers(g, Number(year))) : [];
+              // Only one generation covers this year: choose it for the buyer rather than asking a question with one answer.
+              if (fitting.length === 1) { setSelectedGenerationId(fitting[0].id); applyFilter(fitting[0].id, year); }
             }}
             className="w-full rounded-md border border-line px-3 py-2 text-sm"
           >
-            <option value="">{t("select_generation")}</option>
-            {generations.map((g) => (
-              <option key={g.id} value={g.id}>{g.name} ({g.yearStart}–{g.yearEnd || t("present")})</option>
-            ))}
+            <option value="">{t("select_year")}</option>
+            {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
           </select>
         )}
-
-        {selectedGenerationId && yearOptions.length > 1 && (
+        {selectedYear && generationsForYear.length > 1 && (
           <select
-            value={selectedYear}
-            onChange={(e) => { setSelectedYear(e.target.value); applyFilter(selectedGenerationId, e.target.value); }}
+            aria-label={t("select_generation")}
+            value={selectedGenerationId}
+            onChange={(e) => { setSelectedGenerationId(e.target.value); if (e.target.value) applyFilter(e.target.value, selectedYear); }}
             className="w-full rounded-md border border-line px-3 py-2 text-sm"
           >
-            <option value="">{t("any_year")}</option>
-            {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
+            <option value="">{t("select_generation")}</option>
+            {generationsForYear.map((g) => (
+              <option key={g.id} value={g.id}>{g.name} ({g.yearStart}–{g.yearEnd || t("present")})</option>
+            ))}
           </select>
         )}
       </div>
