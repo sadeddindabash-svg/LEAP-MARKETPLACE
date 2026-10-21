@@ -1007,7 +1007,7 @@ router.post('/generations/:generationId/versions', requireAuth, requireRole('adm
     await logAdminAction(req, 'version_created', 'version', id, { name: v.name, generationId: req.params.generationId });
     res.status(201).json(toVersionDto(rows[0]));
   } catch (err) {
-    if (isUniqueViolation(err)) return res.status(409).json({ error: 'This version with this engine already exists for this year' });
+    if (isUniqueViolation(err)) return res.status(409).json({ error: 'This version with this engine and number of seats already exists for this year' });
     next(err);
   }
 });
@@ -1025,7 +1025,7 @@ router.patch('/versions/:id', requireAuth, requireRole('admin'), requirePageAcce
     await logAdminAction(req, 'version_updated', 'version', req.params.id, { name: v.name });
     res.json(toVersionDto(rows[0]));
   } catch (err) {
-    if (isUniqueViolation(err)) return res.status(409).json({ error: 'This version with this engine already exists for this year' });
+    if (isUniqueViolation(err)) return res.status(409).json({ error: 'This version with this engine and number of seats already exists for this year' });
     next(err);
   }
 });

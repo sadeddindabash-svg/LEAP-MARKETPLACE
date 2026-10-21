@@ -106,9 +106,9 @@ async function runImport(q, items, mode, { apply = false, saveImage = null, save
     if (!year.isNew) {
       if (!versionsOf.has(year.id)) {
         const { rows: found } = await q.query('SELECT * FROM vehicle_versions WHERE generation_id = $1', [year.id]);
-        versionsOf.set(year.id, new Map(found.map((r) => [`${nameKey(r.name)}|${nameKey(r.engine)}`, r])));
+        versionsOf.set(year.id, new Map(found.map((r) => [`${nameKey(r.name)}|${nameKey(r.engine)}|${r.seats}`, r])));
       }
-      existing = versionsOf.get(year.id).get(`${nameKey(d.version.en)}|${nameKey(d.engine.en)}`) || null;
+      existing = versionsOf.get(year.id).get(`${nameKey(d.version.en)}|${nameKey(d.engine.en)}|${d.seats}`) || null;
     }
     if (existing) {
       const changed = existing.name !== d.version.en || existing.name_ar !== d.version.ar || existing.name_zh !== d.version.zh

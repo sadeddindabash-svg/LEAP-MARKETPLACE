@@ -33,7 +33,7 @@ async function buildTemplate() {
     ['• The brand must already exist in Vehicle Data (Brands tab) with its photo: the import does not create brands. Models and years are created for you. Years created by the import have no photo.', false],
     ['• Year: four digits, 1950 up to next year. Seats: a whole number from 1 to 12.', false],
     [`• Picture (column "${PHOTO_HEADER}"): place ONE picture over the cell of its row (Insert > Pictures > Place over cells), PNG, JPEG or WebP, at least 400 x 400 px. A row without a picture is fine: the version is saved marked "No photo yet" and you add the photo later in Vehicle Data.`, false],
-    ['• Two rows with the same brand, model, year, version name and engine are the same version: a file may not have it twice. A version that already exists in the system is skipped (or updated, if you choose "Update existing").', false],
+    ['• Two rows with the same brand, model, year, version name, engine and seats are the same version: a file may not have it twice. A version that already exists in the system is skipped (or updated, if you choose "Update existing").', false],
     [`• Up to ${MAX_ROWS} rows per file. The file is checked first and NOTHING is saved until you press Import; then everything is saved together or nothing is.`, false],
     ['', false],
     ['Example row', true],

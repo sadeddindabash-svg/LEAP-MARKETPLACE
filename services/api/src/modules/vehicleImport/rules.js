@@ -82,8 +82,8 @@ function validateRows(rows, { minPx = MIN_CATALOG_DIMENSION_PX } = {}) {
       if (d.model.zh && m.zh && nameKey(d.model.zh) !== nameKey(m.zh)) err(`Model "${d.model.en}" has a different Chinese name here than in row ${m.row} ("${d.model.zh}" and "${m.zh}")`);
     }
     if (d.year && d.version.en && d.engine.en) {
-      const vkey = `${mkey}|${d.year}|${nameKey(d.version.en)}|${nameKey(d.engine.en)}`;
-      if (versions.has(vkey)) err(`This is the same version as row ${versions.get(vkey)} (same brand, model, year, version name and engine)`);
+      const vkey = `${mkey}|${d.year}|${nameKey(d.version.en)}|${nameKey(d.engine.en)}|${d.seats ?? ''}`;
+      if (versions.has(vkey)) err(`This is the same version as row ${versions.get(vkey)} (same brand, model, year, version name, engine and seats)`);
       else versions.set(vkey, item.rowNumber);
     }
   }
