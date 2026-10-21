@@ -72,7 +72,7 @@ export function VehicleFilter() {
   const hasActiveFilter = !!searchParams.get("generationId");
 
   return (
-    <div className="rounded-lg border border-line bg-white p-4">
+    <div className="h-full rounded-lg border border-line bg-white p-4">
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-display font-bold text-lg">{t("my_vehicle")}</h2>
         {hasActiveFilter && (

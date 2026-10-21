@@ -26,6 +26,7 @@ function buildApp() {
   app.use('/orders', require('../../src/modules/order/routes'));
   app.use('/supplier', require('../../src/modules/supplier/routes'));
   app.use('/catalog', require('../../src/modules/catalog/routes'));
+  app.use('/platform-settings', require('../../src/modules/platform-settings/routes'));
   app.use((err, req, res, next) => res.status(500).json({ error: err.message }));
   return app;
 }

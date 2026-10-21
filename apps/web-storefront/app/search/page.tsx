@@ -94,7 +94,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
       {/* The vehicle sits in a strip ABOVE the results (it was a card in a left column, which left room for only three columns of parts). A real <Suspense> boundary is required around
           useSearchParams() (see app/checkout/confirmation/page.tsx's own comment: a real production build fails outright without one). */}
       <Suspense fallback={<div className="mb-6 rounded-lg border border-line bg-white p-4 text-sm text-muted">{t(lang, "search_loading")}</div>}>
-        <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-start">
+        <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-stretch">
           <div className="empty:hidden lg:w-72 lg:shrink-0"><FitsMyCarToggle /></div>
           <div className="min-w-0 flex-1"><VehicleFilter /></div>
         </div>

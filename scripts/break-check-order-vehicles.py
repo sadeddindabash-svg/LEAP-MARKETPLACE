@@ -100,18 +100,52 @@ UI2_STOREFRONT = [
  ("the Fits my car switch is not as tall as the My vehicle card", "apps/web-storefront/components/FitsMyCarToggle.tsx", "flex h-full w-full items-center", "flex w-full items-center"),
  ("the My vehicle card is not as tall as the Fits my car switch", "apps/web-storefront/components/VehicleFilter.tsx", "className=\"h-full rounded-lg", "className=\"rounded-lg"),
 ]
-mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
+HPS = "services/api/src/modules/platform-settings/homePictures.js"; HPA = "apps/admin-dashboard/src/HomePicturesSection.jsx"; HPC = "apps/admin-dashboard/src/homePictureCrop.js"
+HP_SERVER = [
+ ("a picture that is not exactly 600 x 600 is accepted", HPS, "if (checked.width !== PICTURE_PX || checked.height !== PICTURE_PX) return", "if (false) return"),
+ ("anyone signed in (a supplier) may upload a home picture", HPS, "router.put('/:slot', requireAuth, requireRole('admin'), knownSlot,", "router.put('/:slot', requireAuth, knownSlot,"),
+ ("anyone signed in may remove a home picture", HPS, "router.delete('/:slot', requireAuth, requireRole('admin'), knownSlot,", "router.delete('/:slot', requireAuth, knownSlot,"),
+ ("the old picture stays on disk when it is replaced", HPS, "if (before && before !== saved.url) removeLocalImage(before);", ""),
+ ("a removed picture stays on disk", HPS, "if (before) removeLocalImage(before);", ""),
+ ("setting one picture wipes the other three", HPS, "const merged = { ...parseStored(rows[0].value), [slot]: url };", "const merged = { [slot]: url };"),
+ ("an unknown picture name is accepted", HPS, "SLOTS.includes(req.params.slot) ? next() :", "true ? next() :"),
+ ("reading the pictures needs a sign-in (the website could not show them)", HPS, "router.get('/', async (req, res, next) => {", "router.get('/', requireAuth, async (req, res, next) => {"),
+ ("a damaged stored value breaks the pictures instead of reading as none", HPS, "catch { /* no pictures */ }", "catch (e) { throw e; }"),
+ ("the pictures are not kept for half a minute", HPS, "res.set('Cache-Control', 'public, max-age=30');", ""),
+]
+HP_ADMIN = [
+ ("zooming does not keep the middle of the frame in the middle", HPC, "return clampOffset({ x: frame / 2 - cx * after, y: frame / 2 - cy * after }, width, height, newZoom, frame);", "return clampOffset(offset, width, height, newZoom, frame);"),
+ ("the picture can be dragged off the frame (empty space)", HPC, "return { x: clamp(offset.x, Math.min(0, frame - width * s), 0), y: clamp(offset.y, Math.min(0, frame - height * s), 0) };", "return { x: offset.x, y: offset.y };"),
+ ("a picture that is too small is accepted", HPA, "if (loaded.width < MIN_SOURCE_PX || loaded.height < MIN_SOURCE_PX) {", "if (false) {"),
+ ("Remove removes at once, without asking", HPA, "onClick={() => setConfirming(slot)}", "onClick={() => remove(slot)}"),
+ ("the crop is saved on the wrong picture", HPA, "uploadHomePicture(getStoredToken(), crop.slot, blob)", "uploadHomePicture(getStoredToken(), 'parts', blob)"),
+ ("the crop window stays open after saving", HPA, "setSaved(`Saved. The home page shows the new ${LABELS[crop.slot]} picture within about a minute.`); close();", "setSaved(`Saved. The home page shows the new ${LABELS[crop.slot]} picture within about a minute.`);"),
+ ("an expired sign-in is shown as a plain error", HPA, "if (!expired(err)) setCropError(err.message);", "setCropError(err.message);"),
+ ("the arrow keys move the frame the wrong way", HPA, "ArrowRight: [-KEY_STEP_PX, 0]", "ArrowRight: [KEY_STEP_PX, 0]"),
+ ("the save button can be pressed twice", HPA, "<button type=\"button\" style={primary} onClick={save} disabled={saving}>", "<button type=\"button\" style={primary} onClick={save}>"),
+ ("the picture is sent without the admin's sign-in", HPA, "await uploadHomePicture(getStoredToken(),", "await uploadHomePicture(null,"),
+]
+HP_STOREFRONT = [
+ ("the home page ignores the pictures and always shows the icons", "apps/web-storefront/app/page.tsx", "{s.picture ? (", "{false ? ("),
+ ("a picture tile is not 72 px", "apps/web-storefront/app/page.tsx", "<PhotoBox src={s.picture} className=\"size-[72px]\" sizes=\"72px\" />", "<PhotoBox src={s.picture} className=\"size-14\" sizes=\"56px\" />"),
+ ("the Brands tile shows the Parts picture", "apps/web-storefront/app/page.tsx", "picture: pictures?.brands ?? null,", "picture: pictures?.parts ?? null,"),
+ ("a server that cannot give the pictures crashes the home page", "apps/web-storefront/app/page.tsx", "picture: pictures?.countries ?? null,", "picture: pictures.countries ?? null,"),
+]
+mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
 lo, hi = (int(sys.argv[2]), int(sys.argv[3])) if len(sys.argv) > 3 else (1, len(BREAKS))
 def fresh():
     subprocess.run(["su", "postgres", "-c", "psql -q -c 'DROP DATABASE IF EXISTS leap_catalog_import_test' -c \"CREATE DATABASE leap_catalog_import_test TEMPLATE leap_marketplace_dev OWNER leap_dev\""], check=True, capture_output=True)
 def run():
     if mode == "uiserver": return subprocess.run(["node", "--test", "test/siteStats.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
+    if mode == "hpserver": return subprocess.run(["node", "--test", "test/homePictures.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
+    if mode == "hpadmin": return subprocess.run(["npx", "vitest", "run", "src/HomePicturesSection.test.jsx", "src/homePictureCrop.test.js"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
+    if mode == "hpstorefront": return subprocess.run(["npx", "vitest", "run", "app/homePictures.test.tsx", "app/pages-i18n.test.tsx", "app/homeLazy.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=200).returncode
     if mode == "ui2storefront": return subprocess.run(["npx", "vitest", "run", "components/BackToTop.test.tsx", "components/NavDropdownRoot.test.tsx", "components/FitsMyCarHeight.test.tsx", "components/FindToolsColumns.test.tsx", "components/SiteHeaderMenu.test.tsx", "app/layoutBackToTop.test.tsx", "app/searchLayout.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=200).returncode
     if mode == "uistorefront": return subprocess.run(["npx", "vitest", "run", "components/TileRow.test.tsx", "app/pages-i18n.test.tsx", "app/searchLayout.test.tsx", "app/homeLazy.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=200).returncode
     if mode == "server": return subprocess.run(["node", "--test", "test/orderVehicles.test.js", "test/productCars.test.js", "test/orderVehiclesReplacement.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "screens": return subprocess.run(["npx", "vitest", "run", "src/OrderVehicle.test.jsx", "src/OrderVehicleFlow.test.jsx"], cwd=SP, capture_output=True, text=True, timeout=150).returncode
     return subprocess.run(["npx", "vitest", "run", "components/FitCheck.test.tsx", "app/stage1c-page.test.tsx", "app/cartFitCheck.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=150).returncode
-if mode in ("server", "uiserver"): fresh()
+if mode in ("server", "uiserver", "hpserver"): fresh()
 if run() != 0: sys.exit("The tests do not pass on the UNBROKEN code, so a break check would prove nothing.")
 print("baseline: the tests pass on the unbroken code\n", flush=True); caught = 0
 for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
@@ -120,10 +154,10 @@ for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
     if src.count(old) != 1: print(f"{n:2d}. SKIPPED (the line to break was not found exactly once): {what}"); continue
     shutil.copy(path, path + ".keep"); open(path, "w", encoding="utf-8").write(src.replace(old, new))
     try:
-        if mode in ("server", "uiserver"): fresh()
+        if mode in ("server", "uiserver", "hpserver"): fresh()
         failed = run() != 0
     finally: shutil.move(path + ".keep", path)
     caught += failed; print(f"{n:2d}. {'CAUGHT ' if failed else 'MISSED!'}  {what}", flush=True)
 print(f"\n{caught} of {sum(1 for i in range(1, len(BREAKS) + 1) if lo <= i <= hi)} breaks were caught")
-if mode in ("server", "uiserver"): fresh()
+if mode in ("server", "uiserver", "hpserver"): fresh()
 print("code restored; the tests pass again:", "yes" if run() == 0 else "NO (investigate)")

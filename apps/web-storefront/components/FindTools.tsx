@@ -84,7 +84,7 @@ function VehicleWizard({ categories }: { categories: ProductCategory[] }) {
       {step === "section" && (
         <div>
           <h2 id="wizard-h" className="mb-3 text-xl font-bold">{t("wizard_which_section")}</h2>
-          <ul className="grid gap-3 sm:grid-cols-3">
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
             {categories.map((c) => (
               <li key={c.id}><button type="button" onClick={() => chooseSection(c)} className="flex min-h-20 w-full items-center gap-3 rounded-xl border-[1.5px] border-line bg-white px-3 text-start font-bold hover:border-navy"><PhotoBox src={c.photoUrl} className="size-14" sizes="56px" /><span className="min-w-0 [overflow-wrap:anywhere]">{pickName(lang, c.nameEn, c.nameAr)}</span></button></li>
             ))}
@@ -101,7 +101,7 @@ function VehicleWizard({ categories }: { categories: ProductCategory[] }) {
           ) : parts.length === 0 ? (
             <p className="text-muted">{t("wizard_no_parts")}</p>
           ) : (
-            <ul className="grid gap-3 sm:grid-cols-3">
+            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
               {parts.map((p) => (
                 <li key={p.id}>
                   <button type="button" onClick={() => router.push(searchHref({ category: section.id, part: p.nameEn }, car))} className="flex min-h-20 w-full items-center gap-3 rounded-xl border-[1.5px] border-line bg-white px-3 text-start font-bold hover:border-navy">

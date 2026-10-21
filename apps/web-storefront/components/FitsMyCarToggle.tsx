@@ -23,7 +23,7 @@ export default function FitsMyCarToggle() {
   };
   return (
     <button type="button" role="switch" aria-checked={active} onClick={toggle}
-      className={`flex w-full items-center gap-3 rounded-lg border p-3 text-start text-sm font-semibold ${active ? "border-navy bg-[#f4f8fb]" : "border-line bg-white"}`}>
+      className={`flex h-full w-full items-center gap-3 rounded-lg border p-3 text-start text-sm font-semibold ${active ? "border-navy bg-[#f4f8fb]" : "border-line bg-white"}`}>
       <span aria-hidden="true" className={`relative h-6 w-11 flex-none rounded-full ${active ? "bg-navy" : "bg-[#8696a2]"}`}>
         <span className={`absolute top-0.5 size-5 rounded-full bg-white transition-all ${active ? "start-[22px]" : "start-0.5"}`} />
       </span>

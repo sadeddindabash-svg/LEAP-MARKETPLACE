@@ -5,6 +5,7 @@ import { CurrencyProvider } from "@/components/CurrencyProvider";
 import { GarageProvider } from "@/components/GarageProvider";
 import { AuthProvider } from "@/components/AuthProvider";
 import { LangProvider } from "@/components/LangProvider";
+import BackToTop from "@/components/BackToTop";
 import SiteFooter from "@/components/SiteFooter";
 import SiteHeader from "@/components/SiteHeader";
 import { isRtl, t } from "@/lib/i18n";
@@ -43,6 +44,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   <SiteHeader lang={lang} />
                   <main id="main" className="flex-1">{children}</main>
                   <SiteFooter lang={lang} />
+                  <BackToTop />
                 </CartProvider>
               </CurrencyProvider>
             </GarageProvider>

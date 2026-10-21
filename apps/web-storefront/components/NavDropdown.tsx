@@ -12,7 +12,7 @@ const LEAVE_DELAY_MS = 300;       // how long the mouse may be away before the m
  *
  * The panel is HIDDEN, not removed, while closed: its links stay in the page's HTML, which is how search engines find the category pages behind the Sections menu.
  */
-export default function NavDropdown({ trigger, label, triggerClassName, panelClassName, children }: { trigger: ReactNode; label?: string; triggerClassName: string; panelClassName: string; children: ReactNode }) {
+export default function NavDropdown({ trigger, label, triggerClassName, panelClassName, rootClassName = "relative", children }: { trigger: ReactNode; label?: string; triggerClassName: string; panelClassName: string; rootClassName?: string; children: ReactNode }) {
   const pathname = usePathname() ?? "";
   // "open for this page": when the page changes the menu is no longer open, with nothing to switch off by hand
   const [openFor, setOpenFor] = useState<string | null>(null);
@@ -35,7 +35,7 @@ export default function NavDropdown({ trigger, label, triggerClassName, panelCla
   return (
     <div
       ref={box}
-      className="group relative"
+      className={`group ${rootClassName}`}
       data-open={open}
       onPointerEnter={() => window.clearTimeout(timer.current)}
       onPointerLeave={(e) => { if (open && e.pointerType === "mouse") { window.clearTimeout(timer.current); timer.current = window.setTimeout(() => setOpen(false), LEAVE_DELAY_MS); } }}
