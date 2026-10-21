@@ -72,7 +72,7 @@ export default async function HomePage() {
         </section>
       )}
       {categories.length > 0 && (
-        <section className="mx-auto max-w-7xl px-4 pt-16 sm:px-8" aria-labelledby="home-sections">
+        <section className="mx-auto max-w-7xl px-4 pt-8 sm:px-8" aria-labelledby="home-sections">
           <h2 id="home-sections" className="mb-6 text-3xl font-bold tracking-tight">{t(lang, "shop_by_section")}</h2>
           <TileRow gridClassName="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6" moreLabel={t(lang, "more_sections")} fewerLabel={t(lang, "show_fewer")}>
             {categories.map((c) => (
@@ -85,7 +85,7 @@ export default async function HomePage() {
         </section>
       )}
       {brands.length > 0 && (
-        <section className="mx-auto max-w-7xl px-4 pt-16 sm:px-8" aria-labelledby="home-brands">
+        <section className="mx-auto max-w-7xl px-4 pt-8 sm:px-8" aria-labelledby="home-brands">
           <h2 id="home-brands" className="mb-6 text-3xl font-bold tracking-tight">{t(lang, "shop_by_brand")}</h2>
           <TileRow gridClassName="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6" moreLabel={t(lang, "more_brands")} fewerLabel={t(lang, "show_fewer")}>
             {brands.map((b) => (
@@ -99,7 +99,7 @@ export default async function HomePage() {
       )}
 
       {newest.length > 0 && (
-        <section className="mx-auto max-w-7xl px-4 pb-4 pt-16 sm:px-8" aria-labelledby="home-newest">
+        <section className="mx-auto max-w-7xl px-4 pb-4 pt-8 sm:px-8" aria-labelledby="home-newest">
           <h2 id="home-newest" className="mb-6 text-3xl font-bold tracking-tight">{t(lang, "newest_parts")}</h2>
           {/* The first parts are drawn here, on the server (in the page's HTML); the rest load by themselves as the buyer scrolls, eight at a time, until every part has been shown. */}
           <InfiniteProductGrid id="home-newest-grid" source={{ kind: "newest" }} initial={newest} total={null} pageSize={NEWEST_PAGE_SIZE} gridClassName="grid grid-cols-2 gap-5 lg:grid-cols-4" />

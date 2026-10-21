@@ -200,13 +200,88 @@ SPACING = [
  ("the space under the hero (above the totals) was changed too", SP, 'px-4 pt-10 sm:px-8" aria-label="Leap Auto Parts"', 'px-4 pt-5 sm:px-8" aria-label="Leap Auto Parts"'),
  ("a margin is added between the blocks", SP, 'px-4 pt-8 sm:px-8" aria-labelledby="home-brands"', 'px-4 pt-8 mt-8 sm:px-8" aria-labelledby="home-brands"'),
 ]
-mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
+FJ = "services/api/src/modules/platform-settings/footer.js"
+FT_SERVER = [
+ ("a supplier or a stranger may change the footer text", FJ, "router.put('/text', ...admin,", "router.put('/text',"),
+ ("a supplier or a stranger may change the social media list", FJ, "router.put('/social', ...admin,", "router.put('/social',"),
+ ("a supplier or a stranger may change a social media picture", FJ, "router.put('/social/:id/icon', ...admin,", "router.put('/social/:id/icon',"),
+ ("a supplier or a stranger may change a page", FJ, "router.put('/pages/:key', ...admin, knownPage,", "router.put('/pages/:key', knownPage,"),
+ ("a link that is not a web address (javascript:, mailto) is accepted", FJ, "x.protocol === 'https:' || x.protocol === 'http:'", "true"),
+ ("a ninth social media icon is accepted", FJ, "if (items.length > MAX_SOCIAL)", "if (false)"),
+ ("a picture of any size is accepted for an icon", FJ, "if (checked.width !== ICON_PX || checked.height !== ICON_PX)", "if (false)"),
+ ("a replaced picture stays on disk", FJ, "if (old && old !== saved.url) removeLocalImage(old);", ""),
+ ("a removed item's picture stays on disk", FJ, "for (const url of removedIcons) removeLocalImage(url);", ""),
+ ("saving the list again loses every picture", FJ, "icon: old ? old.icon : null }", "icon: null }"),
+ ("an id that does not exist claims someone else's picture", FJ, "const old = typeof it.id === 'string' ? byId.get(it.id) : null;", "const old = byId.get(it.id) || existing[0] || null;"),
+ ("a page may be 600,000 characters long", FJ, "pageBody: 60000", "pageBody: 600000"),
+ ("a page with only Arabic text counts as empty", FJ, "const hasContent = (p) => Boolean(p.body.en || p.body.ar);", "const hasContent = (p) => Boolean(p.body.en);"),
+ ("a page has no 'last updated' date", FJ, "updatedAt: new Date().toISOString()", "updatedAt: null"),
+ ("saving one page wipes the other five", FJ, "const all = normalizePages(raw); all[req.params.key]", "const all = normalizePages('{}'); all[req.params.key]"),
+ ("a hidden link is shown again", FJ, "shown: l.shown !== false", "shown: true"),
+ ("an unknown page name is accepted", FJ, "PAGE_KEYS.includes(req.params.key) ? next() :", "true ? next() :"),
+ ("reading the footer needs a sign-in (the website could not show it)", FJ, "router.get('/', async (req, res, next) => {", "router.get('/', requireAuth, async (req, res, next) => {"),
+ ("the footer is not kept for half a minute", FJ, "res.set('Cache-Control', 'public, max-age=30');\n    res.json({ text: normalizeText", "res.json({ text: normalizeText"),
+ ("a damaged stored value breaks the footer instead of reading as empty", FJ, "catch { return fallback; }", "catch (e) { throw e; }"),
+]
+FTX = "apps/admin-dashboard/src/FooterTextSection.jsx"; SLX = "apps/admin-dashboard/src/SocialLinksSection.jsx"; LPX = "apps/admin-dashboard/src/LegalPagesSection.jsx"; PEF = "apps/admin-dashboard/src/pageEditorFormat.js"; AMD = "apps/admin-dashboard/src/miniMarkdown.js"
+FT_ADMIN = [
+ ("Footer text: Save is available with no change", FTX, "disabled={!dirty || saving}", "disabled={saving}"),
+ ("Footer text: the Shown tick is ignored", FTX, "checked={draft.links[k].shown}", "checked={true}"),
+ ("Footer text: texts are saved with their spaces", FTX, "tagline: { en: d.tagline.en.trim(), ar: d.tagline.ar.trim() }", "tagline: { en: d.tagline.en, ar: d.tagline.ar }"),
+ ("Footer text: the tagline limit is wrong", FTX, "const MAX = { tagline: 160,", "const MAX = { tagline: 200,"),
+ ("Footer text: saved without the admin's sign-in", FTX, "await saveFooterText(getStoredToken(),", "await saveFooterText(null,"),
+ ("Footer text: an expired sign-in is a plain error", FTX, "if (err instanceof SessionExpiredError) onSessionExpired?.(); else setError(err.message);", "setError(err.message);"),
+ ("Social: a ninth icon can be added", SLX, "disabled={items.length >= MAX_ITEMS}", "disabled={false}"),
+ ("Social: a picture can be added before the icon is saved", SLX, "{item.id ? (", "{true ? ("),
+ ("Social: a too-small picture is accepted", SLX, "if (image.width < ICON_MIN_PX || image.height < ICON_MIN_PX) {", "if (false) {"),
+ ("Social: the picture goes to the wrong icon", SLX, "uploadSocialIcon(getStoredToken(), crop.id, blob)", "uploadSocialIcon(getStoredToken(), items[0].id, blob)"),
+ ("Social: a picture upload throws away what was typed in other rows", SLX, "setItems((list) => list.map((i) => (i.id === crop.id ? { ...i, icon: data.icon } : i)));", "setItems(fromServer(data.social || []));"),
+ ("Social: the up arrow does nothing", SLX, "[l[index - 1], l[index]] = [l[index], l[index - 1]];", ";"),
+ ("Social: an icon with no name can be saved", SLX, "disabled={!dirty || saving || missingName}", "disabled={!dirty || saving}"),
+ ("Social: a picture is removed without asking", SLX, "onClick={() => setConfirming(item.id)}", "onClick={() => removeIcon(item)}"),
+ ("Pages: what was typed is lost when you change tab", LPX, "if (pages[active]) return; let live = true;", "let live = true;"),
+ ("Pages: a page is saved under the wrong name", LPX, "savePage(getStoredToken(), active, {", "savePage(getStoredToken(), \"about\", {"),
+ ("Pages: Save is available with no change", LPX, "disabled={!unsaved(active) || saving}", "disabled={saving}"),
+ ("Pages: the Bold button does nothing", LPX, "onClick={() => format(bold)}", "onClick={() => format((v, s) => ({ value: v, start: s, end: s }))}"),
+ ("Pages: the text has no length limit", LPX, "maxLength={MAX.body} ", ""),
+ ("Pages: the preview always shows the English text", LPX, "<MiniPreview source={draft.body[lang]}", "<MiniPreview source={draft.body.en}"),
+ ("Editor: a second Heading press adds a second ##", PEF, 'if (value.startsWith("## ", lineStart)) return', "if (false) return"),
+ ("Editor: a bullet is added in front of an existing bullet", PEF, "(/^[-*]\\s/.test(l) ? l : `- ${l}`)", "`- ${l}`"),
+ ("Preview: a link to //evil.com is allowed", AMD, "if (/^\\/(?!\\/)/.test(h)) return h;", "if (/^\\//.test(h)) return h;"),
+]
+SFP = "apps/web-storefront/"; FOOT = SFP + "components/SiteFooter.tsx"; FSO = SFP + "components/FooterSocial.tsx"; FCO = SFP + "lib/footerContent.ts"; LGP = SFP + "components/LegalPage.tsx"; MDT = SFP + "lib/miniMarkdown.ts"; RTX = SFP + "components/RichText.tsx"
+FT_STOREFRONT = [
+ ("a link the admin hid is still shown", FOOT, "if (setting && setting.shown === false) return null;", ""),
+ ("a page that has text still links to the old website", FOOT, "return footer?.pages[key]", "return false"),
+ ("a page link loses the language prefix", FOOT, "<Link key={key} href={`/${PAGE_SLUGS[key]}`} className={link}>{text}</Link>", "<a key={key} href={`/${PAGE_SLUGS[key]}`} className={link}>{text}</a>"),
+ ("the column titles ignore the admin's wording", FOOT, "=> pickHomeText(footer?.text.titles[k], lang, t(lang, key));", "=> t(lang, key);"),
+ ("the tagline ignores the admin's wording", FOOT, 'pickHomeText(footer?.text.tagline, lang, t(lang, "footer_tagline"))', 't(lang, "footer_tagline")'),
+ ("an icon with no link is shown", FSO, "items.filter((i) => i.url)", "items"),
+ ("a social icon opens in the same tab and can reach back to the website", FSO, 'target="_blank" rel="noopener noreferrer" ', ""),
+ ("a social icon forgets noopener", FSO, 'rel="noopener noreferrer"', 'rel="noreferrer"'),
+ ("the placeholder is not the Leap logo", FSO, 'src="/leap-logo.png"', 'src="/other.png"'),
+ ("the year is not filled into the copyright", FCO, "value.replace(/\\{year\\}/g, String(year))", "value"),
+ ("a page in one language shows nothing in the other", FCO, 'return (typeof own === "string" && own.trim() !== "" ? own : typeof other === "string" ? other : "") || "";', 'return own ?? "";'),
+ ("a page with no text crashes instead of saying it is being prepared", LGP, "{page?.hasContent ? (", "{true ? ("),
+ ("a page with no text can be found in search engines", LGP, "robots: page?.hasContent ? undefined : { index: false, follow: true }", "robots: undefined"),
+ ("the 'last updated' date is missing", LGP, "{page.updatedAt && <p", "{false && <p"),
+ ("an unsafe link (javascript:) is allowed", MDT, "  if (/^\\/(?!\\/)/.test(h)) return h;\n  return null;", "  return h;"),
+ ("a link to //evil.com is allowed", MDT, "if (/^\\/(?!\\/)/.test(h)) return h;", "if (/^\\//.test(h)) return h;"),
+ ("the formatter can be made slow by a page of brackets", MDT, "\\[([^\\]]{1,300})\\]\\(([^)\\s]{1,500})\\)", "\\[([^\\]]+)\\]\\(([^)\\s]+)\\)"),
+ ("an outside link opens in the same tab", RTX, '{...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}', "{...{}}"),
+ ("the old privacy address goes to the wrong page", SFP + "app/privecy-policy/page.tsx", '"/privacy-policy"', '"/about-us"'),
+ ("the privacy address shows the wrong page", SFP + "app/privacy-policy/page.tsx", '<LegalPage pageKey="privacy" />', '<LegalPage pageKey="terms" />'),
+]
+mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
 lo, hi = (int(sys.argv[2]), int(sys.argv[3])) if len(sys.argv) > 3 else (1, len(BREAKS))
 def fresh():
     subprocess.run(["su", "postgres", "-c", "psql -q -c 'DROP DATABASE IF EXISTS leap_catalog_import_test' -c \"CREATE DATABASE leap_catalog_import_test TEMPLATE leap_marketplace_dev OWNER leap_dev\""], check=True, capture_output=True)
 def run():
     if mode == "uiserver": return subprocess.run(["node", "--test", "test/siteStats.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "spacing": return subprocess.run(["npx", "vitest", "run", "app/homeSpacing.test.tsx", "app/homeText.test.tsx", "app/homePictures.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=200).returncode
+    if mode == "ftserver": return subprocess.run(["node", "--test", "test/footer.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
+    if mode == "ftadmin": return subprocess.run(["npx", "vitest", "run", "src/FooterTextSection.test.jsx", "src/SocialLinksSection.test.jsx", "src/LegalPagesSection.test.jsx", "src/pageEditorFormat.test.js", "src/miniMarkdown.test.js"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=250).returncode
+    if mode == "ftstorefront": return subprocess.run(["npx", "vitest", "run", "components/SiteFooter.test.tsx", "components/LegalPage.test.tsx", "components/RichText.test.tsx", "lib/miniMarkdown.test.ts", "lib/footerContent.test.ts", "lib/miniMarkdownContract.test.ts", "app/legalPages.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
     if mode == "ppserver": return subprocess.run(["node", "--test", "test/homeText.test.js", "test/productPage.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "ppadmin": return subprocess.run(["npx", "vitest", "run", "src/HomeTextSection.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
     if mode == "ppstorefront": return subprocess.run(["npx", "vitest", "run", "components/ProductDetails.test.tsx", "components/LazyProductRow.test.tsx", "components/VehicleFilterOrder.test.tsx", "components/FitsMyCarLabel.test.tsx", "app/stage1c-page.test.tsx", "app/homeText.test.tsx", "components/SiteHeaderTopBar.test.tsx", "lib/gridSourceModel.test.ts", "lib/homeText.test.ts", "app/api/products/routeSameModel.test.ts"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
@@ -218,7 +293,7 @@ def run():
     if mode == "server": return subprocess.run(["node", "--test", "test/orderVehicles.test.js", "test/productCars.test.js", "test/orderVehiclesReplacement.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "screens": return subprocess.run(["npx", "vitest", "run", "src/OrderVehicle.test.jsx", "src/OrderVehicleFlow.test.jsx"], cwd=SP, capture_output=True, text=True, timeout=150).returncode
     return subprocess.run(["npx", "vitest", "run", "components/FitCheck.test.tsx", "app/stage1c-page.test.tsx", "app/cartFitCheck.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=150).returncode
-if mode in ("server", "uiserver", "hpserver", "ppserver"): fresh()
+if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver"): fresh()
 if run() != 0: sys.exit("The tests do not pass on the UNBROKEN code, so a break check would prove nothing.")
 print("baseline: the tests pass on the unbroken code\n", flush=True); caught = 0
 for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
@@ -227,10 +302,10 @@ for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
     if src.count(old) != 1: print(f"{n:2d}. SKIPPED (the line to break was not found exactly once): {what}"); continue
     shutil.copy(path, path + ".keep"); open(path, "w", encoding="utf-8").write(src.replace(old, new))
     try:
-        if mode in ("server", "uiserver", "hpserver", "ppserver"): fresh()
+        if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver"): fresh()
         failed = run() != 0
     finally: shutil.move(path + ".keep", path)
     caught += failed; print(f"{n:2d}. {'CAUGHT ' if failed else 'MISSED!'}  {what}", flush=True)
 print(f"\n{caught} of {sum(1 for i in range(1, len(BREAKS) + 1) if lo <= i <= hi)} breaks were caught")
-if mode in ("server", "uiserver", "hpserver", "ppserver"): fresh()
+if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver"): fresh()
 print("code restored; the tests pass again:", "yes" if run() == 0 else "NO (investigate)")
