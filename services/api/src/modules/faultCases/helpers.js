@@ -2,6 +2,7 @@ const db = require('../../../db/pool');
 const { createNotification } = require('../notifications/helpers');
 const { getReturnAddress } = require('../supplierReturnAddress/helpers');
 const messages = require('../notifications/messages');
+const { copyLineVehicles } = require('../orderVehicles/copy');
 
 /**
  * Fault cases (migration 091): what happens after an admin confirms that a flagged hub shipment is REALLY
@@ -475,6 +476,8 @@ async function confirmReplacement(client, { caseId, adminId }) {
   for (const item of items) {
     await client.query('INSERT INTO order_line_items (sub_order_id, product_id, quantity, unit_price) VALUES ($1, $2, $3, $4)', [newSub[0].id, item.productId, item.quantity, item.unitPrice]);
   }
+  // The replacement is for the SAME car as the part it replaces: copy it, so the supplier sees it too (it can never stop the replacement: see orderVehicles/copy.js).
+  await copyLineVehicles(client, { fromSubOrderId: original.id, toSubOrderId: newSub[0].id });
 
   const { rows: updated } = await client.query(
     `UPDATE fault_cases SET outcome = 'replacement', status = 'replacement_pending', replacement_order_id = $1, replacement_confirmed_by = $2,

@@ -1,4 +1,4 @@
-// A REPLACEMENT order (an admin confirms a replacement for a faulty part) is for the same car as the part it replaces, so the supplier sees that car too. A REAL order is placed through the
+// A REPLACEMENT order (an admin confirms a replacement for a faulty part) is for the same car as the part it replaces: the buyer's car recorded for the original line is COPIED onto it (internally), and the supplier sees the part and the car the PRODUCT belongs to, as on any order. A REAL order is placed through the
 // real POST /orders, a real fault case is built, the real confirmReplacement runs, and the replacement is read through the real supplier endpoint. Run:
 //   DATABASE_URL=postgresql://leap_dev:leap_dev_pw@localhost:5432/leap_catalog_import_test node --test test/orderVehiclesReplacement.test.js
 // (it needs migration 110 applied; it refuses to run on a database whose name does not end in "_test", and removes everything it creates, ids starting "zz-rp".)
@@ -9,6 +9,7 @@ const assert = require('node:assert/strict');
 const db = require('../db/pool');
 const { buildApp } = require('./helpers/realRouters');
 const { confirmReplacement } = require('../src/modules/faultCases/helpers');
+const { loadLineVehicles } = require('../src/modules/orderVehicles/read');
 
 let server, base, supplierToken;
 const q = (sql, params) => db.query(sql, params);
@@ -71,30 +72,37 @@ async function replace(caseId) {
   try { await client.query('BEGIN'); const out = await confirmReplacement(client, { caseId, adminId: 'admin_dev_seed' }); await client.query('COMMIT'); return out; }
   catch (err) { await client.query('ROLLBACK'); throw err; } finally { client.release(); }
 }
+/** The buyer's car recorded INTERNALLY for the line of `productId` in `orderId` (never sent to a supplier). */
+async function recorded(orderId, productId) {
+  const line = (await q("SELECT oli.id FROM order_line_items oli JOIN supplier_sub_orders so ON so.id = oli.sub_order_id WHERE so.order_id = $1 AND oli.product_id = $2", [orderId, productId])).rows[0];
+  return (await loadLineVehicles(db, [line.id])).get(line.id) || null;
+}
 const replacementOf = async (caseId) => (await q('SELECT replacement_order_id FROM fault_cases WHERE id = $1', [caseId])).rows[0].replacement_order_id;
 async function supplierView(orderId) {
   const res = await fetch(`${base}/supplier/me/orders`, { headers: { Authorization: `Bearer ${supplierToken}` } }); assert.equal(res.status, 200);
   return (await res.json()).filter((o) => o.orderId === orderId).flatMap((o) => o.items);
 }
 
-test('a replacement order shows the same car as the part it replaces, with its photo, to the supplier', async () => {
+test('a replacement order carries the same recorded car as the part it replaces, and the supplier sees the part and the car the product belongs to', async () => {
   const original = await placeOrder(['zz-rp-pad', 'zz-rp-wiper']);
   const { caseId } = await faultCaseFor(original, 'zz-rp-pad');
   await replace(caseId);
   const replacementId = await replacementOf(caseId);
   assert.equal(replacementId, `${original}-R1`);
+  const copy = await recorded(replacementId, 'zz-rp-pad');
+  assert.equal(copy.status, 'listed'); assert.equal(copy.car.brand.en, 'RP Brand'); assert.equal(copy.car.year, 2022); assert.equal(copy.car.seats, 5); assert.equal(copy.car.photoUrl, '/uploads/zz-rp-ver.png');
   const items = await supplierView(replacementId);
   assert.deepEqual(items.map((i) => i.productId), ['zz-rp-pad'], 'the replacement has only the faulty part');
-  assert.equal(items[0].vehicle.status, 'listed'); assert.equal(items[0].vehicle.car.brand.en, 'RP Brand'); assert.equal(items[0].vehicle.car.year, 2022); assert.equal(items[0].vehicle.car.seats, 5);
-  assert.equal(items[0].vehicle.car.photoUrl, '/uploads/zz-rp-ver.png');
+  assert.equal(items[0].vehicle.cars[0].brand.en, 'RP Brand'); assert.equal(items[0].vehicle.cars[0].year, 2022); assert.equal(items[0].vehicle.fitsAnyCar, false);
+  assert.ok(!('status' in items[0].vehicle) && !('car' in items[0].vehicle), 'and never the buyer\'s car');
 });
 
 test('each replacement line gets the record of ITS OWN part: replacing the wiper (fits any car) never shows the brake pad\'s car', async () => {
   const original = await placeOrder(['zz-rp-pad', 'zz-rp-wiper']);
   const { caseId } = await faultCaseFor(original, 'zz-rp-wiper'); await replace(caseId);
-  const items = await supplierView(await replacementOf(caseId));
-  assert.deepEqual(items.map((i) => i.productId), ['zz-rp-wiper']);
-  assert.deepEqual(items[0].vehicle, { status: 'universal', isDefaultCar: null, car: null });
+  const replacementId = await replacementOf(caseId);
+  assert.deepEqual((await supplierView(replacementId)).map((i) => i.productId), ['zz-rp-wiper']);
+  assert.deepEqual(await recorded(replacementId, 'zz-rp-wiper'), { status: 'universal', isDefaultCar: null, car: null });
 });
 
 test('the car is COPIED from the original order, not worked out again: a garage that changed since does not matter', async () => {
@@ -103,8 +111,8 @@ test('the car is COPIED from the original order, not worked out again: a garage 
   await q("INSERT INTO user_saved_generations (buyer_id, generation_id, year, is_default) VALUES ('zz-rp-b1', 'zz-rp-gC', 2019, true)");
   try {
     const { caseId } = await faultCaseFor(original, 'zz-rp-pad'); await replace(caseId);
-    const [item] = await supplierView(await replacementOf(caseId));
-    assert.equal(item.vehicle.car.year, 2022, 'the car the part was bought for, not the buyer\'s car today');
+    const copy = await recorded(await replacementOf(caseId), 'zz-rp-pad');
+    assert.equal(copy.car.year, 2022, 'the car the part was bought for, not the buyer\'s car today');
   } finally {
     await q("DELETE FROM user_saved_generations WHERE buyer_id = 'zz-rp-b1'");
     await q("INSERT INTO user_saved_generations (buyer_id, generation_id, year, version_id, is_default) VALUES ('zz-rp-b1', 'zz-rp-gA', 2022, 'zz-rp-vA', true)");
@@ -115,8 +123,7 @@ test('a replacement of a part from an order placed before this existed is create
   const original = await placeOrder(['zz-rp-pad']);
   await q("DELETE FROM order_line_vehicles WHERE line_item_id IN (SELECT oli.id FROM order_line_items oli JOIN supplier_sub_orders so ON so.id = oli.sub_order_id WHERE so.order_id = $1)", [original]);
   const { caseId } = await faultCaseFor(original, 'zz-rp-pad'); await replace(caseId);
-  const [item] = await supplierView(await replacementOf(caseId));
-  assert.equal(item.vehicle, null);
+  assert.equal(await recorded(await replacementOf(caseId), 'zz-rp-pad'), null);
 });
 
 test('CRITICAL: if the car cannot be copied, the replacement is STILL created', async () => {
@@ -129,5 +136,6 @@ test('CRITICAL: if the car cannot be copied, the replacement is STILL created', 
   assert.equal(replacementId, `${original}-R1`, 'the replacement order exists');
   assert.equal((await q("SELECT count(*)::int AS n FROM order_line_items oli JOIN supplier_sub_orders so ON so.id = oli.sub_order_id WHERE so.order_id = $1", [replacementId])).rows[0].n, 1, 'with its line');
   assert.equal((await q("SELECT outcome FROM fault_cases WHERE id = $1", [caseId])).rows[0].outcome, 'replacement', 'and the case moved on');
-  assert.equal((await supplierView(replacementId))[0].vehicle, null);
+  assert.equal(await recorded(replacementId, 'zz-rp-pad'), null, 'no car was copied');
+  assert.equal((await supplierView(replacementId))[0].vehicle.cars[0].year, 2022, 'the supplier still sees the part\'s car, which is read live from the product');
 });

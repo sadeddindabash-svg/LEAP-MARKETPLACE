@@ -1,4 +1,4 @@
-// The car of each order line, end to end: a REAL order is placed through the real POST /orders, the real supplier endpoint is read, over HTTP, against the real database. Run:
+// The buyer's car recorded for each order line (INTERNAL: never sent to a supplier), end to end: a REAL order is placed through the real POST /orders and the record is read back. Run:
 //   DATABASE_URL=postgresql://leap_dev:leap_dev_pw@localhost:5432/leap_catalog_import_test node --test test/orderVehicles.test.js
 // (it needs migration 110 applied; it refuses to run on a database whose name does not end in "_test", and removes everything it creates, ids starting "zz-ov".)
 process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgresql://leap_dev:leap_dev_pw@localhost:5432/leap_catalog_import_test';
@@ -11,7 +11,7 @@ const { chooseCar } = require('../src/modules/orderVehicles/choose');
 const { writeOrderVehicles } = require('../src/modules/orderVehicles/record');
 const { loadLineVehicles } = require('../src/modules/orderVehicles/read');
 
-let server, base, supplierToken;
+let server, base;
 const q = (sql, params) => db.query(sql, params);
 
 const wipe = async () => {
@@ -53,8 +53,6 @@ before(async () => {
     ('zz-ov-uni', 'ZZ Universal Part', 5, 'USD', 's1', 100), ('zz-ov-s2part', 'ZZ Other Supplier Part', 7, 'USD', 'zz-ov-s2', 100)`);
   await q("INSERT INTO product_fitment_entries (product_id, generation_id, year) VALUES ('zz-ov-fitA', 'zz-ov-gA', 2022), ('zz-ov-fitB', 'zz-ov-gB', 2018), ('zz-ov-s2part', 'zz-ov-gA', 2022)");
   server = buildApp().listen(0); base = `http://localhost:${server.address().port}`;
-  const login = await (await fetch(`${base}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'supplier@leap.dev', password: 'supplier_dev_password_123' }) })).json();
-  supplierToken = login.token; assert.ok(supplierToken, 'the seed supplier can log in');
 });
 after(async () => { await wipe(); server.close(); await db.getPool().end(); });
 
@@ -64,11 +62,11 @@ async function placeOrder(buyer, productIds, extra = {}) {
   const res = await fetch(`${base}/orders`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const json = await res.json(); assert.equal(res.status, 201, JSON.stringify(json).slice(0, 300)); return json.id;
 }
-async function supplierView(orderId) {
-  const res = await fetch(`${base}/supplier/me/orders`, { headers: { Authorization: `Bearer ${supplierToken}` } }); assert.equal(res.status, 200);
-  return (await res.json()).filter((o) => o.orderId === orderId);
+/** What was recorded for the line of `productId` in `orderId` (the buyer's car at the time of the order): INTERNAL data, never sent to a supplier. */
+async function recordedItem(orderId, productId) {
+  const line = (await q("SELECT oli.id FROM order_line_items oli JOIN supplier_sub_orders so ON so.id = oli.sub_order_id WHERE so.order_id = $1 AND oli.product_id = $2", [orderId, productId])).rows[0];
+  return { vehicle: (await loadLineVehicles(db, [line.id])).get(line.id) || null };
 }
-const itemOf = (subOrders, productId) => subOrders.flatMap((o) => o.items).find((i) => i.productId === productId);
 
 test('the rule: which car a part is for (pure)', () => {
   const car = (generation_id, year, is_default = false) => ({ generation_id, year, version_id: null, is_default });
@@ -87,9 +85,9 @@ test('the rule: which car a part is for (pure)', () => {
   assert.equal(both.car.generation_id, 'B', 'when two garage cars both fit, the DEFAULT car (first in the garage) is the one chosen'); assert.equal(both.isDefault, true);
 });
 
-test('the default garage car fits the part: the supplier sees that car, its photo, and "listed"', async () => {
+test('the default garage car fits the part: that car is recorded, with its photo, and "listed"', async () => {
   const orderId = await placeOrder('b1', ['zz-ov-fitA']);
-  const item = itemOf(await supplierView(orderId), 'zz-ov-fitA');
+  const item = (await recordedItem(orderId, 'zz-ov-fitA'));
   assert.equal(item.vehicle.status, 'listed'); assert.equal(item.vehicle.isDefaultCar, true);
   assert.deepEqual(item.vehicle.car.brand, { en: 'ZZ Brand', ar: 'ب', zh: '品牌' }); assert.equal(item.vehicle.car.model.en, 'ZZ Model'); assert.equal(item.vehicle.car.year, 2022);
   assert.equal(item.vehicle.car.version.en, 'May Day'); assert.equal(item.vehicle.car.version.zh, '五一'); assert.equal(item.vehicle.car.engine.en, '2.0T (190 kW)'); assert.equal(item.vehicle.car.seats, 5);
@@ -98,60 +96,56 @@ test('the default garage car fits the part: the supplier sees that car, its phot
 
 test('the default car does not fit but another garage car does: that car is shown, marked as not the default', async () => {
   const orderId = await placeOrder('b2', ['zz-ov-fitA']);
-  const item = itemOf(await supplierView(orderId), 'zz-ov-fitA');
+  const item = (await recordedItem(orderId, 'zz-ov-fitA'));
   assert.equal(item.vehicle.status, 'listed'); assert.equal(item.vehicle.isDefaultCar, false); assert.equal(item.vehicle.car.year, 2022);
 });
 
 test('the part fits none of the buyer\'s cars: the default car is shown with a "not listed" warning', async () => {
   const orderId = await placeOrder('b3', ['zz-ov-fitA']);
-  const item = itemOf(await supplierView(orderId), 'zz-ov-fitA');
+  const item = (await recordedItem(orderId, 'zz-ov-fitA'));
   assert.equal(item.vehicle.status, 'not_listed'); assert.equal(item.vehicle.isDefaultCar, true); assert.equal(item.vehicle.car.year, 2018);
   assert.equal(item.vehicle.car.photoUrl, '/uploads/zz-brand.png', 'no version photo, no year photo: the model, else the brand photo is used');
 });
 
 test('the same model in a different year is "not listed" (the fit list names the year)', async () => {
-  const item = itemOf(await supplierView(await placeOrder('b5', ['zz-ov-fitA'])), 'zz-ov-fitA');
+  const item = (await recordedItem(await placeOrder('b5', ['zz-ov-fitA']), 'zz-ov-fitA'));
   assert.equal(item.vehicle.status, 'not_listed'); assert.equal(item.vehicle.car.year, 2021); assert.equal(item.vehicle.car.version, null, 'a car saved without a version has no version');
   assert.equal(item.vehicle.car.photoUrl, '/uploads/zz-genA.png', "no version: the year's photo");
 });
 
 test('a part that fits any car records no car; a buyer with no car, and a guest, give "no car on file"', async () => {
-  const universal = itemOf(await supplierView(await placeOrder('b1', ['zz-ov-uni'])), 'zz-ov-uni');
+  const universal = (await recordedItem(await placeOrder('b1', ['zz-ov-uni']), 'zz-ov-uni'));
   assert.deepEqual(universal.vehicle, { status: 'universal', isDefaultCar: null, car: null });
-  const noGarage = itemOf(await supplierView(await placeOrder('b4', ['zz-ov-fitA'])), 'zz-ov-fitA');
+  const noGarage = (await recordedItem(await placeOrder('b4', ['zz-ov-fitA']), 'zz-ov-fitA'));
   assert.deepEqual(noGarage.vehicle, { status: 'no_car', isDefaultCar: null, car: null });
-  const guest = itemOf(await supplierView(await placeOrder(null, ['zz-ov-fitA'])), 'zz-ov-fitA');
+  const guest = (await recordedItem(await placeOrder(null, ['zz-ov-fitA']), 'zz-ov-fitA'));
   assert.equal(guest.vehicle.status, 'no_car');
 });
 
 test('each line gets its own car, and the buyer\'s own garage is the one used', async () => {
-  const subOrders = await supplierView(await placeOrder('b2', ['zz-ov-fitA', 'zz-ov-fitB', 'zz-ov-uni']));
-  assert.equal(itemOf(subOrders, 'zz-ov-fitA').vehicle.car.year, 2022); assert.equal(itemOf(subOrders, 'zz-ov-fitB').vehicle.car.year, 2018);
-  assert.equal(itemOf(subOrders, 'zz-ov-fitB').vehicle.isDefaultCar, true); assert.equal(itemOf(subOrders, 'zz-ov-uni').vehicle.status, 'universal');
+  const orderId = await placeOrder('b2', ['zz-ov-fitA', 'zz-ov-fitB', 'zz-ov-uni']);
+  assert.equal((await recordedItem(orderId, 'zz-ov-fitA')).vehicle.car.year, 2022); assert.equal((await recordedItem(orderId, 'zz-ov-fitB')).vehicle.car.year, 2018);
+  assert.equal((await recordedItem(orderId, 'zz-ov-fitB')).vehicle.isDefaultCar, true); assert.equal((await recordedItem(orderId, 'zz-ov-uni')).vehicle.status, 'universal');
+});
+test('reading the record of one line never returns the record of another', async () => {
+  const orderId = await placeOrder('b1', ['zz-ov-fitA', 'zz-ov-uni']);
+  const lines = (await q("SELECT oli.id, oli.product_id FROM order_line_items oli JOIN supplier_sub_orders so ON so.id = oli.sub_order_id WHERE so.order_id = $1 ORDER BY oli.id", [orderId])).rows;
+  const one = await loadLineVehicles(db, [lines[0].id]);
+  assert.deepEqual([...one.keys()], [lines[0].id]); assert.ok(!one.has(lines[1].id));
+  assert.equal((await loadLineVehicles(db, [])).size, 0); assert.equal((await loadLineVehicles(db, undefined)).size, 0);
 });
 
-test('a supplier sees only the lines of their own sub-order, with their cars', async () => {
-  const orderId = await placeOrder('b1', ['zz-ov-fitA', 'zz-ov-s2part']);
-  const mine = await supplierView(orderId);
-  assert.equal(mine.length, 1, 'one sub-order belongs to supplier s1'); assert.deepEqual(mine[0].items.map((i) => i.productId), ['zz-ov-fitA']);
-  const lines = (await q("SELECT oli.id, oli.product_id FROM order_line_items oli JOIN supplier_sub_orders so ON so.id = oli.sub_order_id WHERE so.order_id = $1", [orderId])).rows;
-  const otherLine = lines.find((l) => l.product_id === 'zz-ov-s2part'), myLine = lines.find((l) => l.product_id === 'zz-ov-fitA');
-  const read = await loadLineVehicles(db, [myLine.id]);
-  assert.deepEqual([...read.keys()], [myLine.id], 'reading one line never returns another');
-  assert.ok(!read.has(otherLine.id));
-});
-
-test('the car is a SNAPSHOT: later changes to the vehicle or the garage do not change what the supplier was told, but the photo is looked up live', async () => {
+test('the car is a SNAPSHOT: later changes to the vehicle or the garage do not change what was recorded, but the photo is looked up live', async () => {
   const orderId = await placeOrder('b1', ['zz-ov-fitA']);
   await q("UPDATE vehicle_versions SET name = 'Renamed', engine = '9.9T', seats = 7 WHERE id = 'zz-ov-vA'");
   await q("UPDATE vehicle_brands SET name = 'Renamed Brand' WHERE id = 'zz-ov-brand'");
   await q("DELETE FROM user_saved_generations WHERE buyer_id = 'zz-ov-b1'");
-  let item = itemOf(await supplierView(orderId), 'zz-ov-fitA');
+  let item = (await recordedItem(orderId, 'zz-ov-fitA'));
   assert.equal(item.vehicle.car.version.en, 'May Day'); assert.equal(item.vehicle.car.engine.en, '2.0T (190 kW)'); assert.equal(item.vehicle.car.seats, 5); assert.equal(item.vehicle.car.brand.en, 'ZZ Brand');
   await q("UPDATE vehicle_versions SET photo_url = '/uploads/zz-verA-NEW.png' WHERE id = 'zz-ov-vA'");
-  item = itemOf(await supplierView(orderId), 'zz-ov-fitA'); assert.equal(item.vehicle.car.photoUrl, '/uploads/zz-verA-NEW.png', 'a replaced photo shows at once');
+  item = (await recordedItem(orderId, 'zz-ov-fitA')); assert.equal(item.vehicle.car.photoUrl, '/uploads/zz-verA-NEW.png', 'a replaced photo shows at once');
   await q("UPDATE vehicle_versions SET photo_url = NULL WHERE id = 'zz-ov-vA'");
-  item = itemOf(await supplierView(orderId), 'zz-ov-fitA'); assert.equal(item.vehicle.car.photoUrl, '/uploads/zz-genA.png', 'a removed photo falls back to the next one');
+  item = (await recordedItem(orderId, 'zz-ov-fitA')); assert.equal(item.vehicle.car.photoUrl, '/uploads/zz-genA.png', 'a removed photo falls back to the next one');
   await q("UPDATE vehicle_versions SET name = 'May Day', engine = '2.0T (190 kW)', seats = 5, photo_url = '/uploads/zz-verA.png' WHERE id = 'zz-ov-vA'");
   await q("UPDATE vehicle_brands SET name = 'ZZ Brand' WHERE id = 'zz-ov-brand'");
   await q("INSERT INTO user_saved_generations (buyer_id, generation_id, year, version_id, is_default) VALUES ('zz-ov-b1', 'zz-ov-gA', 2022, 'zz-ov-vA', true)");
@@ -165,7 +159,7 @@ test('CRITICAL: if the car cannot be recorded, the order is STILL placed (nothin
   const lines = (await q("SELECT oli.id FROM order_line_items oli JOIN supplier_sub_orders so ON so.id = oli.sub_order_id WHERE so.order_id = $1", [orderId])).rows;
   assert.equal(lines.length, 1, 'the order and its line exist');
   assert.equal((await q('SELECT count(*)::int AS n FROM order_line_vehicles WHERE line_item_id = ANY($1)', [lines.map((l) => l.id)])).rows[0].n, 0, 'no car was recorded');
-  const item = itemOf(await supplierView(orderId), 'zz-ov-fitA'); assert.equal(item.vehicle, null, 'the supplier simply sees no car for it');
+  const item = (await recordedItem(orderId, 'zz-ov-fitA')); assert.equal(item.vehicle, null, 'the supplier simply sees no car for it');
   assert.equal((await q('SELECT status FROM orders WHERE id = $1', [orderId])).rows[0].status, 'to_ship');
 });
 
@@ -179,9 +173,6 @@ test('recording twice for the same order never duplicates (a retry is safe)', as
 test('an order placed before this existed shows no car (null), not an error', async () => {
   const orderId = await placeOrder('b1', ['zz-ov-fitA']);
   await q("DELETE FROM order_line_vehicles WHERE line_item_id IN (SELECT oli.id FROM order_line_items oli JOIN supplier_sub_orders so ON so.id = oli.sub_order_id WHERE so.order_id = $1)", [orderId]);
-  assert.equal(itemOf(await supplierView(orderId), 'zz-ov-fitA').vehicle, null);
+  assert.equal((await recordedItem(orderId, 'zz-ov-fitA')).vehicle, null);
 });
 
-test('only the supplier sees the endpoint: no token is refused', async () => {
-  assert.equal((await fetch(`${base}/supplier/me/orders`)).status, 401);
-});

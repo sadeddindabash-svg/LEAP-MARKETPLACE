@@ -2,15 +2,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import LeapSupplierPortalApp from './App';
 
-// The Orders page of the supplier portal, through the real App (mocked backend, real component tree): the new Car column in the list and the car under each item in the order detail.
-// The portal opens in Chinese; the English wording is covered in OrderVehicle.test.jsx.
+// The Orders page of the supplier portal, through the real App (mocked backend, real component tree): the part's photo, an arrow, and the car the product belongs to. The portal opens in Chinese.
 const SUPPLIER_USER = { id: 'supplier_dev_seed', email: 'supplier@leap.dev', name: 'Wei Zhang', role: 'supplier', supplierId: 's1' };
 const PROFILE = { id: 's1', name: 'Guangzhou AutoParts Co.', country: 'China', contactEmail: 'wei@gz.cn', verificationStatus: 'verified', listingCount: 2, createdAt: '2026-07-01T00:00:00Z' };
 
 const name = (en, zh) => ({ en, ar: null, zh });
-const car = (over = {}) => ({ year: 2022, seats: 5, photoUrl: '/uploads/ver.png', brand: name('BAIC', '北汽'), model: name('BJ60', 'BJ60'), version: name('May Day', '五一'), engine: name('2.0T (190 kW)', '2.0T (190 kW)'), ...over });
-const listed = (over) => ({ status: 'listed', isDefaultCar: true, car: car(over) });
-const item = (productId, productName, vehicle) => ({ productId, name: productName, quantity: 1, unitPrice: 10, vehicle });
+const car = (over = {}) => ({ year: 2022, brand: name('BAIC', '北汽'), model: name('BJ60', 'BJ60'), engine: '2.0T', transmission: 'Automatic', photoUrl: '/uploads/car.png', ...over });
+const vehicle = (cars, over = {}) => ({ partPhotoUrl: '/uploads/part.png', fitsAnyCar: cars.length === 0, carCount: cars.length, cars, ...over });
+const item = (productId, productName, v) => ({ productId, name: productName, quantity: 1, unitPrice: 10, vehicle: v });
 const order = (subOrderId, orderId, items) => ({ subOrderId, orderId, status: 'pending', trackingNumber: null, hubId: 'hub_gz', hubName: 'Guangzhou Hub', hubAddress: 'Panyu', hubShipmentId: null, placedAt: '2026-07-01T00:00:00Z', items,
   locked: false, lockReason: null, allowedStatuses: ['preparing', 'shipped'], canEditTracking: true });
 
@@ -40,42 +39,36 @@ async function openOrdersPage(orders) {
 beforeEach(() => { localStorage.clear(); });
 afterEach(() => { vi.restoreAllMocks(); });
 
-describe('Supplier portal Orders page: the car each part is for', () => {
-  it('the list has a Car column with the first car, its photo, "+N" for more, and a warning mark when a car is not on a fitment list', async () => {
+describe('Supplier portal Orders page: the part and the car it belongs to', () => {
+  it('the list shows, for the first item, the part photo, an arrow and the car; "+N more"; "fits any car"; and never anything about the buyer', async () => {
     await openOrdersPage([
-      order(7001, 'LP-910100', [item('p1', 'Brake Pad Set', listed()), item('p2', 'Oil Filter', { status: 'listed', isDefaultCar: false, car: car({ year: 2018, brand: name('Toyota', '丰田'), model: name('Corolla', '卡罗拉'), photoUrl: null }) })]),
-      order(7002, 'LP-910200', [item('p3', 'Brake Disc', { status: 'not_listed', isDefaultCar: true, car: car({ year: 2021 }) })]),
-      order(7003, 'LP-910300', [item('p4', 'Wiper Blade Set', { status: 'universal', isDefaultCar: null, car: null })]),
-      order(7004, 'LP-910400', [item('p5', 'Spark Plug', { status: 'no_car', isDefaultCar: null, car: null })]),
-      order(7005, 'LP-910500', [item('p6', 'Old order item', null)]),
+      order(7001, 'LP-910100', [item('p1', 'Brake Pad Set', vehicle([car(), car({ year: 2019, brand: name('Toyota', '丰田'), model: name('Corolla', '卡罗拉'), photoUrl: null })])), item('p2', 'Oil Filter', vehicle([car({ year: 2018 })]))]),
+      order(7002, 'LP-910200', [item('p3', 'Wiper Blade Set', vehicle([]))]),
+      order(7003, 'LP-910300', [item('p4', 'Spark Plug', vehicle([car()], { carCount: 6 }))]),
     ]);
     const rowOf = async (id) => (await screen.findByText(id)).closest('tr');
-    expect(await screen.findByRole('columnheader', { name: '车辆' })).toBeInTheDocument();
-    const r1 = within(await rowOf('LP-910100')); expect(r1.getByText(/北汽 BJ60 · 2022/)).toBeInTheDocument(); expect(r1.getByText(/另有1辆/)).toBeInTheDocument();
-    expect(r1.getByRole('img')).toHaveAttribute('src', 'http://localhost:4000/uploads/ver.png');
-    const r2 = within(await rowOf('LP-910200')); expect(r2.getByText(/北汽 BJ60 · 2021/)).toBeInTheDocument(); expect(r2.getByText(/请核对/)).toBeInTheDocument();
-    expect(within(await rowOf('LP-910300')).getByText('通用件')).toBeInTheDocument();
-    expect(within(await rowOf('LP-910400')).getByText('无车辆信息')).toBeInTheDocument();
-    expect(within(await rowOf('LP-910500')).getByText('—')).toBeInTheDocument();
+    expect(await screen.findByRole('columnheader', { name: '零件 → 车辆' })).toBeInTheDocument();
+    const r1 = within(await rowOf('LP-910100')); expect(r1.getByText(/北汽 BJ60 · 2022/)).toBeInTheDocument(); expect(r1.getByText(/另有2款/)).toBeInTheDocument();
+    expect(r1.getAllByRole('img').map((i) => i.getAttribute('src'))).toEqual(['http://localhost:4000/uploads/part.png', 'http://localhost:4000/uploads/car.png']);
+    const r2 = within(await rowOf('LP-910200')); expect(r2.getByText('通用件')).toBeInTheDocument(); expect(r2.getAllByRole('img')).toHaveLength(1);
+    expect(within(await rowOf('LP-910300')).getByText(/另有5款/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/买家车辆|Buyer/);
   });
 
-  it('the order detail shows, under each item, the car (names, year, version, engine, seats), its photo and the fit check', async () => {
+  it('the order detail shows, for each item, the part photo, an arrow, the car photo, its name and engine, and the other cars it is listed for', async () => {
     await openOrdersPage([order(7001, 'LP-910100', [
-      item('p1', 'Brake Pad Set', listed()),
-      item('p2', 'Brake Disc', { status: 'not_listed', isDefaultCar: true, car: car({ year: 2021, photoUrl: null }) }),
-      item('p3', 'Wiper Blade Set', { status: 'universal', isDefaultCar: null, car: null }),
-      item('p4', 'Spark Plug', { status: 'no_car', isDefaultCar: null, car: null }),
-      item('p5', 'Old order item', null),
+      item('p1', 'Brake Pad Set', vehicle([car(), car({ year: 2018, brand: name('Toyota', '丰田'), model: name('Corolla', '卡罗拉'), engine: null, transmission: null }), car({ year: 2019, brand: name('Honda', '本田'), model: name('Civic', '思域') })], { carCount: 4 })),
+      item('p2', 'Wiper Blade Set', vehicle([])),
+      item('p3', 'Item without photos', vehicle([car({ photoUrl: null })], { partPhotoUrl: null })),
     ])]);
     fireEvent.click(await screen.findByText('LP-910100'));
     await screen.findByText('Brake Pad Set');
-    expect(screen.getAllByText(/买家车辆:/, { selector: 'div' })).toHaveLength(2);                // the two items that have a car
-    expect(screen.getAllByText(/北汽 BJ60 · 2022/).length).toBeGreaterThan(0); expect(screen.getAllByText('五一 · 2.0T (190 kW) · 5座')).toHaveLength(2);
-    expect(screen.getByRole('img', { name: /北汽 BJ60 · 2022/ })).toHaveAttribute('src', 'http://localhost:4000/uploads/ver.png');
-    expect(screen.getByText('该商品适配此车型')).toBeInTheDocument();
-    expect(screen.getByText('该商品的适配列表中没有此车型，发货前请核对')).toBeInTheDocument();
-    expect(screen.getByText('通用件，适配任意车型，未记录车辆')).toBeInTheDocument();
-    expect(screen.getByText('无车辆信息：买家的车库中没有车辆')).toBeInTheDocument();
-    expect(screen.getByText('Old order item')).toBeInTheDocument();
+    expect(screen.getAllByText('北汽 BJ60 · 2022').length).toBeGreaterThan(0); expect(screen.getAllByText('2.0T · Automatic').length).toBe(2);
+    expect(screen.getByText(/同时适配： 丰田 卡罗拉 · 2018, 本田 思域 · 2019 另有1款/)).toBeInTheDocument();
+    expect(screen.getAllByText('零件').length).toBe(3); expect(screen.getAllByText('适配此车型').length).toBe(2);
+    expect(screen.getByText('通用件，适配任意车型')).toBeInTheDocument();
+    const photos = screen.getAllByRole('img').map((i) => i.getAttribute('src'));
+    expect(photos).toContain('http://localhost:4000/uploads/part.png'); expect(photos).toContain('http://localhost:4000/uploads/car.png');
+    expect(document.body.textContent).not.toMatch(/买家车辆|Buyer/);
   });
 });
