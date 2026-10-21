@@ -6,10 +6,11 @@ const m = vi.hoisted(() => ({ grid: vi.fn() }));
 vi.mock("@/lib/lang", () => ({ getLang: vi.fn(async () => "en") }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/", useSearchParams: () => new URLSearchParams() }));
 vi.mock("@/lib/api", () => ({
-  fetchCategories: vi.fn(async () => []), fetchVehicleBrands: vi.fn(async () => []), fetchAnnouncements: vi.fn(async () => []), fetchSiteStats: vi.fn(async () => null), fetchHomePictures: vi.fn(async () => null),
+  fetchCategories: vi.fn(async () => []), fetchVehicleBrands: vi.fn(async () => []), fetchAnnouncements: vi.fn(async () => []), fetchSiteStats: vi.fn(async () => null), fetchHomePictures: vi.fn(async () => null), fetchHomeText: vi.fn(async () => null),
   fetchProducts: vi.fn(async () => Array.from({ length: 12 }, (_, i) => ({ id: `p${i}`, name: `Part ${i}` }))),
   fetchModelsForBrand: vi.fn(async () => []), fetchGenerationsForModel: vi.fn(async () => []), resolveImageUrl: (u: string) => u,
 }));
+vi.mock("@/lib/homeFonts", () => ({ homeFontStyle: (font?: string) => (font && font !== "default" ? { fontFamily: `Font ${font}` } : undefined) }));
 vi.mock("@/components/HeroPicker", () => ({ default: () => <div /> }));
 vi.mock("@/components/InfiniteProductGrid", () => ({ default: (props: Record<string, unknown>) => { m.grid(props); return <div data-testid="newest-grid" />; } }));
 

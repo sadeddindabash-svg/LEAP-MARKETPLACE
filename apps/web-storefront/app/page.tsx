@@ -6,7 +6,7 @@ import HeroPicker from "@/components/HeroPicker";
 import { JsonLd } from "@/components/JsonLd";
 import InfiniteProductGrid from "@/components/InfiniteProductGrid";
 import AnnouncementBar from "@/components/AnnouncementBar";
-import { fetchAnnouncements, fetchCategories, fetchProducts, fetchSiteStats, fetchVehicleBrands } from "@/lib/api";
+import { fetchAnnouncements, fetchCategories, fetchHomePictures, fetchProducts, fetchSiteStats, fetchVehicleBrands } from "@/lib/api";
 import { pickName, t } from "@/lib/i18n";
 import { getLang } from "@/lib/lang";
 import { alternatesFor, websiteJsonLd } from "@/lib/seo";
@@ -30,12 +30,12 @@ const tileClass = "flex h-full flex-col items-center gap-2.5 rounded-[14px] bord
 // HTML, in the page's language, which is the whole point of having this site next to the mobile app (a search engine reads it as it is).
 export default async function HomePage() {
   const lang = await getLang();
-  const [categories, products, brands, announcements, totals] = await Promise.all([fetchCategories(), fetchProducts({ sort: "newest", lang }), fetchVehicleBrands(), fetchAnnouncements(), fetchSiteStats()]);
+  const [categories, products, brands, announcements, totals, pictures] = await Promise.all([fetchCategories(), fetchProducts({ sort: "newest", lang }), fetchVehicleBrands(), fetchAnnouncements(), fetchSiteStats(), fetchHomePictures()]);
   const newest = products.slice(0, NEWEST_PAGE_SIZE);
   // The four real totals counted by the server (not the length of a list that was fetched). If the server cannot give them, the row is left out rather than showing numbers that are not true.
   const stats = totals ? [
-    { icon: "parts", n: totals.parts, label: t(lang, "home_stat_parts") }, { icon: "brands", n: totals.brands, label: t(lang, "home_stat_brands") },
-    { icon: "models", n: totals.models, label: t(lang, "home_stat_models") }, { icon: "countries", n: totals.countries, label: t(lang, "home_stat_countries") },
+    { icon: "parts", n: totals.parts, picture: pictures?.parts ?? null, label: t(lang, "home_stat_parts") }, { icon: "brands", n: totals.brands, picture: pictures?.brands ?? null, label: t(lang, "home_stat_brands") },
+    { icon: "models", n: totals.models, picture: pictures?.models ?? null, label: t(lang, "home_stat_models") }, { icon: "countries", n: totals.countries, picture: pictures?.countries ?? null, label: t(lang, "home_stat_countries") },
   ] : [];
 
   return (
@@ -56,9 +56,13 @@ export default async function HomePage() {
           <ul className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             {stats.map((s) => (
               <li key={s.icon} className="flex items-center gap-4 rounded-[14px] border border-line bg-white px-5 py-4">
-                <span className="grid size-14 flex-none place-items-center rounded-xl bg-[#e6edf2] text-[#8696a2]">
-                  <svg aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{STAT_ICONS[s.icon].map((d) => <path key={d} d={d} />)}</svg>
-                </span>
+                {s.picture ? (
+                  <PhotoBox src={s.picture} className="size-[72px]" sizes="72px" />
+                ) : (
+                  <span className="grid size-[72px] flex-none place-items-center rounded-xl bg-[#e6edf2] text-[#8696a2]">
+                    <svg aria-hidden="true" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{STAT_ICONS[s.icon].map((d) => <path key={d} d={d} />)}</svg>
+                  </span>
+                )}
                 <span className="min-w-0"><b className="block text-3xl font-extrabold leading-none text-navy">{number(s.n)}</b><span className="mt-1 block text-[15px] text-muted">{s.label}</span></span>
               </li>
             ))}

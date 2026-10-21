@@ -5,6 +5,7 @@ import { exportToExcel } from "./exportToExcel";
 import { sidebarEntries, groupOfPage, accessibleChildren, landingPage, TAB_LABELS } from "./adminNav";
 import GroupTabs from "./components/GroupTabs";
 import { FONT_IMPORT, C, disp, body, mono } from "./theme";
+import HomePicturesSection from "./HomePicturesSection";
 import { PlateChip, Badge, Stars, KpiCard, Card, Th, Td, ConfirmDialog, EditDialog, EnlargeablePhoto } from "./components/ui";
 import VersionsPanel from "./VersionsPanel";
 import VehicleImportPanel from "./VehicleImportPanel";
@@ -8336,6 +8337,7 @@ function SettingsPage({ currentUser, onSessionExpired }) {
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
           <ReceiptFooterSection />
           <AnnouncementsSection onSessionExpired={onSessionExpired} />
+          <HomePicturesSection onSessionExpired={onSessionExpired} />
         </div>
       </div>
     </div>

@@ -13,6 +13,9 @@ const { logAdminAction } = require('../audit/helpers');
  */
 const router = express.Router();
 
+// The four pictures beside Parts / Brands / Models / Countries on the home page (see homePictures.js).
+router.use('/home-pictures', require('./homePictures'));
+
 const MIN_RETURN_WINDOW_DAYS = 3;
 const MAX_RETURN_WINDOW_DAYS = 7;
 

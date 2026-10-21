@@ -17,6 +17,7 @@ vi.mock("@/lib/api", () => ({
   fetchVehicleBrands: vi.fn(async () => [{ id: "b1", name: "BYD", nameAr: "بي واي دي", photoUrl: null }, { id: "b2", name: "Geely", nameAr: null, photoUrl: null }]),
   fetchAnnouncements: vi.fn(async () => announcements.current),
   fetchSiteStats: vi.fn(async () => ({ parts: 1284, brands: 48, models: 312, countries: 39 })),
+  fetchHomePictures: vi.fn(async () => ({ parts: null, brands: null, models: null, countries: null })),
   fetchModelsForBrand: vi.fn(async () => []),
   fetchGenerationsForModel: vi.fn(async () => []),
   resolveImageUrl: (u: string) => u,

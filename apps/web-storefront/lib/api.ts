@@ -187,6 +187,13 @@ export async function fetchProductsPaginated(params: {
   return { items, total };
 }
 
+/** The pictures the admin chose for the four home page tiles (an address, or null: the tile then shows its icon). */
+export interface HomePictures { parts: string | null; brands: string | null; models: string | null; countries: string | null }
+export async function fetchHomePictures(): Promise<HomePictures | null> {
+  const data = await apiGet<{ pictures: HomePictures }>("/platform-settings/home-pictures");
+  return data?.pictures ?? null;
+}
+
 /** The four real totals of the home page (counted by the server). */
 export interface SiteStats { parts: number; brands: number; models: number; countries: number }
 export async function fetchSiteStats(): Promise<SiteStats | null> {

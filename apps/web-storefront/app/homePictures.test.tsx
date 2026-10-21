@@ -7,9 +7,10 @@ vi.mock("@/lib/lang", () => ({ getLang: vi.fn(async () => "en") }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/", useSearchParams: () => new URLSearchParams() }));
 vi.mock("@/lib/api", () => ({
   fetchCategories: vi.fn(async () => []), fetchVehicleBrands: vi.fn(async () => []), fetchAnnouncements: vi.fn(async () => []), fetchProducts: vi.fn(async () => []),
-  fetchSiteStats: vi.fn(async () => ({ parts: 1284, brands: 48, models: 312, countries: 39 })), fetchHomePictures: vi.fn(async () => m.pictures.current),
+  fetchSiteStats: vi.fn(async () => ({ parts: 1284, brands: 48, models: 312, countries: 39 })), fetchHomePictures: vi.fn(async () => m.pictures.current), fetchHomeText: vi.fn(async () => null),
   fetchModelsForBrand: vi.fn(async () => []), fetchGenerationsForModel: vi.fn(async () => []), resolveImageUrl: (u: string) => `https://api.example.com${u}`,
 }));
+vi.mock("@/lib/homeFonts", () => ({ homeFontStyle: (font?: string) => (font && font !== "default" ? { fontFamily: `Font ${font}` } : undefined) }));
 vi.mock("@/components/HeroPicker", () => ({ default: () => <div /> }));
 import { LangProvider } from "@/components/LangProvider";
 

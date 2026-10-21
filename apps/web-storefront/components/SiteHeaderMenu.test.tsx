@@ -6,7 +6,7 @@ vi.mock("next/image", () => ({ default: () => null }));
 vi.mock("next/navigation", () => ({ usePathname: () => "/", useRouter: () => ({ push: vi.fn() }), useSearchParams: () => new URLSearchParams() }));
 vi.mock("@/lib/api", () => ({
   fetchCategories: vi.fn(async () => Array.from({ length: 12 }, (_, i) => ({ id: `c${i}`, nameEn: `Section ${i}`, nameAr: `قسم ${i}`, photoUrl: null, sortOrder: i, commissionPercent: 10 }))),
-  resolveImageUrl: (u: string) => u,
+  resolveImageUrl: (u: string) => u, fetchHomeText: vi.fn(async () => null),
 }));
 vi.mock("@/lib/net", () => ({ isShopReachable: vi.fn(async () => true) }));
 vi.mock("./AccountMenu", () => ({ default: () => null }));

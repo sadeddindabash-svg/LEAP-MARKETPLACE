@@ -131,12 +131,76 @@ HP_STOREFRONT = [
  ("the Brands tile shows the Parts picture", "apps/web-storefront/app/page.tsx", "picture: pictures?.brands ?? null,", "picture: pictures?.parts ?? null,"),
  ("a server that cannot give the pictures crashes the home page", "apps/web-storefront/app/page.tsx", "picture: pictures?.countries ?? null,", "picture: pictures.countries ?? null,"),
 ]
-mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
+HT = "services/api/src/modules/platform-settings/homeText.js"; CR = "services/api/src/modules/catalog/routes.js"; SFA = "apps/web-storefront/"
+PP_SERVER = [
+ ("a font that is not offered is accepted", HT, "b.font !== undefined && !FONTS.includes(b.font)", "false"),
+ ("a size that is not offered is accepted", HT, "b.size !== undefined && !SIZES.includes(b.size)", "false"),
+ ("a text that is too long is accepted", HT, "b[lang].trim().length > MAX_LENGTH[name]", "false"),
+ ("a supplier may change the home texts", HT, "router.put('/', requireAuth, requireRole('admin'), async", "router.put('/', requireAuth, async"),
+ ("reading the home texts needs a sign-in (the website could not show them)", HT, "router.get('/', async (req, res, next) => {", "router.get('/', requireAuth, async (req, res, next) => {"),
+ ("a damaged stored value breaks the texts instead of reading as defaults", HT, "catch { /* all defaults */ }", "catch (e) { throw e; }"),
+ ("an empty text is kept as empty text (not 'use the website's wording')", HT, "const cleanText = (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null);", "const cleanText = (v) => (typeof v === 'string' ? v : null);"),
+ ("the sub-headline's default size is wrong", HT, "{ headline: 'large', subheadline: 'medium' }", "{ headline: 'large', subheadline: 'large' }"),
+ ("the home texts are not kept for half a minute", HT, "res.set('Cache-Control', 'public, max-age=30');", ""),
+ ("the same-model list includes parts that are sold out", CR, "vg.model_id = $1 AND p.id != $2 AND p.stock_quantity > 0 AND p.status = 'active'", "vg.model_id = $1 AND p.id != $2 AND p.status = 'active'"),
+ ("the same-model list includes the part itself", CR, "vg.model_id = $1 AND p.id != $2 AND p.stock_quantity > 0", "vg.model_id = $1 AND $2 IS NOT NULL AND p.stock_quantity > 0"),
+ ("the same-brand list repeats the parts of the same model", CR, "           WHERE vg2.model_id = $3\n         )", "           WHERE vg2.model_id = $3 AND false\n         )"),
+ ("a size taken from the part is not marked approximate", CR, "sizeApprox: shipped.shipping_source === 'part'", "sizeApprox: false"),
+ ("the same-model list ignores the page (every page is the first)", CR, "ORDER BY p.rating DESC NULLS LAST, p.id ASC LIMIT $3 OFFSET $4`,\n      [fitmentRows[0].model_id, req.params.id, limitNum, offset]", "ORDER BY p.rating DESC NULLS LAST, p.id ASC LIMIT $3`,\n      [fitmentRows[0].model_id, req.params.id, limitNum]"),
+]
+PD = SFA + "components/ProductDetails.tsx"; LR = SFA + "components/LazyProductRow.tsx"; VF = SFA + "components/VehicleFilter.tsx"; PGE = SFA + "app/products/[id]/page.tsx"; HOME = SFA + "app/page.tsx"
+PP_STOREFRONT = [
+ ("an approximate size is not marked", PD, 'const approx = product.sizeApprox ? ` (${t(lang, "detail_approx")})` : "";', 'const approx = "";'),
+ ("'+N more cars' counts wrongly", PD, "Math.max((product.fitCarCount ?? 0) - 1, 0)", "Math.max(product.fitCarCount ?? 0, 0)"),
+ ("one more car is worded as plural (\"+1 more cars\")", PD, "moreCars === 1 ? t(lang, \"detail_more_car_one\")", "false ? t(lang, \"detail_more_car_one\")"),
+ ("numbers are not written cleanly (1.40 kg)", PD, "String(Number(n.toFixed(2)))", "n.toFixed(2)"),
+ ("an incomplete size is shown as if it were complete", PD, "if (lengthCm != null && widthCm != null && heightCm != null)", "if (lengthCm != null)"),
+ ("a part with nothing to show still draws an empty box", PD, "  if (rows.length === 0) return null;\n", ""),
+ ("a row loads at once instead of when it is scrolled to", LR, 'if (typeof IntersectionObserver === "undefined") {', "if (true) {"),
+ ("a row asks twice when the scroll watcher reports twice", LR, "if (started.current) return; ", ""),
+ ("a row with nothing to show still draws its heading", LR, 'setState(items.some((p) => p.id !== hiddenId) ? "ready" : "empty");', 'setState("ready");'),
+ ("a failed row shows nothing instead of the message and Try again", LR, 'setState("error");', 'setState("empty");'),
+ ("a row ignores its limit of two more batches", LR, "maxExtraPages={maxExtraPages} gridClassName", "gridClassName"),
+ ("a row starts only when it is already on screen", LR, '"500px 0px"', '"0px"'),
+ ("the years are listed oldest first", VF, ".sort((x, y) => y - x)", ".sort((x, y) => x - y)"),
+ ("a year covered by one generation is not applied for the buyer", VF, "if (fitting.length === 1) {", "if (false) {"),
+ ("the generation question is asked even when there is only one answer", VF, "generationsForYear.length > 1", "generationsForYear.length > 0"),
+ ("changing the model keeps the old year", VF, "setSelectedModelId(e.target.value); setSelectedGenerationId(\"\"); setSelectedYear(\"\");", "setSelectedModelId(e.target.value); setSelectedGenerationId(\"\");"),
+ ("choosing a generation forgets the year", VF, "if (e.target.value) applyFilter(e.target.value, selectedYear);", "if (e.target.value) applyFilter(e.target.value, \"\");"),
+ ("the newest row does not hide the part itself", PGE, " pageSize={8} hiddenId={product.id} />", " pageSize={8} />"),
+ ("the model row is not limited to two more batches", PGE, 'source={{ kind: "sameModel", productId: product.id }} pageSize={8} maxExtraPages={2}', 'source={{ kind: "sameModel", productId: product.id }} pageSize={8}'),
+ ("the details block is missing under the photos", PGE, "          <ProductDetails product={product} lang={lang} />\n", ""),
+ ("the headline ignores the chosen font", HOME, "style={homeFontStyle(homeText?.headline.font)} ", ""),
+ ("the headline ignores the chosen size", HOME, 'HEADLINE_SIZE_CLASS[homeText?.headline.size ?? "large"]', "HEADLINE_SIZE_CLASS.large"),
+ ("the sub-headline ignores the admin's text", HOME, 'pickHomeText(homeText?.subheadline, lang, t(lang, "hero_lead"))', 't(lang, "hero_lead")'),
+ ("the top bar ignores the admin's text", SFA + "components/SiteHeader.tsx", 'pickHomeText(homeText?.topBar, lang, t(lang, "util_tagline"))', 't(lang, "util_tagline")'),
+ ("an Arabic page borrows the English text", SFA + "lib/homeText.ts", 'const value = lang === "ar" ? pair?.ar : pair?.en;', 'const value = (lang === "ar" ? pair?.ar : null) || pair?.en;'),
+ ("the website does not know the 'sameModel' list", SFA + "lib/gridSource.ts", 'if (kind === "sameBrand" || kind === "sameModel") {', 'if (kind === "sameBrand") {'),
+ ("the route serves the brand list for the model list", SFA + "app/api/products/route.ts", 'const fetchList = source.kind === "sameBrand" ? fetchSameBrand : fetchSameModel;', "const fetchList = fetchSameBrand;"),
+ ("the switch label is the old one", SFA + "lib/i18n.ts", 'fits_my_car: "Parts Fit with my Car"', 'fits_my_car: "Fits my car"'),
+]
+HTS = "apps/admin-dashboard/src/HomeTextSection.jsx"
+PP_ADMIN = [
+ ("Save is always available, even with no change", HTS, "disabled={!dirty || saving}", "disabled={saving}"),
+ ("Reset to default resets every block, not just its own", HTS, "setDraft((d) => ({ ...d, [name]: { ...blank(name) } }));", 'setDraft(() => ({ topBar: { ...blank("topBar") }, headline: { ...blank("headline") }, subheadline: { ...blank("subheadline") } }));'),
+ ("Reset gives the sub-headline the wrong default size", HTS, 'subheadline: { en: "", ar: "", font: "default", size: "medium" } };', 'subheadline: { en: "", ar: "", font: "default", size: "large" } };'),
+ ("the texts are saved without the admin's sign-in", HTS, "await saveHomeText(getStoredToken(), clean(draft))", "await saveHomeText(null, clean(draft))"),
+ ("the Arabic fields read left to right", HTS, 'dir={lang === "ar" ? "rtl" : "ltr"}', 'dir="ltr"'),
+ ("texts are saved with their spaces", HTS, "en: draft[name].en.trim()", "en: draft[name].en"),
+ ("an expired sign-in is shown as a plain error", HTS, "if (err instanceof SessionExpiredError) onSessionExpired?.(); else setError(err.message);", "setError(err.message);"),
+ ("the 'Saved' message stays after editing again", HTS, "const set = (name, key, value) => { setMessage(null);", "const set = (name, key, value) => {"),
+ ("the fields have no length limit", HTS, "maxLength={MAX[name]} ", ""),
+ ("the preview ignores the chosen size", HTS, "fontSize: PREVIEW_PX[name][draft[name].size]", "fontSize: 20"),
+]
+mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
 lo, hi = (int(sys.argv[2]), int(sys.argv[3])) if len(sys.argv) > 3 else (1, len(BREAKS))
 def fresh():
     subprocess.run(["su", "postgres", "-c", "psql -q -c 'DROP DATABASE IF EXISTS leap_catalog_import_test' -c \"CREATE DATABASE leap_catalog_import_test TEMPLATE leap_marketplace_dev OWNER leap_dev\""], check=True, capture_output=True)
 def run():
     if mode == "uiserver": return subprocess.run(["node", "--test", "test/siteStats.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
+    if mode == "ppserver": return subprocess.run(["node", "--test", "test/homeText.test.js", "test/productPage.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
+    if mode == "ppadmin": return subprocess.run(["npx", "vitest", "run", "src/HomeTextSection.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
+    if mode == "ppstorefront": return subprocess.run(["npx", "vitest", "run", "components/ProductDetails.test.tsx", "components/LazyProductRow.test.tsx", "components/VehicleFilterOrder.test.tsx", "components/FitsMyCarLabel.test.tsx", "app/stage1c-page.test.tsx", "app/homeText.test.tsx", "components/SiteHeaderTopBar.test.tsx", "lib/gridSourceModel.test.ts", "lib/homeText.test.ts", "app/api/products/routeSameModel.test.ts"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
     if mode == "hpserver": return subprocess.run(["node", "--test", "test/homePictures.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "hpadmin": return subprocess.run(["npx", "vitest", "run", "src/HomePicturesSection.test.jsx", "src/homePictureCrop.test.js"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
     if mode == "hpstorefront": return subprocess.run(["npx", "vitest", "run", "app/homePictures.test.tsx", "app/pages-i18n.test.tsx", "app/homeLazy.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=200).returncode
@@ -145,7 +209,7 @@ def run():
     if mode == "server": return subprocess.run(["node", "--test", "test/orderVehicles.test.js", "test/productCars.test.js", "test/orderVehiclesReplacement.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "screens": return subprocess.run(["npx", "vitest", "run", "src/OrderVehicle.test.jsx", "src/OrderVehicleFlow.test.jsx"], cwd=SP, capture_output=True, text=True, timeout=150).returncode
     return subprocess.run(["npx", "vitest", "run", "components/FitCheck.test.tsx", "app/stage1c-page.test.tsx", "app/cartFitCheck.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=150).returncode
-if mode in ("server", "uiserver", "hpserver"): fresh()
+if mode in ("server", "uiserver", "hpserver", "ppserver"): fresh()
 if run() != 0: sys.exit("The tests do not pass on the UNBROKEN code, so a break check would prove nothing.")
 print("baseline: the tests pass on the unbroken code\n", flush=True); caught = 0
 for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
@@ -154,10 +218,10 @@ for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
     if src.count(old) != 1: print(f"{n:2d}. SKIPPED (the line to break was not found exactly once): {what}"); continue
     shutil.copy(path, path + ".keep"); open(path, "w", encoding="utf-8").write(src.replace(old, new))
     try:
-        if mode in ("server", "uiserver", "hpserver"): fresh()
+        if mode in ("server", "uiserver", "hpserver", "ppserver"): fresh()
         failed = run() != 0
     finally: shutil.move(path + ".keep", path)
     caught += failed; print(f"{n:2d}. {'CAUGHT ' if failed else 'MISSED!'}  {what}", flush=True)
 print(f"\n{caught} of {sum(1 for i in range(1, len(BREAKS) + 1) if lo <= i <= hi)} breaks were caught")
-if mode in ("server", "uiserver", "hpserver"): fresh()
+if mode in ("server", "uiserver", "hpserver", "ppserver"): fresh()
 print("code restored; the tests pass again:", "yes" if run() == 0 else "NO (investigate)")
