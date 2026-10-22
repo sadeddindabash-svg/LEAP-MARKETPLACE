@@ -13,6 +13,7 @@ const SNAP = ['product_categories', 'category_parts', 'products', 'catalog_impor
 let server, base, admin, supplier; const q = (sql, params) => db.query(sql, params); const n = async (sql, params) => Number((await q(sql, params)).rows[0].n); const made = [];
 
 const restore = async () => {
+  await q('DROP TABLE IF EXISTS zz_rp_quotes, zz_rp_catrefs, "Zz Odd Quotes" CASCADE');      // tables of the real database that my test database does not have: stand-ins made by the tests below
   await q("DELETE FROM order_line_items WHERE product_id LIKE 'zz-rp-%'"); await q("DELETE FROM supplier_sub_orders WHERE order_id = 'zz-rp-ord'"); await q("DELETE FROM orders WHERE id = 'zz-rp-ord'");
   for (const t of DEPENDENTS) await q(`DELETE FROM ${t}`);
   await q('DELETE FROM category_parts'); await q('DELETE FROM product_categories'); await q('DELETE FROM products WHERE id NOT IN (SELECT id FROM zz_rp_products)'); await q('DELETE FROM catalog_import_batches');
@@ -119,6 +120,26 @@ test('update mode works with it too, and the audit log remembers what was remove
   const r = await send('commit', await sheet(), { mode: 'update', removeOthers: true, confirm: PHRASE }); assert.equal(r.status, 201); await assertExact();
   const log = (await q("SELECT details FROM admin_audit_log WHERE action = 'catalog_import' AND target_id = $1", [r.body.batchId])).rows; assert.equal(log.length, 1, 'the import is in the audit log'); const d = typeof log[0].details === 'string' ? JSON.parse(log[0].details) : log[0].details;
   assert.deepEqual([d.replaced, d.removedCategories, d.removedParts, d.removedProducts], [true, r.body.removal.counts.categories, r.body.removal.counts.parts, 0]);
+});
+// ---- tables of YOUR database that the test database lacks (a real server had `quote_request_items`, which points at products and made the removal fail): the removal must find such tables by itself
+test('a product that another table points at (a quote request) is never deleted, and the import does not fail: the check lists it as staying, with the table named', async () => {
+  await q('CREATE TABLE zz_rp_quotes (id serial PRIMARY KEY, product_id text NOT NULL REFERENCES products(id))'); await q("INSERT INTO zz_rp_quotes (product_id) VALUES ('zz-rp-prod-1')");
+  const chk = (await send('preview', await sheet(), { removeOthers: true, alsoProducts: true })).body.removal; assert.ok(!names(chk.products).includes('zz-rp-prod-1'), 'not offered for deletion'); assert.ok(names(chk.products).includes('zz-rp-prod-2'), 'a product nothing points at still is');
+  assert.match(chk.kept.products.find((p) => p.id === 'zz-rp-prod-1').reason, /zz_rp_quotes/); assert.ok(chk.kept.parts.some((p) => p.id === 'zz-rp-old-1') || chk.kept.categories.some((c) => c.id === 'zz-rp-old'), 'its sub-category and category stay too');
+  const r = await send('commit', await sheet(), { removeOthers: true, alsoProducts: true, confirm: PHRASE }); assert.equal(r.status, 201, JSON.stringify(r.body).slice(0, 200)); assert.equal(await n("SELECT count(*) AS n FROM products WHERE id = 'zz-rp-prod-1'"), 1); assert.equal(await n("SELECT count(*) AS n FROM zz_rp_quotes"), 1);
+  assert.equal(await n("SELECT count(*) AS n FROM products WHERE id = 'zz-rp-prod-2'"), 0); assert.deepEqual(r.body.removal.counts, chk.counts, 'what the import removed is what the check promised');
+});
+test('a category or sub-category that another table points at stays, and the import does not fail', async () => {
+  await q('CREATE TABLE zz_rp_catrefs (id serial PRIMARY KEY, category_id text REFERENCES product_categories(id), part_id text REFERENCES category_parts(id))'); await q("INSERT INTO zz_rp_catrefs (category_id, part_id) VALUES ('zz-rp-free', 'zz-rp-free-1')");
+  const chk = (await send('preview', await sheet(), { removeOthers: true })).body.removal; assert.ok(!names(chk.categories).includes('zz-rp-free') && !names(chk.parts).includes('zz-rp-free-1')); assert.match(chk.kept.categories.find((c) => c.id === 'zz-rp-free').reason, /zz_rp_catrefs/); assert.match(chk.kept.parts.find((p) => p.id === 'zz-rp-free-1').reason, /zz_rp_catrefs/);
+  const r = await send('commit', await sheet(), { removeOthers: true, confirm: PHRASE }); assert.equal(r.status, 201); assert.equal(await n("SELECT count(*) AS n FROM product_categories WHERE id = 'zz-rp-free'"), 1); assert.equal(await n("SELECT count(*) AS n FROM category_parts WHERE id = 'zz-rp-free-1'"), 1); assert.deepEqual(r.body.removal.counts, chk.counts);
+});
+test('even a table the removal could not recognise (an unusual name) cannot make it fail: the item that is still used stays, and the answer says what was REALLY removed', async () => {
+  const productsBefore = await ids('products'); await q('CREATE TABLE "Zz Odd Quotes" (id serial PRIMARY KEY, product_id text NOT NULL REFERENCES products(id))'); await q('INSERT INTO "Zz Odd Quotes" (product_id) VALUES (\'zz-rp-prod-1\')');
+  const r = await send('commit', await sheet(), { removeOthers: true, alsoProducts: true, confirm: PHRASE }); assert.equal(r.status, 201, JSON.stringify(r.body).slice(0, 200)); assert.equal(await n("SELECT count(*) AS n FROM products WHERE id = 'zz-rp-prod-1'"), 1, 'the product stays'); assert.equal(await n("SELECT count(*) AS n FROM products WHERE id = 'zz-rp-prod-2'"), 0);
+  assert.equal(await n("SELECT count(*) AS n FROM products WHERE id = 'zz-rp-prod-1'"), r.body.removal.kept.products.some((p) => p.id === 'zz-rp-prod-1') ? 1 : 0, 'and it is reported as staying'); assert.match(r.body.removal.kept.products.find((p) => p.id === 'zz-rp-prod-1').reason, /still used by something else/);
+  const nowThere = await ids('products'); assert.equal(r.body.removal.counts.products, [...productsBefore].filter((id) => !nowThere.has(id)).length, 'the count is of products really deleted');
+  assert.equal(await n("SELECT count(*) AS n FROM carts c JOIN cart_items i ON i.cart_id = c.id WHERE i.product_id = 'zz-rp-prod-1'"), 1, 'the cart line of the product that stayed was not lost');
 });
 test('only an admin: no sign-in is refused and so is a supplier (the check and the import)', async () => {
   for (const what of ['preview', 'commit']) { assert.equal((await send(what, await sheet(), { removeOthers: true, confirm: PHRASE, token: null })).status, 401); assert.equal((await send(what, await sheet(), { removeOthers: true, confirm: PHRASE, token: supplier })).status, 403); }

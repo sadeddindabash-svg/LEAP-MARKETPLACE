@@ -4,6 +4,7 @@ import { C, body } from "./theme";
 import { SessionExpiredError, getStoredToken } from "./auth";
 import { previewCatalogImport, commitCatalogImport, downloadCatalogTemplate, fetchCatalogHealth, fetchCatalogBatches, undoCatalogBatch, previewCatalogCleanup, commitCatalogCleanup } from "./catalogAdminApi";
 import { exportToExcel } from "./exportToExcel";
+import { CatalogReplaceOptions, CatalogRemovalPreview, CatalogRemovalBanner, REPLACE_PHRASE } from "./CatalogReplaceOptions";
 
 // "Import from Excel" on the Categories page: choose the parts catalog file, CHECK it (nothing is saved), read what will happen, then IMPORT (all or nothing). Below: how complete the
 // catalog is (placeholders, estimated sizes) and the imports so far, each of which can be undone (only what it created and nothing uses).
@@ -30,6 +31,7 @@ function downloadBlob(blob, filename) {
 export default function CatalogImportPanel({ onSessionExpired }) {
   const [file, setFile] = useState(null);
   const [mode, setMode] = useState("skip");
+  const [replace, setReplace] = useState({ on: false, alsoProducts: false, confirm: "" });      // "make the catalog exactly this sheet" (off at first)
   const [phase, setPhase] = useState("idle");              // idle | checking | checked | importing | done
   const [preview, setPreview] = useState(null);
   const [result, setResult] = useState(null);
@@ -56,9 +58,9 @@ export default function CatalogImportPanel({ onSessionExpired }) {
   }, [onSessionExpired]);
   useEffect(() => { refresh(); }, [refresh]);
 
-  const runCheck = async (theFile, theMode) => {
+  const runCheck = async (theFile, theMode, theReplace = replace) => {
     setPhase("checking"); setError(null); setResult(null); setShowAll(false);
-    try { setPreview(await previewCatalogImport(getStoredToken(), theFile, theMode)); setPhase("checked"); }
+    try { setPreview(await previewCatalogImport(getStoredToken(), theFile, theMode, theReplace)); setPhase("checked"); }
     catch (err) { setPreview(null); setPhase("idle"); fail(err); }
   };
   const handleTemplate = async () => {
@@ -66,9 +68,10 @@ export default function CatalogImportPanel({ onSessionExpired }) {
     try { downloadBlob(await downloadCatalogTemplate(getStoredToken()), "Leap_Parts_Catalog_Import_Template.xlsx"); } catch (err) { fail(err); }
   };
   const handleMode = (next) => { setMode(next); if (file && phase === "checked") runCheck(file, next); };
+  const changeReplace = (patch) => { const next = { ...replace, ...patch }; setReplace(next); if (file && phase === "checked" && ("on" in patch || "alsoProducts" in patch)) runCheck(file, mode, next); };
   const handleImport = async () => {
     setPhase("importing"); setError(null);
-    try { const done = await commitCatalogImport(getStoredToken(), file, mode); setResult(done); setPreview(null); setPhase("done"); refresh(); }
+    try { const done = await commitCatalogImport(getStoredToken(), file, mode, replace); setResult(done); setPreview(null); setPhase("done"); refresh(); }
     catch (err) { setPhase("checked"); fail(err); }
   };
   const handleUndo = async (id) => {
@@ -92,7 +95,7 @@ export default function CatalogImportPanel({ onSessionExpired }) {
     rows: [...clean.result.removed.categories.map((r) => ({ type: "Category", id: r.id, name: r.name, category: "" })), ...clean.result.removed.parts.map((r) => ({ type: "Part", id: r.id, name: r.name, category: r.category })),
       ...clean.result.removed.products.map((r) => ({ type: "Product", id: r.id, name: r.name, category: r.category }))],
   });
-  const reset = () => { setFile(null); setPreview(null); setResult(null); setError(null); setPhase("idle"); setMode("skip"); setUndone(null); };
+  const reset = () => { setFile(null); setPreview(null); setResult(null); setError(null); setPhase("idle"); setMode("skip"); setUndone(null); setReplace({ on: false, alsoProducts: false, confirm: "" }); };
   const handleReport = () => exportToExcel({
     sheetName: "Import check", filename: `Catalog_import_report_${preview.fileName.replace(/\.xlsx$/i, "")}.xlsx`,
     columns: [{ header: "Row", key: "row", width: 8 }, { header: "Category", key: "category", width: 16 }, { header: "Code", key: "code", width: 10 }, { header: "Part", key: "part", width: 30 }, { header: "Positions", key: "positions", width: 24 },
@@ -188,6 +191,7 @@ export default function CatalogImportPanel({ onSessionExpired }) {
             <label style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="radio" name="catalog-import-mode" checked={mode === "skip"} onChange={() => handleMode("skip")} /> Skip rows that already exist: only fill their empty fields (recommended)</label>
             <label style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="radio" name="catalog-import-mode" checked={mode === "update"} onChange={() => handleMode("update")} /> Update rows that already exist</label>
           </div>
+          <CatalogReplaceOptions replace={replace} onChange={changeReplace} />
         </div>
       )}
 
@@ -211,6 +215,7 @@ export default function CatalogImportPanel({ onSessionExpired }) {
               {preview.nearDuplicates.map((d) => <div key={d.newName + d.existingId}>"{d.newName}" and the existing "{d.existingName}"</div>)}
             </div>
           )}
+          {preview.removal && <CatalogRemovalBanner removal={preview.removal} />}
           {preview.nothingToImport && <div style={{ ...body, fontSize: 12.5, color: C.ink, background: C.canvas, borderRadius: 8, padding: 10, marginBottom: 8 }}>Nothing to import: every row already exists{mode === "skip" ? ' (choose "Update rows that already exist" to refresh them)' : ""}.</div>}
           {preview.notes.map((n, i) => <div key={i} style={{ ...body, fontSize: 12, color: C.muted, marginBottom: 4 }}>{n}</div>)}
 
@@ -238,9 +243,10 @@ export default function CatalogImportPanel({ onSessionExpired }) {
           </div>
           {!showAll && shownRows.length > SHOWN_AT_FIRST && <button onClick={() => setShowAll(true)} style={{ ...button(false, false), marginTop: 8 }}>Show all {shownRows.length} rows</button>}
 
+          {preview.removal && <CatalogRemovalPreview removal={preview.removal} replace={replace} onChange={changeReplace} />}
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 14 }}>
-            <button disabled={!preview.ready || phase === "importing"} onClick={handleImport} style={button(true, !preview.ready || phase === "importing")}>
-              {phase === "importing" ? "Importing…" : `Import ${plural(s.newCategories, "category", "categories")} and ${plural(s.newParts, "part", "parts")}`}
+            <button disabled={!preview.ready || phase === "importing" || (replace.on && replace.confirm !== REPLACE_PHRASE)} onClick={handleImport} style={button(true, !preview.ready || phase === "importing" || (replace.on && replace.confirm !== REPLACE_PHRASE))}>
+              {phase === "importing" ? "Importing…" : `Import ${plural(s.newCategories, "category", "categories")} and ${plural(s.newParts, "part", "parts")}${preview.removal && preview.removal.counts.categories + preview.removal.counts.parts + preview.removal.counts.products > 0 ? ` and remove ${plural(preview.removal.counts.categories + preview.removal.counts.parts + preview.removal.counts.products, "old item", "old items")}` : ""}`}
             </button>
             <span style={{ ...body, fontSize: 12, color: C.muted }}>Nothing is saved until you press Import. Everything is saved together, or nothing.</span>
           </div>
@@ -255,6 +261,7 @@ export default function CatalogImportPanel({ onSessionExpired }) {
             {result.summary.updatedCategories + result.summary.updatedParts > 0 ? `; ${plural(result.summary.updatedCategories + result.summary.updatedParts, "existing row", "existing rows")} filled or updated` : ""}.
             {result.summary.placeholdersUsed > 0 && <div style={{ color: "#8A5A12", display: "flex", gap: 6, alignItems: "center", marginTop: 6 }}><AlertTriangle size={14} /> {plural(result.summary.placeholdersUsed, "item uses", "items use")} the photo placeholder: add the real photos on this page when you have them.</div>}
           </div>
+          {result.removal && <div style={{ ...body, fontSize: 12.5, color: C.ink, marginTop: 8 }}>Removed because they were not in the sheet: {plural(result.removal.counts.categories, "category", "categories")}, {plural(result.removal.counts.parts, "sub-category", "sub-categories")}{result.removal.alsoProducts ? `, ${plural(result.removal.counts.products, "product", "products")}` : ""}{result.picturesRemoved > 0 ? `; ${plural(result.picturesRemoved, "unused picture", "unused pictures")} deleted from the server` : ""}.</div>}
           <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
             <button onClick={reset} style={button(false, false)}>Check another file</button>
           </div>

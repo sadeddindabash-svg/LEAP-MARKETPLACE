@@ -12,10 +12,13 @@ async function call(method, path, token, body) {
   if (!response.ok) { const error = new Error(data.error || `Request failed (${response.status})`); error.payload = data; throw error; }
   return data;
 }
-async function sendImport(path, token, file, mode) {
+async function sendImport(path, token, file, mode, replace = null) {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("mode", mode);
+  if (replace && replace.on) {                                  // "make the catalog exactly this sheet" (the server asks for the typed sentence again)
+    formData.append("removeOthers", "1"); formData.append("alsoProducts", replace.alsoProducts ? "1" : "0"); formData.append("confirm", replace.confirm || "");
+  }
   const response = await fetch(`${BASE}/import/${path}`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData });
   if (response.status === 401) throw new SessionExpiredError(EXPIRED);
   const data = await response.json().catch(() => ({}));
@@ -23,8 +26,8 @@ async function sendImport(path, token, file, mode) {
   return data;
 }
 
-export const previewCatalogImport = (token, file, mode = "skip") => sendImport("preview", token, file, mode);
-export const commitCatalogImport = (token, file, mode = "skip") => sendImport("commit", token, file, mode);
+export const previewCatalogImport = (token, file, mode = "skip", replace = null) => sendImport("preview", token, file, mode, replace);
+export const commitCatalogImport = (token, file, mode = "skip", replace = null) => sendImport("commit", token, file, mode, replace);
 export async function downloadCatalogTemplate(token) {
   const response = await fetch(`${BASE}/import/template`, { headers: { Authorization: `Bearer ${token}` } });
   if (response.status === 401) throw new SessionExpiredError(EXPIRED);

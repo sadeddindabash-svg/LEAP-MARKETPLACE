@@ -7,9 +7,13 @@ an earlier import added. Everything happens in ONE step together with the import
 ## How it decides what is "in the sheet" (and what is old)
 * In the sheet = every category and sub-category that a valid row of the sheet **matches** (an existing one, by its code or its English name) or **creates**. Everything else is old.
   A hand-made category with the same name as a category of the sheet (for example "Engine") is **the same category**: it gets the sheet's code and stays; its sub-categories that the sheet does not list are removed.
+* **Nothing is assumed about which records point at a product, a category or a sub-category.** The import looks this up in the database itself (every foreign key), so orders, **quote requests** and anything added later are protected automatically:
+  a product that any such record points at is never deleted (its sub-category and category stay too), and a category or sub-category that another table points at stays. The check says which ("it is used in a quote request").
+  As a last safety net each deletion is also tried on its own: if the database ever refuses one for a reason nobody foresaw, that item simply stays (reason: "it is still used by something else"), the rest of the import goes ahead,
+  and the answer reports what was **really** removed. (An earlier version of this package assumed only orders and failed on a server that has quote requests: this version fixes that.)
 * **A product's category and sub-category are never removed from under it.** A product refers to them by name, so a category or sub-category that a product still uses **stays**, and the check lists it with the reason ("1 product uses it").
 * Optional second choice, **"Also delete the products that use the old categories and sub-categories"** (off at first): those products are deleted too (with their pictures, reviews, wishlist entries and cart lines), and then the categories they held go as
-  well. **A product that has ever been in an order is never deleted** (order history keeps its products), and its category and sub-category stay.
+  well. **A product that an order or a quote request points at is never deleted** (that history keeps its products), and its category and sub-category stay.
 * The pictures of what is removed (a category's or sub-category's own picture, a deleted product's pictures) are deleted from the server too, unless something else still uses them. The "photo coming soon" placeholders are never touched.
 
 ## The safety steps
@@ -45,4 +49,4 @@ NOTHING (send that file to the Leap team). **No migration and nothing to install
 * A shopper's saved search that points at a removed category simply finds nothing.
 * The two choices are separate and both off at first, so an ordinary import behaves exactly as before.
 * Tests: server `node --test test/catalogReplace.test.js` (in `services\api`, against a database whose name ends in `_test`; it puts the catalog back exactly after each test); admin `npx vitest run src/CatalogReplace.test.jsx`.
-  `scripts/break-check-order-vehicles.py crserver|cradmin` breaks the code on purpose (34 ways) and expects the tests to fail.
+  `scripts/break-check-order-vehicles.py crserver|cradmin` breaks the code on purpose (41 ways) and expects the tests to fail.

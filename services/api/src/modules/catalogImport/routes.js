@@ -19,6 +19,8 @@ const { buildTemplate } = require('./template');
 const { ensurePlaceholders } = require('./placeholders');
 const details = require('./details');
 const { runCleanup } = require('./cleanup');
+const { planRemoval, applyRemoval, REPLACE_PHRASE } = require('./replace');
+const { removeIfUnused } = require('../uploads/unusedPictures');
 
 const router = express.Router();
 const guard = [requireAuth, requireRole('admin'), requirePageAccess('categories')];
@@ -44,18 +46,21 @@ const takeFile = (req, res) => new Promise((resolve, reject) => {
   });
 });
 const modeOf = (req) => ((req.body || {}).mode === 'update' ? 'update' : 'skip');
+/** The form fields of "make the catalog exactly the sheet" (1 or true): removeOthers = remove everything the sheet does not mention; alsoProducts = also delete the products that use it (never one that was ordered). */
+const flag = (req, name) => ['1', 'true'].includes(String((req.body || {})[name]));
 
-function describe(file, mode, parsed, run) {
+function describe(file, mode, parsed, run, removal = null) {
   const rows = run.rows;
   const errors = rows.filter((r) => r.status === 'error').length;
   const withWarning = rows.filter((r) => r.messages.some((m) => m.level === 'warning')).length;
   const toImport = run.counts.newParts + run.counts.updatedParts + run.counts.newCategories + run.counts.updatedCategories;
+  const removing = removal ? removal.counts.categories + removal.counts.parts + removal.counts.products : 0;      // what "make the catalog exactly the sheet" would remove
   const blocking = errors > 0;
   return {
     fileName: file.originalname, mode, sheet: parsed.sheetName,
     summary: { rows: rows.length, rowsWithErrors: errors, rowsWithWarnings: withWarning, ...run.counts },
     rows, notes: run.notes, nearDuplicates: run.nearDuplicates, issues: parsed.issues,
-    blocking, ready: !blocking && toImport > 0, nothingToImport: !blocking && toImport === 0,
+    removal, blocking, ready: !blocking && (toImport > 0 || removing > 0), nothingToImport: !blocking && toImport === 0 && removing === 0,
   };
 }
 
@@ -63,13 +68,15 @@ async function loadAndCheck(req, res) {
   const file = await takeFile(req, res);
   const mode = modeOf(req);                         // the form fields (including "mode") are available only once the upload has been unpacked
   const parsed = await parseWorkbook(file.buffer);
-  return { file, mode, parsed, items: validateRows(parsed.rows) };
+  return { file, mode, removeOthers: flag(req, 'removeOthers'), alsoProducts: flag(req, 'alsoProducts'), parsed, items: validateRows(parsed.rows) };
 }
 
 router.post('/import/preview', ...guard, async (req, res, next) => {
   try {
-    const { file, mode, parsed, items } = await loadAndCheck(req, res);
-    res.json(describe(file, mode, parsed, await runImport(db, items, mode, { apply: false })));
+    const { file, mode, removeOthers, alsoProducts, parsed, items } = await loadAndCheck(req, res);
+    const run = await runImport(db, items, mode, { apply: false });
+    const removal = removeOthers && run.keep.categoryIds.size > 0 ? await planRemoval(db, run.keep, { alsoProducts }) : null;      // only READS: the check removes nothing
+    res.json(describe(file, mode, parsed, run, removal));
   } catch (err) {
     if (err instanceof ImportError) return res.status(err.status).json({ error: err.message });
     next(err);
@@ -79,14 +86,21 @@ router.post('/import/preview', ...guard, async (req, res, next) => {
 router.post('/import/commit', ...guard, async (req, res, next) => {
   let client;
   try {
-    const { file, mode, parsed, items } = await loadAndCheck(req, res);
+    const { file, mode, removeOthers, alsoProducts, parsed, items } = await loadAndCheck(req, res);
+    if (removeOthers && String((req.body || {}).confirm || '').trim() !== REPLACE_PHRASE) return res.status(400).json({ error: `To remove everything that is not in the sheet, type ${REPLACE_PHRASE} to confirm. Nothing was changed.` });
     const placeholders = ensurePlaceholders();
     const batchId = newBatchId();
     client = await db.getPool().connect();
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['catalog_import']);          // two imports never run at the same moment
     const run = await runImport(client, items, mode, { apply: true, batchId, placeholders });
-    const answer = describe(file, mode, parsed, run);
+    let removal = null; let applied = { imageUrls: [] };
+    if (removeOthers) {
+      if (run.keep.categoryIds.size === 0) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'The sheet has no category to keep, so nothing was imported or removed.' }); }
+      removal = await planRemoval(client, run.keep, { alsoProducts });      // the same function as the check, run inside this transaction
+      applied = await applyRemoval(client, removal);
+    }
+    const answer = describe(file, mode, parsed, run, removal);
     if (answer.blocking || answer.nothingToImport) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: answer.blocking ? 'The file has problems, so nothing was imported. Fix them and check the file again.' : 'There is nothing to import: every row already exists.', ...answer });
@@ -95,8 +109,11 @@ router.post('/import/commit', ...guard, async (req, res, next) => {
     await client.query('INSERT INTO catalog_import_batches (id, created_by, file_name, mode, categories_added, parts_added, parts_updated) VALUES ($1, $2, $3, $4, $5, $6, $7)',
       [batchId, by, file.originalname, mode, run.counts.newCategories, run.counts.newParts, run.counts.updatedParts]);
     await client.query('COMMIT');
-    await logAdminAction(req, 'catalog_import', 'catalog_import', batchId, { fileName: file.originalname, mode, ...run.counts });
-    res.status(201).json({ imported: true, batchId, ...answer });
+    await logAdminAction(req, 'catalog_import', 'catalog_import', batchId, { fileName: file.originalname, mode, ...run.counts, ...(removal ? { replaced: true, removedCategories: removal.counts.categories, removedParts: removal.counts.parts, removedProducts: removal.counts.products } : {}) });
+    // the pictures of what was removed: deleted too, when nothing else uses them (a problem here never undoes the import)
+    let picturesRemoved = 0;
+    if (removal) { try { picturesRemoved = await removeIfUnused(db, [...removal.photoUrls, ...applied.imageUrls]); } catch (err) { console.error('Removing the pictures of the removed catalog failed:', err.message); } }
+    res.status(201).json({ imported: true, batchId, picturesRemoved, ...answer });
   } catch (err) {
     if (client) await client.query('ROLLBACK').catch(() => {});
     if (err instanceof ImportError) return res.status(err.status).json({ error: err.message });

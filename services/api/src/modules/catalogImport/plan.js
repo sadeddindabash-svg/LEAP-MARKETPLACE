@@ -92,6 +92,7 @@ async function runImport(q, items, mode, { apply = false, batchId = null, placeh
   const partByName = new Map(parts.map((p) => [`${p.category_id}|${key(p.name_en)}`, p]));
   const partIds = new Set((await q.query('SELECT id FROM category_parts')).rows.map((r) => key(r.id)));
   const partOrder = new Map();
+  const keepPartIds = new Set();                                                       // every part the sheet matches or creates: "in the sheet" (used when the catalog is replaced)
   const nextPartOrder = async (categoryId, isNew) => {
     if (!partOrder.has(categoryId)) partOrder.set(categoryId, isNew ? 0 : (await q.query('SELECT COALESCE(MAX(sort_order), 0) AS m FROM category_parts WHERE category_id = $1', [categoryId])).rows[0].m);
     partOrder.set(categoryId, partOrder.get(categoryId) + 10);
@@ -116,6 +117,7 @@ async function runImport(q, items, mode, { apply = false, batchId = null, placeh
       allowed_positions: part.positions.join('; '), applies_to: part.appliesTo || null, special_shipping: part.special || null, keywords_en: part.keywords.en || null, keywords_ar: part.keywords.ar || null, keywords_zh: part.keywords.zh || null,
     };
     if (existing) {
+      keepPartIds.add(existing.id);
       const blank = (v) => v === null || v === undefined || String(v).trim() === '';
       const fill = {}, diff = {};
       for (const [col, val] of Object.entries(values)) {
@@ -152,6 +154,7 @@ async function runImport(q, items, mode, { apply = false, batchId = null, placeh
     }
     let id = `part_${part.code.toLowerCase().replace(/-/g, '_')}`; for (let n = 2; partIds.has(key(id)); n++) id = `part_${part.code.toLowerCase().replace(/-/g, '_')}_${n}`;
     partIds.add(key(id));
+    keepPartIds.add(id);
     const order = await nextPartOrder(cat.id, cat.isNew);
     if (apply) {
       await q.query(
@@ -164,7 +167,8 @@ async function runImport(q, items, mode, { apply = false, batchId = null, placeh
     counts.newParts++; counts.placeholdersUsed++; if (part.sizeBasis === 'estimate') counts.estimatedParts++;
     rows.push({ ...summary, status: 'new', messages });
   }
-  return { rows, counts, notes, nearDuplicates, savedCategories: [...state.values()].filter((s) => s.isNew).length };
+  return { rows, counts, notes, nearDuplicates, savedCategories: [...state.values()].filter((s) => s.isNew).length,
+    keep: { categoryIds: new Set([...state.values()].filter((s) => s.id).map((s) => s.id)), partIds: keepPartIds } };
 }
 
 module.exports = { runImport, newBatchId, similar, stems, key, isPlaceholder };
