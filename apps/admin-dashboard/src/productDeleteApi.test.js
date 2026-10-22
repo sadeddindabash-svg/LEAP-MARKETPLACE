@@ -30,3 +30,16 @@ describe('hidden products', () => {
     answer(401, {}); await expect(sendProductsToReview('tok', ['a'])).rejects.toBeInstanceOf(SessionExpiredError); answer(400, { error: 'No product was chosen' }); await expect(sendProductsToReview('tok', [])).rejects.toThrow('No product was chosen');
   });
 });
+
+import { deleteCategory, fetchCategoryInUse, removeCategoryWithProducts } from './auth';
+describe('categories: what uses a category, and removing it', () => {
+  it('"in use" is a GET and the removal a POST of the sentence, both with the admin\'s token and the category id encoded', async () => {
+    answer(200, { total: 1 }); await fetchCategoryInUse('tok', 'a b/c'); await removeCategoryWithProducts('tok', 'c1', 'DELETE CATEGORY');
+    expect(calls.map((c) => [c.options.method, c.url])).toEqual([['GET', '/catalog/admin/categories/a%20b%2Fc/in-use'], ['POST', '/catalog/admin/categories/c1/remove']]); expect(calls[0].options.headers.Authorization).toBe('Bearer tok'); expect(JSON.parse(calls[1].options.body)).toEqual({ confirm: 'DELETE CATEGORY' });
+  });
+  it('an expired sign-in and a refusal are told apart', async () => { answer(401, {}); await expect(fetchCategoryInUse('tok', 'c1')).rejects.toBeInstanceOf(SessionExpiredError); answer(400, { error: 'type DELETE CATEGORY' }); await expect(removeCategoryWithProducts('tok', 'c1', 'x')).rejects.toThrow('type DELETE CATEGORY'); });
+  it('the plain category delete keeps the server\'s refusal AND its details, so the screen knows products are in the way', async () => {
+    answer(409, { error: 'Cannot delete this category — real products still reference it', inUse: true }); const error = await deleteCategory('tok', 'c1').catch((e) => e); expect(error.message).toBe('Cannot delete this category — real products still reference it'); expect(error.payload.inUse).toBe(true);
+    answer(204, null); expect(await deleteCategory('tok', 'c2')).toBeNull();
+  });
+});

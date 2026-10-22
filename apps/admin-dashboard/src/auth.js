@@ -454,7 +454,7 @@ export async function fetchCategories() {
   return response.json();
 }
 
-export async function fetchAdminProducts(token, { search, page, supplierId, brand, year, weightMin, weightMax, volumeMin, volumeMax, sortBy, sortDir, groupBy } = {}) {
+export async function fetchAdminProducts(token, { search, page, supplierId, brand, year, weightMin, weightMax, volumeMin, volumeMax, sortBy, sortDir, groupBy, status } = {}) {
   const params = new URLSearchParams();
   if (search) params.set("search", search);
   if (page) params.set("page", page);
@@ -468,6 +468,7 @@ export async function fetchAdminProducts(token, { search, page, supplierId, bran
   if (sortBy) params.set("sortBy", sortBy);
   if (sortDir) params.set("sortDir", sortDir);
   if (groupBy) params.set("groupBy", groupBy);
+  if (status) params.set("status", status);          // "hidden": the products that were hidden (Reject), which are in no other list
   const response = await fetch(`${API_BASE_URL}/catalog/admin/products?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
   if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
   const data = await response.json();
@@ -499,6 +500,18 @@ export async function updateAdminProduct(token, id, patch) {
 // submission requirements (photo count, whether photos/video are
 // mandatory, max video duration) -- GET is public (no token needed,
 // matching the backend's own real design), PATCH is admin-only.
+// Admin > All products > Delete (see the server's catalog/productDelete.js): the check changes nothing; the deletion needs confirm: true for one product and the typed sentence for several.
+async function productDeleteCall(path, token, body) {
+  const response = await fetch(`${API_BASE_URL}/catalog/admin/products/${path}`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+export const checkProductDelete = (token, ids) => productDeleteCall("delete-check", token, { ids });
+export const deleteProducts = (token, ids, confirm) => productDeleteCall("delete", token, { ids, confirm });
+// Hidden products go back to the moderation queue (not straight to live).
+export const sendProductsToReview = (token, ids) => productDeleteCall("send-to-review", token, { ids });
 export async function fetchProductRequirements() {
   const response = await fetch(`${API_BASE_URL}/catalog/product-requirements`);
   const data = await response.json();

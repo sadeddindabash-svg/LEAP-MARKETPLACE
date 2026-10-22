@@ -13,6 +13,7 @@ import LegalPagesSection from "./LegalPagesSection";
 import { PlateChip, Badge, Stars, KpiCard, Card, Th, Td, ConfirmDialog, EditDialog, EnlargeablePhoto } from "./components/ui";
 import VersionsPanel from "./VersionsPanel";
 import VehicleImportPanel from "./VehicleImportPanel";
+import ProductDeleteDialog, { ProductSelectionBar, SelectBox, SelectAllBox, useProductSelection, ProductViewSwitch, ProductReviewDialog, ProductPageDelete } from "./ProductDeleteDialog";
 import CategoriesTabs from "./CategoriesTabs";
 import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, fetchSupplierById, verifySupplier, updateSupplierCountry, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
   fetchCountriesList, fetchWarehouseCountries, fetchCountryGroups, createCountryGroup, deleteCountryGroup, addCountryGroupMember, removeCountryGroupMember,
@@ -2300,6 +2301,10 @@ function ProductListPage({ onSelect, onSessionExpired }) {
   const [sortBy, setSortBy] = useState("name");
   const [sortDir, setSortDir] = useState("asc");
   const [groupBy, setGroupBy] = useState("");
+  const selection = useProductSelection();
+  const [view, setView] = useState("live");               // "live" or "hidden" products
+  const [reviewing, setReviewing] = useState(null);       // the ids being sent back to review (the window is open), or null
+  const [deleting, setDeleting] = useState(null);          // the ids being deleted (the window is open), or null
 
   useEffect(() => {
     fetchSuppliers(getStoredToken()).then(setSuppliers).catch(() => {}); // non-critical -- filter just stays empty
@@ -2307,7 +2312,7 @@ function ProductListPage({ onSelect, onSessionExpired }) {
   }, []);
 
   const load = async (overrides = {}) => {
-    const params = { search, page, supplierId, brand, year, weightMin, weightMax, volumeMin, volumeMax, sortBy, sortDir, groupBy, ...overrides };
+    const params = { search, page, supplierId, brand, year, weightMin, weightMax, volumeMin, volumeMax, sortBy, sortDir, groupBy, status: view === "hidden" ? "hidden" : undefined, ...overrides };
     try {
       const result = await fetchAdminProducts(getStoredToken(), params);
       setData(result);
@@ -2408,10 +2413,15 @@ function ProductListPage({ onSelect, onSessionExpired }) {
         <div style={{ ...body, fontSize: 12.5, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>
       )}
 
+      <ProductViewSwitch view={view} onChange={(next) => { setView(next); selection.clear(); setPage(1); load({ page: 1, status: next === "hidden" ? "hidden" : undefined }); }} />
+      <ProductSelectionBar count={selection.picked.size} onDelete={() => setDeleting([...selection.picked])} onClear={selection.clear} onReview={view === "hidden" ? () => setReviewing([...selection.picked]) : undefined} />
+      {reviewing && <ProductReviewDialog ids={reviewing} onClose={() => setReviewing(null)} onChanged={() => { selection.clear(); load(); }} onSessionExpired={onSessionExpired} />}
+      {deleting && <ProductDeleteDialog ids={deleting} onClose={() => setDeleting(null)} onChanged={() => { selection.clear(); load(); }} onSessionExpired={onSessionExpired} />}
       <Card title={data ? `Products (${data.total})` : "Products"}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr>
+              <Th><SelectAllBox ids={(data?.products || []).map((x) => x.id)} picked={selection.picked} onToggleAll={selection.toggleAll} /></Th>
               <Th></Th>
               <Th>Name</Th>
               <Th>Category / Part</Th>
@@ -2430,12 +2440,13 @@ function ProductListPage({ onSelect, onSessionExpired }) {
                 <React.Fragment key={p.id}>
                   {showGroupHeader && (
                     <tr>
-                      <td colSpan={7} style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, background: C.canvas, padding: "8px 16px", borderBottom: `1px solid ${C.line}`, textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                      <td colSpan={8} style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, background: C.canvas, padding: "8px 16px", borderBottom: `1px solid ${C.line}`, textTransform: "uppercase", letterSpacing: "0.03em" }}>
                         {groupLabels[groupBy]}: {groupValue}
                       </td>
                     </tr>
                   )}
                   <tr onClick={() => onSelect(p.id)} style={{ cursor: "pointer" }}>
+                    <td onClick={(e) => e.stopPropagation()} style={{ padding: "0 8px", width: 28 }}><SelectBox id={p.id} name={p.name} picked={selection.picked} onToggle={selection.toggle} /></td>
                     <Td>
                       {p.firstImage ? (
                         <img src={p.firstImage.startsWith("http") ? p.firstImage : `${API_BASE_URL}${p.firstImage}`} alt="" style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 6, border: `1px solid ${C.line}`, display: "block" }} />
@@ -2717,7 +2728,10 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
 
   return (
     <div style={{ padding: 24, maxWidth: 760 }}>
-      <button onClick={onBack} style={{ ...body, fontSize: 12.5, color: C.muted, background: "none", border: "none", cursor: "pointer", marginBottom: 16 }}>← Back to Products</button>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <button onClick={onBack} style={{ ...body, fontSize: 12.5, color: C.muted, background: "none", border: "none", cursor: "pointer" }}>← Back to Products</button>
+        <ProductPageDelete productId={productId} onBack={onBack} onSessionExpired={onSessionExpired} />
+      </div>
 
       {errorMessage && <div style={{ ...body, fontSize: 12.5, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>}
       {saveSuccess && <div style={{ ...body, fontSize: 12.5, color: C.gauge, background: C.gaugeBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>Saved.</div>}

@@ -483,7 +483,34 @@ PD_ADMIN = [
  ("the product page's window is opened for nothing", PDD, "ids={[productId]}", "ids={[]}"),
  ("the check asks for the wrong thing (a deletion)", PDA + "auth.js", 'checkProductDelete = (token, ids) => productDeleteCall("delete-check"', 'checkProductDelete = (token, ids) => productDeleteCall("delete"'),
 ]
-mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"pdserver": PD_SERVER, "pdadmin": PD_ADMIN, "clserver": CL_SERVER, "ffstorefront": FF_STOREFRONT, "crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
+CXS = "services/api/src/modules/catalog/categoryRemove.js"; CXA = "apps/admin-dashboard/src/"
+CX_SERVER = [
+ ("anyone may see what uses a category", CXS, "router.get('/:id/in-use', ...guard,", "router.get('/:id/in-use',"),
+ ("anyone may remove a category with its products", CXS, "router.post('/:id/remove', ...guard,", "router.post('/:id/remove',"),
+ ("the category is removed without the typed sentence", CXS, "if (String((req.body || {}).confirm || '').trim() !== PHRASE)", "if (false)"),
+ ("the category is deleted even though products had to stay", CXS, "if (stay.length > 0) categoryReason =", "if (false) categoryReason ="),
+ ("the category is deleted while a sub-category had to stay", CXS, "else if (partsStay.length > 0) categoryReason =", "else if (false) categoryReason ="),
+ ("a sub-category that a product still uses is deleted", CXS, "AND NOT EXISTS (SELECT 1 FROM products pr WHERE pr.category = p.category_id AND lower(btrim(pr.part)) = lower(btrim(p.name_en))) RETURNING p.id", "RETURNING p.id"),
+ ("the sub-categories are never deleted", CXS, "const free = parts.filter((p) => !partHeld.has(p.id)).map((p) => p.id);", "const free = [];"),
+ ("a table that points at a sub-category is not looked for", CXS, "const partHeld = await blockers(client, 'category_parts', parts.map((p) => p.id));", "const partHeld = new Map();"),
+ ("hidden products are counted as live", CXS, "inactive: 'hidden'", "inactive: 'live'"),
+ ("the picture files of the deleted products stay", CXS, ".filter((r) => gone.has(r.product_id)).map((r) => r.url)", ".filter(() => false).map((r) => r.url)"),
+ ("the removal is not in the audit log", CXS, "await logAdminAction(req, 'category_removed_with_products'", "void (req, 'category_removed_with_products'"),
+ ("the refusal no longer says why (inUse)", "services/api/src/modules/catalog/routes.js", "real products still reference it', inUse: true });", "real products still reference it' });"),
+]
+CD = CXA + "CategoryInUseDialog.jsx"
+CX_ADMIN = [
+ ("the sentence to type is not the server's", CD, 'export const REMOVE_PHRASE = "DELETE CATEGORY";', 'export const REMOVE_PHRASE = "DELETE";'),
+ ("the button works without the typed sentence", CD, "disabled={typed !== REMOVE_PHRASE || phase === \"removing\"}", "disabled={phase === \"removing\"}"),
+ ("the page behind is refreshed even when nothing was removed", CD, "if (r.removedProducts > 0 || r.removedSubCategories > 0 || r.categoryRemoved) onChanged?.();", "onChanged?.();"),
+ ("the result says the category was deleted when it stays", CD, 'result.categoryRemoved ? "The category was deleted." : "The category stays."', 'result.categoryRemoved ? "The category stays." : "The category was deleted."'),
+ ("the window does not say the category cannot be fully deleted while products must stay", CD, "<b>So this category cannot be deleted completely while they exist.</b>", ""),
+ ("the window does not explain that hidden products and drafts still count", CD, "{hidden > 0 && <span", "{false && <span"),
+ ("the button label does not change when some products must stay", CD, "info.heldTotal > 0 ? `Delete the", "false ? `Delete the"),
+ ("the refusal loses its details (the screen cannot know products are in the way)", CXA + "auth.js", "error.payload = data; throw error; }          // payload.inUse = products still use it", "throw error; }"),
+ ("the removal sends no sentence", CXA + "auth.js", 'removeCategoryWithProducts = (token, id, confirm) => categoryCall("POST", id, "remove", token, { confirm });', 'removeCategoryWithProducts = (token, id, confirm) => categoryCall("POST", id, "remove", token, {});'),
+]
+mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"cxserver": CX_SERVER, "cxadmin": CX_ADMIN, "pdserver": PD_SERVER, "pdadmin": PD_ADMIN, "clserver": CL_SERVER, "ffstorefront": FF_STOREFRONT, "crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
 lo, hi = (int(sys.argv[2]), int(sys.argv[3])) if len(sys.argv) > 3 else (1, len(BREAKS))
 def fresh():
     subprocess.run(["su", "postgres", "-c", "psql -q -c 'DROP DATABASE IF EXISTS leap_catalog_import_test' -c \"CREATE DATABASE leap_catalog_import_test TEMPLATE leap_marketplace_dev OWNER leap_dev\""], check=True, capture_output=True)
@@ -503,6 +530,8 @@ def run():
     if mode == "clserver": return subprocess.run(["node", "--test", "test/catalogCleanup.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "pdserver": return subprocess.run(["node", "--test", "test/productDelete.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "pdadmin": return subprocess.run(["npx", "vitest", "run", "src/ProductDeleteDialog.test.jsx", "src/productDeleteApi.test.js"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=250).returncode
+    if mode == "cxserver": return subprocess.run(["node", "--test", "test/categoryRemove.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
+    if mode == "cxadmin": return subprocess.run(["npx", "vitest", "run", "src/CategoryInUseDialog.test.jsx", "src/productDeleteApi.test.js"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=250).returncode
     if mode == "ppserver": return subprocess.run(["node", "--test", "test/homeText.test.js", "test/productPage.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "ppadmin": return subprocess.run(["npx", "vitest", "run", "src/HomeTextSection.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
     if mode == "ppstorefront": return subprocess.run(["npx", "vitest", "run", "components/ProductDetails.test.tsx", "components/LazyProductRow.test.tsx", "components/VehicleFilterOrder.test.tsx", "components/FitsMyCarLabel.test.tsx", "app/stage1c-page.test.tsx", "app/homeText.test.tsx", "components/SiteHeaderTopBar.test.tsx", "lib/gridSourceModel.test.ts", "lib/homeText.test.ts", "app/api/products/routeSameModel.test.ts"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
@@ -514,7 +543,7 @@ def run():
     if mode == "server": return subprocess.run(["node", "--test", "test/orderVehicles.test.js", "test/productCars.test.js", "test/orderVehiclesReplacement.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "screens": return subprocess.run(["npx", "vitest", "run", "src/OrderVehicle.test.jsx", "src/OrderVehicleFlow.test.jsx"], cwd=SP, capture_output=True, text=True, timeout=150).returncode
     return subprocess.run(["npx", "vitest", "run", "components/FitCheck.test.tsx", "app/stage1c-page.test.tsx", "app/cartFitCheck.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=150).returncode
-if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver"): fresh()
+if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver"): fresh()
 if run() != 0: sys.exit("The tests do not pass on the UNBROKEN code, so a break check would prove nothing.")
 print("baseline: the tests pass on the unbroken code\n", flush=True); caught = 0
 for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
@@ -523,10 +552,10 @@ for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
     if src.count(old) != 1: print(f"{n:2d}. SKIPPED (the line to break was not found exactly once): {what}"); continue
     shutil.copy(path, path + ".keep"); open(path, "w", encoding="utf-8").write(src.replace(old, new))
     try:
-        if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver"): fresh()
+        if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver"): fresh()
         failed = run() != 0
     finally: shutil.move(path + ".keep", path)
     caught += failed; print(f"{n:2d}. {'CAUGHT ' if failed else 'MISSED!'}  {what}", flush=True)
 print(f"\n{caught} of {sum(1 for i in range(1, len(BREAKS) + 1) if lo <= i <= hi)} breaks were caught")
-if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver"): fresh()
+if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver"): fresh()
 print("code restored; the tests pass again:", "yes" if run() == 0 else "NO (investigate)")

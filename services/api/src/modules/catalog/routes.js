@@ -1048,7 +1048,7 @@ router.get('/admin/products', requireAuth, requireRole('admin'), requirePageAcce
     `;
 
     const params = [];
-    let where = `WHERE p.status = 'active'`;
+    let where = req.query.status === 'hidden' ? `WHERE p.status = 'inactive'` : `WHERE p.status = 'active'`;      // ?status=hidden lists the HIDDEN products (the ones the admin hid or rejected), so they can be found again
     if (search) {
       params.push(`%${search}%`);
       where += ` AND (p.name ILIKE $${params.length} OR p.oem_number ILIKE $${params.length} OR s.name ILIKE $${params.length})`;
@@ -1948,6 +1948,9 @@ router.post('/parts/:id/move', requireAuth, requireRole('admin'), requirePageAcc
 
 // bulk parts catalog import, editing of every catalog field, undo and health (modules/catalogImport)
 router.use('/admin', require('../catalogImport/routes'));
+
+// Admin > All products > Delete (see productDelete.js): POST /admin/products/delete-check and POST /admin/products/delete.
+router.use('/admin/products', require('./productDelete'));
 
 module.exports = router;
 // Real product DTO helpers, exported for reuse by other modules that

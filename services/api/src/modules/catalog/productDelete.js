@@ -101,3 +101,4 @@ router.post('/send-to-review', ...guard, async (req, res, next) => {
 
 module.exports = router;
 module.exports.planDelete = planDelete;
+module.exports.attempt = attempt;
