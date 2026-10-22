@@ -2,9 +2,10 @@ import React, { useState } from "react";
 import { C, body } from "./theme";
 import CatalogImportPanel from "./CatalogImportPanel";
 import CatalogEditorPanel from "./CatalogEditorPanel";
+import CatalogPhotosPanel from "./CatalogPhotosPanel";
 
 // The Categories page with two more tabs beside it: "Import from Excel" (the parts catalog) and "Edit details" (every field of a category or part). `main` is the page as it has always been.
-const TABS = [["categories", "Categories"], ["import", "Import from Excel"], ["edit", "Edit details"]];
+const TABS = [["categories", "Categories"], ["import", "Import from Excel"], ["edit", "Edit details"], ["photos", "Photos"]];
 
 export default function CategoriesTabs({ main, onSessionExpired }) {
   const [tab, setTab] = useState("categories");
@@ -19,6 +20,7 @@ export default function CategoriesTabs({ main, onSessionExpired }) {
       {tab === "categories" && main}
       {tab === "import" && <div style={{ padding: "16px 24px 24px" }}><CatalogImportPanel onSessionExpired={onSessionExpired} /></div>}
       {tab === "edit" && <div style={{ padding: "16px 24px 24px" }}><CatalogEditorPanel onSessionExpired={onSessionExpired} /></div>}
+      {tab === "photos" && <div style={{ padding: "16px 24px 24px" }}><CatalogPhotosPanel onSessionExpired={onSessionExpired} /></div>}
     </div>
   );
 }

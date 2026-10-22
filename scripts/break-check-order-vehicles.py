@@ -329,7 +329,41 @@ CP_ADMIN = [
  ("the replace tick changes nothing in the preview", PNL, "cov, replace).map((c, i)", "cov, false).map((c, i)"),
  ("the Photos tab is missing", PA + "CategoriesTabs.jsx", '["edit", "Edit details"], ["photos", "Photos"]]', '["edit", "Edit details"]]'),
 ]
-mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
+VPS = "services/api/src/modules/vehicleImport/"; VPU = "services/api/src/modules/uploads/unusedPictures.js"; VPA = "apps/admin-dashboard/src/"
+VP_SERVER = [
+ ("'use the pictures of this file' does nothing in skip mode", VPS + "plan.js", "} else if (replacePictures && d.picture) {", "} else if (false && d.picture) {"),
+ ("the picture-only update also changes other details of the version", VPS + "plan.js", "'UPDATE vehicle_versions SET photo_url = $1 WHERE id = $2', [saved.url, existing.id]", "'UPDATE vehicle_versions SET photo_url = $1, name_ar = $3 WHERE id = $2', [saved.url, existing.id, d.version.ar]"),
+ ("the old picture is forgotten, so it stays on the server (skip mode)", VPS + "plan.js", "if (existing.photo_url) oldUrls.push(existing.photo_url);\n          await q.query('UPDATE vehicle_versions SET photo_url = $1", "await q.query('UPDATE vehicle_versions SET photo_url = $1"),
+ ("the old picture is forgotten, so it stays on the server (update mode)", VPS + "plan.js", "if (apply && photoUrl !== existing.photo_url && existing.photo_url) oldUrls.push(existing.photo_url);", ""),
+ ("the preview saves pictures and writes", VPS + "plan.js", "        if (apply) {\n          const saved = await saveImage(d.picture.buffer, d.picture.mime); savedUrls.push(saved.url);", "        if (true) {\n          const saved = await saveImage(d.picture.buffer, d.picture.mime); savedUrls.push(saved.url);"),
+ ("the pictures that were replaced are never removed", VPS + "routes.js", "oldPicturesRemoved = await removeIfUnused(db, oldUrls);", "oldPicturesRemoved = 0;"),
+ ("the pictures are always replaced, even without asking", VPS + "routes.js", "['1', 'true'].includes(String((req.body || {}).replacePictures))", "true"),
+ ("anyone may remove the unused pictures without confirming", VPS + "routes.js", "req.body.confirm !== true", "false"),
+ ("anyone may look at the unused pictures", VPS + "routes.js", "router.get('/unused-pictures', ...guard,", "router.get('/unused-pictures',"),
+ ("anyone may remove the unused pictures", VPS + "routes.js", "router.post('/unused-pictures/remove', ...guard,", "router.post('/unused-pictures/remove',"),
+ ("a picture that is still used is removed", VPU, "if (used.has(name)) continue;", ""),
+ ("pictures younger than a day are removed", VPU, "now - f.modified >= minAgeMs", "true"),
+ ("any file in the folder counts as a picture (placeholders, logos)", VPU, "const HASHED = /^[0-9a-f]{32}\\.(png|jpe?g|webp)$/;", "const HASHED = /.+/;"),
+ ("pictures kept in a setting or in a list are not noticed as used", VPU, "c.data_type IN ('text', 'character varying', 'json', 'jsonb')", "c.data_type IN ('json')"),
+ ("the used pictures of the vehicle tables are not noticed", VPU, "AND c.table_name NOT LIKE '%audit%'", "AND c.table_name NOT LIKE '%vehicle%' AND c.table_name NOT LIKE '%audit%'"),
+]
+VP_ADMIN = [
+ ("the choice is off at first", VPA + "VehicleImportPanel.jsx", "const [replacePictures, setReplacePictures] = useState(true);", "const [replacePictures, setReplacePictures] = useState(false);"),
+ ("the choice is never sent as on", VPA + "auth.js", 'formData.append("replacePictures", replacePictures ? "1" : "0");', 'formData.append("replacePictures", "0");'),
+ ("the import forgets the choice", VPA + "VehicleImportPanel.jsx", "commitVehicleImport(getStoredToken(), file, mode, replacePictures)", "commitVehicleImport(getStoredToken(), file, mode)"),
+ ("changing the choice does not re-check the file", VPA + "VehicleImportPanel.jsx", 'if (file && phase === "checked") runCheck(file, mode, next); };', "};"),
+ ("the 'pictures replace old ones' tile shows when none do", VPA + "VehicleImportPanel.jsx", "{s.picturesReplaced > 0 && tile(", "{true && tile("),
+ ("the choice stays unticked for the next file", VPA + "VehicleImportPanel.jsx", 'setMode("skip"); setReplacePictures(true); };', 'setMode("skip"); };'),
+ ("the choice can be changed while updating", VPA + "VehicleImportPanel.jsx", 'disabled={mode === "update"}', "disabled={false}"),
+ ("one old picture is described in the plural", VPA + "VehicleImportPanel.jsx", 'plural(result.oldPicturesRemoved, "old picture was", "old pictures were")', 'plural(result.oldPicturesRemoved, "old pictures were", "old pictures were")'),
+ ("the removed message shows when none were removed", VPA + "VehicleImportPanel.jsx", "{result.oldPicturesRemoved > 0 &&", "{true &&"),
+ ("the cleanup removes without asking", VPA + "UnusedPicturesCard.jsx", 'onClick={() => setPhase("asking")}', "onClick={remove}"),
+ ("the cleanup button can be pressed twice", VPA + "UnusedPicturesCard.jsx", 'disabled={phase === "removing"} onClick={remove}', "disabled={false} onClick={remove}"),
+ ("a failed removal loses the question", VPA + "UnusedPicturesCard.jsx", 'catch (err) { setPhase("asking"); fail(err); }', 'catch (err) { setPhase("found"); fail(err); }'),
+ ("the removal is sent without the confirm", VPA + "auth.js", "JSON.stringify({ confirm: true })", "JSON.stringify({})"),
+ ("looking sends a POST (which removes)", VPA + "auth.js", 'fetchUnusedPictures = (token) => unusedPicturesCall("GET"', 'fetchUnusedPictures = (token) => unusedPicturesCall("POST"'),
+]
+mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
 lo, hi = (int(sys.argv[2]), int(sys.argv[3])) if len(sys.argv) > 3 else (1, len(BREAKS))
 def fresh():
     subprocess.run(["su", "postgres", "-c", "psql -q -c 'DROP DATABASE IF EXISTS leap_catalog_import_test' -c \"CREATE DATABASE leap_catalog_import_test TEMPLATE leap_marketplace_dev OWNER leap_dev\""], check=True, capture_output=True)
@@ -341,6 +375,8 @@ def run():
     if mode == "ftstorefront": return subprocess.run(["npx", "vitest", "run", "components/SiteFooter.test.tsx", "components/LegalPage.test.tsx", "components/RichText.test.tsx", "lib/miniMarkdown.test.ts", "lib/footerContent.test.ts", "lib/miniMarkdownContract.test.ts", "app/legalPages.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
     if mode == "cpserver": return subprocess.run(["node", "--test", "test/catalogPhotos.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "cpadmin": return subprocess.run(["npx", "vitest", "run", "src/CatalogPhotosPanel.test.jsx", "src/photoPrep.test.js", "src/CategoriesPhotosTab.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=250).returncode
+    if mode == "vpserver": return subprocess.run(["node", "--test", "test/vehiclePictures.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
+    if mode == "vpadmin": return subprocess.run(["npx", "vitest", "run", "src/VehicleImportPictures.test.jsx", "src/UnusedPicturesCard.test.jsx", "src/unusedPicturesApi.test.js", "src/VehicleImportPanel.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=250).returncode
     if mode == "ppserver": return subprocess.run(["node", "--test", "test/homeText.test.js", "test/productPage.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "ppadmin": return subprocess.run(["npx", "vitest", "run", "src/HomeTextSection.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
     if mode == "ppstorefront": return subprocess.run(["npx", "vitest", "run", "components/ProductDetails.test.tsx", "components/LazyProductRow.test.tsx", "components/VehicleFilterOrder.test.tsx", "components/FitsMyCarLabel.test.tsx", "app/stage1c-page.test.tsx", "app/homeText.test.tsx", "components/SiteHeaderTopBar.test.tsx", "lib/gridSourceModel.test.ts", "lib/homeText.test.ts", "app/api/products/routeSameModel.test.ts"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
@@ -352,7 +388,7 @@ def run():
     if mode == "server": return subprocess.run(["node", "--test", "test/orderVehicles.test.js", "test/productCars.test.js", "test/orderVehiclesReplacement.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "screens": return subprocess.run(["npx", "vitest", "run", "src/OrderVehicle.test.jsx", "src/OrderVehicleFlow.test.jsx"], cwd=SP, capture_output=True, text=True, timeout=150).returncode
     return subprocess.run(["npx", "vitest", "run", "components/FitCheck.test.tsx", "app/stage1c-page.test.tsx", "app/cartFitCheck.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=150).returncode
-if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver"): fresh()
+if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver"): fresh()
 if run() != 0: sys.exit("The tests do not pass on the UNBROKEN code, so a break check would prove nothing.")
 print("baseline: the tests pass on the unbroken code\n", flush=True); caught = 0
 for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
@@ -361,10 +397,10 @@ for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
     if src.count(old) != 1: print(f"{n:2d}. SKIPPED (the line to break was not found exactly once): {what}"); continue
     shutil.copy(path, path + ".keep"); open(path, "w", encoding="utf-8").write(src.replace(old, new))
     try:
-        if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver"): fresh()
+        if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver"): fresh()
         failed = run() != 0
     finally: shutil.move(path + ".keep", path)
     caught += failed; print(f"{n:2d}. {'CAUGHT ' if failed else 'MISSED!'}  {what}", flush=True)
 print(f"\n{caught} of {sum(1 for i in range(1, len(BREAKS) + 1) if lo <= i <= hi)} breaks were caught")
-if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver"): fresh()
+if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver"): fresh()
 print("code restored; the tests pass again:", "yes" if run() == 0 else "NO (investigate)")

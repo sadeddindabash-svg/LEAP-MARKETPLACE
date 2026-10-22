@@ -22,6 +22,9 @@ const { runCleanup } = require('./cleanup');
 
 const router = express.Router();
 const guard = [requireAuth, requireRole('admin'), requirePageAccess('categories')];
+
+// Categories > Photos: coverage, the shot list, the bulk photo import with Undo, and the optional fallback switch (see ../catalogPhotos).
+router.use('/photos', require('../catalogPhotos/routes'));
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES } });
 
 router.get('/import/template', ...guard, async (req, res, next) => {

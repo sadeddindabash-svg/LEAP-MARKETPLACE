@@ -3,6 +3,7 @@ const { createListCache } = require('./listCache');
 const crypto = require('crypto');
 const db = require('../../../db/pool');
 const { loadBuyerFit } = require('../orderVehicles/productCars');
+const { withFallbackSections, withFallbackParts } = require('../catalogPhotos/fallback');
 const { loadSiteStats } = require('../siteStats/stats');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { calculateBuyerPriceUsd, MissingShippingDataError } = require('../pricing/engine');
@@ -1460,7 +1461,7 @@ router.get('/trending-searches', async (req, res, next) => {
 router.get('/categories', async (req, res, next) => {
   try {
     const { rows } = await db.query('SELECT * FROM product_categories ORDER BY sort_order ASC');
-    res.json(rows.map(toCategoryDto));
+    res.json((await withFallbackSections(rows)).map(toCategoryDto));      // (unchanged unless the admin turned the photo fallback on)
   } catch (err) {
     next(err);
   }
@@ -1811,7 +1812,7 @@ router.delete('/categories/:id', requireAuth, requireRole('admin'), requirePageA
 router.get('/categories/:id/parts', async (req, res, next) => {
   try {
     const { rows } = await db.query('SELECT * FROM category_parts WHERE category_id = $1 ORDER BY sort_order ASC', [req.params.id]);
-    res.json(rows.map(toPartDto));
+    res.json((await withFallbackParts(rows, req.params.id)).map(toPartDto));      // (unchanged unless the admin turned the photo fallback on)
   } catch (err) {
     next(err);
   }
