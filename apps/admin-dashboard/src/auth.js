@@ -323,18 +323,29 @@ export const updateVersionPhoto = (token, id, photoUrl) => fitmentMutate("PATCH"
 export const deleteVersion = (token, id) => fitmentMutate("DELETE", `/fitment/versions/${id}`, token);
 // The Excel import of vehicle data (see the server's modules/vehicleImport). The preview writes nothing; the import sends the file again and saves everything or nothing.
 // A refusal that comes with a full explanation (the file has problems) carries it in `error.payload`.
-async function sendVehicleImport(path, token, file, mode) {
+async function sendVehicleImport(path, token, file, mode, replacePictures = false) {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("mode", mode);
+  formData.append("replacePictures", replacePictures ? "1" : "0");        // "use the pictures in this file for vehicles that already exist"
   const response = await fetch(`${API_BASE_URL}/fitment/import/${path}`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData });
   if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
   const data = await response.json();
   if (!response.ok) { const error = new Error(data.error || `Request failed (${response.status})`); error.payload = data; throw error; }
   return data;
 }
-export const previewVehicleImport = (token, file, mode = "skip") => sendVehicleImport("preview", token, file, mode);
-export const commitVehicleImport = (token, file, mode = "skip") => sendVehicleImport("commit", token, file, mode);
+export const previewVehicleImport = (token, file, mode = "skip", replacePictures = false) => sendVehicleImport("preview", token, file, mode, replacePictures);
+export const commitVehicleImport = (token, file, mode = "skip", replacePictures = false) => sendVehicleImport("commit", token, file, mode, replacePictures);
+// The pictures nothing uses (left behind by earlier imports): look, then remove (the server asks for the explicit confirm).
+async function unusedPicturesCall(method, path, token) {
+  const response = await fetch(`${API_BASE_URL}/fitment/import/${path}`, { method, headers: { Authorization: `Bearer ${token}`, ...(method === "POST" ? { "Content-Type": "application/json" } : {}) }, body: method === "POST" ? JSON.stringify({ confirm: true }) : undefined });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+export const fetchUnusedPictures = (token) => unusedPicturesCall("GET", "unused-pictures", token);
+export const removeUnusedPictures = (token) => unusedPicturesCall("POST", "unused-pictures/remove", token);
 export async function downloadVehicleImportTemplate(token) {
   const response = await fetch(`${API_BASE_URL}/fitment/import/template`, { headers: { Authorization: `Bearer ${token}` } });
   if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");

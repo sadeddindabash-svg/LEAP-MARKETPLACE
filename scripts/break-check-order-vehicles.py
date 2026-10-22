@@ -363,7 +363,48 @@ VP_ADMIN = [
  ("the removal is sent without the confirm", VPA + "auth.js", "JSON.stringify({ confirm: true })", "JSON.stringify({})"),
  ("looking sends a POST (which removes)", VPA + "auth.js", 'fetchUnusedPictures = (token) => unusedPicturesCall("GET"', 'fetchUnusedPictures = (token) => unusedPicturesCall("POST"'),
 ]
-mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
+CRV = "services/api/src/modules/catalogImport/"; CRA = "apps/admin-dashboard/src/"
+CR_SERVER = [
+ ("a part a product uses is removed", CRV + "replace.js", "if (n === 0) removedParts.push(", "if (true) removedParts.push("),
+ ("a category a product uses is removed", CRV + "replace.js", "if (n === 0 && count(partsLeft, c.id) === 0) removedCategories.push(", "if (true) removedCategories.push("),
+ ("a product that was ordered is deleted", CRV + "replace.js", "const doomed = alsoProducts ? using.filter((p) => !p.ordered) : [];", "const doomed = alsoProducts ? using : [];"),
+ ("the products choice does nothing", CRV + "replace.js", "const doomed = alsoProducts ? using.filter((p) => !p.ordered) : [];", "const doomed = [];"),
+ ("sub-categories the sheet does not list stay (in a category the sheet has)", CRV + "replace.js", "const oldParts = parts.filter((p) => !keep.partIds.has(p.id));", "const oldParts = parts.filter((p) => !keep.categoryIds.has(p.category_id));"),
+ ("the cart lines of a deleted product are left, so the import fails", CRV + "replace.js", "await client.query('DELETE FROM cart_items WHERE product_id = ANY($1)', [productIds]);", ""),
+ ("the pictures of what is removed are not noticed", CRV + "replace.js", "photoUrls: [...removedCategories, ...removedParts].map(", "photoUrls: [].map("),
+ ("the import removes without the typed sentence", CRV + "routes.js", "if (removeOthers && String((req.body || {}).confirm || '').trim() !== REPLACE_PHRASE)", "if (false)"),
+ ("the typed sentence is accepted in small letters", CRV + "routes.js", "String((req.body || {}).confirm || '').trim() !== REPLACE_PHRASE", "String((req.body || {}).confirm || '').trim().toUpperCase() !== REPLACE_PHRASE"),
+ ("the CHECK removes what it lists", CRV + "routes.js", "await planRemoval(db, run.keep, { alsoProducts }) : null;", "await (async () => { const p = await planRemoval(db, run.keep, { alsoProducts }); await applyRemoval(db, p); return p; })() : null;"),
+ ("an import that only removes is not allowed to go ahead", CRV + "routes.js", "ready: !blocking && (toImport > 0 || removing > 0)", "ready: !blocking && toImport > 0"),
+ ("an import with nothing new but something old to remove is called 'nothing to import'", CRV + "routes.js", "nothingToImport: !blocking && toImport === 0 && removing === 0", "nothingToImport: !blocking && toImport === 0"),
+ ("the products choice is ignored by the server", CRV + "routes.js", "alsoProducts: flag(req, 'alsoProducts')", "alsoProducts: false"),
+ ("every import removes the old catalog, even when not asked", CRV + "routes.js", "removeOthers: flag(req, 'removeOthers')", "removeOthers: true"),
+ ("the pictures of the removed items stay on the server", CRV + "routes.js", "picturesRemoved = await removeIfUnused(db, [...removal.photoUrls, ...applied.imageUrls]);", "picturesRemoved = 0;"),
+ ("parts the sheet matches are not noticed, so they are removed", CRV + "plan.js", "      keepPartIds.add(existing.id);\n", ""),
+ ("parts the sheet creates are not noticed, so they are removed", CRV + "plan.js", "    keepPartIds.add(id);\n", ""),
+ ("no category of the sheet is noticed", CRV + "plan.js", "keep: { categoryIds: new Set([...state.values()].filter((s) => s.id).map((s) => s.id)), partIds: keepPartIds }", "keep: { categoryIds: new Set(), partIds: keepPartIds }"),
+]
+RO = CRA + "CatalogReplaceOptions.jsx"; RP = CRA + "CatalogImportPanel.jsx"
+CR_ADMIN = [
+ ("the choice is on at first", RO, "checked={replace.on} onChange", "checked={true} onChange"),
+ ("the typed sentence is not sent", CRA + "catalogAdminApi.js", 'formData.append("confirm", replace.confirm || "");', 'formData.append("confirm", "");'),
+ ("the products choice is never sent as on", CRA + "catalogAdminApi.js", 'replace.alsoProducts ? "1" : "0"', '"0"'),
+ ("the import button works without the typed sentence", RP, 'disabled={!preview.ready || phase === "importing" || (replace.on && replace.confirm !== REPLACE_PHRASE)} onClick', 'disabled={!preview.ready || phase === "importing"} onClick'),
+ ("the sentence to type is not the server's", RO, 'export const REPLACE_PHRASE = "REPLACE CATALOG";', 'export const REPLACE_PHRASE = "REPLACE";'),
+ ("changing the choice does not check the file again", RP, 'if (file && phase === "checked" && ("on" in patch || "alsoProducts" in patch)) runCheck(file, mode, next); };', "};"),
+ ("the choice stays on for the next file", RP, 'setUndone(null); setReplace({ on: false, alsoProducts: false, confirm: "" }); };', "setUndone(null); };"),
+ ("products are counted when the choice is off", RO, "{replace.alsoProducts && <>, <b>", "{true && <>, <b>"),
+ ("a long list shows 50 first", RO, "const SHOWN = 12;", "const SHOWN = 50;"),
+ ("the downloaded list says staying items are removed", RO, 'stays: "stays", reason: c.reason }))', 'stays: "removed", reason: c.reason }))'),
+ ("the 'cannot be undone' warning is gone", RO, "<b>This cannot be undone.</b>", "<b>It is fine.</b>"),
+ ("the result shows a removal line for an ordinary import", RP, "{result.removal && <div", "{true && <div"),
+ ("the headings of the box are swapped", RO, '{none ? "Nothing old to remove" : "Will be removed (it is not in this sheet)"}', '{none ? "Will be removed (it is not in this sheet)" : "Nothing old to remove"}'),
+ ("the banner is hidden", RP, "{preview.removal && <CatalogRemovalBanner removal={preview.removal} />}", ""),
+ ("the banner shows when nothing would be removed", RO, "const total = counts.categories + counts.parts + counts.products; if (total === 0) return null;", ""),
+ ("the banner button goes nowhere", RO, 'document.getElementById("catalog-removal-box")?.scrollIntoView?.', 'document.getElementById("nothing")?.scrollIntoView?.'),
+ ("the typed sentence is kept when the products choice changes", RO, "onChange({ alsoProducts: e.target.checked, confirm: \"\" })", "onChange({ alsoProducts: e.target.checked })"),
+]
+mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
 lo, hi = (int(sys.argv[2]), int(sys.argv[3])) if len(sys.argv) > 3 else (1, len(BREAKS))
 def fresh():
     subprocess.run(["su", "postgres", "-c", "psql -q -c 'DROP DATABASE IF EXISTS leap_catalog_import_test' -c \"CREATE DATABASE leap_catalog_import_test TEMPLATE leap_marketplace_dev OWNER leap_dev\""], check=True, capture_output=True)
@@ -377,6 +418,8 @@ def run():
     if mode == "cpadmin": return subprocess.run(["npx", "vitest", "run", "src/CatalogPhotosPanel.test.jsx", "src/photoPrep.test.js", "src/CategoriesPhotosTab.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=250).returncode
     if mode == "vpserver": return subprocess.run(["node", "--test", "test/vehiclePictures.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "vpadmin": return subprocess.run(["npx", "vitest", "run", "src/VehicleImportPictures.test.jsx", "src/UnusedPicturesCard.test.jsx", "src/unusedPicturesApi.test.js", "src/VehicleImportPanel.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=250).returncode
+    if mode == "crserver": return subprocess.run(["node", "--test", "test/catalogReplace.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=250).returncode
+    if mode == "cradmin": return subprocess.run(["npx", "vitest", "run", "src/CatalogReplace.test.jsx", "src/CatalogImportPanel.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=250).returncode
     if mode == "ppserver": return subprocess.run(["node", "--test", "test/homeText.test.js", "test/productPage.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "ppadmin": return subprocess.run(["npx", "vitest", "run", "src/HomeTextSection.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
     if mode == "ppstorefront": return subprocess.run(["npx", "vitest", "run", "components/ProductDetails.test.tsx", "components/LazyProductRow.test.tsx", "components/VehicleFilterOrder.test.tsx", "components/FitsMyCarLabel.test.tsx", "app/stage1c-page.test.tsx", "app/homeText.test.tsx", "components/SiteHeaderTopBar.test.tsx", "lib/gridSourceModel.test.ts", "lib/homeText.test.ts", "app/api/products/routeSameModel.test.ts"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
@@ -388,7 +431,7 @@ def run():
     if mode == "server": return subprocess.run(["node", "--test", "test/orderVehicles.test.js", "test/productCars.test.js", "test/orderVehiclesReplacement.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "screens": return subprocess.run(["npx", "vitest", "run", "src/OrderVehicle.test.jsx", "src/OrderVehicleFlow.test.jsx"], cwd=SP, capture_output=True, text=True, timeout=150).returncode
     return subprocess.run(["npx", "vitest", "run", "components/FitCheck.test.tsx", "app/stage1c-page.test.tsx", "app/cartFitCheck.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=150).returncode
-if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver"): fresh()
+if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver"): fresh()
 if run() != 0: sys.exit("The tests do not pass on the UNBROKEN code, so a break check would prove nothing.")
 print("baseline: the tests pass on the unbroken code\n", flush=True); caught = 0
 for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
@@ -397,10 +440,10 @@ for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
     if src.count(old) != 1: print(f"{n:2d}. SKIPPED (the line to break was not found exactly once): {what}"); continue
     shutil.copy(path, path + ".keep"); open(path, "w", encoding="utf-8").write(src.replace(old, new))
     try:
-        if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver"): fresh()
+        if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver"): fresh()
         failed = run() != 0
     finally: shutil.move(path + ".keep", path)
     caught += failed; print(f"{n:2d}. {'CAUGHT ' if failed else 'MISSED!'}  {what}", flush=True)
 print(f"\n{caught} of {sum(1 for i in range(1, len(BREAKS) + 1) if lo <= i <= hi)} breaks were caught")
-if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver"): fresh()
+if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver"): fresh()
 print("code restored; the tests pass again:", "yes" if run() == 0 else "NO (investigate)")

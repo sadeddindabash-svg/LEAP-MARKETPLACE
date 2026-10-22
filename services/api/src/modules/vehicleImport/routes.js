@@ -8,6 +8,7 @@ const db = require('../../../db/pool');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
 const { logAdminAction } = require('../audit/helpers');
 const { saveImage, removeLocalImage } = require('../uploads/imageRules');
+const { findUnused, removeUnused, removeIfUnused } = require('../uploads/unusedPictures');
 const { MAX_UPLOAD_BYTES } = require('./columns');
 const { parseWorkbook, ImportError } = require('./parser');
 const { validateRows } = require('./rules');
@@ -36,6 +37,8 @@ const takeFile = (req, res) => new Promise((resolve, reject) => {
 });
 
 const modeOf = (req) => ((req.body || {}).mode === 'update' ? 'update' : 'skip');
+/** "Use the pictures in this file for vehicles that already exist" (the form field "replacePictures": 1 or true). Update mode always does it. */
+const replacePicturesOf = (req) => ['1', 'true'].includes(String((req.body || {}).replacePictures));
 
 /** The answer sent for both calls: a summary, every row with its result and messages, and what blocks the import. */
 function describe(file, mode, parsed, run) {
@@ -60,13 +63,13 @@ async function loadAndCheck(req, res) {
   const file = await takeFile(req, res);
   const mode = modeOf(req);                         // only now: the form fields (including "mode") are available once the upload has been unpacked
   const parsed = await parseWorkbook(file.buffer);
-  return { file, mode, parsed, items: validateRows(parsed.rows) };
+  return { file, mode, replacePictures: replacePicturesOf(req), parsed, items: validateRows(parsed.rows) };
 }
 
 router.post('/preview', ...guard, async (req, res, next) => {
   try {
-    const { file, mode, parsed, items } = await loadAndCheck(req, res);
-    const run = await runImport(db, items, mode, { apply: false });
+    const { file, mode, replacePictures, parsed, items } = await loadAndCheck(req, res);
+    const run = await runImport(db, items, mode, { apply: false, replacePictures });
     res.json(describe(file, mode, parsed, run));
   } catch (err) {
     if (err instanceof ImportError) return res.status(err.status).json({ error: err.message });
@@ -76,13 +79,14 @@ router.post('/preview', ...guard, async (req, res, next) => {
 
 router.post('/commit', ...guard, async (req, res, next) => {
   const savedUrls = [];
+  const oldUrls = [];
   let client;
   try {
-    const { file, mode, parsed, items } = await loadAndCheck(req, res);
+    const { file, mode, replacePictures, parsed, items } = await loadAndCheck(req, res);
     client = await db.getPool().connect();
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['vehicle_import']);      // two imports never run at the same moment
-    const run = await runImport(client, items, mode, { apply: true, saveImage, savedUrls });
+    const run = await runImport(client, items, mode, { apply: true, saveImage, savedUrls, replacePictures, oldUrls });
     const answer = describe(file, mode, parsed, run);
     if (answer.blocking || answer.nothingToImport) {
       await client.query('ROLLBACK');
@@ -91,7 +95,10 @@ router.post('/commit', ...guard, async (req, res, next) => {
     }
     await client.query('COMMIT');
     await logAdminAction(req, 'vehicle_import', 'vehicle_import', file.originalname, { mode, rows: answer.summary.rows, ...run.counts });
-    res.status(201).json({ imported: true, ...answer });
+    // the pictures this import replaced are removed now that it is saved (never before: a failed import keeps them); a problem here never undoes the import
+    let oldPicturesRemoved = 0;
+    try { oldPicturesRemoved = await removeIfUnused(db, oldUrls); } catch (err) { console.error('Removing replaced vehicle pictures failed:', err.message); }
+    res.status(201).json({ imported: true, oldPicturesRemoved, ...answer });
   } catch (err) {
     if (client) await client.query('ROLLBACK').catch(() => {});
     savedUrls.forEach(removeLocalImage);
@@ -100,6 +107,19 @@ router.post('/commit', ...guard, async (req, res, next) => {
   } finally {
     if (client) client.release();
   }
+});
+
+// The pictures nothing uses any more (left behind by earlier imports that replaced a picture): GET looks (and removes nothing), POST removes them. Only files older than a day, and only ones no table mentions.
+router.get('/unused-pictures', ...guard, async (req, res, next) => {
+  try { const found = await findUnused(db); res.json({ count: found.files.length, bytes: found.bytes, scanned: found.scanned, tooNew: found.tooNew }); } catch (err) { next(err); }
+});
+router.post('/unused-pictures/remove', ...guard, async (req, res, next) => {
+  try {
+    if (!req.body || req.body.confirm !== true) return res.status(400).json({ error: 'Send { confirm: true } to remove the unused pictures' });
+    const out = await removeUnused(db);
+    await logAdminAction(req, 'unused_pictures_removed', 'uploads', 'unused-pictures', { removed: out.removed, bytes: out.bytes });
+    res.json(out);
+  } catch (err) { next(err); }
 });
 
 module.exports = router;

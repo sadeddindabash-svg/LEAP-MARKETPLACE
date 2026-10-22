@@ -12,8 +12,8 @@ const { nameKey } = require('../fitment/vehicleRules');
 const newId = (prefix) => `${prefix}_${Date.now()}${crypto.randomBytes(3).toString('hex')}`;
 const same = (a, b) => nameKey(a) === nameKey(b);
 
-async function runImport(q, items, mode, { apply = false, saveImage = null, savedUrls = [] } = {}) {
-  const counts = { newModels: 0, newYears: 0, newVersions: 0, existingVersions: 0, updatedVersions: 0, picturesToSave: 0, newWithoutPicture: 0, brandNamesUpdated: 0, modelNamesUpdated: 0 };
+async function runImport(q, items, mode, { apply = false, saveImage = null, savedUrls = [], replacePictures = false, oldUrls = [] } = {}) {
+  const counts = { newModels: 0, newYears: 0, newVersions: 0, existingVersions: 0, updatedVersions: 0, picturesToSave: 0, picturesReplaced: 0, newWithoutPicture: 0, brandNamesUpdated: 0, modelNamesUpdated: 0 };
   const notes = [];
   const missingBrands = new Set();
   const rows = [];
@@ -115,11 +115,23 @@ async function runImport(q, items, mode, { apply = false, saveImage = null, save
         || existing.engine !== d.engine.en || existing.engine_ar !== d.engine.ar || existing.engine_zh !== d.engine.zh || existing.seats !== d.seats;
       if (mode === 'update' && (changed || d.picture)) {
         let photoUrl = existing.photo_url;
-        if (d.picture) { counts.picturesToSave++; if (apply) { const saved = await saveImage(d.picture.buffer, d.picture.mime); photoUrl = saved.url; savedUrls.push(photoUrl); } }
+        if (d.picture) { counts.picturesToSave++; if (existing.photo_url) counts.picturesReplaced++; if (apply) { const saved = await saveImage(d.picture.buffer, d.picture.mime); photoUrl = saved.url; savedUrls.push(photoUrl); } }
+        if (apply && photoUrl !== existing.photo_url && existing.photo_url) oldUrls.push(existing.photo_url);      // the picture this one replaces: removed after the import is saved, if nothing else uses it
         if (apply) await q.query('UPDATE vehicle_versions SET name = $1, name_ar = $2, name_zh = $3, engine = $4, engine_ar = $5, engine_zh = $6, seats = $7, photo_url = $8 WHERE id = $9',
           [d.version.en, d.version.ar, d.version.zh, d.engine.en, d.engine.ar, d.engine.zh, d.seats, photoUrl, existing.id]);
         counts.updatedVersions++;
-        messages.push({ level: 'info', text: d.picture ? 'Already exists: will be updated (and its picture replaced)' : 'Already exists: will be updated' });
+        messages.push({ level: 'info', text: d.picture ? 'Already exists: will be updated (and its picture replaced; the old picture is removed)' : 'Already exists: will be updated' });
+        rows.push({ ...summary, status: 'update', messages });
+      } else if (replacePictures && d.picture) {
+        // "Use the pictures in this file": the version stays as it is, only its picture is replaced by the one in the file
+        counts.picturesToSave++; counts.updatedVersions++; if (existing.photo_url) counts.picturesReplaced++;
+        if (apply) {
+          const saved = await saveImage(d.picture.buffer, d.picture.mime); savedUrls.push(saved.url);
+          if (existing.photo_url) oldUrls.push(existing.photo_url);
+          await q.query('UPDATE vehicle_versions SET photo_url = $1 WHERE id = $2', [saved.url, existing.id]);
+          existing.photo_url = saved.url;                    // a second row for the same version replaces this one, and this one is then an old picture too
+        }
+        messages.push({ level: 'info', text: 'Already exists: only its picture is replaced (the old picture is removed)' });
         rows.push({ ...summary, status: 'update', messages });
       } else {
         counts.existingVersions++;
@@ -139,7 +151,7 @@ async function runImport(q, items, mode, { apply = false, saveImage = null, save
     counts.newVersions++;
     rows.push({ ...summary, status: 'new', messages });
   }
-  return { rows, counts, notes, missingBrands: [...missingBrands], savedUrls };
+  return { rows, counts, notes, missingBrands: [...missingBrands], savedUrls, oldUrls };
 }
 
 module.exports = { runImport };

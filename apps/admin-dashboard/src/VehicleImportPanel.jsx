@@ -3,6 +3,7 @@ import { Download, FileSpreadsheet, Check, AlertTriangle } from "lucide-react";
 import { C, body } from "./theme";
 import { SessionExpiredError, getStoredToken, previewVehicleImport, commitVehicleImport, downloadVehicleImportTemplate } from "./auth";
 import { exportToExcel } from "./exportToExcel";
+import UnusedPicturesCard from "./UnusedPicturesCard";
 
 // "Import from Excel" on the Vehicle Data page: choose a file in the template's layout, CHECK it (nothing is saved), read what will happen, then IMPORT (all or nothing).
 const STATUS = {
@@ -27,6 +28,7 @@ function downloadBlob(blob, filename) {
 export default function VehicleImportPanel({ onSessionExpired, onGoToBrands }) {
   const [file, setFile] = useState(null);
   const [mode, setMode] = useState("skip");
+  const [replacePictures, setReplacePictures] = useState(true);      // "use the pictures in this file for vehicles that already exist" (the old pictures are removed)
   const [phase, setPhase] = useState("idle");              // idle | checking | checked | importing | done
   const [preview, setPreview] = useState(null);
   const [result, setResult] = useState(null);
@@ -39,9 +41,9 @@ export default function VehicleImportPanel({ onSessionExpired, onGoToBrands }) {
     setError(err.message);
     if (err.payload && err.payload.rows) setPreview(err.payload);       // a refusal that explains itself: show what is wrong
   };
-  const runCheck = async (theFile, theMode) => {
+  const runCheck = async (theFile, theMode, thePictures = replacePictures) => {
     setPhase("checking"); setError(null); setResult(null); setShowAll(false);
-    try { setPreview(await previewVehicleImport(getStoredToken(), theFile, theMode)); setPhase("checked"); }
+    try { setPreview(await previewVehicleImport(getStoredToken(), theFile, theMode, thePictures)); setPhase("checked"); }
     catch (err) { setPreview(null); setPhase("idle"); fail(err); }
   };
   const handleTemplate = async () => {
@@ -49,12 +51,13 @@ export default function VehicleImportPanel({ onSessionExpired, onGoToBrands }) {
     try { downloadBlob(await downloadVehicleImportTemplate(getStoredToken()), "Leap_Vehicle_Import_Template.xlsx"); } catch (err) { fail(err); }
   };
   const handleMode = (next) => { setMode(next); if (file && phase === "checked") runCheck(file, next); };
+  const handlePictures = (next) => { setReplacePictures(next); if (file && phase === "checked") runCheck(file, mode, next); };
   const handleImport = async () => {
     setPhase("importing"); setError(null);
-    try { const done = await commitVehicleImport(getStoredToken(), file, mode); setResult(done); setPreview(null); setPhase("done"); }
+    try { const done = await commitVehicleImport(getStoredToken(), file, mode, replacePictures); setResult(done); setPreview(null); setPhase("done"); }
     catch (err) { setPhase("checked"); fail(err); }
   };
-  const reset = () => { setFile(null); setPreview(null); setResult(null); setError(null); setPhase("idle"); setMode("skip"); };
+  const reset = () => { setFile(null); setPreview(null); setResult(null); setError(null); setPhase("idle"); setMode("skip"); setReplacePictures(true); };
   const handleReport = () => exportToExcel({
     sheetName: "Import check", filename: `Vehicle_import_report_${preview.fileName.replace(/\.xlsx$/i, "")}.xlsx`,
     columns: [{ header: "Row", key: "row", width: 8 }, { header: "Brand", key: "brand", width: 16 }, { header: "Model", key: "model", width: 14 }, { header: "Year", key: "year", width: 8 }, { header: "Version", key: "version", width: 34 }, { header: "Seats", key: "seats", width: 8 }, { header: "Picture", key: "picture", width: 12 }, { header: "Result", key: "result", width: 16 }, { header: "Messages", key: "messages", width: 80 }],
@@ -103,6 +106,9 @@ export default function VehicleImportPanel({ onSessionExpired, onGoToBrands }) {
             <label style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="radio" name="import-mode" checked={mode === "skip"} onChange={() => handleMode("skip")} /> Skip rows that already exist (recommended)</label>
             <label style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="radio" name="import-mode" checked={mode === "update"} onChange={() => handleMode("update")} /> Update rows that already exist</label>
           </div>
+          <label style={{ ...body, fontSize: 12.5, color: C.ink, marginTop: 8, display: "flex", gap: 6, alignItems: "center" }}>
+            <input type="checkbox" checked={mode === "update" ? true : replacePictures} disabled={mode === "update"} onChange={(e) => handlePictures(e.target.checked)} /> Use the pictures in this file for vehicles that already exist (the old pictures are removed){mode === "update" ? " - always on when updating" : ""}
+          </label>
         </div>
       )}
 
@@ -116,6 +122,7 @@ export default function VehicleImportPanel({ onSessionExpired, onGoToBrands }) {
             {tile(s.existingVersions, "already exist")}
             {mode === "update" && tile(s.updatedVersions, "to update")}
             {tile(s.picturesFound, "pictures found")}
+            {s.picturesReplaced > 0 && tile(s.picturesReplaced, "pictures replace old ones")}
             {tile(s.newWithoutPicture, 'saved as "No photo yet"', s.newWithoutPicture > 0)}
           </div>
 
@@ -177,9 +184,11 @@ export default function VehicleImportPanel({ onSessionExpired, onGoToBrands }) {
             {plural(result.summary.newVersions, "version", "versions")} added{result.summary.updatedVersions > 0 ? `, ${plural(result.summary.updatedVersions, "version", "versions")} updated` : ""}; {plural(result.summary.newModels, "model", "models")} and {plural(result.summary.newYears, "year", "years")} created; {plural(result.summary.picturesToSave, "picture", "pictures")} saved; {plural(result.summary.existingVersions, "row", "rows")} already existed.
             {result.summary.newWithoutPicture > 0 && <div style={{ color: "#8A5A12", display: "flex", gap: 6, alignItems: "center", marginTop: 6 }}><AlertTriangle size={14} /> {plural(result.summary.newWithoutPicture, "version is", "versions are")} marked "No photo yet" (and the new years have no photo): add them in Vehicle Data (brand, model, year, Versions).</div>}
           </div>
+          {result.oldPicturesRemoved > 0 && <div style={{ ...body, fontSize: 12.5, color: C.ink, marginTop: 6 }}>{plural(result.oldPicturesRemoved, "old picture was", "old pictures were")} removed from the server.</div>}
           <button onClick={reset} style={{ ...button(false, false), marginTop: 12 }}>Check another file</button>
         </div>
       )}
+      <UnusedPicturesCard onSessionExpired={onSessionExpired} />
     </div>
   );
 }
