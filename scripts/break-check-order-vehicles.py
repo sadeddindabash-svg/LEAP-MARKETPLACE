@@ -272,7 +272,64 @@ FT_STOREFRONT = [
  ("the old privacy address goes to the wrong page", SFP + "app/privecy-policy/page.tsx", '"/privacy-policy"', '"/about-us"'),
  ("the privacy address shows the wrong page", SFP + "app/privacy-policy/page.tsx", '<LegalPage pageKey="privacy" />', '<LegalPage pageKey="terms" />'),
 ]
-mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
+CP = "services/api/src/modules/catalogPhotos/"; PA = "apps/admin-dashboard/src/"
+CP_SERVER = [
+ ("anyone may read the coverage", CP + "routes.js", "router.get('/coverage', ...guard,", "router.get('/coverage',"),
+ ("anyone may import pictures", CP + "routes.js", "router.post('/import', ...guard,", "router.post('/import',"),
+ ("anyone may undo an import", CP + "routes.js", "router.post('/batches/:id/undo', ...guard,", "router.post('/batches/:id/undo',"),
+ ("anyone may change the fallback switch", CP + "routes.js", "router.put('/settings', ...guard,", "router.put('/settings',"),
+ ("anyone may download the shot list", CP + "routes.js", "router.get('/shot-list.xlsx', ...guard,", "router.get('/shot-list.xlsx',"),
+ ("a picture of any size is accepted", CP + "importer.js", "if (checked.width !== PHOTO_PX || checked.height !== PHOTO_PX)", "if (false)"),
+ ("a real picture is always replaced", CP + "importer.js", "targets.filter((t) => replace || isPlaceholder(t.photoUrl))", "targets.filter(() => true)"),
+ ("a real picture is never replaced, even when asked", CP + "importer.js", "targets.filter((t) => replace || isPlaceholder(t.photoUrl))", "targets.filter((t) => isPlaceholder(t.photoUrl))"),
+ ("a part's picture is not given to its other sizes", CP + "importer.js", "return rows.map((r) => ({ kind: 'part'", "return rows.filter((r) => String(r.code).toUpperCase() === code).map((r) => ({ kind: 'part'"),
+ ("the same code twice in one request is not noticed", CP + "importer.js", "if (seen.has(code))", "if (false)"),
+ ("Undo restores nothing", CP + "importer.js", "AND photo_url = $3`", "AND photo_url <> $3`"),
+ ("Undo overwrites a picture someone changed since", CP + "importer.js", "WHERE id = $2 AND photo_url = $3`", "WHERE id = $2 AND $3::text IS NOT NULL`"),
+ ("Undo leaves the pictures on disk", CP + "importer.js", "if (rows.length === 0) removeLocalImage(url);", ""),
+ ("Undo deletes a picture something else still uses", CP + "importer.js", "if (rows.length === 0) removeLocalImage(url);", "removeLocalImage(url);"),
+ ("all 50 imports are kept instead of the last 5", CP + "importer.js", "const KEEP_BATCHES = 5;", "const KEEP_BATCHES = 50;"),
+ ("an import sent in several requests is several imports", CP + "importer.js", "const existing = log.find((b) => b.id === batchId);", "const existing = null;"),
+ ("41 pictures at a time are accepted", CP + "importer.js", "const MAX_PER_REQUEST = 40;", "const MAX_PER_REQUEST = 400;"),
+ ("an odd import id is accepted", CP + "routes.js", "/^[A-Za-z0-9_-]{8,64}$/", "/.*/"),
+ ("a name with _ instead of - is not understood", CP + "codes.js", ".replace(/[_\\s]+/g, '-')", ".replace(/[_\\s]+/g, '')"),
+ ("the switch accepts anything", CP + "routes.js", "typeof req.body.fallback !== 'boolean'", "false"),
+ ("the fallback is on even when the switch is off (sections)", CP + "fallback.js", "async function withFallbackSections(rows) {\n  if (!rows.some((r) => isPlaceholder(r.photo_url)) || !(await isOn())) return rows;", "async function withFallbackSections(rows) {\n  if (!rows.some((r) => isPlaceholder(r.photo_url))) return rows;"),
+ ("the fallback uses products that are not live", CP + "fallback.js", "WHERE p.status = 'active' AND p.category = ANY($1)", "WHERE p.category = ANY($1)"),
+ ("the fallback picks the WORST-rated product", CP + "fallback.js", "ORDER BY p.category, p.rating DESC NULLS LAST, p.id ASC", "ORDER BY p.category, p.rating ASC NULLS LAST, p.id ASC"),
+ ("the fallback replaces a REAL picture too", CP + "fallback.js", "isPlaceholder(r.photo_url) && photo.has(r.id) ? {", "photo.has(r.id) ? {"),
+ ("the fallback replaces a real PART picture too", CP + "fallback.js", "isPlaceholder(r.photo_url) && url ? { ...r, photo_url: url } : r", "url ? { ...r, photo_url: url } : r"),
+ ("the fallback takes the LAST photo of a product", CP + "fallback.js", "ORDER BY pi.sort_order ASC, pi.id ASC LIMIT 1", "ORDER BY pi.sort_order DESC, pi.id ASC LIMIT 1"),
+ ("'missing only' lists everything", CP + "shotList.js", "return missingOnly ? rows.filter((r) => !r.hasPhoto) : rows;", "return rows;"),
+ ("a shared picture counts as done when only ONE size has it", CP + "shotList.js", "hasPhoto: g.members.every((m) => m.hasPhoto)", "hasPhoto: g.members.some((m) => m.hasPhoto)"),
+ ("every part is priority 2", CP + "shotList.js", "tier: i < TOP_PARTS && g.products > 0 ? 2 : 3", "tier: 2"),
+ ("a placeholder counts as a real picture", CP + "coverage.js", "hasPhoto: !isPlaceholder(p.photo_url), photoUrl: p.photo_url, products", "hasPhoto: true, photoUrl: p.photo_url, products"),
+ ("products that are not live are counted", CP + "coverage.js", "AND p.status = 'active') AS products", ") AS products"),
+]
+PPRE = PA + "photoPrep.js"; PNL = PA + "CatalogPhotosPanel.jsx"
+CP_ADMIN = [
+ ("a picture under 400 px is accepted", PPRE, "export const MIN_SOURCE_PX = 400;", "export const MIN_SOURCE_PX = 300;"),
+ ("batches are 50 big", PPRE, "export const BATCH_SIZE = 20;", "export const BATCH_SIZE = 50;"),
+ ("the same code twice is not noticed", PPRE, "if (seen.has(code)) { out.status", "if (false) { out.status"),
+ ("a real picture is always shown as replaced", PPRE, "const change = targets.filter((t) => replace || !t.hasPhoto);", "const change = targets.filter(() => true);"),
+ ("sizes of one part are not grouped", PPRE, "byGroup.get(parts.get(code).group)", "[parts.get(code)]"),
+ ("an unreadable file is not flagged", PPRE, "if (it.error) {", "if (false) {"),
+ ("a name that is not a code is not flagged", PPRE, "if (!code) { out.status", "if (false) { out.status"),
+ ("a name with _ is not understood", PPRE, '.replace(/[_\\s]+/g, "-")', '.replace(/[_\\s]+/g, "")'),
+ ("a picture is sent under its own file name, not its code", PNL, "name: `${i.code}.jpg`", "name: i.file"),
+ ("every batch has a different import id (one Undo cannot undo all)", PNL, "uploadPhotos(getStoredToken(), batchId,", "uploadPhotos(getStoredToken(), newBatchId(),"),
+ ("the replace choice is not sent", PNL, "blob: i.blob })), replace); results.push", "blob: i.blob })), false); results.push"),
+ ("pictures with problems are sent too", PNL, "const toSend = items.filter((i) => WILL_SAVE.includes(i.status));", "const toSend = items;"),
+ ("Undo does not ask first", PNL, "onClick={() => setConfirmUndo(b.id)}", "onClick={() => undo(b.id)}"),
+ ("an import that was undone can be undone again", PNL, "{!b.undone && (confirmUndo", "{true && (confirmUndo"),
+ ("Import is available with nothing to save", PNL, "disabled={counts.willSave === 0}", "disabled={false}"),
+ ("the switch always looks on", PNL, "checked={cov.fallback}", "checked={true}"),
+ ("the number of pictures still to make ignores the sections", PNL, "cov.sections.filter((s) => !s.hasPhoto).length +", "0 +"),
+ ("the two shot list buttons are swapped", PNL, "onClick={() => shot(false)}", "onClick={() => shot(true)}"),
+ ("the replace tick changes nothing in the preview", PNL, "cov, replace).map((c, i)", "cov, false).map((c, i)"),
+ ("the Photos tab is missing", PA + "CategoriesTabs.jsx", '["edit", "Edit details"], ["photos", "Photos"]]', '["edit", "Edit details"]]'),
+]
+mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
 lo, hi = (int(sys.argv[2]), int(sys.argv[3])) if len(sys.argv) > 3 else (1, len(BREAKS))
 def fresh():
     subprocess.run(["su", "postgres", "-c", "psql -q -c 'DROP DATABASE IF EXISTS leap_catalog_import_test' -c \"CREATE DATABASE leap_catalog_import_test TEMPLATE leap_marketplace_dev OWNER leap_dev\""], check=True, capture_output=True)
@@ -282,6 +339,8 @@ def run():
     if mode == "ftserver": return subprocess.run(["node", "--test", "test/footer.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "ftadmin": return subprocess.run(["npx", "vitest", "run", "src/FooterTextSection.test.jsx", "src/SocialLinksSection.test.jsx", "src/LegalPagesSection.test.jsx", "src/pageEditorFormat.test.js", "src/miniMarkdown.test.js"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=250).returncode
     if mode == "ftstorefront": return subprocess.run(["npx", "vitest", "run", "components/SiteFooter.test.tsx", "components/LegalPage.test.tsx", "components/RichText.test.tsx", "lib/miniMarkdown.test.ts", "lib/footerContent.test.ts", "lib/miniMarkdownContract.test.ts", "app/legalPages.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
+    if mode == "cpserver": return subprocess.run(["node", "--test", "test/catalogPhotos.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
+    if mode == "cpadmin": return subprocess.run(["npx", "vitest", "run", "src/CatalogPhotosPanel.test.jsx", "src/photoPrep.test.js", "src/CategoriesPhotosTab.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=250).returncode
     if mode == "ppserver": return subprocess.run(["node", "--test", "test/homeText.test.js", "test/productPage.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "ppadmin": return subprocess.run(["npx", "vitest", "run", "src/HomeTextSection.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
     if mode == "ppstorefront": return subprocess.run(["npx", "vitest", "run", "components/ProductDetails.test.tsx", "components/LazyProductRow.test.tsx", "components/VehicleFilterOrder.test.tsx", "components/FitsMyCarLabel.test.tsx", "app/stage1c-page.test.tsx", "app/homeText.test.tsx", "components/SiteHeaderTopBar.test.tsx", "lib/gridSourceModel.test.ts", "lib/homeText.test.ts", "app/api/products/routeSameModel.test.ts"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
@@ -293,7 +352,7 @@ def run():
     if mode == "server": return subprocess.run(["node", "--test", "test/orderVehicles.test.js", "test/productCars.test.js", "test/orderVehiclesReplacement.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "screens": return subprocess.run(["npx", "vitest", "run", "src/OrderVehicle.test.jsx", "src/OrderVehicleFlow.test.jsx"], cwd=SP, capture_output=True, text=True, timeout=150).returncode
     return subprocess.run(["npx", "vitest", "run", "components/FitCheck.test.tsx", "app/stage1c-page.test.tsx", "app/cartFitCheck.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=150).returncode
-if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver"): fresh()
+if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver"): fresh()
 if run() != 0: sys.exit("The tests do not pass on the UNBROKEN code, so a break check would prove nothing.")
 print("baseline: the tests pass on the unbroken code\n", flush=True); caught = 0
 for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
@@ -302,10 +361,10 @@ for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
     if src.count(old) != 1: print(f"{n:2d}. SKIPPED (the line to break was not found exactly once): {what}"); continue
     shutil.copy(path, path + ".keep"); open(path, "w", encoding="utf-8").write(src.replace(old, new))
     try:
-        if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver"): fresh()
+        if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver"): fresh()
         failed = run() != 0
     finally: shutil.move(path + ".keep", path)
     caught += failed; print(f"{n:2d}. {'CAUGHT ' if failed else 'MISSED!'}  {what}", flush=True)
 print(f"\n{caught} of {sum(1 for i in range(1, len(BREAKS) + 1) if lo <= i <= hi)} breaks were caught")
-if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver"): fresh()
+if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver"): fresh()
 print("code restored; the tests pass again:", "yes" if run() == 0 else "NO (investigate)")

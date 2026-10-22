@@ -7,6 +7,9 @@ import GroupTabs from "./components/GroupTabs";
 import { FONT_IMPORT, C, disp, body, mono } from "./theme";
 import HomePicturesSection from "./HomePicturesSection";
 import HomeTextSection from "./HomeTextSection";
+import FooterTextSection from "./FooterTextSection";
+import SocialLinksSection from "./SocialLinksSection";
+import LegalPagesSection from "./LegalPagesSection";
 import { PlateChip, Badge, Stars, KpiCard, Card, Th, Td, ConfirmDialog, EditDialog, EnlargeablePhoto } from "./components/ui";
 import VersionsPanel from "./VersionsPanel";
 import VehicleImportPanel from "./VehicleImportPanel";
@@ -8340,6 +8343,9 @@ function SettingsPage({ currentUser, onSessionExpired }) {
           <AnnouncementsSection onSessionExpired={onSessionExpired} />
           <HomePicturesSection onSessionExpired={onSessionExpired} />
           <HomeTextSection onSessionExpired={onSessionExpired} />
+          <FooterTextSection onSessionExpired={onSessionExpired} />
+          <SocialLinksSection onSessionExpired={onSessionExpired} />
+          <LegalPagesSection onSessionExpired={onSessionExpired} />
         </div>
       </div>
     </div>

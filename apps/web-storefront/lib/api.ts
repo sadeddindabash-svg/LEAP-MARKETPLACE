@@ -15,6 +15,7 @@
 
 import type { Lang } from "./i18n";
 import type { HomeText } from "./homeText";
+import type { FooterContent, LegalPageDto, PageKey } from "./footerContent";
 import { apiMessage } from "./serverMessages";
 import { NetworkError, netFetch } from "./net";
 
@@ -191,6 +192,23 @@ export async function fetchProductsPaginated(params: {
   const items = (await res.json()) as ProductSummary[];
   const total = Number(res.headers.get("X-Total-Count") || items.length);
   return { items, total };
+}
+
+/** The footer as the admin set it (texts, social media icons, which pages have text), or null when the shop cannot be reached (the website then uses its own footer). */
+export async function fetchFooterContent(): Promise<FooterContent | null> {
+  try {
+    return await apiGet<FooterContent>("/platform-settings/footer");
+  } catch {
+    return null;
+  }
+}
+/** One of the six pages (its title and text, in both languages), or null when it cannot be read. */
+export async function fetchLegalPage(key: PageKey): Promise<LegalPageDto | null> {
+  try {
+    return await apiGet<LegalPageDto>(`/platform-settings/footer/pages/${key}`);
+  } catch {
+    return null;
+  }
 }
 
 /** The texts the admin set for the home page (top bar, headline, sub-headline), or null when the shop cannot be reached (the website then uses its own wording). */

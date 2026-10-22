@@ -174,7 +174,7 @@ describe("structured data (JSON-LD)", () => {
 
 describe("private pages are kept out of search results, two ways, checked against the REAL folders", () => {
   const appDir = path.resolve(__dirname, "../app");
-  const PUBLIC_SECTIONS = ["products", "search", "find", "contact"];                                        // the only sections meant for search engines
+  const PUBLIC_SECTIONS = ["products", "search", "find", "contact", "about-us", "terms-conditions", "delivery-shipping-policy", "refund-policy", "privacy-policy", "cancellation-replacement-policy", "privecy-policy"];                                        // the only sections meant for search engines
   const NOT_PAGES = ["api"];                                                                                // doors the website's own pages call (lazy loading): not pages, and robots.txt keeps crawlers out
 
   it("CRITICAL: every section of the site is either public on purpose or listed as private: a new private page cannot be forgotten", () => {

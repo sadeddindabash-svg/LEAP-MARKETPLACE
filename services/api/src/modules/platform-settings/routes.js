@@ -19,6 +19,9 @@ router.use('/home-pictures', require('./homePictures'));
 // The editable texts of the home page: top bar message, headline and sub-headline, with font and size (see homeText.js).
 router.use('/home-text', require('./homeText'));
 
+// The storefront footer: texts, social media icons and the six pages (see footer.js).
+router.use('/footer', require('./footer'));
+
 const MIN_RETURN_WINDOW_DAYS = 3;
 const MAX_RETURN_WINDOW_DAYS = 7;
 
