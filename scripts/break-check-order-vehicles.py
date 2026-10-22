@@ -426,7 +426,17 @@ FF_STOREFRONT = [
  ("the layout downloads a font at build time again", FW + "app/layout.tsx", 'import { SITE_FONTS_HREF, SITE_FONT_VARS } from "@/lib/siteFonts";', 'import { Outfit } from "next/font/google";\nimport { SITE_FONTS_HREF, SITE_FONT_VARS } from "@/lib/siteFonts";'),
  ("the default font gets a style", FW + "lib/homeFonts.ts", "if (!font || font === \"default\" || !(font in GOOGLE_FONT)) return undefined;", "if (!font || !(font in GOOGLE_FONT)) return { fontFamily: \"Outfit\" };"),
 ]
-mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"ffstorefront": FF_STOREFRONT, "crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
+CLN = "services/api/src/modules/catalogImport/cleanup.js"
+CL_SERVER = [
+ ("a table that points at a product is not looked for", CLN, "const pointedAt = await blockers(client, 'products', users.map((u) => u.id), { ignore: ['cart_items'] });", "const pointedAt = new Map();"),
+ ("a refusal by the database fails the whole cleanup (no safety net)", CLN, "if (err.code === '23503') return -1; throw err;", "throw err;"),
+ ("a refusal on the whole lot is not tried one by one", CLN, "const done = []; for (const id of ids) {", "const done = []; for (const id of []) {"),
+ ("a table that points at a sub-category is not looked for", CLN, "const partHeld = await blockers(client, 'category_parts', candParts.map((p) => p.id));", "const partHeld = new Map();"),
+ ("the cart lines of a deleted product are left (the product then cannot go)", CLN, "'WITH carts AS (DELETE FROM cart_items WHERE product_id = ANY($1)) DELETE FROM products pr", "'DELETE FROM products pr"),
+ ("the answer lists products as removed that the database kept", CLN, "removed.products = deletable.filter((u) => gone.has(u.id)).map(describe);", "removed.products = deletable.map(describe);"),
+ ("a product that a quote request points at is called an ordered one in the answer", CLN, "const t = holders(u); return t.size === 1 && t.has('order_line_items') ?", "const t = holders(u); return true ?"),
+]
+mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"clserver": CL_SERVER, "ffstorefront": FF_STOREFRONT, "crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
 lo, hi = (int(sys.argv[2]), int(sys.argv[3])) if len(sys.argv) > 3 else (1, len(BREAKS))
 def fresh():
     subprocess.run(["su", "postgres", "-c", "psql -q -c 'DROP DATABASE IF EXISTS leap_catalog_import_test' -c \"CREATE DATABASE leap_catalog_import_test TEMPLATE leap_marketplace_dev OWNER leap_dev\""], check=True, capture_output=True)
@@ -443,6 +453,7 @@ def run():
     if mode == "crserver": return subprocess.run(["node", "--test", "test/catalogReplace.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=250).returncode
     if mode == "cradmin": return subprocess.run(["npx", "vitest", "run", "src/CatalogReplace.test.jsx", "src/CatalogImportPanel.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=250).returncode
     if mode == "ffstorefront": return subprocess.run(["npx", "vitest", "run", "lib/homeFontLinks.test.ts", "components/HomeFontLink.test.tsx", "app/homeFontLink.test.tsx", "app/homeText.test.tsx", "lib/siteFonts.test.ts", "app/layoutFonts.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
+    if mode == "clserver": return subprocess.run(["node", "--test", "test/catalogCleanup.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "ppserver": return subprocess.run(["node", "--test", "test/homeText.test.js", "test/productPage.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "ppadmin": return subprocess.run(["npx", "vitest", "run", "src/HomeTextSection.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
     if mode == "ppstorefront": return subprocess.run(["npx", "vitest", "run", "components/ProductDetails.test.tsx", "components/LazyProductRow.test.tsx", "components/VehicleFilterOrder.test.tsx", "components/FitsMyCarLabel.test.tsx", "app/stage1c-page.test.tsx", "app/homeText.test.tsx", "components/SiteHeaderTopBar.test.tsx", "lib/gridSourceModel.test.ts", "lib/homeText.test.ts", "app/api/products/routeSameModel.test.ts"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
@@ -454,7 +465,7 @@ def run():
     if mode == "server": return subprocess.run(["node", "--test", "test/orderVehicles.test.js", "test/productCars.test.js", "test/orderVehiclesReplacement.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "screens": return subprocess.run(["npx", "vitest", "run", "src/OrderVehicle.test.jsx", "src/OrderVehicleFlow.test.jsx"], cwd=SP, capture_output=True, text=True, timeout=150).returncode
     return subprocess.run(["npx", "vitest", "run", "components/FitCheck.test.tsx", "app/stage1c-page.test.tsx", "app/cartFitCheck.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=150).returncode
-if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver"): fresh()
+if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver"): fresh()
 if run() != 0: sys.exit("The tests do not pass on the UNBROKEN code, so a break check would prove nothing.")
 print("baseline: the tests pass on the unbroken code\n", flush=True); caught = 0
 for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
@@ -463,10 +474,10 @@ for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
     if src.count(old) != 1: print(f"{n:2d}. SKIPPED (the line to break was not found exactly once): {what}"); continue
     shutil.copy(path, path + ".keep"); open(path, "w", encoding="utf-8").write(src.replace(old, new))
     try:
-        if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver"): fresh()
+        if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver"): fresh()
         failed = run() != 0
     finally: shutil.move(path + ".keep", path)
     caught += failed; print(f"{n:2d}. {'CAUGHT ' if failed else 'MISSED!'}  {what}", flush=True)
 print(f"\n{caught} of {sum(1 for i in range(1, len(BREAKS) + 1) if lo <= i <= hi)} breaks were caught")
-if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver"): fresh()
+if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver"): fresh()
 print("code restored; the tests pass again:", "yes" if run() == 0 else "NO (investigate)")

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Sans_Arabic, JetBrains_Mono, Outfit } from "next/font/google";
+import { SITE_FONTS_HREF, SITE_FONT_VARS } from "@/lib/siteFonts";
 import { CartProvider } from "@/components/CartProvider";
 import { CurrencyProvider } from "@/components/CurrencyProvider";
 import { GarageProvider } from "@/components/GarageProvider";
@@ -15,9 +15,7 @@ import "./globals.css";
 
 // Outfit for English and IBM Plex Sans Arabic for Arabic (the theme is "Navy Workshop": see components/SiteHeader.tsx). JetBrains Mono stays for part numbers and the
 // plate-chip fitment badge.
-const outfit = Outfit({ variable: "--font-outfit", weight: ["400", "500", "600", "700", "800"], subsets: ["latin"] });
-const plexArabic = IBM_Plex_Sans_Arabic({ variable: "--font-arabic", weight: ["400", "500", "600", "700"], subsets: ["arabic"] });
-const jetbrainsMono = JetBrains_Mono({ variable: "--font-jetbrains-mono", weight: ["500", "600", "700"], subsets: ["latin"] });
+// (The fonts are linked, not downloaded while the site is built: see lib/siteFonts.ts.)
 
 // The title, description and share card follow the page's language (the language is part of the address: /ar/... is Arabic).
 export async function generateMetadata(): Promise<Metadata> {
@@ -34,7 +32,12 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const lang = await getLang();
   return (
-    <html lang={lang} dir={isRtl(lang) ? "rtl" : "ltr"} className={`${outfit.variable} ${plexArabic.variable} ${jetbrainsMono.variable} h-full antialiased`}>
+    <html lang={lang} dir={isRtl(lang) ? "rtl" : "ltr"} className="h-full antialiased" style={SITE_FONT_VARS}>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link rel="stylesheet" href={SITE_FONTS_HREF} />
+      </head>
       <body className="flex min-h-full flex-col bg-chalk text-ink">
         <LangProvider lang={lang}>
           <AuthProvider>

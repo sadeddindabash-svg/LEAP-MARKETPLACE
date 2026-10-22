@@ -8,6 +8,7 @@ import InfiniteProductGrid from "@/components/InfiniteProductGrid";
 import AnnouncementBar from "@/components/AnnouncementBar";
 import { fetchAnnouncements, fetchCategories, fetchHomePictures, fetchHomeText, fetchProducts, fetchSiteStats, fetchVehicleBrands } from "@/lib/api";
 import { homeFontStyle } from "@/lib/homeFonts";
+import HomeFontLink from "@/components/HomeFontLink";
 import { HEADLINE_SIZE_CLASS, SUBHEADLINE_SIZE_CLASS, pickHomeText } from "@/lib/homeText";
 import { pickName, t } from "@/lib/i18n";
 import { getLang } from "@/lib/lang";
@@ -47,6 +48,7 @@ export default async function HomePage() {
       <JsonLd data={websiteJsonLd()} />
       <section className="mx-auto grid max-w-7xl items-center gap-12 px-4 pb-4 pt-12 sm:px-8 lg:grid-cols-[1.1fr_1fr]" aria-labelledby="home-h1">
         <div>
+          <HomeFontLink fonts={[homeText?.headline.font, homeText?.subheadline.font]} />
           <h1 id="home-h1" style={homeFontStyle(homeText?.headline.font)} className={`${HEADLINE_SIZE_CLASS[homeText?.headline.size ?? "large"]} font-bold leading-[1.08] tracking-tight text-navy`}>{pickHomeText(homeText?.headline, lang, t(lang, "hero_title"))}</h1>
           <p style={homeFontStyle(homeText?.subheadline.font)} className={`mt-4 max-w-lg ${SUBHEADLINE_SIZE_CLASS[homeText?.subheadline.size ?? "medium"]} text-muted`}>{pickHomeText(homeText?.subheadline, lang, t(lang, "hero_lead"))}</p>
         </div>

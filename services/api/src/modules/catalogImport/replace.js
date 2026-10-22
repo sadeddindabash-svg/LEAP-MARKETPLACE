@@ -119,4 +119,4 @@ async function applyRemoval(client, plan) {
   plan.counts = { categories: plan.categories.length, parts: plan.parts.length, products: plan.products.length };
   return { imageUrls, photoUrls };
 }
-module.exports = { planRemoval, applyRemoval, REPLACE_PHRASE };
+module.exports = { planRemoval, applyRemoval, REPLACE_PHRASE, blockers, tablesText };
