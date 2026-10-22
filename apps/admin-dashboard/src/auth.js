@@ -512,6 +512,16 @@ export const checkProductDelete = (token, ids) => productDeleteCall("delete-chec
 export const deleteProducts = (token, ids, confirm) => productDeleteCall("delete", token, { ids, confirm });
 // Hidden products go back to the moderation queue (not straight to live).
 export const sendProductsToReview = (token, ids) => productDeleteCall("send-to-review", token, { ids });
+// Categories: what still uses a category, and removing it together with its products (see the server's catalog/categoryRemove.js).
+async function categoryCall(method, id, path, token, body) {
+  const response = await fetch(`${API_BASE_URL}/catalog/admin/categories/${encodeURIComponent(id)}/${path}`, { method, headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+export const fetchCategoryInUse = (token, id) => categoryCall("GET", id, "in-use", token);
+export const removeCategoryWithProducts = (token, id, confirm) => categoryCall("POST", id, "remove", token, { confirm });
 export async function fetchProductRequirements() {
   const response = await fetch(`${API_BASE_URL}/catalog/product-requirements`);
   const data = await response.json();
@@ -593,7 +603,7 @@ export async function deleteCategory(token, id) {
   if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
   if (response.status === 204) return null;
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  if (!response.ok) { const error = new Error(data.error || `Request failed (${response.status})`); error.payload = data; throw error; }          // payload.inUse = products still use it
   return data;
 }
 

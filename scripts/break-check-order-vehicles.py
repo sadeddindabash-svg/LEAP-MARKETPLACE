@@ -510,7 +510,29 @@ CX_ADMIN = [
  ("the refusal loses its details (the screen cannot know products are in the way)", CXA + "auth.js", "error.payload = data; throw error; }          // payload.inUse = products still use it", "throw error; }"),
  ("the removal sends no sentence", CXA + "auth.js", 'removeCategoryWithProducts = (token, id, confirm) => categoryCall("POST", id, "remove", token, { confirm });', 'removeCategoryWithProducts = (token, id, confirm) => categoryCall("POST", id, "remove", token, {});'),
 ]
-mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"cxserver": CX_SERVER, "cxadmin": CX_ADMIN, "pdserver": PD_SERVER, "pdadmin": PD_ADMIN, "clserver": CL_SERVER, "ffstorefront": FF_STOREFRONT, "crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
+SSW = "apps/web-storefront/"
+SS_STOREFRONT = [
+ ("each suggestion stays only 1 second", SSW + "lib/searchHints.ts", "export const ROTATE_MS = 3000;", "export const ROTATE_MS = 1000;"),
+ ("the slide takes 5 seconds", SSW + "lib/searchHints.ts", "export const SLIDE_MS = 500;", "export const SLIDE_MS = 5000;"),
+ ("the box's normal sentence is no longer the first suggestion", SSW + "lib/searchHints.ts", "return [say(\"search_placeholder\"), ...SEARCH_HINT_KEYS.map((k) => say(k))];", "return [...SEARCH_HINT_KEYS.map((k) => say(k))];"),
+ ("the suggestions slide DOWN instead of up", SSW + "components/RotatingPlaceholder.tsx", "translateY(${index * -1.5}rem)", "translateY(${index * 1.5}rem)"),
+ ("the first suggestion is not repeated at the end (a blank gap after the last one)", SSW + "components/RotatingPlaceholder.tsx", "const items = [...suggestions, suggestions[0]];", "const items = [...suggestions];"),
+ ("after the last one it slides all the way back instead of jumping", SSW + "components/RotatingPlaceholder.tsx", "setAnimate(false); setIndex(0);", "setIndex(0);"),
+ ("it keeps moving while the tab is in the background", SSW + "components/RotatingPlaceholder.tsx", "if (typeof document !== \"undefined\" && document.hidden) return; ", ""),
+ ("the timer is never stopped", SSW + "components/RotatingPlaceholder.tsx", "return () => clearInterval(id);", "return;"),
+ ("a single suggestion also moves", SSW + "components/RotatingPlaceholder.tsx", "if (count < 2) return;", ""),
+ ("screen readers read the moving words", SSW + "components/RotatingPlaceholder.tsx", 'aria-hidden="true" data-testid', 'data-testid'),
+ ("the real placeholder is not emptied, so the two overlap", SSW + "components/HeaderSearch.tsx", 'placeholder={animated ? "" : t("search_placeholder")}', 'placeholder={t("search_placeholder")}'),
+ ("the moving words stay while someone types", SSW + "components/HeaderSearch.tsx", '{animated && q === "" && <RotatingPlaceholder', '{animated && <RotatingPlaceholder'),
+ ("the less-movement setting is ignored", SSW + "components/HeaderSearch.tsx", "const animated = ready && !reduced;", "const animated = ready;"),
+ ("screen readers lose the plain sentence", SSW + "components/HeaderSearch.tsx", 'aria-describedby="site-search-hint"', ""),
+ ("the setting is listened to for ever", SSW + "components/HeaderSearch.tsx", 'query.removeEventListener?.("change", onChange);', ""),
+ ("the column beside the photos is no longer pinned", SSW + "app/products/[id]/page.tsx", '"md:sticky md:top-4 ', '"md:top-4 '),
+ ("the pinned column stretches instead of starting at the top (so it cannot move)", SSW + "app/products/[id]/page.tsx", " md:self-start md:overflow-y-auto", " md:overflow-y-auto"),
+ ("the column is pinned on phones too", SSW + "app/products/[id]/page.tsx", '"md:sticky md:top-4 ', '"sticky top-4 '),
+ ("a tall column can hide the Add to cart button", SSW + "app/products/[id]/page.tsx", "md:max-h-[calc(100vh-2rem)] ", ""),
+]
+mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"ssstorefront": SS_STOREFRONT, "cxserver": CX_SERVER, "cxadmin": CX_ADMIN, "pdserver": PD_SERVER, "pdadmin": PD_ADMIN, "clserver": CL_SERVER, "ffstorefront": FF_STOREFRONT, "crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
 lo, hi = (int(sys.argv[2]), int(sys.argv[3])) if len(sys.argv) > 3 else (1, len(BREAKS))
 def fresh():
     subprocess.run(["su", "postgres", "-c", "psql -q -c 'DROP DATABASE IF EXISTS leap_catalog_import_test' -c \"CREATE DATABASE leap_catalog_import_test TEMPLATE leap_marketplace_dev OWNER leap_dev\""], check=True, capture_output=True)
@@ -532,6 +554,7 @@ def run():
     if mode == "pdadmin": return subprocess.run(["npx", "vitest", "run", "src/ProductDeleteDialog.test.jsx", "src/productDeleteApi.test.js"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=250).returncode
     if mode == "cxserver": return subprocess.run(["node", "--test", "test/categoryRemove.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "cxadmin": return subprocess.run(["npx", "vitest", "run", "src/CategoryInUseDialog.test.jsx", "src/productDeleteApi.test.js"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=250).returncode
+    if mode == "ssstorefront": return subprocess.run(["npx", "vitest", "run", "lib/searchHints.test.ts", "components/RotatingPlaceholder.test.tsx", "components/HeaderSearch.test.tsx", "app/stickyColumn.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
     if mode == "ppserver": return subprocess.run(["node", "--test", "test/homeText.test.js", "test/productPage.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "ppadmin": return subprocess.run(["npx", "vitest", "run", "src/HomeTextSection.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
     if mode == "ppstorefront": return subprocess.run(["npx", "vitest", "run", "components/ProductDetails.test.tsx", "components/LazyProductRow.test.tsx", "components/VehicleFilterOrder.test.tsx", "components/FitsMyCarLabel.test.tsx", "app/stage1c-page.test.tsx", "app/homeText.test.tsx", "components/SiteHeaderTopBar.test.tsx", "lib/gridSourceModel.test.ts", "lib/homeText.test.ts", "app/api/products/routeSameModel.test.ts"], cwd=SF, capture_output=True, text=True, timeout=250).returncode

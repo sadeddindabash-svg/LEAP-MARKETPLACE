@@ -14,6 +14,7 @@ import { PlateChip, Badge, Stars, KpiCard, Card, Th, Td, ConfirmDialog, EditDial
 import VersionsPanel from "./VersionsPanel";
 import VehicleImportPanel from "./VehicleImportPanel";
 import ProductDeleteDialog, { ProductSelectionBar, SelectBox, SelectAllBox, useProductSelection, ProductViewSwitch, ProductReviewDialog, ProductPageDelete } from "./ProductDeleteDialog";
+import CategoryInUseDialog from "./CategoryInUseDialog";
 import CategoriesTabs from "./CategoriesTabs";
 import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, fetchSupplierById, verifySupplier, updateSupplierCountry, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
   fetchCountriesList, fetchWarehouseCountries, fetchCountryGroups, createCountryGroup, deleteCountryGroup, addCountryGroupMember, removeCountryGroupMember,
@@ -5836,6 +5837,7 @@ function CategoriesPageMain({ onSessionExpired }) {
   const [isSubmittingCat, setIsSubmittingCat] = useState(false);
   const [replacingPhotoForCatId, setReplacingPhotoForCatId] = useState(null);
   const [pendingDeleteCat, setPendingDeleteCat] = useState(null); // {id, nameEn}
+  const [inUseCat, setInUseCat] = useState(null);                 // {id, nameEn}: the window that shows what still uses a category
   const [pendingEditCat, setPendingEditCat] = useState(null); // the full category object
   const [isSavingCatEdit, setIsSavingCatEdit] = useState(false);
 
@@ -5908,6 +5910,7 @@ function CategoriesPageMain({ onSessionExpired }) {
       loadCategories();
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
+      if (err.payload && err.payload.inUse) { setInUseCat({ id, nameEn: pendingDeleteCat?.nameEn }); return; }          // products still use it: show WHICH, and offer to clear them
       setErrorMessage(err.message); // e.g. the real 409 messages for real products or attached parts
     } finally {
       setPendingDeleteCat(null);
@@ -6037,6 +6040,7 @@ function CategoriesPageMain({ onSessionExpired }) {
         onConfirm={() => handleDeleteCategory(pendingDeleteCat.id)}
         onCancel={() => setPendingDeleteCat(null)}
       />
+      {inUseCat && <CategoryInUseDialog categoryId={inUseCat.id} categoryName={inUseCat.nameEn} onClose={() => setInUseCat(null)} onChanged={() => loadCategories()} onSessionExpired={onSessionExpired} />}
       <EditDialog
         isOpen={!!pendingEditCat}
         title={`Edit "${pendingEditCat?.nameEn}"`}

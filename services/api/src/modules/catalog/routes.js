@@ -1785,7 +1785,7 @@ router.delete('/categories/:id', requireAuth, requireRole('admin'), requirePageA
   try {
     const { rows: productsUsingIt } = await db.query('SELECT id FROM products WHERE category = $1 LIMIT 1', [req.params.id]);
     if (productsUsingIt.length > 0) {
-      return res.status(409).json({ error: 'Cannot delete this category — real products still reference it' });
+      return res.status(409).json({ error: 'Cannot delete this category — real products still reference it', inUse: true });
     }
     // Real bug found via testing: category_parts.category_id has a FK
     // to product_categories with no CASCADE — deleting a category that
@@ -1951,6 +1951,9 @@ router.use('/admin', require('../catalogImport/routes'));
 
 // Admin > All products > Delete (see productDelete.js): POST /admin/products/delete-check and POST /admin/products/delete.
 router.use('/admin/products', require('./productDelete'));
+
+// Categories > Delete: what still uses a category, and removing it together with its products (see categoryRemove.js).
+router.use('/admin/categories', require('./categoryRemove'));
 
 module.exports = router;
 // Real product DTO helpers, exported for reuse by other modules that
