@@ -436,7 +436,54 @@ CL_SERVER = [
  ("the answer lists products as removed that the database kept", CLN, "removed.products = deletable.filter((u) => gone.has(u.id)).map(describe);", "removed.products = deletable.map(describe);"),
  ("a product that a quote request points at is called an ordered one in the answer", CLN, "const t = holders(u); return t.size === 1 && t.has('order_line_items') ?", "const t = holders(u); return true ?"),
 ]
-mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"clserver": CL_SERVER, "ffstorefront": FF_STOREFRONT, "crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
+PDS = "services/api/src/modules/catalog/productDelete.js"; PDA = "apps/admin-dashboard/src/"
+PD_SERVER = [
+ ("anyone may delete products", PDS, "router.post('/delete', ...guard,", "router.post('/delete',"),
+ ("anyone may check products", PDS, "router.post('/delete-check', ...guard,", "router.post('/delete-check',"),
+ ("several products are deleted without the typed sentence", PDS, "if (ids.length > 1 && String(confirm || '').trim() !== PHRASE)", "if (false)"),
+ ("one product is deleted without the confirmation", PDS, "if (ids.length === 1 && confirm !== true && String(confirm || '').trim() !== PHRASE)", "if (false)"),
+ ("a quote request (or any table pointing at a product) is not looked for", PDS, "const pointedAt = await blockers(q, 'products', found.map((p) => p.id), { ignore: ['cart_items'] });", "const pointedAt = new Map();"),
+ ("a refusal by the database fails the whole deletion (no safety net)", PDS, "if (err.code === '23503') return -1; throw err;", "throw err;"),
+ ("a refusal on the whole lot is not tried one by one", PDS, "for (const id of toDelete) {", "for (const id of []) {"),
+ ("the cart lines of a deleted product are left (the product then cannot go)", PDS, "'WITH carts AS (DELETE FROM cart_items WHERE product_id = ANY($1)) DELETE FROM products pr", "'DELETE FROM products pr"),
+ ("the picture files of deleted products stay on the server", PDS, ".filter((r) => goneSet.has(r.product_id)).map((r) => r.url)", ".filter((r) => false).map((r) => r.url)"),
+ ("more than 200 products at once are accepted", PDS, "const MAX_IDS = 200;", "const MAX_IDS = 2000;"),
+ ("the same id twice counts twice", PDS, "[...new Set(body.ids.filter((x) => typeof x === 'string' && x.trim() !== '').map((x) => x.trim()))]", "body.ids.filter((x) => typeof x === 'string' && x.trim() !== '').map((x) => x.trim())"),
+ ("a product that is not there is not reported", PDS, "missing: ids.filter((id) => !there.has(id))", "missing: []"),
+ ("the deletion is not in the audit log", PDS, "if (deleted.length > 0) await logAdminAction(", "if (false) await logAdminAction("),
+ ("the hidden list shows live products", "services/api/src/modules/catalog/routes.js", "let where = req.query.status === 'hidden' ?", "let where = false ?"),
+ ("send to review puts the product straight back on sale", PDS, "SET status = 'translating' WHERE id = ANY($1)", "SET status = 'active' WHERE id = ANY($1)"),
+ ("send to review also changes live products", PDS, "WHERE id = ANY($1) AND status = 'inactive' RETURNING id, name", "WHERE id = ANY($1) RETURNING id, name"),
+ ("anyone may send products to review", PDS, "router.post('/send-to-review', ...guard,", "router.post('/send-to-review',"),
+ ("sending to review is not in the audit log", PDS, "if (rows.length > 0) await logAdminAction(req, 'products_sent_to_review'", "if (false) await logAdminAction(req, 'products_sent_to_review'"),
+ ("what goes with the products is counted wrongly", PDS, "(counts.get(label) || 0) + n)", "(counts.get(label) || 0) + 1)"),
+]
+PDD = PDA + "ProductDeleteDialog.jsx"
+PD_ADMIN = [
+ ("several products need no typed sentence", PDD, "const needsPhrase = deletable.length > 1;", "const needsPhrase = false;"),
+ ("the Delete button works without the typed sentence", PDD, "(!needsPhrase || typed === DELETE_PHRASE)", "true"),
+ ("the window sends every chosen product, not only those that can go", PDD, "deleteProducts(getStoredToken(), deletable.map((p) => p.id), needsPhrase ? typed : true)", "deleteProducts(getStoredToken(), ids, needsPhrase ? typed : true)"),
+ ("'Hide them instead' also hides ones that are already hidden", PDD, 'const targets = held.filter((p) => p.status !== "inactive"); setHiding(true);', "const targets = held; setHiding(true);"),
+ ("'Hide them instead' approves instead of hiding", PDD, 'action: "reject"', 'action: "approve"'),
+ ("hiding does not refresh the list", PDD, 'if (ok > 0) onChanged?.("hidden");', ""),
+ ("deleting does not refresh the list", PDD, 'if (r.deleted.length > 0) onChanged?.("deleted");', ""),
+ ("the 'cannot be undone' warning is gone", PDD, "This cannot be undone.</div>", "</div>"),
+ ("ticking a row also opens the product", PDD, " onClick={(e) => e.stopPropagation()} />;", " />;"),
+ ("the header tick never unticks the page", PDD, "const all = ids.length > 0 && ids.every((id) => s.has(id));", "const all = false;"),
+ ("the header tick looks ticked on an empty page", PDD, "checked={ids.length > 0 && ids.every((id) => picked.has(id))}", "checked={ids.every((id) => picked.has(id))}"),
+ ("the sentence to type is not the server's", PDD, 'export const DELETE_PHRASE = "DELETE PRODUCTS";', 'export const DELETE_PHRASE = "DELETE";'),
+ ("the Live and Hidden switch reacts when the same one is pressed again", PDD, "onClick={() => view !== id && onChange(id)}", "onClick={() => onChange(id)}"),
+ ("'Send back to review' is offered in the Live list too", PDD, "{onReview && <button", "{true && <button"),
+ ("the review window sends nothing", PDD, "sendProductsToReview(getStoredToken(), ids)", "sendProductsToReview(getStoredToken(), [])"),
+ ("the list is not refreshed after products are sent to review", PDD, 'if (r.sent.length > 0) onChanged?.("reviewed");', ""),
+ ("the list never asks for the hidden products", PDA + "auth.js", 'if (status) params.set("status", status);', ""),
+ ("send to review calls the wrong route", PDA + "auth.js", 'productDeleteCall("send-to-review"', 'productDeleteCall("delete-check"'),
+ ("deleting from a product's own page leaves you on the page of a product that no longer exists", PDD, "if (wasDeleted) onBack();", ""),
+ ("hiding a product from its own page throws you out to the list", PDD, 'if (kind === "deleted") setWasDeleted(true);', "setWasDeleted(true);"),
+ ("the product page's window is opened for nothing", PDD, "ids={[productId]}", "ids={[]}"),
+ ("the check asks for the wrong thing (a deletion)", PDA + "auth.js", 'checkProductDelete = (token, ids) => productDeleteCall("delete-check"', 'checkProductDelete = (token, ids) => productDeleteCall("delete"'),
+]
+mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"pdserver": PD_SERVER, "pdadmin": PD_ADMIN, "clserver": CL_SERVER, "ffstorefront": FF_STOREFRONT, "crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
 lo, hi = (int(sys.argv[2]), int(sys.argv[3])) if len(sys.argv) > 3 else (1, len(BREAKS))
 def fresh():
     subprocess.run(["su", "postgres", "-c", "psql -q -c 'DROP DATABASE IF EXISTS leap_catalog_import_test' -c \"CREATE DATABASE leap_catalog_import_test TEMPLATE leap_marketplace_dev OWNER leap_dev\""], check=True, capture_output=True)
@@ -454,6 +501,8 @@ def run():
     if mode == "cradmin": return subprocess.run(["npx", "vitest", "run", "src/CatalogReplace.test.jsx", "src/CatalogImportPanel.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=250).returncode
     if mode == "ffstorefront": return subprocess.run(["npx", "vitest", "run", "lib/homeFontLinks.test.ts", "components/HomeFontLink.test.tsx", "app/homeFontLink.test.tsx", "app/homeText.test.tsx", "lib/siteFonts.test.ts", "app/layoutFonts.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
     if mode == "clserver": return subprocess.run(["node", "--test", "test/catalogCleanup.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
+    if mode == "pdserver": return subprocess.run(["node", "--test", "test/productDelete.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
+    if mode == "pdadmin": return subprocess.run(["npx", "vitest", "run", "src/ProductDeleteDialog.test.jsx", "src/productDeleteApi.test.js"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=250).returncode
     if mode == "ppserver": return subprocess.run(["node", "--test", "test/homeText.test.js", "test/productPage.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "ppadmin": return subprocess.run(["npx", "vitest", "run", "src/HomeTextSection.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
     if mode == "ppstorefront": return subprocess.run(["npx", "vitest", "run", "components/ProductDetails.test.tsx", "components/LazyProductRow.test.tsx", "components/VehicleFilterOrder.test.tsx", "components/FitsMyCarLabel.test.tsx", "app/stage1c-page.test.tsx", "app/homeText.test.tsx", "components/SiteHeaderTopBar.test.tsx", "lib/gridSourceModel.test.ts", "lib/homeText.test.ts", "app/api/products/routeSameModel.test.ts"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
@@ -465,7 +514,7 @@ def run():
     if mode == "server": return subprocess.run(["node", "--test", "test/orderVehicles.test.js", "test/productCars.test.js", "test/orderVehiclesReplacement.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "screens": return subprocess.run(["npx", "vitest", "run", "src/OrderVehicle.test.jsx", "src/OrderVehicleFlow.test.jsx"], cwd=SP, capture_output=True, text=True, timeout=150).returncode
     return subprocess.run(["npx", "vitest", "run", "components/FitCheck.test.tsx", "app/stage1c-page.test.tsx", "app/cartFitCheck.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=150).returncode
-if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver"): fresh()
+if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver"): fresh()
 if run() != 0: sys.exit("The tests do not pass on the UNBROKEN code, so a break check would prove nothing.")
 print("baseline: the tests pass on the unbroken code\n", flush=True); caught = 0
 for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
@@ -474,10 +523,10 @@ for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
     if src.count(old) != 1: print(f"{n:2d}. SKIPPED (the line to break was not found exactly once): {what}"); continue
     shutil.copy(path, path + ".keep"); open(path, "w", encoding="utf-8").write(src.replace(old, new))
     try:
-        if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver"): fresh()
+        if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver"): fresh()
         failed = run() != 0
     finally: shutil.move(path + ".keep", path)
     caught += failed; print(f"{n:2d}. {'CAUGHT ' if failed else 'MISSED!'}  {what}", flush=True)
 print(f"\n{caught} of {sum(1 for i in range(1, len(BREAKS) + 1) if lo <= i <= hi)} breaks were caught")
-if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver"): fresh()
+if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver"): fresh()
 print("code restored; the tests pass again:", "yes" if run() == 0 else "NO (investigate)")
