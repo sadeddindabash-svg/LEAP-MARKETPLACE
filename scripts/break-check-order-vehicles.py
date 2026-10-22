@@ -410,7 +410,23 @@ CR_ADMIN = [
  ("the banner button goes nowhere", RO, 'document.getElementById("catalog-removal-box")?.scrollIntoView?.', 'document.getElementById("nothing")?.scrollIntoView?.'),
  ("the typed sentence is kept when the products choice changes", RO, "onChange({ alsoProducts: e.target.checked, confirm: \"\" })", "onChange({ alsoProducts: e.target.checked })"),
 ]
-mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
+FW = "apps/web-storefront/"
+FF_STOREFRONT = [
+ ("the font address loses display=swap (text invisible until the font arrives)", FW + "lib/homeFontLinks.ts", "&display=swap`;", "`;"),
+ ("a page that uses no chosen font still links to Google", FW + "lib/homeFontLinks.ts", "if (used.length === 0) return null;", ""),
+ ("a font used twice is asked for twice", FW + "lib/homeFontLinks.ts", "const used = [...new Set(", "const used = [...("),
+ ("the website's Arabic font is no longer the fallback", FW + "lib/homeFonts.ts", ", var(--font-arabic), sans-serif", ", sans-serif"),
+ ("the component shows a link even when there is nothing to link", FW + "components/HomeFontLink.tsx", "return href ? <link rel=\"stylesheet\" href={href} /> : null;", "return <link rel=\"stylesheet\" href={href ?? \"\"} />;"),
+ ("the home page forgets to link the fonts", FW + "app/page.tsx", "          <HomeFontLink fonts={[homeText?.headline.font, homeText?.subheadline.font]} />\n", ""),
+ ("a home font is downloaded at build time again (what stopped the storefront)", FW + "lib/homeFonts.ts", "import type { HomeFont } from \"./homeText\";", "import { Inter } from \"next/font/google\";\nimport type { HomeFont } from \"./homeText\";"),
+ ("the page loses the font variables", FW + "app/layout.tsx", 'className="h-full antialiased" style={SITE_FONT_VARS}>', 'className="h-full antialiased">'),
+ ("the page forgets to link the website's fonts", FW + "app/layout.tsx", '        <link rel="stylesheet" href={SITE_FONTS_HREF} />\n', ""),
+ ("the website's fonts lose display=swap", FW + "lib/siteFonts.ts", "JetBrains+Mono:wght@500;600;700&display=swap", "JetBrains+Mono:wght@500;600;700"),
+ ("the Arabic font variable names another font", FW + "lib/siteFonts.ts", '"--font-arabic": \'"IBM Plex Sans Arabic"\'', '"--font-arabic": \'"Cairo"\''),
+ ("the layout downloads a font at build time again", FW + "app/layout.tsx", 'import { SITE_FONTS_HREF, SITE_FONT_VARS } from "@/lib/siteFonts";', 'import { Outfit } from "next/font/google";\nimport { SITE_FONTS_HREF, SITE_FONT_VARS } from "@/lib/siteFonts";'),
+ ("the default font gets a style", FW + "lib/homeFonts.ts", "if (!font || font === \"default\" || !(font in GOOGLE_FONT)) return undefined;", "if (!font || !(font in GOOGLE_FONT)) return { fontFamily: \"Outfit\" };"),
+]
+mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"ffstorefront": FF_STOREFRONT, "crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
 lo, hi = (int(sys.argv[2]), int(sys.argv[3])) if len(sys.argv) > 3 else (1, len(BREAKS))
 def fresh():
     subprocess.run(["su", "postgres", "-c", "psql -q -c 'DROP DATABASE IF EXISTS leap_catalog_import_test' -c \"CREATE DATABASE leap_catalog_import_test TEMPLATE leap_marketplace_dev OWNER leap_dev\""], check=True, capture_output=True)
@@ -426,6 +442,7 @@ def run():
     if mode == "vpadmin": return subprocess.run(["npx", "vitest", "run", "src/VehicleImportPictures.test.jsx", "src/UnusedPicturesCard.test.jsx", "src/unusedPicturesApi.test.js", "src/VehicleImportPanel.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=250).returncode
     if mode == "crserver": return subprocess.run(["node", "--test", "test/catalogReplace.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=250).returncode
     if mode == "cradmin": return subprocess.run(["npx", "vitest", "run", "src/CatalogReplace.test.jsx", "src/CatalogImportPanel.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=250).returncode
+    if mode == "ffstorefront": return subprocess.run(["npx", "vitest", "run", "lib/homeFontLinks.test.ts", "components/HomeFontLink.test.tsx", "app/homeFontLink.test.tsx", "app/homeText.test.tsx", "lib/siteFonts.test.ts", "app/layoutFonts.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
     if mode == "ppserver": return subprocess.run(["node", "--test", "test/homeText.test.js", "test/productPage.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "ppadmin": return subprocess.run(["npx", "vitest", "run", "src/HomeTextSection.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
     if mode == "ppstorefront": return subprocess.run(["npx", "vitest", "run", "components/ProductDetails.test.tsx", "components/LazyProductRow.test.tsx", "components/VehicleFilterOrder.test.tsx", "components/FitsMyCarLabel.test.tsx", "app/stage1c-page.test.tsx", "app/homeText.test.tsx", "components/SiteHeaderTopBar.test.tsx", "lib/gridSourceModel.test.ts", "lib/homeText.test.ts", "app/api/products/routeSameModel.test.ts"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
