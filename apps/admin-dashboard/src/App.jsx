@@ -7,6 +7,7 @@ import GroupTabs from "./components/GroupTabs";
 import { FONT_IMPORT, C, disp, body, mono } from "./theme";
 import HomePicturesSection from "./HomePicturesSection";
 import HomeTextSection from "./HomeTextSection";
+import HomeBannerSection from "./HomeBannerSection";
 import FooterTextSection from "./FooterTextSection";
 import SocialLinksSection from "./SocialLinksSection";
 import LegalPagesSection from "./LegalPagesSection";
@@ -8361,6 +8362,7 @@ function SettingsPage({ currentUser, onSessionExpired }) {
           <AnnouncementsSection onSessionExpired={onSessionExpired} />
           <HomePicturesSection onSessionExpired={onSessionExpired} />
           <HomeTextSection onSessionExpired={onSessionExpired} />
+          <HomeBannerSection onSessionExpired={onSessionExpired} />
           <FooterTextSection onSessionExpired={onSessionExpired} />
           <SocialLinksSection onSessionExpired={onSessionExpired} />
           <LegalPagesSection onSessionExpired={onSessionExpired} />

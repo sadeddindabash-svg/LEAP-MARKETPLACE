@@ -232,6 +232,11 @@ export async function fetchHomePictures(): Promise<HomePictures | null> {
   return data?.pictures ?? null;
 }
 
+/** The home page banner: whether to show the headline or the banner, and the slides (services/api/src/modules/platform-settings/homeBanner.js). */
+export async function fetchHomeBanner(): Promise<import("./homeBanner").HomeBanner | null> {
+  return apiGet<import("./homeBanner").HomeBanner>("/platform-settings/home-banner");
+}
+
 /** The four real totals of the home page (counted by the server). */
 export interface SiteStats { parts: number; brands: number; models: number; countries: number }
 export async function fetchSiteStats(): Promise<SiteStats | null> {

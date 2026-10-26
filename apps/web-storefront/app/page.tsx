@@ -6,13 +6,15 @@ import HeroPicker from "@/components/HeroPicker";
 import { JsonLd } from "@/components/JsonLd";
 import InfiniteProductGrid from "@/components/InfiniteProductGrid";
 import AnnouncementBar from "@/components/AnnouncementBar";
-import { fetchAnnouncements, fetchCategories, fetchHomePictures, fetchHomeText, fetchProducts, fetchSiteStats, fetchVehicleBrands } from "@/lib/api";
+import { fetchAnnouncements, fetchCategories, fetchHomeBanner, fetchHomePictures, fetchHomeText, fetchProducts, fetchSiteStats, fetchVehicleBrands, resolveImageUrl } from "@/lib/api";
 import { homeFontStyle } from "@/lib/homeFonts";
 import HomeFontLink from "@/components/HomeFontLink";
 import { HEADLINE_SIZE_CLASS, SUBHEADLINE_SIZE_CLASS, pickHomeText } from "@/lib/homeText";
 import { pickName, t } from "@/lib/i18n";
 import { getLang } from "@/lib/lang";
 import { alternatesFor, websiteJsonLd } from "@/lib/seo";
+import HomeBanner from "@/components/HomeBanner";
+import { viewSlides } from "@/lib/homeBanner";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { alternates: alternatesFor(await getLang(), "/") };
@@ -33,8 +35,13 @@ const tileClass = "flex h-full flex-col items-center gap-2.5 rounded-[14px] bord
 // HTML, in the page's language, which is the whole point of having this site next to the mobile app (a search engine reads it as it is).
 export default async function HomePage() {
   const lang = await getLang();
+  // The banner is optional: if it cannot be read (or is not set up) the home page simply shows the headline, as it always did.
+  const bannerPromise = (async () => { try { return await fetchHomeBanner(); } catch { return null; } })();
   const [categories, products, brands, announcements, totals, pictures, homeText] = await Promise.all([fetchCategories(), fetchProducts({ sort: "newest", lang }), fetchVehicleBrands(), fetchAnnouncements(), fetchSiteStats(), fetchHomePictures(), fetchHomeText()]);
   const newest = products.slice(0, NEWEST_PAGE_SIZE);
+  const banner = await bannerPromise;
+  const bannerSlides = banner?.mode === "banner" ? viewSlides(banner, lang, resolveImageUrl) : [];
+  const showBanner = bannerSlides.length > 0;
   // The four real totals counted by the server (not the length of a list that was fetched). If the server cannot give them, the row is left out rather than showing numbers that are not true.
   const stats = totals ? [
     { icon: "parts", n: totals.parts, picture: pictures?.parts ?? null, label: t(lang, "home_stat_parts") }, { icon: "brands", n: totals.brands, picture: pictures?.brands ?? null, label: t(lang, "home_stat_brands") },
@@ -46,12 +53,20 @@ export default async function HomePage() {
       {/* The announcement line belongs to the HOME page only: it is no longer in the header, so no other page has it. */}
       <AnnouncementBar announcements={announcements} />
       <JsonLd data={websiteJsonLd()} />
-      <section className="mx-auto grid max-w-7xl items-center gap-12 px-4 pb-4 pt-12 sm:px-8 lg:grid-cols-[1.1fr_1fr]" aria-labelledby="home-h1">
-        <div>
-          <HomeFontLink fonts={[homeText?.headline.font, homeText?.subheadline.font]} />
-          <h1 id="home-h1" style={homeFontStyle(homeText?.headline.font)} className={`${HEADLINE_SIZE_CLASS[homeText?.headline.size ?? "large"]} font-bold leading-[1.08] tracking-tight text-navy`}>{pickHomeText(homeText?.headline, lang, t(lang, "hero_title"))}</h1>
-          <p style={homeFontStyle(homeText?.subheadline.font)} className={`mt-4 max-w-lg ${SUBHEADLINE_SIZE_CLASS[homeText?.subheadline.size ?? "medium"]} text-muted`}>{pickHomeText(homeText?.subheadline, lang, t(lang, "hero_lead"))}</p>
-        </div>
+      {/* The left side of the hero is EITHER the headline and sub-headline OR the banner (one switch in the admin portal), never both. The banner is as big as the finder box beside it. The page keeps its h1 for search engines either way. */}
+      <section className={`mx-auto grid max-w-7xl px-4 pb-4 pt-12 sm:px-8 ${showBanner ? "gap-6 lg:grid-cols-2 lg:items-stretch" : "items-center gap-12 lg:grid-cols-[1.1fr_1fr]"}`} aria-labelledby="home-h1">
+        {showBanner ? (
+          <>
+            <h1 id="home-h1" className="sr-only">{pickHomeText(homeText?.headline, lang, t(lang, "hero_title"))}</h1>
+            <HomeBanner slides={bannerSlides} rtl={lang === "ar"} />
+          </>
+        ) : (
+          <div>
+            <HomeFontLink fonts={[homeText?.headline.font, homeText?.subheadline.font]} />
+            <h1 id="home-h1" style={homeFontStyle(homeText?.headline.font)} className={`${HEADLINE_SIZE_CLASS[homeText?.headline.size ?? "large"]} font-bold leading-[1.08] tracking-tight text-navy`}>{pickHomeText(homeText?.headline, lang, t(lang, "hero_title"))}</h1>
+            <p style={homeFontStyle(homeText?.subheadline.font)} className={`mt-4 max-w-lg ${SUBHEADLINE_SIZE_CLASS[homeText?.subheadline.size ?? "medium"]} text-muted`}>{pickHomeText(homeText?.subheadline, lang, t(lang, "hero_lead"))}</p>
+          </div>
+        )}
         <HeroPicker />
       </section>
 

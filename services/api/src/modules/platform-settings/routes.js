@@ -18,6 +18,7 @@ router.use('/home-pictures', require('./homePictures'));
 
 // The editable texts of the home page: top bar message, headline and sub-headline, with font and size (see homeText.js).
 router.use('/home-text', require('./homeText'));
+router.use('/home-banner', require('./homeBanner'));      // the home page banner: slides, English and Arabic photos, seconds, links, and the headline-or-banner switch
 
 // The storefront footer: texts, social media icons and the six pages (see footer.js).
 router.use('/footer', require('./footer'));
