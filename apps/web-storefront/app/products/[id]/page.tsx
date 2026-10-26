@@ -11,7 +11,9 @@ import ReviewsSection from "@/components/ReviewsSection";
 import ShareButton from "@/components/ShareButton";
 import { WishlistButton } from "@/components/WishlistButton";
 import { JsonLd } from "@/components/JsonLd";
-import { Price } from "@/components/Price";
+import StockBanner from "@/components/StockBanner";
+import SellerSignals from "@/components/SellerSignals";
+import PriceBlock from "@/components/PriceBlock";
 import {
   fetchCategories,
   fetchOemAlternatives,
@@ -102,37 +104,13 @@ export default async function ProductPage({ params }: PageProps) {
               </span>
             )}
           </div>
-          <p className="mt-6 font-display font-bold text-4xl">
-            <Price usd={product.price} />
-          </p>
-          <p
-            className={`mt-1 text-sm font-medium ${
-              product.stockQuantity > 0 ? "text-gauge" : "text-muted"
-            }`}
-          >
-            {t(lang, product.stockQuantity > 0 ? "in_stock" : "out_of_stock")}
-            {product.estimatedDeliveryDays
-              ? ` · ${t(lang, "est_delivery_in", { n: product.estimatedDeliveryDays })}`
-              : ""}
-          </p>
-
-          {product.description && (
-            <p className="mt-6 text-muted leading-relaxed">
-              {product.description}
-            </p>
-          )}
-
-          {product.oemNumber && (
-            <p className="mt-6 text-sm text-muted">
-              {t(lang, "oem_number")}:{" "}
-              <span className="font-plate font-semibold text-ink">
-                {product.oemNumber}
-              </span>
-            </p>
-          )}
+          {/* Like the mobile app: the stock box with the delivery date, who ships it, then the price (with the old price and the discount when there is one). The description and the part number are in the specifications card. */}
+          <StockBanner stockQuantity={product.stockQuantity} estimatedDeliveryDays={product.estimatedDeliveryDays} lang={lang} />
+          <SellerSignals isVerifiedSeller={product.isVerifiedSeller} shipsFromCountry={product.shipsFromCountry} shipsFromCountryAr={product.shipsFromCountryAr} lang={lang} />
+          <PriceBlock price={product.price} originalPrice={product.originalPrice} lang={lang} />
 
           <div className="mt-8">
-            <AddToCartButton productId={product.id} inStock={product.stockQuantity > 0} />
+            <AddToCartButton productId={product.id} inStock={product.stockQuantity > 0} unitPrice={product.price} maxQuantity={product.stockQuantity} />
             {product.stockQuantity === 0 && <div className="mt-3"><NotifyWhenInStock productId={product.id} /></div>}
             <WishlistButton productId={product.id} />
           </div>

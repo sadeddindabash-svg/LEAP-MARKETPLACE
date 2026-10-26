@@ -566,7 +566,79 @@ BP_SLOW = [
  ("the compare page shows 'Delivery in N days' again", BW + "app/compare/page.tsx", "(p) => deliveryDateLabel(p.estimatedDeliveryDays, lang) ?? dash", '(p) => (p.estimatedDeliveryDays ? t(lang, "delivery_in_days", { n: p.estimatedDeliveryDays }) : dash)'),
  ("the other-listings table shows 'Delivery in N days' again", BW + "components/OemComparison.tsx", "{deliveryLine(p.estimatedDeliveryDays, lang)}</span>", '{t(lang, "delivery_in_days", { n: p.estimatedDeliveryDays! })}</span>'),
 ]
-mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"bpstorefront": BP_FAST, "bpslow": BP_SLOW, "ssstorefront": SS_STOREFRONT, "cxserver": CX_SERVER, "cxadmin": CX_ADMIN, "pdserver": PD_SERVER, "pdadmin": PD_ADMIN, "clserver": CL_SERVER, "ffstorefront": FF_STOREFRONT, "crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
+HB_SERVER = [
+ ('anyone may change the switch', 'services/api/src/modules/platform-settings/homeBanner.js', "router.put('/mode', ...admin,", "router.put('/mode',"),
+ ('anyone may read the admin view', 'services/api/src/modules/platform-settings/homeBanner.js', "router.get('/admin', ...admin,", "router.get('/admin',"),
+ ('anyone may add slides', 'services/api/src/modules/platform-settings/homeBanner.js', "router.post('/slides', ...admin,", "router.post('/slides',"),
+ ('anyone may upload photos', 'services/api/src/modules/platform-settings/homeBanner.js', "router.put('/slides/:id/image/:lang', ...admin, knownLang,", "router.put('/slides/:id/image/:lang', knownLang,"),
+ ('the banner is shown even when no slide has a photo', 'services/api/src/modules/platform-settings/homeBanner.js', "mode: mode === 'banner' && shown.length > 0 ? 'banner' : 'headline'", 'mode'),
+ ('slides without a photo are public', 'services/api/src/modules/platform-settings/homeBanner.js', 'const shown = slides.filter((s) => s.imageEn || s.imageAr);', 'const shown = slides;'),
+ ('more than 10 slides are allowed', 'services/api/src/modules/platform-settings/homeBanner.js', 'const MAX_SLIDES = 10;', 'const MAX_SLIDES = 100;'),
+ ('seconds are not limited to 2..30', 'services/api/src/modules/platform-settings/homeBanner.js', 'n < MIN_SECONDS || n > MAX_SECONDS) throw', 'n < 0 || n > 9999) throw'),
+ ('seconds may have decimals', 'services/api/src/modules/platform-settings/homeBanner.js', 'if (!Number.isInteger(n) || n < MIN_SECONDS', 'if (n < MIN_SECONDS'),
+ ('a photo of any size is accepted', 'services/api/src/modules/platform-settings/homeBanner.js', 'if (checked.width !== WIDTH_PX || checked.height !== HEIGHT_PX)', 'if (false)'),
+ ('the old photo file stays when a photo is replaced', 'services/api/src/modules/platform-settings/homeBanner.js', 'if (old && old !== saved.url) removeLocalImage(old);', ''),
+ ('a removed slide leaves its photo files', 'services/api/src/modules/platform-settings/homeBanner.js', 'urlsOf(r.gone).forEach(removeLocalImage);', ''),
+ ('a link to a part that does not exist is accepted', 'services/api/src/modules/platform-settings/homeBanner.js', "(await q.query('SELECT 1 FROM products WHERE id = $1', [value])).rowCount === 0", 'false'),
+ ('a link to a category that does not exist is accepted', 'services/api/src/modules/platform-settings/homeBanner.js', "(await q.query('SELECT 1 FROM product_categories WHERE id = $1', [value])).rowCount === 0", 'false'),
+ ('a web link may use any scheme (javascript:)', 'services/api/src/modules/platform-settings/homeBanner.js', "if (u.protocol !== 'https:' && u.protocol !== 'http:') throw new Refusal(400, 'The web page address must start with https:// or http://');", ''),
+ ('an unsafe stored link is passed on to the website', 'services/api/src/modules/platform-settings/homeBanner.js', "return (u.protocol === 'https:' || u.protocol === 'http:') && value.length <= MAX_URL ? { type: 'url', value } : none;", "return { type: 'url', value };"),
+ ('the order may repeat a slide', 'services/api/src/modules/platform-settings/homeBanner.js', 'new Set(ids).size !== ids.length || ', ''),
+ ('descriptions have no length limit', 'services/api/src/modules/platform-settings/homeBanner.js', 'if (v.trim().length > MAX_ALT) throw', 'if (false) throw'),
+ ('the default seconds is not 5', 'services/api/src/modules/platform-settings/homeBanner.js', 'const DEFAULT_SECONDS = 5;', 'const DEFAULT_SECONDS = 6;'),
+ ('adding a slide is not in the audit log', 'services/api/src/modules/platform-settings/homeBanner.js', "await logAdminAction(req, 'home_banner_slide_added'", "void (req, 'home_banner_slide_added'"),
+ ('the website may keep the banner for ever (no cache limit)', 'services/api/src/modules/platform-settings/homeBanner.js', "res.set('Cache-Control', 'public, max-age=30');", ''),
+ ('more than 10 stored slides are all shown', 'services/api/src/modules/platform-settings/homeBanner.js', ".filter((s) => s && typeof s === 'object' && typeof s.id === 'string' && s.id !== '').slice(0, MAX_SLIDES)", ".filter((s) => s && typeof s === 'object' && typeof s.id === 'string' && s.id !== '')"),
+ ('two admins can overwrite each other (no lock)', 'services/api/src/modules/platform-settings/homeBanner.js', 'SELECT value FROM platform_settings WHERE key = $1 FOR UPDATE', 'SELECT value FROM platform_settings WHERE key = $1'),
+]
+HB_STORE = [
+ ("the quiet jump back from the repeat restarts the first photo's wait (it stays half a second too long every round)", "apps/web-storefront/components/HomeBanner.tsx", "}, [shown, count, calm, held, away, slides, next]);", "}, [index, count, calm, held, away, slides, next]);"),
+ ("the other language's photo is never used as a fallback", 'apps/web-storefront/lib/homeBanner.ts', 'return (first && first.trim()) || (second && second.trim()) || null;', 'return (first && first.trim()) || null;'),
+ ('English and Arabic photos are swapped', 'apps/web-storefront/lib/homeBanner.ts', 'const first = lang === "ar" ? slide.imageAr : slide.imageEn;', 'const first = lang === "ar" ? slide.imageEn : slide.imageAr;'),
+ ('a part link is not made safe', 'apps/web-storefront/lib/homeBanner.ts', 'href: `/products/${encodeURIComponent(value)}`', 'href: `/products/${value}`'),
+ ('a web link may use any scheme', 'apps/web-storefront/lib/homeBanner.ts', 'return u.protocol === "https:" || u.protocol === "http:" ? { href: value, external: true } : null;', 'return { href: value, external: true };'),
+ ('seconds are not kept at 2 or more', 'apps/web-storefront/lib/homeBanner.ts', 'Math.max(MIN_SECONDS, n)', 'Math.max(0, n)'),
+ ('slides without a photo are drawn', 'apps/web-storefront/lib/homeBanner.ts', 'if (!image) continue;', ''),
+ ('Arabic slides move the same way as English', 'apps/web-storefront/components/HomeBanner.tsx', 'const sign = rtl ? 1 : -1;', 'const sign = -1;'),
+ ('every photo stays as long as the first', 'apps/web-storefront/components/HomeBanner.tsx', 'const seconds = slides[index >= count ? 0 : index].seconds;', 'const seconds = slides[0].seconds;'),
+ ('the banner keeps moving under the mouse', 'apps/web-storefront/components/HomeBanner.tsx', 'onMouseEnter={() => setHeld(true)}', 'onMouseEnter={() => {}}'),
+ ('the less-movement setting is ignored', 'apps/web-storefront/components/HomeBanner.tsx', 'if (count < 2 || calm || held || away) return;', 'if (count < 2 || held || away) return;'),
+ ('it keeps moving in a background tab', 'apps/web-storefront/components/HomeBanner.tsx', 'if (count < 2 || calm || held || away) return;', 'if (count < 2 || calm || held) return;'),
+ ('the first photo is not repeated at the end', 'apps/web-storefront/components/HomeBanner.tsx', 'const strip = count > 1 ? [...slides, slides[0]] : slides;', 'const strip = slides;'),
+ ('after the last photo it slides all the way back', 'apps/web-storefront/components/HomeBanner.tsx', 'setAnimate(false); setIndex(0); }, SLIDE_MS + 100);', 'setIndex(0); }, SLIDE_MS + 100);'),
+ ('a tiny drag changes the photo', 'apps/web-storefront/components/HomeBanner.tsx', 'const SWIPE_PX = 40;', 'const SWIPE_PX = 1;'),
+ ('a web link has no rel protection', 'apps/web-storefront/components/HomeBanner.tsx', 'rel="noopener noreferrer"', 'rel=""'),
+ ('hidden photos are readable by screen readers', 'apps/web-storefront/components/HomeBanner.tsx', 'aria-hidden={!isShown}', 'aria-hidden={false}'),
+ ('hidden photos can be reached with Tab', 'apps/web-storefront/components/HomeBanner.tsx', 'tabIndex={isShown ? 0 : -1} className="absolute inset-0 block">{photo}</a>', 'tabIndex={0} className="absolute inset-0 block">{photo}</a>'),
+ ('a single photo gets dots and arrows', 'apps/web-storefront/components/HomeBanner.tsx', '{count > 1 && (', '{true && ('),
+ ("the frame is not the box's shape on a phone", 'apps/web-storefront/components/HomeBanner.tsx', 'aspect-[5/2]', 'aspect-[16/9]'),
+ ('the home page shows the banner with no usable slide', 'apps/web-storefront/app/page.tsx', 'const showBanner = bannerSlides.length > 0;', 'const showBanner = banner?.mode === "banner";'),
+ ('the home page shows the banner when the switch says headline', 'apps/web-storefront/app/page.tsx', 'const bannerSlides = banner?.mode === "banner" ? viewSlides(banner, lang, resolveImageUrl) : [];', 'const bannerSlides = viewSlides(banner, lang, resolveImageUrl);'),
+ ('the page loses its h1 when the banner is shown', 'apps/web-storefront/app/page.tsx', '<h1 id="home-h1" className="sr-only">', '<span id="home-h1" className="sr-only">'),
+ ('the banner is not as wide as the finder box', 'apps/web-storefront/app/page.tsx', '"gap-6 lg:grid-cols-2 lg:items-stretch"', '"gap-6 lg:grid-cols-[1.1fr_1fr] lg:items-stretch"'),
+ ('a banner failure takes the home page down', 'apps/web-storefront/app/page.tsx', 'try { return await fetchHomeBanner(); } catch { return null; }', 'return await fetchHomeBanner();'),
+]
+HB_ADMIN = [
+ ('the saved photo has the wrong size', 'apps/admin-dashboard/src/bannerCrop.js', 'export const OUTPUT_W = 1250;', 'export const OUTPUT_W = 1200;'),
+ ('the picture does not cover the frame', 'apps/admin-dashboard/src/bannerCrop.js', 'Math.max(FRAME_W / width, FRAME_H / height)', 'Math.min(FRAME_W / width, FRAME_H / height)'),
+ ('the picture can be dragged off the frame', 'apps/admin-dashboard/src/bannerCrop.js', 'x: Math.min(0, Math.max(FRAME_W - width * s, offset.x))', 'x: offset.x'),
+ ('the photo is sent under the wrong field name', 'apps/admin-dashboard/src/homeBannerApi.js', 'form.append("image", blob', 'form.append("file", blob'),
+ ('the switch goes to the wrong address', 'apps/admin-dashboard/src/homeBannerApi.js', 'json("PUT", token, "/mode"', 'json("PUT", token, "/modes"'),
+ ('seconds are not checked here', 'apps/admin-dashboard/src/HomeBannerSection.jsx', 'if (!Number.isInteger(seconds) || seconds < data.limits.minSeconds || seconds > data.limits.maxSeconds) {', 'if (false) {'),
+ ('Save sends every field, not only what changed', 'apps/admin-dashboard/src/HomeBannerSection.jsx', 'if (seconds !== slide.seconds) fields.seconds = seconds;', 'fields.seconds = seconds;'),
+ ('a change of seconds does not enable Save', 'apps/admin-dashboard/src/HomeBannerSection.jsx', 'String(s.seconds) !== d.seconds.trim() || ', ''),
+ ('a too-small picture is accepted', 'apps/admin-dashboard/src/HomeBannerSection.jsx', 'if (loaded.width < MIN_SOURCE_W || loaded.height < MIN_SOURCE_H) {', 'if (false) {'),
+ ('the photo goes to the wrong language', 'apps/admin-dashboard/src/HomeBannerSection.jsx', 'uploadBannerPhoto(token(), crop.slideId, crop.lang, blob)', "uploadBannerPhoto(token(), crop.slideId, 'en', blob)"),
+ ('the limit of 10 is not enforced here', 'apps/admin-dashboard/src/HomeBannerSection.jsx', 'disabled={slides.length >= data.limits.maxSlides || busy === "add"}', 'disabled={busy === "add"}'),
+ ('moving a slide does not change the order', 'apps/admin-dashboard/src/HomeBannerSection.jsx', '[ids[index], ids[index + by]] = [ids[index + by], ids[index]];', ''),
+ ('a slide is removed without asking', 'apps/admin-dashboard/src/HomeBannerSection.jsx', 'onClick={() => setRemoving(slide.id)}>Remove slide</button>', 'onClick={() => remove(slide)}>Remove slide</button>'),
+ ('no warning when the banner is chosen but has no photo', 'apps/admin-dashboard/src/HomeBannerSection.jsx', 'data.mode === "banner" && !anyPhoto &&', 'false &&'),
+ ("'No link' still sends a link", 'apps/admin-dashboard/src/HomeBannerSection.jsx', 'd.linkType === "none" ? { type: "none" } : { type: d.linkType, value: d.linkValue.trim() }', '{ type: d.linkType, value: d.linkValue.trim() }'),
+ ('choosing a part stores its name instead of its id', 'apps/admin-dashboard/src/HomeBannerSection.jsx', 'onChange({ linkValue: p.id, linkLabel: p.name })', 'onChange({ linkValue: p.name, linkLabel: p.name })'),
+ ('a wrong web address gets no hint', 'apps/admin-dashboard/src/HomeBannerSection.jsx', '!/^https?:\\/\\/\\S+$/i.test(draft.linkValue.trim()) && ', ''),
+ ('an expired sign-in during an upload is shown as an error instead', 'apps/admin-dashboard/src/HomeBannerSection.jsx', 'if (!expired(err)) setCropError(err.message);', 'setCropError(err.message);'),
+]
+mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"hbserver": HB_SERVER, "hbstorefront": HB_STORE, "hbadmin": HB_ADMIN, "bpstorefront": BP_FAST, "bpslow": BP_SLOW, "ssstorefront": SS_STOREFRONT, "cxserver": CX_SERVER, "cxadmin": CX_ADMIN, "pdserver": PD_SERVER, "pdadmin": PD_ADMIN, "clserver": CL_SERVER, "ffstorefront": FF_STOREFRONT, "crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
 lo, hi = (int(sys.argv[2]), int(sys.argv[3])) if len(sys.argv) > 3 else (1, len(BREAKS))
 def fresh():
     subprocess.run(["su", "postgres", "-c", "psql -q -c 'DROP DATABASE IF EXISTS leap_catalog_import_test' -c \"CREATE DATABASE leap_catalog_import_test TEMPLATE leap_marketplace_dev OWNER leap_dev\""], check=True, capture_output=True)
@@ -591,6 +663,9 @@ def run():
     if mode == "ssstorefront": return subprocess.run(["npx", "vitest", "run", "lib/searchHints.test.ts", "components/RotatingPlaceholder.test.tsx", "components/HeaderSearch.test.tsx", "app/stickyColumn.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
     if mode == "bpstorefront": return subprocess.run(["npx", "vitest", "run", "lib/delivery.test.ts", "lib/discount.test.ts", "lib/seoDelivery.test.ts", "components/StockBanner.test.tsx", "components/SellerSignals.test.tsx", "components/PriceBlock.test.tsx", "components/ProductDetails.test.tsx", "components/AddToCartButton.test.tsx", "components/ProductCardDelivery.test.tsx", "app/productParity.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
     if mode == "bpslow": return subprocess.run(["npx", "vitest", "run", "app/stage1b-pages.test.tsx", "components/stage1c-components.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
+    if mode == "hbserver": return subprocess.run(["node", "--test", "test/homeBanner.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
+    if mode == "hbstorefront": return subprocess.run(["npx", "vitest", "run", "lib/homeBanner.test.ts", "components/HomeBanner.test.tsx", "app/homeBanner.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
+    if mode == "hbadmin": return subprocess.run(["npx", "vitest", "run", "src/HomeBannerSection.test.jsx", "src/bannerCrop.test.js", "src/homeBannerApi.test.js"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=250).returncode
     if mode == "ppserver": return subprocess.run(["node", "--test", "test/homeText.test.js", "test/productPage.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "ppadmin": return subprocess.run(["npx", "vitest", "run", "src/HomeTextSection.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
     if mode == "ppstorefront": return subprocess.run(["npx", "vitest", "run", "components/ProductDetails.test.tsx", "components/LazyProductRow.test.tsx", "components/VehicleFilterOrder.test.tsx", "components/FitsMyCarLabel.test.tsx", "app/stage1c-page.test.tsx", "app/homeText.test.tsx", "components/SiteHeaderTopBar.test.tsx", "lib/gridSourceModel.test.ts", "lib/homeText.test.ts", "app/api/products/routeSameModel.test.ts"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
@@ -602,7 +677,7 @@ def run():
     if mode == "server": return subprocess.run(["node", "--test", "test/orderVehicles.test.js", "test/productCars.test.js", "test/orderVehiclesReplacement.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "screens": return subprocess.run(["npx", "vitest", "run", "src/OrderVehicle.test.jsx", "src/OrderVehicleFlow.test.jsx"], cwd=SP, capture_output=True, text=True, timeout=150).returncode
     return subprocess.run(["npx", "vitest", "run", "components/FitCheck.test.tsx", "app/stage1c-page.test.tsx", "app/cartFitCheck.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=150).returncode
-if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver"): fresh()
+if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver", "hbserver"): fresh()
 if run() != 0: sys.exit("The tests do not pass on the UNBROKEN code, so a break check would prove nothing.")
 print("baseline: the tests pass on the unbroken code\n", flush=True); caught = 0
 for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
@@ -611,10 +686,10 @@ for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
     if src.count(old) != 1: print(f"{n:2d}. SKIPPED (the line to break was not found exactly once): {what}"); continue
     shutil.copy(path, path + ".keep"); open(path, "w", encoding="utf-8").write(src.replace(old, new))
     try:
-        if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver"): fresh()
+        if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver", "hbserver"): fresh()
         failed = run() != 0
     finally: shutil.move(path + ".keep", path)
     caught += failed; print(f"{n:2d}. {'CAUGHT ' if failed else 'MISSED!'}  {what}", flush=True)
 print(f"\n{caught} of {sum(1 for i in range(1, len(BREAKS) + 1) if lo <= i <= hi)} breaks were caught")
-if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver"): fresh()
+if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver", "hbserver"): fresh()
 print("code restored; the tests pass again:", "yes" if run() == 0 else "NO (investigate)")

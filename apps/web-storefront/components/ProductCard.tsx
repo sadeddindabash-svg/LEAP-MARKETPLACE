@@ -3,6 +3,7 @@ import SafeImage from "@/components/SafeImage";
 import { resolveImageUrl, type ProductSummary } from "@/lib/api";
 import { t, type Lang } from "@/lib/i18n";
 import { Price } from "./Price";
+import { deliveryLine } from "@/lib/delivery";
 
 // One product on a list (home, search): photo, name, delivery estimate, stock and price. The whole card is one link to the part, so there is one clear place to click.
 export default function ProductCard({ product: p, lang }: { product: ProductSummary; lang: Lang }) {
@@ -27,7 +28,7 @@ export default function ProductCard({ product: p, lang }: { product: ProductSumm
           {p.oemNumber && <p className="font-plate text-[13px] text-muted">{p.oemNumber}</p>}
           <p className="flex items-center gap-1.5 text-[13.5px] text-muted">
             <span className={inStock ? "font-semibold text-[#0f6b49]" : "font-semibold text-[#a12a21]"}>{t(lang, inStock ? "in_stock" : "out_of_stock")}</span>
-            {p.estimatedDeliveryDays ? <span>· {t(lang, "delivery_in_days", { n: p.estimatedDeliveryDays })}</span> : null}
+            {deliveryLine(p.estimatedDeliveryDays, lang) ? <span>· {deliveryLine(p.estimatedDeliveryDays, lang)}</span> : null}
           </p>
           <p className="mt-auto pt-3 text-[22px] font-extrabold text-navy"><Price usd={p.price} /></p>
         </div>

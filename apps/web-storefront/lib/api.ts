@@ -49,6 +49,8 @@ export interface ProductSummary {
   isVerifiedSeller?: boolean;
   shipsFromCountry?: string | null;
   shipsFromCountryAr?: string | null;
+  /** Sent when a discount applies: the price before the discount (the price above is the one to pay). */
+  originalPrice?: number | null;
 }
 
 export interface ProductDetail extends ProductSummary {
@@ -60,6 +62,8 @@ export interface ProductDetail extends ProductSummary {
   fitCars?: { generationId: string; year: number | null; brand: string | null; brandAr?: string | null; model: string | null; modelAr?: string | null }[];
   fitCarCount?: number;
   fitKeys?: string[];
+  /** The part's own attributes (material, colour...), as entered for this product. */
+  attributes?: Array<{ name: string; value: string }>;
 }
 
 export interface ProductCategory {

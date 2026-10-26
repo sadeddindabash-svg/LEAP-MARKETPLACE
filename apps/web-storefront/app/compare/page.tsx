@@ -6,6 +6,7 @@ import { fetchProductById, resolveImageUrl, type ProductDetail } from "@/lib/api
 import { pickName, t, type Lang } from "@/lib/i18n";
 import { parseIds } from "@/lib/compare";
 import { getLang } from "@/lib/lang";
+import { deliveryDateLabel } from "@/lib/delivery";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: t(await getLang(), "compare_title") };
@@ -17,7 +18,7 @@ function rows(lang: Lang): Array<[string, (p: ProductDetail) => React.ReactNode]
     [t(lang, "row_price"), (p) => <Price usd={p.price} className="text-lg font-extrabold text-navy" />],
     [t(lang, "row_rating"), (p) => (p.reviewCount > 0 && p.rating != null ? t(lang, "rating_value", { avg: p.rating.toFixed(1), n: p.reviewCount }) : t(lang, "no_reviews_short"))],
     [t(lang, "row_stock"), (p) => (p.stockQuantity > 0 ? t(lang, "stock_n", { n: p.stockQuantity }) : t(lang, "out_of_stock"))],
-    [t(lang, "row_delivery"), (p) => (p.estimatedDeliveryDays ? t(lang, "delivery_in_days", { n: p.estimatedDeliveryDays }) : dash)],
+    [t(lang, "row_delivery"), (p) => deliveryDateLabel(p.estimatedDeliveryDays, lang) ?? dash],
     [t(lang, "oem_number"), (p) => (p.oemNumber ? <span className="font-plate">{p.oemNumber}</span> : dash)],
     [t(lang, "row_weight"), (p) => (p.weightKg != null ? `${p.weightKg.toFixed(1)} ${t(lang, "kg")}` : dash)],
     [t(lang, "row_verified"), (p) => (p.isVerifiedSeller ? t(lang, "yes") : dash)],
