@@ -84,7 +84,9 @@ export default async function ProductPage({ params }: PageProps) {
           <ProductDetails product={product} lang={lang} />
         </div>
 
-        <div>
+        {/* The column beside the photos (title, price, Add to cart) stays in view while the photos and the details card are scrolled, and is released where they end. On a phone the page is one column: nothing is pinned.
+            A very tall column (a long description) gets its own small scroll instead of hiding the buttons. The header does not stick, so a small gap at the top is enough. */}
+        <div className="md:sticky md:top-4 md:max-h-[calc(100vh-2rem)] md:self-start md:overflow-y-auto md:pe-1">
           <div className="flex items-start justify-between gap-3">
             <h1 className="font-display min-w-0 font-bold text-4xl tracking-tight [overflow-wrap:anywhere]">
               {product.name}

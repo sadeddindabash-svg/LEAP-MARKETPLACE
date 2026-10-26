@@ -532,7 +532,41 @@ SS_STOREFRONT = [
  ("the column is pinned on phones too", SSW + "app/products/[id]/page.tsx", '"md:sticky md:top-4 ', '"sticky top-4 '),
  ("a tall column can hide the Add to cart button", SSW + "app/products/[id]/page.tsx", "md:max-h-[calc(100vh-2rem)] ", ""),
 ]
-mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"ssstorefront": SS_STOREFRONT, "cxserver": CX_SERVER, "cxadmin": CX_ADMIN, "pdserver": PD_SERVER, "pdadmin": PD_ADMIN, "clserver": CL_SERVER, "ffstorefront": FF_STOREFRONT, "crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
+BW = "apps/web-storefront/"
+BP_FAST = [
+ ("the delivery date is counted on the wrong time zone", BW + "lib/delivery.ts", 'export const SHOP_TIME_ZONE = "Asia/Riyadh";', 'export const SHOP_TIME_ZONE = "UTC";'),
+ ("the delivery date is one day late", BW + "lib/delivery.ts", "d + Math.round(days)", "d + Math.round(days) + 1"),
+ ("fractions of a day are rounded down", BW + "lib/delivery.ts", "d + Math.round(days)", "d + Math.floor(days)"),
+ ("a negative estimate gives a date", BW + "lib/delivery.ts", "|| days < 0)", "|| days < -99)"),
+ ("May gets a full stop", BW + "lib/delivery.ts", '"Apr.", "May", "Jun."', '"Apr.", "May.", "Jun."'),
+ ("the Arabic date is written the other way round", BW + "lib/delivery.ts", "`${day} ${MONTHS_AR[month]}`", "`${MONTHS_AR[month]} ${day}`"),
+ ("a difference that rounds to 0% shows as a discount", BW + "lib/discount.ts", "return percent >= 1 ? percent : null;", "return percent >= 0 ? percent : null;"),
+ ("the red tier starts too late", BW + "lib/discount.ts", "if (percent >= 30) return", "if (percent >= 40) return"),
+ ("the percentage is rounded down", BW + "lib/discount.ts", "const percent = Math.round(", "const percent = Math.floor("),
+ ("the number left is shown up to 10 (not 5)", BW + "components/StockBanner.tsx", "export const LOW_STOCK = 5;", "export const LOW_STOCK = 10;"),
+ ("zero stock is not 'out of stock'", BW + "components/StockBanner.tsx", "const out = stockQuantity <= 0;", "const out = stockQuantity < 0;"),
+ ("out of stock still promises a delivery date", BW + "components/StockBanner.tsx", 'const text = out ? t(lang, "stock_none_now") : [', 'const text = out ? [t(lang, "stock_none_now"), delivery].filter(Boolean).join(" · ") : ['),
+ ("the separator is not the dot", BW + "components/StockBanner.tsx", '.join(" · ");', '.join(" - ");'),
+ ("low stock does not say how many are left", BW + "components/StockBanner.tsx", 'low ? t(lang, "only_n_left", { n: stockQuantity }) : t(lang, "in_stock")', 't(lang, "in_stock")'),
+ ("an empty seller block is drawn when nothing is known", BW + "components/SellerSignals.tsx", "if (!isVerifiedSeller && !shipsFromCountry) return null;", ""),
+ ("the Arabic country name is never used", BW + "components/SellerSignals.tsx", "pickName(lang, shipsFromCountry, shipsFromCountryAr)", "shipsFromCountry"),
+ ("'Verified seller' is shown for everybody", BW + "components/SellerSignals.tsx", "{isVerifiedSeller && (", "{true && ("),
+ ("the old price is not struck through", BW + "components/PriceBlock.tsx", '<del className="text-lg text-muted"><Price usd={originalPrice} /></del>', '<span className="text-lg text-muted"><Price usd={originalPrice} /></span>'),
+ ("a discount is shown whenever there is an original price", BW + "components/PriceBlock.tsx", "{percent !== null && originalPrice != null && (", "{originalPrice != null && ("),
+ ("'Not specified' is missing for an unknown brand", BW + "components/ProductDetails.tsx", "product.brand || none", "product.brand"),
+ ("the part's own attributes are not shown", BW + "components/ProductDetails.tsx", "for (const a of product.attributes ?? [])", "for (const a of [] as Array<{ name: string; value: string }>)"),
+ ("the description is missing from the card", BW + "components/ProductDetails.tsx", "{product.description?.trim() ? product.description : none}", "{none}"),
+ ("the total ignores the quantity", BW + "components/AddToCartButton.tsx", "format(unitPrice * quantity)", "format(unitPrice)"),
+ ("the + button is not switched off at the stock", BW + "components/AddToCartButton.tsx", "disabled={atMax}", ""),
+ ("the product page drops the original price", BW + "app/products/[id]/page.tsx", "originalPrice={product.originalPrice}", "originalPrice={null}"),
+ ("the product page drops the stock limit", BW + "app/products/[id]/page.tsx", " maxQuantity={product.stockQuantity}", ""),
+ ("the product card shows 'Delivery in N days' again", BW + "components/ProductCard.tsx", "· {deliveryLine(p.estimatedDeliveryDays, lang)}", '· {t(lang, "delivery_in_days", { n: p.estimatedDeliveryDays! })}'),
+]
+BP_SLOW = [
+ ("the compare page shows 'Delivery in N days' again", BW + "app/compare/page.tsx", "(p) => deliveryDateLabel(p.estimatedDeliveryDays, lang) ?? dash", '(p) => (p.estimatedDeliveryDays ? t(lang, "delivery_in_days", { n: p.estimatedDeliveryDays }) : dash)'),
+ ("the other-listings table shows 'Delivery in N days' again", BW + "components/OemComparison.tsx", "{deliveryLine(p.estimatedDeliveryDays, lang)}</span>", '{t(lang, "delivery_in_days", { n: p.estimatedDeliveryDays! })}</span>'),
+]
+mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"bpstorefront": BP_FAST, "bpslow": BP_SLOW, "ssstorefront": SS_STOREFRONT, "cxserver": CX_SERVER, "cxadmin": CX_ADMIN, "pdserver": PD_SERVER, "pdadmin": PD_ADMIN, "clserver": CL_SERVER, "ffstorefront": FF_STOREFRONT, "crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
 lo, hi = (int(sys.argv[2]), int(sys.argv[3])) if len(sys.argv) > 3 else (1, len(BREAKS))
 def fresh():
     subprocess.run(["su", "postgres", "-c", "psql -q -c 'DROP DATABASE IF EXISTS leap_catalog_import_test' -c \"CREATE DATABASE leap_catalog_import_test TEMPLATE leap_marketplace_dev OWNER leap_dev\""], check=True, capture_output=True)
@@ -555,6 +589,8 @@ def run():
     if mode == "cxserver": return subprocess.run(["node", "--test", "test/categoryRemove.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "cxadmin": return subprocess.run(["npx", "vitest", "run", "src/CategoryInUseDialog.test.jsx", "src/productDeleteApi.test.js"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=250).returncode
     if mode == "ssstorefront": return subprocess.run(["npx", "vitest", "run", "lib/searchHints.test.ts", "components/RotatingPlaceholder.test.tsx", "components/HeaderSearch.test.tsx", "app/stickyColumn.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
+    if mode == "bpstorefront": return subprocess.run(["npx", "vitest", "run", "lib/delivery.test.ts", "lib/discount.test.ts", "lib/seoDelivery.test.ts", "components/StockBanner.test.tsx", "components/SellerSignals.test.tsx", "components/PriceBlock.test.tsx", "components/ProductDetails.test.tsx", "components/AddToCartButton.test.tsx", "components/ProductCardDelivery.test.tsx", "app/productParity.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
+    if mode == "bpslow": return subprocess.run(["npx", "vitest", "run", "app/stage1b-pages.test.tsx", "components/stage1c-components.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
     if mode == "ppserver": return subprocess.run(["node", "--test", "test/homeText.test.js", "test/productPage.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "ppadmin": return subprocess.run(["npx", "vitest", "run", "src/HomeTextSection.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
     if mode == "ppstorefront": return subprocess.run(["npx", "vitest", "run", "components/ProductDetails.test.tsx", "components/LazyProductRow.test.tsx", "components/VehicleFilterOrder.test.tsx", "components/FitsMyCarLabel.test.tsx", "app/stage1c-page.test.tsx", "app/homeText.test.tsx", "components/SiteHeaderTopBar.test.tsx", "lib/gridSourceModel.test.ts", "lib/homeText.test.ts", "app/api/products/routeSameModel.test.ts"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
