@@ -813,7 +813,62 @@ FR_APP = [
  ('the Arabic sentence loses its amount', 'apps/mobile/lib/core/app_strings.dart', "'ar': 'وصلت إلى {amount}: الشحن مجاني'", "'ar': 'وصلت إلى المبلغ: الشحن مجاني'"),
  ('a widget asks for a word that does not exist', 'apps/mobile/lib/widgets/free_shipping.dart', "tr(context, 'shipping_promo_free')", "tr(context, 'shipping_promo')"),
 ]
-mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"frapp": FR_APP, "frwstorefront": FRW_STOREFRONT, "fradmin": FRA_ADMIN, "frserver": FR_SERVER, "pdstorefront": PD_STOREFRONT, "hcstorefront": HC_STOREFRONT, "sfstorefront": SF_STOREFRONT, "hbserver": HB_SERVER, "hbstorefront": HB_STORE, "hbadmin": HB_ADMIN, "bpstorefront": BP_FAST, "bpslow": BP_SLOW, "ssstorefront": SS_STOREFRONT, "cxserver": CX_SERVER, "cxadmin": CX_ADMIN, "pdserver": PD_SERVER, "pdadmin": PD_ADMIN, "clserver": CL_SERVER, "ffstorefront": FF_STOREFRONT, "crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
+MF_SERVER = [
+ ('two years in a row are not joined into a range', 'services/api/src/modules/orderVehicles/productCars.js', 'if (last && y === last[1] + 1) last[1] = y; else ranges.push([y, y]);', 'ranges.push([y, y]);'),
+ ('years are not sorted', 'services/api/src/modules/orderVehicles/productCars.js', 'const years = [...g.years].sort((a, b) => a - b); const ranges = [];', 'const years = [...g.years]; const ranges = [];'),
+ ('two generations of one model are two groups', 'services/api/src/modules/orderVehicles/productCars.js', 'const key = `${r.brand}\\u0000${r.model}`;', 'const key = `${r.brand}\\u0000${r.model}\\u0000${r.generation_id}`;'),
+ ('the same model of two brands is one group', 'services/api/src/modules/orderVehicles/productCars.js', 'const key = `${r.brand}\\u0000${r.model}`;', 'const key = `${r.model}`;'),
+ ('a missing year becomes year 0', 'services/api/src/modules/orderVehicles/productCars.js', "const year = r.year === null || r.year === undefined || r.year === '' ? NaN : Number(r.year);", 'const year = Number(r.year);'),
+ ('the groups are not sent', 'services/api/src/modules/orderVehicles/productCars.js', '      fitGroups: groups.slice(0, MAX_FIT_GROUPS),\n', ''),
+ ('the real number of models is lost', 'services/api/src/modules/orderVehicles/productCars.js', '      fitGroupCount: groups.length,', '      fitGroupCount: Math.min(groups.length, MAX_FIT_GROUPS),'),
+ ('the vehicle count counts engine variants as vehicles', 'services/api/src/modules/orderVehicles/productCars.js', 'fitVehicleCount: new Set(entries.map((r) => `${r.generation_id}|${r.year}`)).size,', 'fitVehicleCount: entries.length,'),
+ ('an error is sent as "fits every vehicle"', 'services/api/src/modules/orderVehicles/productCars.js', '    console.error(`[product-fit] could not read the fitment of product ${productId}: ${err.message}`);\n    return { fitCarCount: 0, fitCars: [], fitKeys: [] };', '    console.error(`[product-fit] could not read the fitment of product ${productId}: ${err.message}`);\n    return { fitCarCount: 0, fitCars: [], fitKeys: [], fitGroups: [], fitGroupCount: 0 };'),
+ ("the admin's product detail does not name the model", 'services/api/src/modules/catalog/routes.js', '        brandName: f.brand_name, modelName: f.model_name,\n', ''),
+]
+MF_WEB = [
+ ('the years of a run are not written as a range', 'apps/web-storefront/lib/fitGroups.ts', 'from === to ? String(from) : `${from}–${to}`', 'String(from)'),
+ ('the chip forgets how many more models', 'apps/web-storefront/lib/fitGroups.ts', 'return `${t(lang, "fits_label")} ${fitGroupName(lang, first)} ${formatRanges(first.ranges)}${moreText}`;', 'return `${t(lang, "fits_label")} ${fitGroupName(lang, first)} ${formatRanges(first.ranges)}`;'),
+ ('the chip uses the models shown, not the real number', 'apps/web-storefront/lib/fitGroups.ts', '(p.fitGroupCount ?? p.fitGroups.length) - 1', 'p.fitGroups.length - 1'),
+ ('a part with no fitment shows no chip', 'apps/web-storefront/lib/fitGroups.ts', 'if (p.fitGroups.length === 0) return t(lang, "fits_universal_chip");', 'if (p.fitGroups.length === 0) return null;'),
+ ("an older server's chip is changed", 'apps/web-storefront/lib/fitGroups.ts', 'if (!p.brand) return null;', 'if (!p.brand) return "";'),
+ ('the Arabic names are never used', 'apps/web-storefront/lib/fitGroups.ts', 'pickName(lang, g.brand, g.brandAr), pickName(lang, g.model, g.modelAr)', 'g.brand, g.model'),
+ ('the list shows every model at once', 'apps/web-storefront/components/FitsRow.tsx', 'const shown = open || !collapsible ? groups : groups.slice(0, FIT_LINES);', 'const shown = groups;'),
+ ('the link counts the wrong number of hidden models', 'apps/web-storefront/components/FitsRow.tsx', 'const hidden = total - FIT_LINES;', 'const hidden = total - FIT_LINES - 1;'),
+ ('the unlisted models are not counted', 'apps/web-storefront/components/FitsRow.tsx', 'const unlisted = total - groups.length;', 'const unlisted = 0;'),
+ ('the link does not say how many vehicles in all', 'apps/web-storefront/components/FitsRow.tsx', '${vehicleCount ? ` · ${t("fits_vehicles_in_all", { n: vehicleCount })}` : ""}', ''),
+ ('the block is not aligned to the end', 'apps/web-storefront/components/FitsRow.tsx', 'flex flex-col items-end gap-0.5', 'flex flex-col items-start gap-0.5'),
+ ('the card still shows only one brand, model and year', 'apps/web-storefront/components/ProductDetails.tsx', '  if (product.fitGroups) {', '  if (false) {'),
+ ('a part with no fitment is not called universal', 'apps/web-storefront/components/ProductDetails.tsx', 'product.fitGroups.length > 0 ? <FitsRow', 'true ? <FitsRow'),
+ ('the page chip does not use the new text', 'apps/web-storefront/app/products/[id]/page.tsx', 'const chip = fitChipText(lang, product);', 'const chip = null as string | null;'),
+ ('the word Universal is wrong', 'apps/web-storefront/lib/i18n.ts', '  detail_fits_universal: "Universal: fits all vehicles",', '  detail_fits_universal: "Fits some vehicles",'),
+ ('the Arabic link is in English', 'apps/web-storefront/lib/i18n.ts', '  fits_show_fewer: "عرض أقل",', '  fits_show_fewer: "Show fewer",'),
+]
+MF_ADMIN = [
+ ('years in a row are not joined in the admin summary', 'apps/admin-dashboard/src/fitmentSummary.js', 'if (last && y === last[1] + 1) last[1] = y; else ranges.push([y, y]);', 'ranges.push([y, y]);'),
+ ('the admin counts engine variants as vehicles', 'apps/admin-dashboard/src/fitmentSummary.js', 'const vehicles = new Set(rows.map((r) => `${r.generationId}|${r.year}`)).size;', 'const vehicles = rows.length;'),
+ ('the admin does not read the name from an old label', 'apps/admin-dashboard/src/fitmentSummary.js', 'return m ? m[1] : null;', 'return null;'),
+ ('the admin says nothing about a part with no fitment', 'apps/admin-dashboard/src/FitmentSummary.jsx', 'No vehicle fitment entered: buyers see this part as <b>universal (fits all vehicles)</b>.', ''),
+ ('the admin summary is not shown on the card', 'apps/admin-dashboard/src/App.jsx', '          <FitmentSummary fitment={fitment} />\n', ''),
+ ('a newly added fitment row has no model name', 'apps/admin-dashboard/src/App.jsx', '      brandName: brand?.name,\n      modelName: model?.name,\n', ''),
+]
+GP_APP = [
+ ('a category is counted once however many parts it has', 'apps/mobile/lib/models/vehicle_parts_filter.dart', 'counts[key] = (counts[key] ?? 0) + 1;', 'counts[key] = 1;'),
+ ('spaces around a category make a second chip', 'apps/mobile/lib/models/vehicle_parts_filter.dart', 'final key = c.trim();', 'final key = c;'),
+ ('blank categories become chips', 'apps/mobile/lib/models/vehicle_parts_filter.dart', '    if (key.isEmpty) continue;\n', ''),
+ ('All shows nothing', 'apps/mobile/lib/models/vehicle_parts_filter.dart', 'if (category == null) return items;', 'if (category == null) return <T>[];'),
+ ('spaces hide a part from its chip', 'apps/mobile/lib/models/vehicle_parts_filter.dart', 'categoryOf(i).trim() == category', 'categoryOf(i) == category'),
+ ('a category keeps its underscores', 'apps/mobile/lib/models/vehicle_parts_filter.dart', "raw.trim().replaceAll(RegExp(r'[_-]+'), ' ')", 'raw.trim()'),
+ ('a category has no capital letter', 'apps/mobile/lib/models/vehicle_parts_filter.dart', 'return t[0].toUpperCase() + t.substring(1);', 'return t;'),
+ ('the garage button still only closes the page', 'apps/mobile/lib/features/garage/garage_screen.dart', "context.push('/vehicle-parts', extra: v),", 'Navigator.of(context).pop(v),'),
+ ('the route cannot fall back to the garage', 'apps/mobile/lib/app.dart', 'vehicle is Vehicle ? VehiclePartsScreen(vehicle: vehicle) : const GarageScreen()', 'VehiclePartsScreen(vehicle: vehicle as Vehicle)'),
+ ("the parts are not limited to the car's year", 'apps/mobile/lib/features/garage/vehicle_parts_screen.dart', 'generationId: widget.vehicle.generationId, year: widget.vehicle.year, lang: language', 'generationId: widget.vehicle.generationId, lang: language'),
+ ('a part does not open its page', 'apps/mobile/lib/features/garage/vehicle_parts_screen.dart', "onTap: () => context.push('/product/${shown[i].id}')", 'onTap: () {}'),
+ ('Change does not go back', 'apps/mobile/lib/features/garage/vehicle_parts_screen.dart', 'onPressed: () => context.pop()', 'onPressed: () {}'),
+ ('the empty message has no Arabic', 'apps/mobile/lib/core/app_strings.dart', "'vparts_none': {'en': 'No parts fit this car yet.', 'ar': 'لا توجد قطع تناسب هذه السيارة حتى الآن.'},", "'vparts_none': {'en': 'No parts fit this car yet.'},"),
+ ('the count sentence loses its number in Arabic', 'apps/mobile/lib/core/app_strings.dart', "'ar': '{n} قطعة تناسب هذه السيارة'", "'ar': 'قطع تناسب هذه السيارة'"),
+ ('the screen asks for a word that does not exist', 'apps/mobile/lib/features/garage/vehicle_parts_screen.dart', "tr(context, 'vparts_none')", "tr(context, 'vparts_nothing')"),
+]
+mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"gpapp": GP_APP, "mfserver": MF_SERVER, "mfweb": MF_WEB, "mfadmin": MF_ADMIN, "frapp": FR_APP, "frwstorefront": FRW_STOREFRONT, "fradmin": FRA_ADMIN, "frserver": FR_SERVER, "pdstorefront": PD_STOREFRONT, "hcstorefront": HC_STOREFRONT, "sfstorefront": SF_STOREFRONT, "hbserver": HB_SERVER, "hbstorefront": HB_STORE, "hbadmin": HB_ADMIN, "bpstorefront": BP_FAST, "bpslow": BP_SLOW, "ssstorefront": SS_STOREFRONT, "cxserver": CX_SERVER, "cxadmin": CX_ADMIN, "pdserver": PD_SERVER, "pdadmin": PD_ADMIN, "clserver": CL_SERVER, "ffstorefront": FF_STOREFRONT, "crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
 lo, hi = (int(sys.argv[2]), int(sys.argv[3])) if len(sys.argv) > 3 else (1, len(BREAKS))
 def fresh():
     subprocess.run(["su", "postgres", "-c", "psql -q -c 'DROP DATABASE IF EXISTS leap_catalog_import_test' -c \"CREATE DATABASE leap_catalog_import_test TEMPLATE leap_marketplace_dev OWNER leap_dev\""], check=True, capture_output=True)
@@ -848,6 +903,10 @@ def run():
     if mode == "fradmin": return subprocess.run(["npx", "vitest", "run", "src/FreeShippingSection.test.jsx", "src/freeShippingApi.test.js"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
     if mode == "frwstorefront": return subprocess.run(["npx", "vitest", "run", "lib/cartShipping.test.ts", "components/FreeShipping.test.tsx", "components/CartProviderShipping.test.tsx", "app/cartShipping.test.tsx", "app/orderShipping.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
     if mode == "frapp": return subprocess.run(["/tmp/dartsdk/x/bin/dart", "--packages=/tmp/darttest/.dart_tool/package_config.json", "/tmp/darttest/run3.dart"], cwd=f"{ROOT}/apps/mobile", capture_output=True, text=True, timeout=120).returncode   # needs the stand-in test library in /tmp/darttest
+    if mode == "mfserver": return subprocess.run(["node", "--test", "--test-concurrency=1", "test/productFitGroups.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
+    if mode == "mfweb": return subprocess.run(["npx", "vitest", "run", "lib/fitGroups.test.ts", "components/FitsRow.test.tsx", "components/ProductDetailsFits.test.tsx", "app/productFits.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
+    if mode == "mfadmin": return subprocess.run(["npx", "vitest", "run", "src/fitmentSummary.test.js", "src/FitmentSummary.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
+    if mode == "gpapp": return subprocess.run(["/tmp/dartsdk/x/bin/dart", "--packages=/tmp/darttest/.dart_tool/package_config.json", "/tmp/darttest/run4.dart"], cwd=f"{ROOT}/apps/mobile", capture_output=True, text=True, timeout=120).returncode   # needs the stand-in test library in /tmp/darttest
     if mode == "ppserver": return subprocess.run(["node", "--test", "test/homeText.test.js", "test/productPage.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "ppadmin": return subprocess.run(["npx", "vitest", "run", "src/HomeTextSection.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
     if mode == "ppstorefront": return subprocess.run(["npx", "vitest", "run", "components/ProductDetails.test.tsx", "components/LazyProductRow.test.tsx", "components/VehicleFilterOrder.test.tsx", "components/FitsMyCarLabel.test.tsx", "app/stage1c-page.test.tsx", "app/homeText.test.tsx", "components/SiteHeaderTopBar.test.tsx", "lib/gridSourceModel.test.ts", "lib/homeText.test.ts", "app/api/products/routeSameModel.test.ts"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
@@ -859,7 +918,7 @@ def run():
     if mode == "server": return subprocess.run(["node", "--test", "test/orderVehicles.test.js", "test/productCars.test.js", "test/orderVehiclesReplacement.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "screens": return subprocess.run(["npx", "vitest", "run", "src/OrderVehicle.test.jsx", "src/OrderVehicleFlow.test.jsx"], cwd=SP, capture_output=True, text=True, timeout=150).returncode
     return subprocess.run(["npx", "vitest", "run", "components/FitCheck.test.tsx", "app/stage1c-page.test.tsx", "app/cartFitCheck.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=150).returncode
-if mode in ("frserver", "server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver", "hbserver"): fresh()
+if mode in ("mfserver", "frserver", "server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver", "hbserver"): fresh()
 if run() != 0: sys.exit("The tests do not pass on the UNBROKEN code, so a break check would prove nothing.")
 print("baseline: the tests pass on the unbroken code\n", flush=True); caught = 0
 for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
@@ -868,10 +927,10 @@ for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
     if src.count(old) != 1: print(f"{n:2d}. SKIPPED (the line to break was not found exactly once): {what}"); continue
     shutil.copy(path, path + ".keep"); open(path, "w", encoding="utf-8").write(src.replace(old, new))
     try:
-        if mode in ("frserver", "server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver", "hbserver"): fresh()
+        if mode in ("mfserver", "frserver", "server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver", "hbserver"): fresh()
         failed = run() != 0
     finally: shutil.move(path + ".keep", path)
     caught += failed; print(f"{n:2d}. {'CAUGHT ' if failed else 'MISSED!'}  {what}", flush=True)
 print(f"\n{caught} of {sum(1 for i in range(1, len(BREAKS) + 1) if lo <= i <= hi)} breaks were caught")
-if mode in ("frserver", "server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver", "hbserver"): fresh()
+if mode in ("mfserver", "frserver", "server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver", "hbserver"): fresh()
 print("code restored; the tests pass again:", "yes" if run() == 0 else "NO (investigate)")
