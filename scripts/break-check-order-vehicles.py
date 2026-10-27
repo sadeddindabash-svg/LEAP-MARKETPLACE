@@ -643,7 +643,33 @@ HB_ADMIN = [
  ('a wrong web address gets no hint', 'apps/admin-dashboard/src/HomeBannerSection.jsx', '!/^https?:\\/\\/\\S+$/i.test(draft.linkValue.trim()) && ', ''),
  ('an expired sign-in during an upload is shown as an error instead', 'apps/admin-dashboard/src/HomeBannerSection.jsx', 'if (!expired(err)) setCropError(err.message);', 'setCropError(err.message);'),
 ]
-mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"hbserver": HB_SERVER, "hbstorefront": HB_STORE, "hbadmin": HB_ADMIN, "bpstorefront": BP_FAST, "bpslow": BP_SLOW, "ssstorefront": SS_STOREFRONT, "cxserver": CX_SERVER, "cxadmin": CX_ADMIN, "pdserver": PD_SERVER, "pdadmin": PD_ADMIN, "clserver": CL_SERVER, "ffstorefront": FF_STOREFRONT, "crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
+SFVB = "apps/web-storefront/components/VehicleBar.tsx"; SFSH = "apps/web-storefront/components/SiteHeader.tsx"
+SF_STOREFRONT = [
+ ("the container with a car opens the wrong page", SFVB, '<Link href="/garage" data-testid="vehicle-card" data-state="car"', '<Link href="/search" data-testid="vehicle-card" data-state="car"'),
+ ("the empty container opens the wrong page", SFVB, '<Link href="/garage" data-testid="vehicle-card" data-state="empty"', '<Link href="/search" data-testid="vehicle-card" data-state="empty"'),
+ ("the full text is not in the tooltip", SFVB, " title={full} className={CARD}", " className={CARD}"),
+ ("the accessible name loses the car", SFVB, 'aria-label={`${t("shopping_for")}: ${full}`}', ''),
+ ("a long car name wraps or widens instead of being cut", SFVB, "block w-fit max-w-full truncate rounded-md", "block w-fit max-w-full rounded-md"),
+ ("the container is taller than the menu row allows", SFVB, "group flex h-10 w-full min-w-0 items-center", "group flex h-14 w-full min-w-0 items-center"),
+ ("a long text can spill out of the container", SFVB, "items-center overflow-hidden rounded-[10px] border", "items-center rounded-[10px] border"),
+ ("a picture that fails to load stays broken", SFVB, "onError={() => setFailedPhotos((f) => [...f, photo])}", "onError={() => {}}"),
+ ("a failed photo is not skipped: the next photo is never tried", SFVB, "(u): u is string => !!u && !failedPhotos.includes(u)", "(u): u is string => !!u"),
+ ("a car with no photo draws an empty picture instead of the icon", SFVB, "{photo ? (", "{true ? ("),
+ ("the picture panel is not angled", SFVB, " [clip-path:polygon(22%_0,100%_0,100%_100%,0_100%)]", ""),
+ ("the angle is not mirrored in Arabic", SFVB, " rtl:[clip-path:polygon(0_0,78%_0,100%_100%,0_100%)]", ""),
+ ("there is no waiting state while loading", SFVB, "if (isLoading || (user && loading)) return", "if (false) return"),
+ ("a signed-in buyer sees 'Add a vehicle' while the garage loads", SFVB, "if (isLoading || (user && loading)) return", "if (isLoading) return"),
+ ("a signed-out visitor is kept waiting for a garage that does not exist", SFVB, "if (isLoading || (user && loading)) return", "if (isLoading || loading) return"),
+ ("a signed-out visitor sees a car", SFVB, "if (!user || !car) {", "if (!car) {"),
+ ("the menu place is shown on phones too", SFVB, 'className="ms-auto hidden min-w-[17rem]', 'className="ms-auto min-w-[17rem]'),
+ ("the phone row is shown on computers too", SFVB, 'className="border-b border-line bg-white lg:hidden"', 'className="border-b border-line bg-white"'),
+ ("the arrow does not turn round in Arabic", SFVB, " rtl:rotate-180", ""),
+ ("the menu row may wrap the container underneath", SFSH, "px-4 sm:px-8 lg:flex-nowrap", "px-4 sm:px-8"),
+ ("the container is not placed in the menu row", SFSH, '          <VehicleBar where="menu" />\n', ''),
+ ("the phone row is missing", SFSH, '      <VehicleBar where="row" />', ''),
+ ("the empty container says something else", "apps/web-storefront/lib/i18n.ts", 'add_a_vehicle: "Add a vehicle",', 'add_a_vehicle: "Add vehicle",'),
+]
+mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"sfstorefront": SF_STOREFRONT, "hbserver": HB_SERVER, "hbstorefront": HB_STORE, "hbadmin": HB_ADMIN, "bpstorefront": BP_FAST, "bpslow": BP_SLOW, "ssstorefront": SS_STOREFRONT, "cxserver": CX_SERVER, "cxadmin": CX_ADMIN, "pdserver": PD_SERVER, "pdadmin": PD_ADMIN, "clserver": CL_SERVER, "ffstorefront": FF_STOREFRONT, "crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
 lo, hi = (int(sys.argv[2]), int(sys.argv[3])) if len(sys.argv) > 3 else (1, len(BREAKS))
 def fresh():
     subprocess.run(["su", "postgres", "-c", "psql -q -c 'DROP DATABASE IF EXISTS leap_catalog_import_test' -c \"CREATE DATABASE leap_catalog_import_test TEMPLATE leap_marketplace_dev OWNER leap_dev\""], check=True, capture_output=True)
@@ -671,6 +697,7 @@ def run():
     if mode == "hbserver": return subprocess.run(["node", "--test", "test/homeBanner.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "hbstorefront": return subprocess.run(["npx", "vitest", "run", "lib/homeBanner.test.ts", "components/HomeBanner.test.tsx", "app/homeBanner.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
     if mode == "hbadmin": return subprocess.run(["npx", "vitest", "run", "src/HomeBannerSection.test.jsx", "src/bannerCrop.test.js", "src/homeBannerApi.test.js"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=250).returncode
+    if mode == "sfstorefront": return subprocess.run(["npx", "vitest", "run", "components/VehicleBar.test.tsx", "components/siteHeaderVehicle.test.tsx", "components/stage1b-providers.test.tsx", "components/SiteHeaderMenu.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
     if mode == "ppserver": return subprocess.run(["node", "--test", "test/homeText.test.js", "test/productPage.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "ppadmin": return subprocess.run(["npx", "vitest", "run", "src/HomeTextSection.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
     if mode == "ppstorefront": return subprocess.run(["npx", "vitest", "run", "components/ProductDetails.test.tsx", "components/LazyProductRow.test.tsx", "components/VehicleFilterOrder.test.tsx", "components/FitsMyCarLabel.test.tsx", "app/stage1c-page.test.tsx", "app/homeText.test.tsx", "components/SiteHeaderTopBar.test.tsx", "lib/gridSourceModel.test.ts", "lib/homeText.test.ts", "app/api/products/routeSameModel.test.ts"], cwd=SF, capture_output=True, text=True, timeout=250).returncode

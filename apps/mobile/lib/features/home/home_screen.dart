@@ -17,6 +17,7 @@ import '../../widgets/product_card.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/onboarding_overlay.dart';
 import '../../widgets/brand_logo_marquee.dart';
+import '../../widgets/home_banner.dart';
 
 /// Real, admin-managed icon per known category id — a NEW category an
 /// admin adds via the admin dashboard's Categories page (see
@@ -249,6 +250,9 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(height: 16),
+            // 1.5. Home banner (new) -- the admin's advertisement photos, above "Shopping for". The same switch as the website's home page:
+            // it takes no space at all unless the admin chose the banner (and it has a photo), and it hides itself if the server cannot be read.
+            const HomeBanner(),
             // 2. Shopping for -- real garage data
             _ShoppingForCard(garageFuture: _garageFuture, isLoggedIn: auth.isLoggedIn, onNavigateToGarage: () => _navigateToGarage(context)),
             const SizedBox(height: 12),
