@@ -36,8 +36,9 @@ It changes five existing files (the platform settings routes, and in the storefr
 3. Restart the backend: `taskkill /F /IM node.exe`, then `.\scripts\start-leap.cmd`, **and start the storefront again** (commands in `docs\FONT-FIX.md`). The admin portal reloads by itself.
 
 ## Notes
+* **The card cannot take Settings down.** It checks what the server answers before using it (for example an older backend that was not restarted): if the answer is not what it expects, the card says so and tells you to restart the backend; and a safety net around the card means that even an unforeseen failure shows only a small message in the card, while the rest of Settings stays.
 * **Order of patches:** it does not matter whether you apply this patch before or after `patch-product-parity.js` (both orders were tested on clean files).
 * **The mobile app is a separate package** (the banner above "Shopping for"); it will use the same slides, photos, links and switch.
 * The Arabic words of the arrows and dots ("الصورة السابقة", "الصورة التالية", "الانتقال إلى الصورة n") are mine: please have a native speaker check them.
 * Tests: server `node --test test/homeBanner.test.js` (in `services\api`, a database whose name ends in `_test`); storefront `npx vitest run lib/homeBanner.test.ts components/HomeBanner.test.tsx app/homeBanner.test.tsx`; admin `npx vitest run src/HomeBannerSection.test.jsx src/bannerCrop.test.js src/homeBannerApi.test.js`.
-  `scripts/break-check-order-vehicles.py hbserver|hbstorefront|hbadmin` breaks the code on purpose (66 ways) and expects the tests to fail.
+  `scripts/break-check-order-vehicles.py hbserver|hbstorefront|hbadmin` breaks the code on purpose (71 ways) and expects the tests to fail.

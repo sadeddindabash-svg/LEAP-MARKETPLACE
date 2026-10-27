@@ -619,6 +619,11 @@ HB_STORE = [
  ('a banner failure takes the home page down', 'apps/web-storefront/app/page.tsx', 'try { return await fetchHomeBanner(); } catch { return null; }', 'return await fetchHomeBanner();'),
 ]
 HB_ADMIN = [
+ ("an unexpected server answer is stored and crashes the page", "apps/admin-dashboard/src/HomeBannerSection.jsx", "if (!usable(d)) throw new Error(UNEXPECTED); const drafts", "const drafts"),
+ ("an answer without limits is accepted", "apps/admin-dashboard/src/HomeBannerSection.jsx", "&& !!d.limits && typeof d.limits === \"object\" && Number.isFinite(d.limits.maxSlides);", ";"),
+ ("an unexpected answer after a change is accepted", "apps/admin-dashboard/src/HomeBannerSection.jsx", "if (!r || !Array.isArray(r.slides)) throw new Error(UNEXPECTED); setData", "setData"),
+ ("the safety net around the card is missing", "apps/admin-dashboard/src/HomeBannerSection.jsx", "return this.props.children;\n    return (", "return null;\n    return ("),
+ ("the safety net does not say anything", "apps/admin-dashboard/src/HomeBannerSection.jsx", "This card could not be shown. The rest of Settings is not affected.", ""),
  ('the saved photo has the wrong size', 'apps/admin-dashboard/src/bannerCrop.js', 'export const OUTPUT_W = 1250;', 'export const OUTPUT_W = 1200;'),
  ('the picture does not cover the frame', 'apps/admin-dashboard/src/bannerCrop.js', 'Math.max(FRAME_W / width, FRAME_H / height)', 'Math.min(FRAME_W / width, FRAME_H / height)'),
  ('the picture can be dragged off the frame', 'apps/admin-dashboard/src/bannerCrop.js', 'x: Math.min(0, Math.max(FRAME_W - width * s, offset.x))', 'x: offset.x'),

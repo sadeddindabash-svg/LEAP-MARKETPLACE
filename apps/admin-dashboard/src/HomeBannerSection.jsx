@@ -66,7 +66,11 @@ function LinkEditor({ draft, categories, onChange, onError }) {
   );
 }
 
-export default function HomeBannerSection({ onSessionExpired }) {
+/** What the card needs from the server's answer. Anything else (an older backend that was not restarted, a proxy page, another feature's data) is a clear message in the card, never a crash. */
+const usable = (d) => !!d && typeof d === "object" && Array.isArray(d.slides) && !!d.limits && typeof d.limits === "object" && Number.isFinite(d.limits.maxSlides);
+const UNEXPECTED = "The server's answer about the home banner was not what was expected. Restart the backend so that it has the banner update, then reload this page.";
+
+function HomeBannerCard({ onSessionExpired }) {
   const [data, setData] = useState(null);
   const [loadState, setLoadState] = useState("loading");
   const [drafts, setDrafts] = useState({});
@@ -82,7 +86,7 @@ export default function HomeBannerSection({ onSessionExpired }) {
   const expired = (err) => { if (err instanceof SessionExpiredError) { onSessionExpired?.(); return true; } return false; };
   const fail = (err) => { if (!expired(err)) setError(err.message); };
   useEffect(() => {
-    fetchBannerAdmin(getStoredToken()).then((d) => { setData(d); setDrafts(Object.fromEntries(d.slides.map((s) => [s.id, draftOf(s)]))); setLoadState("ready"); }).catch((e) => { if (!expired(e)) { setError(e.message); setLoadState("error"); } });
+    fetchBannerAdmin(getStoredToken()).then((d) => { if (!usable(d)) throw new Error(UNEXPECTED); const drafts = Object.fromEntries(d.slides.map((s) => [s.id, draftOf(s)])); setData(d); setDrafts(drafts); setLoadState("ready"); }).catch((e) => { if (!expired(e)) { setError(e.message); setLoadState("error"); } });
     fetchCategories().then((c) => setCategories(Array.isArray(c) ? c : [])).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { if (crop) URL.revokeObjectURL(crop.image.url); }, [crop]);
@@ -91,7 +95,7 @@ export default function HomeBannerSection({ onSessionExpired }) {
     setBusy(key); setError(null); setSaved(null);
     try { const r = await work(); if (message) setSaved(message); return r; } catch (err) { fail(err); return null; } finally { setBusy(null); }
   };
-  const take = (r) => { setData((d) => ({ ...d, mode: r.mode, slides: r.slides, limits: r.limits || d.limits })); return r; };
+  const take = (r) => { if (!r || !Array.isArray(r.slides)) throw new Error(UNEXPECTED); setData((d) => ({ ...d, mode: r.mode, slides: r.slides, limits: r.limits || d.limits })); return r; };
   const edit = (id, patch) => setDrafts((all) => ({ ...all, [id]: { ...all[id], ...patch } }));
   const token = () => getStoredToken();
 
@@ -215,3 +219,23 @@ export default function HomeBannerSection({ onSessionExpired }) {
   );
 }
 function s(v) { return v.trim(); }
+
+/** A safety net: if the card ever fails while it is drawn, only the card says so; the rest of the Settings page stays. */
+export class BannerCardBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { failed: false }; }
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(error) { console.error("The home banner card failed:", error); }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div role="alert" style={{ flex: 1, minWidth: 420, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 12, padding: 18 }}>
+        <h2 style={{ ...body, fontSize: 15, fontWeight: 700, color: C.ink, margin: 0 }}>Home banner</h2>
+        <div style={{ ...body, fontSize: 12.5, color: C.red, marginTop: 8 }}>This card could not be shown. The rest of Settings is not affected. Reload the page; if it happens again, tell the Leap team.</div>
+      </div>
+    );
+  }
+}
+
+export default function HomeBannerSection(props) {
+  return <BannerCardBoundary><HomeBannerCard {...props} /></BannerCardBoundary>;
+}

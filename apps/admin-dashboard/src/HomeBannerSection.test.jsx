@@ -11,7 +11,7 @@ vi.mock('./auth', () => { class SessionExpiredError extends Error {} return { Se
 vi.mock('./homeBannerApi', () => m.api);
 vi.mock('./homePictureImage', () => ({ loadImageFile: (...a) => m.loadImageFile(...a) }));
 vi.mock('./bannerImage', () => ({ renderBannerCrop: (...a) => m.renderBannerCrop(...a) }));
-import HomeBannerSection from './HomeBannerSection';
+import HomeBannerSection, { BannerCardBoundary } from './HomeBannerSection';
 import { SessionExpiredError } from './auth';
 
 const LIMITS = { maxSlides: 10, minSeconds: 2, maxSeconds: 30, defaultSeconds: 5, width: 1250, height: 500, maxAlt: 140 };
@@ -117,4 +117,26 @@ describe('seconds, link and descriptions', () => {
     m.api.saveBannerSlide.mockResolvedValue({ slide: slide('a', { altEn: 'New', altAr: 'جديد' }), ...state([slide('a', { altEn: 'New', altAr: 'جديد' })]) }); fireEvent.click(screen.getByRole('button', { name: 'Save slide 1' })); await waitFor(() => expect(m.api.saveBannerSlide).toHaveBeenCalledWith('admin-token', 'a', { link: { type: 'none' }, altEn: 'New', altAr: 'جديد' }));
   });
   it('a refusal from the server is shown and the edits are kept', async () => { await show(state([slide('a')])); fireEvent.change(screen.getByLabelText('Seconds for slide 1'), { target: { value: '9' } }); m.api.saveBannerSlide.mockRejectedValue(new Error('That part was not found')); fireEvent.click(screen.getByRole('button', { name: 'Save slide 1' })); expect(await screen.findByRole('alert')).toHaveTextContent('That part was not found'); expect(screen.getByLabelText('Seconds for slide 1').value).toBe('9'); expect(screen.getByText('Not saved yet')).toBeInTheDocument(); });
+});
+
+describe('a server answer that is not what the card expects, or a failure while it is drawn, never takes the Settings page down', () => {
+  const page = () => render(<div><p>the rest of the Settings page</p><HomeBannerSection /></div>);
+  it('another feature\'s data (no list of slides): a clear message in the card, the rest of the page is still there', async () => {
+    m.api.fetchBannerAdmin.mockResolvedValue({ announcements: [], limits: LIMITS }); page();
+    expect(await screen.findByText(/was not what was expected/)).toBeInTheDocument(); expect(screen.getByText('the rest of the Settings page')).toBeInTheDocument(); expect(screen.queryByRole('group', { name: /The home page shows/ })).not.toBeInTheDocument();
+  });
+  it('an answer without the limits, an empty answer and a non-object answer are all refused the same way', async () => {
+    for (const bad of [{ mode: 'banner', slides: [] }, null, 'oops', 42]) { m.api.fetchBannerAdmin.mockResolvedValue(bad); const { unmount } = page(); expect(await screen.findByText(/was not what was expected/)).toBeInTheDocument(); expect(screen.getByText('the rest of the Settings page')).toBeInTheDocument(); unmount(); }
+  });
+  it('a damaged slide in the answer is a message too, not a crash', async () => { m.api.fetchBannerAdmin.mockResolvedValue({ mode: 'banner', slides: [null], limits: LIMITS }); page(); expect(await screen.findByRole('alert')).toBeInTheDocument(); expect(screen.getByText('the rest of the Settings page')).toBeInTheDocument(); });
+  it('an answer after a change (add, save, photo) that is not what was expected is a message and keeps the slides already shown', async () => {
+    await show(state([slide('a')])); m.api.addBannerSlide.mockResolvedValue({ nothing: true }); fireEvent.click(screen.getByRole('button', { name: /Add a slide/ }));
+    expect(await screen.findByText(/was not what was expected/)).toBeInTheDocument(); expect(screen.getByRole('button', { name: 'Save slide 1' })).toBeInTheDocument();
+  });
+  it('the safety net: a failure while the card is drawn shows a message in the card only', () => {
+    const Boom = () => { throw new Error('boom'); }; vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(<div><p>the rest of the Settings page</p><BannerCardBoundary><Boom /></BannerCardBoundary></div>);
+    expect(screen.getByRole('alert')).toHaveTextContent('This card could not be shown'); expect(screen.getByText('the rest of the Settings page')).toBeInTheDocument(); console.error.mockRestore();
+  });
+  it('and when nothing fails it is invisible (the children are shown as they are)', () => { render(<BannerCardBoundary><p>fine</p></BannerCardBoundary>); expect(screen.getByText('fine')).toBeInTheDocument(); expect(screen.queryByRole('alert')).not.toBeInTheDocument(); });
 });
