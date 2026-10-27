@@ -12,6 +12,7 @@ import FooterTextSection from "./FooterTextSection";
 import SocialLinksSection from "./SocialLinksSection";
 import LegalPagesSection from "./LegalPagesSection";
 import { PlateChip, Badge, Stars, KpiCard, Card, Th, Td, ConfirmDialog, EditDialog, EnlargeablePhoto } from "./components/ui";
+import FreeShippingSection from "./FreeShippingSection";
 import VersionsPanel from "./VersionsPanel";
 import VehicleImportPanel from "./VehicleImportPanel";
 import ProductDeleteDialog, { ProductSelectionBar, SelectBox, SelectAllBox, useProductSelection, ProductViewSwitch, ProductReviewDialog, ProductPageDelete } from "./ProductDeleteDialog";
@@ -8355,6 +8356,7 @@ function SettingsPage({ currentUser, onSessionExpired }) {
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
           <CommissionRulesSection onSessionExpired={onSessionExpired} />
           <ReturnWindowSection onSessionExpired={onSessionExpired} />
+          <FreeShippingSection onSessionExpired={onSessionExpired} />
           <EmailTestSection />
         </div>
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>

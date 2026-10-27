@@ -116,7 +116,8 @@ async function loadItems(client, faultCaseId) {
 // their proportional share of the discount. The admin can still lower it, never above the order total.
 async function computeRefundSuggestion(client, row, items) {
   const { rows } = await client.query(
-    `SELECT o.total,
+    // What the buyer paid for the GOODS: the order total less the shipping fee of a small order (orders.shipping_fee, migration 111), which is not part of the goods' price.
+    `SELECT (o.total - COALESCE(o.shipping_fee, 0)) AS total,
             (SELECT COALESCE(SUM(oli.unit_price * oli.quantity), 0)
              FROM order_line_items oli JOIN supplier_sub_orders s2 ON s2.id = oli.sub_order_id
              WHERE s2.order_id = o.id) AS all_items_value
@@ -579,5 +580,5 @@ async function closeCaseManually(client, { caseId, adminId, note }) {
 
 module.exports = {
   closeCaseManually, FaultCaseError, createFaultCase, recordSupplierAnswer, confirmRefund, markRefunded, confirmReplacement, releaseSupplierPayment, onShipmentDelivered, recordHubReturn,
-  toAdminDto, toHubDto, sendNotifications,
+  toAdminDto, toHubDto, sendNotifications, computeRefundSuggestion,
 };

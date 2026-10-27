@@ -17,6 +17,7 @@ import '../../widgets/product_card.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/onboarding_overlay.dart';
 import '../../widgets/brand_logo_marquee.dart';
+import '../../widgets/home_search_bar.dart';
 import '../../widgets/home_banner.dart';
 
 /// Real, admin-managed icon per known category id — a NEW category an
@@ -178,6 +179,8 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         automaticallyImplyLeading: false,
         titleSpacing: 16,
+        // The website's search bar (a navy banner with the suggestions sliding up and a gold Search button), docked under the top bar.
+        bottom: const PreferredSize(preferredSize: Size.fromHeight(HomeSearchBar.height), child: HomeSearchBar()),
         title: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -193,7 +196,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             Row(
               children: [
-                IconButton(icon: Icon(Icons.search, color: palette.signal), tooltip: tr(context, 'search_label'), onPressed: () => context.push('/search')),
                 IconButton(icon: Icon(Icons.chat_bubble_outline, color: palette.signal), tooltip: tr(context, 'support_label'), onPressed: () => context.push('/support')),
               ],
             ),
@@ -239,17 +241,6 @@ class _HomeScreenState extends State<HomeScreen> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-            // 1. Search bar
-            TextField(
-              readOnly: true,
-              onTap: () => context.push('/search'),
-              decoration: InputDecoration(
-                hintText: tr(context, 'search_hint'),
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-            ),
-            const SizedBox(height: 16),
             // 1.5. Home banner (new) -- the admin's advertisement photos, above "Shopping for". The same switch as the website's home page:
             // it takes no space at all unless the admin chose the banner (and it has a photo), and it hides itself if the server cannot be read.
             const HomeBanner(),

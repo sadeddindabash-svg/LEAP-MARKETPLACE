@@ -3,6 +3,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:uuid/uuid.dart';
 import '../models/cart_item.dart';
 import '../models/cart.dart';
+import '../models/cart_shipping.dart';
 import '../services/api_client.dart';
 
 /// Holds the buyer's cart and syncs every change to services/api/cart in
@@ -34,6 +35,8 @@ class CartState extends ChangeNotifier {
   double _loyaltyDiscountUsd = 0;
   String _appliedDiscountSource = 'none';
   double _appliedDiscountUsd = 0;
+  // Free shipping above a limit: the answer the server sent with the last cart (CartShipping.off when the rule is off).
+  CartShipping _shipping = CartShipping.off;
   // Confirmed with the person: whole-basket checkout price lock,
   // starts when checkout genuinely begins (not when an item is
   // added).
@@ -94,6 +97,9 @@ class CartState extends ChangeNotifier {
   DateTime? get lockExpiresAt => _lockExpiresAt;
 
   double get total => _items.fold(0.0, (sum, i) => sum + i.lineTotal);
+  CartShipping get shipping => _shipping;
+  // The goods plus the shipping fee of a small order (0 when shipping is free or the rule is off). Any promo or loyalty discount is applied at checkout, as before.
+  double get totalWithShipping => _shipping.totalWith(total);
   // Confirmed with the person: sum of every real item's own
   // pre-discount total -- what the cart would cost with no product
   // discounts applied at all.
@@ -127,6 +133,7 @@ class CartState extends ChangeNotifier {
     _loyaltyDiscountUsd = cart.loyaltyDiscountUsd;
     _appliedDiscountSource = cart.appliedDiscountSource;
     _appliedDiscountUsd = cart.appliedDiscountUsd;
+    _shipping = _apiClient.lastCartShipping;
     _lockActive = cart.lockActive;
     _lockExpiresAt = cart.lockExpiresAt;
   }
@@ -234,6 +241,7 @@ class CartState extends ChangeNotifier {
     _loyaltyDiscountUsd = 0;
     _appliedDiscountSource = 'none';
     _appliedDiscountUsd = 0;
+    _shipping = CartShipping.off;
     _lockActive = false;
     _lockExpiresAt = null;
     notifyListeners();

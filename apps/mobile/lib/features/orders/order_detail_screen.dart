@@ -421,6 +421,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
           ),
           const SizedBox(height: 6),
           Text('\$${(_order!['total'] as num).toStringAsFixed(2)} ${_order!['currencyCode']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20)),
+          if (((_order!['shippingFee'] as num?) ?? 0) > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text('${tr(context, 'shipping_fees')}: +\$${(_order!['shippingFee'] as num).toStringAsFixed(2)}', style: TextStyle(color: LeapPalette.of(context).muted, fontSize: 12.5)),
+            ),
           const SizedBox(height: 16),
           if (_order!['address'] == null)
             _buildPendingAddressBanner()

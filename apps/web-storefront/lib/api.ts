@@ -308,6 +308,19 @@ export interface Cart {
   /** Prices are locked while the buyer checks out, so they cannot change under them. */
   lockActive?: boolean;
   lockExpiresAt?: string | null;
+  /** The shipping fee on a small order (the admin's free-shipping rule): what to pay now, the limit, and how much more is needed. Absent from an older server. */
+  shipping?: CartShipping | null;
+}
+
+/** The shipping fee of a cart (worked out by the server). `enabled` false means the rule is off: no fee is ever charged. */
+export interface CartShipping {
+  enabled: boolean;
+  thresholdUsd: number;
+  feeUsd: number;
+  chargedUsd: number;
+  remainingUsd: number;
+  qualifies: boolean;
+  waivedByPromo: boolean;
 }
 
 /** Who is asking and in which language: a signed-in buyer's token (so the server can apply THEIR loyalty discount and promo rules) and the page's language (Arabic names). */
@@ -598,6 +611,8 @@ export interface OrderDetail {
   displayStatus: string;
   total: number;
   discountAmount: number;
+  /** The shipping fee charged on this order (0 when there was none); the total includes it. */
+  shippingFee?: number;
   promoCode: string | null;
   currencyCode: string;
   waitForAllShipments?: boolean;

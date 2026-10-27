@@ -39,13 +39,18 @@ export const subtotal = (cart: Pick<Cart, "items">): number => cart.items.reduce
 export type DiscountSource = "loyalty" | "promo" | "none";
 
 /** The totals shown: the subtotal, the ONE discount the server applied (loyalty or promo, never both), and what is left to pay. Never below zero. */
-export function totals(cart: Pick<Cart, "items" | "appliedDiscountUsd" | "appliedDiscountSource" | "loyaltyDiscountPercentage" | "appliedPromoCode">) {
+export function totals(cart: Pick<Cart, "items" | "appliedDiscountUsd" | "appliedDiscountSource" | "loyaltyDiscountPercentage" | "appliedPromoCode"> & { shipping?: Cart["shipping"] }) {
   const sub = subtotal(cart);
   const discount = Math.min(Math.max(cart.appliedDiscountUsd ?? 0, 0), sub);
+  const goods = Math.max(sub - discount, 0);
+  const fee = Number(cart.shipping?.chargedUsd ?? 0);
+  const shippingFee = Number.isFinite(fee) ? Math.max(fee, 0) : 0;      // the fee of a small order (the server decides it); 0 when the rule is off or the value is not a number
   return {
     subtotal: sub,
     discount,
-    total: Math.max(sub - discount, 0),
+    goods,
+    shippingFee,
+    total: goods + shippingFee,
     source: (cart.appliedDiscountSource ?? "none") as DiscountSource,
     loyaltyPercent: cart.loyaltyDiscountPercentage ?? 0,
     promoCode: cart.appliedPromoCode ?? null,

@@ -170,6 +170,7 @@ function OrderView({ orderId }: { orderId: string }) {
         <section className="rounded-[14px] border border-line bg-white p-5" aria-labelledby="order-sum">
           <h2 id="order-sum" className="mb-2 text-lg font-bold">{t("order_summary")}</h2>
           {order.discountAmount > 0 && <p className="flex justify-between font-semibold text-[#0f6b49]"><span>{t("discount")}{order.promoCode ? ` (${order.promoCode})` : ""}</span><span>−{format(order.discountAmount)}</span></p>}
+          {order.shippingFee ? <p className="flex justify-between"><span>{t("shipping_fees")}</span><span>+<Price usd={order.shippingFee} /></span></p> : null}
           <p className="flex justify-between text-xl font-extrabold"><span>{t("order_total_line")}</span><Price usd={order.total} /></p>
         </section>
       </div>

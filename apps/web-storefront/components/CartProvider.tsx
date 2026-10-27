@@ -139,7 +139,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     return {
       cart, isLoading, error,
       itemCount: countOf(source), total: subtotalOf(source),
-      summary: totalsOf({ items: source.items, appliedDiscountUsd: cart?.appliedDiscountUsd, appliedDiscountSource: cart?.appliedDiscountSource, loyaltyDiscountPercentage: cart?.loyaltyDiscountPercentage, appliedPromoCode: cart?.appliedPromoCode }),
+      summary: totalsOf({ items: source.items, appliedDiscountUsd: cart?.appliedDiscountUsd, appliedDiscountSource: cart?.appliedDiscountSource, loyaltyDiscountPercentage: cart?.loyaltyDiscountPercentage, appliedPromoCode: cart?.appliedPromoCode, shipping: cart?.shipping }),
       addItem, updateQuantity, removeItem, lockPrices, applyPromo, refreshCart, clearAfterOrder,
     };
   }, [cart, isLoading, error, addItem, updateQuantity, removeItem, lockPrices, applyPromo, refreshCart, clearAfterOrder]);

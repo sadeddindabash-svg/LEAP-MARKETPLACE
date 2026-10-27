@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../../../db/pool');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
 const { withEffectiveShipping } = require('../shared/partShipping');
+const { readFreeShipping, computeShipping } = require('../shared/freeShipping');
 const { findMatchingDiscountRule } = require('../pricing/discountRules');
 const { buildSupplierLabelMap } = require('../shared/supplierAnonymize');
 const { validatePromoCode, calculateDiscountUsd } = require('../promotions/helpers');
@@ -211,11 +212,15 @@ async function getFullCart(cartId, tokenBuyerId, lang) {
     appliedDiscountUsd = promoDiscountUsd;
   }
 
+  // The shipping fee on a small order (see shared/freeShipping.js): measured on the goods AFTER the discount; a free-shipping promo code waives it. All of it is zero/off when the admin has not set a limit.
+  const shipping = computeShipping({ settings: await readFreeShipping(), itemsUsd: subtotal, discountUsd: appliedDiscountUsd, freeShippingPromo: appliedPromoDetails ? appliedPromoDetails.type === 'free_shipping' : false, hasItems: items.length > 0 });
+
   return {
     cartId, items, appliedPromoCode, appliedPromoDetails,
     promoDiscountUsd, loyaltyDiscountPercentage, loyaltyDiscountUsd,
     appliedDiscountSource, appliedDiscountUsd,
     lockActive, lockExpiresAt,
+    shipping,
   };
 }
 

@@ -5,6 +5,7 @@ const db = require('../../../db/pool');
 const { requireAuth, optionalAuth, requirePageAccessIfAdmin, requireRole, requirePageAccess } = require('../auth/middleware');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
 const { withEffectiveShipping } = require('../shared/partShipping');
+const { readFreeShipping, computeShipping } = require('../shared/freeShipping');
 const { validatePromoCode, calculateDiscountUsd, recordRedemption, checkAndGrantReferralReward } = require('../promotions/helpers');
 const { getLoyaltyDiscountPercentage } = require('../loyalty/helpers');
 const { sendTransactionalEmail } = require('../email/client');
@@ -215,6 +216,7 @@ router.post('/', async (req, res, next) => {
     // mysteriously full-price total).
     let discountUsd = 0;
     let appliedPromoCode = null;
+    let freeShippingPromo = false;      // a free-shipping promo code also waives the shipping fee of a small order
     if (promoCode) {
       const validation = await validatePromoCode(promoCode, userId || null);
       if (!validation.valid) {
@@ -222,6 +224,7 @@ router.post('/', async (req, res, next) => {
       }
       discountUsd = calculateDiscountUsd(validation.promoCode, subtotal, totalShippingPortionUsd);
       appliedPromoCode = promoCode;
+      freeShippingPromo = validation.promoCode.type === 'free_shipping';
     }
     // Confirmed with the person: the real loyalty discount only ever
     // competes with the real promo discount above, never with the
@@ -237,13 +240,17 @@ router.post('/', async (req, res, next) => {
     if (loyaltyDiscountUsd > discountUsd) {
       discountUsd = loyaltyDiscountUsd;
       appliedPromoCode = null; // the real loyalty discount won -- no real promo code is actually being redeemed on this order
+      freeShippingPromo = false;
     }
-    const total = Math.max(0, Number((subtotal - discountUsd).toFixed(2)));
+    // The shipping fee of a SMALL order (shared/freeShipping.js): the goods after the discount under the admin's limit pay the fee on top. It is part of what the buyer pays (total) and is kept on the order (shipping_fee).
+    const goodsTotal = Math.max(0, Number((subtotal - discountUsd).toFixed(2)));
+    const shippingFee = computeShipping({ settings: await readFreeShipping(client), itemsUsd: subtotal, discountUsd, freeShippingPromo }).chargedUsd;
+    const total = Number((goodsTotal + shippingFee).toFixed(2));
 
     const orderId = await nextOrderId(client);
     await client.query(
-      `INSERT INTO orders (id, buyer_id, guest_email, status, total, currency_code, promo_code, discount_amount, wait_for_all_shipments, idempotency_key) VALUES ($1, $2, $3, 'to_ship', $4, $5, $6, $7, $8, $9)`,
-      [orderId, userId || null, normalizeEmail(guestEmail) || null, total, currencyCode, appliedPromoCode, discountUsd, Boolean(waitForAllShipments), idempotencyKey || null]
+      `INSERT INTO orders (id, buyer_id, guest_email, status, total, currency_code, promo_code, discount_amount, wait_for_all_shipments, idempotency_key, shipping_fee) VALUES ($1, $2, $3, 'to_ship', $4, $5, $6, $7, $8, $9, $10)`,
+      [orderId, userId || null, normalizeEmail(guestEmail) || null, total, currencyCode, appliedPromoCode, discountUsd, Boolean(waitForAllShipments), idempotencyKey || null, shippingFee]
     );
     if (appliedPromoCode) {
       await recordRedemption(appliedPromoCode, userId || null, orderId, client);
@@ -382,6 +389,7 @@ router.post('/', async (req, res, next) => {
       status: 'to_ship',
       subtotal,
       discountAmount: discountUsd,
+      shippingFee,
       promoCode: appliedPromoCode,
       total,
       currencyCode,
@@ -443,7 +451,7 @@ router.post('/', async (req, res, next) => {
           const nameById = Object.fromEntries(nameRows.map((r) => [r.id, r.name]));
           const emailItems = items.map((i) => ({ name: nameById[i.productId] || i.productId, quantity: i.quantity, price: buyerUnitPrices[i.productId] }));
           const lang = await emailLanguageForAddress(recipientEmail);
-          const { html, text } = orderConfirmationEmail({ recipientName, orderId, items: emailItems, total, currencyCode, lang });
+          const { html, text } = orderConfirmationEmail({ recipientName, orderId, items: emailItems, total, shippingFee, currencyCode, lang });
           await sendTransactionalEmail({ to: recipientEmail, subject: emailSubject('orderConfirmed', lang, { orderId }), html, text, fallbackLogLabel: 'order-confirmation' });
         }
       } catch (err) {
@@ -632,6 +640,7 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
       displayStatus: buyerSafeDisplayStatus(await computeDisplayStatus(order.id), isAdmin),
       total: Number(order.total),
       discountAmount: Number(order.discount_amount || 0),
+      shippingFee: Number(order.shipping_fee || 0),
       promoCode: order.promo_code,
       currencyCode: order.currency_code,
       waitForAllShipments: order.wait_for_all_shipments,
@@ -1143,9 +1152,9 @@ router.get('/:id/receipt', optionalAuth, async (req, res, next) => {
           receiptTitle: shapeArabic('إيصال الطلب'), order: 'الطلب', placed: 'تاريخ الطلب',
           customer: shapeArabic('العميل'), deliveryAddress: shapeArabic('عنوان التوصيل'), guest: 'ضيف',
           item: shapeArabic('الصنف'), qty: shapeArabic('الكمية'), unitPrice: shapeArabic('سعر الوحدة'),
-          total: shapeArabic('الإجمالي'), discount: 'الخصم', totalLine: 'الإجمالي الكلي',
+          total: shapeArabic('الإجمالي'), discount: 'الخصم', shipping: 'رسوم الشحن', totalLine: 'الإجمالي الكلي',
         }
-      : { receiptTitle: 'Order receipt', order: 'Order', placed: 'Placed', customer: 'CUSTOMER', deliveryAddress: 'DELIVERY ADDRESS', guest: 'Guest', item: 'Item', qty: 'Qty', unitPrice: 'Unit price', total: 'Total', discount: 'Discount', totalLine: 'Total' };
+      : { receiptTitle: 'Order receipt', order: 'Order', placed: 'Placed', customer: 'CUSTOMER', deliveryAddress: 'DELIVERY ADDRESS', guest: 'Guest', item: 'Item', qty: 'Qty', unitPrice: 'Unit price', total: 'Total', discount: 'Discount', shipping: 'Shipping fees', totalLine: 'Total' };
 
     const { rows: itemRows } = await db.query(
       `SELECT oli.quantity, oli.unit_price, p.name, p.name_ar
@@ -1340,6 +1349,11 @@ router.get('/:id/receipt', optionalAuth, async (req, res, next) => {
     if (order.discount_amount && Number(order.discount_amount) > 0) {
       const discountLine = `${t.discount}: -$${Number(order.discount_amount).toFixed(2)}`;
       doc.fontSize(10).font('Body').text(isAr ? shapeArabic(discountLine) : discountLine, { align: totalsAlign });
+      doc.moveDown(0.3);
+    }
+    if (order.shipping_fee && Number(order.shipping_fee) > 0) {
+      const shippingLine = `${t.shipping}: +$${Number(order.shipping_fee).toFixed(2)}`;
+      doc.fontSize(10).font('Body').text(isAr ? shapeArabic(shippingLine) : shippingLine, { align: totalsAlign });
       doc.moveDown(0.3);
     }
     const totalLineText = `${t.totalLine}: $${Number(order.total).toFixed(2)} ${order.currency_code}`;

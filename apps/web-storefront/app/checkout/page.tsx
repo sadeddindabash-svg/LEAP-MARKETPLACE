@@ -9,6 +9,7 @@ import { useCart } from "@/components/CartProvider";
 import { useCurrency } from "@/components/CurrencyProvider";
 import { useLang, useT } from "@/components/LangProvider";
 import { Price } from "@/components/Price";
+import { ShippingRow } from "@/components/FreeShipping";
 import { useLocRouter } from "@/components/useLocRouter";
 import {
   createAddress, fetchMyAddresses, fetchPaymentMethodsForCountry, placeOrder, resolveImageUrl, type PaymentMethod, type SavedAddress,
@@ -234,6 +235,7 @@ export default function CheckoutPage() {
               <span>−<Price usd={summary.discount} /></span>
             </div>
           )}
+          <ShippingRow shipping={cart.shipping} />
           <div className="mt-1 flex justify-between border-t-2 border-line pt-3 text-[22px] font-extrabold"><span>{t("total")}</span><Price usd={summary.total} /></div>
           {loyaltyBeatsPromo(cart) && <p className="mt-2 text-sm text-muted">{t("loyalty_beats_promo", { amount: format(summary.discount) })}</p>}
           {cart.lockActive && <p className="mt-2 text-xs text-muted">{t("price_locked_note")}</p>}

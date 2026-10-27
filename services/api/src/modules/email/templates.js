@@ -113,7 +113,7 @@ function passwordResetEmail({ recipientName, resetUrl, expiryMinutes, code, lang
   });
 }
 
-function orderConfirmationEmail({ recipientName, orderId, items, total, currencyCode, lang = 'en' }) {
+function orderConfirmationEmail({ recipientName, orderId, items, total, shippingFee = 0, currencyCode, lang = 'en' }) {
   return composeEmail(lang, (l) => {
     const hi = greeting(l, recipientName);
     const ar = l === 'ar';
@@ -122,6 +122,11 @@ function orderConfirmationEmail({ recipientName, orderId, items, total, currency
     const orderLabel = ar ? `الطلب ${orderId}` : `Order ${orderId}`;
     const totalLabel = ar ? `الإجمالي: ${money(total, currencyCode)}` : `Total: ${money(total, currencyCode)}`;
     const later = ar ? 'سنراسلك مرة أخرى عند شحنه.' : "We'll email you again once it ships.";
+    // The shipping fee of a small order (the total already includes it): its own line, only when one was charged.
+    const fee = Number(shippingFee) > 0 ? Number(shippingFee) : 0;
+    const shippingLabel = ar ? `رسوم الشحن: +${money(fee, currencyCode)}` : `Shipping fees: +${money(fee, currencyCode)}`;
+    const shippingHtml = fee > 0 ? `<div style="padding-top: 8px;">${shippingLabel}</div>` : '';
+    const shippingText = fee > 0 ? `${shippingLabel}. ` : '';
     return {
       heading: ar ? 'تم تأكيد طلبك' : 'Order confirmed',
       bodyHtml: `
@@ -130,12 +135,13 @@ function orderConfirmationEmail({ recipientName, orderId, items, total, currency
     <div style="margin: 16px 0; padding: 12px; background-color: ${BRAND.chalk}; border-radius: 8px;">
       <div style="font-weight: 700; margin-bottom: 8px;">${orderLabel}</div>
       ${itemsHtml}
+      ${shippingHtml}
       <div style="padding-top: 8px; font-weight: 700;">${totalLabel}</div>
     </div>
     ${later}`,
       text: ar
-        ? `${hi}\n\nشكرًا لطلبك ${orderId} — لقد استلمناه ونقوم بتجهيزه. الإجمالي: ${money(total, currencyCode)}. سنراسلك مرة أخرى عند شحنه.`
-        : `${hi}\n\nThanks for your order ${orderId} — we've received it and it's being prepared. Total: ${money(total, currencyCode)}. We'll email you again once it ships.`,
+        ? `${hi}\n\nشكرًا لطلبك ${orderId} — لقد استلمناه ونقوم بتجهيزه. ${shippingText}الإجمالي: ${money(total, currencyCode)}. سنراسلك مرة أخرى عند شحنه.`
+        : `${hi}\n\nThanks for your order ${orderId} — we've received it and it's being prepared. ${shippingText}Total: ${money(total, currencyCode)}. We'll email you again once it ships.`,
     };
   });
 }

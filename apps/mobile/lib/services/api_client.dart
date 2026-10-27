@@ -9,6 +9,7 @@ import '../models/product.dart';
 import '../models/category.dart';
 import '../models/cart_item.dart';
 import '../models/cart.dart';
+import '../models/cart_shipping.dart';
 import '../models/vehicle.dart';
 import '../models/review.dart';
 import '../models/saved_search.dart';
@@ -732,12 +733,16 @@ class ApiClient {
   // services/api/src/modules/cart/routes.js header comment) — every
   // method here just decodes that shared shape into List<CartItem>.
 
+  /// The shipping answer of the last cart the server sent (free shipping above a limit); CartState reads it right after each cart call.
+  CartShipping lastCartShipping = CartShipping.off;
+
   Cart _decodeCart(http.Response response) {
     if (response.statusCode >= 400) {
       final body = jsonDecode(response.body) as Map<String, dynamic>;
       throw ApiException(body['error'] as String? ?? 'Cart request failed (${response.statusCode})', code: body['code'] as String?, details: body);
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
+    lastCartShipping = CartShipping.fromJson(body['shipping']);
     return Cart.fromJson(body);
   }
 

@@ -16,6 +16,7 @@ import '../../core/cart_state.dart';
 import '../../core/draft_order_queue.dart';
 import '../../services/api_client.dart';
 import '../../widgets/step_progress_indicator.dart';
+import '../../widgets/free_shipping.dart';
 
 /// BUY-034: guided checkout flow. Guest checkout is enabled by default per
 /// the product decision in the Charter — buyers are prompted to create an
@@ -952,6 +953,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     ],
                   ),
                 ],
+                ShippingFeeRow(shipping: cart.shipping, padding: const EdgeInsets.only(top: 6)),
                 if (cart.totalSaved + cart.appliedDiscountUsd > 0) ...[
                   const SizedBox(height: 6),
                   Row(
@@ -986,7 +988,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : FittedBox(
                         fit: BoxFit.scaleDown,
-                        child: Text('${tr(context, 'place_order')} · ${formatPriceWithUsd(context, cart.total - cart.appliedDiscountUsd)}'),
+                        child: Text('${tr(context, 'place_order')} · ${formatPriceWithUsd(context, cart.totalWithShipping - cart.appliedDiscountUsd)}'),
                       ),
               ),
             ),

@@ -10,6 +10,7 @@ import '../../core/cart_state.dart';
 import '../../models/cart_item.dart';
 import '../../services/api_client.dart';
 import '../../widgets/skeleton.dart';
+import '../../widgets/free_shipping.dart';
 
 /// BUY-030–031: cart holds items from multiple suppliers but presents one
 /// unified basket and total; splitting into supplier sub-orders happens at
@@ -61,17 +62,20 @@ class CartScreen extends StatelessWidget {
                           child: FittedBox(
                             fit: BoxFit.scaleDown,
                             alignment: Alignment.centerRight,
-                            child: Text(formatPriceWithUsd(context, cart.total), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: palette.signal)),
+                            child: Text(formatPriceWithUsd(context, cart.totalWithShipping), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: palette.signal)),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () => context.push('/checkout'),
-                        child: Text(tr(context, 'checkout')),
+                    SizedBox(height: cart.shipping.isFree ? 20 : 12),
+                    FreeShippingBadgeOver(
+                      shipping: cart.shipping,
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () => context.push('/checkout'),
+                          child: Text(tr(context, 'checkout')),
+                        ),
                       ),
                     ),
                   ],
@@ -181,6 +185,8 @@ class CartScreen extends StatelessWidget {
                     ],
                   ),
                 ),
+              ShippingFeeRow(shipping: cart.shipping),
+              FreeShippingHint(shipping: cart.shipping),
             ],
           ),
         ),

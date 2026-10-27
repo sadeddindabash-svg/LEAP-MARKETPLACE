@@ -8,6 +8,7 @@ import { useCart } from "@/components/CartProvider";
 import { useT } from "@/components/LangProvider";
 import { useCurrency } from "@/components/CurrencyProvider";
 import { Price } from "@/components/Price";
+import { ShippingRow, FreeShippingHint, FreeShippingBadge } from "@/components/FreeShipping";
 import { resolveImageUrl, type CartItem } from "@/lib/api";
 import { estimatedWeightKg, isOnSale, lineTotal, loyaltyBeatsPromo, stockHint, supplierLabel, atStockLimit } from "@/lib/cart";
 
@@ -111,10 +112,12 @@ export default function CartPage() {
             </div>
           )}
           {weight !== null && <div className="flex justify-between py-2 text-sm text-muted"><span>{t("estimated_weight")}</span><span>{weight.toFixed(1)} {t("kg")}</span></div>}
+          <ShippingRow shipping={cart.shipping} />
+          <FreeShippingHint shipping={cart.shipping} />
           <div className="mt-2 flex justify-between border-t-2 border-line pt-4 text-[22px] font-extrabold"><span>{t("total")}</span><Price usd={summary.total} /></div>
           {summary.discount > 0 && <p className="mt-1 text-sm font-semibold text-[#0f6b49]">{t("you_saved")} <Price usd={summary.discount} /></p>}
           {loyaltyBeatsPromo(cart) && <p className="mt-3 text-sm text-muted">{t("loyalty_beats_promo", { amount: format(summary.discount) })}</p>}
-          <Link href="/checkout" className="mt-5 flex min-h-13 w-full items-center justify-center rounded-[10px] bg-signal text-base font-bold text-on-signal hover:bg-signal-dark">{t("checkout")}</Link>
+          <Link href="/checkout" className="relative mt-5 flex min-h-13 w-full items-center justify-center rounded-[10px] bg-signal text-base font-bold text-on-signal hover:bg-signal-dark">{t("checkout")}<FreeShippingBadge shipping={cart.shipping} /></Link>
           <Link href="/search" className="mt-3 block text-center text-sm font-semibold text-navy underline underline-offset-4">{t("continue_shopping")}</Link>
         </aside>
       </div>
