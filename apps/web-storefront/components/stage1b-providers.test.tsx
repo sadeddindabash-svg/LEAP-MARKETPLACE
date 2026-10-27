@@ -131,21 +131,20 @@ describe("the garage", () => {
   });
 });
 
-describe("the Shopping for bar", () => {
-  const bar = (lang: "en" | "ar" = "en") => render(<LangProvider lang={lang}><GarageProvider><VehicleBar /></GarageProvider></LangProvider>);
+describe("the Shopping for container", () => {
+  const bar = (lang: "en" | "ar" = "en") => render(<LangProvider lang={lang}><GarageProvider><VehicleBar where="menu" /></GarageProvider></LangProvider>);
 
-  it("shows nothing to a visitor who is not signed in", () => {
+  it("shows \"Add a vehicle\" to a visitor who is not signed in (as the mobile app does), opening My garage", () => {
     bar();
-    expect(screen.queryByText("Shopping for")).not.toBeInTheDocument();
-    expect(screen.queryByText(/Add your car/)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Shopping for: Add a vehicle" }).getAttribute("href")).toBe("/garage");
   });
 
-  it("CRITICAL: shows the default car, linking to its parts, and Change opens the garage; in Arabic the Arabic name and /ar links", async () => {
+  it("CRITICAL: shows the default car, and the WHOLE container opens the garage (no separate Change link); in Arabic the Arabic name and /ar links", async () => {
     signIn("u1");
     bar();
     expect(await screen.findByText("BYD Seal DM-i · 2024")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "BYD Seal DM-i · 2024" }).getAttribute("href")).toBe("/search?generationId=g1&year=2024");
-    expect(screen.getByRole("link", { name: "Change" }).getAttribute("href")).toBe("/garage");
+    expect(screen.getByRole("link", { name: "Shopping for: BYD Seal DM-i · 2024" }).getAttribute("href")).toBe("/garage");
+    expect(screen.queryByRole("link", { name: "Change" })).not.toBeInTheDocument();
   });
 
   it("in Arabic it speaks Arabic and every link keeps /ar", async () => {
@@ -153,14 +152,14 @@ describe("the Shopping for bar", () => {
     bar("ar");
     expect(await screen.findByText("بي واي دي Seal DM-i · 2024")).toBeInTheDocument();
     expect(screen.getByText("التسوق لسيارة")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "تغيير" }).getAttribute("href")).toBe("/ar/garage");
+    expect(screen.getByRole("link", { name: /التسوق لسيارة/ }).getAttribute("href")).toBe("/ar/garage");
   });
 
   it("a signed-in buyer with no saved car is invited to add one", async () => {
     signIn("u1");
     m.garage.current = [];
     bar();
-    expect(await screen.findByRole("link", { name: "Add your car to see the parts that fit it" })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Shopping for: Add a vehicle" })).toBeInTheDocument();
   });
 });
 

@@ -53,7 +53,7 @@ export default async function SiteHeader({ lang }: { lang: Lang }) {
         </div>
       </div>
       <nav aria-label="Main" className="border-b border-line bg-white text-ink">
-        <div className="relative mx-auto flex max-w-7xl flex-wrap items-center gap-1 px-4 sm:px-8">
+        <div className="relative mx-auto flex max-w-7xl flex-wrap items-center gap-1 px-4 sm:px-8 lg:flex-nowrap">
           <Link href="/" className="flex min-h-12 items-center rounded-lg px-4 text-[15px] font-semibold hover:bg-chalk">{t(lang, "nav_home")}</Link>
           <Link href="/search" className="flex min-h-12 items-center rounded-lg px-4 text-[15px] font-semibold hover:bg-chalk">{t(lang, "nav_products")}</Link>
           <Link href="/find" className="flex min-h-12 items-center rounded-lg px-4 text-[15px] font-semibold hover:bg-chalk">{t(lang, "find_a_part")}</Link>
@@ -68,9 +68,10 @@ export default async function SiteHeader({ lang }: { lang: Lang }) {
               ))}
             <Link href="/search" className="rounded-lg px-3 py-2.5 text-sm font-bold text-navy underline hover:bg-chalk">{t(lang, "all_sections")}</Link>
           </NavDropdown>
+          <VehicleBar where="menu" />
         </div>
       </nav>
-      <VehicleBar />
+      <VehicleBar where="row" />
       {!reachable && <p role="alert" className="bg-[#a12a21] px-4 py-2 text-center text-sm font-semibold text-white">{t(lang, "shop_unreachable")}</p>}
     </header>
   );

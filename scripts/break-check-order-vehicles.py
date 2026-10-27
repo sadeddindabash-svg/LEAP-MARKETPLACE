@@ -669,7 +669,50 @@ SF_STOREFRONT = [
  ("the phone row is missing", SFSH, '      <VehicleBar where="row" />', ''),
  ("the empty container says something else", "apps/web-storefront/lib/i18n.ts", 'add_a_vehicle: "Add a vehicle",', 'add_a_vehicle: "Add vehicle",'),
 ]
-mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"sfstorefront": SF_STOREFRONT, "hbserver": HB_SERVER, "hbstorefront": HB_STORE, "hbadmin": HB_ADMIN, "bpstorefront": BP_FAST, "bpslow": BP_SLOW, "ssstorefront": SS_STOREFRONT, "cxserver": CX_SERVER, "cxadmin": CX_ADMIN, "pdserver": PD_SERVER, "pdadmin": PD_ADMIN, "clserver": CL_SERVER, "ffstorefront": FF_STOREFRONT, "crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
+HCW = "apps/web-storefront/"
+HC_STOREFRONT = [
+ ("the red discount tag starts too late", HCW + "lib/cardDiscount.ts", "if (percent >= 30) return", "if (percent >= 40) return"),
+ ("the orange discount tag starts too late", HCW + "lib/cardDiscount.ts", "if (percent >= 15) return", "if (percent >= 20) return"),
+ ("the gold tag has white (unreadable) text", HCW + "lib/cardDiscount.ts", '"bg-[#fab219] text-navy"', '"bg-[#fab219] text-white"'),
+ ("one press adds two", HCW + "components/CardAddToCart.tsx", "await cart.addItem(productId, 1);", "await cart.addItem(productId, 2);"),
+ ("no check mark after adding", HCW + "components/CardAddToCart.tsx", 'setStatus("added"); } catch', 'setStatus("idle"); } catch'),
+ ("a part out of stock can be added", HCW + "components/CardAddToCart.tsx", "if (!inStock || !cart) {", "if (!cart) {"),
+ ("a missing cart crashes the card", HCW + "components/CardAddToCart.tsx", "if (!inStock || !cart) {", "if (!inStock) {"),
+ ("the timer is left running after the card is removed", HCW + "components/CardAddToCart.tsx", "useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);", "useEffect(() => () => {}, []);"),
+ ("a failed add is not shown", HCW + "components/CardAddToCart.tsx", 'catch { setStatus("error"); }', 'catch { setStatus("idle"); }'),
+ ("a logo that fails leaves an empty circle", HCW + "components/BrandBadge.tsx", "if (failed) return null;", ""),
+ ("the logo is cropped instead of shown whole", HCW + "components/BrandBadge.tsx", 'className="size-full object-contain"', 'className="size-full object-cover"'),
+ ("the total tile is not gold", HCW + "components/StatTile.tsx", "from-[#ffc83d] to-[#f4a400]", "from-[#ffffff] to-[#f4a400]"),
+ ("the total tile is the old height", HCW + "components/StatTile.tsx", "h-[92px]", "h-[106px]"),
+ ("the faint icon does not mirror in Arabic", HCW + "components/StatTile.tsx", "-bottom-4 -end-2", "-bottom-4 -right-2"),
+ ("the picture wash does not turn round in Arabic", HCW + "components/StatTile.tsx", " rtl:bg-gradient-to-l", ""),
+ ("the section photo panel is not angled the other way in Arabic", HCW + "components/SectionTile.tsx", " rtl:[clip-path:polygon(0_0,78%_0,100%_100%,0_100%)]", ""),
+ ("the section photo is not cropped to fill", HCW + "components/SectionTile.tsx", 'sizes="(min-width: 1024px) 130px, 90px" className="object-cover"', 'sizes="(min-width: 1024px) 130px, 90px" className="object-contain"'),
+ ("the section tile is taller on a phone", HCW + "components/SectionTile.tsx", "flex h-20 overflow-hidden", "flex h-24 overflow-hidden"),
+ ("a long section name is not cut", HCW + "components/SectionTile.tsx", "line-clamp-2 flex min-w-0 flex-1", "flex min-w-0 flex-1"),
+ ("the brand photo is a square", HCW + "components/BrandTile.tsx", "overflow-hidden rounded-full bg-[#e6edf2]", "overflow-hidden rounded-xl bg-[#e6edf2]"),
+ ("the brand tile has a card border again", HCW + "components/BrandTile.tsx", 'className="group flex flex-col items-center gap-3 p-1.5 text-center"', 'className="group flex flex-col items-center gap-3 border p-1.5 text-center"'),
+ ("the brand ring does not turn gold on hover", HCW + "components/BrandTile.tsx", " group-hover:shadow-[0_0_0_3px_#fff,0_0_0_4px_#fab219]", ""),
+ ("the wide More tile is not used", HCW + "components/TileRow.tsx", 'variant === "wide" ? (', "false ? ("),
+ ("the round More tile is not used", HCW + "components/TileRow.tsx", 'variant === "round" ? (', "false ? ("),
+ ("the More tile does not take a place in the row", HCW + "components/TileRow.tsx", "fits || open ? tiles.length : columns - 1", "fits || open ? tiles.length : columns"),
+ ("the stock colours are swapped", HCW + "components/ProductCard.tsx", 'inStock ? "bg-[#0f6b49]" : "bg-[#c62f26]"', 'inStock ? "bg-[#c62f26]" : "bg-[#0f6b49]"'),
+ ("a part out of stock still promises a delivery date", HCW + "components/ProductCard.tsx", "const delivery = inStock ? deliveryLine(p.estimatedDeliveryDays, lang) : null;", "const delivery = deliveryLine(p.estimatedDeliveryDays, lang);"),
+ ("the add button is inside the link", HCW + "components/ProductCard.tsx", '      </Link>\n      <div className="absolute bottom-4 end-4"><CardAddToCart productId={p.id} name={p.name} inStock={inStock} /></div>', '      <div className="absolute bottom-4 end-4"><CardAddToCart productId={p.id} name={p.name} inStock={inStock} /></div>\n      </Link>'),
+ ("the price can run under the button", HCW + "components/ProductCard.tsx", "pt-3 pe-14", "pt-3"),
+ ("the brand logo is never drawn", HCW + "components/ProductCard.tsx", "{p.brandLogoUrl && <BrandBadge", "{false && <BrandBadge"),
+ ("the discount tag is on the logo's corner", HCW + "components/ProductCard.tsx", "absolute end-2.5 top-2.5 rounded-lg", "absolute start-2.5 top-2.5 rounded-lg"),
+ ("the old price is not struck through", HCW + "components/ProductCard.tsx", '<del className="text-sm text-muted"><Price usd={p.originalPrice} /></del>', '<span className="text-sm text-muted"><Price usd={p.originalPrice} /></span>'),
+ ("a tag is drawn even without a discount", HCW + "components/ProductCard.tsx", '{percent !== null && <span data-testid="discount-tag"', '{true && <span data-testid="discount-tag"'),
+ ("the discount tag loses its left-to-right direction (Arabic shows 29%-)", HCW + "components/ProductCard.tsx", ' data-testid="discount-tag" dir="ltr" aria-label', ' data-testid="discount-tag" aria-label'),
+ ("the tag has no name for screen readers", HCW + "components/ProductCard.tsx", ' aria-label={t(lang, "percent_off", { n: percent })}', ""),
+ ("the sections are 6 per row again", HCW + "app/page.tsx", 'lg:grid-cols-4" moreLabel={t(lang, "more_sections")}', 'lg:grid-cols-6" moreLabel={t(lang, "more_sections")}'),
+ ("the brands are 2 per row on a phone", HCW + "app/page.tsx", 'grid grid-cols-3 gap-x-2 gap-y-4', 'grid grid-cols-2 gap-x-2 gap-y-4'),
+ ("the admin's pictures are lost on the totals", HCW + "app/page.tsx", "picture={s.picture} />)}", "picture={null} />)}"),
+ ("the sections lose their wide More tile", HCW + "app/page.tsx", '<TileRow variant="wide"', "<TileRow"),
+ ("the brands lose their round More tile", HCW + "app/page.tsx", '<TileRow variant="round"', "<TileRow"),
+]
+mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"hcstorefront": HC_STOREFRONT, "sfstorefront": SF_STOREFRONT, "hbserver": HB_SERVER, "hbstorefront": HB_STORE, "hbadmin": HB_ADMIN, "bpstorefront": BP_FAST, "bpslow": BP_SLOW, "ssstorefront": SS_STOREFRONT, "cxserver": CX_SERVER, "cxadmin": CX_ADMIN, "pdserver": PD_SERVER, "pdadmin": PD_ADMIN, "clserver": CL_SERVER, "ffstorefront": FF_STOREFRONT, "crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
 lo, hi = (int(sys.argv[2]), int(sys.argv[3])) if len(sys.argv) > 3 else (1, len(BREAKS))
 def fresh():
     subprocess.run(["su", "postgres", "-c", "psql -q -c 'DROP DATABASE IF EXISTS leap_catalog_import_test' -c \"CREATE DATABASE leap_catalog_import_test TEMPLATE leap_marketplace_dev OWNER leap_dev\""], check=True, capture_output=True)
@@ -698,6 +741,7 @@ def run():
     if mode == "hbstorefront": return subprocess.run(["npx", "vitest", "run", "lib/homeBanner.test.ts", "components/HomeBanner.test.tsx", "app/homeBanner.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
     if mode == "hbadmin": return subprocess.run(["npx", "vitest", "run", "src/HomeBannerSection.test.jsx", "src/bannerCrop.test.js", "src/homeBannerApi.test.js"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=250).returncode
     if mode == "sfstorefront": return subprocess.run(["npx", "vitest", "run", "components/VehicleBar.test.tsx", "components/siteHeaderVehicle.test.tsx", "components/stage1b-providers.test.tsx", "components/SiteHeaderMenu.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
+    if mode == "hcstorefront": return subprocess.run(["npx", "vitest", "run", "lib/cardDiscount.test.ts", "components/CardAddToCart.test.tsx", "components/BrandBadge.test.tsx", "components/StatTile.test.tsx", "components/SectionTile.test.tsx", "components/BrandTile.test.tsx", "components/TileRowVariants.test.tsx", "components/ProductCardNewLook.test.tsx", "app/homeTiles.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
     if mode == "ppserver": return subprocess.run(["node", "--test", "test/homeText.test.js", "test/productPage.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "ppadmin": return subprocess.run(["npx", "vitest", "run", "src/HomeTextSection.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
     if mode == "ppstorefront": return subprocess.run(["npx", "vitest", "run", "components/ProductDetails.test.tsx", "components/LazyProductRow.test.tsx", "components/VehicleFilterOrder.test.tsx", "components/FitsMyCarLabel.test.tsx", "app/stage1c-page.test.tsx", "app/homeText.test.tsx", "components/SiteHeaderTopBar.test.tsx", "lib/gridSourceModel.test.ts", "lib/homeText.test.ts", "app/api/products/routeSameModel.test.ts"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
