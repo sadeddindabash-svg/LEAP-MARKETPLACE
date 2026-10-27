@@ -43,9 +43,9 @@ describe("the column beside the photos, like the mobile app", () => {
     const live = find(columns(await page({ stockQuantity: 24, price: 10 })).right, AddToCartButton)!; expect(live.props).toMatchObject({ inStock: true, unitPrice: 10, maxQuantity: 24 });
     const out = columns(await page({ stockQuantity: 0 })).right; expect(find(out, AddToCartButton)!.props).toMatchObject({ inStock: false, maxQuantity: 0 }); expect(find(out, NotifyWhenInStock)).not.toBeNull();
   });
-  it("the description and the part number are NOT in the column any more (they are in the specifications card)", async () => {
+  it("the part number is NOT in the column (it is in the specifications card); the description is in the column AND in the card", async () => {
     const root = await page({ description: "A UNIQUE DESCRIPTION", oemNumber: "34116792217" }); const { left, right } = columns(root);
-    const columnText = textOf(right); expect(columnText).not.toContain("A UNIQUE DESCRIPTION"); expect(columnText).not.toContain("34116792217"); expect(columnText).not.toMatch(/OEM number/i);
+    const columnText = textOf(right); expect(columnText).toContain("A UNIQUE DESCRIPTION"); expect(columnText).not.toContain("34116792217"); expect(columnText).not.toMatch(/OEM number/i);
     const card = find(left, ProductDetails)!; expect(card.props.product).toMatchObject({ description: "A UNIQUE DESCRIPTION", oemNumber: "34116792217" });
   });
   it("the old \"Estimated delivery in N days\" sentence is gone from the column", async () => { const { right } = columns(await page({ estimatedDeliveryDays: 7 })); expect(textOf(right)).not.toMatch(/Estimated delivery|in 7 days/); });

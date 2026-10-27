@@ -104,7 +104,10 @@ export default async function ProductPage({ params }: PageProps) {
               </span>
             )}
           </div>
-          {/* Like the mobile app: the stock box with the delivery date, who ships it, then the price (with the old price and the discount when there is one). The description and the part number are in the specifications card. */}
+          {product.description?.trim() && (
+            <p data-testid="product-summary" className="mt-3.5 whitespace-pre-line text-base leading-relaxed text-ink/80 [overflow-wrap:anywhere]">{product.description.trim()}</p>
+          )}
+          {/* Like the mobile app: the stock box with the delivery date, who ships it, then the price (with the old price and the discount when there is one). The description is under the name here AND in the specifications card (with the part number). */}
           <StockBanner stockQuantity={product.stockQuantity} estimatedDeliveryDays={product.estimatedDeliveryDays} lang={lang} />
           <SellerSignals isVerifiedSeller={product.isVerifiedSeller} shipsFromCountry={product.shipsFromCountry} shipsFromCountryAr={product.shipsFromCountryAr} lang={lang} />
           <PriceBlock price={product.price} originalPrice={product.originalPrice} lang={lang} />

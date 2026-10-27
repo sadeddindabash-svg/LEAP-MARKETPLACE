@@ -726,7 +726,78 @@ PD_STOREFRONT = [
  ('the description is given a fixed left-to-right direction (Arabic does not mirror)', PDW, '<p data-testid="product-summary" className', '<p data-testid="product-summary" dir="ltr" className'),
  ('the description is after the stock box instead of under the name', PDW, '          {product.description?.trim() && (\n            <p data-testid="product-summary" className="mt-3.5 whitespace-pre-line text-base leading-relaxed text-ink/80 [overflow-wrap:anywhere]">{product.description.trim()}</p>\n          )}\n          {/* Like the mobile app: the stock box with the delivery date, who ships it, then the price (with the old price and the discount when there is one). The description is under the name here AND in the specifications card (with the part number). */}\n          <StockBanner stockQuantity={product.stockQuantity} estimatedDeliveryDays={product.estimatedDeliveryDays} lang={lang} />\n', '          {/* Like the mobile app: the stock box with the delivery date, who ships it, then the price (with the old price and the discount when there is one). The description is under the name here AND in the specifications card (with the part number). */}\n          <StockBanner stockQuantity={product.stockQuantity} estimatedDeliveryDays={product.estimatedDeliveryDays} lang={lang} />\n          {product.description?.trim() && (\n            <p data-testid="product-summary" className="mt-3.5 whitespace-pre-line text-base leading-relaxed text-ink/80 [overflow-wrap:anywhere]">{product.description.trim()}</p>\n          )}\n'),
 ]
-mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"pdstorefront": PD_STOREFRONT, "hcstorefront": HC_STOREFRONT, "sfstorefront": SF_STOREFRONT, "hbserver": HB_SERVER, "hbstorefront": HB_STORE, "hbadmin": HB_ADMIN, "bpstorefront": BP_FAST, "bpslow": BP_SLOW, "ssstorefront": SS_STOREFRONT, "cxserver": CX_SERVER, "cxadmin": CX_ADMIN, "pdserver": PD_SERVER, "pdadmin": PD_ADMIN, "clserver": CL_SERVER, "ffstorefront": FF_STOREFRONT, "crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
+FR_SERVER = [
+ ('the order does not pass the fee to the confirmation email', 'services/api/src/modules/order/routes.js', 'orderConfirmationEmail({ recipientName, orderId, items: emailItems, total, shippingFee, currencyCode, lang })', 'orderConfirmationEmail({ recipientName, orderId, items: emailItems, total, currencyCode, lang })'),
+ ('the email shows a fee line even when there is no fee', 'services/api/src/modules/email/templates.js', 'const shippingHtml = fee > 0 ?', 'const shippingHtml = true ?'),
+ ('the plain-text email forgets the fee', 'services/api/src/modules/email/templates.js', '${shippingText}Total: ${money(total, currencyCode)}.', 'Total: ${money(total, currencyCode)}.'),
+ ("the Arabic email's fee line is in English", 'services/api/src/modules/email/templates.js', '`رسوم الشحن: +${money(fee, currencyCode)}`', '`Shipping fees: +${money(fee, currencyCode)}`'),
+ ('the limit must be EXCEEDED, not just reached', 'services/api/src/modules/shared/freeShipping.js', 'const qualifies = goodsUsd >= settings.thresholdUsd;', 'const qualifies = goodsUsd > settings.thresholdUsd;'),
+ ('the limit is measured BEFORE the discount', 'services/api/src/modules/shared/freeShipping.js', 'Math.max(0, Number(itemsUsd) - Number(discountUsd || 0))', 'Math.max(0, Number(itemsUsd))'),
+ ('an empty basket or a promo code is still charged', 'services/api/src/modules/shared/freeShipping.js', 'chargedUsd: hasItems && !qualifies && !waivedByPromo ? settings.feeUsd : 0', 'chargedUsd: !qualifies ? settings.feeUsd : 0'),
+ ('a free-shipping promo code does not waive the fee', 'services/api/src/modules/shared/freeShipping.js', 'hasItems && !qualifies && !waivedByPromo', 'hasItems && !qualifies'),
+ ('the hint says the whole limit instead of what is missing', 'services/api/src/modules/shared/freeShipping.js', 'remainingUsd: qualifies ? 0 : round2(settings.thresholdUsd - goodsUsd)', 'remainingUsd: qualifies ? 0 : round2(settings.thresholdUsd)'),
+ ('a limit with no fee still counts as on', 'services/api/src/modules/shared/freeShipping.js', 'settings.thresholdUsd > 0 && settings.feeUsd > 0', 'settings.thresholdUsd > 0'),
+ ("a damaged 'enabled' value turns it on", 'services/api/src/modules/shared/freeShipping.js', 'enabled: stored.enabled === true', 'enabled: Boolean(stored.enabled)'),
+ ('a negative stored amount is believed', 'services/api/src/modules/shared/freeShipping.js', 'n >= 0 && n <= max ? round2(n) : 0', 'n <= max ? round2(n) : 0'),
+ ('anyone can read the admin view', 'services/api/src/modules/platform-settings/freeShipping.js', "router.get('/admin', ...admin,", "router.get('/admin',"),
+ ('anyone can change the settings', 'services/api/src/modules/platform-settings/freeShipping.js', "router.put('/', ...admin,", "router.put('/',"),
+ ('a negative amount is accepted', 'services/api/src/modules/platform-settings/freeShipping.js', 'if (n < 0) throw new Refusal(', 'if (false) throw new Refusal('),
+ ('an enormous amount is accepted', 'services/api/src/modules/platform-settings/freeShipping.js', 'if (n > max) throw new Refusal(', 'if (false) throw new Refusal('),
+ ('three decimals are accepted', 'services/api/src/modules/platform-settings/freeShipping.js', 'if (!twoDecimals(n)) throw new Refusal(', 'if (false) throw new Refusal('),
+ ('switching on with a fee of 0 is accepted', 'services/api/src/modules/platform-settings/freeShipping.js', 'if (body.enabled && feeUsd <= 0)', 'if (false)'),
+ ('a change is not recorded in the audit log', 'services/api/src/modules/platform-settings/freeShipping.js', "    await logAdminAction(req, 'free_shipping_changed', 'platform_setting', SETTING_KEY, { from: before, to: next_ });\n", ''),
+ ('the public answer is not cached', 'services/api/src/modules/platform-settings/freeShipping.js', "res.set('Cache-Control', 'public, max-age=30'); ", ''),
+ ('the cart measures the limit before the discount', 'services/api/src/modules/cart/routes.js', 'discountUsd: appliedDiscountUsd, freeShippingPromo:', 'discountUsd: 0, freeShippingPromo:'),
+ ('the cart ignores a free-shipping promo code', 'services/api/src/modules/cart/routes.js', "freeShippingPromo: appliedPromoDetails ? appliedPromoDetails.type === 'free_shipping' : false", 'freeShippingPromo: false'),
+ ('the cart does not send the shipping answer', 'services/api/src/modules/cart/routes.js', '    lockActive, lockExpiresAt,\n    shipping,\n', '    lockActive, lockExpiresAt,\n'),
+ ('an empty cart is charged the fee', 'services/api/src/modules/cart/routes.js', 'hasItems: items.length > 0', 'hasItems: true'),
+ ('the fee is not added to what the buyer pays', 'services/api/src/modules/order/routes.js', 'const total = Number((goodsTotal + shippingFee).toFixed(2));', 'const total = goodsTotal;'),
+ ('the fee is not kept on the order', 'services/api/src/modules/order/routes.js', 'idempotencyKey || null, shippingFee]', 'idempotencyKey || null, 0]'),
+ ('the order measures the limit before the discount', 'services/api/src/modules/order/routes.js', 'itemsUsd: subtotal, discountUsd, freeShippingPromo })', 'itemsUsd: subtotal, discountUsd: 0, freeShippingPromo })'),
+ ('the order ignores a free-shipping promo code', 'services/api/src/modules/order/routes.js', "freeShippingPromo = validation.promoCode.type === 'free_shipping';", 'freeShippingPromo = false;'),
+ ('the buyer is not told the fee when ordering', 'services/api/src/modules/order/routes.js', '      shippingFee,\n      promoCode: appliedPromoCode,', '      promoCode: appliedPromoCode,'),
+ ('the order detail does not show the fee', 'services/api/src/modules/order/routes.js', 'shippingFee: Number(order.shipping_fee || 0),', 'shippingFee: 0,'),
+ ('a faulty part is refunded a share of the shipping fee', 'services/api/src/modules/faultCases/helpers.js', '`SELECT (o.total - COALESCE(o.shipping_fee, 0)) AS total,', '`SELECT o.total,'),
+]
+FRA_ADMIN = [
+ ('the amounts are sent as text, not numbers', 'apps/admin-dashboard/src/FreeShippingSection.jsx', '{ enabled, thresholdUsd: checked.limit, feeUsd: checked.fee }))', '{ enabled, thresholdUsd: limitText, feeUsd: feeText }))'),
+ ('a changed fee is not noticed', 'apps/admin-dashboard/src/FreeShippingSection.jsx', ' || checked.fee !== Number(saved.feeUsd) : false', ' : false'),
+ ('three decimals are allowed', 'apps/admin-dashboard/src/FreeShippingSection.jsx', '/^\\d+(\\.\\d{1,2})?$/', '/^\\d+(\\.\\d+)?$/'),
+ ('an amount above the most the server allows is allowed', 'apps/admin-dashboard/src/FreeShippingSection.jsx', 'if (value > max) return', 'if (false) return'),
+ ('a limit of 0 is allowed with the switch on', 'apps/admin-dashboard/src/FreeShippingSection.jsx', 'else if (enabled && limit.value <= 0)', 'else if (false)'),
+ ('a fee of 0 is allowed with the switch on', 'apps/admin-dashboard/src/FreeShippingSection.jsx', 'else if (enabled && fee.value <= 0)', 'else if (false)'),
+ ('the preview shows the limit instead of a small basket', 'apps/admin-dashboard/src/FreeShippingSection.jsx', 'const small = limit / 2;', 'const small = limit;'),
+ ('an expired sign-in when saving is shown as an error', 'apps/admin-dashboard/src/FreeShippingSection.jsx', 'catch (err) { if (err instanceof SessionExpiredError) return onSessionExpired && onSessionExpired(); setError(err.message); }\n    finally { setBusy(false); }', 'catch (err) { setError(err.message); }\n    finally { setBusy(false); }'),
+ ('a Saved message stays after the admin types again', 'apps/admin-dashboard/src/FreeShippingSection.jsx', 'const edit = (setter) => (e) => { setter(e.target.value); setMessage(null); setError(null); };', 'const edit = (setter) => (e) => { setter(e.target.value); };'),
+ ('the unchecked limits crash the card before it loads', 'apps/admin-dashboard/src/FreeShippingSection.jsx', '(saved && saved.limits) || undefined', 'saved && saved.limits'),
+ ('saving goes to the wrong method', 'apps/admin-dashboard/src/freeShippingApi.js', 'method: "PUT"', 'method: "POST"'),
+ ('reading goes to the public view, not the admin one', 'apps/admin-dashboard/src/freeShippingApi.js', 'fetch(`${BASE}/admin`', 'fetch(`${BASE}`'),
+ ('the token is not sent when saving', 'apps/admin-dashboard/src/freeShippingApi.js', '"Content-Type": "application/json", Authorization: `Bearer ${token}` }, body:', '"Content-Type": "application/json" }, body:'),
+]
+FRW_STOREFRONT = [
+ ('the total does not include the fee', 'apps/web-storefront/lib/cart.ts', 'total: goods + shippingFee,', 'total: goods,'),
+ ('a fee that is not a number poisons the total', 'apps/web-storefront/lib/cart.ts', 'Number.isFinite(fee) ? Math.max(fee, 0) : 0', 'Math.max(fee, 0)'),
+ ('a negative fee lowers the total', 'apps/web-storefront/lib/cart.ts', 'Number.isFinite(fee) ? Math.max(fee, 0) : 0', 'Number.isFinite(fee) ? fee : 0'),
+ ("the cart provider's summary ignores the fee", 'apps/web-storefront/components/CartProvider.tsx', 'appliedPromoCode: cart?.appliedPromoCode, shipping: cart?.shipping }),', 'appliedPromoCode: cart?.appliedPromoCode }),'),
+ ('the row never says Free', 'apps/web-storefront/components/FreeShipping.tsx', 'const free = shipping.chargedUsd === 0;', 'const free = false;'),
+ ('the row appears even when the rule is off', 'apps/web-storefront/components/FreeShipping.tsx', 'export function ShippingRow({ shipping }: { shipping?: CartShipping | null }) {\n  const t = useT();\n  if (!shipping || !shipping.enabled) return null;', 'export function ShippingRow({ shipping }: { shipping?: CartShipping | null }) {\n  const t = useT();\n  if (!shipping) return null;'),
+ ('the progress bar runs the wrong way', 'apps/web-storefront/components/FreeShipping.tsx', '((shipping.thresholdUsd - shipping.remainingUsd) / shipping.thresholdUsd) * 100', '(shipping.remainingUsd / shipping.thresholdUsd) * 100'),
+ ('the progress bar can go past 100', 'apps/web-storefront/components/FreeShipping.tsx', 'Math.min(100, Math.max(0,', 'Math.min(1000, Math.max(0,'),
+ ('a promo code is not recognised in the note', 'apps/web-storefront/components/FreeShipping.tsx', 'if (shipping.waivedByPromo) {', 'if (false) {'),
+ ('reaching the limit is not announced', 'apps/web-storefront/components/FreeShipping.tsx', '  if (shipping.qualifies) {', '  if (false) {'),
+ ('the icon shows whenever nothing is charged', 'apps/web-storefront/components/FreeShipping.tsx', 's.chargedUsd === 0 && (s.qualifies || s.waivedByPromo)', 's.chargedUsd === 0'),
+ ('the icon does not mirror in Arabic', 'apps/web-storefront/components/FreeShipping.tsx', 'absolute -top-3.5 end-3.5', 'absolute -top-3.5 right-3.5'),
+ ('the icon sits inside the button instead of over its corner', 'apps/web-storefront/components/FreeShipping.tsx', 'absolute -top-3.5 end-3.5', 'absolute top-0 end-3.5'),
+ ('the cart page has no fee line', 'apps/web-storefront/app/cart/page.tsx', '          <ShippingRow shipping={cart.shipping} />\n', ''),
+ ('the cart page has no note', 'apps/web-storefront/app/cart/page.tsx', '          <FreeShippingHint shipping={cart.shipping} />\n', ''),
+ ('the Checkout button has no icon', 'apps/web-storefront/app/cart/page.tsx', '{t("checkout")}<FreeShippingBadge shipping={cart.shipping} /></Link>', '{t("checkout")}</Link>'),
+ ('the Checkout button cannot hold the icon at its corner', 'apps/web-storefront/app/cart/page.tsx', 'className="relative mt-5 flex min-h-13', 'className="mt-5 flex min-h-13'),
+ ('the checkout summary has no fee line', 'apps/web-storefront/app/checkout/page.tsx', '          <ShippingRow shipping={cart.shipping} />\n', ''),
+ ('the order page does not show the fee', 'apps/web-storefront/app/orders/[id]/page.tsx', '{order.shippingFee ? <p', '{false ? <p'),
+ ('the word Free is wrong', 'apps/web-storefront/lib/i18n.ts', '  shipping_free: "Free",', '  shipping_free: "Gratis",'),
+ ('the Arabic icon text is wrong', 'apps/web-storefront/lib/i18n.ts', '  shipping_free_badge: "شحن مجاني",', '  shipping_free_badge: "Free shipping",'),
+]
+mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"frwstorefront": FRW_STOREFRONT, "fradmin": FRA_ADMIN, "frserver": FR_SERVER, "pdstorefront": PD_STOREFRONT, "hcstorefront": HC_STOREFRONT, "sfstorefront": SF_STOREFRONT, "hbserver": HB_SERVER, "hbstorefront": HB_STORE, "hbadmin": HB_ADMIN, "bpstorefront": BP_FAST, "bpslow": BP_SLOW, "ssstorefront": SS_STOREFRONT, "cxserver": CX_SERVER, "cxadmin": CX_ADMIN, "pdserver": PD_SERVER, "pdadmin": PD_ADMIN, "clserver": CL_SERVER, "ffstorefront": FF_STOREFRONT, "crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
 lo, hi = (int(sys.argv[2]), int(sys.argv[3])) if len(sys.argv) > 3 else (1, len(BREAKS))
 def fresh():
     subprocess.run(["su", "postgres", "-c", "psql -q -c 'DROP DATABASE IF EXISTS leap_catalog_import_test' -c \"CREATE DATABASE leap_catalog_import_test TEMPLATE leap_marketplace_dev OWNER leap_dev\""], check=True, capture_output=True)
@@ -757,6 +828,9 @@ def run():
     if mode == "sfstorefront": return subprocess.run(["npx", "vitest", "run", "components/VehicleBar.test.tsx", "components/siteHeaderVehicle.test.tsx", "components/stage1b-providers.test.tsx", "components/SiteHeaderMenu.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
     if mode == "hcstorefront": return subprocess.run(["npx", "vitest", "run", "lib/cardDiscount.test.ts", "components/CardAddToCart.test.tsx", "components/BrandBadge.test.tsx", "components/StatTile.test.tsx", "components/SectionTile.test.tsx", "components/BrandTile.test.tsx", "components/TileRowVariants.test.tsx", "components/ProductCardNewLook.test.tsx", "app/homeTiles.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
     if mode == "pdstorefront": return subprocess.run(["npx", "vitest", "run", "app/productDescription.test.tsx", "app/productParity.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
+    if mode == "frserver": return subprocess.run(["node", "--test", "--test-concurrency=1", "test/freeShipping.test.js", "test/freeShippingRefunds.test.js", "test/orderEmailShipping.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
+    if mode == "fradmin": return subprocess.run(["npx", "vitest", "run", "src/FreeShippingSection.test.jsx", "src/freeShippingApi.test.js"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
+    if mode == "frwstorefront": return subprocess.run(["npx", "vitest", "run", "lib/cartShipping.test.ts", "components/FreeShipping.test.tsx", "components/CartProviderShipping.test.tsx", "app/cartShipping.test.tsx", "app/orderShipping.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
     if mode == "ppserver": return subprocess.run(["node", "--test", "test/homeText.test.js", "test/productPage.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "ppadmin": return subprocess.run(["npx", "vitest", "run", "src/HomeTextSection.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
     if mode == "ppstorefront": return subprocess.run(["npx", "vitest", "run", "components/ProductDetails.test.tsx", "components/LazyProductRow.test.tsx", "components/VehicleFilterOrder.test.tsx", "components/FitsMyCarLabel.test.tsx", "app/stage1c-page.test.tsx", "app/homeText.test.tsx", "components/SiteHeaderTopBar.test.tsx", "lib/gridSourceModel.test.ts", "lib/homeText.test.ts", "app/api/products/routeSameModel.test.ts"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
@@ -768,7 +842,7 @@ def run():
     if mode == "server": return subprocess.run(["node", "--test", "test/orderVehicles.test.js", "test/productCars.test.js", "test/orderVehiclesReplacement.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "screens": return subprocess.run(["npx", "vitest", "run", "src/OrderVehicle.test.jsx", "src/OrderVehicleFlow.test.jsx"], cwd=SP, capture_output=True, text=True, timeout=150).returncode
     return subprocess.run(["npx", "vitest", "run", "components/FitCheck.test.tsx", "app/stage1c-page.test.tsx", "app/cartFitCheck.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=150).returncode
-if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver", "hbserver"): fresh()
+if mode in ("frserver", "server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver", "hbserver"): fresh()
 if run() != 0: sys.exit("The tests do not pass on the UNBROKEN code, so a break check would prove nothing.")
 print("baseline: the tests pass on the unbroken code\n", flush=True); caught = 0
 for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
@@ -777,10 +851,10 @@ for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
     if src.count(old) != 1: print(f"{n:2d}. SKIPPED (the line to break was not found exactly once): {what}"); continue
     shutil.copy(path, path + ".keep"); open(path, "w", encoding="utf-8").write(src.replace(old, new))
     try:
-        if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver", "hbserver"): fresh()
+        if mode in ("frserver", "server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver", "hbserver"): fresh()
         failed = run() != 0
     finally: shutil.move(path + ".keep", path)
     caught += failed; print(f"{n:2d}. {'CAUGHT ' if failed else 'MISSED!'}  {what}", flush=True)
 print(f"\n{caught} of {sum(1 for i in range(1, len(BREAKS) + 1) if lo <= i <= hi)} breaks were caught")
-if mode in ("server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver", "hbserver"): fresh()
+if mode in ("frserver", "server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver", "hbserver"): fresh()
 print("code restored; the tests pass again:", "yes" if run() == 0 else "NO (investigate)")
