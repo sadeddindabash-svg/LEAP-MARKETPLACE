@@ -152,3 +152,8 @@ export function useCart(): CartContextValue {
   if (!ctx) throw new Error("useCart must be used within a CartProvider");
   return ctx;
 }
+
+/** The cart, or null when there is no CartProvider above (the page always has one; this is for a button inside a list, which must never take the whole list down). */
+export function useOptionalCart(): CartContextValue | null {
+  return useContext(CartContext);
+}

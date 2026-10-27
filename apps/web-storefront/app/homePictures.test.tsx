@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 
-// The four tiles of the home page show the pictures the admin chose (72 px), and the icon wherever there is none. The server's answers are replaced by fixed values.
+// The four tiles of the home page show the pictures the admin chose (filling the gold tile), and the big faint icon wherever there is none. The server's answers are replaced by fixed values.
 const m = vi.hoisted(() => ({ pictures: { current: null as unknown } }));
 vi.mock("@/lib/lang", () => ({ getLang: vi.fn(async () => "en") }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/", useSearchParams: () => new URLSearchParams() }));
@@ -23,13 +23,13 @@ async function show(lang: "en" | "ar" = "en") {
 beforeEach(() => { vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://shop.example.com"); m.pictures.current = { parts: null, brands: null, models: null, countries: null }; });
 
 describe("home page: the pictures of the four tiles", () => {
-  it("a tile with a picture shows it (square, 72 px) and no icon; a tile without one keeps its icon (also 72 px)", async () => {
+  it("a tile with a picture shows it (filling the gold tile) and no icon; a tile without one keeps its big faint icon", async () => {
     m.pictures.current = { parts: null, brands: "/uploads/brands.jpg", models: null, countries: "/uploads/countries.jpg" };
     const [parts, brands, models, countries] = await show();
     expect(brands.querySelector("img")!.getAttribute("src")).toBe("https://api.example.com/uploads/brands.jpg"); expect(brands.querySelector("svg")).toBeNull();
     expect(countries.querySelector("img")!.getAttribute("src")).toBe("https://api.example.com/uploads/countries.jpg");
-    for (const icon of [parts, models]) { expect(icon.querySelector("svg")).not.toBeNull(); expect(icon.querySelector("img")).toBeNull(); expect(icon.innerHTML).toContain("size-[72px]"); }
-    expect(brands.innerHTML).toContain("size-[72px]");
+    for (const icon of [parts, models]) { expect(icon.querySelector("svg")).not.toBeNull(); expect(icon.querySelector("img")).toBeNull(); expect(icon.innerHTML).toContain("opacity-[0.17]"); }
+    expect(brands.innerHTML).toContain("object-cover");
   });
   it("all four pictures set: all four tiles show a picture", async () => {
     m.pictures.current = { parts: "/uploads/a.jpg", brands: "/uploads/b.jpg", models: "/uploads/c.jpg", countries: "/uploads/d.jpg" };

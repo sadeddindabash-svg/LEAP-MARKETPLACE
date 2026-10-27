@@ -51,6 +51,8 @@ export interface ProductSummary {
   shipsFromCountryAr?: string | null;
   /** Sent when a discount applies: the price before the discount (the price above is the one to pay). */
   originalPrice?: number | null;
+  /** The vehicle brand's logo (the brand of the car the part fits), when the brand has one: shown in the corner of a product card's photo. */
+  brandLogoUrl?: string | null;
 }
 
 export interface ProductDetail extends ProductSummary {

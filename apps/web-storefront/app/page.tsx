@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import PhotoBox from "@/components/PhotoBox";
 import TileRow from "@/components/TileRow";
-import Link from "@/components/LocLink";
+import StatTile from "@/components/StatTile";
+import SectionTile from "@/components/SectionTile";
+import BrandTile from "@/components/BrandTile";
 import HeroPicker from "@/components/HeroPicker";
 import { JsonLd } from "@/components/JsonLd";
 import InfiniteProductGrid from "@/components/InfiniteProductGrid";
@@ -29,7 +30,6 @@ const STAT_ICONS: Record<string, string[]> = {
   models: ["M5 16v-5l2-5h10l2 5v5M3 16h18M7 16v2M17 16v2", "M7.5 12.5h.01M16.5 12.5h.01"],
   countries: ["M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z", "M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"],
 };
-const tileClass = "flex h-full flex-col items-center gap-2.5 rounded-[14px] border border-line bg-white p-5 text-center transition-colors hover:border-signal";
 
 // The home page ("Navy Workshop"): find a part for your car, the real totals, shop by section and by brand (one row each, "More" opens the rest), and the newest parts, which load as you scroll. A Server Component: everything here is real data, in real
 // HTML, in the page's language, which is the whole point of having this site next to the mobile app (a search engine reads it as it is).
@@ -72,45 +72,24 @@ export default async function HomePage() {
 
       {stats.length > 0 && (
         <section className="mx-auto max-w-7xl px-4 pt-10 sm:px-8" aria-label="Leap Auto Parts">
-          <ul className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            {stats.map((s) => (
-              <li key={s.icon} className="flex items-center gap-4 rounded-[14px] border border-line bg-white px-5 py-4">
-                {s.picture ? (
-                  <PhotoBox src={s.picture} className="size-[72px]" sizes="72px" />
-                ) : (
-                  <span className="grid size-[72px] flex-none place-items-center rounded-xl bg-[#e6edf2] text-[#8696a2]">
-                    <svg aria-hidden="true" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{STAT_ICONS[s.icon].map((d) => <path key={d} d={d} />)}</svg>
-                  </span>
-                )}
-                <span className="min-w-0"><b className="block text-3xl font-extrabold leading-none text-navy">{number(s.n)}</b><span className="mt-1 block text-[15px] text-muted">{s.label}</span></span>
-              </li>
-            ))}
+          <ul className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+            {stats.map((s) => <StatTile key={s.icon} n={number(s.n)} label={s.label} paths={STAT_ICONS[s.icon]} picture={s.picture} />)}
           </ul>
         </section>
       )}
       {categories.length > 0 && (
         <section className="mx-auto max-w-7xl px-4 pt-8 sm:px-8" aria-labelledby="home-sections">
           <h2 id="home-sections" className="mb-6 text-3xl font-bold tracking-tight">{t(lang, "shop_by_section")}</h2>
-          <TileRow gridClassName="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6" moreLabel={t(lang, "more_sections")} fewerLabel={t(lang, "show_fewer")}>
-            {categories.map((c) => (
-              <Link key={c.id} href={`/search?category=${encodeURIComponent(c.id)}`} className={tileClass}>
-                <PhotoBox src={c.photoUrl} className="size-16" sizes="64px" />
-                <span className="line-clamp-2 w-full min-w-0 text-base font-bold [overflow-wrap:anywhere]">{pickName(lang, c.nameEn, c.nameAr)}</span>
-              </Link>
-            ))}
+          <TileRow variant="wide" defaultColumns={4} gridClassName="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4" moreLabel={t(lang, "more_sections")} fewerLabel={t(lang, "show_fewer")}>
+            {categories.map((c) => <SectionTile key={c.id} href={`/search?category=${encodeURIComponent(c.id)}`} name={pickName(lang, c.nameEn, c.nameAr)} photo={c.photoUrl} />)}
           </TileRow>
         </section>
       )}
       {brands.length > 0 && (
         <section className="mx-auto max-w-7xl px-4 pt-8 sm:px-8" aria-labelledby="home-brands">
           <h2 id="home-brands" className="mb-6 text-3xl font-bold tracking-tight">{t(lang, "shop_by_brand")}</h2>
-          <TileRow gridClassName="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6" moreLabel={t(lang, "more_brands")} fewerLabel={t(lang, "show_fewer")}>
-            {brands.map((b) => (
-              <Link key={b.id} href={`/search?q=${encodeURIComponent(b.name)}`} className={tileClass}>
-                <PhotoBox src={b.photoUrl} className="size-16" sizes="64px" />
-                <span className="line-clamp-2 w-full min-w-0 text-base font-bold [overflow-wrap:anywhere]">{pickName(lang, b.name, b.nameAr)}</span>
-              </Link>
-            ))}
+          <TileRow variant="round" defaultColumns={6} gridClassName="grid grid-cols-3 gap-x-2 gap-y-4 sm:grid-cols-4 sm:gap-x-4 lg:grid-cols-6" moreLabel={t(lang, "more_brands")} fewerLabel={t(lang, "show_fewer")}>
+            {brands.map((b) => <BrandTile key={b.id} href={`/search?q=${encodeURIComponent(b.name)}`} name={pickName(lang, b.name, b.nameAr)} photo={b.photoUrl} />)}
           </TileRow>
         </section>
       )}
