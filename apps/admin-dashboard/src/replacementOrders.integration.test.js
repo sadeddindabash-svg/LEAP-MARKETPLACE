@@ -190,8 +190,8 @@ describe.runIf(backendUp)('replacement orders for a confirmed real fault (real b
     // age the delivery past the return window: only now can it be paid
     await pool.query(`UPDATE hub_shipments SET delivered_at = now() - interval '60 days' WHERE id = $1`, [shipment.id]);
     const expected = Number((await pool.query(
-      `SELECT SUM(oli.unit_price * oli.quantity * (1 - pc.commission_percent / 100.0)) AS net
-       FROM order_line_items oli JOIN products p ON p.id = oli.product_id JOIN product_categories pc ON pc.id = p.category WHERE oli.sub_order_id = $1`, [subId]
+      `SELECT SUM(oli.supplier_unit_price_cny * oli.quantity) AS net
+       FROM order_line_items oli WHERE oli.sub_order_id = $1`, [subId]
     )).rows[0].net);
     expect(expected).toBeGreaterThan(0);
 

@@ -64,7 +64,7 @@ describe.runIf(backendUp)("a supplier's real finance figures against a REAL runn
 
   it('returns the supplier\'s own figures in USD, and refuses anyone who is not a supplier', async () => {
     const f = await getFinance();
-    expect(f.currencyCode).toBe('USD');
+    expect(f.currencyCode).toBe('CNY');      // the supplier works in RMB only
     expect(f.returnWindowDays).toBeGreaterThan(0);
     for (const key of ['readyToPay', 'inReturnWindow']) {
       expect(typeof f[key].amount).toBe('number');
@@ -102,14 +102,14 @@ describe.runIf(backendUp)("a supplier's real finance figures against a REAL runn
     const row = (await getFinance()).payouts.find((p) => p.id === payout.id);
     expect(row).toBeTruthy();
     expect(row.amount).toBe(payout.amount);
-    expect(row.currencyCode).toBe('USD');
+    expect(row.currencyCode).toBe('CNY');
     expect(row.notes).toBe('finance test payout');
     expect(row.orderCount).toBe(payout.subOrderCount);
     expect(row.orderCount).toBeGreaterThanOrEqual(1);
-    // The server computed the amount from these orders, so sales minus payout IS the commission.
-    expect(row.commission).toBeGreaterThan(0);
+    // The supplier is paid their own RMB price x quantity: nothing is taken from it, so sales equal the payout and there is no commission.
+    expect(row.commission).toBe(0);
     expect(row.sales - row.commission).toBeCloseTo(row.amount, 2);
-    expect(row.commission).toBeLessThan(row.sales);
+    expect(row.sales).toBeCloseTo(row.amount, 2);
   }, 40000);
 
   it('every payout in the history reconciles, and the lifetime total equals the sum of them', async () => {
@@ -134,16 +134,10 @@ describe.runIf(backendUp)("a supplier's real finance figures against a REAL runn
     expect(after.inReturnWindow.amount).toBeGreaterThan(before.inReturnWindow.amount);
   }, 40000);
 
-  it('commission rates are per category and come from the categories this supplier actually sells in', async () => {
+  it('there are no commission rates to show a supplier: Leap\'s fees are inside the buyer\'s price, the supplier gets their own RMB price', async () => {
     const { commission } = await getFinance();
-    expect(commission.categories.length).toBeGreaterThan(0);
-    for (const c of commission.categories) {
-      expect(typeof c.percent).toBe('number');
-      expect(c.percent).toBeGreaterThanOrEqual(0);
-      expect(c.percent).toBeLessThan(100);
-    }
-    const percents = commission.categories.map((c) => c.percent);
-    expect(commission.minPercent).toBe(Math.min(...percents));
-    expect(commission.maxPercent).toBe(Math.max(...percents));
+    expect(commission.categories).toEqual([]);
+    expect(commission.minPercent).toBeNull();
+    expect(commission.maxPercent).toBeNull();
   });
 });

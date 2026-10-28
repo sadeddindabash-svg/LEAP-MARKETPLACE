@@ -36,8 +36,7 @@ const subOrderIdOf = async (orderId) => (await pool.query('SELECT id FROM suppli
 const owedFor = async () => (await fetch(`${BACKEND_URL}/payouts/owed`, { headers: auth(await adminToken()) }).then((r) => r.json())).find((x) => x.supplierId === 's1')?.amountOwed ?? 0;
 const financeNow = async () => fetch(`${BACKEND_URL}/supplier/me/finance`, { headers: auth(await supplierToken()) }).then((r) => r.json());
 const netOfSubOrder = async (subOrderId) => Number((await pool.query(
-  `SELECT SUM(oli.unit_price * oli.quantity * (1 - pc.commission_percent / 100.0)) AS net FROM order_line_items oli
-   JOIN products p ON p.id = oli.product_id JOIN product_categories pc ON pc.id = p.category WHERE oli.sub_order_id = $1`, [subOrderId])).rows[0].net);
+  `SELECT SUM(oli.supplier_unit_price_cny * oli.quantity) AS net FROM order_line_items oli WHERE oli.sub_order_id = $1`, [subOrderId])).rows[0].net);      // the supplier's own RMB price x quantity (no commission)
 
 // An order shipped by the supplier to the hub, received and FLAGGED, with a fault case opened and the supplier saying they can replace it.
 async function flaggedCase({ costBearer, qty = 1 }) {
@@ -92,7 +91,7 @@ describe.runIf(backendUp)('paying the supplier when LEAP bears the cost of a fau
     expect((await release(999999, {})).status).toBe(404);
   }, 120000);
 
-  it('CRITICAL: releasing records the ORIGINAL order (net of commission) plus the local shipping the admin typed; it is owed straight away, on the admin payout page AND on the supplier\'s own Finance page, and cannot be released twice', async () => {
+  it('CRITICAL: releasing records the ORIGINAL order (the supplier's RMB price x quantity) plus the local shipping the admin typed; it is owed straight away, on the admin payout page AND on the supplier\'s own Finance page, and cannot be released twice', async () => {
     const c = await flaggedCase({ costBearer: 'leap' });
     expect((await confirmReplacement(c.caseId)).status).toBe(200);
     const expectedNet = await netOfSubOrder(c.subOrderId);
