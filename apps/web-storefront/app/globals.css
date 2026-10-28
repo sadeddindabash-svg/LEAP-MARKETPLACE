@@ -77,7 +77,10 @@ body {
   font-size: 13px;
   letter-spacing: 0;
   color: var(--color-ink);
-  white-space: nowrap;
+  /* One line when there is room; when the screen is too narrow the text wraps INSIDE the chip instead of pushing the page wider than the screen (a long fitment chip made a phone's product page scroll sideways). */
+  white-space: normal;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 /* Titles: every page title and section title set at the big size (text-3xl, 30 px) is the size of "Find parts for your car" (text-xl, 20 px). Only h1/h2 are touched: other text at that size (a referral code, an order number) is not. */
