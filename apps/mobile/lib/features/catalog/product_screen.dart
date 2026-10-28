@@ -11,6 +11,7 @@ import '../../core/auth_state.dart';
 import '../../core/cart_state.dart';
 import '../../core/discount_display.dart';
 import '../../core/config/app_config.dart';
+import '../../widgets/fits_spec_row.dart';
 import '../../core/language_state.dart';
 import '../../models/product.dart';
 import '../../models/vehicle.dart';
@@ -383,11 +384,17 @@ class _ProductDetailBody extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 14),
                     child: Column(
                       children: (() {
-                        final rows = <_SpecRow>[
-                          _SpecRow(index: 0, label: _lBrand, value: product.brand ?? _lNotSpecified),
-                          _SpecRow(index: 1, label: _lModel, value: product.model ?? _lNotSpecified),
-                          _SpecRow(index: 2, label: _lYear, value: product.year?.toString() ?? _lNotSpecified),
-                          _SpecRow(index: 3, label: _lPartNo, value: product.oemNumber ?? _lNotSpecified),
+                        // A part that fits many vehicles: ONE "Fits" row with every model and its years, instead of the first car's brand, model and year. An older server (no fitGroups) keeps the three old rows.
+                        final fitGroups = product.fitGroups;
+                        final rows = <Widget>[
+                          if (fitGroups != null)
+                            FitsSpecRow(index: 0, groups: fitGroups, groupCount: product.fitGroupCount, vehicleCount: product.fitVehicleCount)
+                          else ...[
+                            _SpecRow(index: 0, label: _lBrand, value: product.brand ?? _lNotSpecified),
+                            _SpecRow(index: 1, label: _lModel, value: product.model ?? _lNotSpecified),
+                            _SpecRow(index: 2, label: _lYear, value: product.year?.toString() ?? _lNotSpecified),
+                          ],
+                          _SpecRow(index: fitGroups != null ? 1 : 3, label: _lPartNo, value: product.oemNumber ?? _lNotSpecified),
                         ];
                         // Confirmed with the person, seeded from their
                         // own real spreadsheet: every real attribute

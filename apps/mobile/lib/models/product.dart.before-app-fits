@@ -1,0 +1,159 @@
+/// Corresponds to SRS "Product / SKU" entity (Section 7.1).
+///
+/// Deliberately does NOT include supplier identity anywhere — buyers
+/// should never see who the supplier is; that's platform-internal
+/// information (see services/api/src/modules/catalog/routes.js's
+/// toBuyerProductDto, which never sends it in the first place — this
+/// isn't a "hide it in the UI" choice, the data genuinely never arrives).
+///
+/// `name`/`description` are already resolved to whichever language was
+/// requested (English or Arabic) by the backend — this model never sees
+/// the raw name_zh/name_ar columns, just a single clean name/description
+/// in the language that was asked for.
+class Product {
+  final String id;
+  final String name;
+  final String? description;
+  final String category;
+  final String? part;
+  final String? oemNumber;
+  final double price;
+  final String currencyCode;
+  // Real, previously-internal-only price snapshot (#59) -- from the
+  // scheduled price-drop check, now exposed so Wishlist can show a
+  // genuine "price dropped" comparison. Null means never checked yet.
+  final double? lastKnownPrice;
+  // Confirmed with the person through several rounds of design (5
+  // label options, colors, dark mode) before building -- a real,
+  // deliberate supplier-set discount, distinct from lastKnownPrice's
+  // own automatic price-drop signal above. Null means no discount is
+  // currently active on this product at all.
+  final double? originalPrice;
+  // Real, anonymous supplier signals (#73, #74) -- never the
+  // supplier's own name or identity, matching this platform's own
+  // deliberate anonymization design.
+  final bool isVerifiedSeller;
+  final String? shipsFromCountry;
+  final String? shipsFromCountryAr;
+  final double rating;
+  final int reviewCount;
+  final int stockQuantity;
+  final int estimatedDeliveryDays;
+  final List<String> images;
+  final String? brand;
+  // Real, new -- the same real vehicle brand's own logo (e.g. BMW,
+  // Hongqi), sourced from the exact same real fitment data a supplier
+  // already selects when submitting their product -- confirmed
+  // directly with the person as requiring zero new real admin
+  // workflow, correcting an earlier real misunderstanding that
+  // treated this as a separate part-manufacturer brand concept.
+  final String? brandLogoUrl;
+  final String? model;
+  final int? year;
+  final double? weightKg;
+  final double? lengthCm;
+  final double? widthCm;
+  final double? heightCm;
+  final List<String> fitsVehicleIds; // BUY-013: fitment-confirmed vehicles
+  // Confirmed with the person, seeded from their own real
+  // spreadsheet: the product's own flexible, admin/supplier-set
+  // attributes (Color, Camera, Position, etc.), shown in Technical
+  // Specifications.
+  final List<ProductAttribute> attributes;
+
+  const Product({
+    required this.id,
+    required this.name,
+    this.description,
+    required this.category,
+    this.part,
+    this.oemNumber,
+    required this.price,
+    this.lastKnownPrice,
+    this.originalPrice,
+    this.isVerifiedSeller = false,
+    this.shipsFromCountry,
+    this.shipsFromCountryAr,
+    required this.currencyCode,
+    required this.rating,
+    required this.reviewCount,
+    required this.stockQuantity,
+    required this.estimatedDeliveryDays,
+    this.images = const [],
+    this.brand,
+    this.brandLogoUrl,
+    this.model,
+    this.year,
+    this.weightKg,
+    this.lengthCm,
+    this.widthCm,
+    this.heightCm,
+    required this.fitsVehicleIds,
+    this.attributes = const [],
+  });
+
+  bool fitsVehicle(String vehicleId) => fitsVehicleIds.contains(vehicleId);
+
+  factory Product.fromJson(Map<String, dynamic> json) => Product(
+        id: json['id'] as String,
+        name: json['name'] as String,
+        description: json['description'] as String?,
+        category: json['category'] as String,
+        part: json['part'] as String?,
+        oemNumber: json['oemNumber'] as String?,
+        price: (json['price'] as num).toDouble(),
+        lastKnownPrice: json['lastKnownPrice'] == null ? null : (json['lastKnownPrice'] as num).toDouble(),
+        originalPrice: json['originalPrice'] == null ? null : (json['originalPrice'] as num).toDouble(),
+        isVerifiedSeller: json['isVerifiedSeller'] as bool? ?? false,
+        shipsFromCountry: json['shipsFromCountry'] as String?,
+        shipsFromCountryAr: json['shipsFromCountryAr'] as String?,
+        currencyCode: json['currencyCode'] as String? ?? 'USD',
+        rating: (json['rating'] as num?)?.toDouble() ?? 0,
+        reviewCount: json['reviewCount'] as int? ?? 0,
+        stockQuantity: json['stockQuantity'] as int? ?? 0,
+        estimatedDeliveryDays: json['estimatedDeliveryDays'] as int? ?? 7,
+        images: (json['images'] as List?)?.cast<String>() ?? const [],
+        brand: json['brand'] as String?,
+        brandLogoUrl: json['brandLogoUrl'] as String?,
+        model: json['model'] as String?,
+        year: json['year'] as int?,
+        weightKg: (json['weightKg'] as num?)?.toDouble(),
+        lengthCm: (json['lengthCm'] as num?)?.toDouble(),
+        widthCm: (json['widthCm'] as num?)?.toDouble(),
+        heightCm: (json['heightCm'] as num?)?.toDouble(),
+        fitsVehicleIds: (json['fitsVehicleIds'] as List?)?.cast<String>() ?? const [],
+        attributes: (json['attributes'] as List?)
+                ?.map((a) => ProductAttribute.fromJson(a as Map<String, dynamic>))
+                .toList() ??
+            const [],
+      );
+
+  // Real, confirmed replacement for the previous relative "in X days"
+  // display -- confirmed with the person via a rendered mockup:
+  // "Sep. 2" (English) / "2 سبتمبر" (Arabic), today's real date plus
+  // this real product's own real estimatedDeliveryDays. A small,
+  // self-contained month-name lookup, not intl's DateFormat/locale
+  // system -- this app has never initialized real locale data
+  // anywhere, and that's an async setup step easy to miss; safer to
+  // avoid the risk entirely for a real, user-facing date.
+  static const _monthNamesEn = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'Jun.', 'Jul.', 'Aug.', 'Sep.', 'Oct.', 'Nov.', 'Dec.'];
+  static const _monthNamesAr = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+
+  String deliveryDateLabel(bool isAr) {
+    final date = DateTime.now().add(Duration(days: estimatedDeliveryDays));
+    if (isAr) return '${date.day} ${_monthNamesAr[date.month - 1]}';
+    return '${_monthNamesEn[date.month - 1]} ${date.day}';
+  }
+}
+
+/// Confirmed with the person, seeded from their own real spreadsheet:
+/// a flexible product attribute (Color, Camera, Position, etc.).
+class ProductAttribute {
+  final String name;
+  final String value;
+
+  const ProductAttribute({required this.name, required this.value});
+
+  factory ProductAttribute.fromJson(Map<String, dynamic> json) =>
+      ProductAttribute(name: json['name'] as String, value: json['value'] as String);
+}

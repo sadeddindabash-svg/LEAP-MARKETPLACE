@@ -83,4 +83,48 @@ void main() {
       expect(a.maxUsd, equals(e.maxUsd));
     });
   });
+
+  group('the range the sheet already read from its boxes', () {
+    test('typed riyals become dollars, rounded safely, like the text version', () {
+      final r = priceRangeFromTyped(100, 500, 3.75);
+      expect(r.minUsd, equals(26.66));
+      expect(r.maxUsd, equals(133.34));
+    });
+    test('an empty box (null) is no limit on that side', () {
+      final r = priceRangeFromTyped(null, 500, 3.75);
+      expect(r.minUsd, isNull);
+      expect(r.maxUsd, equals(133.34));
+      expect(priceRangeFromTyped(null, null, 3.75).minUsd, isNull);
+    });
+    test('a Min above the Max are swapped', () {
+      final r = priceRangeFromTyped(500, 100, 3.75);
+      expect(r.minUsd, equals(26.66));
+      expect(r.maxUsd, equals(133.34));
+    });
+    test('a negative or infinite number is no limit; whole numbers and decimals both work', () {
+      expect(priceRangeFromTyped(-5, 50, 1).minUsd, isNull);
+      expect(priceRangeFromTyped(double.infinity, 50, 1).minUsd, isNull);
+      expect(priceRangeFromTyped(10, 50.5, 1).maxUsd, equals(50.5));
+    });
+    test('dollars go through unchanged; a nonsense rate counts as dollars', () {
+      final r = priceRangeFromTyped(10, 50, 1);
+      expect(r.minUsd, equals(10.0));
+      expect(r.maxUsd, equals(50.0));
+      expect(priceRangeFromTyped(10, 50, 0).maxUsd, equals(50.0));
+    });
+  });
+
+  group('the currency written before an amount', () {
+    test('what is left of a written price when the number is taken away', () {
+      expect(currencyLabelFromFormatted('SAR 0'), equals('SAR'));
+      expect(currencyLabelFromFormatted(r'$ 0'), equals(r'$'));
+      expect(currencyLabelFromFormatted('ر.س ٠'), equals('ر.س'));
+      expect(currencyLabelFromFormatted('AED 1,200.5'), equals('AED'));
+      expect(currencyLabelFromFormatted('د.إ ٠'), equals('د.إ'));
+    });
+    test('nothing but a number gives nothing', () {
+      expect(currencyLabelFromFormatted('0'), equals(''));
+      expect(currencyLabelFromFormatted(''), equals(''));
+    });
+  });
 }

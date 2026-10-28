@@ -1,3 +1,5 @@
+import 'fit_group.dart';
+
 /// Corresponds to SRS "Product / SKU" entity (Section 7.1).
 ///
 /// Deliberately does NOT include supplier identity anywhere — buyers
@@ -55,6 +57,10 @@ class Product {
   final double? widthCm;
   final double? heightCm;
   final List<String> fitsVehicleIds; // BUY-013: fitment-confirmed vehicles
+  // Every MODEL it fits with its years (the server's fitGroups): null from an older server (the screen keeps its old rows), an empty list when the part has no fitment at all (universal).
+  final List<FitGroup>? fitGroups;
+  final int? fitGroupCount; // how many models in all (the list is capped at 60)
+  final int? fitVehicleCount; // how many different vehicles (a generation and a year)
   // Confirmed with the person, seeded from their own real
   // spreadsheet: the product's own flexible, admin/supplier-set
   // attributes (Color, Camera, Position, etc.), shown in Technical
@@ -89,6 +95,9 @@ class Product {
     this.widthCm,
     this.heightCm,
     required this.fitsVehicleIds,
+    this.fitGroups,
+    this.fitGroupCount,
+    this.fitVehicleCount,
     this.attributes = const [],
   });
 
@@ -122,6 +131,9 @@ class Product {
         widthCm: (json['widthCm'] as num?)?.toDouble(),
         heightCm: (json['heightCm'] as num?)?.toDouble(),
         fitsVehicleIds: (json['fitsVehicleIds'] as List?)?.cast<String>() ?? const [],
+        fitGroups: FitGroup.listFromJson(json['fitGroups']),
+        fitGroupCount: json['fitGroupCount'] as int?,
+        fitVehicleCount: json['fitVehicleCount'] as int?,
         attributes: (json['attributes'] as List?)
                 ?.map((a) => ProductAttribute.fromJson(a as Map<String, dynamic>))
                 .toList() ??

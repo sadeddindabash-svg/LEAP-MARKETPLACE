@@ -1,0 +1,283 @@
+SORT & PRICE SHEET REPORT
+files that show the "Sort & price" title: features/search/sort_and_price_sheet.dart
+
+=== features/search/sort_and_price_sheet.dart (171 lines) ===
+--- imports ---
+import 'package:flutter/material.dart';
+import '../../core/theme.dart';
+import '../../core/app_strings.dart';
+--- around the title (line 91) ---
+  79|     Navigator.of(context).pop(const SortAndPriceSelection());
+  80|   }
+  81| 
+  82|   @override
+  83|   Widget build(BuildContext context) {
+  84|     return SafeArea(
+  85|       child: Padding(
+  86|         padding: EdgeInsets.only(left: 20, right: 20, top: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
+  87|         child: Column(
+  88|           crossAxisAlignment: CrossAxisAlignment.stretch,
+  89|           mainAxisSize: MainAxisSize.min,
+  90|           children: [
+  91|             Text(tr(context, 'sort_and_price_title'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+  92|             const SizedBox(height: 16),
+  93|             Text(tr(context, 'sort_by_label'), style: const TextStyle(fontSize: 12.5, color: LeapColors.muted)),
+  94|             const SizedBox(height: 8),
+  95|             Wrap(
+  96|               spacing: 8,
+  97|               children: [
+  98|                 _SortChip(label: tr(context, 'relevance_label'), selected: _sort == null, onTap: () => setState(() => _sort = null)),
+  99|                 _SortChip(label: tr(context, 'price_low_to_high'), selected: _sort == 'price_asc', onTap: () => setState(() => _sort = 'price_asc')),
+ 100|                 _SortChip(label: tr(context, 'price_high_to_low'), selected: _sort == 'price_desc', onTap: () => setState(() => _sort = 'price_desc')),
+ 101|                 _SortChip(label: tr(context, 'newest_label'), selected: _sort == 'newest', onTap: () => setState(() => _sort = 'newest')),
+ 102|               ],
+ 103|             ),
+ 104|             const SizedBox(height: 20),
+ 105|             Text(tr(context, 'price_range_label'), style: const TextStyle(fontSize: 12.5, color: LeapColors.muted)),
+ 106|             const SizedBox(height: 8),
+ 107|             Row(
+ 108|               children: [
+ 109|                 Expanded(
+ 110|                   child: TextField(
+ 111|                     controller: _minController,
+ 112|                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
+ 113|                     decoration: InputDecoration(labelText: tr(context, 'min_field'), prefixText: '\$'),
+ 114|                   ),
+ 115|                 ),
+ 116|                 const SizedBox(width: 12),
+ 117|                 Expanded(
+ 118|                   child: TextField(
+ 119|                     controller: _maxController,
+ 120|                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
+ 121|                     decoration: InputDecoration(labelText: tr(context, 'max_field'), prefixText: '\$'),
+ 122|                   ),
+ 123|                 ),
+ 124|               ],
+ 125|             ),
+ 126|             const SizedBox(height: 20),
+ 127|             // Real ships-within-X-days filter (#10)
+ 128|             Text(tr(context, 'delivery_speed_label'), style: const TextStyle(fontSize: 12.5, color: LeapColors.muted)),
+ 129|             const SizedBox(height: 8),
+ 130|             Wrap(
+ 131|               spacing: 8,
+ 132|               children: [
+ 133|                 _SortChip(label: tr(context, 'delivery_any'), selected: _maxDeliveryDays == null, onTap: () => setState(() => _maxDeliveryDays = null)),
+ 134|                 _SortChip(label: tr(context, 'within_3_days'), selected: _maxDeliveryDays == 3, onTap: () => setState(() => _maxDeliveryDays = 3)),
+ 135|                 _SortChip(label: tr(context, 'within_5_days'), selected: _maxDeliveryDays == 5, onTap: () => setState(() => _maxDeliveryDays = 5)),
+ 136|                 _SortChip(label: tr(context, 'within_7_days'), selected: _maxDeliveryDays == 7, onTap: () => setState(() => _maxDeliveryDays = 7)),
+ 137|               ],
+ 138|             ),
+ 139|             const SizedBox(height: 20),
+ 140|             Row(
+ 141|               children: [
+ 142|                 Expanded(child: OutlinedButton(onPressed: _clear, child: Text(tr(context, 'clear_label')))),
+ 143|                 const SizedBox(width: 12),
+ 144|                 Expanded(child: ElevatedButton(onPressed: _apply, child: Text(tr(context, 'apply')))),
+ 145|               ],
+ 146|             ),
+ 147|           ],
+ 148|         ),
+ 149|       ),
+ 150|     );
+ 151|   }
+ 152| }
+ 153| 
+ 154| class _SortChip extends StatelessWidget {
+ 155|   final String label;
+ 156|   final bool selected;
+ 157|   final VoidCallback onTap;
+ 158|   const _SortChip({required this.label, required this.selected, required this.onTap});
+ 159| 
+ 160|   @override
+--- every line that matters for prices, text fields and colours ---
+   6| /// 'newest', or null for the default (no explicit ordering). `minPrice`/
+   7| /// `maxPrice` are both optional and independent of `sort` -- a buyer can
+  11|   final num? minPrice;
+  12|   final num? maxPrice;
+  16|   const SortAndPriceSelection({this.sort, this.minPrice, this.maxPrice, this.maxDeliveryDays});
+  18|   bool get isEmpty => sort == null && minPrice == null && maxPrice == null && maxDeliveryDays == null;
+  22|     if (sort == 'price_asc') parts.add('${tr(context, 'price_short_label')} ↑');
+  23|     if (sort == 'price_desc') parts.add('${tr(context, 'price_short_label')} ↓');
+  25|     if (minPrice != null || maxPrice != null) {
+  26|       final min = minPrice != null ? '\$$minPrice' : '\$0';
+  27|       final max = maxPrice != null ? '\$$maxPrice' : '+';
+  28|       parts.add('$min–$max');
+  30|     if (maxDeliveryDays != null) parts.add('${tr(context, 'ships_in_days_label')} ${maxDeliveryDays}d');
+  38| /// (currency conversion + fees), not a raw column -- see
+  60|     if (widget.initial?.minPrice != null) _minController.text = '${widget.initial!.minPrice}';
+  61|     if (widget.initial?.maxPrice != null) _maxController.text = '${widget.initial!.maxPrice}';
+  75|     Navigator.of(context).pop(SortAndPriceSelection(sort: _sort, minPrice: min, maxPrice: max, maxDeliveryDays: _maxDeliveryDays));
+  93|             Text(tr(context, 'sort_by_label'), style: const TextStyle(fontSize: 12.5, color: LeapColors.muted)),
+ 105|             Text(tr(context, 'price_range_label'), style: const TextStyle(fontSize: 12.5, color: LeapColors.muted)),
+ 110|                   child: TextField(
+ 113|                     decoration: InputDecoration(labelText: tr(context, 'min_field'), prefixText: '\$'),
+ 118|                   child: TextField(
+ 121|                     decoration: InputDecoration(labelText: tr(context, 'max_field'), prefixText: '\$'),
+ 128|             Text(tr(context, 'delivery_speed_label'), style: const TextStyle(fontSize: 12.5, color: LeapColors.muted)),
+ 166|       selectedColor: LeapColors.signal.withValues(alpha: 0.15),
+ 167|       labelStyle: TextStyle(color: selected ? LeapColors.signal : LeapColors.ink, fontWeight: selected ? FontWeight.w700 : FontWeight.w500),
+
+=== core/theme.dart ===
+(279 lines: only the useful ones)
+   7| /// original orange-red, with dark text on top of it (matching the
+   9| /// dark text, not white). The light background, Manrope typeface, and
+  13| class LeapColors {
+  16|   static const ink = Color(0xFF14171C);
+  17|   static const chalk = Color(0xFFF5F6F8);
+  18|   // Real, separate page-background color (new) -- distinct from chalk,
+  22|   // (W1): clear white page, containers get chalk's own light gray.
+  23|   static const page = Colors.white;
+  24|   static const line = Color(0xFFE4E6EA);
+  25|   static const signal = Color(0xFFF2A71B); // primary action -- real gold, matching the real leapautoparts.com site
+  26|   static const signalDark = Color(0xFFC4870D); // pressed/hover state for the real gold
+  27|   // Real, dark text-on-gold color (new) -- gold is too light for white
+  29|   // contrast choice (dark text on every real gold button/pill there).
+  30|   static const onSignal = Color(0xFF241A05);
+  31|   static const torque = Color(0xFF2A5FD9); // links / info
+  32|   static const gauge = Color(0xFF1E9D6B); // success / in-stock
+  33|   static const amber = Color(0xFFB9791F); // pending / warning
+  34|   static const muted = Color(0xFF6B7280);
+  37| /// Real dark theme color tokens (new), confirmed directly against the
+  41| class LeapColorsDark {
+  44|   static const background = Color(0xFF131313); // surface / surface-dim
+  45|   static const surface = Color(0xFF1C1B1B); // surface-container-low
+  46|   static const surfaceHigh = Color(0xFF2A2A2A); // surface-container-high
+  47|   static const onSurface = Color(0xFFF2CA50); // primary text color in dark mode -- same real gold as LeapColorsDark.signal, per request (was 0xFFE5E2E1, a light gray)
+  48|   static const line = Color(0xFF4D4635); // outline-variant
+  49|   static const signal = Color(0xFFF2CA50); // real primary, per the real spec (D4AF37 is actually primary-container there, not primary)
+  50|   static const signalContainer = Color(0xFFD4AF37); // metallic-gold / primary-container, used for secondary gold accents
+  51|   static const onSignal = Color(0xFF3C2F00); // on-primary
+  52|   static const torque = Color(0xFFCECECE); // tertiary
+  53|   static const gauge = Color(0xFF28A745); // success-green
+  54|   static const muted = Color(0xFFD0C5AF); // on-surface-variant
+  60| /// dark mode). Call LeapPalette.of(context) once per build method,
+  64| class LeapPalette {
+  65|   final Color ink;
+  66|   final Color chalk;
+  67|   final Color card;
+  68|   final Color line;
+  69|   final Color signal;
+  70|   final Color signalDark;
+  73|   final Color gauge;
+  75|   final Color muted;
+  77|   const LeapPalette({
+  78|     required this.ink,
+  79|     required this.chalk,
+  80|     required this.card,
+  81|     required this.line,
+  82|     required this.signal,
+  83|     required this.signalDark,
+  86|     required this.gauge,
+  88|     required this.muted,
+  91|   static const light = LeapPalette(
+  92|     ink: LeapColors.ink,
+  93|     chalk: LeapColors.page,
+  94|     card: LeapColors.chalk,
+  95|     line: LeapColors.line,
+  96|     signal: LeapColors.signal,
+  97|     signalDark: LeapColors.signalDark,
+ 100|     gauge: LeapColors.gauge,
+ 102|     muted: LeapColors.muted,
+ 105|   static const dark = LeapPalette(
+ 106|     ink: LeapColorsDark.onSurface,
+ 107|     chalk: LeapColorsDark.background,
+ 108|     card: LeapColorsDark.surface,
+ 109|     line: LeapColorsDark.line,
+ 110|     signal: LeapColorsDark.signal,
+ 111|     signalDark: LeapColorsDark.signalContainer,
+ 114|     gauge: LeapColorsDark.gauge,
+ 115|     amber: LeapColorsDark.signalContainer,
+ 116|     muted: LeapColorsDark.muted,
+ 119|   static LeapPalette of(BuildContext context) {
+ 120|     return Theme.of(context).brightness == Brightness.dark ? dark : light;
+ 124| class LeapTheme {
+ 127|   static ThemeData light() {
+ 128|     final base = ThemeData.light(useMaterial3: true);
+ 134|     final manropeTextTheme = GoogleFonts.manropeTextTheme(base.textTheme);
+ 142|       textTheme: manropeTextTheme,
+ 145|         primary: LeapColors.signal,
+ 153|         foregroundColor: LeapColors.ink,
+ 156|         titleTextStyle: GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.w700, color: LeapColors.ink),
+ 160|           backgroundColor: LeapColors.signal,
+ 167|       // Real, matching pill shape for outlined (secondary) buttons too
+ 170|       // neutral (not gold) -- an outlined button is a real secondary
+ 173|       outlinedButtonTheme: OutlinedButtonThemeData(
+ 174|         style: OutlinedButton.styleFrom(
+ 175|           foregroundColor: LeapColors.ink,
+ 176|           side: const BorderSide(color: LeapColors.line),
+ 184|           foregroundColor: LeapColors.signalDark,
+ 188|       inputDecorationTheme: InputDecorationTheme(
+ 190|         fillColor: Colors.white,
+ 191|         border: OutlineInputBorder(
+ 193|           borderSide: const BorderSide(color: LeapColors.line),
+ 198|         selectedItemColor: LeapColors.signal,
+ 199|         unselectedItemColor: LeapColors.muted,
+ 207|   /// Real dark theme (new) -- mirrors light()'s own structure with
+ 212|   /// own inline widgets need their own separate migration pass.
+ 213|   static ThemeData dark() {
+ 214|     final base = ThemeData.dark(useMaterial3: true);
+ 215|     final manropeTextTheme = GoogleFonts.manropeTextTheme(base.textTheme).apply(bodyColor: LeapColorsDark.onSurface, displayColor: LeapColorsDark.onSurface);
+ 220|       textTheme: manropeTextTheme,
+ 223|         primary: LeapColorsDark.signal,
+ 238|           backgroundColor: LeapColorsDark.signal,
+ 245|       outlinedButtonTheme: OutlinedButtonThemeData(
+ 246|         style: OutlinedButton.styleFrom(
+ 248|           side: const BorderSide(color: LeapColorsDark.line),
+ 256|           foregroundColor: LeapColorsDark.signal,
+ 260|       inputDecorationTheme: InputDecorationTheme(
+ 262|         fillColor: LeapColorsDark.surface,
+ 263|         border: OutlineInputBorder(
+ 265|           borderSide: const BorderSide(color: LeapColorsDark.line),
+ 270|         selectedItemColor: LeapColorsDark.signal,
+ 271|         unselectedItemColor: LeapColorsDark.muted,
+
+=== core/currency_state.dart ===
+(285 lines: only the useful ones)
+  15| /// hardcodes 'USD' as the buyer-facing charge currency). This state
+  17| /// the real USD one, using the real, live-refreshed rates from
+  18| /// GET /pricing/display-rates (see services/api/src/modules/pricing/
+  25| ///    Geolocator + ApiClient().reverseGeocode() mechanism already
+  32| ///    in AppConfig.launchMarkets, or if the real rates haven't
+  34| class CurrencyState extends ChangeNotifier {
+  35|   static const _currencyKey = 'leap_currency_override';
+  38|   String _currencyCode = 'USD';
+  39|   Map<String, double> _rates = {};
+  40|   bool _isLoading = true;
+  41|   bool _isManualOverride = false;
+  47|   String get currencyCode => _currencyCode;
+  48|   bool get isLoading => _isLoading;
+  49|   bool get isManualOverride => _isManualOverride;
+  50|   bool get hasConversion => _currencyCode != 'USD' && _rates.containsKey(_currencyCode);
+  52|   String? _currencyForCountryName(String countryName) {
+  59|   String? _currencyForCountryCode(String countryCode) {
+  66|   Future<void> _init() async {
+  76|       _rates = result.map((key, value) => MapEntry(key, (value as num).toDouble()));
+  81|       _rates = {};
+  92|   /// same real Geolocator + reverseGeocode() combination in
+  94|   Future<void> _detectFromGeolocation() async {
+ 106|           final geocoded = await ApiClient().reverseGeocode(position.latitude, position.longitude);
+ 107|           final countryName = geocoded?['country'] as String?;
+ 123|   void _detectFromLocale() {
+ 134|   Future<void> setCurrencyCode(String? currencyCode) async {
+ 151|   /// or the real rate for this currency hasn't loaded) -- callers
+ 154|   double? convert(double usdAmount) {
+ 156|     return usdAmount * _rates[_currencyCode]!;
+ 160| /// Real, confirmed symbol for the 7 Arabic-country currencies (Saudi
+ 163| /// ISO code otherwise, since none of these has a recognized
+ 164| /// Latin-script symbol the way "$" or "€" do.
+ 215| /// Real, confirmed Latin-script symbol for every other real launch-
+ 219| /// numerals and their own Arabic symbol only in an Arabic-language
+ 246| /// real thousands separator always. Currency-specific numeral/symbol
+ 252| String formatAmount(BuildContext context, double amount, String currencyCode) {
+ 261|   final symbol = _latinSymbols[currencyCode] ?? currencyCode;
+ 262|   return '$symbol $formatted';
+ 268| String formatPrice(BuildContext context, double usdAmount) {
+ 270|   final converted = currency.convert(usdAmount);
+ 271|   if (converted == null) return formatAmount(context, usdAmount, 'USD');
+ 272|   return formatAmount(context, converted, currency.currencyCode);
+ 276| /// confirmed, per request, to show only the converted currency now,
+ 277| /// same as formatPrice. Kept as a separate function (rather than
+ 278| /// merged into formatPrice) since callers already reference it by
+ 282| String formatPriceWithUsd(BuildContext context, double usdAmount) {
+ 283|   return formatPrice(context, usdAmount);
+

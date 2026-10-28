@@ -60,3 +60,20 @@ PriceRangeUsd priceRangeToUsd({required String minText, required String maxText,
   }
   return PriceRangeUsd(min == null ? null : (min * 100).floor() / 100, max == null ? null : (max * 100).ceil() / 100);
 }
+
+/// The Min and Max the sheet already read from its boxes (numbers typed in the app's currency), as US dollars for the search: converted, the lower limit rounded DOWN and the upper one UP to the cent, a Min above the Max swapped.
+/// A box that was empty or not a number (null) means no limit on that side.
+PriceRangeUsd priceRangeFromTyped(num? typedMin, num? typedMax, double ratePerUsd) {
+  double? ok(num? v) => v != null && v.isFinite && v >= 0 ? v.toDouble() : null;
+  var min = usdFromDisplay(ok(typedMin), ratePerUsd);
+  var max = usdFromDisplay(ok(typedMax), ratePerUsd);
+  if (min != null && max != null && min > max) {
+    final t = min;
+    min = max;
+    max = t;
+  }
+  return PriceRangeUsd(min == null ? null : (min * 100).floor() / 100, max == null ? null : (max * 100).ceil() / 100);
+}
+
+/// The currency written before an amount, taken from how the app writes a price ("SAR 0" -> "SAR", "$ 0" -> "$", "ر.س ٠" -> "ر.س"): the number (a digit and what follows it: digits, separators, spaces) is taken away.
+String currencyLabelFromFormatted(String sample) => sample.replaceAll(RegExp(r'[0-9٠-٩۰-۹][0-9٠-٩۰-۹.,٫٬ \u00A0]*'), '').replaceAll('\u00A0', ' ').trim();
