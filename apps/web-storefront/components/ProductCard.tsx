@@ -31,7 +31,7 @@ export default function ProductCard({ product: p, lang }: { product: ProductSumm
             </div>
           )}
           {p.brandLogoUrl && <BrandBadge src={resolveImageUrl(p.brandLogoUrl)} name={p.brand ?? ""} />}
-          {percent !== null && <span data-testid="discount-tag" dir="ltr" aria-label={t(lang, "percent_off", { n: percent })} className={`absolute end-2.5 top-2.5 rounded-lg px-2.5 py-1 text-sm font-extrabold shadow-sm ${cardDiscountTagClasses(percent)}`}>-{percent}%</span>}
+          {percent !== null && <span data-testid="discount-tag" aria-label={t(lang, "percent_off", { n: percent })} className={`absolute end-2.5 top-2.5 rounded-lg px-2.5 py-1 text-sm font-extrabold shadow-sm ${cardDiscountTagClasses(percent)}`}><bdi dir="ltr">-{percent}%</bdi></span>}
         </div>
         <div className="flex flex-1 flex-col gap-2 p-4">
           <h3 className="line-clamp-2 text-base font-bold leading-snug">{p.name}</h3>
