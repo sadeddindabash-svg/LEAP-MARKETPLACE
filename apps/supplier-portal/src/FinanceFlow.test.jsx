@@ -7,13 +7,13 @@ const SUPPLIER_PROFILE = { id: 's1', name: 'Guangzhou AutoParts Co.', country: '
 
 // What GET /supplier/me/finance returns (see services/api/src/modules/supplierFinance/queries.js).
 const FINANCE = {
-  currencyCode: 'USD', returnWindowDays: 7,
+  currencyCode: 'CNY', returnWindowDays: 7, legacyUsdPaid: 0,
   readyToPay: { amount: 123.45, orderCount: 3 },
   inReturnWindow: { amount: 526.84, orderCount: 16 },
   totalPaid: 767.96,
   lastPayout: { amount: 33.19, paidAt: '2026-07-05T00:00:00.000Z' },
-  commission: { minPercent: 17, maxPercent: 17, categories: [{ id: 'brake', nameEn: 'Brake System', nameAr: 'نظام الفرامل', percent: 17 }] },
-  payouts: [{ id: 1, amount: 33.19, currencyCode: 'USD', notes: 'July payout', paidAt: '2026-07-05T00:00:00.000Z', orderCount: 1, sales: 39.99, commission: 6.8 }],
+  commission: { minPercent: null, maxPercent: null, categories: [] },      // the supplier is paid their own RMB price: no commission rates are sent
+  payouts: [{ id: 1, amount: 33.19, currencyCode: 'CNY', notes: 'July payout', paidAt: '2026-07-05T00:00:00.000Z', orderCount: 1, sales: 33.19, commission: 0 }],
 };
 
 function mockFetchRouter({ existingPayoutMethod = null, finance = FINANCE, financeFails = false } = {}) {
@@ -130,8 +130,8 @@ describe('Supplier Finance page — real figures instead of typed-in ones (mocke
     expect(within(card).getAllByText('LP-900555')).toHaveLength(2);
     expect(within(card).getByText('原订单')).toBeInTheDocument();
     expect(within(card).getByText('国内运费')).toBeInTheDocument();
-    expect(within(card).getByText('$41.20')).toBeInTheDocument();
-    expect(within(card).getByText('$11.30')).toBeInTheDocument();
+    expect(within(card).getByText('¥41.20')).toBeInTheDocument();
+    expect(within(card).getByText('¥11.30')).toBeInTheDocument();
     expect(within(card).getByText(/因货物在 Leap 处受损/)).toBeInTheDocument();
     expect(screen.getByText(/175\.95/)).toBeInTheDocument();                     // and the total it is part of
   });
@@ -142,35 +142,36 @@ describe('Supplier Finance page — real figures instead of typed-in ones (mocke
     expect(screen.queryByText('Leap 已放款')).not.toBeInTheDocument();
   });
 
-  it('CRITICAL: shows the real figures in USD, and none of the old made-up ones (¥54,542, ¥60,210, 12%, fake history)', async () => {
+  it('CRITICAL: shows the real figures in RMB (¥), no commission, and none of the old made-up ones (54,542, 60,210, 12%, fake history)', async () => {
     await openFinance();
-    await waitFor(() => expect(screen.getByText(/123\.45/)).toBeInTheDocument());   // ready to be paid
-    expect(screen.getByText(/526\.84/)).toBeInTheDocument();                       // still in the return window
-    expect(screen.getAllByText(/767\.96/).length).toBeGreaterThan(0);              // paid out so far
-    expect(screen.getByText('17%')).toBeInTheDocument();                            // the one real commission rate
-    expect(screen.getByText('Brake System')).toBeInTheDocument();
-    expect(screen.getByText(/USD/)).toBeInTheDocument();                            // says what currency it is
-
-    // the history row is the real payout: sales, commission taken (negative), payout, note
-    expect(screen.getByText(/39\.99/)).toBeInTheDocument();
-    expect(screen.getByText(/-\$6\.80/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/¥123\.45/)).toBeInTheDocument());   // ready to be paid, in yuan
+    expect(screen.getByText(/¥526\.84/)).toBeInTheDocument();                       // still in the return window
+    expect(screen.getAllByText(/¥767\.96/).length).toBeGreaterThan(0);              // paid out so far
+    expect(document.body.textContent).not.toMatch(/\$\s?\d/);                       // no dollar amount anywhere
+    expect(screen.queryByText(/USD/)).not.toBeInTheDocument();
+    // the history row is the real payout, in RMB: what the supplier received, and the note
+    expect(screen.getByText(/¥33\.19/)).toBeInTheDocument();
     expect(screen.getByText('July payout')).toBeInTheDocument();
-
-    expect(document.body.textContent).not.toContain('¥');
+    expect(screen.queryByText(/-¥/)).not.toBeInTheDocument();                       // nothing is taken off the supplier's price
     expect(screen.queryByText(/54,542/)).not.toBeInTheDocument();
     expect(screen.queryByText(/60,210/)).not.toBeInTheDocument();
     expect(screen.queryByText('12%')).not.toBeInTheDocument();
-    expect(screen.queryByText(/68,420|61,980|20,140/)).not.toBeInTheDocument(); // the old fake history sales
+    expect(screen.queryByText(/68,420|61,980|20,140/)).not.toBeInTheDocument();   // the old fake history sales
   });
 
-  it('commission rates that differ by category show as a range', async () => {
-    await openFinance({
-      finance: { ...FINANCE, commission: { minPercent: 12, maxPercent: 17, categories: [
-        { id: 'brake', nameEn: 'Brake System', nameAr: '', percent: 17 }, { id: 'light', nameEn: 'Lighting', nameAr: '', percent: 12 },
-      ] } },
-    });
-    await waitFor(() => expect(screen.getByText('12–17%')).toBeInTheDocument());
+  it('CRITICAL: no commission is shown to a supplier (Leap\'s fees are inside the buyer\'s price): no rate card, no Sales and Commission columns', async () => {
+    await openFinance({ finance: { ...FINANCE, commission: { minPercent: 12, maxPercent: 17, categories: [{ id: 'brake', nameEn: 'Brake System', nameAr: '', percent: 17 }] } } });      // even if a server still sent rates
+    await waitFor(() => expect(screen.getByText(/¥123\.45/)).toBeInTheDocument());
+    expect(screen.queryByText('12-17%')).not.toBeInTheDocument(); expect(screen.queryByText('17%')).not.toBeInTheDocument(); expect(screen.queryByText('Brake System')).not.toBeInTheDocument();
+    const history = screen.getByText('July payout').closest('table'); expect(history.querySelectorAll('thead th')).toHaveLength(4);
   });
+
+  it('CRITICAL: payouts recorded in US dollars before the change are shown apart ($ and USD), and are NOT part of the RMB total', async () => {
+    await openFinance({ finance: { ...FINANCE, legacyUsdPaid: 500, payouts: [FINANCE.payouts[0], { id: 0, amount: 500, currencyCode: 'USD', notes: 'old payout', paidAt: '2026-05-01T00:00:00.000Z', orderCount: 4, sales: 500, commission: 0 }] } });
+    const note = await screen.findByTestId('legacy-usd-note'); expect(note).toHaveTextContent('$500.00'); expect(note.textContent).toMatch(/USD|美元/);
+    expect(screen.getByText('$500.00 USD')).toBeInTheDocument(); expect(screen.getByText('old payout')).toBeInTheDocument(); expect(screen.getAllByText(/¥767\.96/).length).toBeGreaterThan(0);
+  });
+  it('with no earlier dollar payouts there is no such note', async () => { await openFinance(); await waitFor(() => expect(screen.getByText(/¥123\.45/)).toBeInTheDocument()); expect(screen.queryByTestId('legacy-usd-note')).not.toBeInTheDocument(); });
 
   it('a supplier with no payouts yet sees an honest empty message, not invented history rows', async () => {
     await openFinance({ finance: { ...FINANCE, totalPaid: 0, lastPayout: null, payouts: [] } });

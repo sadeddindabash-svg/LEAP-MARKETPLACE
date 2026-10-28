@@ -8,7 +8,7 @@ const MOCK_OWED = [
   { supplierId: 's1', supplierName: 'Guangzhou AutoParts Co.', amountOwed: 140.76, eligibleSubOrderCount: 3 },
 ];
 const MOCK_HISTORY_INITIAL = [
-  { id: 1, supplierId: 's2', supplierName: 'Ningbo Filtration Ltd.', amount: 88.50, currencyCode: 'USD', notes: 'Prior payout', subOrderCount: 2, createdAt: '2026-06-01T00:00:00.000Z' },
+  { id: 1, supplierId: 's2', supplierName: 'Ningbo Filtration Ltd.', amount: 88.50, currencyCode: 'CNY', notes: 'Prior payout', subOrderCount: 2, createdAt: '2026-06-01T00:00:00.000Z' },
 ];
 
 function mockFetchRouter({ payoutMethod = { bankName: 'Bank of China', accountNumber: '111222333', accountHolderName: 'Guangzhou AutoParts Co.' } } = {}) {
@@ -27,7 +27,7 @@ function mockFetchRouter({ payoutMethod = { bankName: 'Bank of China', accountNu
       const body = JSON.parse(options.body);
       const paidEntry = owed.find((o) => o.supplierId === body.supplierId);
       if (!paidEntry) return Promise.resolve({ ok: false, status: 400, json: async () => ({ error: 'This supplier has no real amount currently owed.' }) });
-      const newPayout = { id: history.length + 1, supplierId: body.supplierId, supplierName: paidEntry.supplierName, amount: paidEntry.amountOwed, currencyCode: 'USD', notes: body.notes || null, subOrderCount: paidEntry.eligibleSubOrderCount, createdAt: new Date().toISOString() };
+      const newPayout = { id: history.length + 1, supplierId: body.supplierId, supplierName: paidEntry.supplierName, amount: paidEntry.amountOwed, currencyCode: 'CNY', notes: body.notes || null, subOrderCount: paidEntry.eligibleSubOrderCount, createdAt: new Date().toISOString() };
       history = [newPayout, ...history];
       owed = owed.filter((o) => o.supplierId !== body.supplierId);
       return Promise.resolve({ ok: true, status: 201, json: async () => newPayout });
@@ -61,7 +61,7 @@ describe('Real Payouts page (mocked fetch, full component tree)', () => {
     await loginAndGoToPayouts();
 
     await waitFor(() => expect(screen.getAllByText('Guangzhou AutoParts Co.').length).toBeGreaterThan(0));
-    expect(screen.getAllByText('$140.76').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('¥140.76').length).toBeGreaterThan(0);
     expect(screen.queryByText(/next scheduled payout run/i)).not.toBeInTheDocument();
   });
 
@@ -75,7 +75,7 @@ describe('Real Payouts page (mocked fetch, full component tree)', () => {
 
     await waitFor(() => expect(screen.queryByRole('button', { name: /record payout/i })).not.toBeInTheDocument());
     // The supplier now legitimately appears in History instead of Owed.
-    expect(screen.getAllByText('$140.76').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('¥140.76').length).toBeGreaterThan(0);
   });
 
   it('shows real existing payout history, including a prior payout never triggered in this session', async () => {
@@ -84,7 +84,7 @@ describe('Real Payouts page (mocked fetch, full component tree)', () => {
     await loginAndGoToPayouts();
 
     await waitFor(() => screen.getByText('Ningbo Filtration Ltd.'));
-    expect(screen.getByText('$88.50')).toBeInTheDocument();
+    expect(screen.getByText('¥88.50')).toBeInTheDocument();
     expect(screen.getByText('Prior payout')).toBeInTheDocument();
   });
 
@@ -115,5 +115,14 @@ describe('Real Payouts page (mocked fetch, full component tree)', () => {
 
     await waitFor(() => expect(screen.getByText(/no payout method on file/i)).toBeInTheDocument());
     expect(screen.getByRole('button', { name: /record payout/i })).toBeDisabled();
+  });
+
+  it('CRITICAL: the money a supplier is owed and was paid is in RMB (¥); a payout recorded earlier in dollars keeps its $ and USD (it cannot be converted exactly)', async () => {
+    const owed = [{ supplierId: 's1', supplierName: 'Guangzhou AutoParts Co.', amountOwed: 140.76, currencyCode: 'CNY', eligibleSubOrderCount: 2, adjustmentCount: 0 }];
+    const hist = [{ id: 2, supplierId: 's2', supplierName: 'Ningbo Filtration Ltd.', amount: 500, currencyCode: 'USD', notes: 'Old dollar payout', subOrderCount: 3, createdAt: '2026-05-01T00:00:00.000Z' }, { id: 3, supplierId: 's1', supplierName: 'Guangzhou AutoParts Co.', amount: 1200.5, currencyCode: 'CNY', notes: 'New payout', subOrderCount: 4, createdAt: '2026-06-01T00:00:00.000Z' }];
+    globalThis.fetch = vi.fn((url) => { const u = String(url); const ok = (b) => Promise.resolve({ ok: true, status: 200, json: async () => b });
+      if (u.includes('/auth/login')) return ok({ token: 't', user: OWNER_USER }); if (u.includes('/auth/me')) return ok(OWNER_USER); if (u.endsWith('/payouts/owed')) return ok(owed); if (u.endsWith('/payouts')) return ok(hist); return ok([]); });
+    render(<LeapAdminApp />); await loginAndGoToPayouts();
+    await waitFor(() => expect(screen.getAllByText('¥140.76').length).toBeGreaterThan(0)); expect(screen.getByText('¥1,200.50')).toBeInTheDocument(); expect(screen.getByText('$500.00 USD')).toBeInTheDocument(); expect(screen.queryByText('$140.76')).not.toBeInTheDocument();
   });
 });

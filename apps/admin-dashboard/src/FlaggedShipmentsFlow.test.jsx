@@ -191,22 +191,19 @@ describe('Flagged Shipments — the two verdicts: no fault, or a real fault (moc
     fireEvent.click(screen.getByRole('button', { name: /^real fault…$/i }));
     const dialog = screen.getByRole('dialog', { name: 'Confirm a real fault' });
 
-    const boxes = within(dialog).getAllByRole('checkbox');
-    expect(boxes).toHaveLength(2);
-    expect(boxes.every((b) => b.checked)).toBe(true);
+    // a fault always covers the WHOLE parcel: every item is listed, there is nothing to tick, and confirming is always possible
+    expect(within(dialog).queryAllByRole('checkbox')).toHaveLength(0);
+    expect(within(dialog).getByText('THE WHOLE PARCEL IS COVERED')).toBeInTheDocument();
     expect(within(dialog).getByText(/RIDEX Front Brake Disc × 2/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/MAHLE Oil Filter × 1/)).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: /confirm real fault/i })).toBeEnabled();
 
-    // nothing ticked -> cannot confirm
-    fireEvent.click(boxes[0]); fireEvent.click(boxes[1]);
-    expect(within(dialog).getByRole('button', { name: /confirm real fault/i })).toBeDisabled();
-
-    fireEvent.click(boxes[0]); // only the brake disc is faulty
     fireEvent.change(within(dialog).getByLabelText(/who bears the cost/i), { target: { value: 'leap' } });
     fireEvent.change(within(dialog).getByLabelText(/internal note/i), { target: { value: ' crushed ' } });
     fireEvent.click(within(dialog).getByRole('button', { name: /confirm real fault/i }));
 
     await waitFor(() => expect(screen.getByText(/Real fault confirmed\. The hub has been asked/)).toBeInTheDocument());
-    expect(calls).toEqual([{ method: 'POST', url: expect.stringContaining('/fault-cases'), body: { shipmentId: 335, items: ['p1'], costBearer: 'leap', notes: 'crushed' } }]);
+    expect(calls).toEqual([{ method: 'POST', url: expect.stringContaining('/fault-cases'), body: { shipmentId: 335, items: ['p1', 'p4'], costBearer: 'leap', notes: 'crushed' } }]);   // EVERY item of the parcel
     // the page now shows the case, and the "No fault" / "Real fault" buttons are gone
     expect(await screen.findByText('REAL FAULT')).toBeInTheDocument();
     expect(screen.getByText('Waiting for the supplier')).toBeInTheDocument();
@@ -256,28 +253,19 @@ describe('Flagged Shipments — the two verdicts: no fault, or a real fault (moc
     expect(screen.getByText(/supplier still has no return address on file/)).toBeInTheDocument();
   });
 
-  it('CRITICAL: ticking only SOME items warns, with the amount at stake, that the rest of the parcel is not delivered, refunded or paid for (and ticking every item shows no warning)', async () => {
-    await openFlaggedPage({ flagged: [flag()] });
+  it('CRITICAL: a fault always covers the WHOLE parcel: no tick-boxes, no way to leave an item out, the amount at stake is the whole parcel, and the request carries every item', async () => {
+    const calls = [];
+    await openFlaggedPage({ flagged: [flag()], calls, handlers: [{ method: 'POST', match: /\/fault-cases$/, respond: () => ({ status: 201, body: { faultCase: {} } }) }] });
     fireEvent.click(screen.getByRole('button', { name: /^real fault…$/i }));
     const dialog = screen.getByRole('dialog', { name: 'Confirm a real fault' });
-    const boxes = within(dialog).getAllByRole('checkbox');
-    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();                 // everything ticked: nothing to warn about
-
-    fireEvent.click(boxes[1]);                                                           // the oil filter ($8.50) is no longer ticked
-    const warning = within(dialog).getByRole('alert');
-    expect(warning).toHaveTextContent('Only some items are ticked.');
-    expect(warning).toHaveTextContent('The other item in this parcel ($8.50) are not covered');
-    expect(warning).toHaveTextContent('not delivered to the buyer, not refunded, and the supplier is not paid for them');
-    expect(warning).toHaveTextContent('tick every item');
-
-    fireEvent.click(boxes[1]); fireEvent.click(boxes[0]);                                // now the brake discs ($30.00) are the ones left out
-    expect(within(dialog).getByRole('alert')).toHaveTextContent('($30.00)');
-
-    fireEvent.click(boxes[0]);                                                           // everything ticked again
-    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
-    fireEvent.click(boxes[0]); fireEvent.click(boxes[1]);                                // nothing ticked: the button is off, and no misleading warning
-    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: /confirm real fault/i })).toBeDisabled();
+    expect(within(dialog).queryAllByRole('checkbox')).toHaveLength(0);                   // nothing to tick
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();                 // and so nothing left out to warn about
+    expect(within(dialog).getByText(/A fault always covers the whole parcel/)).toBeInTheDocument();
+    expect(within(dialog).getByText('$30.00')).toBeInTheDocument();                      // the brake discs...
+    expect(within(dialog).getByText('$8.50')).toBeInTheDocument();                       // ...and the oil filter: both are covered
+    fireEvent.click(within(dialog).getByRole('button', { name: /confirm real fault/i }));
+    await waitFor(() => expect(calls.length).toBe(1));
+    expect(calls[0].body.items).toEqual(['p1', 'p4']);
   });
 
   const SUPPLIER_YES = { answered: true, canReplace: true, eta: '2026-08-20', note: null, answeredAt: '2026-07-20T00:00:00Z' };
@@ -373,12 +361,12 @@ describe('Flagged Shipments — the two verdicts: no fault, or a real fault (moc
     supplierPayment: { released: false, originalOrder: 41.2, localShipping: null, releasedAt: null, paidOut: false }, ...over,
   });
   const RELEASE_TITLE = 'Release supplier payment — LP-900555';
-  const LOCAL_SHIPPING_LABEL = 'Local shipping charges (USD) — what the supplier paid to ship to the hub. Optional; leave empty for none. The original order ($41.20 after commission) is added automatically.';
+  const LOCAL_SHIPPING_LABEL = 'Local shipping charges (RMB ¥) — what the supplier paid to ship to the hub. Optional; leave empty for none. The original order (¥41.20) is added automatically.';
 
   it('CRITICAL: when Leap bears the cost and nothing is released yet, the panel says what the supplier is owed and offers "Release supplier payment…"', async () => {
     await openFlaggedPage({ flagged: [flag({ faultCase: replacementCase() })] });
     expect(screen.getByText(/Supplier payment \(Leap bears the cost\):/)).toBeInTheDocument();
-    expect(screen.getByText(/the supplier is owed the original order \(\$41\.20 after commission\) plus their local shipping charges\. Not released yet\./)).toBeInTheDocument();
+    expect(screen.getByText(/the supplier is owed the original order \(¥41\.20\) plus their local shipping charges\. Not released yet\./)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /release supplier payment…/i })).toBeEnabled();
   });
 
@@ -393,7 +381,7 @@ describe('Flagged Shipments — the two verdicts: no fault, or a real fault (moc
     fireEvent.change(fieldIn(panel, 'Note (optional)'), { target: { value: ' Courier in Guangzhou ' } });
     expect(calls).toHaveLength(0); // nothing is sent until saved
     fireEvent.click(within(panel).getByRole('button', { name: /^save$/i }));
-    await waitFor(() => expect(screen.getByText("Released: original order $41.20 + local shipping $12.50. It is included in the supplier's next payout.")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Released: original order ¥41.20 + local shipping ¥12.50. It is included in the supplier's next payout.")).toBeInTheDocument());
     expect(calls).toHaveLength(1);
     expect(calls[0].body).toEqual({ localShippingAmount: 12.5, note: 'Courier in Guangzhou' });
   });
@@ -405,19 +393,19 @@ describe('Flagged Shipments — the two verdicts: no fault, or a real fault (moc
     await openFlaggedPage({ flagged: [flag({ faultCase: replacementCase() })], handlers, calls });
     fireEvent.click(screen.getByRole('button', { name: /release supplier payment…/i }));
     fireEvent.click(within(dialogTitled(RELEASE_TITLE)).getByRole('button', { name: /^save$/i }));
-    await waitFor(() => expect(screen.getByText("Released: original order $41.20. It is included in the supplier's next payout.")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Released: original order ¥41.20. It is included in the supplier's next payout.")).toBeInTheDocument());
     expect(calls[0].body).toEqual({});
   });
 
   it('once released, the panel shows exactly what was released and offers no second release; after a payout it says "already paid out"', async () => {
     await openFlaggedPage({ flagged: [flag({ faultCase: replacementCase({ supplierPayment: { released: true, originalOrder: 41.2, localShipping: 12.5, releasedAt: '2026-07-22T00:00:00Z', paidOut: false } }) })] });
-    expect(screen.getByText(/released: original order \$41\.20 \+ local shipping \$12\.50, included in the supplier's next payout\./)).toBeInTheDocument();
+    expect(screen.getByText(/released: original order ¥41\.20 \+ local shipping ¥12\.50, included in the supplier's next payout\./)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /release supplier payment…/i })).not.toBeInTheDocument();
   });
 
   it('...and after a payout it says so', async () => {
     await openFlaggedPage({ flagged: [flag({ faultCase: replacementCase({ supplierPayment: { released: true, originalOrder: 41.2, localShipping: null, releasedAt: '2026-07-22T00:00:00Z', paidOut: true } }) })] });
-    expect(screen.getByText(/released: original order \$41\.20, already paid out\./)).toBeInTheDocument();
+    expect(screen.getByText(/released: original order ¥41\.20, already paid out\./)).toBeInTheDocument();
   });
 
   it('CRITICAL: when the SUPPLIER is at fault the panel says they are paid once and bear every other cost, and offers no release', async () => {
