@@ -8,6 +8,7 @@ import { getAuthToken, useAuth } from "@/components/AuthProvider";
 import { useT } from "@/components/LangProvider";
 import { Price } from "@/components/Price";
 import { COMPARE_MAX, COMPARE_MIN, compareHref } from "@/lib/compare";
+import useCompareMax from "@/components/useCompareMax";
 import { fetchWishlist, removeFromWishlist, resolveImageUrl, type ProductSummary } from "@/lib/api";
 
 // The wishlist: the parts a buyer saved for later. Out-of-stock ones say that the buyer will be told when they are back (a real back-in-stock notice exists), and 2 to 4 saved
@@ -17,6 +18,8 @@ export default function WishlistPage() {
   const t = useT();
   const [compareMode, setCompareMode] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
+  const max = useCompareMax();      // 2 on a phone, 4 on a tablet or a computer
+  useEffect(() => { setSelected((cur) => (cur.length > max ? cur.slice(0, max) : cur)); }, [max]);      // the screen was turned or resized: keep only what fits
   const [items, setItems] = useState<ProductSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,7 +53,7 @@ export default function WishlistPage() {
           </button>
         )}
       </div>
-      {compareMode && <p className="mt-3 text-sm text-muted">{t("compare_pick_hint")}</p>}
+      {compareMode && <p className="mt-3 text-sm text-muted">{t(max < COMPARE_MAX ? "compare_pick_hint_phone" : "compare_pick_hint")}</p>}
       {error && <p role="alert" className="mt-4 text-sm font-semibold text-[#a12a21]">{error}</p>}
 
       {list.length === 0 ? (
@@ -64,7 +67,7 @@ export default function WishlistPage() {
             <li key={p.id} className="flex items-center gap-4 rounded-[14px] border border-line bg-white p-4">
               {compareMode && (
                 <input type="checkbox" className="size-5 flex-none accent-[#0b3146]" aria-label={p.name} checked={selected.includes(p.id)}
-                  disabled={!selected.includes(p.id) && selected.length >= COMPARE_MAX}
+                  disabled={!selected.includes(p.id) && selected.length >= max}
                   onChange={() => setSelected((cur) => (cur.includes(p.id) ? cur.filter((id) => id !== p.id) : [...cur, p.id]))} />
               )}
               <span className="relative size-16 flex-none overflow-hidden rounded-lg bg-[#e6edf2]">{p.images[0] && <SafeImage src={resolveImageUrl(p.images[0])} alt="" fill sizes="64px" className="object-cover" unoptimized />}</span>
@@ -81,7 +84,7 @@ export default function WishlistPage() {
       {compareMode && (
         <div className="mt-6">
           {selected.length >= COMPARE_MIN ? (
-            <Link href={compareHref(selected)} className="inline-flex min-h-12 items-center rounded-[10px] bg-signal px-6 font-bold text-on-signal hover:bg-signal-dark">{t("compare_selected", { n: selected.length })}</Link>
+            <Link href={compareHref(selected, max)} className="inline-flex min-h-12 items-center rounded-[10px] bg-signal px-6 font-bold text-on-signal hover:bg-signal-dark">{t("compare_selected", { n: selected.length })}</Link>
           ) : (
             <p className="text-sm font-semibold text-navy">{t("compare_need_two")}</p>
           )}

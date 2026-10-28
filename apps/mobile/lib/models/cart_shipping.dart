@@ -48,6 +48,9 @@ class CartShipping {
   /// Shipping is free now (the limit is reached, or a promo code waives it): the "Free shipping" icon over Checkout is shown.
   bool get isFree => enabled && chargedUsd == 0 && (qualifies || waivedByPromo);
 
+  /// The shipping fee the buyer does NOT pay because shipping is free (the limit was reached, or a promo code waives it): what "You saved" adds to the discounts. 0 when a fee is charged, the rule is off, or there was no fee to pay.
+  double get savedUsd => enabled && chargedUsd == 0 && feeUsd > 0 && (qualifies || waivedByPromo) ? feeUsd : 0;
+
   /// How far the goods are towards the limit, from 0 to 1 (the progress bar).
   double get progress {
     if (!enabled || thresholdUsd <= 0) return 0;

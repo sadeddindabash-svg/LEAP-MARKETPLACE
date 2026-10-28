@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
+import '../../models/compare_limit.dart';
 import '../../core/auth_state.dart';
 import '../../core/currency_state.dart';
 import '../../core/language_state.dart';
@@ -148,8 +149,10 @@ class _WishlistScreenState extends State<WishlistScreen> {
                           ? () => setState(() {
                                 if (isSelected) {
                                   _selectedForCompare.remove(p.id);
-                                } else if (_selectedForCompare.length < 4) {
+                                } else if (canSelectForCompare(_selectedForCompare.length)) {
                                   _selectedForCompare.add(p.id);
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr(context, 'compare_limit'))));
                                 }
                               })
                           : () => context.push('/product/${p.id}').then((_) => _reload()),

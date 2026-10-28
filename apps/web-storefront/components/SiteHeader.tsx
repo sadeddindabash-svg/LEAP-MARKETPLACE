@@ -36,9 +36,9 @@ export default async function SiteHeader({ lang }: { lang: Lang }) {
       </div>
       <div className="bg-navy text-white">
         <div className="mx-auto grid max-w-7xl items-center gap-x-6 gap-y-3 px-4 py-3 sm:px-8 lg:grid-cols-[auto_minmax(260px,1fr)_auto]">
-          <Link href="/" aria-label={t(lang, "logo_home_label")} className="flex items-center gap-3 text-[22px] font-bold tracking-tight">
+          <Link href="/" aria-label={t(lang, "logo_home_label")} className={`flex items-center gap-3 text-[22px] font-bold ${lang === "ar" ? "tracking-normal" : "tracking-tight"}`}>
             <Image src="/leap-logo.png" alt="" width={52} height={52} priority className="rounded-full" />
-            <span>Leap<span className="font-medium opacity-85"> Auto Parts</span></span>
+            <span>{t(lang, "brand_lead")}<span className="font-medium"> {t(lang, "brand_rest")}</span></span>
           </Link>
           <HeaderSearch />
           <nav aria-label={t(lang, "account_menu")} className="flex items-center justify-end gap-1">

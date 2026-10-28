@@ -323,6 +323,7 @@ class AppStrings {
     'label_field': {'en': 'Label (e.g. Home, Work)', 'ar': 'التسمية (مثال: المنزل، العمل)'},
     'search_for_address_hint': {'en': 'Search for your address (optional)', 'ar': 'إبحث عن عنوانك (إختياري)'},
     'compare_label': {'en': 'Compare', 'ar': 'مقارنة'},
+    'compare_limit': {'en': 'You can compare 2 items at a time', 'ar': 'يمكنك مقارنة عنصرين في المرة الواحدة'},
     'two_factor_title': {'en': 'Two-factor authentication', 'ar': 'المصادقة الثنائية'},
     'two_factor_description': {
       'en': 'Add an extra layer of security. Once turned on, you\'ll need a code from your authenticator app (like Google Authenticator or Authy) every time you log in, in addition to your password.',

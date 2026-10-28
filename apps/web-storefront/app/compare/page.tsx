@@ -4,7 +4,7 @@ import Link from "@/components/LocLink";
 import { Price } from "@/components/Price";
 import { fetchProductById, resolveImageUrl, type ProductDetail } from "@/lib/api";
 import { pickName, t, type Lang } from "@/lib/i18n";
-import { parseIds } from "@/lib/compare";
+import { COMPARE_MAX_PHONE, parseIds } from "@/lib/compare";
 import { getLang } from "@/lib/lang";
 import { deliveryDateLabel } from "@/lib/delivery";
 
@@ -39,15 +39,17 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
       {found.length < 2 ? (
         <p className="text-lg text-muted">{t(lang, "compare_need_two")} <Link href="/wishlist" className="font-bold text-navy underline underline-offset-4">{t(lang, "wishlist")}</Link></p>
       ) : (
+        <>
+        {found.length > COMPARE_MAX_PHONE && <p data-testid="compare-phone-note" className="mb-3 text-sm text-muted md:hidden">{t(lang, "compare_phone_note", { total: found.length })}</p>}
         <div className="overflow-x-auto rounded-[14px] border border-line bg-white">
-          <table className="w-full min-w-[640px] border-collapse text-start">
+          <table className="w-full table-fixed border-collapse text-start">
             <thead>
               <tr>
-                <td className="w-40 bg-[#eef2f5]" />
-                {found.map((p) => (
-                  <th key={p.id} scope="col" className="min-w-44 border-s border-line p-4 text-start align-top">
+                <td className="w-28 bg-[#eef2f5] md:w-40" />
+                {found.map((p, i) => (
+                  <th key={p.id} scope="col" className={`border-s border-line p-3 text-center align-top md:p-4 ${i >= COMPARE_MAX_PHONE ? "max-md:hidden" : ""}`}>
                     <Link href={`/products/${p.id}`} className="block">
-                      <span className="relative mb-3 block aspect-square w-full max-w-36 overflow-hidden rounded-lg border border-line bg-white">
+                      <span className="relative mx-auto mb-3 block aspect-square w-full max-w-36 overflow-hidden rounded-lg border border-line bg-white">
                         {p.images[0] && <SafeImage src={resolveImageUrl(p.images[0])} alt="" fill sizes="144px" className="object-contain p-1.5" unoptimized />}
                       </span>
                       <span className="line-clamp-2 text-sm font-bold leading-snug hover:underline">{p.name}</span>
@@ -59,13 +61,14 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
             <tbody>
               {rows(lang).map(([label, cell]) => (
                 <tr key={label} className="border-t border-line">
-                  <th scope="row" className="bg-[#eef2f5] p-4 text-start text-[13px] font-bold uppercase tracking-wide text-[#33424d]">{label}</th>
-                  {found.map((p) => <td key={p.id} className="border-s border-line p-4 text-[15px]">{cell(p)}</td>)}
+                  <th scope="row" className="bg-[#eef2f5] p-3 text-start text-[13px] font-bold uppercase tracking-wide text-[#33424d] md:p-4">{label}</th>
+                  {found.map((p, i) => <td key={p.id} className={`border-s border-line p-3 text-[15px] md:p-4 ${i >= COMPARE_MAX_PHONE ? "max-md:hidden" : ""}`}>{cell(p)}</td>)}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        </>
       )}
     </div>
   );
