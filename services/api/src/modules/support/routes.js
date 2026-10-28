@@ -188,11 +188,20 @@ router.patch('/tickets/:id', requireAuth, requireRole('admin'), requirePageAcces
     if (!['open', 'in_progress', 'resolved'].includes(status)) {
       return res.status(400).json({ error: "status must be 'open', 'in_progress', or 'resolved'" });
     }
+    // A ticket's status only moves FORWARD (open -> in_progress -> resolved) and can never be undone. One atomic statement: it moves only a ticket that is still BEHIND the requested status,
+    // so two admins pressing at the same moment cannot undo each other either.
     const { rows } = await db.query(
-      `UPDATE support_tickets SET status = $1, updated_at = now() WHERE id = $2 RETURNING *`,
+      `UPDATE support_tickets SET status = $1, updated_at = now()
+       WHERE id = $2 AND array_position(ARRAY['open', 'in_progress', 'resolved'], status) < array_position(ARRAY['open', 'in_progress', 'resolved'], $1::text)
+       RETURNING *`,
       [status, req.params.id]
     );
-    if (rows.length === 0) return res.status(404).json({ error: 'Ticket not found' });
+    if (rows.length === 0) {
+      const { rows: current } = await db.query('SELECT * FROM support_tickets WHERE id = $1', [req.params.id]);
+      if (current.length === 0) return res.status(404).json({ error: 'Ticket not found' });
+      if (current[0].status === status) return res.json(toTicketSummaryDto(current[0]));      // already there: nothing to do
+      return res.status(409).json({ error: `A ticket's status only moves forward (open, in progress, resolved) and cannot be undone. This ticket is already ${current[0].status}.`, currentStatus: current[0].status });
+    }
     res.json(toTicketSummaryDto(rows[0]));
   } catch (err) {
     next(err);

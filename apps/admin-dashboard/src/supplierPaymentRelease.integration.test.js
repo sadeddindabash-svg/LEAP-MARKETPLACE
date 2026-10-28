@@ -91,7 +91,7 @@ describe.runIf(backendUp)('paying the supplier when LEAP bears the cost of a fau
     expect((await release(999999, {})).status).toBe(404);
   }, 120000);
 
-  it('CRITICAL: releasing records the ORIGINAL order (the supplier's RMB price x quantity) plus the local shipping the admin typed; it is owed straight away, on the admin payout page AND on the supplier\'s own Finance page, and cannot be released twice', async () => {
+  it('CRITICAL: releasing records the ORIGINAL order (the supplier RMB price x quantity) plus the local shipping the admin typed; it is owed straight away, on the admin payout page AND on the supplier\'s own Finance page, and cannot be released twice', async () => {
     const c = await flaggedCase({ costBearer: 'leap' });
     expect((await confirmReplacement(c.caseId)).status).toBe(200);
     const expectedNet = await netOfSubOrder(c.subOrderId);

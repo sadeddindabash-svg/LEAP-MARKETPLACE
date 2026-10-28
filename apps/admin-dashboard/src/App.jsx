@@ -7259,10 +7259,15 @@ function TicketDetailPage({ ticketId, onBack, onSessionExpired }) {
     }
   };
 
+  const [confirmingResolve, setConfirmingResolve] = useState(false);
+  const TICKET_STEPS = ["open", "in_progress", "resolved"];
+  const TICKET_RANK = { open: 0, in_progress: 1, resolved: 2 };      // a status only moves forward: open, then in progress, then resolved
+
   const handleStatusChange = async (status) => {
     try {
       await updateTicketStatus(getStoredToken(), ticketId, status);
       load();
+      setConfirmingResolve(false);
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
       setErrorMessage(err.message);
@@ -7347,18 +7352,39 @@ function TicketDetailPage({ ticketId, onBack, onSessionExpired }) {
           </Card>
           <Card title="Status">
             <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-              {["open", "in_progress", "resolved"].map(s => (
-                <button
-                  key={s}
-                  onClick={() => handleStatusChange(s)}
-                  style={{
-                    ...body, padding: 10, borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", textAlign: "left",
-                    border: ticket.status === s ? `2px solid ${C.signal}` : `1px solid ${C.line}`,
-                    background: ticket.status === s ? "#FDF1EB" : "#fff",
-                  }}
-                >{s === "open" ? "Open" : s === "in_progress" ? "In progress" : "Resolved"}</button>
-              ))}
+              {TICKET_STEPS.map(s => {
+                const current = ticket.status === s;
+                const behind = TICKET_RANK[s] < TICKET_RANK[ticket.status];
+                const canPress = TICKET_RANK[s] > TICKET_RANK[ticket.status];
+                return (
+                  <button
+                    key={s}
+                    data-testid={`ticket-status-${s}`}
+                    disabled={!canPress}
+                    aria-current={current ? "step" : undefined}
+                    title={behind ? "A ticket's status only moves forward and can't be undone" : undefined}
+                    onClick={() => (s === "resolved" ? setConfirmingResolve(true) : handleStatusChange(s))}
+                    style={{
+                      ...body, padding: 10, borderRadius: 8, fontSize: 12.5, fontWeight: 700, textAlign: "left", cursor: canPress ? "pointer" : "not-allowed",
+                      border: current ? `2px solid ${C.signal}` : behind ? `1px dashed ${C.line}` : `1px solid ${C.line}`,
+                      background: current ? "#FDF1EB" : behind ? "#F1F3F5" : "#fff",
+                      color: behind ? C.muted : C.ink, opacity: behind ? 0.7 : 1,
+                    }}
+                  >{s === "open" ? "Open" : s === "in_progress" ? "In progress" : "Resolved"}</button>
+                );
+              })}
+              {confirmingResolve && (
+                <div data-testid="ticket-resolve-confirm" role="alertdialog" style={{ ...body, border: `1px solid ${C.line}`, borderRadius: 8, padding: 10, background: C.redBg }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: C.ink }}>Resolved can't be undone.</div>
+                  <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Mark this ticket as resolved?</div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                    <button data-testid="ticket-resolve-yes" onClick={() => handleStatusChange("resolved")} style={{ ...body, padding: "7px 12px", borderRadius: 8, border: "none", background: C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Yes, resolve</button>
+                    <button data-testid="ticket-resolve-no" onClick={() => setConfirmingResolve(false)} style={{ ...body, padding: "7px 12px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+                  </div>
+                </div>
+              )}
             </div>
+            <div style={{ ...body, fontSize: 11.5, color: C.muted, padding: "0 12px 10px" }}>Status only moves forward and can't be undone.</div>
           </Card>
         </div>
       </div>
