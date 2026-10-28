@@ -1,6 +1,6 @@
 import React from "react";
 import { C, body } from "./theme";
-import { summarizeFitment, formatRanges } from "./fitmentSummary";
+import { summarizeFitment, formatRanges } from "./fitmentSummaryRules";
 
 // The top of the "Vehicle fitment" card: what the part fits, one line per model with its years, and the totals; or, with no fitment at all, that buyers see the part as universal (fits every vehicle).
 export default function FitmentSummary({ fitment }) {

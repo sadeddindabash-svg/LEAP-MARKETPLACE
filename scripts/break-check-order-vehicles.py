@@ -844,9 +844,9 @@ MF_WEB = [
  ('the Arabic link is in English', 'apps/web-storefront/lib/i18n.ts', '  fits_show_fewer: "عرض أقل",', '  fits_show_fewer: "Show fewer",'),
 ]
 MF_ADMIN = [
- ('years in a row are not joined in the admin summary', 'apps/admin-dashboard/src/fitmentSummary.js', 'if (last && y === last[1] + 1) last[1] = y; else ranges.push([y, y]);', 'ranges.push([y, y]);'),
- ('the admin counts engine variants as vehicles', 'apps/admin-dashboard/src/fitmentSummary.js', 'const vehicles = new Set(rows.map((r) => `${r.generationId}|${r.year}`)).size;', 'const vehicles = rows.length;'),
- ('the admin does not read the name from an old label', 'apps/admin-dashboard/src/fitmentSummary.js', 'return m ? m[1] : null;', 'return null;'),
+ ('years in a row are not joined in the admin summary', 'apps/admin-dashboard/src/fitmentSummaryRules.js', 'if (last && y === last[1] + 1) last[1] = y; else ranges.push([y, y]);', 'ranges.push([y, y]);'),
+ ('the admin counts engine variants as vehicles', 'apps/admin-dashboard/src/fitmentSummaryRules.js', 'const vehicles = new Set(rows.map((r) => `${r.generationId}|${r.year}`)).size;', 'const vehicles = rows.length;'),
+ ('the admin does not read the name from an old label', 'apps/admin-dashboard/src/fitmentSummaryRules.js', 'return m ? m[1] : null;', 'return null;'),
  ('the admin says nothing about a part with no fitment', 'apps/admin-dashboard/src/FitmentSummary.jsx', 'No vehicle fitment entered: buyers see this part as <b>universal (fits all vehicles)</b>.', ''),
  ('the admin summary is not shown on the card', 'apps/admin-dashboard/src/App.jsx', '          <FitmentSummary fitment={fitment} />\n', ''),
  ('a newly added fitment row has no model name', 'apps/admin-dashboard/src/App.jsx', '      brandName: brand?.name,\n      modelName: model?.name,\n', ''),
@@ -924,7 +924,7 @@ def run():
     if mode == "frapp": return subprocess.run(["/tmp/dartsdk/x/bin/dart", "--packages=/tmp/darttest/.dart_tool/package_config.json", "/tmp/darttest/run3.dart"], cwd=f"{ROOT}/apps/mobile", capture_output=True, text=True, timeout=120).returncode   # needs the stand-in test library in /tmp/darttest
     if mode == "mfserver": return subprocess.run(["node", "--test", "--test-concurrency=1", "test/productFitGroups.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "mfweb": return subprocess.run(["npx", "vitest", "run", "lib/fitGroups.test.ts", "components/FitsRow.test.tsx", "components/ProductDetailsFits.test.tsx", "app/productFits.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
-    if mode == "mfadmin": return subprocess.run(["npx", "vitest", "run", "src/fitmentSummary.test.js", "src/FitmentSummary.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
+    if mode == "mfadmin": return subprocess.run(["npx", "vitest", "run", "src/fitmentSummaryRules.test.js", "src/FitmentSummary.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
     if mode == "gpapp": return subprocess.run(["/tmp/dartsdk/x/bin/dart", "--packages=/tmp/darttest/.dart_tool/package_config.json", "/tmp/darttest/run4.dart"], cwd=f"{ROOT}/apps/mobile", capture_output=True, text=True, timeout=120).returncode   # needs the stand-in test library in /tmp/darttest
     if mode == "afapp": return subprocess.run(["/tmp/dartsdk/x/bin/dart", "--packages=/tmp/darttest/.dart_tool/package_config.json", "/tmp/darttest/run5.dart"], cwd=f"{ROOT}/apps/mobile", capture_output=True, text=True, timeout=120).returncode   # needs the stand-in test library in /tmp/darttest
     if mode == "ppserver": return subprocess.run(["node", "--test", "test/homeText.test.js", "test/productPage.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode

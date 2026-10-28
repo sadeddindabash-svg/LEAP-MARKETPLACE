@@ -22,6 +22,14 @@ node scripts\patch-multi-fit.js --write
 It changes 7 files (server: `orderVehicles\productCars.js`, `catalog\routes.js`; website: `lib\api.ts`, `lib\i18n.ts`, `components\ProductDetails.tsx`, `app\products\[id]\page.tsx`; admin: `src\App.jsx`), saves each as `<file>.before-multi-fit`, says "already" if run twice, and changes NOTHING if a line it needs is missing.
 **Restart the backend** (the server part), then the storefront reloads by itself. A product page is kept for up to a minute, so a change shows within about a minute.
 
+## If you applied the FIRST version of this package (the admin portal showed nothing and `npm run build` said "default is not exported by src/FitmentSummary.js")
+Windows treats `fitmentSummary.js` and `FitmentSummary.jsx` as the same name, so the first version broke on Windows. The rules file is now `fitmentSummaryRules.js` (and its test `fitmentSummaryRules.test.js`). Unzip this version over the project, then delete the two old files:
+```
+cd D:\LEAP-MARKETPLACE\apps\admin-dashboard\src
+Remove-Item fitmentSummary.js, fitmentSummary.test.js
+```
+`App.jsx` needs no change. Then check with `npm run build`.
+
 ## What to look at
 1. A product that fits several vehicles: the card has one **Fits** row, the link opens the full list, and the chip at the top matches.
 2. A product with no fitment: "Universal: fits all vehicles".
@@ -29,6 +37,6 @@ It changes 7 files (server: `orderVehicles\productCars.js`, `catalog\routes.js`;
 4. Switch the website to Arabic and look at a phone.
 
 ## Tests
-Server: `node --test --test-concurrency=1 test/productFitGroups.test.js` (in `services\api`). Website: `npx vitest run lib/fitGroups.test.ts components/FitsRow.test.tsx components/ProductDetailsFits.test.tsx app/productFits.test.tsx`. Admin: `npx vitest run src/fitmentSummary.test.js src/FitmentSummary.test.jsx`.
+Server: `node --test --test-concurrency=1 test/productFitGroups.test.js` (in `services\api`). Website: `npx vitest run lib/fitGroups.test.ts components/FitsRow.test.tsx components/ProductDetailsFits.test.tsx app/productFits.test.tsx`. Admin: `npx vitest run src/fitmentSummaryRules.test.js src/FitmentSummary.test.jsx`.
 `scripts/break-check-order-vehicles.py mfserver | mfweb | mfadmin` break the code on purpose (10, 16 and 6 ways).
 The Arabic wording (تناسب, عامة: تناسب جميع المركبات, +N موديلات أخرى, ...) should be read by a native speaker.
