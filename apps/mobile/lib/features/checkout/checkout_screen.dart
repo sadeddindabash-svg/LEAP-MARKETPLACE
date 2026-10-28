@@ -954,13 +954,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   ),
                 ],
                 ShippingFeeRow(shipping: cart.shipping, padding: const EdgeInsets.only(top: 6)),
-                if (cart.totalSaved + cart.appliedDiscountUsd > 0) ...[
+                if (cart.totalSaved + cart.appliedDiscountUsd + cart.shippingSaved > 0) ...[
                   const SizedBox(height: 6),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(tr(context, 'you_saved'), style: TextStyle(color: LeapPalette.of(context).gauge, fontSize: 12.5, fontWeight: FontWeight.w600)),
-                      Text(formatPrice(context, cart.totalSaved + cart.appliedDiscountUsd), style: TextStyle(color: LeapPalette.of(context).gauge, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(tr(context, 'you_saved'), style: TextStyle(color: LeapPalette.of(context).gauge, fontSize: 12.5, fontWeight: FontWeight.w600)),
+                          if (cart.shippingSaved > 0)
+                            Text(
+                              cart.totalSaved + cart.appliedDiscountUsd > 0
+                                  ? tr(context, 'saved_breakdown').replaceAll('{discount}', formatPrice(context, cart.totalSaved + cart.appliedDiscountUsd)).replaceAll('{shipping}', formatPrice(context, cart.shippingSaved))
+                                  : tr(context, 'saved_free_shipping'),
+                              style: TextStyle(color: LeapPalette.of(context).muted, fontSize: 11.5),
+                            ),
+                        ],
+                      ),
+                      Text(formatPrice(context, cart.totalSaved + cart.appliedDiscountUsd + cart.shippingSaved), style: TextStyle(color: LeapPalette.of(context).gauge, fontSize: 12.5, fontWeight: FontWeight.w700)),
                     ],
                   ),
                 ],

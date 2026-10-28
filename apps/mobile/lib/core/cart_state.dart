@@ -98,6 +98,8 @@ class CartState extends ChangeNotifier {
 
   double get total => _items.fold(0.0, (sum, i) => sum + i.lineTotal);
   CartShipping get shipping => _shipping;
+  // The shipping fee the buyer does NOT pay because shipping is free: "You saved" counts it.
+  double get shippingSaved => _shipping.savedUsd;
   // The goods plus the shipping fee of a small order (0 when shipping is free or the rule is off). Any promo or loyalty discount is applied at checkout, as before.
   double get totalWithShipping => _shipping.totalWith(total);
   // Confirmed with the person: sum of every real item's own

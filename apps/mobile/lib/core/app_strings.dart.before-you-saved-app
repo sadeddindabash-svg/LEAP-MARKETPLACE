@@ -1,0 +1,623 @@
+import 'package:flutter/widgets.dart';
+import 'package:provider/provider.dart';
+import 'language_state.dart';
+
+/// Full app-wide bilingual string lookup, extending the product page's
+/// localization (see LanguageState's header comment on the original,
+/// narrower scope) to every screen's static UI chrome — nav titles,
+/// buttons, empty/error states, form labels.
+///
+/// DELIBERATE ARCHITECTURE CHOICE: hand-written lookup rather than
+/// Flutter's official `intl`/.arb + `flutter gen-l10n` pipeline. That's
+/// the more "correct" production approach, but `flutter gen-l10n` needs
+/// the real Flutter SDK to generate the delegate class — unavailable in
+/// this sandbox (see the mobile README's "Status" section on why this
+/// codebase's compile/run verification happens outside this
+/// environment). This lookup is 100% real, hand-maintained Dart —
+/// nothing here is a stub — just a pragmatic substitute for tooling this
+/// environment can't run, matching the same reasoning behind other
+/// pragmatic choices in this project (e.g. the pricing engine's manual
+/// FX rate instead of a live provider).
+///
+/// Usage: `tr(context, 'key')`. A missing key returns the key itself
+/// (visibly wrong, not silently blank) so a missed translation is easy
+/// to spot rather than easy to miss.
+class AppStrings {
+  AppStrings._();
+
+  static const Map<String, Map<String, String>> _strings = {
+    // ---- Home ----
+    'search_hint': {'en': 'Search part, brand, or number', 'ar': 'ابحث عن قطعة أو ماركة أو رقم'},
+    'shopping_for': {'en': 'Shopping for', 'ar': 'التسوق لسيارة'},
+    'shop_by_category': {'en': 'Shop by category', 'ar': 'تسوق حسب الفئة'},
+    'cat_brake': {'en': 'Brake System', 'ar': 'نظام الفرامل'},
+    'cat_engine': {'en': 'Engine', 'ar': 'المحرك'},
+    'cat_electrical': {'en': 'Electrical', 'ar': 'كهرباء'},
+    'cat_filters': {'en': 'Filters', 'ar': 'الفلاتر'},
+    'cat_suspension': {'en': 'Suspension', 'ar': 'نظام التعليق'},
+    'cat_lighting': {'en': 'Lighting', 'ar': 'الإضاءة'},
+
+    // ---- Bottom nav (RootShell) ----
+    'nav_home': {'en': 'Home', 'ar': 'الرئيسية'},
+    'delivery_proof_title': {'en': 'Proof of delivery', 'ar': 'إثبات التسليم'},
+    'english_address_title': {'en': 'Check your address in English', 'ar': 'راجع عنوانك بالإنجليزية'},
+    'english_address_intro': {'en': 'Our inspection hub reads your address in English. We translated it automatically, so please check that it is right.', 'ar': 'يقرأ مركز الفحص لدينا عنوانك بالإنجليزية. ترجمناه تلقائيًا، لذا يرجى التأكد من صحته.'},
+    'english_address_ok': {'en': 'It is correct', 'ar': 'العنوان صحيح'},
+    'english_address_name': {'en': 'Recipient name', 'ar': 'اسم المستلم'},
+    'english_address_country': {'en': 'Country', 'ar': 'الدولة'},
+    'english_address_city': {'en': 'City', 'ar': 'المدينة'},
+    'english_address_street': {'en': 'Street address', 'ar': 'عنوان الشارع'},
+    'english_address_state': {'en': 'State / region (optional)', 'ar': 'الولاية / المنطقة (اختياري)'},
+    'english_address_required': {'en': 'Please fill in the name, country, city and street.', 'ar': 'يرجى تعبئة الاسم والدولة والمدينة والشارع.'},
+    'english_address_arabic_error': {'en': 'Please write the address in English letters.', 'ar': 'يرجى كتابة العنوان بأحرف إنجليزية.'},
+    'english_address_thanks': {'en': 'Thank you, your address is confirmed.', 'ar': 'شكرًا لك، تم تأكيد عنوانك.'},
+    'track_package_title': {'en': 'Track your package', 'ar': 'تتبع الطلب'},
+    'tracking_login_required': {'en': 'Please log in to view tracking.', 'ar': 'يرجى تسجيل الدخول لعرض التتبع.'},
+    'tracking_load_failed': {'en': 'Could not load tracking.', 'ar': 'تعذر تحميل بيانات التتبع.'},
+    'tracking_no_shipments': {'en': 'No shipments found for this order.', 'ar': 'لا توجد شحنات لهذا الطلب.'},
+    'tracking_delayed': {'en': 'This shipment is taking longer than expected. We\'re keeping an eye on it.', 'ar': 'تستغرق هذه الشحنة وقتًا أطول من المتوقع. نحن نتابعها.'},
+    'tracking_number_label': {'en': 'Tracking number', 'ar': 'رقم التتبع'},
+    'tracking_no_updates': {'en': 'No tracking updates yet — check back once your order ships.', 'ar': 'لا توجد تحديثات تتبع بعد — عد بعد شحن طلبك.'},
+    'address_prompt_title': {'en': 'Add your delivery address', 'ar': 'أضف عنوان التسليم'},
+    'address_confirm_title': {'en': 'Is this your delivery address?', 'ar': 'هل هذا عنوان التسليم الخاص بك؟'},
+    'address_found_hint': {'en': 'We found this from your location — check it over and adjust anything before confirming.', 'ar': 'وجدنا هذا العنوان من موقعك — راجعه وعدّل ما يلزم قبل التأكيد.'},
+    'address_undetected_hint': {'en': 'We couldn\'t detect your location. Fill this in so we know where to ship your order.', 'ar': 'تعذر تحديد موقعك. املأ هذه البيانات لنعرف أين نشحن طلبك.'},
+    'address_add_later': {'en': 'Add later', 'ar': 'أضف لاحقًا'},
+    'confirm_label': {'en': 'Confirm', 'ar': 'تأكيد'},
+    'save_address': {'en': 'Save address', 'ar': 'حفظ العنوان'},
+    'fill_every_field': {'en': 'Please fill in every field.', 'ar': 'يرجى تعبئة جميع الحقول.'},
+    'address_fallback_label': {'en': 'Address', 'ar': 'عنوان'},
+    'order_placed_with_id': {'en': 'Order {id} placed successfully', 'ar': 'تم تقديم الطلب {id} بنجاح'},
+    'two_factor_login_prompt': {'en': 'Enter the 6-digit code from your authenticator app.', 'ar': 'أدخل الرمز المكوّن من 6 أرقام من تطبيق المصادقة.'},
+    'verify_label': {'en': 'Verify', 'ar': 'تحقق'},
+    'close_label': {'en': 'Close', 'ar': 'إغلاق'},
+    'nav_shop': {'en': 'Shop', 'ar': 'تسوق'},
+    'nav_cart': {'en': 'Cart', 'ar': 'السلة'},
+    'nav_orders': {'en': 'Orders', 'ar': 'الطلبات'},
+    'nav_account': {'en': 'Account', 'ar': 'الحساب'},
+
+    // ---- Order/shipment statuses -- shown wherever a raw status string
+    // from the backend is displayed (orders list, order detail). The
+    // backend's actual values (to_ship, shipped, delivered, etc.) are
+    // stable identifiers, not display text -- these map each one to a
+    // real bilingual label rather than showing the raw snake_case value.
+    'status_to_ship': {'en': 'To ship', 'ar': 'قيد الشحن'},
+    'status_pending': {'en': 'Pending', 'ar': 'قيد الانتظار'},
+    'status_preparing': {'en': 'Preparing', 'ar': 'قيد التحضير'},
+    'status_shipped': {'en': 'Shipped', 'ar': 'تم الشحن'},
+    'status_delivered': {'en': 'Delivered', 'ar': 'تم التسليم'},
+    'status_dispute': {'en': 'Dispute', 'ar': 'نزاع'},
+    'status_cancelled': {'en': 'Cancelled', 'ar': 'ملغى'},
+    'status_open': {'en': 'Open', 'ar': 'مفتوحة'},
+    'status_in_progress': {'en': 'In progress', 'ar': 'قيد التنفيذ'},
+    'status_resolved': {'en': 'Resolved', 'ar': 'تم الحل'},
+    'status_closed': {'en': 'Closed', 'ar': 'مغلقة'},
+
+    // ---- Return case statuses (return_cases.status — see
+    // services/api/src/modules/returns/routes.js's PATCH /:id for the
+    // full real set: awaiting, in_progress, approved, rejected,
+    // completed. 'in_progress' reuses the key already defined above for
+    // support tickets, same real status word either way.)
+    'status_awaiting': {'en': 'Awaiting review', 'ar': 'قيد المراجعة'},
+    'status_approved': {'en': 'Approved', 'ar': 'موافق عليه'},
+    'status_rejected': {'en': 'Rejected', 'ar': 'مرفوض'},
+    'status_completed': {'en': 'Completed', 'ar': 'مكتمل'},
+
+    'status_returns': {'en': 'Returns', 'ar': 'المرتجعات'},
+    'tab_all': {'en': 'All', 'ar': 'الكل'},
+
+    // ---- Category ----
+    'could_not_load_products': {'en': 'Could not load products.', 'ar': 'تعذر تحميل المنتجات.'},
+    'no_products_in_category': {'en': 'No products in this category yet.', 'ar': 'لا توجد منتجات في هذه الفئة بعد.'},
+    'all_categories': {'en': 'All categories', 'ar': 'جميع الفئات'},
+    'no_parts_in_category': {'en': 'No parts in this category yet.', 'ar': 'لا توجد قطع في هذه الفئة بعد.'},
+
+    // ---- Home feed filter + product card (new) ----
+    'filter_newest': {'en': 'All products', 'ar': 'كل المنتجات'},
+    'filter_my_car': {'en': 'My Car', 'ar': 'سيارتي'},
+    'in_stock': {'en': 'In stock', 'ar': 'متوفر'},
+    'confirmed_fit': {'en': 'CONFIRMED FIT', 'ar': 'توافق مؤكد'},
+    'no_reviews_yet': {'en': 'No reviews yet', 'ar': 'لا توجد تقييمات بعد'},
+
+    // ---- Notifications (new) ----
+    'notifications': {'en': 'Notifications', 'ar': 'الإشعارات'},
+    'no_notifications_yet': {'en': "You're all caught up.", 'ar': 'أنت على اطلاع بكل شيء.'},
+    'mark_all_read': {'en': 'Mark all read', 'ar': 'وضع علامة على الكل كمقروء'},
+
+    // ---- Promo codes at checkout (new) ----
+    'promo_code_field': {'en': 'Promo code', 'ar': 'رمز الخصم'},
+    'apply': {'en': 'Apply', 'ar': 'تطبيق'},
+    'remove': {'en': 'Remove', 'ar': 'إزالة'},
+    'promo_applied': {'en': 'Applied!', 'ar': 'تم التطبيق!'},
+    'you_saved': {'en': 'You saved', 'ar': 'وفّرت'},
+    'price_updated_since_added': {'en': 'Price updated since you added this.', 'ar': 'تم تحديث السعر منذ إضافة هذا العنصر.'},
+    'subtotal': {'en': 'Subtotal', 'ar': 'المجموع الفرعي'},
+    'total_before_discount': {'en': 'Total before discount', 'ar': 'الإجمالي قبل الخصم'},
+    'estimated_weight': {'en': 'Estimated weight', 'ar': 'الوزن التقديري'},
+    'kg_unit': {'en': 'kg', 'ar': 'كغم'},
+    'discount': {'en': 'Discount', 'ar': 'الخصم'},
+
+    // ---- Loyalty tiers (new) ----
+    'loyalty_membership_word': {'en': 'Member', 'ar': 'العضوية'},
+    'loyalty_off_every_order': {'en': 'off every order', 'ar': 'خصم على كل طلب'},
+    'loyalty_keep_spending': {'en': 'Keep spending to unlock a discount', 'ar': 'واصل الشراء لفتح خصم'},
+    'loyalty_spent': {'en': 'spent', 'ar': 'تم إنفاقه'},
+    'loyalty_to_next_tier': {'en': 'to', 'ar': 'حتى'},
+    'loyalty_my_tier_title': {'en': 'My tier', 'ar': 'عضويتي'},
+    'loyalty_spend_more': {'en': 'Spend more to unlock a discount', 'ar': 'أنفق أكثر لفتح خصم'},
+    'loyalty_lifetime_spend': {'en': 'Lifetime spend', 'ar': 'أجمالي المشتريات'},
+    'loyalty_all_tiers': {'en': 'ALL TIERS', 'ar': 'جميع المستويات'},
+    'loyalty_off_suffix': {'en': 'off', 'ar': 'خصم'},
+    'loyalty_unlocked_at': {'en': 'Unlocked at', 'ar': 'يُفتح عند'},
+    'loyalty_beats_promo': {'en': 'Your loyalty discount', 'ar': 'خصم الولاء الخاص بك'},
+    'loyalty_beats_promo_suffix': {'en': 'already beats this code — applied automatically.', 'ar': 'أفضل بالفعل من هذا الرمز — تم تطبيقه تلقائيًا.'},
+    'loyalty_discount_label': {'en': 'Loyalty discount', 'ar': 'خصم الولاء'},
+
+    // ---- Referrals (new) ----
+    'referrals': {'en': 'Refer a friend', 'ar': 'ادعُ صديقًا'},
+    'your_referral_code': {'en': 'Your referral code', 'ar': 'رمز الإحالة الخاص بك'},
+    'referral_explainer': {'en': 'Share your code. When someone you refer places their first order, you get a real 10% off coupon.', 'ar': 'شارك رمزك. عندما يقوم شخص أحلته بإجراء طلبه الأول، تحصل على كوبون خصم حقيقي بنسبة 10%.'},
+    'people_referred': {'en': 'People referred', 'ar': 'الأشخاص المُحالون'},
+    'rewards_earned': {'en': 'Rewards earned', 'ar': 'المكافآت المكتسبة'},
+    'referral_cap_reached': {'en': "You've reached the maximum number of referral rewards.", 'ar': 'لقد وصلت إلى الحد الأقصى لمكافآت الإحالة.'},
+    'copy_code': {'en': 'Copy code', 'ar': 'نسخ الرمز'},
+    'share': {'en': 'Share', 'ar': 'مشاركة'},
+    'referral_share_text': {
+      'en': 'Use my code to get a discount on your first order at Leap: {url}',
+      'ar': 'استخدم رمزي للحصول على خصم على طلبك الأول في Leap: {url}',
+    },
+    'code_copied': {'en': 'Code copied!', 'ar': 'تم نسخ الرمز!'},
+    'referral_code_optional': {'en': 'Referral code (optional)', 'ar': 'رمز الإحالة (اختياري)'},
+    'out_of_stock': {'en': 'Out of stock', 'ar': 'غير متوفر'},
+    'add_a_vehicle_for_my_car_filter': {'en': 'Add a vehicle to see products for your car', 'ar': 'أضف مركبة لرؤية المنتجات المناسبة لسيارتك'},
+    'no_products_yet': {'en': 'No products yet.', 'ar': 'لا توجد منتجات بعد.'},
+    'added_to_cart': {'en': 'Added to cart', 'ar': 'أضيف إلى السلة'},
+
+    // ---- Shared ----
+    'log_in': {'en': 'Log in', 'ar': 'تسجيل الدخول'},
+    'sign_up': {'en': 'Sign up', 'ar': 'إنشاء حساب'},
+    'retry': {'en': 'Retry', 'ar': 'إعادة المحاولة'},
+    'something_went_wrong': {'en': 'Something went wrong. Please try again.', 'ar': 'حدث خطأ ما. يرجى المحاولة مرة أخرى.'},
+    'please_fill_both_fields': {'en': 'Please fill in both fields.', 'ar': 'يرجى تعبئة كلا الحقلين.'},
+
+    // ---- Garage ----
+    'my_garage': {'en': 'My Garage', 'ar': 'مركبتي'},
+    'my_part_requests': {'en': 'My Requests', 'ar': 'طلبات القطع'},
+    'vehicles_stat': {'en': 'Vehicles', 'ar': 'المركبات'},
+    'orders_stat': {'en': 'Orders', 'ar': 'الطلبات'},
+    'wishlist_stat': {'en': 'Wishlist', 'ar': 'المفضلة'},
+    'account_settings_header': {'en': 'Account Settings', 'ar': 'إعدادات الحساب'},
+    'garage_login_prompt': {'en': 'Log in to save vehicles and get fitment-confirmed parts.', 'ar': 'سجّل الدخول لحفظ مركباتك والحصول على قطع مؤكدة التوافق.'},
+    'could_not_load_garage': {'en': 'Could not load your garage:', 'ar': 'تعذر تحميل مركباتك:'},
+    'garage_no_version': {'en': 'No version chosen', 'ar': 'لم تُحدَّد الفئة'},
+    'garage_choose_version': {'en': 'Choose its version', 'ar': 'اختر فئة هذه المركبة'},
+    'choose_version_title': {'en': 'Choose the version', 'ar': 'اختر الفئة'},
+    'add_a_vehicle': {'en': 'Add a vehicle', 'ar': 'أضف مركبة'},
+    'garage_limit_note': {'en': 'You can save up to 5 vehicles. Remove one to add another.', 'ar': 'يمكنك حفظ 5 مركبات كحد أقصى. احذف إحداها لإضافة مركبة أخرى.'},
+
+    // ---- Add vehicle ----
+    'choose_a_make': {'en': 'Choose a make', 'ar': 'اختر الماركة'},
+    'could_not_load_makes': {'en': 'Could not load makes:', 'ar': 'تعذر تحميل الماركات:'},
+    'could_not_load_vehicles': {'en': 'Could not load vehicles:', 'ar': 'تعذر تحميل المركبات:'},
+    'no_vehicles_for_make': {'en': 'No vehicles found for this make.', 'ar': 'لم يتم العثور على مركبات لهذه الماركة.'},
+
+    // ---- Cart ----
+    'basket': {'en': 'Basket', 'ar': 'السلة'},
+    'total': {'en': 'Total', 'ar': 'الإجمالي'},
+    'checkout': {'en': 'Checkout', 'ar': 'إتمام الشراء'},
+    'basket_empty': {'en': 'Your basket is empty. Browse categories to add fitment-confirmed parts.', 'ar': 'سلتك فارغة. تصفح الفئات لإضافة قطع مؤكدة التوافق.'},
+    'browse_products': {'en': 'Browse products', 'ar': 'تصفح المنتجات'},
+    'cart_at_stock_limit': {'en': "You've reached the available stock", 'ar': 'لقد وصلت إلى الحد الأقصى من المخزون المتاح'},
+    'cart_removed_from_cart': {'en': 'removed from cart', 'ar': 'تمت إزالته من السلة'},
+    'undo': {'en': 'Undo', 'ar': 'تراجع'},
+    'cart_only': {'en': 'Only', 'ar': 'فقط'},
+    'cart_left_in_stock': {'en': 'left in stock', 'ar': 'متبقٍ في المخزون'},
+    'ships_from': {'en': 'Ships from', 'ar': 'يُشحن من'},
+
+    // ---- Checkout ----
+    'ordering_as': {'en': 'Ordering as', 'ar': 'الطلب باسم'},
+    'guest_checkout_note': {'en': "Checking out as a guest — we'll email your confirmation. You can create an account after payment to track this order.", 'ar': 'الدفع كضيف — سنرسل التأكيد عبر البريد الإلكتروني. يمكنك إنشاء حساب بعد الدفع لتتبع هذا الطلب.'},
+    'email_for_confirmation': {'en': 'Email for order confirmation', 'ar': 'البريد الإلكتروني لتأكيد الطلب'},
+    'have_account_login_instead': {'en': 'Have an account? Log in instead', 'ar': 'لديك حساب؟ سجّل الدخول بدلاً من ذلك'},
+    'payment_method': {'en': 'Payment method', 'ar': 'طريقة الدفع'},
+    'wait_for_all_shipments_title': {'en': 'Wait and ship together', 'ar': 'الانتظار والشحن معًا'},
+    'wait_for_all_shipments_subtitle': {'en': 'Get all items in one delivery instead of as each supplier ships.', 'ar': 'استلم جميع القطع في شحنة واحدة بدلاً من شحنها فور توفرها من كل مورد.'},
+    'delivery_address': {'en': 'Delivery address', 'ar': 'عنوان الشحن'},
+    'item_count_label': {'en': 'item(s)', 'ar': 'عنصر'},
+    'add_new_address_button': {'en': 'Add a new address', 'ar': 'إضافة عنوان جديد'},
+    'no_saved_addresses': {'en': 'No saved addresses yet.', 'ar': 'لا توجد عناوين محفوظة بعد.'},
+    'no_payment_methods_for_country': {'en': 'No payment methods are available for this address yet.', 'ar': 'لا توجد طرق دفع متاحة لهذا العنوان بعد.'},
+    'order_summary': {'en': 'Order summary', 'ar': 'ملخص الطلب'},
+    'shipping_fees': {'en': 'Shipping fees', 'ar': 'رسوم الشحن'},
+    'shipping_free': {'en': 'Free', 'ar': 'مجاني'},
+    'shipping_add_more': {'en': 'Add {amount} more for free shipping', 'ar': 'أضف {amount} للحصول على شحن مجاني'},
+    'shipping_reached': {'en': 'You\'ve reached {amount}: shipping is free', 'ar': 'وصلت إلى {amount}: الشحن مجاني'},
+    'shipping_promo_free': {'en': 'Free shipping with your promo code', 'ar': 'شحن مجاني مع رمز الخصم'},
+    'shipping_free_badge': {'en': 'Free shipping', 'ar': 'شحن مجاني'},
+    'place_order': {'en': 'Place order', 'ar': 'إتمام الطلب'},
+    'please_enter_email_order': {'en': 'Please enter an email for your order confirmation.', 'ar': 'يرجى إدخال بريد إلكتروني لتأكيد طلبك.'},
+    'please_enter_valid_email': {'en': "That doesn't look like a valid email address.", 'ar': 'هذا لا يبدو كعنوان بريد إلكتروني صالح.'},
+    'change_email': {'en': 'Change email', 'ar': 'تغيير البريد الإلكتروني'},
+    'current_email_label': {'en': 'Current email:', 'ar': 'البريد الإلكتروني الحالي:'},
+    'new_email_label': {'en': 'New email', 'ar': 'البريد الإلكتروني الجديد'},
+    'current_password_label': {'en': 'Current password', 'ar': 'كلمة المرور الحالية'},
+    'save_changes': {'en': 'Save changes', 'ar': 'حفظ التغييرات'},
+    'email_changed_success': {'en': 'Your email has been updated.', 'ar': 'تم تحديث بريدك الإلكتروني.'},
+    'please_fill_all_fields': {'en': 'Please fill in all fields.', 'ar': 'يرجى ملء جميع الحقول.'},
+    'please_complete_address': {'en': 'Please fill in every field of your delivery address.', 'ar': 'يرجى تعبئة جميع حقول عنوان التسليم.'},
+    'please_select_address': {'en': 'Please select a delivery address.', 'ar': 'يرجى اختيار عنوان التسليم.'},
+    'order_placed_success': {'en': 'placed successfully', 'ar': 'تم الطلب بنجاح'},
+    'order_placement_error': {'en': 'Something went wrong placing your order. Please try again.', 'ar': 'حدث خطأ أثناء تقديم طلبك. يرجى المحاولة مرة أخرى.'},
+
+    // ---- Orders list ----
+    'my_orders': {'en': 'My orders', 'ar': 'طلباتي'},
+    'login_to_see_orders': {'en': "Log in to see your order history.\n(Guest checkout orders are confirmed by email, but aren't listed here unless you have an account.)", 'ar': 'سجّل الدخول لرؤية سجل طلباتك.\n(يتم تأكيد طلبات الضيف عبر البريد الإلكتروني، لكنها لا تظهر هنا إلا إذا كان لديك حساب.)'},
+    'could_not_load_orders': {'en': 'Could not load orders:', 'ar': 'تعذر تحميل الطلبات:'},
+    'no_orders_yet': {'en': 'No orders yet.', 'ar': 'لا توجد طلبات بعد.'},
+    'active_shipments': {'en': 'Active Shipments', 'ar': 'الشحنات النشطة'},
+
+    // ---- Order detail ----
+    'order': {'en': 'Order', 'ar': 'الطلب'},
+    'not_found': {'en': 'Not found', 'ar': 'غير موجود'},
+    'could_not_load_order': {'en': 'Could not load this order.', 'ar': 'تعذر تحميل هذا الطلب.'},
+    'shipped_by': {'en': 'Shipped by', 'ar': 'تم الشحن بواسطة'},
+    'tracking_label': {'en': 'Tracking:', 'ar': 'رقم التتبع:'},
+    'request_a_return': {'en': 'Request a return', 'ar': 'طلب إرجاع'},
+    'cancel_this_part': {'en': 'Cancel this part', 'ar': 'إلغاء هذا الجزء'},
+    'return_goes_to_leap': {'en': "This goes to the Leap team, who will coordinate with the supplier — you won't be contacting them directly.", 'ar': 'يذهب هذا إلى فريق Leap، الذي سينسق مع المورد — لن تتواصل معه مباشرة.'},
+    'reason_label': {'en': 'Reason (e.g. wrong item, damaged)', 'ar': 'السبب (مثال: منتج خاطئ، تالف)'},
+    'details_label': {'en': 'Details', 'ar': 'التفاصيل'},
+    'submit_request': {'en': 'Submit request', 'ar': 'إرسال الطلب'},
+    'attach_photos_optional': {'en': 'Attach photos (optional)', 'ar': 'إرفاق صور (اختياري)'},
+    'return_request_sent': {'en': 'Return request sent to the Leap team.', 'ar': 'تم إرسال طلب الإرجاع إلى فريق Leap.'},
+    'view': {'en': 'View', 'ar': 'عرض'},
+
+    // ---- My Returns (list + detail thread — GET/POST /returns/my-cases,
+    // same real backend the return-request sheet above already posts to;
+    // this is the missing "check on it afterward" half of that flow) ----
+    'my_returns': {'en': 'My returns', 'ar': 'مرتجعاتي'},
+    'login_to_see_returns': {'en': "Log in to see your return requests.\n(Guest return requests are handled by email — you won't be able to track them here unless you have an account.)", 'ar': 'سجّل الدخول لرؤية طلبات الإرجاع الخاصة بك.\n(تتم معالجة طلبات إرجاع الضيف عبر البريد الإلكتروني — لن تتمكن من تتبعها هنا إلا إذا كان لديك حساب.)'},
+    'could_not_load_returns': {'en': 'Could not load return requests:', 'ar': 'تعذر تحميل طلبات الإرجاع:'},
+    'no_returns_yet': {'en': 'No return requests yet.', 'ar': 'لا توجد طلبات إرجاع بعد.'},
+    'could_not_load_return': {'en': 'Could not load this return request.', 'ar': 'تعذر تحميل طلب الإرجاع هذا.'},
+    'enter_email_to_view_return': {'en': 'Enter the email this return was filed under to view it.', 'ar': 'أدخل البريد الإلكتروني الذي قُدم به هذا الإرجاع لعرضه.'},
+    'track_a_return': {'en': 'Track a return', 'ar': 'تتبع إرجاع'},
+    'track_an_order': {'en': 'Track an order', 'ar': 'تتبع طلب'},
+    'track_order_hint': {'en': 'Enter your order ID (from your confirmation) and the email you used to place it.', 'ar': 'أدخل رقم الطلب (من رسالة التأكيد) والبريد الإلكتروني الذي استخدمته لتقديمه.'},
+    'order_id_label': {'en': 'Order ID', 'ar': 'رقم الطلب'},
+    'track_return_hint': {'en': 'Enter your return case ID (from your confirmation) and the email you used to file it.', 'ar': 'أدخل رقم طلب الإرجاع (من رسالة التأكيد) والبريد الإلكتروني الذي استخدمته لتقديمه.'},
+    'return_case_id_label': {'en': 'Return case ID', 'ar': 'رقم طلب الإرجاع'},
+    'log_in_to_see_all_returns': {'en': 'Log in to see all your returns', 'ar': 'سجّل الدخول لرؤية جميع مرتجعاتك'},
+    'return_case_order_label': {'en': 'For order', 'ar': 'للطلب'},
+
+    // ---- Account ----
+    'account': {'en': 'Account', 'ar': 'الحساب'},
+    'addresses': {'en': 'Addresses', 'ar': 'العناوين'},
+
+    // ---- Addresses screen (new) ----
+    'add_address': {'en': 'Add address', 'ar': 'إضافة عنوان'},
+    'edit_address': {'en': 'Edit address', 'ar': 'تعديل العنوان'},
+    'default_label': {'en': 'Default', 'ar': 'افتراضي'},
+    'set_as_default': {'en': 'Set as default', 'ar': 'تعيين كافتراضي'},
+    'address_set_as_default_message': {'en': 'Set as your default address', 'ar': 'تم تعيينه كعنوانك الافتراضي'},
+    'address_already_default_message': {'en': 'This is already your default address', 'ar': 'هذا هو عنوانك الافتراضي بالفعل'},
+    'delete_address_confirm': {'en': 'Delete this address?', 'ar': 'حذف هذا العنوان؟'},
+    'remove_vehicle_confirm': {'en': 'Remove this vehicle from your garage?', 'ar': 'إزالة هذه المركبة من مرآبك؟'},
+    'default_vehicle_label': {'en': 'Default', 'ar': 'الافتراضية'},
+    'saved_vehicle_label': {'en': 'Saved vehicle', 'ar': 'مركبة محفوظة'},
+    // Real, confirmed with the person: "مجمل مشتريات" (total
+    // purchases), not a literal translation of "spend". Year is
+    // interpolated separately by the caller since English puts the
+    // year first ("2026 SPEND") while Arabic puts it last ("مجمل
+    // مشتريات 2026") -- this key holds only the label text itself.
+    'annual_spend_label': {'en': 'SPEND', 'ar': 'مجمل مشتريات'},
+    'supplier_label': {'en': 'Supplier', 'ar': 'المورد'},
+    'view_compatible_parts': {'en': 'View compatible parts', 'ar': 'عرض القطع المتوافقة'},
+    'vparts_title': {'en': 'Parts for your car', 'ar': 'قطع لسيارتك'},
+    'vparts_change': {'en': 'Change', 'ar': 'تغيير'},
+    'vparts_all': {'en': 'All', 'ar': 'الكل'},
+    'vparts_count': {'en': '{n} parts fit this car', 'ar': '{n} قطعة تناسب هذه السيارة'},
+    'vparts_one': {'en': 'One part fits this car', 'ar': 'قطعة واحدة تناسب هذه السيارة'},
+    'vparts_none': {'en': 'No parts fit this car yet.', 'ar': 'لا توجد قطع تناسب هذه السيارة حتى الآن.'},
+    'set_as_default_vehicle': {'en': 'Set as default vehicle', 'ar': 'تعيين كإفتراضي'},
+    'label_field': {'en': 'Label (e.g. Home, Work)', 'ar': 'التسمية (مثال: المنزل، العمل)'},
+    'search_for_address_hint': {'en': 'Search for your address (optional)', 'ar': 'إبحث عن عنوانك (إختياري)'},
+    'compare_label': {'en': 'Compare', 'ar': 'مقارنة'},
+    'compare_limit': {'en': 'You can compare 2 items at a time', 'ar': 'يمكنك مقارنة عنصرين في المرة الواحدة'},
+    'two_factor_title': {'en': 'Two-factor authentication', 'ar': 'المصادقة الثنائية'},
+    'two_factor_description': {
+      'en': 'Add an extra layer of security. Once turned on, you\'ll need a code from your authenticator app (like Google Authenticator or Authy) every time you log in, in addition to your password.',
+      'ar': 'أضف طبقة إضافية من الأمان. بمجرد التفعيل، ستحتاج إلى رمز من تطبيق المصادقة الخاص بك (مثل Google Authenticator أو Authy) في كل مرة تسجل فيها الدخول، بالإضافة إلى كلمة المرور.',
+    },
+    'two_factor_turn_on': {'en': 'Turn on two-factor authentication', 'ar': 'تفعيل المصادقة الثنائية'},
+    'two_factor_scan_qr': {'en': 'Scan this code with your authenticator app:', 'ar': 'امسح هذا الرمز باستخدام تطبيق المصادقة الخاص بك:'},
+    'two_factor_manual_key': {'en': 'Or enter this key manually:', 'ar': 'أو أدخل هذا المفتاح يدويًا:'},
+    'two_factor_enter_code': {'en': 'Then enter the 6-digit code it shows:', 'ar': 'ثم أدخل الرمز المكون من 6 أرقام الذي يظهر:'},
+    'two_factor_confirm_turn_on': {'en': 'Confirm and turn on', 'ar': 'تأكيد وتفعيل'},
+    'two_factor_now_on': {'en': 'Two-factor authentication is now on.', 'ar': 'تم تفعيل المصادقة الثنائية الآن.'},
+    'two_factor_now_off': {'en': 'Two-factor authentication is now off.', 'ar': 'تم إيقاف المصادقة الثنائية الآن.'},
+    'two_factor_is_on': {'en': 'Two-factor authentication is on.', 'ar': 'المصادقة الثنائية مفعّلة.'},
+    'two_factor_enter_password_to_disable': {'en': 'Enter your current password to turn it off:', 'ar': 'أدخل كلمة المرور الحالية لإيقافها:'},
+    'current_password_field': {'en': 'Current password', 'ar': 'كلمة المرور الحالية'},
+    'two_factor_turn_off': {'en': 'Turn off two-factor authentication', 'ar': 'إيقاف المصادقة الثنائية'},
+    'report_bug_title': {'en': 'Report a bug', 'ar': 'الإبلاغ عن مشكلة'},
+    'report_bug_what_happened': {'en': 'What happened?', 'ar': 'ماذا حدث؟'},
+    'report_bug_description_hint': {'en': 'Describe what you were doing and what went wrong...', 'ar': 'صف ما كنت تفعله وما الذي حدث بشكل خاطئ...'},
+    'report_bug_attach_screenshot': {'en': 'Attach a screenshot (optional)', 'ar': 'إرفاق لقطة شاشة (إختياري)'},
+    'report_bug_screenshot_attached': {'en': 'Screenshot attached ✓', 'ar': 'تم إرفاق لقطة الشاشة ✓'},
+    'report_bug_submit_error': {'en': 'Could not submit your report. Please try again.', 'ar': 'تعذر إرسال بلاغك. يرجى المحاولة مرة أخرى.'},
+    'report_bug_submit': {'en': 'Submit report', 'ar': 'إرسال البلاغ'},
+    'choose_a_brand': {'en': 'Choose a brand', 'ar': 'اختر العلامة التجارية'},
+    'choose_a_model': {'en': 'Choose a model', 'ar': 'اختر الموديل'},
+    'choose_a_generation': {'en': 'Choose a generation', 'ar': 'اختر الجيل'},
+    'choose_a_year': {'en': 'Choose a year', 'ar': 'اختر السنة'},
+    'enter_your_vin': {'en': 'Enter your VIN', 'ar': 'أدخل رقم الهيكل (VIN)'},
+    'vin_hint': {'en': '17-character VIN', 'ar': 'رقم الهيكل المكون من 17 حرفًا'},
+    'look_up_button': {'en': 'Look up', 'ar': 'بحث'},
+    'could_not_load_error': {'en': 'Could not load', 'ar': 'تعذر التحميل'},
+    'nothing_here_yet': {'en': 'Nothing here yet.', 'ar': 'لا يوجد شيء هنا بعد.'},
+    'any_year_in_generation': {'en': 'Any year in this generation', 'ar': 'أي سنة ضمن هذا الجيل'},
+    'have_vin_look_up': {'en': 'Have your VIN? Look it up instead', 'ar': 'هل لديك رقم الهيكل (VIN)؟ ابحث به بدلاً من ذلك'},
+    'looking_up_vin': {'en': 'Looking up your VIN…', 'ar': 'جارٍ البحث عن رقم الهيكل...'},
+    'sort_and_price_title': {'en': 'Sort & price', 'ar': 'الترتيب والسعر'},
+    'sort_by_label': {'en': 'Sort by', 'ar': 'الترتيب حسب'},
+    'relevance_label': {'en': 'Relevance', 'ar': 'الأكثر صلة'},
+    'price_low_to_high': {'en': 'Price: Low to High', 'ar': 'السعر: من الأقل إلى الأعلى'},
+    'price_high_to_low': {'en': 'Price: High to Low', 'ar': 'السعر: من الأعلى إلى الأقل'},
+    'newest_label': {'en': 'Newest', 'ar': 'الأحدث'},
+    'price_range_label': {'en': 'Price range', 'ar': 'نطاق السعر'},
+    'min_field': {'en': 'Min', 'ar': 'الحد الأدنى'},
+    'max_field': {'en': 'Max', 'ar': 'الحد الأقصى'},
+    'delivery_speed_label': {'en': 'Delivery speed', 'ar': 'سرعة التوصيل'},
+    'delivery_any': {'en': 'Any', 'ar': 'أي وقت'},
+    'within_3_days': {'en': 'Within 3 days', 'ar': 'خلال 3 أيام'},
+    'within_5_days': {'en': 'Within 5 days', 'ar': 'خلال 5 أيام'},
+    'within_7_days': {'en': 'Within 7 days', 'ar': 'خلال 7 أيام'},
+    'clear_label': {'en': 'Clear', 'ar': 'مسح'},
+    'ships_in_days_label': {'en': 'Delivery in', 'ar': 'التوصيل خلال'},
+    'price_short_label': {'en': 'Price', 'ar': 'السعر'},
+    'recipient_name_field': {'en': 'Recipient name', 'ar': 'اسم المستلم'},
+    'phone_field': {'en': 'Phone', 'ar': 'الهاتف'},
+    'country_field': {'en': 'Country', 'ar': 'الدولة'},
+    'city_field': {'en': 'City', 'ar': 'المدينة'},
+    'street_address_field': {'en': 'Street address', 'ar': 'عنوان الشارع'},
+    'postal_code_field': {'en': 'Postal code (optional)', 'ar': 'الرمز البريدي (اختياري)'},
+    'national_address_field': {'en': 'Address Code', 'ar': 'رمز العنوان'},
+    'national_address_format_error': {'en': 'Must be 4 letters followed by 4 numbers, e.g. RRRD2929', 'ar': 'يجب أن يكون 4 أحرف تليها 4 أرقام، مثل RRRD2929'},
+    'no_addresses_yet': {'en': 'No saved addresses yet.', 'ar': 'لا توجد عناوين محفوظة بعد.'},
+    'address_limit_reached': {'en': 'You can save up to 3 addresses. Delete one before adding another.', 'ar': 'يمكنك حفظ ما يصل إلى 3 عناوين. احذف عنوانًا قبل إضافة آخر.'},
+    'save': {'en': 'Save', 'ar': 'حفظ'},
+    'delete': {'en': 'Delete', 'ar': 'حذف'},
+    'contact_us_label': {'en': 'Contact us', 'ar': 'تواصل معنا'},
+    'two_factor_auth_label': {'en': 'Two-factor authentication', 'ar': 'المصادقة الثنائية'},
+    'delete_account_label': {'en': 'Delete account', 'ar': 'حذف الحساب'},
+    'delete_account_confirm_title': {'en': 'Delete your account?', 'ar': 'حذف حسابك؟'},
+    'delete_account_confirm_body': {
+      'en': 'This permanently removes your personal info. Your order history stays for our records, but is no longer tied to your name or email.',
+      'ar': 'سيؤدي هذا إلى إزالة معلوماتك الشخصية بشكل نهائي. يبقى سجل طلباتك لدينا، لكن لن يكون مرتبطًا باسمك أو بريدك الإلكتروني بعد الآن.',
+    },
+    'continue_label': {'en': 'Continue', 'ar': 'متابعة'},
+    'confirm_password_title': {'en': 'Confirm your password', 'ar': 'تأكيد كلمة المرور'},
+    'password_field': {'en': 'Password', 'ar': 'كلمة المرور'},
+    'incorrect_password_error': {'en': 'Incorrect password', 'ar': 'كلمة المرور غير صحيحة'},
+    'edit': {'en': 'Edit', 'ar': 'تعديل'},
+    'cancel': {'en': 'Cancel', 'ar': 'إلغاء'},
+
+    // ---- Wishlist (new) ----
+    'wishlist': {'en': 'Wishlist', 'ar': 'المفضلة'},
+    // Brand wordmark shown on the sign-in / sign-up screens. Arabic mode shows
+    // the Arabic spelling instead of the Latin "LEAP".
+    'brand_name': {'en': 'LEAP', 'ar': 'ليب'},
+    // Shown when a buyer tries to review a product they haven't received (the
+    // backend sends the stable code 'review_requires_purchase' for this).
+    'review_requires_purchase': {
+      'en': 'Only buyers who have received this product can leave a review.',
+      'ar': 'يمكن فقط للمشترين الذين استلموا هذا المنتج كتابة تقييم.',
+    },
+    // Stock shortfall in the basket / at checkout. The backend sends the stable code
+    // 'insufficient_stock' plus `available` and `productName`; {available} and
+    // {productName} are filled in from those (see apiErrorText).
+    'insufficient_stock': {
+      'en': 'Only {available} of "{productName}" left in stock',
+      'ar': 'لم يتبق في المخزون سوى {available} من "{productName}"',
+    },
+    // Shown by the basket when it can't load (CartState stores this KEY, not a sentence,
+    // because CartState has no BuildContext to translate with).
+    'cart_load_failed': {
+      'en': 'Could not load your basket. Check your connection and try again.',
+      'ar': 'تعذر تحميل سلتك. تحقق من اتصالك بالإنترنت وحاول مرة أخرى.',
+    },
+    'photo_upload_failed': {
+      'en': 'Could not upload the photo. Please try again.',
+      'ar': 'تعذر رفع الصورة. يرجى المحاولة مرة أخرى.',
+    },
+    'saved_searches': {'en': 'Saved Searches', 'ar': 'عمليات البحث المحفوظة'},
+    'no_wishlist_items_yet': {'en': 'Nothing saved yet. Tap the heart on a product to save it here.', 'ar': 'لا شيء محفوظ بعد. اضغط على القلب في أي منتج لحفظه هنا.'},
+    'added_to_wishlist': {'en': 'Added to wishlist', 'ar': 'أُضيف إلى المفضلة'},
+    'removed_from_wishlist': {'en': 'Removed from wishlist', 'ar': 'أُزيل من المفضلة'},
+    'orders_and_returns': {'en': 'Orders & returns', 'ar': 'الطلبات والإرجاعات'},
+    'leap_support': {'en': 'Leap Support', 'ar': 'دعم Leap'},
+    'log_out': {'en': 'Log out', 'ar': 'تسجيل الخروج'},
+    'guest_browsing': {'en': "You're browsing as a guest", 'ar': 'أنت تتصفح كضيف'},
+    'guest_prompt': {'en': 'Log in to save vehicles, see order history across devices, and check out faster.', 'ar': 'سجّل الدخول لحفظ مركباتك، ورؤية سجل الطلبات عبر الأجهزة، وإتمام الشراء بشكل أسرع.'},
+    'language': {'en': 'Language', 'ar': 'اللغة'},
+    'currency': {'en': 'Currency', 'ar': 'العملة'},
+    'currency_automatic': {'en': 'Automatic (based on location)', 'ar': 'تلقائي (حسب الموقع)'},
+    'currency_rate_unavailable': {
+      'en': 'A real conversion rate for this currency isn\'t available yet — prices will show in USD.',
+      'ar': 'معدل التحويل الحقيقي لهذه العملة غير متوفر بعد — ستظهر الأسعار بالدولار الأمريكي.',
+    },
+    'appearance': {'en': 'Appearance', 'ar': 'المظهر'},
+    'light_mode': {'en': 'Light', 'ar': 'فاتح'},
+    'dark_mode': {'en': 'Dark', 'ar': 'داكن'},
+    'system_default': {'en': 'System', 'ar': 'النظام'},
+    'app_lock_title': {'en': 'App lock', 'ar': 'قفل التطبيق'},
+    'app_lock_subtitle': {'en': 'Require Face ID, fingerprint, or your device passcode to open the app', 'ar': 'يتطلب بصمة الوجه أو الإصبع أو رمز مرور جهازك لفتح التطبيق'},
+    'app_lock_enable_failed': {'en': "Couldn't verify your identity. App lock was not enabled.", 'ar': 'تعذر التحقق من هويتك. لم يتم تفعيل قفل التطبيق.'},
+
+    // ---- Support ----
+    'login_to_message': {'en': "Log in to message the Leap team about an order.\n(You're always talking to the Platform — never the supplier directly.)", 'ar': 'سجّل الدخول لمراسلة فريق Leap بخصوص طلب.\n(أنت تتحدث دائمًا مع المنصة — وليس مع المورد مباشرة.)'},
+    'messaging_leap_note': {'en': "You're messaging the Leap team, not the supplier directly.", 'ar': 'أنت تراسل فريق Leap، وليس المورد مباشرة.'},
+    'could_not_load_tickets': {'en': 'Could not load tickets:', 'ar': 'تعذر تحميل التذاكر:'},
+    'no_tickets_yet': {'en': 'No support tickets yet. Tap + to start one.', 'ar': 'لا توجد تذاكر دعم بعد. اضغط + لبدء واحدة.'},
+    'total_tickets': {'en': 'Total tickets', 'ar': 'إجمالي التذاكر'},
+    'open_requests': {'en': 'Open requests', 'ar': 'الطلبات المفتوحة'},
+    'resolved': {'en': 'Resolved', 'ar': 'تم الحل'},
+    'new_support_ticket': {'en': 'New support ticket', 'ar': 'تذكرة دعم جديدة'},
+    'subject_label': {'en': 'Subject', 'ar': 'الموضوع'},
+    'how_can_we_help': {'en': 'How can we help?', 'ar': 'كيف يمكننا المساعدة؟'},
+    'send': {'en': 'Send', 'ar': 'إرسال'},
+    'ticket': {'en': 'Ticket', 'ar': 'التذكرة'},
+    'could_not_load_ticket': {'en': 'Could not load this ticket.', 'ar': 'تعذر تحميل هذه التذكرة.'},
+    'enter_email_to_view_ticket': {'en': 'Enter the email this ticket was filed under to view it.', 'ar': 'أدخل البريد الإلكتروني الذي قُدمت به هذه التذكرة لعرضها.'},
+    'track_a_ticket': {'en': 'Track a ticket', 'ar': 'تتبع تذكرة'},
+    'track_ticket_hint': {'en': 'Enter your ticket ID (from your confirmation) and the email you used to file it.', 'ar': 'أدخل رقم التذكرة (من رسالة التأكيد) والبريد الإلكتروني الذي استخدمته لتقديمها.'},
+    'ticket_id_label': {'en': 'Ticket ID', 'ar': 'رقم التذكرة'},
+    'track': {'en': 'Track', 'ar': 'تتبع'},
+    'log_in_to_see_all_tickets': {'en': 'Log in to see all your tickets', 'ar': 'سجّل الدخول لرؤية جميع تذاكرك'},
+    'email_required_for_guest': {'en': 'Please provide an email so we can reach you.', 'ar': 'يرجى تقديم بريد إلكتروني حتى نتمكن من التواصل معك.'},
+    'type_a_message': {'en': 'Type a message…', 'ar': 'اكتب رسالة…'},
+    'was_this_resolution_helpful': {'en': 'Was this resolution helpful?', 'ar': 'هل كان هذا الحل مفيدًا؟'},
+    'yes': {'en': 'Yes', 'ar': 'نعم'},
+    'no': {'en': 'No', 'ar': 'لا'},
+    'save_order_for_later_title': {'en': 'Save this order?', 'ar': 'حفظ هذا الطلب؟'},
+    'save_order_for_later_body': {'en': 'We\'ll send it automatically once you\'re back online.', 'ar': 'سنرسله تلقائيًا عند عودة الاتصال بالإنترنت.'},
+    'no_thanks': {'en': 'No thanks', 'ar': 'لا شكرًا'},
+    'save_and_send_later': {'en': 'Save and send later', 'ar': 'حفظ وإرسال لاحقًا'},
+    'order_saved_for_later': {'en': 'Order saved — we\'ll send it once you\'re back online.', 'ar': 'تم حفظ الطلب — سنرسله عند عودة الاتصال.'},
+    'thanks_for_feedback': {'en': 'Thanks for letting us know!', 'ar': 'شكرًا لملاحظتك!'},
+
+    // ---- Auth: login ----
+    'login_subtitle': {'en': 'Log in to view your order history and saved vehicles.', 'ar': 'سجّل الدخول لعرض سجل طلباتك ومركباتك المحفوظة.'},
+    'email_label': {'en': 'Email', 'ar': 'البريد الإلكتروني'},
+    'password_label': {'en': 'Password', 'ar': 'كلمة المرور'},
+    'forgot_password_q': {'en': 'Forgot password?', 'ar': 'نسيت كلمة المرور؟'},
+    'no_account_signup': {'en': "Don't have an account? Sign up", 'ar': 'ليس لديك حساب؟ أنشئ حسابًا'},
+
+    // ---- Auth: signup ----
+    'create_account': {'en': 'Create account', 'ar': 'إنشاء حساب'},
+    'signup_subtitle': {'en': 'Save your vehicles and track orders across devices.', 'ar': 'احفظ مركباتك وتتبع طلباتك عبر الأجهزة.'},
+    'name_optional': {'en': 'Name (optional)', 'ar': 'الاسم (اختياري)'},
+    'at_least_8_chars': {'en': 'At least 8 characters', 'ar': '8 أحرف على الأقل'},
+    'already_have_account': {'en': 'Already have an account? Log in', 'ar': 'لديك حساب بالفعل؟ سجّل الدخول'},
+    'password_too_short': {'en': 'Password must be at least 8 characters', 'ar': 'يجب ألا تقل كلمة المرور عن 8 أحرف'},
+
+    // ---- Auth: forgot password ----
+    'reset_password_title': {'en': 'Reset password', 'ar': 'إعادة تعيين كلمة المرور'},
+    'enter_email_for_reset': {'en': "Enter your account email and we'll send a reset link.", 'ar': 'أدخل بريد حسابك الإلكتروني وسنرسل رابط إعادة التعيين.'},
+    'send_reset_link': {'en': 'Send reset link', 'ar': 'إرسال رابط إعادة التعيين'},
+    'if_email_registered': {'en': 'If that email is registered, a reset link has been sent.', 'ar': 'إذا كان هذا البريد الإلكتروني مسجلاً، فقد تم إرسال رابط إعادة التعيين.'},
+    'dev_note_email': {'en': "Dev note: email sending isn't connected in this build yet — the reset link is printed to the backend server's console output instead. Copy the token from there.", 'ar': 'ملاحظة للمطورين: إرسال البريد الإلكتروني غير متصل بعد في هذا الإصدار — يتم طباعة رابط إعادة التعيين في سجل الخادم بدلاً من ذلك. انسخ الرمز من هناك.'},
+    'have_reset_code': {'en': 'I have a reset code', 'ar': 'لدي رمز إعادة تعيين'},
+
+    // ---- Auth: reset password ----
+    'enter_reset_code': {'en': 'Enter reset code', 'ar': 'أدخل رمز إعادة التعيين'},
+    'paste_reset_code': {'en': 'Paste the reset code from your email (or, for now, from the backend server console) and choose a new password.', 'ar': 'الصق رمز إعادة التعيين من بريدك الإلكتروني (أو، في الوقت الحالي، من سجل الخادم) واختر كلمة مرور جديدة.'},
+    'reset_code_label': {'en': 'Reset code', 'ar': 'رمز إعادة التعيين'},
+    'new_password_label': {'en': 'New password', 'ar': 'كلمة المرور الجديدة'},
+    'password_reset_success': {'en': 'Password reset. Please log in with your new password.', 'ar': 'تمت إعادة تعيين كلمة المرور. يرجى تسجيل الدخول بكلمة المرور الجديدة.'},
+
+    // ---- Tooltips, a heading and a few labels that had no translation at all ----
+    'remove_item': {'en': 'Remove item', 'ar': 'إزالة المنتج'},
+    'decrease_quantity': {'en': 'Decrease quantity', 'ar': 'تقليل الكمية'},
+    'increase_quantity': {'en': 'Increase quantity', 'ar': 'زيادة الكمية'},
+    'remove_vehicle': {'en': 'Remove vehicle', 'ar': 'إزالة السيارة'},
+    'remove_photo': {'en': 'Remove photo', 'ar': 'إزالة الصورة'},
+    'search_label': {'en': 'Search', 'ar': 'بحث'},
+    'support_label': {'en': 'Support', 'ar': 'الدعم'},
+    'back_label': {'en': 'Back', 'ar': 'رجوع'},
+    'referral_history': {'en': 'Referral history', 'ar': 'سجل الإحالات'},
+    'could_not_load_product': {'en': 'Could not load this product.', 'ar': 'تعذّر تحميل هذا المنتج.'},
+    'status_to_pay': {'en': 'To pay', 'ar': 'بانتظار الدفع'},
+    'status_to_review': {'en': 'To review', 'ar': 'بانتظار التقييم'},
+
+    // ---- Messages and labels found by a full audit of the app for English-only text ----
+    'show_password': {'en': 'Show password', 'ar': 'إظهار كلمة المرور'},
+    'hide_password': {'en': 'Hide password', 'ar': 'إخفاء كلمة المرور'},
+    'could_not_update_photo': {'en': 'Could not update your photo', 'ar': 'تعذّر تحديث صورتك'},
+    'referral_member_joined': {'en': '{name} joined', 'ar': 'انضم {name}'},
+    'referral_new_member': {'en': 'A new member joined', 'ar': 'انضم عضو جديد'},
+    'reward_earned': {'en': 'Reward earned', 'ar': 'تم كسب المكافأة'},
+    'reward_pending': {'en': 'Reward pending', 'ar': 'المكافأة قيد الانتظار'},
+    'ocr_no_text': {'en': "Couldn't read any text in that photo. Try getting closer, or in better light.", 'ar': 'تعذّر قراءة أي نص في هذه الصورة. جرّب الاقتراب أكثر أو استخدام إضاءة أفضل.'},
+    'ocr_failed': {'en': "Couldn't process that photo. Please try again.", 'ar': 'تعذّرت معالجة هذه الصورة. يرجى المحاولة مرة أخرى.'},
+    'vin_lookup_failed': {'en': 'Could not look up this VIN. Please select your vehicle manually.', 'ar': 'تعذّر البحث عن رقم الهيكل هذا. يرجى اختيار سيارتك يدويًا.'},
+    'vin_decoded_unknown_brand': {'en': "Decoded: {label} — but this brand isn't in our catalog yet. Please select your vehicle manually.", 'ar': 'تم فك الترميز: {label} — لكن هذه الماركة غير متوفرة في كتالوجنا بعد. يرجى اختيار سيارتك يدويًا.'},
+    'vin_decoded_pick_model': {'en': 'Decoded: {label}. Please pick your model below.', 'ar': 'تم فك الترميز: {label}. يرجى اختيار الموديل أدناه.'},
+    'vin_decoded_no_generation': {'en': 'Decoded: {label} — found the brand and model, but not the exact generation for that year. Please continue from here.', 'ar': 'تم فك الترميز: {label} — وجدنا الماركة والموديل، لكن ليس الجيل المحدد لتلك السنة. يرجى المتابعة من هنا.'},
+    'checkout_stock_changed_one': {'en': '{items} has less stock available now than in your cart. Please adjust the quantity before continuing.', 'ar': 'الكمية المتوفرة من {items} أقل الآن مما في سلتك. يرجى تعديل الكمية قبل المتابعة.'},
+    'checkout_stock_changed_many': {'en': '{items} have less stock available now than in your cart. Please adjust the quantity before continuing.', 'ar': 'الكميات المتوفرة من {items} أقل الآن مما في سلتك. يرجى تعديل الكميات قبل المتابعة.'},
+    'app_lock_enable_reason': {'en': 'Confirm to enable app lock', 'ar': 'أكّد لتفعيل قفل التطبيق'},
+    'app_lock_unlock_reason': {'en': 'Unlock Leap', 'ar': 'افتح Leap'},
+  };
+
+  static String get(String key) {
+    final entry = _strings[key];
+    return entry?['en'] ?? key;
+  }
+}
+
+/// Shorthand — `tr(context, 'key')` — used throughout every screen's
+/// build() method. Reads the current language from LanguageState via
+/// context.watch, so a screen re-renders in the new language the
+/// instant the setting changes, same as the product page.
+String tr(BuildContext context, String key) {
+  final isAr = context.watch<LanguageState>().isArabic;
+  final entry = AppStrings._strings[key];
+  if (entry == null) return key;
+  return (isAr ? entry['ar'] : entry['en']) ?? entry['en'] ?? key;
+}
+
+/// `read`-based variant for use OUTSIDE build() — event handlers, async
+/// submit callbacks setting an error-message string, etc. `context.watch`
+/// is only valid during build(); calling it from a button's onPressed
+/// callback throws a real Flutter framework assertion. Use this instead
+/// anywhere a string is needed one-off outside the widget tree's build
+/// method (e.g. `setState(() => _errorMessage = trRead(context, 'key'))`).
+/// The server sends the anonymized supplier label in English ("Supplier 1 LEAP-SLR-AB12"). Swaps the leading word for the buyer's language and keeps the code.
+/// In English the word is replaced by itself, so English buyers see exactly what they always did.
+String localizedSupplierLabel(BuildContext context, String label) => label.replaceFirst(RegExp(r'^Supplier\b'), tr(context, 'supplier_label'));
+
+String trRead(BuildContext context, String key) {
+  final isAr = context.read<LanguageState>().isArabic;
+  final entry = AppStrings._strings[key];
+  if (entry == null) return key;
+  return (isAr ? entry['ar'] : entry['en']) ?? entry['en'] ?? key;
+}
+
+/// Translates a RAW backend status value (e.g. 'to_ship', 'shipped',
+/// 'in_progress') into a real bilingual label — used wherever an order,
+/// sub-order, ticket, or return case's status is displayed. Falls back
+/// to a formatted version of the raw value (underscores -> spaces,
+/// capitalized) for any status this lookup doesn't yet know about,
+/// rather than silently showing nothing.
+String trStatus(BuildContext context, String rawStatus) {
+  final key = 'status_${rawStatus.toLowerCase()}';
+  final entry = AppStrings._strings[key];
+  if (entry == null) {
+    // Unrecognized status — safe fallback, not a silent blank.
+    final words = rawStatus.split('_').map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}');
+    return words.join(' ');
+  }
+  final isAr = context.watch<LanguageState>().isArabic;
+  return (isAr ? entry['ar'] : entry['en']) ?? entry['en'] ?? rawStatus;
+}
+
+/// An Arabic keyboard can type Arabic-Indic digits (٠١٢٣٤٥٦٧٨٩) or Persian ones (۰۱۲۳۴۵۶۷۸۹). Anything that sends a code or number the person TYPED to the
+/// server must turn them into ordinary digits first, or the server sees an invalid code (e.g. a perfectly correct two-factor code).
+String toWesternDigits(String input) {
+  const arabicIndic = '٠١٢٣٤٥٦٧٨٩';
+  const persian = '۰۱۲۳۴۵۶۷۸۹';
+  final buffer = StringBuffer();
+  for (final rune in input.runes) {
+    final ch = String.fromCharCode(rune);
+    final a = arabicIndic.indexOf(ch);
+    if (a >= 0) {
+      buffer.write(a);
+      continue;
+    }
+    final p = persian.indexOf(ch);
+    buffer.write(p >= 0 ? p : ch);
+  }
+  return buffer.toString();
+}

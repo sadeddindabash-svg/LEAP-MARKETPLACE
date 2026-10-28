@@ -115,7 +115,12 @@ export default function CartPage() {
           <ShippingRow shipping={cart.shipping} />
           <FreeShippingHint shipping={cart.shipping} />
           <div className="mt-2 flex justify-between border-t-2 border-line pt-4 text-[22px] font-extrabold"><span>{t("total")}</span><Price usd={summary.total} /></div>
-          {summary.discount > 0 && <p className="mt-1 text-sm font-semibold text-[#0f6b49]">{t("you_saved")} <Price usd={summary.discount} /></p>}
+          {summary.saved > 0 && (
+            <>
+              <p data-testid="you-saved" className="mt-1 text-sm font-semibold text-[#0f6b49]">{t("you_saved")} <Price usd={summary.saved} /></p>
+              {summary.shippingSaved > 0 && <p data-testid="you-saved-detail" className="text-[12.5px] text-muted">{summary.discount > 0 ? t("saved_breakdown", { discount: format(summary.discount), shipping: format(summary.shippingSaved) }) : t("saved_free_shipping")}</p>}
+            </>
+          )}
           {loyaltyBeatsPromo(cart) && <p className="mt-3 text-sm text-muted">{t("loyalty_beats_promo", { amount: format(summary.discount) })}</p>}
           <Link href="/checkout" className="relative mt-5 flex min-h-13 w-full items-center justify-center rounded-[10px] bg-signal text-base font-bold text-on-signal hover:bg-signal-dark">{t("checkout")}<FreeShippingBadge shipping={cart.shipping} /></Link>
           <Link href="/search" className="mt-3 block text-center text-sm font-semibold text-navy underline underline-offset-4">{t("continue_shopping")}</Link>
