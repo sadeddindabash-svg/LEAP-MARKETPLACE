@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth, getAuthToken } from "@/components/AuthProvider";
 import { useT } from "@/components/LangProvider";
 import { checkWishlisted, addToWishlist, removeFromWishlist } from "@/lib/api";
+import { useOptionalWishlist } from "@/components/WishlistProvider";
 
 interface Props {
   productId: string;
@@ -17,9 +18,11 @@ interface Props {
 export function WishlistButton({ productId }: Props) {
   const t = useT();
   const { user, isLoading: authLoading } = useAuth();
-  const [isWishlisted, setIsWishlisted] = useState(false);
+  const [ownWishlisted, setIsWishlisted] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
   const [isToggling, setIsToggling] = useState(false);
+  const shared = useOptionalWishlist();      // the one list the hearts use; without it (a page outside the site) the button keeps its own check
+  const isWishlisted = shared ? shared.isSaved(productId) : ownWishlisted;
 
   useEffect(() => {
     if (authLoading) return;
@@ -29,15 +32,20 @@ export function WishlistButton({ productId }: Props) {
     }
     const token = getAuthToken();
     if (!token) return;
+    if (shared) { setIsChecking(false); return; }
     checkWishlisted(token, productId)
       .then(setIsWishlisted)
       .finally(() => setIsChecking(false));
-  }, [authLoading, user, productId]);
+  }, [authLoading, user, productId, shared]);
 
   const handleToggle = async () => {
     const token = getAuthToken();
     if (!token) return;
     setIsToggling(true);
+    if (shared) {
+      try { await shared.toggle(productId); } finally { setIsToggling(false); }
+      return;
+    }
     try {
       if (isWishlisted) {
         await removeFromWishlist(token, productId);

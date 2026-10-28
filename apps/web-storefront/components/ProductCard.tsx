@@ -3,6 +3,7 @@ import CardPhotos from "@/components/CardPhotos";
 import SafeImage from "@/components/SafeImage";
 import BrandBadge from "@/components/BrandBadge";
 import CardAddToCart from "@/components/CardAddToCart";
+import WishlistHeart from "@/components/WishlistHeart";
 import { resolveImageUrl, type ProductSummary } from "@/lib/api";
 import { cardDiscount, cardDiscountTagClasses } from "@/lib/cardDiscount";
 import { deliveryLine } from "@/lib/delivery";
@@ -47,6 +48,7 @@ export default function ProductCard({ product: p, lang }: { product: ProductSumm
         </div>
       </Link>
       <div className="absolute bottom-4 end-4"><CardAddToCart productId={p.id} name={p.name} inStock={inStock} /></div>
+      <WishlistHeart productId={p.id} name={p.name} variant="card" />
     </li>
   );
 }

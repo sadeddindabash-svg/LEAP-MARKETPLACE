@@ -4,7 +4,8 @@ import LocLink from "@/components/LocLink";
 import { useT } from "@/components/LangProvider";
 import { useOptionalWishlist } from "@/components/WishlistProvider";
 
-const HEART = "M12 21s-7.5-4.6-9.6-9.2C.9 8.4 2.7 5 6.1 5c2 0 3.3 1 3.9 2.2C10.6 6 11.9 5 13.9 5c3.4 0 5.2 3.4 3.7 6.8C19.5 16.4 12 21 12 21z";
+// A whole, symmetric heart (the Lucide heart): it spans x 2 to 22 and y 3 to 21 of the 24 x 24 box, centred on x = 12, so the line (2 wide) stays inside the box. (The first drawing, made by hand, stopped short on the right.)
+const HEART = "M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z";
 
 function Heart({ saved }: { saved: boolean }) {
   return (

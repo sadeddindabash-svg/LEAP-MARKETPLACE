@@ -4,6 +4,7 @@ import { CartProvider } from "@/components/CartProvider";
 import { CurrencyProvider } from "@/components/CurrencyProvider";
 import { GarageProvider } from "@/components/GarageProvider";
 import { AuthProvider } from "@/components/AuthProvider";
+import { WishlistProvider } from "@/components/WishlistProvider";
 import { LangProvider } from "@/components/LangProvider";
 import BackToTop from "@/components/BackToTop";
 import SiteFooter from "@/components/SiteFooter";
@@ -41,6 +42,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       <body className="flex min-h-full flex-col bg-chalk text-ink">
         <LangProvider lang={lang}>
           <AuthProvider>
+            <WishlistProvider>
             <GarageProvider>
               <CurrencyProvider>
                 <CartProvider>
@@ -51,6 +53,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                 </CartProvider>
               </CurrencyProvider>
             </GarageProvider>
+          </WishlistProvider>
           </AuthProvider>
         </LangProvider>
       </body>

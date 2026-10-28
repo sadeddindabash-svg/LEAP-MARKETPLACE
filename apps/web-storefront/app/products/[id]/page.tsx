@@ -11,6 +11,7 @@ import ProductChips from "@/components/ProductChips";
 import ReviewsSection from "@/components/ReviewsSection";
 import ShareButton from "@/components/ShareButton";
 import { WishlistButton } from "@/components/WishlistButton";
+import WishlistHeart from "@/components/WishlistHeart";
 import { JsonLd } from "@/components/JsonLd";
 import StockBanner from "@/components/StockBanner";
 import SellerSignals from "@/components/SellerSignals";
@@ -94,7 +95,10 @@ export default async function ProductPage({ params }: PageProps) {
             <h1 className="font-display min-w-0 font-bold text-4xl tracking-tight [overflow-wrap:anywhere]">
               {product.name}
             </h1>
-            <ShareButton title={product.name} />
+            <div className="flex shrink-0 items-center gap-2">
+              <WishlistHeart productId={product.id} name={product.name} variant="page" />
+              <ShareButton title={product.name} />
+            </div>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <ProductChips product={product} lang={lang} />
