@@ -10,9 +10,10 @@ export default function StockBanner({ stockQuantity, estimatedDeliveryDays, lang
   const low = !out && stockQuantity <= LOW_STOCK;
   const delivery = deliveryLine(estimatedDeliveryDays, lang);
   const text = out ? t(lang, "stock_none_now") : [low ? t(lang, "only_n_left", { n: stockQuantity }) : t(lang, "in_stock"), delivery].filter(Boolean).join(" · ");
-  const tone = out ? "bg-line/40 text-muted" : low ? "bg-[#fff1dc] text-[#8a4b00]" : "bg-gauge/10 text-[#0f6b49]";
+  // The colours of the product cards' stock boxes (green / red), with amber for "only a few left".
+  const tone = out ? "bg-[#c62f26] text-white" : low ? "bg-[#fab219] text-navy" : "bg-[#0f6b49] text-white";
   return (
-    <p data-stock={out ? "out" : low ? "low" : "in"} className={`mt-5 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold ${tone}`}>
+    <p data-stock={out ? "out" : low ? "low" : "in"} className={`mt-5 flex w-fit max-w-full items-center gap-2 rounded-lg px-3.5 py-1.5 text-sm font-bold ${tone}`}>
       <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
         <circle cx="12" cy="12" r="10" />
         {out ? <path d="m15 9-6 6M9 9l6 6" /> : <path d="m8 12 3 3 5-6" />}

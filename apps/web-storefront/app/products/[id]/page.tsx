@@ -7,7 +7,7 @@ import NotifyWhenInStock from "@/components/NotifyWhenInStock";
 import OemComparison from "@/components/OemComparison";
 import ProductGallery from "@/components/ProductGallery";
 import ProductDetails from "@/components/ProductDetails";
-import { fitChipText } from "@/lib/fitGroups";
+import ProductChips from "@/components/ProductChips";
 import ReviewsSection from "@/components/ReviewsSection";
 import ShareButton from "@/components/ShareButton";
 import { WishlistButton } from "@/components/WishlistButton";
@@ -97,8 +97,7 @@ export default async function ProductPage({ params }: PageProps) {
             <ShareButton title={product.name} />
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
-            {product.part && <span className="plate-chip">{product.part}</span>}
-            {(() => { const chip = fitChipText(lang, product); return chip ? <span className="plate-chip">{chip}</span> : null; })()}
+            <ProductChips product={product} lang={lang} />
           </div>
           {product.description?.trim() && (
             <p data-testid="product-summary" className="mt-3.5 whitespace-pre-line text-base leading-relaxed text-ink/80 [overflow-wrap:anywhere]">{product.description.trim()}</p>

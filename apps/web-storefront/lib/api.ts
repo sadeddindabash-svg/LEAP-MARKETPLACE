@@ -63,6 +63,8 @@ export interface FitGroup {
   modelAr?: string | null;
   ranges: Array<[number, number]>;
   vehicleCount: number;
+  /** The logo of the brand (the admin's vehicle brand photo), or null. */
+  brandLogoUrl?: string | null;
 }
 
 export interface ProductDetail extends ProductSummary {
@@ -79,6 +81,8 @@ export interface ProductDetail extends ProductSummary {
   /** How many models in all (the list is capped at 60) and how many different vehicles (a generation and a year). */
   fitGroupCount?: number;
   fitVehicleCount?: number;
+  /** The photo of the part class (an admin sets it; not every class has one). */
+  partPhotoUrl?: string | null;
   /** The part's own attributes (material, colour...), as entered for this product. */
   attributes?: Array<{ name: string; value: string }>;
 }

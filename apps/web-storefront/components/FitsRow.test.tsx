@@ -33,8 +33,8 @@ describe("a long list", () => {
   });
 });
 describe("looks and languages", () => {
-  it("each line is the model in bold and the years in the muted colour; the block is aligned to the end (it mirrors in Arabic)", () => {
-    show({ groups: five.slice(0, 1), groupCount: 1 }); const line = screen.getByTestId("fit-line"); expect(line.firstElementChild!.textContent).toBe("BYD Seal"); expect(line.lastElementChild!.className).toContain("text-muted"); expect(screen.getByTestId("fits-row").className).toContain("items-end");
+  it("each line is the model in bold and the years in the muted colour; the block starts at the start side (left in English, right in Arabic)", () => {
+    show({ groups: five.slice(0, 1), groupCount: 1 }); const line = screen.getByTestId("fit-line"); expect(line.firstElementChild!.textContent).toBe("BYD Seal"); expect(line.lastElementChild!.className).toContain("text-muted"); expect(screen.getByTestId("fits-row").className).toContain("items-start"); expect(screen.getByTestId("fits-row").className).not.toContain("items-end");
   });
   it("in Arabic: Arabic model names, Arabic words on the link", () => {
     const ar = five.map((x) => ({ ...x, brandAr: "بي واي دي", modelAr: `م-${x.model}` })); show({ groups: ar, groupCount: 5, vehicleCount: 11 }, "ar"); expect(lines()[0]).toBe("بي واي دي م-Seal2022–2024"); expect(screen.getByRole("button")).toHaveTextContent("+2 موديلات أخرى · 11 مركبة إجمالاً");

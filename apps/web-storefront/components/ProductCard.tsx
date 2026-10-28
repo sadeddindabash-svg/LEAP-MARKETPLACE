@@ -1,4 +1,5 @@
 import Link from "@/components/LocLink";
+import CardPhotos from "@/components/CardPhotos";
 import SafeImage from "@/components/SafeImage";
 import BrandBadge from "@/components/BrandBadge";
 import CardAddToCart from "@/components/CardAddToCart";
@@ -23,9 +24,7 @@ export default function ProductCard({ product: p, lang }: { product: ProductSumm
         {/* A true SQUARE. A real photo is drawn WHOLE (object-contain) inside a small margin, so a long part (a wiper blade) is never cut off; no photo shows the icon on grey. */}
         <div className={`relative aspect-square ${p.images[0] ? "border-b border-line bg-white" : "bg-[#e6edf2]"}`}>
           {p.images[0] ? (
-            <div className="absolute inset-2">
-              <SafeImage src={resolveImageUrl(p.images[0])} alt={p.name} fill sizes="(min-width: 1024px) 25vw, 50vw" className="object-contain" unoptimized />
-            </div>
+            <CardPhotos images={p.images.map(resolveImageUrl)} alt={p.name} />
           ) : (
             <div className="absolute inset-0 grid place-items-center">
               <svg aria-hidden="true" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#0b3146" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3" /><path d="M12 4v2M12 18v2M4 12h2M18 12h2" /></svg>

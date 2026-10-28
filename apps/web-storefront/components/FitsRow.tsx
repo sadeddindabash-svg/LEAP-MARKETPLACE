@@ -23,7 +23,7 @@ export default function FitsRow({ groups, groupCount, vehicleCount }: { groups: 
   const unlisted = total - groups.length;                         // models the server did not send at all
   const more = hidden === 1 ? t("fits_more_model_one") : t("fits_more_models", { n: hidden });
   return (
-    <div data-testid="fits-row" className="flex flex-col items-end gap-0.5 font-semibold leading-snug">
+    <div data-testid="fits-row" className="flex flex-col items-start gap-0.5 font-semibold leading-snug">
       {shown.map((g) => (
         <div key={`${g.brand}|${g.model}`} data-testid="fit-line" className="flex gap-3.5">
           <span>{fitGroupName(lang, g)}</span>

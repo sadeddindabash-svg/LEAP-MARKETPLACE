@@ -88,7 +88,7 @@ export default async function HomePage() {
       {brands.length > 0 && (
         <section className="mx-auto max-w-7xl px-4 pt-8 sm:px-8" aria-labelledby="home-brands">
           <h2 id="home-brands" className="mb-6 text-3xl font-bold tracking-tight">{t(lang, "shop_by_brand")}</h2>
-          <TileRow variant="round" defaultColumns={6} gridClassName="grid grid-cols-3 gap-x-2 gap-y-4 sm:grid-cols-4 sm:gap-x-4 lg:grid-cols-6" moreLabel={t(lang, "more_brands")} fewerLabel={t(lang, "show_fewer")}>
+          <TileRow variant="round" defaultColumns={6} maxCollapsed={9} gridClassName="grid grid-cols-3 gap-x-2 gap-y-4 sm:grid-cols-5 sm:gap-x-4 xl:grid-cols-10" moreLabel={t(lang, "more_brands")} fewerLabel={t(lang, "show_fewer")}>
             {brands.map((b) => <BrandTile key={b.id} href={`/search?q=${encodeURIComponent(b.name)}`} name={pickName(lang, b.name, b.nameAr)} photo={b.photoUrl} />)}
           </TileRow>
         </section>

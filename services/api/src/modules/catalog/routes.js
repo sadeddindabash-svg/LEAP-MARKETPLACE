@@ -281,6 +281,21 @@ async function attachPartTranslation(dto, row, lang) {
   return dto;
 }
 
+/**
+ * The photo of a product's PART CLASS (category_parts.photo_url, set by an admin; not every class has one), matched the way the part name is translated: by the product's category and its English part name.
+ * null when there is none, or when it cannot be read (the product page then simply has no part photo).
+ */
+async function loadPartPhoto(row) {
+  if (!row || !row.part) return null;
+  try {
+    const { rows } = await db.query('SELECT photo_url FROM category_parts WHERE category_id = $1 AND name_en = $2 LIMIT 1', [row.category, row.part]);
+    return rows.length > 0 && rows[0].photo_url ? rows[0].photo_url : null;
+  } catch (err) {
+    console.error(`[product-part-photo] could not read the part photo of product ${row.id}: ${err.message}`);
+    return null;
+  }
+}
+
 // GET /catalog/products?category=brake&part=Front+Brake+Disc&vehicleId=v1&search=bmw+brake&sort=newest&lang=en|ar
 // Real, shared search-matching logic -- extracted so both the real
 // GET /products endpoint below and the real saved-searches scheduled
@@ -485,6 +500,7 @@ router.get('/products/:id', async (req, res, next) => {
     res.json({
       ...dto,
       fitsVehicleIds: fitmentResult.rows.map((r) => r.vehicle_id),
+      partPhotoUrl: await loadPartPhoto(rows[0]),      // the part class's photo (shown beside the part chip)
       ...(await loadBuyerFit(db, req.params.id)),      // the cars it fits (names, how many, and a key of each) for the "fits your car?" message
       attributes: attrRows.map((a) => ({ name: a.attribute_name, value: a.attribute_value })),
     });

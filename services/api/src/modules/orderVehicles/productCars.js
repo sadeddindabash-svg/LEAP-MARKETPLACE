@@ -18,14 +18,14 @@ function groupFit(entries) {
   for (const r of entries) {
     const key = `${r.brand}\u0000${r.model}`;
     let g = groups.get(key);
-    if (!g) { g = { brand: r.brand, brandAr: r.brand_ar || null, model: r.model, modelAr: r.model_ar || null, years: new Set() }; groups.set(key, g); }
+    if (!g) { g = { brand: r.brand, brandAr: r.brand_ar || null, model: r.model, modelAr: r.model_ar || null, brandLogoUrl: r.brand_photo || null, years: new Set() }; groups.set(key, g); }
     const year = r.year === null || r.year === undefined || r.year === '' ? NaN : Number(r.year);      // a missing year is not year 0
     if (Number.isFinite(year)) g.years.add(year);
   }
   return [...groups.values()].map((g) => {
     const years = [...g.years].sort((a, b) => a - b); const ranges = [];
     for (const y of years) { const last = ranges[ranges.length - 1]; if (last && y === last[1] + 1) last[1] = y; else ranges.push([y, y]); }
-    return { brand: g.brand, brandAr: g.brandAr, model: g.model, modelAr: g.modelAr, ranges, vehicleCount: years.length };
+    return { brand: g.brand, brandAr: g.brandAr, model: g.model, modelAr: g.modelAr, brandLogoUrl: g.brandLogoUrl, ranges, vehicleCount: years.length };
   });
 }
 

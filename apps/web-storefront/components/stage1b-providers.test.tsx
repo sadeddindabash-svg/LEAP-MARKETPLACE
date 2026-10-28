@@ -229,10 +229,10 @@ describe("display currency", () => {
     expect(priceText()).toBe("$40");
   });
 
-  it("with no choice, the browser's region picks the default: an Arabic browser in Saudi Arabia sees riyals, in Arabic digits on the Arabic site", async () => {
+  it("with no choice, the browser's region picks the default: an Arabic browser in Saudi Arabia sees riyals, with the digits 0-9 and the Arabic word on the Arabic site", async () => {
     m.rates.current = { SAR: 3.75 };
     vi.spyOn(window.navigator, "language", "get").mockReturnValue("ar-SA");
     stage("ar");
-    await waitFor(() => expect(priceText()).toBe("١٥٠ ر.س"));
+    await waitFor(() => expect(priceText()).toBe("150 ريال"));
   });
 });
