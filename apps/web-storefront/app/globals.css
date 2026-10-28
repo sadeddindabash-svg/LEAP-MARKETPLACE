@@ -72,12 +72,19 @@ body {
   border: 1.5px solid var(--color-ink);
   border-radius: 6px;
   padding: 3px 10px;
-  font-family: var(--font-plate), monospace;
-  font-weight: 700;
-  font-size: 11px;
-  letter-spacing: 0.06em;
+  font-family: var(--font-body), sans-serif;      /* the page font, like the description (the typewriter font has no Arabic of its own) */
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0;
   color: var(--color-ink);
   white-space: nowrap;
+}
+
+/* Titles: every page title and section title set at the big size (text-3xl, 30 px) is the size of "Find parts for your car" (text-xl, 20 px). Only h1/h2 are touched: other text at that size (a referral code, an order number) is not. */
+:is(h1, h2).text-3xl {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  letter-spacing: normal;
 }
 
 /* The home page's moving announcement line (components/AnnouncementBar.tsx). One continuous line made of TWO identical copies; the track moves by exactly one copy (50%), so the loop has no

@@ -32,9 +32,9 @@ export default function ProductDetails({ product, lang }: { product: ProductDeta
       <h2 id="product-details-h" className="mb-3 text-lg font-bold">{t(lang, "product_details_title")}</h2>
       <dl className="divide-y divide-line text-sm">
         {rows.map(([label, value], i) => (
-          <div key={`${i}-${label}`} className="flex justify-between gap-4 py-2.5"><dt className="text-muted">{label}</dt><dd className="min-w-0 text-end font-semibold text-ink [overflow-wrap:anywhere]">{value}</dd></div>
+          <div key={`${i}-${label}`} className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-4 py-2.5 sm:grid-cols-[9.5rem_minmax(0,1fr)]"><dt className="text-muted">{label}</dt><dd className="min-w-0 text-start font-semibold text-ink [overflow-wrap:anywhere]">{value}</dd></div>
         ))}
-        <div className="py-2.5"><dt className="text-muted">{t(lang, "detail_description")}</dt><dd className="mt-1 whitespace-pre-line font-normal leading-relaxed text-ink [overflow-wrap:anywhere]">{product.description?.trim() ? product.description : none}</dd></div>
+        <div className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-4 py-2.5 sm:grid-cols-[9.5rem_minmax(0,1fr)]"><dt className="text-muted">{t(lang, "detail_description")}</dt><dd className="whitespace-pre-line font-normal leading-relaxed text-ink [overflow-wrap:anywhere]">{product.description?.trim() ? product.description : none}</dd></div>
       </dl>
     </section>
   );

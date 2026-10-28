@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+/*
+ * Real, confirmed with the person -- updated to match the real mobile
+ * app's own current design exactly (apps/mobile/lib/core/theme.dart),
+ * not the mobile app's own older, pre-rebrand palette this file had
+ * actually drifted to despite its own previous comment claiming an
+ * exact carry-over (the real gold #F2A71B here was still the real old
+ * orange-red #E8622C before this). Manrope replaces the real previous
+ * 2-font split (Barlow Condensed for display, Inter for body) with a
+ * single real font variable, matching the mobile app's own real
+ * single uniform typeface -- JetBrains Mono is kept for the plate-chip
+ * fitment badge specifically, since the mobile app's own plate-chip
+ * element also uses a real distinct monospace family for this exact
+ * purpose (just Flutter's own generic system monospace rather than a
+ * specific named font), so this is a reasonable, minor divergence
+ * rather than an actual mismatch. Dark mode is confirmed as a real,
+ * separate, later phase -- not part of this change.
+ */
+:root {
+  /* Theme A, "Navy Workshop": the colours of the Leap logo (yellow circle, navy letters) */
+  --color-navy: #0b3146;
+  --color-navy-deep: #07202f;
+  --color-ink: #14212b;
+  --color-chalk: #f4f6f8;
+  --color-line: #dde3e8;
+  --color-signal: #f9b317;
+  --color-signal-dark: #e39f0c;
+  /* Real, new -- dark text-on-gold, matching the mobile app's own
+     real onSignal token exactly. Gold is too light for white text to
+     read well against it, matching the real site's own real contrast
+     choice (dark text on every real gold button/pill there). */
+  --color-on-signal: #0b3146;
+  --color-torque: #2a5fd9;
+  --color-gauge: #1e9d6b;
+  --color-amber: #b9791f;
+  --color-muted: #53636f;
+}
+
+@theme inline {
+  --color-navy: var(--color-navy);
+  --color-navy-deep: var(--color-navy-deep);
+  --color-ink: var(--color-ink);
+  --color-chalk: var(--color-chalk);
+  --color-line: var(--color-line);
+  --color-signal: var(--color-signal);
+  --color-signal-dark: var(--color-signal-dark);
+  --color-on-signal: var(--color-on-signal);
+  --color-torque: var(--color-torque);
+  --color-gauge: var(--color-gauge);
+  --color-amber: var(--color-amber);
+  --color-muted: var(--color-muted);
+  /* Outfit for Latin text; Arabic falls through to IBM Plex Sans Arabic (Outfit has no Arabic letters) */
+  /* every list ends in a GENERIC family, so when the web fonts cannot be loaded (blocked, offline) the page falls back to a plain sans-serif, not the browser's serif */
+  --font-display: var(--font-outfit), var(--font-arabic), system-ui, sans-serif;
+  --font-body: var(--font-outfit), var(--font-arabic), system-ui, sans-serif;
+  --font-plate: var(--font-jetbrains-mono), ui-monospace, monospace;
+}
+
+body {
+  background: var(--color-chalk);
+  color: var(--color-ink);
+  font-family: var(--font-body), sans-serif;
+}
+
+/* The "plate chip" -- the established signature element carried over
+   exactly from apps/mobile/lib/widgets/plate_chip.dart's own header
+   comment: "keep it consistent rather than reskinning per-screen." */
+.plate-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1.5px solid var(--color-ink);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-family: var(--font-plate), monospace;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+
+/* The home page's moving announcement line (components/AnnouncementBar.tsx). One continuous line made of TWO identical copies; the track moves by exactly one copy (50%), so the loop has no
+   jump. English reads left to right and moves from RIGHT to LEFT (0 to -50%); Arabic is laid out right to left and moves from LEFT to RIGHT (0 to +50%: in a right-to-left row the
+   second copy sits on the left). Each copy is at least as wide as the screen, so a short announcement still crosses the whole bar. */
+.leap-ticker { overflow: hidden; }
+.leap-ticker-track { display: flex; width: max-content; white-space: nowrap; animation: leap-ticker-rtl var(--ticker-seconds, 30s) linear infinite; }
+.leap-ticker[data-lang="ar"] .leap-ticker-track { animation-name: leap-ticker-ltr; }
+.leap-ticker-copy { display: flex; flex: none; align-items: center; gap: 2rem; padding-inline: 1rem; min-width: 100vw; min-height: 2.5rem; }
+.leap-ticker:hover .leap-ticker-track { animation-play-state: paused; }
+.leap-ticker-static { display: none; }
+@keyframes leap-ticker-rtl { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes leap-ticker-ltr { from { transform: translateX(0); } to { transform: translateX(50%); } }
+/* A visitor whose device asks for less motion gets the announcements still, centred and wrapped, not moving. */
+@media (prefers-reduced-motion: reduce) {
+  .leap-ticker-track { display: none; }
+  .leap-ticker-static { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.25rem 2rem; padding: 0.5rem 1rem; }
+}
+

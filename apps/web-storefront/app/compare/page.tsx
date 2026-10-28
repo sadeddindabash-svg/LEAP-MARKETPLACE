@@ -47,8 +47,8 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
                 {found.map((p) => (
                   <th key={p.id} scope="col" className="min-w-44 border-s border-line p-4 text-start align-top">
                     <Link href={`/products/${p.id}`} className="block">
-                      <span className="relative mb-3 block h-28 overflow-hidden rounded-lg bg-[#e6edf2]">
-                        {p.images[0] && <SafeImage src={resolveImageUrl(p.images[0])} alt="" fill sizes="176px" className="object-cover" unoptimized />}
+                      <span className="relative mb-3 block aspect-square w-full max-w-36 overflow-hidden rounded-lg border border-line bg-white">
+                        {p.images[0] && <SafeImage src={resolveImageUrl(p.images[0])} alt="" fill sizes="144px" className="object-contain p-1.5" unoptimized />}
                       </span>
                       <span className="line-clamp-2 text-sm font-bold leading-snug hover:underline">{p.name}</span>
                     </Link>

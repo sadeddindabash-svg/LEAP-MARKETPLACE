@@ -66,7 +66,7 @@ export default function VehicleBar({ where }: { where: "menu" | "row" }) {
     <Link href="/garage" data-testid="vehicle-card" data-state="car" aria-label={`${t("shopping_for")}: ${full}`} title={full} className={CARD}>
       <span className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 ps-3 pe-2">
         {label}
-        <span className="block w-fit max-w-full truncate rounded-md bg-navy px-2 py-0.5 font-plate text-[12px] font-bold leading-4 text-white">{full}</span>
+        <span className="block w-fit max-w-full truncate rounded-md bg-navy px-2 py-0.5 text-[13px] font-semibold leading-4 text-white">{full}</span>
       </span>
       <span data-testid="vehicle-card-picture" className="relative h-full w-24 shrink-0 bg-white [clip-path:polygon(22%_0,100%_0,100%_100%,0_100%)] rtl:[clip-path:polygon(0_0,78%_0,100%_100%,0_100%)]">
         {photo ? (

@@ -5,6 +5,8 @@ import { COUNTRY_CURRENCY } from "./markets";
 import type { Lang } from "./i18n";
 
 export const ARAB_SYMBOLS: Record<string, string> = { SAR: "ر.س", AED: "د.إ", OMR: "ر.ع.", KWD: "د.ك", BHD: ".د.ب", QAR: "ر.ق", JOD: "د.ا" };
+/** The currency as a word, for an Arabic page: the number keeps its digits 0-9 and only the currency is Arabic ("160 ريال"). Other currencies keep the English style. */
+export const ARAB_WORDS: Record<string, string> = { SAR: "ريال", AED: "درهم", OMR: "ريال", QAR: "ريال", KWD: "دينار", BHD: "دينار", JOD: "دينار", USD: "دولار" };
 export type Rates = Record<string, number>;
 
 /** US dollars converted to [code], or null when there is no rate for it (the caller then shows dollars). USD itself needs no rate. */
@@ -14,10 +16,10 @@ export function convertUsd(usd: number, code: string, rates: Rates): number | nu
   return typeof rate === "number" && rate > 0 ? usd * rate : null;
 }
 
-/** (Arabic-Indic digits are asked for explicitly: what plain "ar" gives varies by system.) "SAR 160" / "$43" in English; "١٦٠ ر.س" for an Arab currency in Arabic. Whole units, like the app. */
+/** "SAR 160" / "$43" in English; "160 ريال" / "43 دولار" in Arabic (the digits stay 0-9; only the currency is Arabic). Whole units, like the app. */
 export function formatAmount(amount: number, code: string, lang: Lang): string {
   const rounded = Math.round(amount);
-  if (lang === "ar" && ARAB_SYMBOLS[code]) return `${new Intl.NumberFormat("ar-u-nu-arab", { maximumFractionDigits: 0 }).format(rounded)} ${ARAB_SYMBOLS[code]}`;
+  if (lang === "ar" && ARAB_WORDS[code]) return `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(rounded)} ${ARAB_WORDS[code]}`;
   return new Intl.NumberFormat("en-US", { style: "currency", currency: code, maximumFractionDigits: 0, currencyDisplay: "symbol" }).format(rounded);
 }
 
