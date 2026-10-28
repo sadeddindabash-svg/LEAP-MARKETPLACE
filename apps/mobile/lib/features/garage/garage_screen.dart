@@ -406,7 +406,7 @@ class _GarageScreenState extends State<GarageScreen> {
                   // this is now the only real action left on this row.
                   Center(
                     child: ElevatedButton(
-                      onPressed: () => Navigator.of(context).pop(v),
+                      onPressed: () => context.push('/vehicle-parts', extra: v),
                       style: ElevatedButton.styleFrom(backgroundColor: palette.signal, foregroundColor: palette.onSignal, elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)),
                       child: Text(tr(context, 'view_compatible_parts'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
                     ),

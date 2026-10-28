@@ -7,6 +7,27 @@
 const MAX_SUPPLIER_CARS = 4;
 const MAX_BUYER_CARS = 3;
 const MAX_KEYS = 500;
+const MAX_FIT_GROUPS = 60;
+
+/**
+ * Every MODEL a part fits, with the years: [{ brand, brandAr, model, modelAr, ranges: [[2022, 2024], [2026, 2026]], vehicleCount }] in the order the supplier added them (the first is the "primary" one the page has always shown).
+ * Years that follow each other become one range, so a part that fits 100 vehicles stays a short list. Two generations of the same model are one group (their years are merged).
+ */
+function groupFit(entries) {
+  const groups = new Map();
+  for (const r of entries) {
+    const key = `${r.brand}\u0000${r.model}`;
+    let g = groups.get(key);
+    if (!g) { g = { brand: r.brand, brandAr: r.brand_ar || null, model: r.model, modelAr: r.model_ar || null, years: new Set() }; groups.set(key, g); }
+    const year = r.year === null || r.year === undefined || r.year === '' ? NaN : Number(r.year);      // a missing year is not year 0
+    if (Number.isFinite(year)) g.years.add(year);
+  }
+  return [...groups.values()].map((g) => {
+    const years = [...g.years].sort((a, b) => a - b); const ranges = [];
+    for (const y of years) { const last = ranges[ranges.length - 1]; if (last && y === last[1] + 1) last[1] = y; else ranges.push([y, y]); }
+    return { brand: g.brand, brandAr: g.brandAr, model: g.model, modelAr: g.modelAr, ranges, vehicleCount: years.length };
+  });
+}
 
 const names = (en, ar, zh) => (en ? { en, ar: ar || null, zh: zh || null } : null);
 
@@ -53,10 +74,15 @@ async function loadProductCars(q, productIds) {
 async function loadBuyerFit(q, productId) {
   try {
     const entries = (await readFitment(q, [productId])).get(productId) || [];
+    const groups = groupFit(entries);
     return {
       fitCarCount: entries.length,
       fitCars: entries.slice(0, MAX_BUYER_CARS).map((r) => ({ generationId: r.generation_id, year: r.year, brand: r.brand, brandAr: r.brand_ar || null, model: r.model, modelAr: r.model_ar || null })),
       fitKeys: entries.slice(0, MAX_KEYS).map((r) => `${r.generation_id}|${r.year}`),
+      // Every model it fits with its year ranges, how many models in all, and how many different vehicles (a generation and a year): see groupFit. Left OUT when the fitment could not be read, so an error never looks like "fits every vehicle".
+      fitGroups: groups.slice(0, MAX_FIT_GROUPS),
+      fitGroupCount: groups.length,
+      fitVehicleCount: new Set(entries.map((r) => `${r.generation_id}|${r.year}`)).size,
     };
   } catch (err) {
     console.error(`[product-fit] could not read the fitment of product ${productId}: ${err.message}`);
@@ -64,4 +90,4 @@ async function loadBuyerFit(q, productId) {
   }
 }
 
-module.exports = { loadProductCars, loadBuyerFit, MAX_SUPPLIER_CARS, MAX_BUYER_CARS };
+module.exports = { loadProductCars, loadBuyerFit, groupFit, MAX_SUPPLIER_CARS, MAX_BUYER_CARS, MAX_FIT_GROUPS };

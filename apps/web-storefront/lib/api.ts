@@ -55,6 +55,16 @@ export interface ProductSummary {
   brandLogoUrl?: string | null;
 }
 
+/** One model a part fits: its brand and model (English and Arabic) and its years as ranges, [[2022, 2024], [2026, 2026]]. */
+export interface FitGroup {
+  brand: string;
+  brandAr?: string | null;
+  model: string;
+  modelAr?: string | null;
+  ranges: Array<[number, number]>;
+  vehicleCount: number;
+}
+
 export interface ProductDetail extends ProductSummary {
   brand: string | null;
   model: string | null;
@@ -64,6 +74,11 @@ export interface ProductDetail extends ProductSummary {
   fitCars?: { generationId: string; year: number | null; brand: string | null; brandAr?: string | null; model: string | null; modelAr?: string | null }[];
   fitCarCount?: number;
   fitKeys?: string[];
+  /** EVERY model the part fits with its year ranges, in the order they were added; [] = fits every vehicle; absent = an older server (or the fitment could not be read). */
+  fitGroups?: FitGroup[];
+  /** How many models in all (the list is capped at 60) and how many different vehicles (a generation and a year). */
+  fitGroupCount?: number;
+  fitVehicleCount?: number;
   /** The part's own attributes (material, colour...), as entered for this product. */
   attributes?: Array<{ name: string; value: string }>;
 }

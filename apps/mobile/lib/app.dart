@@ -23,7 +23,9 @@ import 'features/support/report_bug_screen.dart';
 import 'features/account/legal_document_screen.dart';
 import 'features/support/contact_us_screen.dart';
 import 'models/product.dart';
+import 'models/vehicle.dart';
 import 'features/garage/garage_screen.dart';
+import 'features/garage/vehicle_parts_screen.dart';
 import 'features/quote_requests/request_quote_screen.dart';
 import 'features/quote_requests/my_requests_screen.dart';
 import 'features/quote_requests/quote_request_detail_screen.dart';
@@ -71,6 +73,13 @@ final GoRouter appRouter = GoRouter(
       ],
     ),
     GoRoute(path: '/garage', builder: (context, state) => const GarageScreen()),
+    GoRoute(
+      path: '/vehicle-parts',
+      builder: (context, state) {
+        final vehicle = state.extra;
+        return vehicle is Vehicle ? VehiclePartsScreen(vehicle: vehicle) : const GarageScreen();
+      },
+    ),
     GoRoute(path: '/request-quote', builder: (context, state) => const RequestQuoteScreen()),
     GoRoute(path: '/part-requests', builder: (context, state) => const MyRequestsScreen()),
     GoRoute(path: '/part-requests/:id', builder: (context, state) => QuoteRequestDetailScreen(requestId: state.pathParameters['id']!)),

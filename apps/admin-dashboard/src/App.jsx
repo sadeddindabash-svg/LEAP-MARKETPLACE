@@ -12,6 +12,7 @@ import FooterTextSection from "./FooterTextSection";
 import SocialLinksSection from "./SocialLinksSection";
 import LegalPagesSection from "./LegalPagesSection";
 import { PlateChip, Badge, Stars, KpiCard, Card, Th, Td, ConfirmDialog, EditDialog, EnlargeablePhoto } from "./components/ui";
+import FitmentSummary from "./FitmentSummary";
 import FreeShippingSection from "./FreeShippingSection";
 import VersionsPanel from "./VersionsPanel";
 import VehicleImportPanel from "./VehicleImportPanel";
@@ -2608,6 +2609,8 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
     setFitment([...fitment, {
       generationId: selectedGenerationId,
       year: Number(selectedYear),
+      brandName: brand?.name,
+      modelName: model?.name,
       // a one-year entry is named by its year: print "Geely Coolray · 2021", not "Geely Coolray (2021) · 2021"
       label: selectedGeneration?.name === String(selectedYear) ? `${brand?.name} ${model?.name} · ${selectedYear}` : `${brand?.name} ${model?.name} (${selectedGeneration?.name}) · ${selectedYear}`,
     }]);
@@ -2902,6 +2905,7 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
 
       <Card title={`Vehicle fitment (${fitment.length})`} style={{ marginBottom: 20 }}>
         <div style={{ padding: 16 }}>
+          <FitmentSummary fitment={fitment} />
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
             {fitment.map((f, i) => (
               <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 12px" }}>

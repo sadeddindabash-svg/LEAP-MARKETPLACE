@@ -1163,6 +1163,7 @@ router.get('/admin/products/:id', requireAuth, requireRole('admin'), requirePage
       videoUrl: row.video_url,
       fitment: fitmentRows.map((f) => ({
         generationId: f.generation_id, year: f.year, engineId: f.engine_id, transmissionId: f.transmission_id,
+        brandName: f.brand_name, modelName: f.model_name,
         label: `${f.brand_name} ${f.model_name} (${f.generation_name}) · ${f.year}`,
       })),
       attributes: attrRows.map((a) => ({ name: a.attribute_name, value: a.attribute_value })),

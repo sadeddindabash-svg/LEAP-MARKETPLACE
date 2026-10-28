@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { ProductDetail } from "@/lib/api";
 import { t, type Lang } from "@/lib/i18n";
+import FitsRow from "@/components/FitsRow";
 
 // "Technical Specifications" under the photos of a product page, as in the mobile app: brand, model, year, part number, the part's own attributes, dimensions, weight and the description. EVERY row is shown; one the part does not
 // have says "Not specified". A part that fits several cars shows the first "+N more cars". A size that comes from the part (not entered by the supplier for this product) is marked "approx.".
@@ -13,9 +14,14 @@ export default function ProductDetails({ product, lang }: { product: ProductDeta
   const moreText = moreCars === 1 ? t(lang, "detail_more_car_one") : moreCars > 10 ? t(lang, "detail_more_cars_many", { n: moreCars }) : t(lang, "detail_more_cars", { n: moreCars });
   const none = <span className="font-normal text-muted">{t(lang, "detail_not_specified")}</span>;
   const rows: Array<[string, ReactNode]> = [];
-  rows.push([t(lang, "detail_brand"), product.brand || none]);
-  rows.push([t(lang, "detail_model"), product.model || none]);
-  rows.push([t(lang, "detail_year"), product.year ? <>{product.year}{moreCars > 0 && <span className="font-normal text-muted"> · {moreText}</span>}</> : none]);
+  if (product.fitGroups) {
+    // A part that fits many vehicles: every model with its years (not just the first car), or "Universal" when it has no fitment at all.
+    rows.push([t(lang, "detail_fits"), product.fitGroups.length > 0 ? <FitsRow groups={product.fitGroups} groupCount={product.fitGroupCount} vehicleCount={product.fitVehicleCount} /> : <span className="font-semibold">{t(lang, "detail_fits_universal")}</span>]);
+  } else {
+    rows.push([t(lang, "detail_brand"), product.brand || none]);
+    rows.push([t(lang, "detail_model"), product.model || none]);
+    rows.push([t(lang, "detail_year"), product.year ? <>{product.year}{moreCars > 0 && <span className="font-normal text-muted"> · {moreText}</span>}</> : none]);
+  }
   rows.push([t(lang, "part_number"), product.oemNumber ? <span className="font-plate font-semibold">{product.oemNumber}</span> : none]);
   for (const a of product.attributes ?? []) rows.push([a.name, a.value]);
   const { lengthCm, widthCm, heightCm, weightKg } = product;
