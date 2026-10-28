@@ -887,7 +887,61 @@ AF_APP = [
  ('the universal wording has no Arabic', 'apps/mobile/lib/core/app_strings.dart', "'fits_universal': {'en': 'Universal: fits all vehicles', 'ar': 'عامة: تناسب جميع المركبات'},", "'fits_universal': {'en': 'Universal: fits all vehicles'},"),
  ('the Arabic link loses its number', 'apps/mobile/lib/core/app_strings.dart', "'ar': '+{n} موديلات أخرى'", "'ar': 'موديلات أخرى'"),
 ]
-mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"afapp": AF_APP, "gpapp": GP_APP, "mfserver": MF_SERVER, "mfweb": MF_WEB, "mfadmin": MF_ADMIN, "frapp": FR_APP, "frwstorefront": FRW_STOREFRONT, "fradmin": FRA_ADMIN, "frserver": FR_SERVER, "pdstorefront": PD_STOREFRONT, "hcstorefront": HC_STOREFRONT, "sfstorefront": SF_STOREFRONT, "hbserver": HB_SERVER, "hbstorefront": HB_STORE, "hbadmin": HB_ADMIN, "bpstorefront": BP_FAST, "bpslow": BP_SLOW, "ssstorefront": SS_STOREFRONT, "cxserver": CX_SERVER, "cxadmin": CX_ADMIN, "pdserver": PD_SERVER, "pdadmin": PD_ADMIN, "clserver": CL_SERVER, "ffstorefront": FF_STOREFRONT, "crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
+U2_SERVER = [
+ ('the part photo is looked up by the Arabic name', 'services/api/src/modules/catalog/routes.js', "WHERE category_id = $1 AND name_en = $2 LIMIT 1', [row.category, row.part]);\n    return rows.length > 0 && rows[0].photo_url", "WHERE category_id = $1 AND name_ar = $2 LIMIT 1', [row.category, row.part]);\n    return rows.length > 0 && rows[0].photo_url"),
+ ('the part photo is looked up with the arguments swapped', 'services/api/src/modules/catalog/routes.js', '[row.category, row.part]);\n    return rows.length > 0 && rows[0].photo_url', '[row.part, row.category]);\n    return rows.length > 0 && rows[0].photo_url'),
+ ('a part photo that cannot be read breaks the product page', 'services/api/src/modules/catalog/routes.js', 'could not read the part photo of product ${row.id}: ${err.message}`);\n    return null;', 'could not read the part photo of product ${row.id}: ${err.message}`);\n    throw err;'),
+ ('an empty photo address is sent as a photo', 'services/api/src/modules/catalog/routes.js', 'return rows.length > 0 && rows[0].photo_url ? rows[0].photo_url : null;', 'return rows.length > 0 ? rows[0].photo_url : null;'),
+ ('the product page does not carry the part photo', 'services/api/src/modules/catalog/routes.js', "      partPhotoUrl: await loadPartPhoto(rows[0]),      // the part class's photo (shown beside the part chip)\n", ''),
+ ('a fit group has no brand logo', 'services/api/src/modules/orderVehicles/productCars.js', 'brandLogoUrl: r.brand_photo || null, years: new Set()', 'brandLogoUrl: null, years: new Set()'),
+ ('the brand logo is not sent', 'services/api/src/modules/orderVehicles/productCars.js', 'modelAr: g.modelAr, brandLogoUrl: g.brandLogoUrl, ranges,', 'modelAr: g.modelAr, ranges,'),
+]
+U2_WEB = [
+ ('the photo changes at once on hover (no 0.4 s wait)', 'apps/web-storefront/components/CardPhotos.tsx', 'export const HOVER_DELAY_MS = 400;', 'export const HOVER_DELAY_MS = 0;'),
+ ('the photos change twice as fast', 'apps/web-storefront/components/CardPhotos.tsx', 'export const HOVER_STEP_MS = 900;', 'export const HOVER_STEP_MS = 450;'),
+ ('after the last photo it stops instead of going round', 'apps/web-storefront/components/CardPhotos.tsx', 'setIndex((i) => (i + 1) % count);\n        step = setInterval(() => setIndex((i) => (i + 1) % count), HOVER_STEP_MS);', 'setIndex((i) => Math.min(i + 1, count - 1));\n        step = setInterval(() => setIndex((i) => Math.min(i + 1, count - 1)), HOVER_STEP_MS);'),
+ ('leaving the card does not return to the first photo', 'apps/web-storefront/components/CardPhotos.tsx', 'const leave = () => { inside = false; clear(); setHovering(false); setIndex(0); };', 'const leave = () => { inside = false; clear(); setHovering(false); };'),
+ ('leaving the card leaves the dots', 'apps/web-storefront/components/CardPhotos.tsx', 'const leave = () => { inside = false; clear(); setHovering(false); setIndex(0); };', 'const leave = () => { inside = false; clear(); setIndex(0); };'),
+ ('leaving the card does not stop the timers', 'apps/web-storefront/components/CardPhotos.tsx', 'const leave = () => { inside = false; clear(); setHovering(false); setIndex(0); };', 'const leave = () => { inside = false; setHovering(false); setIndex(0); };'),
+ ('touch screens also slide', 'apps/web-storefront/components/CardPhotos.tsx', 'if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;', 'if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;'),
+ ('reduced motion is ignored', 'apps/web-storefront/components/CardPhotos.tsx', 'if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;', 'if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;'),
+ ('a part with one photo gets timers and dots', 'apps/web-storefront/components/CardPhotos.tsx', 'if (!card || count < 2 ||', 'if (!card ||'),
+ ('all the photos are on the page from the start (a page of cards downloads them all)', 'apps/web-storefront/components/CardPhotos.tsx', '{(armed ? images : images.slice(0, 1)).map(', '{images.map('),
+ ("a repeated 'pointer entered' restarts the timing", 'apps/web-storefront/components/CardPhotos.tsx', '      if (inside) return;                              // already counting: a repeated "entered" must not restart it\n', ''),
+ ('after leaving, the pointer entering again does nothing', 'apps/web-storefront/components/CardPhotos.tsx', 'const leave = () => { inside = false; clear();', 'const leave = () => { clear();'),
+ ("a photo is replaced each time it changes (the browser then repeats 'entered')", 'apps/web-storefront/components/CardPhotos.tsx', 'key={`${i}|${src}`}', 'key={`${index}|${i}`}'),
+ ('the faded-out photos are all described', 'apps/web-storefront/components/CardPhotos.tsx', 'alt={i === index ? alt : ""}', 'alt={alt}'),
+ ('the timers are not cleared when the card goes away', 'apps/web-storefront/components/CardPhotos.tsx', 'return () => { clear(); card.removeEventListener("mouseenter", enter);', 'return () => { card.removeEventListener("mouseenter", enter);'),
+ ('only the photo, not the whole card, is listened to', 'apps/web-storefront/components/CardPhotos.tsx', 'const card = root.current?.closest("li");', 'const card = root.current;'),
+ ('the dots stay hidden', 'apps/web-storefront/components/CardPhotos.tsx', '{hovering && count > 1 && (', '{false && count > 1 && ('),
+ ('the dots do not show which photo is on', 'apps/web-storefront/components/CardPhotos.tsx', 'data-active={i === index ? "true" : "false"}', 'data-active="false"'),
+ ('the same brand twice gives two logos', 'apps/web-storefront/lib/fitLogos.ts', 'if (seen.has(key)) continue;', ''),
+ ('more than three logos are shown', 'apps/web-storefront/lib/fitLogos.ts', 'const shown = withLogo.slice(0, max).map(', 'const shown = withLogo.slice(0, 99).map('),
+ ('the other brands are not counted', 'apps/web-storefront/lib/fitLogos.ts', 'return { shown, extra: Math.max(brands.length - shown.length, 0) };', 'return { shown, extra: 0 };'),
+ ('a brand without a logo is shown as a broken picture', 'apps/web-storefront/lib/fitLogos.ts', 'const withLogo = brands.filter((b) => b.url);', 'const withLogo = brands.map((b) => ({ ...b, url: b.url ?? "" }));'),
+ ("an older server's single logo is lost", 'apps/web-storefront/lib/fitLogos.ts', 'if (!p.fitGroups) return p.brandLogoUrl && p.brand ? { shown: [{ name: p.brand, url: p.brandLogoUrl }], extra: 0 } : { shown: [], extra: 0 };', 'if (!p.fitGroups) return { shown: [], extra: 0 };'),
+ ('the Arabic brand name is never used', 'apps/web-storefront/lib/fitLogos.ts', 'name: pickName(lang, g.brand, g.brandAr)', 'name: g.brand'),
+ ('the part chip has no photo', 'apps/web-storefront/components/ProductChips.tsx', '{photo && (\n            <span data-testid="part-photo"', '{false && (\n            <span data-testid="part-photo"'),
+ ('the part photo has a description (read twice by a screen reader)', 'apps/web-storefront/components/ProductChips.tsx', 'alt="" fill sizes="30px"', 'alt="part" fill sizes="30px"'),
+ ('the logos are after the words', 'apps/web-storefront/components/ProductChips.tsx', '          )}\n          {fit}\n        </span>', '          )}\n        </span>'),
+ ('the logos do not overlap', 'apps/web-storefront/components/ProductChips.tsx', '${i > 0 ? "-ms-2" : ""}', ''),
+ ('the +N bubble is missing', 'apps/web-storefront/components/ProductChips.tsx', '{extra > 0 && <span data-testid="fit-logos-more"', '{false && <span data-testid="fit-logos-more"'),
+ ('the tile row ignores maxCollapsed when deciding to show More', 'apps/web-storefront/components/TileRow.tsx', 'const fits = maxCollapsed !== undefined ? tiles.length <= maxCollapsed : tiles.length <= columns;', 'const fits = tiles.length <= columns;'),
+ ('the tile row shows fewer than maxCollapsed', 'apps/web-storefront/components/TileRow.tsx', 'const shown = fits || open ? tiles.length : maxCollapsed ?? columns - 1;', 'const shown = fits || open ? tiles.length : columns - 1;'),
+ ('the More button is not wide on a phone', 'apps/web-storefront/components/TileRow.tsx', '<li className={maxCollapsed !== undefined ? "col-span-3 sm:col-span-1" : undefined}>', '<li>'),
+ ('the wide More button also shows on big screens', 'apps/web-storefront/components/TileRow.tsx', 'text-navy hover:border-signal sm:hidden">{label}', 'text-navy hover:border-signal">{label}'),
+ ('the round More tile also shows on a phone', 'apps/web-storefront/components/TileRow.tsx', '${maxCollapsed !== undefined ? "max-sm:hidden" : ""}', ''),
+ ('the home row is back to 6 columns', 'apps/web-storefront/app/page.tsx', 'sm:grid-cols-5 sm:gap-x-4 xl:grid-cols-10', 'sm:grid-cols-4 sm:gap-x-4 lg:grid-cols-6'),
+ ('the home row shows 8 brands', 'apps/web-storefront/app/page.tsx', 'defaultColumns={6} maxCollapsed={9}', 'defaultColumns={6} maxCollapsed={8}'),
+ ('the stock box is full width again', 'apps/web-storefront/components/StockBanner.tsx', 'mt-5 flex w-fit max-w-full items-center', 'mt-5 flex items-center'),
+ ('in stock is not green', 'apps/web-storefront/components/StockBanner.tsx', ': "bg-[#0f6b49] text-white";', ': "bg-gauge/10 text-[#0f6b49]";'),
+ ('out of stock is not red', 'apps/web-storefront/components/StockBanner.tsx', 'out ? "bg-[#c62f26] text-white"', 'out ? "bg-line/40 text-muted"'),
+ ('low stock is not amber', 'apps/web-storefront/components/StockBanner.tsx', 'low ? "bg-[#fab219] text-navy"', 'low ? "bg-[#fff1dc] text-[#8a4b00]"'),
+ ('the product page discount is back to the pale italic tag', 'apps/web-storefront/components/PriceBlock.tsx', 'rounded-md px-2.5 py-0.5 text-sm font-bold ${cardDiscountTagClasses(percent)}', 'rounded px-2 py-0.5 text-sm font-medium italic ${cardDiscountTagClasses(percent)}'),
+ ('the card shows only its first photo', 'apps/web-storefront/components/ProductCard.tsx', '<CardPhotos images={p.images.map(resolveImageUrl)} alt={p.name} />', '<CardPhotos images={p.images.slice(0, 1).map(resolveImageUrl)} alt={p.name} />'),
+ ('the product page does not use the new chips', 'apps/web-storefront/app/products/[id]/page.tsx', '<ProductChips product={product} lang={lang} />', '{null}'),
+]
+mode = sys.argv[1] if len(sys.argv) > 1 else "server"; BREAKS = {"u2server": U2_SERVER, "u2web": U2_WEB, "afapp": AF_APP, "gpapp": GP_APP, "mfserver": MF_SERVER, "mfweb": MF_WEB, "mfadmin": MF_ADMIN, "frapp": FR_APP, "frwstorefront": FRW_STOREFRONT, "fradmin": FRA_ADMIN, "frserver": FR_SERVER, "pdstorefront": PD_STOREFRONT, "hcstorefront": HC_STOREFRONT, "sfstorefront": SF_STOREFRONT, "hbserver": HB_SERVER, "hbstorefront": HB_STORE, "hbadmin": HB_ADMIN, "bpstorefront": BP_FAST, "bpslow": BP_SLOW, "ssstorefront": SS_STOREFRONT, "cxserver": CX_SERVER, "cxadmin": CX_ADMIN, "pdserver": PD_SERVER, "pdadmin": PD_ADMIN, "clserver": CL_SERVER, "ffstorefront": FF_STOREFRONT, "crserver": CR_SERVER, "cradmin": CR_ADMIN, "vpserver": VP_SERVER, "vpadmin": VP_ADMIN, "cpserver": CP_SERVER, "cpadmin": CP_ADMIN, "ftserver": FT_SERVER, "ftadmin": FT_ADMIN, "ftstorefront": FT_STOREFRONT, "spacing": SPACING, "ppserver": PP_SERVER, "ppstorefront": PP_STOREFRONT, "ppadmin": PP_ADMIN, "hpserver": HP_SERVER, "hpadmin": HP_ADMIN, "hpstorefront": HP_STOREFRONT, "server": SERVER, "screens": SCREENS, "storefront": STOREFRONT, "uistorefront": UI_STOREFRONT, "uiserver": UI_SERVER, "ui2storefront": UI2_STOREFRONT}[mode]
 lo, hi = (int(sys.argv[2]), int(sys.argv[3])) if len(sys.argv) > 3 else (1, len(BREAKS))
 def fresh():
     subprocess.run(["su", "postgres", "-c", "psql -q -c 'DROP DATABASE IF EXISTS leap_catalog_import_test' -c \"CREATE DATABASE leap_catalog_import_test TEMPLATE leap_marketplace_dev OWNER leap_dev\""], check=True, capture_output=True)
@@ -927,6 +981,8 @@ def run():
     if mode == "mfadmin": return subprocess.run(["npx", "vitest", "run", "src/fitmentSummaryRules.test.js", "src/FitmentSummary.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
     if mode == "gpapp": return subprocess.run(["/tmp/dartsdk/x/bin/dart", "--packages=/tmp/darttest/.dart_tool/package_config.json", "/tmp/darttest/run4.dart"], cwd=f"{ROOT}/apps/mobile", capture_output=True, text=True, timeout=120).returncode   # needs the stand-in test library in /tmp/darttest
     if mode == "afapp": return subprocess.run(["/tmp/dartsdk/x/bin/dart", "--packages=/tmp/darttest/.dart_tool/package_config.json", "/tmp/darttest/run5.dart"], cwd=f"{ROOT}/apps/mobile", capture_output=True, text=True, timeout=120).returncode   # needs the stand-in test library in /tmp/darttest
+    if mode == "u2server": return subprocess.run(["node", "--test", "--test-concurrency=1", "test/productFitGroups.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
+    if mode == "u2web": return subprocess.run(["npx", "vitest", "run", "components/CardPhotos.test.tsx", "components/ProductCardPhotos.test.tsx", "components/ProductChips.test.tsx", "components/TileRowMax.test.tsx", "components/StockBanner.test.tsx", "components/PriceBlock.test.tsx", "app/homeTiles.test.tsx", "app/productFits.test.tsx", "lib/fitLogos.test.ts"], cwd=SF, capture_output=True, text=True, timeout=280).returncode
     if mode == "ppserver": return subprocess.run(["node", "--test", "test/homeText.test.js", "test/productPage.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "ppadmin": return subprocess.run(["npx", "vitest", "run", "src/HomeTextSection.test.jsx"], cwd=f"{ROOT}/apps/admin-dashboard", capture_output=True, text=True, timeout=200).returncode
     if mode == "ppstorefront": return subprocess.run(["npx", "vitest", "run", "components/ProductDetails.test.tsx", "components/LazyProductRow.test.tsx", "components/VehicleFilterOrder.test.tsx", "components/FitsMyCarLabel.test.tsx", "app/stage1c-page.test.tsx", "app/homeText.test.tsx", "components/SiteHeaderTopBar.test.tsx", "lib/gridSourceModel.test.ts", "lib/homeText.test.ts", "app/api/products/routeSameModel.test.ts"], cwd=SF, capture_output=True, text=True, timeout=250).returncode
@@ -938,7 +994,7 @@ def run():
     if mode == "server": return subprocess.run(["node", "--test", "test/orderVehicles.test.js", "test/productCars.test.js", "test/orderVehiclesReplacement.test.js"], cwd=API, env=ENV, capture_output=True, text=True, timeout=200).returncode
     if mode == "screens": return subprocess.run(["npx", "vitest", "run", "src/OrderVehicle.test.jsx", "src/OrderVehicleFlow.test.jsx"], cwd=SP, capture_output=True, text=True, timeout=150).returncode
     return subprocess.run(["npx", "vitest", "run", "components/FitCheck.test.tsx", "app/stage1c-page.test.tsx", "app/cartFitCheck.test.tsx"], cwd=SF, capture_output=True, text=True, timeout=150).returncode
-if mode in ("mfserver", "frserver", "server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver", "hbserver"): fresh()
+if mode in ("u2server", "mfserver", "frserver", "server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver", "hbserver"): fresh()
 if run() != 0: sys.exit("The tests do not pass on the UNBROKEN code, so a break check would prove nothing.")
 print("baseline: the tests pass on the unbroken code\n", flush=True); caught = 0
 for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
@@ -947,10 +1003,10 @@ for n, (what, rel, old, new) in enumerate(BREAKS, start=1):
     if src.count(old) != 1: print(f"{n:2d}. SKIPPED (the line to break was not found exactly once): {what}"); continue
     shutil.copy(path, path + ".keep"); open(path, "w", encoding="utf-8").write(src.replace(old, new))
     try:
-        if mode in ("mfserver", "frserver", "server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver", "hbserver"): fresh()
+        if mode in ("u2server", "mfserver", "frserver", "server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver", "hbserver"): fresh()
         failed = run() != 0
     finally: shutil.move(path + ".keep", path)
     caught += failed; print(f"{n:2d}. {'CAUGHT ' if failed else 'MISSED!'}  {what}", flush=True)
 print(f"\n{caught} of {sum(1 for i in range(1, len(BREAKS) + 1) if lo <= i <= hi)} breaks were caught")
-if mode in ("mfserver", "frserver", "server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver", "hbserver"): fresh()
+if mode in ("u2server", "mfserver", "frserver", "server", "uiserver", "hpserver", "ppserver", "ftserver", "cpserver", "vpserver", "crserver", "clserver", "pdserver", "cxserver", "hbserver"): fresh()
 print("code restored; the tests pass again:", "yes" if run() == 0 else "NO (investigate)")

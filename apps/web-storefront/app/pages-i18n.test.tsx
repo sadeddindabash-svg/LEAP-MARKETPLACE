@@ -3,6 +3,10 @@ import { render, screen, within } from "@testing-library/react";
 import { LangProvider } from "@/components/LangProvider";
 import type { ProductSummary } from "@/lib/api";
 
+// The delivery date is today plus the estimated days, so the clock is fixed: it is 22 October 2026 (Saudi time).
+vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-22T09:00:00Z"));
+
+
 // The home page and the root layout, rendered in each language. The API and the language lookup are replaced by fixed values.
 const lang = { current: "en" as "en" | "ar" };
 const announcements = { current: [{ en: "Opening Middle East warehouse in Saudi Arabia", ar: "افتتاح مستودع الشرق الأوسط في السعودية" }, { en: "International shipping in 3-7 days", ar: "" }] as Array<{ en: string; ar: string }> };
@@ -63,7 +67,7 @@ describe("home page", () => {
     expect(screen.getByRole("heading", { name: "Shop by section" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Brake System" }).getAttribute("href")).toBe("/search?category=brake");
     expect(screen.getByRole("link", { name: "BYD" }).getAttribute("href")).toBe("/search?q=BYD");
-    expect(screen.getAllByText(/Delivery in 7 days/).length).toBe(2);
+    expect(screen.getAllByText(/Delivery: Oct\. 29/).length).toBe(2);
   });
 
   it("CRITICAL: in Arabic everything is Arabic: the headings, the section and brand names the server has in Arabic, the cards, and every link is an /ar link", async () => {
@@ -75,7 +79,7 @@ describe("home page", () => {
     expect(section.getAttribute("href")).toBe("/ar/search?category=brake");
     expect(screen.getByRole("link", { name: "بي واي دي" })).toBeInTheDocument();             // the brand's Arabic name
     expect(screen.getByRole("link", { name: "Geely" })).toBeInTheDocument();                  // a brand with no Arabic name keeps its English one
-    expect(screen.getAllByText(/التوصيل خلال 7 أيام/).length).toBe(2);
+    expect(screen.getAllByText(/التسليم: 29 أكتوبر/).length).toBe(2);
     expect(screen.getAllByText("متوفر").length).toBe(2);
     expect(screen.getByRole("button", { name: "اعرض القطع المناسبة" })).toBeInTheDocument();
     expect(screen.getByLabelText("الماركة")).toBeInTheDocument();
@@ -114,7 +118,7 @@ describe("home page", () => {
     vi.mocked(fetchCategories).mockResolvedValueOnce(Array.from({ length: 20 }, (_, i) => ({ id: `s${i}`, nameEn: `Section ${i}`, nameAr: null, photoUrl: null, sortOrder: i, commissionPercent: 10 })) as never);
     vi.mocked(fetchVehicleBrands).mockResolvedValueOnce(Array.from({ length: 30 }, (_, i) => ({ id: `b${i}`, name: `Brand ${i}`, nameAr: null, photoUrl: null })));
     await renderHome("en");
-    expect(screen.getByRole("button", { name: "More sections" })).toBeInTheDocument(); expect(screen.getByRole("button", { name: "More brands" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "More sections" })).toBeInTheDocument(); expect(screen.getAllByRole("button", { name: "More brands" }).length).toBeGreaterThan(0);      // the round More tile and the wide one for a phone (CSS shows one of them)
     expect(screen.getByRole("link", { name: "Brand 0" })).toBeInTheDocument();
   });
 });

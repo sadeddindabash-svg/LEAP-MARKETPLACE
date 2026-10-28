@@ -1,3 +1,4 @@
+import ProductChips from "@/components/ProductChips";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ProductDetail, ProductSummary } from "@/lib/api";
 import type { ReactElement } from "react";
@@ -28,17 +29,16 @@ async function page(over: Partial<ProductDetail> = {}, lang: "en" | "ar" = "en")
 const columns = (root: El) => { const grid = (function f(el: El): El | null { if (typeof el.props.className === "string" && el.props.className.includes("md:grid-cols-2")) return el; for (const c of kids(el)) { const r = f(c); if (r) return r; } return null; })(root)!; const [left, right] = kids(grid); return { left, right }; };
 beforeEach(() => { m.lang.current = "en"; });
 
-const chips = async (over: Record<string, unknown> = {}, lang: "en" | "ar" = "en") => { const { right } = columns(await page(over as never, lang)); return textOf(kids(right)[1]); };
+const chipsEl = async (over: Record<string, unknown> = {}, lang: "en" | "ar" = "en") => { const { right } = columns(await page(over as never, lang)); const el = kids(kids(right)[1]).find((c) => c.type === ProductChips); return el as { props: { product: Record<string, unknown>; lang: string } } | undefined; };
 const grp = (model: string, ranges: Array<[number, number]>, extra: Record<string, unknown> = {}) => ({ brand: "BYD", model, ranges, vehicleCount: 1, ...extra });
 
-describe("the chip at the top of the page", () => {
-  it("a part that fits several models: the first model with its years and how many more models", async () => {
-    expect(await chips({ fitGroups: [grp("Seal", [[2022, 2024]]), grp("Dolphin", [[2023, 2023]]), grp("Han", [[2021, 2023]])], fitGroupCount: 3 })).toContain("FITS BYD Seal 2022–2024 +2 more models");
+// The wording of the chips is tested where it is drawn (components/ProductChips.test.tsx); here: the page hands the chips area the product and the language.
+describe("the chips under the name", () => {
+  it("the chips area is the ProductChips component, given the whole product (with what it fits) and the page language", async () => {
+    const el = await chipsEl({ fitGroups: [grp("Seal", [[2022, 2024]]), grp("Dolphin", [[2023, 2023]])], fitGroupCount: 2, partPhotoUrl: "/uploads/part.png" });
+    expect(el).toBeDefined(); expect(el!.props.lang).toBe("en"); expect((el!.props.product.fitGroups as unknown[]).length).toBe(2); expect(el!.props.product.partPhotoUrl).toBe("/uploads/part.png");
   });
-  it("a part that fits one model has no \"more\"", async () => { const c = await chips({ fitGroups: [grp("Seal", [[2022, 2024]])], fitGroupCount: 1 }); expect(c).toContain("FITS BYD Seal 2022–2024"); expect(c).not.toContain("more"); });
-  it("a part with no fitment at all says it fits all vehicles", async () => { expect(await chips({ brand: null, model: null, year: null, fitGroups: [], fitGroupCount: 0 })).toContain("Fits all vehicles"); });
-  it("from an older server it is the single car, exactly as before", async () => { expect(await chips({ brand: "BYD", model: "Seal", year: 2022, fitGroups: undefined })).toContain("FITS 2022 BYD Seal"); });
-  it("nothing to say (no brand, no groups): no fit chip", async () => { expect(await chips({ brand: null, model: null, year: null, fitGroups: undefined })).not.toMatch(/FITS|Fits/); });
-  it("in Arabic the chip is Arabic", async () => { const c = await chips({ fitGroups: [grp("Seal", [[2022, 2024]], { brandAr: "بي واي دي", modelAr: "سيل" }), grp("Dolphin", [[2023, 2023]])], fitGroupCount: 2 }, "ar"); expect(c).toContain("بي واي دي سيل 2022–2024"); expect(c).toContain("+1 موديل آخر"); });
+  it("on the Arabic page the language is Arabic", async () => { const el = await chipsEl({ fitGroups: [grp("Seal", [[2022, 2024]])] }, "ar"); expect(el!.props.lang).toBe("ar"); });
+  it("a product from an older server (no groups, no part photo) is passed as it is", async () => { const el = await chipsEl({ brand: "BYD", model: "Seal", year: 2022, fitGroups: undefined }); expect(el!.props.product.fitGroups).toBeUndefined(); expect(el!.props.product.brand).toBe("BYD"); });
   it("the chip is in the same place as before: second in the column (after the title), before the description and the stock box", async () => { const { right } = columns(await page({ fitGroups: [grp("Seal", [[2022, 2024]])], fitGroupCount: 1, description: "x" } as never)); expect(kids(right).map((c) => c.type).slice(0, 3)).toEqual(["div", "div", "p"]); });
 });

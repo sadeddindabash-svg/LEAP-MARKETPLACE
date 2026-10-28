@@ -12,7 +12,7 @@ const { groupFit, loadBuyerFit, MAX_FIT_GROUPS } = require('../src/modules/order
 const e = (brand, model, year, over = {}) => ({ brand, brand_ar: null, model, model_ar: null, year, generation_id: `g-${brand}-${model}`, ...over });
 test('groupFit: years that follow each other become one range, the others stay apart, in order', () => {
   const g = groupFit([e('BYD', 'Seal', 2022), e('BYD', 'Seal', 2023), e('BYD', 'Seal', 2024), e('BYD', 'Seal', 2026)]);
-  assert.deepEqual(g, [{ brand: 'BYD', brandAr: null, model: 'Seal', modelAr: null, ranges: [[2022, 2024], [2026, 2026]], vehicleCount: 4 }]);
+  assert.deepEqual(g, [{ brand: 'BYD', brandAr: null, model: 'Seal', modelAr: null, brandLogoUrl: null, ranges: [[2022, 2024], [2026, 2026]], vehicleCount: 4 }]);
 });
 test('groupFit: models come in the order the supplier added them (the first is the primary one the page has always shown)', () => {
   const g = groupFit([e('BYD', 'Seal', 2022), e('Toyota', 'Camry', 2020), e('BYD', 'Dolphin', 2023), e('BYD', 'Seal', 2023)]);
@@ -29,7 +29,7 @@ test('groupFit: the Arabic names travel with the group; a year that is not a num
 
 let server, base; const q = (sql, params) => db.query(sql, params);
 const wipe = async () => {
-  await q("DELETE FROM product_fitment_entries WHERE product_id LIKE 'zz-fg-%'"); await q("DELETE FROM products WHERE id LIKE 'zz-fg-%'"); await q("DELETE FROM suppliers WHERE id LIKE 'zz-fg-%'");
+  await q("DELETE FROM product_fitment_entries WHERE product_id LIKE 'zz-fg-%'"); await q("DELETE FROM products WHERE id LIKE 'zz-fg-%'"); await q("DELETE FROM suppliers WHERE id LIKE 'zz-fg-%'"); await q("DELETE FROM category_parts WHERE id LIKE 'zz-fg-%'"); await q("DELETE FROM product_categories WHERE id LIKE 'zz-fg-%'");
   await q("DELETE FROM vehicle_generations WHERE id LIKE 'zz-fg-%'"); await q("DELETE FROM vehicle_models WHERE id LIKE 'zz-fg-%'"); await q("DELETE FROM vehicle_brands WHERE id LIKE 'zz-fg-%'");
 };
 before(async () => {
@@ -40,7 +40,11 @@ before(async () => {
   await q("INSERT INTO vehicle_brands (id, name, name_ar, sort_order) VALUES ('zz-fg-b1', 'ZZ Fit Brand One', 'ماركة', 1), ('zz-fg-b2', 'ZZ Fit Brand Two', NULL, 2)");
   await q("INSERT INTO vehicle_models (id, brand_id, name, name_ar, sort_order) VALUES ('zz-fg-m1', 'zz-fg-b1', 'Alpha', 'ألفا', 1), ('zz-fg-m2', 'zz-fg-b1', 'Beta', NULL, 2), ('zz-fg-m3', 'zz-fg-b2', 'Gamma', NULL, 1)");
   await q("INSERT INTO vehicle_generations (id, model_id, name, year_start, year_end, sort_order) VALUES ('zz-fg-g1', 'zz-fg-m1', 'Alpha 1', 2020, 2024, 1), ('zz-fg-g2', 'zz-fg-m2', 'Beta 1', 2021, 2024, 1), ('zz-fg-g3', 'zz-fg-m3', 'Gamma 1', 2018, 2024, 1)");
-  for (const id of ['many', 'one', 'none']) await q("INSERT INTO products (id, name, price, currency_code, supplier_id, stock_quantity) VALUES ($1, $2, 10, 'USD', 'zz-fg-s', 5)", [`zz-fg-${id}`, `FG ${id}`]);
+  await q("UPDATE vehicle_brands SET photo_url = '/uploads/zz-fg-logo.png' WHERE id = 'zz-fg-b1'");
+  await q("INSERT INTO product_categories (id, name_en) VALUES ('zz-fg-cat', 'ZZ FG Category') ON CONFLICT (id) DO NOTHING");
+  await q("INSERT INTO category_parts (id, category_id, name_en, name_ar, photo_url) VALUES ('zz-fg-part', 'zz-fg-cat', 'ZZ FG Pads', 'فحمات', '/uploads/zz-fg-part.png'), ('zz-fg-part2', 'zz-fg-cat', 'ZZ FG Plain', NULL, NULL), ('zz-fg-part3', 'zz-fg-cat', 'ZZ FG Empty', NULL, '') ON CONFLICT (id) DO NOTHING");
+  for (const id of ['many', 'one', 'none', 'empty']) await q("INSERT INTO products (id, name, price, currency_code, supplier_id, stock_quantity) VALUES ($1, $2, 10, 'USD', 'zz-fg-s', 5)", [`zz-fg-${id}`, `FG ${id}`]);
+  await q("UPDATE products SET category = 'zz-fg-cat', part = 'ZZ FG Pads' WHERE id = 'zz-fg-many'"); await q("UPDATE products SET category = 'zz-fg-cat', part = 'ZZ FG Plain' WHERE id = 'zz-fg-one'"); await q("UPDATE products SET category = 'zz-fg-cat', part = 'ZZ FG Empty' WHERE id = 'zz-fg-empty'");
   const fit = (p, g, y) => q('INSERT INTO product_fitment_entries (product_id, generation_id, year) VALUES ($1, $2, $3)', [p, g, y]);
   for (const [g, y] of [['zz-fg-g1', 2022], ['zz-fg-g1', 2023], ['zz-fg-g1', 2024], ['zz-fg-g2', 2023], ['zz-fg-g3', 2020], ['zz-fg-g3', 2021], ['zz-fg-g3', 2022]]) await fit('zz-fg-many', g, y);
   await fit('zz-fg-one', 'zz-fg-g1', 2022);
@@ -77,4 +81,24 @@ test('the admin\'s product detail names the brand and model of each fitment row 
   const r = await fetch(`${base}/catalog/admin/products/zz-fg-many`, { headers: { Authorization: `Bearer ${login.token}` } }); assert.equal(r.status, 200); const p = await r.json();
   assert.equal(p.fitment.length, 7); const first = p.fitment.find((f) => f.generationId === 'zz-fg-g1' && f.year === 2022);
   assert.equal(first.brandName, 'ZZ Fit Brand One'); assert.equal(first.modelName, 'Alpha'); assert.match(first.label, /ZZ Fit Brand One Alpha \(Alpha 1\) · 2022/); assert.equal(p.fitment.find((f) => f.generationId === 'zz-fg-g3').modelName, 'Gamma');
+});
+
+test('each group carries the LOGO of its brand (null when the brand has none), and the first logo found for a brand is used', async () => {
+  const f = await loadBuyerFit(db, 'zz-fg-many');
+  assert.deepEqual(f.fitGroups.map((g) => [g.model, g.brandLogoUrl]), [['Alpha', '/uploads/zz-fg-logo.png'], ['Beta', '/uploads/zz-fg-logo.png'], ['Gamma', null]]);
+  const rows = [{ brand: 'B', model: 'M1', year: 2022, generation_id: 'g1', brand_photo: null }, { brand: 'B', model: 'M1', year: 2023, generation_id: 'g1', brand_photo: '/uploads/b.png' }];
+  assert.equal(groupFit(rows)[0].brandLogoUrl, null, 'the logo of a group is that of its first row');                       // same brand, same model: the first row decides
+  assert.equal(groupFit([{ ...rows[1] }])[0].brandLogoUrl, '/uploads/b.png'); assert.equal(groupFit([{ brand: 'B', model: 'M', year: 2022, generation_id: 'g' }])[0].brandLogoUrl, null);
+});
+test('the product page carries the PHOTO of the part class (matched by category and English part name); none when the class has no photo or the product has no part', async () => {
+  const get = async (id, q = '') => (await fetch(`${base}/catalog/products/${id}${q}`)).json();
+  assert.equal((await get('zz-fg-many')).partPhotoUrl, '/uploads/zz-fg-part.png'); assert.equal((await get('zz-fg-one')).partPhotoUrl, null); assert.equal((await get('zz-fg-none')).partPhotoUrl, null); assert.equal((await get('zz-fg-empty')).partPhotoUrl, null, 'an empty photo address is no photo');
+  const ar = await get('zz-fg-many', '?lang=ar'); assert.equal(ar.part, 'فحمات'); assert.equal(ar.partPhotoUrl, '/uploads/zz-fg-part.png');                                  // the Arabic page names the part in Arabic but still has its photo
+});
+
+test('when the part photo cannot be read the product page still opens, just without a part photo (and the log says why)', async () => {
+  const orig = db.query; const logged = []; const err = console.error; console.error = (...a) => logged.push(a.join(' '));
+  db.query = async (sql, ...rest) => { if (/SELECT photo_url FROM category_parts/.test(String(sql))) throw new Error('boom'); return orig.call(db, sql, ...rest); };
+  try { const r = await fetch(`${base}/catalog/products/zz-fg-many`); assert.equal(r.status, 200); const p = await r.json(); assert.equal(p.partPhotoUrl, null); assert.equal(p.fitGroupCount, 3); } finally { db.query = orig; console.error = err; }
+  assert.ok(logged.some((l) => l.includes('product-part-photo') && l.includes('boom')), logged.join(' | '));
 });
