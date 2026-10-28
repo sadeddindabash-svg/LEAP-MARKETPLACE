@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
+import 'package:provider/provider.dart';
+import '../../core/currency_state.dart';
+import '../../models/price_filter.dart';
+import '../../widgets/currency_label.dart';
 
 /// What the user picked. `sort` is one of 'price_asc'/'price_desc'/
 /// 'newest', or null for the default (no explicit ordering). `minPrice`/
@@ -23,8 +27,8 @@ class SortAndPriceSelection {
     if (sort == 'price_desc') parts.add('${tr(context, 'price_short_label')} ↓');
     if (sort == 'newest') parts.add(tr(context, 'newest_label'));
     if (minPrice != null || maxPrice != null) {
-      final min = minPrice != null ? '\$$minPrice' : '\$0';
-      final max = maxPrice != null ? '\$$maxPrice' : '+';
+      final min = formatPrice(context, (minPrice ?? 0).toDouble());
+      final max = maxPrice != null ? formatPrice(context, maxPrice!.toDouble()) : '+';
       parts.add('$min–$max');
     }
     if (maxDeliveryDays != null) parts.add('${tr(context, 'ships_in_days_label')} ${maxDeliveryDays}d');
@@ -57,8 +61,8 @@ class _SortAndPriceSheetState extends State<SortAndPriceSheet> {
   void initState() {
     super.initState();
     _sort = widget.initial?.sort;
-    if (widget.initial?.minPrice != null) _minController.text = '${widget.initial!.minPrice}';
-    if (widget.initial?.maxPrice != null) _maxController.text = '${widget.initial!.maxPrice}';
+    if (widget.initial?.minPrice != null) _minController.text = formatPriceInput(displayFromUsd(widget.initial!.minPrice, context.read<CurrencyState>().convert(1.0) ?? 1.0));
+    if (widget.initial?.maxPrice != null) _maxController.text = formatPriceInput(displayFromUsd(widget.initial!.maxPrice, context.read<CurrencyState>().convert(1.0) ?? 1.0));
     _maxDeliveryDays = widget.initial?.maxDeliveryDays;
   }
 
@@ -72,7 +76,8 @@ class _SortAndPriceSheetState extends State<SortAndPriceSheet> {
   void _apply() {
     final min = num.tryParse(_minController.text.trim());
     final max = num.tryParse(_maxController.text.trim());
-    Navigator.of(context).pop(SortAndPriceSelection(sort: _sort, minPrice: min, maxPrice: max, maxDeliveryDays: _maxDeliveryDays));
+    final range = priceRangeFromTyped(min, max, context.read<CurrencyState>().convert(1.0) ?? 1.0);
+    Navigator.of(context).pop(SortAndPriceSelection(sort: _sort, minPrice: range.minUsd, maxPrice: range.maxUsd, maxDeliveryDays: _maxDeliveryDays));
   }
 
   void _clear() {
@@ -90,7 +95,7 @@ class _SortAndPriceSheetState extends State<SortAndPriceSheet> {
           children: [
             Text(tr(context, 'sort_and_price_title'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
             const SizedBox(height: 16),
-            Text(tr(context, 'sort_by_label'), style: const TextStyle(fontSize: 12.5, color: LeapColors.muted)),
+            Text(tr(context, 'sort_by_label'), style: TextStyle(fontSize: 12.5, color: LeapPalette.of(context).muted)),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -102,7 +107,7 @@ class _SortAndPriceSheetState extends State<SortAndPriceSheet> {
               ],
             ),
             const SizedBox(height: 20),
-            Text(tr(context, 'price_range_label'), style: const TextStyle(fontSize: 12.5, color: LeapColors.muted)),
+            Text('${tr(context, 'price_range_label')} (${currencyLabelOf(context)})', style: TextStyle(fontSize: 12.5, color: LeapPalette.of(context).muted)),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -110,7 +115,7 @@ class _SortAndPriceSheetState extends State<SortAndPriceSheet> {
                   child: TextField(
                     controller: _minController,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: InputDecoration(labelText: tr(context, 'min_field'), prefixText: '\$'),
+                    decoration: InputDecoration(labelText: tr(context, 'min_field'), prefixText: '${currencyLabelOf(context)} '),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -118,14 +123,14 @@ class _SortAndPriceSheetState extends State<SortAndPriceSheet> {
                   child: TextField(
                     controller: _maxController,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: InputDecoration(labelText: tr(context, 'max_field'), prefixText: '\$'),
+                    decoration: InputDecoration(labelText: tr(context, 'max_field'), prefixText: '${currencyLabelOf(context)} '),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 20),
             // Real ships-within-X-days filter (#10)
-            Text(tr(context, 'delivery_speed_label'), style: const TextStyle(fontSize: 12.5, color: LeapColors.muted)),
+            Text(tr(context, 'delivery_speed_label'), style: TextStyle(fontSize: 12.5, color: LeapPalette.of(context).muted)),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -163,8 +168,8 @@ class _SortChip extends StatelessWidget {
       label: Text(label, style: const TextStyle(fontSize: 12.5)),
       selected: selected,
       onSelected: (_) => onTap(),
-      selectedColor: LeapColors.signal.withValues(alpha: 0.15),
-      labelStyle: TextStyle(color: selected ? LeapColors.signal : LeapColors.ink, fontWeight: selected ? FontWeight.w700 : FontWeight.w500),
+      selectedColor: LeapPalette.of(context).signal.withValues(alpha: 0.15),
+      labelStyle: TextStyle(color: selected ? LeapPalette.of(context).signal : LeapPalette.of(context).ink, fontWeight: selected ? FontWeight.w700 : FontWeight.w500),
     );
   }
 }
