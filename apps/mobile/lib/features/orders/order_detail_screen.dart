@@ -13,6 +13,7 @@ import '../../core/review_prompt_state.dart';
 import '../../services/api_client.dart';
 import '../../widgets/plate_chip.dart';
 import '../../widgets/order_status_timeline.dart';
+import '../../models/order_rules.dart';
 import '../../core/cart_state.dart';
 import '../../core/language_state.dart';
 
@@ -181,7 +182,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
   // True only for an automatic English address that nobody has confirmed (source 'auto'). An address already written in English ('same') needs no check.
   bool _needsEnglishAddressCheck() {
     final english = _order?['addressEnglish'];
-    return _order?['address'] != null && english is Map<String, dynamic> && english['source'] == 'auto';
+    return _order?['address'] != null && english is Map<String, dynamic> && english['source'] == 'auto' && !isOrderFullyCancelled(_order);      // not for an order that is over
   }
 
   Widget _buildPendingAddressBanner() {
@@ -459,7 +460,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
           // hubShipment status -- the backend's own computeDisplayStatus
           // gap this comment used to flag is now fixed too (separate
           // real commit), so this no longer needs its own workaround.
-          if (subOrders.isNotEmpty && !subOrders.every((so) => _buyerFacingStage(so) == 'delivered'))
+          if (showsTrackingButton(_order, subOrders, _buyerFacingStage))
             OutlinedButton.icon(
               onPressed: () => context.push('/orders/${widget.orderId}/tracking'),
               icon: const Icon(Icons.local_shipping_outlined, size: 18),
@@ -471,6 +472,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
           // token-via-query-param auth (since url_launcher can't
           // attach a real Authorization header), matching the exact
           // same real auth support just added on the backend.
+          if (showsReceiptButton(_order))
           OutlinedButton.icon(
             onPressed: () async {
               final auth = context.read<AuthState>();

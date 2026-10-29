@@ -15,7 +15,7 @@ import { Price } from "@/components/Price";
 import { cancelOrder, cancelSubOrder, fetchOrderById, fetchOrderReceipt, resolveImageUrl, type OrderDetail, type OrderWho, type SupplierSubOrder } from "@/lib/api";
 import { supplierLabel } from "@/lib/cart";
 import { countryName } from "@/lib/countries";
-import { formatDate, isOrderCancellable, isPartiallyCancellable, isSubOrderCancellable, needsEnglishAddressCheck, reorder, reorderLines, showTrackingLink, statusLabel, subOrderStage } from "@/lib/orders";
+import { formatDate, isOrderCancellable, isPartiallyCancellable, isOrderFullyCancelled, isSubOrderCancellable, needsEnglishAddressCheck, reorder, reorderLines, showTrackingLink, statusLabel, subOrderStage } from "@/lib/orders";
 
 const outline = "inline-flex min-h-11 items-center justify-center rounded-[10px] border-[1.5px] border-navy px-4 text-sm font-bold text-navy hover:bg-chalk disabled:opacity-50";
 const danger = "inline-flex min-h-11 items-center justify-center rounded-[10px] border-[1.5px] border-[#a12a21] px-4 text-sm font-bold text-[#a12a21] hover:bg-[#fdf2f1] disabled:opacity-50";
@@ -134,7 +134,7 @@ function OrderView({ orderId }: { orderId: string }) {
 
   const partial = isPartiallyCancellable(order);
   const guestQuery = !token && guestEmail ? `?guestEmail=${encodeURIComponent(guestEmail)}` : "";
-  const cancelled = order.status === "cancelled";
+  const cancelled = isOrderFullyCancelled(order);
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 sm:px-8">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
@@ -177,7 +177,7 @@ function OrderView({ orderId }: { orderId: string }) {
 
       <div className="flex flex-wrap gap-3">
         {showTrackingLink(order) && <Link href={`/orders/${encodeURIComponent(order.id)}/tracking${guestQuery}`} className={outline}>{t("track_your_package")}</Link>}
-        <button type="button" className={outline} disabled={busy} onClick={downloadReceipt}>{t("download_receipt")}</button>
+        {!cancelled && <button type="button" className={outline} disabled={busy} onClick={downloadReceipt}>{t("download_receipt")}</button>}
         <button type="button" className="inline-flex min-h-11 items-center justify-center rounded-[10px] bg-signal px-5 text-sm font-bold text-on-signal hover:bg-signal-dark disabled:opacity-50" disabled={busy} onClick={doReorder}>{busy ? t("adding") : t("reorder")}</button>
         {isOrderCancellable(order) && <button type="button" className={danger} disabled={busy} onClick={() => setConfirm({ kind: "order" })}>{t("cancel_order")}</button>}
         {notice?.kind === "ok" && /\d/.test(notice.text) && notice.text !== t("order_cancelled") && <Link href="/cart" className={outline}>{t("view_cart")}</Link>}

@@ -703,6 +703,9 @@ async function computeDisplayStatus(orderId) {
      WHERE so.order_id = $1`,
     [orderId]
   );
+  // An order that is OVER for good: cancelled, or every one of its parts is (for example the only supplier refused it and nobody else could supply it). It has no shipment, so without this it fell through to "to_ship".
+  const { rows: orderRows } = await db.query('SELECT status FROM orders WHERE id = $1', [orderId]);
+  if (orderRows[0]?.status === 'cancelled' || (subOrders.length > 0 && subOrders.every((so) => so.status === 'cancelled'))) return 'cancelled';
   const { rows: returnCases } = await db.query('SELECT id FROM return_cases WHERE order_id = $1 LIMIT 1', [orderId]);
 
   // A real return case in progress is what a buyer cares about most for

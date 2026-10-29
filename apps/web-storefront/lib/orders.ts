@@ -46,15 +46,26 @@ export function isPartiallyCancellable(order: Pick<OrderDetail, "status" | "supp
   return n > 0 && n < order.supplierSubOrders.length;
 }
 
-/** The English version of the address is only a machine's guess ("auto") until the buyer confirms it: then they are asked to check it. */
-export function needsEnglishAddressCheck(order: Pick<OrderDetail, "address" | "addressEnglish">): boolean {
-  return order.address != null && order.addressEnglish != null && order.addressEnglish.source === "auto";
+/**
+ * The order is OVER for good: it is cancelled, or every one of its parts is (for example the only supplier refused it and nobody else could supply it). Nothing will be shipped and nothing was charged,
+ * so there is nothing to check, track or give a receipt for. (An order with a part still going is not over: the other parts continue.)
+ */
+export function isOrderFullyCancelled(order: { status?: string; supplierSubOrders?: Array<{ status: string }> }): boolean {
+  if (order.status === "cancelled") return true;
+  const parts = order.supplierSubOrders ?? [];
+  return parts.length > 0 && parts.every((so) => so.status === "cancelled");
 }
 
-/** The tracking page is offered until every part has been delivered. */
-export function showTrackingLink(order: Pick<OrderDetail, "supplierSubOrders">): boolean {
-  const parts = order.supplierSubOrders;
-  return parts.length > 0 && !parts.every((so) => subOrderStage(so) === "delivered");
+/** The English version of the address is only a machine's guess ("auto") until the buyer confirms it: then they are asked to check it (not for an order that is over). */
+export function needsEnglishAddressCheck(order: Pick<OrderDetail, "address" | "addressEnglish"> & { status?: string; supplierSubOrders?: Array<{ status: string }> }): boolean {
+  return order.address != null && order.addressEnglish != null && order.addressEnglish.source === "auto" && !isOrderFullyCancelled(order);
+}
+
+/** The tracking page is offered while a part that is still going has not been delivered: never for an order that is over, and a cancelled part does not count as "not delivered yet". */
+export function showTrackingLink(order: Pick<OrderDetail, "supplierSubOrders"> & { status?: string }): boolean {
+  if (isOrderFullyCancelled(order)) return false;
+  const going = order.supplierSubOrders.filter((so) => so.status !== "cancelled");
+  return going.length > 0 && !going.every((so) => subOrderStage(so) === "delivered");
 }
 
 /** The address of the English letters the hub reads must not contain Arabic letters (the server refuses it too). */
