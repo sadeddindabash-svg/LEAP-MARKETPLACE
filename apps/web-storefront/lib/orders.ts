@@ -61,6 +61,12 @@ export function needsEnglishAddressCheck(order: Pick<OrderDetail, "address" | "a
   return order.address != null && order.addressEnglish != null && order.addressEnglish.source === "auto" && !isOrderFullyCancelled(order);
 }
 
+/** "Request a return" is offered for a part only while it can be returned: never for a cancelled part or a cancelled order, and not once the server says the return window after delivery has passed (an older server says nothing: only the cancelled rule applies). */
+export function isPartReturnable(order: { status?: string; supplierSubOrders?: Array<{ status: string }> }, part: { status: string; returnable?: boolean }): boolean {
+  if (isOrderFullyCancelled(order) || part.status === "cancelled") return false;
+  return part.returnable !== false;
+}
+
 /** The tracking page is offered while a part that is still going has not been delivered: never for an order that is over, and a cancelled part does not count as "not delivered yet". */
 export function showTrackingLink(order: Pick<OrderDetail, "supplierSubOrders"> & { status?: string }): boolean {
   if (isOrderFullyCancelled(order)) return false;

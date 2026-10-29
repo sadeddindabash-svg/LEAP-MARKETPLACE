@@ -444,11 +444,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
               ),
             ),
           const SizedBox(height: 20),
-          Text(tr(context, 'shipped_by'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
           const SizedBox(height: 8),
           for (final so in subOrders) _SupplierSubOrderCard(
             subOrder: so,
             onRequestReturn: _openReturnRequest,
+            showReturnButton: isSubOrderReturnable(so, _order),
             onCancelSubOrder: _confirmAndCancelSubOrder,
             showCancelButton: _isPartiallyCancellable() && isSubOrderCancellable(so),
           ),
@@ -755,7 +755,8 @@ class _SupplierSubOrderCard extends StatelessWidget {
   final void Function(int subOrderId, String supplierLabel) onRequestReturn;
   final void Function(int subOrderId, String supplierLabel)? onCancelSubOrder;
   final bool showCancelButton;
-  const _SupplierSubOrderCard({required this.subOrder, required this.onRequestReturn, this.onCancelSubOrder, this.showCancelButton = false});
+  final bool showReturnButton;
+  const _SupplierSubOrderCard({required this.subOrder, required this.onRequestReturn, this.onCancelSubOrder, this.showCancelButton = false, this.showReturnButton = true});
 
   @override
   Widget build(BuildContext context) {
@@ -862,7 +863,8 @@ class _SupplierSubOrderCard extends StatelessWidget {
                   child: Text(tr(context, 'cancel_this_part'), style: const TextStyle(fontSize: 12.5)),
                 ),
               ),
-            Align(
+            if (showReturnButton)
+              Align(
               alignment: Alignment.centerRight,
               child: TextButton(
                 onPressed: () => onRequestReturn(subOrder['subOrderId'] as int, supplierName),

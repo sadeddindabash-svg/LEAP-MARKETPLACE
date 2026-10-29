@@ -619,6 +619,9 @@ export interface SupplierSubOrder {
   hubId: string | null;
   hubName: string | null;
   hubShipment: HubShipment | null;
+  /** Can this part still be returned? (the server: cancelled no; not delivered yes; delivered until the delivery date plus the admin's return window). Absent from an older server. */
+  returnable?: boolean;
+  returnUntil?: string | null;
   items: OrderLineItem[];
 }
 

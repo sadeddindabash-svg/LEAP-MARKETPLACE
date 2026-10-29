@@ -2,6 +2,7 @@ const express = require('express');
 const { supplierUnitPriceCny } = require('../shared/supplierMoney');
 const { normalizeEmail, sameEmail } = require('../auth/emailAddress');
 const { emailLanguageForAddress, emailSubject } = require('../email/language');
+const { readReturnWindowDays, returnState } = require('../returns/returnRules');
 const db = require('../../../db/pool');
 const { requireAuth, optionalAuth, requirePageAccessIfAdmin, requireRole, requirePageAccess } = require('../auth/middleware');
 const { calculateBuyerPriceUsd } = require('../pricing/engine');
@@ -542,6 +543,7 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
     // supplierAnonymize.js's own header comment for the full real
     // numbering scheme.
     const supplierLabelMap = buildSupplierLabelMap(subOrders.map((so) => so.supplier_id), req.params.id);
+    const returnWindowDays = await readReturnWindowDays(db);      // the admin's return window: whether each part can still be returned
 
     const supplierSubOrders = [];
     for (const so of subOrders) {
@@ -610,6 +612,8 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
         hubId: so.hub_id,
         hubName: so.hub_name,
         hubShipment,
+        // Can this part still be returned? (cancelled: no; not delivered: yes; delivered: until the delivery date plus the admin's return window)
+        ...returnState({ subOrderStatus: so.status, orderStatus: order.status, deliveredAt: shipmentRows[0]?.delivered_at || null, windowDays: returnWindowDays }),
         items: itemsWithImages,
       });
     }

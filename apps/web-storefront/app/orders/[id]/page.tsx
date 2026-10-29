@@ -15,7 +15,7 @@ import { Price } from "@/components/Price";
 import { cancelOrder, cancelSubOrder, fetchOrderById, fetchOrderReceipt, resolveImageUrl, type OrderDetail, type OrderWho, type SupplierSubOrder } from "@/lib/api";
 import { supplierLabel } from "@/lib/cart";
 import { countryName } from "@/lib/countries";
-import { formatDate, isOrderCancellable, isPartiallyCancellable, isOrderFullyCancelled, isSubOrderCancellable, needsEnglishAddressCheck, reorder, reorderLines, showTrackingLink, statusLabel, subOrderStage } from "@/lib/orders";
+import { formatDate, isOrderCancellable, isPartiallyCancellable, isOrderFullyCancelled, isPartReturnable, isSubOrderCancellable, needsEnglishAddressCheck, reorder, reorderLines, showTrackingLink, statusLabel, subOrderStage } from "@/lib/orders";
 
 const outline = "inline-flex min-h-11 items-center justify-center rounded-[10px] border-[1.5px] border-navy px-4 text-sm font-bold text-navy hover:bg-chalk disabled:opacity-50";
 const danger = "inline-flex min-h-11 items-center justify-center rounded-[10px] border-[1.5px] border-[#a12a21] px-4 text-sm font-bold text-[#a12a21] hover:bg-[#fdf2f1] disabled:opacity-50";
@@ -49,9 +49,9 @@ function Part({ order, so, who, canCancelPart, onCancel, busy }: { order: OrderD
       )}
       <div className="mt-4 flex flex-wrap gap-2">
         {canCancelPart && <button type="button" className={danger} disabled={busy} onClick={onCancel}>{t("cancel_this_part")}</button>}
-        {order.status !== "cancelled" && <button type="button" className={outline} aria-expanded={returning} onClick={() => setReturning((v) => !v)}>{t("request_a_return")}</button>}
+        {isPartReturnable(order, so) && <button type="button" className={outline} aria-expanded={returning} onClick={() => setReturning((v) => !v)}>{t("request_a_return")}</button>}
       </div>
-      {returning && <ReturnRequestForm subOrderId={so.subOrderId} who={who} onClose={() => setReturning(false)} />}
+      {returning && isPartReturnable(order, so) && <ReturnRequestForm subOrderId={so.subOrderId} who={who} onClose={() => setReturning(false)} />}
     </li>
   );
 }

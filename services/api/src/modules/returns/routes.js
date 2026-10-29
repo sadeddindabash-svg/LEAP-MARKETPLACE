@@ -77,8 +77,9 @@ router.post('/', optionalAuth, async (req, res, next) => {
   try {
     await client.query('BEGIN');
     const subOrderCheck = await client.query(
-      `SELECT so.id, so.order_id, hs.delivered_at
+      `SELECT so.id, so.order_id, so.status AS sub_order_status, o.status AS order_status, hs.delivered_at
        FROM supplier_sub_orders so
+       JOIN orders o ON o.id = so.order_id
        LEFT JOIN hub_shipments hs ON hs.sub_order_id = so.id
        WHERE so.id = $1`,
       [subOrderId]
@@ -89,6 +90,10 @@ router.post('/', optionalAuth, async (req, res, next) => {
     }
     const orderId = subOrderCheck.rows[0].order_id;
     const deliveredAt = subOrderCheck.rows[0].delivered_at;
+    if (subOrderCheck.rows[0].sub_order_status === 'cancelled' || subOrderCheck.rows[0].order_status === 'cancelled') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'A cancelled order cannot be returned.' });
+    }
 
     // Real return window (migration 024) -- confirmed: admin-
     // configurable, 3-7 real days. Only enforced once a real delivery
