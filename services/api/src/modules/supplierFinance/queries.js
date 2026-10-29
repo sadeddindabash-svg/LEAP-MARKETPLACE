@@ -35,7 +35,7 @@ async function getUnpaidDelivered(supplierId) {
      )
      SELECT (hs.delivered_at + (w.days || ' days')::interval < now()) AS window_elapsed,
             COUNT(DISTINCT so.id) AS order_count,
-            COALESCE(SUM(oli.unit_price * oli.quantity * (1 - pc.commission_percent / 100.0)), 0) AS net_amount
+            COALESCE(SUM(COALESCE(oli.supplier_unit_price_cny, 0) * oli.quantity), 0) AS net_amount
      FROM supplier_sub_orders so
      JOIN hub_shipments hs ON hs.sub_order_id = so.id
      JOIN order_line_items oli ON oli.sub_order_id = so.id
@@ -47,6 +47,7 @@ async function getUnpaidDelivered(supplierId) {
        AND hs.delivered_at IS NOT NULL
        AND so.id NOT IN (SELECT sub_order_id FROM payout_sub_orders)
        AND NOT EXISTS (SELECT 1 FROM return_cases rc WHERE rc.sub_order_id = so.id)
+       AND NOT EXISTS (SELECT 1 FROM order_line_items nl WHERE nl.sub_order_id = so.id AND nl.supplier_unit_price_cny IS NULL)
      GROUP BY 1`,
     [supplierId]
   );
@@ -59,7 +60,7 @@ async function getUnpaidDelivered(supplierId) {
   const { rows: adjustmentRows } = await db.query(
     `SELECT a.kind, a.amount, so.order_id
      FROM payout_adjustments a JOIN fault_cases fc ON fc.id = a.fault_case_id JOIN supplier_sub_orders so ON so.id = fc.sub_order_id
-     WHERE a.supplier_id = $1 AND a.payout_id IS NULL ORDER BY a.id`, [supplierId]
+     WHERE a.supplier_id = $1 AND a.payout_id IS NULL AND a.currency_code = 'CNY' ORDER BY a.id`, [supplierId]
   );
   const adjustments = adjustmentRows.map((r) => ({ kind: r.kind, amount: Number(r.amount), orderId: r.order_id }));
   ready.amount = Number((ready.amount + adjustments.reduce((sum, a) => sum + a.amount, 0)).toFixed(2));
@@ -74,7 +75,7 @@ async function getPayoutHistory(supplierId) {
   const { rows } = await db.query(
     `SELECT p.id, p.amount, p.currency_code, p.notes, p.created_at,
             COUNT(DISTINCT pso.sub_order_id) AS order_count,
-            COALESCE(SUM(oli.unit_price * oli.quantity), 0) AS sales,
+            COALESCE(SUM(COALESCE(oli.supplier_unit_price_cny, 0) * oli.quantity), 0) AS sales,
             COALESCE((SELECT SUM(a.gross_amount) FROM payout_adjustments a WHERE a.payout_id = p.id), 0) AS adjustments_gross,
             COALESCE((SELECT SUM(a.amount) FROM payout_adjustments a WHERE a.payout_id = p.id), 0) AS adjustments_net
      FROM payouts p
@@ -98,8 +99,8 @@ async function getPayoutHistory(supplierId) {
       notes: r.notes,
       paidAt: r.created_at,
       orderCount: Number(r.order_count),
-      sales,
-      commission: Number((sales - amount).toFixed(2)),
+      sales: r.currency_code === 'CNY' ? sales : amount,
+      commission: r.currency_code === 'CNY' ? Number((sales - amount).toFixed(2)) : 0,
     };
   });
 }
@@ -107,9 +108,18 @@ async function getPayoutHistory(supplierId) {
 // Lifetime total across EVERY payout -- deliberately its own query, not a sum of the (capped)
 // history list above, so the total stays right for a supplier with more than 100 payouts.
 async function getTotalPaid(supplierId) {
-  const { rows } = await db.query('SELECT COALESCE(SUM(amount), 0) AS total FROM payouts WHERE supplier_id = $1', [supplierId]);
+  const { rows } = await db.query('SELECT COALESCE(SUM(amount), 0) AS total FROM payouts WHERE supplier_id = $1 AND currency_code = \'CNY\'', [supplierId]);
   return Number(Number(rows[0].total).toFixed(2));
 }
+
+// Payouts recorded in US DOLLARS before the change to RMB: they cannot be converted exactly (no rate was saved), so they are not added to the RMB total; the portal shows them apart.
+async function getLegacyUsdPaid(supplierId) {
+  const { rows } = await db.query("SELECT COALESCE(SUM(amount), 0) AS total FROM payouts WHERE supplier_id = $1 AND currency_code <> 'CNY'", [supplierId]);
+  return Number(Number(rows[0].total).toFixed(2));
+}
+
+// Leap's commission is not taken from the supplier's price any more (it is inside the buyer's price): there are no commission rates to show.
+const NO_COMMISSION = { minPercent: null, maxPercent: null, categories: [] };
 
 // The commission rates that apply to what THIS supplier actually sells: one per category
 // they have listings in (rates are set per category by an admin, so there is no single "12%").
@@ -132,19 +142,21 @@ async function getCommissionRates(supplierId) {
 }
 
 async function getSupplierFinance(supplierId) {
-  const [returnWindowDays, unpaid, payouts, totalPaid, commission] = await Promise.all([
+  const [returnWindowDays, unpaid, payouts, totalPaid, commission, legacyUsdPaid] = await Promise.all([
     getReturnWindowDays(),
     getUnpaidDelivered(supplierId),
     getPayoutHistory(supplierId),
     getTotalPaid(supplierId),
-    getCommissionRates(supplierId),
+    Promise.resolve(NO_COMMISSION),
+    getLegacyUsdPaid(supplierId),
   ]);
   return {
-    currencyCode: 'USD',
+    currencyCode: 'CNY',
     returnWindowDays,
     readyToPay: unpaid.readyToPay,
     inReturnWindow: unpaid.inReturnWindow,
     totalPaid,
+    legacyUsdPaid,
     lastPayout: payouts.length > 0 ? { amount: payouts[0].amount, paidAt: payouts[0].paidAt } : null,
     commission,
     payouts,

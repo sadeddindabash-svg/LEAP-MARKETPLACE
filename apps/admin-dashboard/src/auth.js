@@ -118,6 +118,20 @@ export function fetchTickets(token) {
   return authedGet("/support/tickets", token);
 }
 
+// Refused orders (a supplier refused a new order) and orders nobody answered in 24 hours.
+export function fetchSupplierResponses(token, filter = "open") {
+  return authedGet(`/supplier-responses?filter=${encodeURIComponent(filter)}`, token);
+}
+export function fetchResponseAlternatives(token, subOrderId) {
+  return authedGet(`/supplier-responses/${subOrderId}/alternatives`, token);
+}
+export function reassignSupplierResponse(token, subOrderId, items) {
+  return authedMutate("POST", `/supplier-responses/${subOrderId}/reassign`, token, { items });
+}
+export function markResponseHandled(token, subOrderId, note) {
+  return authedMutate("POST", `/supplier-responses/${subOrderId}/handled`, token, { note });
+}
+
 export function fetchTicketById(token, ticketId) {
   return authedGet(`/support/tickets/${ticketId}`, token);
 }

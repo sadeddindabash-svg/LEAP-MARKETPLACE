@@ -920,7 +920,7 @@ router.patch('/me/products/:id', requireAuth, requireRole('supplier'), async (re
 router.get('/me/orders', requireAuth, requireRole('supplier'), async (req, res, next) => {
   try {
     const { rows: subOrders } = await db.query(
-      `SELECT so.id, so.order_id, so.status, so.tracking_number, so.hub_id, h.name AS hub_name, h.address AS hub_address, o.placed_at, hs.id AS hub_shipment_id, hs.status AS hub_shipment_status
+      `SELECT so.id, so.order_id, so.status, so.tracking_number, so.hub_id, h.name AS hub_name, h.address AS hub_address, o.placed_at, hs.id AS hub_shipment_id, hs.status AS hub_shipment_status, so.respond_by, so.accepted_at, so.refused_at, so.refusal_reason, so.refusal_note
        FROM supplier_sub_orders so
        JOIN orders o ON o.id = so.order_id
        LEFT JOIN hubs h ON h.id = so.hub_id
@@ -933,7 +933,7 @@ router.get('/me/orders', requireAuth, requireRole('supplier'), async (req, res, 
     const result = [];
     for (const so of subOrders) {
       const { rows: items } = await db.query(
-        `SELECT oli.id AS line_id, oli.product_id, oli.quantity, oli.unit_price, p.name
+        `SELECT oli.id AS line_id, oli.product_id, oli.quantity, oli.supplier_unit_price_cny, p.name
          FROM order_line_items oli JOIN products p ON p.id = oli.product_id
          WHERE oli.sub_order_id = $1`,
         [so.id]
@@ -949,9 +949,14 @@ router.get('/me/orders', requireAuth, requireRole('supplier'), async (req, res, 
         hubAddress: so.hub_address,
         hubShipmentId: so.hub_shipment_id,
         placedAt: so.placed_at,
+        respondBy: so.respond_by,
+        acceptedAt: so.accepted_at,
+        refusedAt: so.refused_at,
+        refusalReason: so.refusal_reason,
+        refusalNote: so.refusal_note,
           // What this supplier may do right now (see ./orderRules.js): the portal shows only these, the server enforces them.
           ...describeControls({ status: so.status, hubShipmentStatus: so.hub_shipment_status }),
-          items: items.map((i) => ({ productId: i.product_id, name: i.name, quantity: i.quantity, unitPrice: Number(i.unit_price), vehicle: productCars.get(i.product_id) || null })),
+          items: items.map((i) => ({ productId: i.product_id, name: i.name, quantity: i.quantity, unitPriceCny: i.supplier_unit_price_cny == null ? null : Number(i.supplier_unit_price_cny), vehicle: productCars.get(i.product_id) || null })),
       });
     }
     res.json(result);
@@ -1021,6 +1026,7 @@ router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), asy
     const { rows } = await client.query(
       `UPDATE supplier_sub_orders SET
          status = COALESCE($1, status),
+         accepted_at = CASE WHEN $1::text IN ('preparing', 'shipped') AND accepted_at IS NULL THEN now() ELSE accepted_at END,
          tracking_number = COALESCE($2, tracking_number)
        WHERE id = $3 AND supplier_id = $4
        RETURNING *`,

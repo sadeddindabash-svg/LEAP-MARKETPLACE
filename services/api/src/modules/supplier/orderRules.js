@@ -13,10 +13,10 @@
 const STAGES = ['pending', 'preparing', 'shipped'];
 
 function describeControls({ status, hubShipmentStatus }) {
-  if (status === 'cancelled') return { locked: true, lockReason: 'cancelled', allowedStatuses: [], canEditTracking: false };
-  if (hubShipmentStatus && hubShipmentStatus !== 'awaiting_receipt') return { locked: true, lockReason: 'at_hub', allowedStatuses: [], canEditTracking: false };
+  if (status === 'cancelled') return { locked: true, lockReason: 'cancelled', allowedStatuses: [], canEditTracking: false, canAccept: false, canRefuse: false };
+  if (hubShipmentStatus && hubShipmentStatus !== 'awaiting_receipt') return { locked: true, lockReason: 'at_hub', allowedStatuses: [], canEditTracking: false, canAccept: false, canRefuse: false };
   const position = STAGES.indexOf(status);                // an old "dispute" row reads as -1: it may still move forward from the start
-  return { locked: false, lockReason: null, allowedStatuses: STAGES.filter((_, i) => i > position), canEditTracking: true };
+  return { locked: false, lockReason: null, allowedStatuses: STAGES.filter((_, i) => i > position), canEditTracking: true, canAccept: status === 'pending', canRefuse: status === 'pending' };      // answering a NEW order: accept or refuse
 }
 
 // Returns null when the change is allowed, or { code, message } when it must be refused (always HTTP 409).

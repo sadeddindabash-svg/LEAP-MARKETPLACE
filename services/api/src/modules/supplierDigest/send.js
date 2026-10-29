@@ -13,7 +13,7 @@ const DIGEST_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000; // real, confirmed: weekly
 
 async function gatherDigestData(supplierId, sinceDate) {
   const { rows: orderRows } = await db.query(
-    `SELECT COUNT(DISTINCT so.id) AS order_count, COALESCE(SUM(oli.quantity * oli.unit_price), 0) AS total_value
+    `SELECT COUNT(DISTINCT so.id) AS order_count, COALESCE(SUM(oli.quantity * COALESCE(oli.supplier_unit_price_cny, 0)), 0) AS total_value
      FROM supplier_sub_orders so
      JOIN orders o ON o.id = so.order_id
      JOIN order_line_items oli ON oli.sub_order_id = so.id
@@ -50,7 +50,7 @@ async function gatherDigestData(supplierId, sinceDate) {
 // alerts, which only notify when there's real, new news.
 function digestEmailBody({ orderCount, totalValue, reviewCount, avgRating, messageCount }, supplierName) {
   const lines = [];
-  lines.push(`<strong>${orderCount}</strong> new order${orderCount === 1 ? '' : 's'} this week${orderCount > 0 ? ` (worth $${totalValue.toFixed(2)})` : ''}.`);
+  lines.push(`<strong>${orderCount}</strong> new order${orderCount === 1 ? '' : 's'} this week${orderCount > 0 ? ` (worth ¥${totalValue.toFixed(2)})` : ''}.`);
   lines.push(`<strong>${reviewCount}</strong> new review${reviewCount === 1 ? '' : 's'}${reviewCount > 0 ? ` (average ${avgRating.toFixed(1)}★)` : ''}.`);
   lines.push(`<strong>${messageCount}</strong> new message${messageCount === 1 ? '' : 's'} from buyers or the platform.`);
   return `Hi${supplierName ? ` ${supplierName}` : ''},<br><br>Here's your weekly summary:<br><br>${lines.join('<br>')}<br><br>Log in to the supplier portal for the full details.`;

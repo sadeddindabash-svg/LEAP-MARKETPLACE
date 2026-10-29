@@ -103,3 +103,23 @@ describe("reorder", () => {
     expect(await reorder(reorderLines(two), async () => { throw new Error("x"); })).toEqual({ added: 0, failed: ["Disc", "Filter"] });
   });
 });
+
+describe("an order that is over for good", () => {
+  const part = (status: string) => ({ status, hubShipment: null });
+  it("isOrderFullyCancelled: cancelled, or every part cancelled; not when one part is still going; not for an order with no parts", async () => {
+    const { isOrderFullyCancelled } = await import("./orders");
+    expect(isOrderFullyCancelled({ status: "cancelled" })).toBe(true); expect(isOrderFullyCancelled({ supplierSubOrders: [{ status: "cancelled" }] })).toBe(true);      // no status given: the parts decide expect(isOrderFullyCancelled({ status: "to_ship", supplierSubOrders: [{ status: "cancelled" }, { status: "cancelled" }] })).toBe(true);
+    expect(isOrderFullyCancelled({ status: "to_ship", supplierSubOrders: [{ status: "cancelled" }, { status: "preparing" }] })).toBe(false); expect(isOrderFullyCancelled({ status: "to_ship", supplierSubOrders: [] })).toBe(false); expect(isOrderFullyCancelled({})).toBe(false);
+  });
+  it("showTrackingLink: never for an order that is over; a cancelled part is not 'still to deliver'", async () => {
+    const { showTrackingLink } = await import("./orders");
+    expect(showTrackingLink({ status: "cancelled", supplierSubOrders: [part("cancelled")] } as never)).toBe(false); expect(showTrackingLink({ status: "cancelled", supplierSubOrders: [part("preparing")] } as never)).toBe(false); expect(showTrackingLink({ status: "to_ship", supplierSubOrders: [part("cancelled"), part("cancelled")] } as never)).toBe(false);
+    expect(showTrackingLink({ status: "to_ship", supplierSubOrders: [part("cancelled"), part("preparing")] } as never)).toBe(true); expect(showTrackingLink({ status: "to_ship", supplierSubOrders: [] } as never)).toBe(false);
+    expect(showTrackingLink({ status: "to_ship", supplierSubOrders: [part("cancelled"), { status: "shipped", hubShipment: { status: "delivered" } }] } as never)).toBe(false);
+  });
+  it("needsEnglishAddressCheck: not for an order that is over, still for one that is going", async () => {
+    const { needsEnglishAddressCheck } = await import("./orders"); const base = { address: { country: "Oman" }, addressEnglish: { source: "auto" } } as never;
+    expect(needsEnglishAddressCheck({ ...(base as object), status: "cancelled" } as never)).toBe(false); expect(needsEnglishAddressCheck({ ...(base as object), status: "to_ship", supplierSubOrders: [{ status: "cancelled" }] } as never)).toBe(false);
+    expect(needsEnglishAddressCheck({ ...(base as object), status: "to_ship", supplierSubOrders: [{ status: "preparing" }] } as never)).toBe(true); expect(needsEnglishAddressCheck(base)).toBe(true);
+  });
+});

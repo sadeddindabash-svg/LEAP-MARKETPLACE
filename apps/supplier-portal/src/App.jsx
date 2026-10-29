@@ -20,7 +20,7 @@ import { QRCodeSVG } from "qrcode.react";
 import {
   getStoredToken, saveToken, clearToken, getCurrentUser, SessionExpiredError,
   fetchMySupplierProfile, fetchMyProducts, createProduct, updateProduct, bulkUpdateProductPrices,
-  fetchMyOrders, updateSubOrder, fetchMyReturnCases, fetchMyReturnCaseById, replyToReturnCase, fetchMyFaultCases, answerFaultCase, fetchMyReturnAddress, saveMyReturnAddress,
+  fetchMyOrders, updateSubOrder, acceptSubOrder, refuseSubOrder, fetchMyReturnCases, fetchMyReturnCaseById, replyToReturnCase, fetchMyFaultCases, answerFaultCase, fetchMyReturnAddress, saveMyReturnAddress,
   fetchMyOverview,
   uploadProductImage, uploadProductVideo, fetchProductRequirements, fetchAttributeDefinitions, API_BASE_URL,
   fetchCategories, fetchPartsForCategory,
@@ -145,7 +145,7 @@ const STRINGS = {
     },
     finance: {
       title: "财务与结算",
-      subtitle: (days) => `金额以美元 (USD) 计。订单送达并超过 ${days} 天退货期后，Leap 会记录一笔结算。`,
+      subtitle: (days) => `金额以人民币 (¥) 计，按您自己设定的价格 × 数量。订单送达并超过 ${days} 天退货期后，Leap 会记录一笔结算。`,
       adjTitle: "Leap 已放款", adjIntro: "以下款项因货物在 Leap 处受损而由 Leap 支付给您，已包含在上方金额中，并将计入您的下一次付款。", adjOriginal: "原订单", adjShipping: "国内运费",
       kpiReady: "可结算金额", kpiReadySub: (n) => `${n} 个订单已过退货期`,
       kpiWaiting: "退货期内", kpiWaitingSub: (n, days) => `${n} 个已送达订单 · ${days} 天退货期后可结算`,
@@ -267,7 +267,7 @@ const STRINGS = {
     },
     finance: {
       title: "Finance & Payouts",
-      subtitle: (days) => `Amounts are in US dollars (USD). Leap records a payout once your delivered orders have cleared the ${days}-day return window.`,
+      subtitle: (days) => `Amounts are in RMB (¥): your own price × quantity. Leap records a payout once your delivered orders have cleared the ${days}-day return window.`,
       adjTitle: "Released by Leap", adjIntro: "Leap is paying you these for a shipment that was damaged while in Leap's care. They are included in the amount above and in your next payout.", adjOriginal: "Original order", adjShipping: "Local shipping",
       kpiReady: "Ready to be paid", kpiReadySub: (n) => `${n} order${n === 1 ? "" : "s"} cleared the return window`,
       kpiWaiting: "In return window", kpiWaitingSub: (n, days) => `${n} delivered order${n === 1 ? "" : "s"} · payable after ${days} days`,
@@ -395,7 +395,7 @@ function TopBar({ title, subtitle }) {
 // summary. Shared shape used by both this supplier portal's own
 // Overview page (below) and the admin dashboard's equivalent section
 // (an admin picks which real supplier to view).
-function SupplierAnalyticsSection({ analytics, lang }) {
+function SupplierAnalyticsSection({ analytics, lang, part = "all" }) {
   const revenueTrend = analytics.revenueAndVolume.map((d) => ({
     d: new Date(d.day).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
     revenue: d.revenue,
@@ -417,21 +417,25 @@ function SupplierAnalyticsSection({ analytics, lang }) {
 
   return (
     <>
-      <div style={{ display: "flex", gap: 16 }}>
+      {part !== "rest" && (
+      <div data-testid="payout-summary" style={{ display: "flex", gap: 16 }}>
         <Card title={l.payoutTitle} style={{ flex: 1 }}>
           <div style={{ padding: "18px 20px", display: "flex", gap: 24 }}>
             <div>
               <div style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>{l.totalPaid}</div>
-              <div style={{ fontSize: 24, fontWeight: 700, color: C.ink, marginTop: 4 }}>${analytics.payoutSummary.totalPaid.toFixed(2)}</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: C.ink, marginTop: 4 }}>{cny(analytics.payoutSummary.totalPaid)}</div>
             </div>
             <div>
               <div style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>{l.amountOwed}</div>
-              <div style={{ fontSize: 24, fontWeight: 700, color: analytics.payoutSummary.amountOwed > 0 ? C.gauge : C.ink, marginTop: 4 }}>${analytics.payoutSummary.amountOwed.toFixed(2)}</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: analytics.payoutSummary.amountOwed > 0 ? C.gauge : C.ink, marginTop: 4 }}>{cny(analytics.payoutSummary.amountOwed)}</div>
             </div>
           </div>
         </Card>
       </div>
+      )}
 
+      {part !== "top" && (
+      <>
       <Card title={l.revenueTitle}>
         <div style={{ padding: "16px 18px 8px", height: 200 }}>
           {revenueTrend.length === 0 ? (
@@ -442,7 +446,7 @@ function SupplierAnalyticsSection({ analytics, lang }) {
                 <CartesianGrid stroke={C.line} vertical={false} />
                 <XAxis dataKey="d" tick={{ fontSize: 11, fill: C.muted }} axisLine={{ stroke: C.line }} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: C.muted }} axisLine={false} tickLine={false} width={40} />
-                <Tooltip formatter={(v, name) => [name === "revenue" ? `$${Number(v).toFixed(2)}` : v, name === "revenue" ? (lang === "zh" ? "收入" : "Revenue") : (lang === "zh" ? "订单" : "Orders")]} contentStyle={{ fontSize: 12, borderRadius: 8, border: `1px solid ${C.line}` }} />
+                <Tooltip formatter={(v, name) => [name === "revenue" ? `¥${Number(v).toFixed(2)}` : v, name === "revenue" ? (lang === "zh" ? "收入" : "Revenue") : (lang === "zh" ? "订单" : "Orders")]} contentStyle={{ fontSize: 12, borderRadius: 8, border: `1px solid ${C.line}` }} />
                 <Bar dataKey="revenue" fill={C.signal} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -457,7 +461,7 @@ function SupplierAnalyticsSection({ analytics, lang }) {
             {analytics.topProducts.map((p, i) => (
               <div key={p.productId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderBottom: i < analytics.topProducts.length - 1 ? `1px solid ${C.line}` : "none" }}>
                 <span style={{ fontSize: 12.5, fontWeight: 600 }}>{p.name}</span>
-                <span style={{ fontSize: 12, color: C.muted }}>{p.unitsSold} {l.units} · ${p.revenue.toFixed(2)}</span>
+                <span style={{ fontSize: 12, color: C.muted }}>{p.unitsSold} {l.units} · {cny(p.revenue)}</span>
               </div>
             ))}
           </div>
@@ -497,7 +501,136 @@ function SupplierAnalyticsSection({ analytics, lang }) {
           </div>
         </Card>
       )}
+      </>
+      )}
     </>
+  );
+}
+
+// ---------------------------------------------------------------- RMB: the supplier portal shows the supplier's own price in yuan (¥), never dollars
+const cny = (n) => `¥${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+// ---------------------------------------------------------------- Overview: how the orders ended up (one pie chart)
+const OUTCOME_TEXT = {
+  en: { title: "Orders", total: "Total orders", succeeded: "Succeeded (delivered)", inProgress: "In progress", cancelled: "Refused / cancelled", returned: "Returns", empty: "No orders yet." },
+  zh: { title: "订单", total: "订单总数", succeeded: "成功（已送达）", inProgress: "进行中", cancelled: "已拒绝 / 已取消", returned: "退货", empty: "暂无订单。" },
+};
+function OrderOutcomesCard({ outcomes, lang }) {
+  const x = OUTCOME_TEXT[lang === "zh" ? "zh" : "en"];
+  const slices = [
+    { key: "succeeded", color: C.gauge }, { key: "inProgress", color: C.signal }, { key: "cancelled", color: C.red }, { key: "returned", color: C.muted },
+  ];
+  const total = Number(outcomes.total) || 0;
+  const R = 56, CIRC = 2 * Math.PI * R;
+  let used = 0;
+  return (
+    <Card title={x.title}>
+      <div data-testid="outcomes-pie" style={{ display: "flex", alignItems: "center", gap: 28, padding: "16px 20px" }}>
+        <svg width="150" height="150" viewBox="0 0 140 140" role="img" aria-label={`${x.total}: ${total}`}>
+          <circle cx="70" cy="70" r={R} fill="none" stroke={C.line} strokeWidth="22" />
+          {total > 0 && slices.map((s) => {
+            const n = Number(outcomes[s.key]) || 0;
+            if (n === 0) return null;
+            const dash = (n / total) * CIRC;
+            const el = <circle key={s.key} data-testid={`outcome-slice-${s.key}`} cx="70" cy="70" r={R} fill="none" stroke={s.color} strokeWidth="22" strokeDasharray={`${dash} ${CIRC - dash}`} strokeDashoffset={-used} transform="rotate(-90 70 70)" />;
+            used += dash;
+            return el;
+          })}
+          <text x="70" y="68" textAnchor="middle" data-testid="outcomes-total" style={{ fontSize: 26, fontWeight: 700, fill: C.ink }}>{total}</text>
+          <text x="70" y="86" textAnchor="middle" style={{ fontSize: 10.5, fill: C.muted }}>{x.total}</text>
+        </svg>
+        <div style={{ flex: 1 }}>
+          {total === 0 && <div style={{ fontSize: 12.5, color: C.muted }}>{x.empty}</div>}
+          {slices.map((s) => {
+            const n = Number(outcomes[s.key]) || 0;
+            return (
+              <div key={s.key} data-testid={`outcome-${s.key}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: `1px solid ${C.line}` }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}><i style={{ display: "inline-block", width: 11, height: 11, borderRadius: 3, background: s.color }} />{x[s.key]}</span>
+                <b style={{ fontSize: 14 }}>{n} <span style={{ color: C.muted, fontWeight: 400, fontSize: 11.5 }}>{total > 0 ? `${Math.round((n / total) * 100)}%` : "0%"}</span></b>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------- Orders: a NEW order is accepted or refused (24 hours to answer)
+const ANSWER_TEXT = {
+  en: {
+    title: "Waiting for your answer", accept: "✓ Accept order", refuse: "✕ Refuse order", back: "Back", confirm: "Refuse order",
+    acceptHint: "Accept = the same steps as before: preparing, then ship to the hub. After you accept, the order can no longer be refused here.",
+    left: (h) => `Please answer within ${h} hour${h === 1 ? "" : "s"}: after that Leap is told.`, overdue: "The answer was due: Leap has been told. Please answer now.",
+    refuseTitle: "Refuse this order?", refuseHint: "Only your part is cancelled. The buyer is not charged for it and is offered alternatives. Choose the reason:", notePlaceholder: "Write a short note", noteLabel: "Short note (required)",
+    reasons: { out_of_stock: ["Out of stock", "stock set to 0"], price_changed: ["Price changed: I can't sell at this price", "update your price afterwards"], discontinued: ["Part discontinued", "it stops being sold"], cannot_ship_in_time: ["Can't ship in time", ""], other: ["Other", ""] },
+    refused: (reason) => `You refused this order${reason ? `: ${reason}` : ""}.`,
+  },
+  zh: {
+    title: "等待您的答复", accept: "✓ 接受订单", refuse: "✕ 拒绝订单", back: "返回", confirm: "拒绝订单",
+    acceptHint: "接受 = 与以前相同的步骤：备货，然后发往中转仓。接受后，此订单无法在此处再被拒绝。",
+    left: (h) => `请在 ${h} 小时内答复，否则将通知 Leap。`, overdue: "答复已超时，已通知 Leap。请立即答复。",
+    refuseTitle: "拒绝此订单？", refuseHint: "仅取消您的这部分。买家无需为此付款，并会获得替代商品建议。请选择原因：", notePlaceholder: "请简要说明", noteLabel: "简要说明（必填）",
+    reasons: { out_of_stock: ["缺货", "库存将设为 0"], price_changed: ["价格变动：无法按此价格销售", "之后请更新价格"], discontinued: ["零件已停产", "将停止销售"], cannot_ship_in_time: ["无法按时发货", ""], other: ["其他", ""] },
+    refused: (reason) => `您已拒绝此订单${reason ? `：${reason}` : ""}。`,
+  },
+};
+function refusedText(lang, order) {
+  const a = ANSWER_TEXT[lang === "zh" ? "zh" : "en"];
+  const label = order.refusalReason && a.reasons[order.refusalReason] ? a.reasons[order.refusalReason][0] : "";
+  return a.refused(label);
+}
+function AnswerBlock({ order, onUpdated }) {
+  const { lang } = useLang();
+  const { onSessionExpired } = useSupplier();
+  const font = useBodyFont();
+  const inputStyle = useInputStyle();
+  const a = ANSWER_TEXT[lang === "zh" ? "zh" : "en"];
+  const [refusing, setRefusing] = useState(false);
+  const [reason, setReason] = useState(null);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const hoursLeft = order.respondBy ? Math.ceil((new Date(order.respondBy).getTime() - Date.now()) / 3600000) : null;
+  const run = async (call) => {
+    setBusy(true);
+    setError(null);
+    try { onUpdated(await call()); } catch (err) { if (err instanceof SessionExpiredError) return onSessionExpired(); setError(err.message); } finally { setBusy(false); }
+  };
+  const canConfirm = reason && (reason !== "other" || note.trim().length >= 3);
+  return (
+    <div data-testid="answer-block" style={{ ...font, border: `1px solid ${C.line}`, borderRadius: 10, padding: 12, background: "#FFFBF0" }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>{a.title}</div>
+      {hoursLeft !== null && <div data-testid="answer-deadline" style={{ fontSize: 12, color: hoursLeft <= 0 ? C.red : C.muted, marginTop: 3 }}>{hoursLeft <= 0 ? a.overdue : a.left(hoursLeft)}</div>}
+      {!refusing && (
+        <>
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <button data-testid="answer-accept" disabled={busy} onClick={() => run(() => acceptSubOrder(getStoredToken(), order.subOrderId))} style={{ ...font, flex: 1, padding: 10, borderRadius: 8, border: "none", background: busy ? "#D1D5DB" : C.gauge, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: busy ? "default" : "pointer" }}>{a.accept}</button>
+            <button data-testid="answer-refuse" disabled={busy} onClick={() => setRefusing(true)} style={{ ...font, flex: 1, padding: 10, borderRadius: 8, border: `1.5px solid ${C.red}`, background: "#fff", color: C.red, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{a.refuse}</button>
+          </div>
+          <div style={{ fontSize: 11.5, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>{a.acceptHint}</div>
+        </>
+      )}
+      {refusing && (
+        <div data-testid="refuse-dialog" role="group" aria-label={a.refuseTitle} style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>{a.refuseTitle}</div>
+          <div style={{ fontSize: 11.5, color: C.muted, margin: "3px 0 8px", lineHeight: 1.5 }}>{a.refuseHint}</div>
+          {Object.keys(a.reasons).map((key) => (
+            <label key={key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", border: reason === key ? `2px solid ${C.red}` : `1px solid ${C.line}`, borderRadius: 8, marginBottom: 6, fontSize: 12.5, cursor: "pointer", background: reason === key ? C.redBg : "#fff" }}>
+              <input type="radio" name="refusal-reason" data-testid={`answer-reason-${key}`} checked={reason === key} onChange={() => setReason(key)} />
+              <span style={{ flex: 1 }}>{a.reasons[key][0]}</span>
+              {a.reasons[key][1] && <span style={{ color: C.muted, fontSize: 11 }}>{a.reasons[key][1]}</span>}
+            </label>
+          ))}
+          {reason === "other" && <textarea data-testid="answer-note" aria-label={a.noteLabel} value={note} onChange={(e) => setNote(e.target.value)} placeholder={a.notePlaceholder} maxLength={300} rows={2} style={{ ...inputStyle, width: "100%", resize: "vertical", marginBottom: 6 }} />}
+          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <button data-testid="answer-confirm-refuse" disabled={busy || !canConfirm} onClick={() => run(() => refuseSubOrder(getStoredToken(), order.subOrderId, { reason, note }))} style={{ ...font, padding: "9px 14px", borderRadius: 8, border: `1.5px solid ${C.red}`, background: "#fff", color: C.red, fontSize: 12.5, fontWeight: 700, opacity: busy || !canConfirm ? 0.5 : 1, cursor: busy || !canConfirm ? "default" : "pointer" }}>{a.confirm}</button>
+            <button data-testid="answer-back" disabled={busy} onClick={() => { setRefusing(false); setReason(null); setNote(""); setError(null); }} style={{ ...font, padding: "9px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{a.back}</button>
+          </div>
+        </div>
+      )}
+      {error && <div role="alert" style={{ fontSize: 12, color: C.red, marginTop: 8 }}>{error}</div>}
+    </div>
   );
 }
 
@@ -554,6 +687,8 @@ function OverviewPage({ onSessionExpired }) {
     <div>
       <TopBar title={t.overview.title} subtitle={lang === "zh" ? "真实数据 — 不含虚构的销售额或评分" : "Real data — no fabricated sales totals or ratings"} />
       <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+        {data.analytics && <SupplierAnalyticsSection analytics={data.analytics} lang={lang} part="top" />}
+
         <div style={{ display: "flex", gap: 16 }}>
           <KpiCard label={l.totalOrders} value={String(data.totalOrders)} icon={ShoppingBag} accent={C.gauge} />
           <KpiCard label={l.pendingOrders} value={String(data.pendingOrders)} icon={Truck} accent={C.amber} />
@@ -561,7 +696,9 @@ function OverviewPage({ onSessionExpired }) {
           <KpiCard label={l.pendingReturns} value={String(data.pendingReturns)} icon={AlertTriangle} accent={C.red} />
         </div>
 
-        {data.analytics && <SupplierAnalyticsSection analytics={data.analytics} lang={lang} />}
+        {data.analytics && data.analytics.outcomes && <OrderOutcomesCard outcomes={data.analytics.outcomes} lang={lang} />}
+
+        {data.analytics && <SupplierAnalyticsSection analytics={data.analytics} lang={lang} part="rest" />}
 
         <Card title={l.trendTitle}>
           <div style={{ padding: "16px 18px 8px", height: 220 }}>
@@ -2282,7 +2419,7 @@ function OrderDetailPanel({ order, onBack, onUpdated }) {
               {order.items.map((it, i) => (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "12px 12px", borderBottom: i < order.items.length - 1 ? `1px solid ${C.line}` : "none" }}>
                   <div style={{ minWidth: 0 }}><span style={{ ...font, fontSize: 13, fontWeight: 600 }}>{it.name}</span><OrderVehicle vehicle={it.vehicle} /></div>
-                  <span style={{ ...font, fontSize: 12.5, color: C.muted }}>{o.qty} × {it.quantity} · ${Number(it.unitPrice).toFixed(2)}</span>
+                  <span style={{ ...font, fontSize: 12.5, color: C.muted }}>{o.qty} × {it.quantity} · {it.unitPriceCny == null ? "—" : cny(it.unitPriceCny)}</span>
                 </div>
               ))}
             </div>
@@ -2290,10 +2427,10 @@ function OrderDetailPanel({ order, onBack, onUpdated }) {
           <Card title={o.shippingTitle}>
             <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
               <Field label={o.trackingLabel}>
-                <input style={inputStyle} value={tracking} onChange={e => setTracking(e.target.value)} placeholder={o.trackingPlaceholder} disabled={!canEditTracking} />
+                <input style={inputStyle} value={tracking} onChange={e => setTracking(e.target.value)} placeholder={o.trackingPlaceholder} disabled={!canEditTracking || Boolean(order.canAccept)} />
               </Field>
               {error && <div style={{ ...font, fontSize: 12, color: C.red }}>{error}</div>}
-              {allowedStatuses.includes("shipped") ? (
+              {order.canAccept ? null : allowedStatuses.includes("shipped") ? (
                 <button
                 disabled={isSaving}
                 onClick={() => handleUpdate({ status: "shipped", trackingNumber: tracking })}
@@ -2343,12 +2480,13 @@ function OrderDetailPanel({ order, onBack, onUpdated }) {
         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
           <Card title={o.actionsTitle}>
               <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                {order.canAccept && <AnswerBlock order={order} onUpdated={onUpdated} />}
                 {locked && (
                   <div role="status" style={{ ...font, fontSize: 12.5, color: C.ink, background: "#FFF7E6", border: "1px solid #F5D9A8", borderRadius: 8, padding: 10, lineHeight: 1.5 }}>
-                    {order.lockReason === "cancelled" ? o.lockedCancelled : o.lockedAtHub}
+                    {order.lockReason === "cancelled" ? (order.refusalReason ? refusedText(lang, order) : o.lockedCancelled) : o.lockedAtHub}
                   </div>
                 )}
-                {ORDER_STAGES.map(s => {
+                {!order.canAccept && ORDER_STAGES.map(s => {
                   const isCurrent = order.status === s;
                   const isAllowed = allowedStatuses.includes(s);
                   return (
@@ -2365,7 +2503,7 @@ function OrderDetailPanel({ order, onBack, onUpdated }) {
                     >{t.statusOrder[s] || s}</button>
                   );
                 })}
-                {!locked && <div style={{ ...font, fontSize: 11.5, color: C.muted, lineHeight: 1.5 }}>{o.forwardOnlyHint}</div>}
+                {!locked && !order.canAccept && <div style={{ ...font, fontSize: 11.5, color: C.muted, lineHeight: 1.5 }}>{o.forwardOnlyHint}</div>}
               </div>
             </Card>
         </div>
@@ -2425,7 +2563,7 @@ function OrdersPage({ onOpen }) {
             rows: filtered.map((o) => ({
               orderId: o.orderId,
               items: o.items.map((i) => i.name).join(lang === "zh" ? "，" : ", "),
-              amount: o.items.reduce((sum, i) => sum + Number(i.unitPrice) * i.quantity, 0).toFixed(2),
+              amount: o.items.reduce((sum, i) => sum + Number(i.unitPriceCny || 0) * i.quantity, 0).toFixed(2),
               status: t.statusOrder[o.status] || o.status,
             })),
           })}
@@ -2446,13 +2584,13 @@ function OrdersPage({ onOpen }) {
                   <tr><td colSpan={6} style={{ textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>{lang === "zh" ? "暂无订单" : "No orders yet."}</td></tr>
                 )}
                 {filtered.map(o => {
-                  const amount = o.items.reduce((sum, i) => sum + Number(i.unitPrice) * i.quantity, 0);
+                  const amount = o.items.reduce((sum, i) => sum + Number(i.unitPriceCny || 0) * i.quantity, 0);
                   return (
                     <tr key={o.subOrderId} onClick={() => onOpen(o)} style={{ cursor: "pointer" }}>
                       <Td><PlateChip small>{o.orderId}</PlateChip></Td>
                       <Td style={{ maxWidth: 260 }}>{o.items.map(i => i.name).join(lang === "zh" ? "，" : ", ")}</Td>
                       <Td style={{ minWidth: 150 }}><OrderVehicleCell items={o.items} /></Td>
-                      <Td align="right" style={{ fontWeight: 700 }}>${amount.toFixed(2)}</Td>
+                      <Td align="right" style={{ fontWeight: 700 }}>{cny(amount)}</Td>
                       <Td><Badge label={t.statusOrder[o.status] || o.status} statusKey={o.status} /></Td>
                       <Td align="right"><ChevronRight size={15} color={C.muted} /></Td>
                     </tr>
@@ -3033,14 +3171,10 @@ function FinancePage() {
     }
   };
 
-  // Amounts are USD (the currency payouts are actually recorded in) -- never converted.
-  const usd = (n) => `$${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  // Amounts are RMB (¥): the supplier's own price x quantity (Leap's fees are inside the buyer's price, so nothing is taken from it).
+  const cny = (n) => `¥${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const font = useBodyFont();
-  const commission = finance ? finance.commission : null;
-  const commissionValue = !commission || commission.minPercent == null ? fi.kpiCommissionNone
-    : commission.minPercent === commission.maxPercent ? `${commission.minPercent}%` : `${commission.minPercent}–${commission.maxPercent}%`;
-  const commissionSub = !commission || commission.minPercent == null ? fi.kpiCommissionNoneSub
-    : commission.categories.length === 1 ? commission.categories[0].nameEn : fi.kpiCommissionSub;
+  const legacyText = lang === "zh" ? `此前以美元 (USD) 记录的结算（不计入上方合计）：$${Number(finance && finance.legacyUsdPaid || 0).toFixed(2)}` : `Earlier payouts recorded in US dollars (not included in the total above): $${Number(finance && finance.legacyUsdPaid || 0).toFixed(2)}`;
 
   return (
     <div>
@@ -3053,11 +3187,11 @@ function FinancePage() {
         {finance && (
           <>
             <div style={{ display: "flex", gap: 16 }}>
-              <KpiCard label={fi.kpiReady} value={usd(finance.readyToPay.amount)} sub={fi.kpiReadySub(finance.readyToPay.orderCount)} icon={Wallet} accent={C.torque} />
-              <KpiCard label={fi.kpiWaiting} value={usd(finance.inReturnWindow.amount)} sub={fi.kpiWaitingSub(finance.inReturnWindow.orderCount, finance.returnWindowDays)} icon={RotateCcw} accent={C.amber} />
-              <KpiCard label={fi.kpiPaid} value={usd(finance.totalPaid)} sub={fi.kpiPaidSub(finance.lastPayout ? new Date(finance.lastPayout.paidAt).toLocaleDateString() : null)} icon={Check} accent={C.gauge} />
-              <KpiCard label={fi.kpiCommission} value={commissionValue} sub={commissionSub} icon={TrendingUp} accent={C.amber} />
+              <KpiCard label={fi.kpiReady} value={cny(finance.readyToPay.amount)} sub={fi.kpiReadySub(finance.readyToPay.orderCount)} icon={Wallet} accent={C.torque} />
+              <KpiCard label={fi.kpiWaiting} value={cny(finance.inReturnWindow.amount)} sub={fi.kpiWaitingSub(finance.inReturnWindow.orderCount, finance.returnWindowDays)} icon={RotateCcw} accent={C.amber} />
+              <KpiCard label={fi.kpiPaid} value={cny(finance.totalPaid)} sub={fi.kpiPaidSub(finance.lastPayout ? new Date(finance.lastPayout.paidAt).toLocaleDateString() : null)} icon={Check} accent={C.gauge} />
             </div>
+            {finance.legacyUsdPaid > 0 && <div data-testid="legacy-usd-note" style={{ ...font, fontSize: 12, color: C.muted }}>{legacyText}</div>}
             {/* Payments Leap released for a fault that happened in ITS care (migration 097): why "ready to pay" can include more than delivered orders. */}
             {finance.readyToPay.adjustments && finance.readyToPay.adjustments.length > 0 && (
               <Card title={fi.adjTitle}>
@@ -3068,7 +3202,7 @@ function FinancePage() {
                       <tr key={`${a.orderId}-${a.kind}-${i}`}>
                         <Td style={{ fontWeight: 600 }}>{a.orderId}</Td>
                         <Td>{a.kind === "original_order" ? fi.adjOriginal : fi.adjShipping}</Td>
-                        <Td align="right">{usd(a.amount)}</Td>
+                        <Td align="right">{cny(a.amount)}</Td>
                       </tr>
                     ))}
                   </tbody>
@@ -3080,15 +3214,13 @@ function FinancePage() {
                 <div style={{ ...font, padding: 22, fontSize: 13, color: C.muted, textAlign: "center" }}>{fi.emptyRecords}</div>
               ) : (
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr><Th>{fi.thDate}</Th><Th align="right">{fi.thOrders}</Th><Th align="right">{fi.thSales}</Th><Th align="right">{fi.thCommission}</Th><Th align="right">{fi.thPayout}</Th><Th>{fi.thNotes}</Th></tr></thead>
+                  <thead><tr><Th>{fi.thDate}</Th><Th align="right">{fi.thOrders}</Th><Th align="right">{fi.thPayout}</Th><Th>{fi.thNotes}</Th></tr></thead>
                   <tbody>
                     {finance.payouts.map((p) => (
                       <tr key={p.id}>
                         <Td style={{ fontWeight: 600 }}>{new Date(p.paidAt).toLocaleDateString()}</Td>
                         <Td align="right">{p.orderCount}</Td>
-                        <Td align="right">{usd(p.sales)}</Td>
-                        <Td align="right" style={{ color: C.red }}>-{usd(p.commission)}</Td>
-                        <Td align="right" style={{ fontWeight: 700 }}>{usd(p.amount)}</Td>
+                        <Td align="right" style={{ fontWeight: 700 }}>{p.currencyCode === "CNY" ? cny(p.amount) : `$${Number(p.amount).toFixed(2)} USD`}</Td>
                         <Td style={{ color: C.muted }}>{p.notes || ""}</Td>
                       </tr>
                     ))}

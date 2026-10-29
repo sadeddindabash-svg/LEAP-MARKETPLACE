@@ -166,9 +166,9 @@ const round2 = (value) => Number(Number(value).toFixed(2));
 // The original order's value, before and after the platform's commission: the same arithmetic the payout rules use.
 async function computeOriginalOrder(client, subOrderId) {
   const { rows } = await client.query(
-    `SELECT COALESCE(SUM(oli.unit_price * oli.quantity), 0) AS gross,
-            COALESCE(SUM(oli.unit_price * oli.quantity * (1 - pc.commission_percent / 100.0)), 0) AS net
-     FROM order_line_items oli JOIN products p ON p.id = oli.product_id JOIN product_categories pc ON pc.id = p.category
+    `SELECT COALESCE(SUM(COALESCE(oli.supplier_unit_price_cny, 0) * oli.quantity), 0) AS gross,
+            COALESCE(SUM(COALESCE(oli.supplier_unit_price_cny, 0) * oli.quantity), 0) AS net
+     FROM order_line_items oli
      WHERE oli.sub_order_id = $1`, [subOrderId]
   );
   return { gross: round2(rows[0].gross), net: round2(rows[0].net) };
@@ -224,7 +224,7 @@ async function releaseSupplierPayment(client, { caseId, adminId, localShippingAm
   for (const u of supplierUsers) {
     notifications.push({
       userId: u.id, type: 'supplier_message', title: `Payment released for order ${subRows[0].order_id}`,
-      body: `The fault on order ${subRows[0].order_id} happened in Leap's care, so Leap is paying you for the original order ($${money(original.net)} after commission)${shipping > 0 ? ` and your local shipping charges ($${money(shipping)})` : ''}. It will be included in your next payout; the replacement is paid when it is delivered.`,
+      body: `The fault on order ${subRows[0].order_id} happened in Leap's care, so Leap is paying you for the original order (¥${money(original.net)})${shipping > 0 ? ` and your local shipping charges (¥${money(shipping)})` : ''}. It will be included in your next payout; the replacement is paid when it is delivered.`,
       linkType: 'order', linkId: subRows[0].order_id,
     });
   }
@@ -475,7 +475,7 @@ async function confirmReplacement(client, { caseId, adminId }) {
     [replacementOrderId, original.supplier_id, original.hub_id]
   );
   for (const item of items) {
-    await client.query('INSERT INTO order_line_items (sub_order_id, product_id, quantity, unit_price) VALUES ($1, $2, $3, $4)', [newSub[0].id, item.productId, item.quantity, item.unitPrice]);
+    await client.query('INSERT INTO order_line_items (sub_order_id, product_id, quantity, unit_price, supplier_unit_price_cny) VALUES ($1, $2, $3, $4, (SELECT supplier_unit_price_cny FROM order_line_items WHERE sub_order_id = $5 AND product_id = $2 LIMIT 1))', [newSub[0].id, item.productId, item.quantity, item.unitPrice, original.id]);
   }
   // The replacement is for the SAME car as the part it replaces: copy it, so the supplier sees it too (it can never stop the replacement: see orderVehicles/copy.js).
   await copyLineVehicles(client, { fromSubOrderId: original.id, toSubOrderId: newSub[0].id });
@@ -581,4 +581,5 @@ async function closeCaseManually(client, { caseId, adminId, note }) {
 module.exports = {
   closeCaseManually, FaultCaseError, createFaultCase, recordSupplierAnswer, confirmRefund, markRefunded, confirmReplacement, releaseSupplierPayment, onShipmentDelivered, recordHubReturn,
   toAdminDto, toHubDto, sendNotifications, computeRefundSuggestion,
+  computeOriginalOrder,
 };

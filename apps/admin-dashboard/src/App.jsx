@@ -19,7 +19,7 @@ import VehicleImportPanel from "./VehicleImportPanel";
 import ProductDeleteDialog, { ProductSelectionBar, SelectBox, SelectAllBox, useProductSelection, ProductViewSwitch, ProductReviewDialog, ProductPageDelete } from "./ProductDeleteDialog";
 import CategoryInUseDialog from "./CategoryInUseDialog";
 import CategoriesTabs from "./CategoriesTabs";
-import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchOrders, fetchOrderById, fetchSuppliers, fetchSupplierById, verifySupplier, updateSupplierCountry, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
+import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchSupplierResponses, fetchResponseAlternatives, reassignSupplierResponse, markResponseHandled, fetchOrders, fetchOrderById, fetchSuppliers, fetchSupplierById, verifySupplier, updateSupplierCountry, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
   fetchCountriesList, fetchWarehouseCountries, fetchCountryGroups, createCountryGroup, deleteCountryGroup, addCountryGroupMember, removeCountryGroupMember,
   fetchAdminProducts, fetchAdminProductDetail, updateAdminProduct,
   fetchProductRequirements, updateProductRequirements, fetchAttributeDefinitions,
@@ -395,11 +395,11 @@ function SupplierAnalyticsPicker({ onSessionExpired }) {
             <div style={{ display: "flex", gap: 24 }}>
               <div>
                 <div style={{ ...body, fontSize: 11, color: C.muted, fontWeight: 600 }}>Total paid out</div>
-                <div style={{ ...disp, fontSize: 22, fontWeight: 700, color: C.ink, marginTop: 2 }}>${analytics.payoutSummary.totalPaid.toFixed(2)}</div>
+                <div style={{ ...disp, fontSize: 22, fontWeight: 700, color: C.ink, marginTop: 2 }}>¥{analytics.payoutSummary.totalPaid.toFixed(2)}</div>
               </div>
               <div>
                 <div style={{ ...body, fontSize: 11, color: C.muted, fontWeight: 600 }}>Current amount owed</div>
-                <div style={{ ...disp, fontSize: 22, fontWeight: 700, color: analytics.payoutSummary.amountOwed > 0 ? C.gauge : C.ink, marginTop: 2 }}>${analytics.payoutSummary.amountOwed.toFixed(2)}</div>
+                <div style={{ ...disp, fontSize: 22, fontWeight: 700, color: analytics.payoutSummary.amountOwed > 0 ? C.gauge : C.ink, marginTop: 2 }}>¥{analytics.payoutSummary.amountOwed.toFixed(2)}</div>
               </div>
             </div>
 
@@ -412,7 +412,7 @@ function SupplierAnalyticsPicker({ onSessionExpired }) {
                     <CartesianGrid stroke={C.line} vertical={false} />
                     <XAxis dataKey="d" tick={{ fontSize: 11, fill: C.muted }} axisLine={{ stroke: C.line }} tickLine={false} />
                     <YAxis tick={{ fontSize: 11, fill: C.muted }} axisLine={false} tickLine={false} width={40} />
-                    <Tooltip formatter={(v) => [`$${Number(v).toFixed(2)}`, "Revenue"]} contentStyle={{ fontSize: 12, borderRadius: 8, border: `1px solid ${C.line}` }} />
+                    <Tooltip formatter={(v) => [`¥${Number(v).toFixed(2)}`, "Revenue"]} contentStyle={{ fontSize: 12, borderRadius: 8, border: `1px solid ${C.line}` }} />
                     <Bar dataKey="revenue" fill={C.signal} radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -426,7 +426,7 @@ function SupplierAnalyticsPicker({ onSessionExpired }) {
                 {analytics.topProducts.map((p) => (
                   <div key={p.productId} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "5px 0", borderBottom: `1px solid ${C.line}` }}>
                     <span style={{ fontWeight: 600 }}>{p.name}</span>
-                    <span style={{ color: C.muted }}>{p.unitsSold} units · ${p.revenue.toFixed(2)}</span>
+                    <span style={{ color: C.muted }}>{p.unitsSold} units · ¥{p.revenue.toFixed(2)}</span>
                   </div>
                 ))}
               </div>
@@ -634,6 +634,92 @@ function AttentionRow({ icon: Icon, color, text, sub, last }) {
   );
 }
 
+// ---------------------------------------------------------------- Orders: the refused orders, and the ones nobody answered in 24 hours (a supplier answers a NEW order: accept or refuse)
+const cny2 = (n) => `¥${Number(n).toFixed(2)}`;
+function RefusedOrdersSection({ onSessionExpired }) {
+  const [filter, setFilter] = useState("open");
+  const [rows, setRows] = useState(null);
+  const [error, setError] = useState(null);
+  const [openId, setOpenId] = useState(null);
+  const [alts, setAlts] = useState({});
+  const [picks, setPicks] = useState({});
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(null);
+  const failWith = (err) => { if (err instanceof SessionExpiredError) return onSessionExpired(); setError(err.message); };
+  const load = () => fetchSupplierResponses(getStoredToken(), filter).then((d) => { setRows(Array.isArray(d) ? d.filter((r) => r && r.subOrderId !== undefined && Array.isArray(r.items)) : []); setError(null); }).catch(failWith);      // anything that is not a list of refused orders is ignored
+  useEffect(() => { load(); }, [filter]); // eslint-disable-line react-hooks/exhaustive-deps
+  const toggle = async (row) => {
+    setMessage(null); setNote(""); setPicks({});
+    if (openId === row.subOrderId) return setOpenId(null);
+    setOpenId(row.subOrderId);
+    if (row.kind === "refused" && !row.handledAt && !alts[row.subOrderId]) {
+      try { const a = await fetchResponseAlternatives(getStoredToken(), row.subOrderId); setAlts((cur) => ({ ...cur, [row.subOrderId]: a })); } catch (err) { failWith(err); }
+    }
+  };
+  const act = async (call, doneText) => { setBusy(true); setError(null); try { await call(); setMessage(doneText); setOpenId(null); await load(); } catch (err) { failWith(err); } finally { setBusy(false); } };
+  const reassign = (row) => act(() => reassignSupplierResponse(getStoredToken(), row.subOrderId, row.items.map((i) => ({ productId: i.productId, alternativeProductId: picks[i.productId] }))), "Reassigned: the new supplier has been asked, and the buyer was told.");
+  const handled = (row) => act(() => markResponseHandled(getStoredToken(), row.subOrderId, note), "Marked as handled.");
+  const when = (v) => (v ? new Date(v).toLocaleString() : "");
+  return (
+    <div data-testid="refused-section" style={{ marginBottom: 16 }}>
+      <Card title={filter === "open" ? "Refused by a supplier, or not answered in 24 hours" : "Handled refused orders"}>
+        <div style={{ padding: 12 }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+            {[["open", "Needs attention"], ["handled", "Handled"]].map(([k, label]) => (
+              <button key={k} data-testid={`refused-filter-${k}`} onClick={() => setFilter(k)} style={{ ...body, padding: "6px 12px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: filter === k ? `2px solid ${C.signal}` : `1px solid ${C.line}`, background: filter === k ? "#FDF1EB" : "#fff" }}>{label}</button>
+            ))}
+          </div>
+          {error && <div role="alert" style={{ ...body, fontSize: 12.5, color: C.red, marginBottom: 8 }}>{error}</div>}
+          {message && <div role="status" style={{ ...body, fontSize: 12.5, color: C.gauge, marginBottom: 8 }}>{message}</div>}
+          {rows === null && !error && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading...</div>}
+          {rows && rows.length === 0 && <div data-testid="refused-empty" style={{ ...body, fontSize: 12.5, color: C.muted }}>{filter === "open" ? "Nothing needs attention: no refused or unanswered orders." : "Nothing handled yet."}</div>}
+          {rows && rows.map((r) => (
+            <div key={r.subOrderId} data-testid={`refused-row-${r.subOrderId}`} style={{ border: `1px solid ${C.line}`, borderRadius: 10, marginBottom: 8 }}>
+              <div onClick={() => toggle(r)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", cursor: "pointer" }}>
+                <PlateChip small>{r.orderId}</PlateChip>
+                {r.kind === "refused" ? <Badge label="Refused" color={C.red} bg={C.redBg} /> : <Badge label="No answer in 24 h" color={C.torque} bg={C.torqueBg} />}
+                <span style={{ ...body, fontSize: 12.5, fontWeight: 600 }}>{r.supplierName}</span>
+                <span style={{ ...body, fontSize: 12.5, color: C.muted, flex: 1 }}>{r.kind === "refused" ? `${r.reasonText}${r.note ? `: ${r.note}` : ""}` : `Not accepted or refused since ${when(r.respondBy)}. NOT cancelled.`}</span>
+                <span style={{ ...body, fontSize: 11.5, color: C.muted }}>{r.handledAt ? (r.reassignedToSubOrderId ? "Reassigned" : "Handled") : when(r.refusedAt || r.escalatedAt)}</span>
+              </div>
+              {openId === r.subOrderId && (
+                <div style={{ padding: "0 12px 12px", borderTop: `1px solid ${C.line}` }}>
+                  <div style={{ ...body, fontSize: 12, color: C.muted, margin: "8px 0" }}>Buyer: {r.buyerContact || "—"} · order status: {r.orderStatus}</div>
+                  {r.items.map((i) => (
+                    <div key={i.productId} style={{ padding: "6px 0", borderBottom: `1px solid ${C.line}` }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", ...body, fontSize: 12.5 }}><span style={{ fontWeight: 600 }}>{i.name} × {i.quantity} {i.oemNumber ? <span style={{ color: C.muted, fontWeight: 400 }}>(OEM {i.oemNumber})</span> : null}</span><span style={{ color: C.muted }}>buyer ${i.buyerUnitPriceUsd.toFixed(2)} · supplier {i.supplierUnitPriceCny == null ? "—" : cny2(i.supplierUnitPriceCny)}</span></div>
+                      {r.kind === "refused" && !r.handledAt && (
+                        <div data-testid={`refused-alternatives-${r.subOrderId}`} style={{ marginTop: 6 }}>
+                          {((alts[r.subOrderId] || []).find((a) => a.productId === i.productId)?.alternatives || []).map((a) => (
+                            <label key={a.productId} style={{ display: "flex", alignItems: "center", gap: 8, ...body, fontSize: 12.5, padding: "4px 8px", border: picks[i.productId] === a.productId ? `2px solid ${C.signal}` : `1px solid ${C.line}`, borderRadius: 8, marginBottom: 4, cursor: "pointer" }}>
+                              <input type="radio" name={`alt-${r.subOrderId}-${i.productId}`} data-testid={`alt-${i.productId}-${a.productId}`} checked={picks[i.productId] === a.productId} onChange={() => setPicks((cur) => ({ ...cur, [i.productId]: a.productId }))} />
+                              <span style={{ flex: 1 }}>{a.name} · {a.supplierName}</span><span style={{ color: C.muted }}>stock {a.stockQuantity} · {a.supplierPriceCny == null ? "—" : cny2(a.supplierPriceCny)}</span>
+                            </label>
+                          ))}
+                          {alts[r.subOrderId] && ((alts[r.subOrderId].find((a) => a.productId === i.productId)?.alternatives || []).length === 0) && <div style={{ ...body, fontSize: 12, color: C.muted }}>No other supplier has this part (same OEM number) in stock.</div>}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {!r.handledAt && (
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
+                      {r.kind === "refused" && <button data-testid={`reassign-${r.subOrderId}`} disabled={busy || !r.items.every((i) => picks[i.productId])} onClick={() => reassign(r)} style={{ ...body, padding: "8px 14px", borderRadius: 8, border: "none", background: C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, opacity: busy || !r.items.every((i) => picks[i.productId]) ? 0.5 : 1, cursor: "pointer" }}>Reassign to the chosen supplier</button>}
+                      <input data-testid={`handled-note-${r.subOrderId}`} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" maxLength={300} style={{ ...body, flex: 1, minWidth: 160, padding: "7px 10px", borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 12.5 }} />
+                      <button data-testid={`handled-${r.subOrderId}`} disabled={busy} onClick={() => handled(r)} style={{ ...body, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Mark as handled</button>
+                    </div>
+                  )}
+                  {r.handledNote && <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 8 }}>Note: {r.handledNote}</div>}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function OrdersPage({ onOpenOrder, onSessionExpired }) {
   const [orders, setOrders] = useState([]);
   const [loadState, setLoadState] = useState("loading"); // loading | ready | error
@@ -719,6 +805,7 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
       </div>
       <div style={{ padding: 24 }}>
         {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading orders…</div></Card>}
+        <RefusedOrdersSection onSessionExpired={onSessionExpired} />
         {loadState === "error" && (
           <Card>
             <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>
@@ -5421,7 +5508,8 @@ const FAULT_STATUS = {
 const REPLACEMENT_STAGE = { waiting_for_supplier: "waiting for the supplier to ship it", at_hub: "at the inspection hub", shipped_to_buyer: "shipped to the buyer", delivered: "delivered to the buyer" };
 const HUB_RETURN_LABELS = { returned: "Returned to the supplier", discarded: "Discarded at the hub" };
 const COST_BEARER_LABELS = { supplier: "The supplier", leap: "Leap" };
-const usd2 = (n) => `$${Number(n).toFixed(2)}`;
+const usd2 = (n) => `$${Number(n).toFixed(2)}`;      // the BUYER's dollars
+const cny2s = (n) => `¥${Number(n).toFixed(2)}`;     // what the SUPPLIER is paid: RMB
 
 // "Real fault" dialog: which items are faulty, and who bears the cost. (Custom rather than EditDialog,
 // which has no checkboxes.) Everything defaults to the safe choice: all items ticked, supplier pays.
@@ -5540,14 +5628,14 @@ function FaultCasePanel({ faultCase, onRefund, onReplace, onReleasePayment, onMa
           <strong>Supplier payment (Leap bears the cost):</strong>{" "}
           {faultCase.supplierPayment.released ? (
             <>
-              released: original order {usd2(faultCase.supplierPayment.originalOrder)}
-              {faultCase.supplierPayment.localShipping ? ` + local shipping ${usd2(faultCase.supplierPayment.localShipping)}` : ""}
+              released: original order {cny2s(faultCase.supplierPayment.originalOrder)}
+              {faultCase.supplierPayment.localShipping ? ` + local shipping ${cny2s(faultCase.supplierPayment.localShipping)}` : ""}
               {faultCase.supplierPayment.paidOut ? ", already paid out." : ", included in the supplier's next payout."}
               {faultCase.outcome === "replacement" ? " The replacement is paid when it is delivered." : ""}
             </>
           ) : (
             <>
-              the supplier is owed the original order ({usd2(faultCase.supplierPayment.originalOrder)} after commission) plus their local shipping charges. Not released yet.
+              the supplier is owed the original order ({cny2s(faultCase.supplierPayment.originalOrder)}) plus their local shipping charges. Not released yet.
               {faultCase.outcome === "replacement" ? " The replacement is paid when it is delivered." : ""}
               <div style={{ marginTop: 6 }}>
                 <button onClick={onReleasePayment} style={{ ...btn, border: `1px solid ${C.ink}`, background: "#fff", color: C.ink }}>Release supplier payment…</button>
@@ -5642,7 +5730,7 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
     const shipping = values.localShippingAmount === "" ? undefined : Number(values.localShippingAmount);
     const result = await releaseSupplierPayment(getStoredToken(), action.shipment.faultCase.id, { localShippingAmount: shipping, note: (values.note || "").trim() || undefined });
     const sp = result.faultCase.supplierPayment;
-    return `Released: original order ${usd2(sp.originalOrder)}${sp.localShipping ? ` + local shipping ${usd2(sp.localShipping)}` : ""}. It is included in the supplier's next payout.`;
+    return `Released: original order ${cny2s(sp.originalOrder)}${sp.localShipping ? ` + local shipping ${cny2s(sp.localShipping)}` : ""}. It is included in the supplier's next payout.`;
   });
 
   const handleCloseCase = (values) => run(async () => {
@@ -5675,7 +5763,7 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
     if (action.type === "release") {
       const sp = action.shipment.faultCase.supplierPayment;
       return [
-        { key: "localShippingAmount", label: `Local shipping charges (USD) — what the supplier paid to ship to the hub. Optional; leave empty for none. The original order (${usd2(sp.originalOrder)} after commission) is added automatically.`, value: "", type: "number" },
+        { key: "localShippingAmount", label: `Local shipping charges (RMB ¥) — what the supplier paid to ship to the hub. Optional; leave empty for none. The original order (${cny2s(sp.originalOrder)}) is added automatically.`, value: "", type: "number" },
         { key: "note", label: "Note (optional)", value: "" },
       ];
     }
@@ -7002,7 +7090,7 @@ function PayoutsPage({ onSessionExpired }) {
       <TopBar title="Commission & payouts" subtitle="Recorded manually per supplier, based on each supplier's own payment agreement — no fixed platform-wide schedule" />
       <div style={{ padding: 24 }}>
         <div style={{ display: "flex", gap: 16, marginBottom: 16 }}>
-          <KpiCard label="Currently owed" value={`$${totalOwed.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} icon={Wallet} />
+          <KpiCard label="Currently owed" value={`¥${totalOwed.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} icon={Wallet} />
           <KpiCard label="Suppliers with a balance" value={owed.length} icon={TrendingUp} />
         </div>
 
@@ -7057,7 +7145,7 @@ function PayoutsPage({ onSessionExpired }) {
                       return (
                       <tr key={o.supplierId}>
                         <Td style={{ fontWeight: 600 }}>{o.supplierName}</Td>
-                        <Td align="right">${o.amountOwed.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Td>
+                        <Td align="right">¥{o.amountOwed.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Td>
                         <Td align="right" style={{ color: C.muted }}>{o.eligibleSubOrderCount}</Td>
                         <Td>
                           {method ? (
@@ -7124,7 +7212,7 @@ function PayoutsPage({ onSessionExpired }) {
                     {history.map((p) => (
                       <tr key={p.id}>
                         <Td style={{ fontWeight: 600 }}>{p.supplierName}</Td>
-                        <Td align="right">${p.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Td>
+                        <Td align="right">{p.currencyCode === "CNY" ? "¥" : "$"}{p.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}{p.currencyCode === "CNY" ? "" : " USD"}</Td>
                         <Td align="right" style={{ color: C.muted }}>{p.subOrderCount}</Td>
                         <Td style={{ color: C.muted }}>{new Date(p.createdAt).toLocaleDateString()}</Td>
                         <Td style={{ color: C.muted }}>{p.notes || "—"}</Td>

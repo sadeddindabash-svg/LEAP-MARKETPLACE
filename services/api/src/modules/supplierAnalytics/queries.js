@@ -19,7 +19,7 @@ async function getRevenueAndVolumeOverTime(supplierId, days = 30) {
   const { rows } = await db.query(
     `SELECT date_trunc('day', o.placed_at) AS day,
             COUNT(DISTINCT so.id) AS order_count,
-            COALESCE(SUM(oli.quantity * oli.unit_price), 0) AS revenue
+            COALESCE(SUM(oli.quantity * COALESCE(oli.supplier_unit_price_cny, 0)), 0) AS revenue
      FROM supplier_sub_orders so
      JOIN orders o ON o.id = so.order_id
      JOIN order_line_items oli ON oli.sub_order_id = so.id
@@ -34,7 +34,7 @@ async function getRevenueAndVolumeOverTime(supplierId, days = 30) {
 // 3: real top-selling products, by real quantity sold.
 async function getTopSellingProducts(supplierId, limit = 5) {
   const { rows } = await db.query(
-    `SELECT p.id, p.name, SUM(oli.quantity) AS units_sold, SUM(oli.quantity * oli.unit_price) AS revenue
+    `SELECT p.id, p.name, SUM(oli.quantity) AS units_sold, SUM(oli.quantity * COALESCE(oli.supplier_unit_price_cny, 0)) AS revenue
      FROM order_line_items oli
      JOIN supplier_sub_orders so ON so.id = oli.sub_order_id
      JOIN products p ON p.id = oli.product_id
@@ -79,7 +79,7 @@ async function getLowStockProducts(supplierId) {
 // rather than a second, potentially-drifting reimplementation.
 async function getPayoutSummary(supplierId) {
   const { rows: paidRows } = await db.query(
-    `SELECT COALESCE(SUM(amount), 0) AS total_paid FROM payouts WHERE supplier_id = $1`,
+    `SELECT COALESCE(SUM(amount), 0) AS total_paid FROM payouts WHERE supplier_id = $1 AND currency_code = 'CNY'`,
     [supplierId]
   );
   const { rows: owedRows } = await db.query(
@@ -88,20 +88,43 @@ async function getPayoutSummary(supplierId) {
     [supplierId]
   );
   return {
+    currencyCode: 'CNY',
     totalPaid: Number(paidRows[0].total_paid),
     amountOwed: Number(owedRows[0].amount_owed),
   };
 }
 
+// How the supplier's orders ended up, for the Overview pie chart. Every order (sub-order) is in exactly ONE group:
+//   cancelled   = cancelled (by the buyer, or refused by the supplier)
+//   returned    = a return case that was not rejected
+//   succeeded   = delivered to the buyer and not returned
+//   inProgress  = everything else (not delivered yet)
+async function getOrderOutcomes(supplierId) {
+  const { rows } = await db.query(
+    `SELECT CASE
+              WHEN so.status = 'cancelled' THEN 'cancelled'
+              WHEN EXISTS (SELECT 1 FROM return_cases rc WHERE rc.sub_order_id = so.id AND rc.status <> 'rejected') THEN 'returned'
+              WHEN EXISTS (SELECT 1 FROM hub_shipments hs WHERE hs.sub_order_id = so.id AND hs.status = 'delivered') THEN 'succeeded'
+              ELSE 'inProgress'
+            END AS outcome, COUNT(*) AS n
+     FROM supplier_sub_orders so WHERE so.supplier_id = $1 GROUP BY 1`,
+    [supplierId]
+  );
+  const out = { total: 0, succeeded: 0, inProgress: 0, cancelled: 0, returned: 0 };
+  for (const r of rows) { out[r.outcome] = Number(r.n); out.total += Number(r.n); }
+  return out;
+}
+
 async function getSupplierAnalytics(supplierId) {
-  const [revenueAndVolume, topProducts, statusBreakdown, lowStockProducts, payoutSummary] = await Promise.all([
+  const [revenueAndVolume, topProducts, statusBreakdown, lowStockProducts, payoutSummary, outcomes] = await Promise.all([
     getRevenueAndVolumeOverTime(supplierId),
     getTopSellingProducts(supplierId),
     getOrderStatusBreakdown(supplierId),
     getLowStockProducts(supplierId),
     getPayoutSummary(supplierId),
+    getOrderOutcomes(supplierId),
   ]);
-  return { revenueAndVolume, topProducts, statusBreakdown, lowStockProducts, payoutSummary };
+  return { revenueAndVolume, topProducts, statusBreakdown, lowStockProducts, payoutSummary, outcomes };
 }
 
 module.exports = {
@@ -110,5 +133,6 @@ module.exports = {
   getOrderStatusBreakdown,
   getLowStockProducts,
   getPayoutSummary,
+  getOrderOutcomes,
   getSupplierAnalytics,
 };

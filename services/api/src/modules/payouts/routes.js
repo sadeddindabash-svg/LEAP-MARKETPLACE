@@ -33,7 +33,7 @@ const ELIGIBLE_SUB_ORDERS_CTE = `
   ),
   eligible AS (
     SELECT so.id AS sub_order_id, so.supplier_id,
-           oli.unit_price * oli.quantity * (1 - pc.commission_percent / 100.0) AS net_amount
+           COALESCE(oli.supplier_unit_price_cny, 0) * oli.quantity AS net_amount
     FROM supplier_sub_orders so
     JOIN hub_shipments hs ON hs.sub_order_id = so.id
     JOIN order_line_items oli ON oli.sub_order_id = so.id
@@ -45,6 +45,7 @@ const ELIGIBLE_SUB_ORDERS_CTE = `
       AND hs.delivered_at + (w.days || ' days')::interval < now()
       AND so.id NOT IN (SELECT sub_order_id FROM payout_sub_orders)
       AND NOT EXISTS (SELECT 1 FROM return_cases rc WHERE rc.sub_order_id = so.id)
+      AND NOT EXISTS (SELECT 1 FROM order_line_items nl WHERE nl.sub_order_id = so.id AND nl.supplier_unit_price_cny IS NULL)
   )
 `;
 
@@ -56,11 +57,11 @@ router.get('/owed', requireAuth, requireRole('admin'), requirePageAccess('payout
       owed_items AS (
         SELECT supplier_id, net_amount AS amount, sub_order_id, false AS is_adjustment FROM eligible
         UNION ALL
-        SELECT supplier_id, amount, NULL::int, true FROM payout_adjustments WHERE payout_id IS NULL
+        SELECT supplier_id, amount, NULL::int, true FROM payout_adjustments WHERE payout_id IS NULL AND currency_code = 'CNY'
       )
       SELECT s.id AS supplier_id, s.name AS supplier_name,
              COALESCE(SUM(o.amount), 0) AS amount_owed,
-             COUNT(o.sub_order_id) AS eligible_sub_order_count,
+             COUNT(DISTINCT o.sub_order_id) AS eligible_sub_order_count,
              COUNT(*) FILTER (WHERE o.is_adjustment) AS adjustment_count
       FROM suppliers s
       LEFT JOIN owed_items o ON o.supplier_id = s.id
@@ -72,6 +73,7 @@ router.get('/owed', requireAuth, requireRole('admin'), requirePageAccess('payout
       supplierId: r.supplier_id,
       supplierName: r.supplier_name,
       amountOwed: Number(r.amount_owed),
+      currencyCode: 'CNY',
       eligibleSubOrderCount: Number(r.eligible_sub_order_count),
       adjustmentCount: Number(r.adjustment_count),
     })));
@@ -127,12 +129,14 @@ router.post('/', requireAuth, requireRole('admin'), requirePageAccess('payouts')
     }
 
     await client.query('BEGIN');
-    const { rows: eligibleRows } = await client.query(
+    const { rows: eligibleLineRows } = await client.query(
       `${ELIGIBLE_SUB_ORDERS_CTE}
        SELECT sub_order_id, net_amount FROM eligible WHERE supplier_id = $1`,
       [supplierId]
     );
-    const { rows: adjustmentRows } = await client.query('SELECT id, amount FROM payout_adjustments WHERE supplier_id = $1 AND payout_id IS NULL FOR UPDATE', [supplierId]);
+    const { rows: adjustmentRows } = await client.query('SELECT id, amount FROM payout_adjustments WHERE supplier_id = $1 AND payout_id IS NULL AND currency_code = \'CNY\' FOR UPDATE', [supplierId]);
+    // The eligible rows are one per order LINE: add them up per sub-order, so a sub-order with several lines is recorded once (it used to fail with a duplicate key) and is counted once.
+    const eligibleRows = Object.values(eligibleLineRows.reduce((acc, r) => { (acc[r.sub_order_id] ||= { sub_order_id: r.sub_order_id, net_amount: 0 }).net_amount += Number(r.net_amount); return acc; }, {}));
     if (eligibleRows.length === 0 && adjustmentRows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'This supplier has no real amount currently owed.' });
@@ -140,7 +144,7 @@ router.post('/', requireAuth, requireRole('admin'), requirePageAccess('payouts')
     const totalAmount = eligibleRows.reduce((sum, r) => sum + Number(r.net_amount), 0) + adjustmentRows.reduce((sum, r) => sum + Number(r.amount), 0);
 
     const { rows: payoutRows } = await client.query(
-      `INSERT INTO payouts (supplier_id, amount, notes, created_by_admin_id) VALUES ($1, $2, $3, $4) RETURNING *`,
+      `INSERT INTO payouts (supplier_id, amount, currency_code, notes, created_by_admin_id) VALUES ($1, $2, 'CNY', $3, $4) RETURNING *`,
       [supplierId, totalAmount.toFixed(2), notes || null, req.user.sub]
     );
     const payoutId = payoutRows[0].id;

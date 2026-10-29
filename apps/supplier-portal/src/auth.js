@@ -182,6 +182,13 @@ export function fetchMyOverview(token) {
 export function updateSubOrder(token, subOrderId, updates) {
   return authedMutate("PATCH", `/supplier/me/orders/${subOrderId}`, token, updates);
 }
+// A NEW order is answered: accepted (the same steps as before) or refused with a reason (out_of_stock | price_changed | discontinued | cannot_ship_in_time | other, which needs a note).
+export function acceptSubOrder(token, subOrderId) {
+  return authedMutate("POST", `/supplier/me/orders/${subOrderId}/accept`, token, {});
+}
+export function refuseSubOrder(token, subOrderId, { reason, note }) {
+  return authedMutate("POST", `/supplier/me/orders/${subOrderId}/refuse`, token, { reason, note });
+}
 
 // The supplier's own return address (migration 092): where the inspection hub sends a faulty unit back to.
 // null until they have entered one; saving replaces it.

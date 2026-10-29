@@ -1,4 +1,5 @@
 const express = require('express');
+const { supplierUnitPriceCny } = require('../shared/supplierMoney');
 const { normalizeEmail, sameEmail } = require('../auth/emailAddress');
 const { emailLanguageForAddress, emailSubject } = require('../email/language');
 const db = require('../../../db/pool');
@@ -306,8 +307,8 @@ router.post('/', async (req, res, next) => {
       const lineItems = [];
       for (const item of supplierItems) {
         await client.query(
-          `INSERT INTO order_line_items (sub_order_id, product_id, quantity, unit_price) VALUES ($1, $2, $3, $4)`,
-          [subOrderId, item.productId, item.quantity, buyerUnitPrices[item.productId]]
+          `INSERT INTO order_line_items (sub_order_id, product_id, quantity, unit_price, supplier_unit_price_cny) VALUES ($1, $2, $3, $4, $5)`,
+          [subOrderId, item.productId, item.quantity, buyerUnitPrices[item.productId], supplierUnitPriceCny(productById[item.productId])]
         );
         lineItems.push({ productId: item.productId, quantity: item.quantity });
       }

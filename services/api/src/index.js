@@ -59,6 +59,8 @@ const supplierDigestRoutes = require('./modules/supplierDigest/routes');
 const { startScheduledSupplierDigest } = require('./modules/supplierDigest/send');
 const { startScheduledAnniversaryCheck } = require('./modules/loyaltyMilestones/check');
 const { startScheduledDelayCheck } = require('./modules/shipmentDelayCheck/check');
+const orderResponse = require('./modules/orderResponse/routes');
+const { startScheduledResponseCheck } = require('./modules/orderResponse/check');
 const pricingRoutes = require('./modules/pricing/routes');
 
 assertRequiredEnvInProduction();
@@ -160,6 +162,8 @@ app.use('/user', userRoutes);
 app.use('/payment', paymentRoutes);
 app.use('/config', configRoutes);
 app.use('/auth', authRoutes);
+app.use('/supplier/me/orders', orderResponse.supplierRouter);      // accept / refuse a new order
+app.use('/supplier-responses', orderResponse.adminRouter);              // the admin's list of refused / unanswered orders
 app.use('/supplier', supplierRoutes);
 app.use('/support', supportRoutes);
 app.use('/bug-reports', require('./modules/bugReports/routes'));
@@ -236,6 +240,8 @@ if (require.main === module) {
   // Real, once-a-day shipment-delay check (#57) -- same real startup
   // guard as above.
   startScheduledDelayCheck();
+  // The reminders for a supplier who has not answered a new order (every 4 hours, then to the admin after 24 hours).
+  startScheduledResponseCheck();
 }
 
 module.exports = app;
