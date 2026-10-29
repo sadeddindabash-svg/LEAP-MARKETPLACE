@@ -13,6 +13,7 @@ import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar,
 } from "recharts";
 import { LangContext, useLang } from "./langContext";
+import { useAutoRefresh, setIfChanged, sameData } from "./autoRefresh";
 import { SupplierContext, useSupplier } from "./supplierContext";
 import LoginPage from "./LoginPage";
 import ExcelJS from "exceljs";
@@ -651,6 +652,7 @@ function OverviewPage({ onSessionExpired }) {
         setLoadState("error");
       });
   }, [onSessionExpired]);
+  useAutoRefresh(() => fetchMyOverview(getStoredToken()).then(setIfChanged(setData)), { enabled: loadState === "ready" });
 
   if (loadState === "loading") {
     return (
@@ -1821,6 +1823,7 @@ function PartRequestQueue({ onSelect, onSessionExpired }) {
         setLoadState("error");
       });
   }, [onSessionExpired]);
+  useAutoRefresh(() => fetchPartRequestQueue(getStoredToken()).then(setIfChanged(setQueue)), { enabled: loadState === "ready" });
 
   const statusStyle = {
     submitted: { bg: C.amberBg, text: C.amber },
@@ -1994,6 +1997,7 @@ function ProductsPage() {
       });
   };
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useAutoRefresh(() => fetchMyProducts(getStoredToken()).then(setIfChanged(setProducts)), { enabled: loadState === "ready" && mode === "list" && !editingProduct && !showBulkPriceModal });
 
   if (mode === "add") return <div style={{ padding: 24 }}><AddProductForm onCancel={() => setMode("list")} onCreated={() => { load(); }} staysOpenAfterSave /></div>;
   if (mode === "bulk") return <div style={{ padding: 24 }}><BulkUploadPanel onCancel={() => setMode("list")} onImported={load} /></div>;
@@ -2535,6 +2539,7 @@ function OrdersPage({ onOpen }) {
         setLoadState("error");
       });
   }, [onSessionExpired]);
+  useAutoRefresh(() => fetchMyOrders(getStoredToken()).then(setIfChanged(setOrders)), { enabled: loadState === "ready" });
 
   const filtered = filterIdx === 0 ? orders : orders.filter(o => o.status === keys[filterIdx]);
 
@@ -2825,6 +2830,7 @@ function ReturnsPage() {
         setLoadState("error");
       });
   }, [onSessionExpired]);
+  useAutoRefresh(() => fetchMyReturnCases(getStoredToken()).then(setIfChanged(setCases)), { enabled: loadState === "ready" });
 
   const openCase = async (id) => {
     setOpenId(id);
@@ -2935,6 +2941,7 @@ function SupplierNotificationsPage({ onRefreshBadge }) {
       .catch((err) => setErrorMessage(err.message));
   };
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useAutoRefresh(() => fetchMyNotifications(getStoredToken()).then(setIfChanged(setNotifications)));
 
   const markAllRead = async () => {
     try {
@@ -3038,7 +3045,7 @@ function MessagesPage() {
   // Polls every 20s while this page is mounted.
   useEffect(() => {
     load(true);
-    const interval = setInterval(() => load(false), 20000);
+    const interval = setInterval(() => load(false), 5000);
     return () => clearInterval(interval);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -3136,6 +3143,7 @@ function FinancePage() {
         setFinanceError(err.message);
       });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useAutoRefresh(() => fetchMyFinance(getStoredToken()).then(setIfChanged(setFinance)));
 
   useEffect(() => {
     fetchMyPayoutMethod(getStoredToken())
@@ -3438,6 +3446,14 @@ function PortalShell() {
     fetchUnreadNotificationCount(getStoredToken()).then(setUnreadCount).catch(() => {}); // non-critical -- badge just stays as-is
   };
   useEffect(refreshUnreadCount, []);
+  useAutoRefresh(refreshUnreadCount);      // the sidebar's unread badge
+  // The order that is open (a copy of its row) follows the supplier's orders: a change made elsewhere (the buyer cancelled it, the hub received it) appears in the open order by itself.
+  useAutoRefresh(async () => {
+    if (!openOrder) return;
+    const list = await fetchMyOrders(getStoredToken());
+    const fresh = Array.isArray(list) ? list.find((o) => o.subOrderId === openOrder.subOrderId) : null;
+    if (fresh) setOpenOrder((current) => (current && current.subOrderId === fresh.subOrderId && !sameData(current, fresh) ? fresh : current));
+  }, { enabled: !!openOrder });
 
   let content;
   if (openOrder) content = <OrderDetailPanel order={openOrder} onBack={() => setOpenOrder(null)} onUpdated={(updated) => setOpenOrder({ ...openOrder, ...updated })} />;

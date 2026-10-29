@@ -5,6 +5,7 @@ import { exportToExcel } from "./exportToExcel";
 import { sidebarEntries, groupOfPage, accessibleChildren, landingPage, TAB_LABELS } from "./adminNav";
 import GroupTabs from "./components/GroupTabs";
 import { FONT_IMPORT, C, disp, body, mono } from "./theme";
+import { useAutoRefresh, setIfChanged, sameData } from "./autoRefresh";
 import HomePicturesSection from "./HomePicturesSection";
 import HomeTextSection from "./HomeTextSection";
 import HomeBannerSection from "./HomeBannerSection";
@@ -497,6 +498,8 @@ function OverviewPage({ onSessionExpired }) {
         setLoadState("error");
       });
   }, [onSessionExpired]);
+  useAutoRefresh(() => fetchOverview(getStoredToken())
+    .then((d) => { setData({ totalOrders: 0, activeSuppliers: 0, pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, openTickets: 0, ordersByDay: [], topSuppliers: [], unitsByCategory: [], recentOrders: [], ...d });  }), { enabled: loadState === "ready" });
 
   if (loadState === "loading") {
     return (
@@ -649,6 +652,7 @@ function RefusedOrdersSection({ onSessionExpired }) {
   const failWith = (err) => { if (err instanceof SessionExpiredError) return onSessionExpired(); setError(err.message); };
   const load = () => fetchSupplierResponses(getStoredToken(), filter).then((d) => { setRows(Array.isArray(d) ? d.filter((r) => r && r.subOrderId !== undefined && Array.isArray(r.items)) : []); setError(null); }).catch(failWith);      // anything that is not a list of refused orders is ignored
   useEffect(() => { load(); }, [filter]); // eslint-disable-line react-hooks/exhaustive-deps
+  useAutoRefresh(() => fetchSupplierResponses(getStoredToken(), filter).then((d) => setIfChanged(setRows)(Array.isArray(d) ? d.filter((r) => r && r.subOrderId !== undefined && Array.isArray(r.items)) : [])), { enabled: !busy });
   const toggle = async (row) => {
     setMessage(null); setNote(""); setPicks({});
     if (openId === row.subOrderId) return setOpenId(null);
@@ -745,6 +749,7 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
       });
     return () => { cancelled = true; };
   }, [onSessionExpired]);
+  useAutoRefresh(() => fetchOrders(getStoredToken()).then(setIfChanged(setOrders)), { enabled: loadState === "ready" });
 
   // Confirmed with the person: the filter now follows the real,
   // live hubStatus instead of the disconnected raw orders.status
@@ -1298,6 +1303,7 @@ function OrderDetailPage({ orderId, onBack, onSessionExpired, onOpenTicket, onOp
       });
   };
   useEffect(load, [orderId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useAutoRefresh(() => fetchOrderById(getStoredToken(), orderId).then(setIfChanged(setOrder)), { enabled: loadState === "ready" });
 
   // Confirmed with the person: reuses an existing open ticket for
   // this real order if one exists, rather than always starting a
@@ -1462,6 +1468,7 @@ function SuppliersPage({ onOpenSupplier, onSessionExpired }) {
   };
 
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useAutoRefresh(() => fetchSuppliers(getStoredToken()).then(setIfChanged(setSuppliers)), { enabled: loadState === "ready" });
 
   const handleVerify = async (supplierId, status) => {
     setActioningId(supplierId);
@@ -1604,6 +1611,7 @@ function ModerationPage({ onSessionExpired }) {
       });
   };
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useAutoRefresh(() => fetchModerationQueue(getStoredToken()).then(setIfChanged(setQueue)), { enabled: loadState === "ready" });
 
   const openReview = (m) => {
     setReviewingId(m.id);
@@ -3917,6 +3925,7 @@ function HubWorkloadSection({ onSessionExpired }) {
       });
   };
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useAutoRefresh(() => fetchHubWorkload(getStoredToken()).then(setIfChanged(setWorkload)), { enabled: loadState === "ready" });
 
   const handleSaveCapacity = async (hubId) => {
     const value = parseInt(editValue, 10);
@@ -4019,6 +4028,7 @@ function HubPerformanceSection({ onSessionExpired }) {
         setLoadState("error");
       });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useAutoRefresh(() => fetchHubPerformance(getStoredToken()).then(setIfChanged(setPerformance)), { enabled: loadState === "ready" });
 
   const stages = [
     { key: "toOpened", label: "Received → Opened" },
@@ -5681,6 +5691,7 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
       });
   };
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useAutoRefresh(() => fetchFlaggedShipments(getStoredToken()).then((data) => { setIfChanged(setShipments)(data); if (onCountChange) onCountChange(data.length); }), { enabled: loadState === "ready" });
 
   const open = (type, shipment) => { setDialogError(null); setNotice(null); setAction({ type, shipment }); };
   const close = () => setAction(null);
@@ -6515,7 +6526,7 @@ function SupplierMessageThreadPage({ supplierId, supplierName, onBack, onSession
   // Polls every 20s while this thread is open.
   useEffect(() => {
     load(true);
-    const interval = setInterval(() => load(false), 20000);
+    const interval = setInterval(() => load(false), 5000);
     return () => clearInterval(interval);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -7068,6 +7079,7 @@ function PayoutsPage({ onSessionExpired }) {
       });
   };
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useAutoRefresh(() => Promise.all([fetchPayoutsOwed(getStoredToken()), fetchPayoutHistory(getStoredToken())]).then(([owedData, historyData]) => { setIfChanged(setOwed)(owedData); setIfChanged(setHistory)(historyData); }), { enabled: loadState === "ready" });
 
   const handleRecordPayout = async (supplierId) => {
     setPayingSupplierId(supplierId);
@@ -7244,6 +7256,7 @@ function TicketsPage({ onOpenTicket, onSessionExpired }) {
         setLoadState("error");
       });
   }, [onSessionExpired]);
+  useAutoRefresh(() => fetchTickets(getStoredToken()).then(setIfChanged(setTickets)), { enabled: loadState === "ready" });
 
   const openCount = tickets.filter(t => t.status !== "resolved").length;
 
@@ -7331,6 +7344,7 @@ function TicketDetailPage({ ticketId, onBack, onSessionExpired }) {
       });
   };
   useEffect(load, [ticketId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useAutoRefresh(() => fetchTicketById(getStoredToken(), ticketId).then(setIfChanged(setTicket)), { enabled: loadState === "ready" });
 
   const handleReply = async () => {
     if (!replyText.trim()) return;
@@ -7505,6 +7519,7 @@ function ReturnsPage({ onOpenCase, onSessionExpired }) {
         setLoadState("error");
       });
   }, [onSessionExpired]);
+  useAutoRefresh(() => fetchReturnCases(getStoredToken()).then(setIfChanged(setCases)), { enabled: loadState === "ready" });
 
   return (
     <div>
@@ -7587,6 +7602,7 @@ function ReturnCaseDetailPage({ caseId, onBack, onSessionExpired }) {
       });
   };
   useEffect(load, [caseId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useAutoRefresh(() => fetchReturnCaseById(getStoredToken(), caseId).then(setIfChanged(setReturnCase)), { enabled: loadState === "ready" });
 
   const sendBuyerReply = async () => {
     if (!buyerReply.trim()) return;
@@ -8564,6 +8580,11 @@ function AdminDashboardShell({ currentUser, onLogout }) {
       }))
       .catch(() => {}); // non-critical -- the bell badge just stays at 0 rather than breaking the shell
   }, [page]); // refetch whenever navigating, so acting on something reflects in the badge soon after
+  // The sidebar badges (flagged shipments, pending suppliers, disputes, moderation, tickets) follow the platform by themselves.
+  useAutoRefresh(() => Promise.all([
+    fetchFlaggedShipments(getStoredToken()).then((data) => setFlaggedCount(data.length)),
+    fetchOverview(getStoredToken()).then((data) => setPendingCounts({ pendingSuppliers: data.pendingSuppliers, openDisputes: data.openDisputes, pendingModeration: data.pendingModeration, openTickets: data.openTickets })),
+  ]));
 
   let content;
   if (openOrder) content = <OrderDetailPage orderId={openOrder} onBack={() => setOpenOrder(null)} onSessionExpired={onLogout}

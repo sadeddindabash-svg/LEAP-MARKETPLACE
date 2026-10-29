@@ -300,7 +300,7 @@ function QueueScreen({ onOpenShipment }) {
   // 20s while this queue screen is open.
   useEffect(() => {
     load(true);
-    const interval = setInterval(() => load(false), 20000);
+    const interval = setInterval(() => load(false), 5000);
     return () => clearInterval(interval);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
