@@ -10,6 +10,7 @@ import '../../core/cart_state.dart';
 import '../../models/cart_item.dart';
 import '../../services/api_client.dart';
 import '../../widgets/skeleton.dart';
+import '../../widgets/cart_merge_banner.dart';
 import '../../widgets/free_shipping.dart';
 
 /// BUY-030–031: cart holds items from multiple suppliers but presents one
@@ -112,6 +113,7 @@ class CartScreen extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              const CartMergeBanner(),
               Icon(Icons.shopping_cart_outlined, size: 40, color: palette.muted),
               const SizedBox(height: 12),
               Text(tr(context, 'basket_empty'),
@@ -135,6 +137,7 @@ class CartScreen extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        const CartMergeBanner(),
         for (final entry in grouped.entries) _SupplierGroup(supplierName: entry.key, items: entry.value),
         // Real order summary (new) -- shows only real, currently-known
         // data (subtotal). Deliberately does not show a shipping/tax

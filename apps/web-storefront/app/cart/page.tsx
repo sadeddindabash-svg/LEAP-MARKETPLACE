@@ -3,6 +3,7 @@
 import { useState } from "react";
 import SafeImage from "@/components/SafeImage";
 import FitCheck from "@/components/FitCheck";
+import CartMergeNotice from "@/components/CartMergeNotice";
 import Link from "@/components/LocLink";
 import { useCart } from "@/components/CartProvider";
 import { useT } from "@/components/LangProvider";
@@ -70,6 +71,7 @@ export default function CartPage() {
     return (
       <div className="mx-auto max-w-3xl px-4 py-14 text-center sm:px-8">
         <h1 className="text-3xl font-bold tracking-tight text-navy">{t("cart_title")}</h1>
+        <CartMergeNotice />
         <p className="mb-6 mt-3 text-lg text-muted">{t("cart_empty")}</p>
         {removed && (
           <p role="status" className="mb-5 text-sm font-semibold">
@@ -91,6 +93,7 @@ export default function CartPage() {
           <button type="button" className="font-bold underline underline-offset-4" onClick={() => { const it = removed.item; setRemoved(null); guard(() => addItem(it.productId, it.quantity).catch(() => {})); }}>{t("undo")}</button>
         </p>
       )}
+      <CartMergeNotice />
       {error && <p role="alert" className="mb-4 text-sm font-semibold text-[#a12a21]">{error}</p>}
       <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <section className="rounded-[14px] border border-line bg-white px-5" aria-label={t("cart_title")}>

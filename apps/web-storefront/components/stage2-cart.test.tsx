@@ -22,7 +22,10 @@ function installFetch() {
   globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
     calls.push({ url: String(url), method: init?.method ?? "GET", auth: ((init?.headers ?? {}) as Record<string, string>).Authorization ?? null });
     const r = reply();
-    return { ok: r.ok, status: r.status ?? (r.ok ? 200 : 400), json: async () => r.body } as Response;
+    // like the real server: a cart answers with the id it was asked for (only an account cart answers with another id)
+    const asked = /\/cart\/([^/?]+)/.exec(String(url))?.[1];
+    const body = r.ok && asked && r.body && typeof r.body === "object" && "cartId" in (r.body as object) ? { ...(r.body as object), cartId: asked } : r.body;
+    return { ok: r.ok, status: r.status ?? (r.ok ? 200 : 400), json: async () => body } as Response;
   }) as unknown as typeof fetch;
 }
 const cookieId = () => /leap_cart_id=([^;]*)/.exec(document.cookie)?.[1];

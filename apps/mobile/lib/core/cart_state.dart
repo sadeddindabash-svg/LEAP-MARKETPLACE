@@ -3,6 +3,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:uuid/uuid.dart';
 import '../models/cart_item.dart';
 import '../models/cart.dart';
+import '../models/cart_merge.dart';
 import '../models/cart_shipping.dart';
 import '../services/api_client.dart';
 
@@ -37,6 +38,8 @@ class CartState extends ChangeNotifier {
   double _appliedDiscountUsd = 0;
   // Free shipping above a limit: the answer the server sent with the last cart (CartShipping.off when the rule is off).
   CartShipping _shipping = CartShipping.off;
+  // ONE CART PER ACCOUNT: set when the server combined this device's basket with the account basket; shown on the cart screen until dismissed.
+  CartMerge? _mergeNotice;
   // Confirmed with the person: whole-basket checkout price lock,
   // starts when checkout genuinely begins (not when an item is
   // added).
@@ -69,8 +72,35 @@ class CartState extends ChangeNotifier {
   /// the next unrelated cart action happens to run.
   void updateToken(String? token) {
     if (_token == token) return;
+    final signedOut = _token != null && token == null;
     _token = token;
+    if (signedOut) {
+      _startFreshGuestCart();
+      return;
+    }
     refresh();
+  }
+
+  /// Signed out: this device gets a FRESH EMPTY guest cart (a new id), so the next person never sees the account's cart.
+  Future<void> _startFreshGuestCart() async {
+    final id = const Uuid().v4();
+    _cartId = id;
+    _items = [];
+    _appliedPromoCode = null;
+    _appliedPromoDetails = null;
+    _promoDiscountUsd = 0;
+    _loyaltyDiscountPercentage = 0;
+    _loyaltyDiscountUsd = 0;
+    _appliedDiscountSource = 'none';
+    _appliedDiscountUsd = 0;
+    _shipping = CartShipping.off;
+    _lockActive = false;
+    _lockExpiresAt = null;
+    _mergeNotice = null;
+    _errorMessage = null;
+    notifyListeners();
+    await _secureStorage.write(key: _cartIdKey, value: id);
+    await refresh();
   }
 
   /// Called whenever the app language changes (see app.dart) -- refetches
@@ -98,6 +128,12 @@ class CartState extends ChangeNotifier {
 
   double get total => _items.fold(0.0, (sum, i) => sum + i.lineTotal);
   CartShipping get shipping => _shipping;
+  CartMerge? get mergeNotice => _mergeNotice;
+  void dismissMergeNotice() {
+    if (_mergeNotice == null) return;
+    _mergeNotice = null;
+    notifyListeners();
+  }
   // The shipping fee the buyer does NOT pay because shipping is free: "You saved" counts it.
   double get shippingSaved => _shipping.savedUsd;
   // The goods plus the shipping fee of a small order (0 when shipping is free or the rule is off). Any promo or loyalty discount is applied at checkout, as before.
@@ -136,6 +172,14 @@ class CartState extends ChangeNotifier {
     _appliedDiscountSource = cart.appliedDiscountSource;
     _appliedDiscountUsd = cart.appliedDiscountUsd;
     _shipping = _apiClient.lastCartShipping;
+    // ONE CART PER ACCOUNT: the cart the server answered with is THE cart from now on (this device keeps its id), and what it combined is kept for the notice.
+    final answeredId = _apiClient.lastCartId;
+    if (answeredId != null && answeredId != _cartId) {
+      _cartId = answeredId;
+      _secureStorage.write(key: _cartIdKey, value: answeredId);
+    }
+    final combined = _apiClient.lastCartMerge;
+    if (combined != null) _mergeNotice = combined;
     _lockActive = cart.lockActive;
     _lockExpiresAt = cart.lockExpiresAt;
   }

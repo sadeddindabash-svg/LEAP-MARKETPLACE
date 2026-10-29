@@ -317,9 +317,19 @@ export interface CartItem {
   stockQuantity: number;
 }
 
+/** What was combined when this device's basket joined the account basket (one cart per account): lines added, lines whose quantity was added to, quantities lowered for stock, lines dropped (no stock). */
+export interface CartMerge {
+  itemsAdded: number;
+  itemsCombined: number;
+  reduced: { productId: string; name: string; from: number; to: number }[];
+  dropped: { productId: string; name: string }[];
+}
+
 export interface Cart {
   cartId: string;
   items: CartItem[];
+  /** Only in the one answer that combined carts. */
+  merge?: CartMerge;
   /** The promo code on the cart, and what it is (null when none, or when it stopped being valid). */
   appliedPromoCode?: string | null;
   appliedPromoDetails?: { code: string; type: string; value: number | null } | null;
@@ -370,6 +380,8 @@ export const setCartItemQuantity = (cartId: string, productId: string, quantity:
 export const removeCartItem = (cartId: string, productId: string, who?: CartCallOptions) => cartApiCall<Cart>(`/${cartId}/items/${productId}`, { method: "DELETE" }, who);
 /** Freezes the prices for the checkout (the app does this the moment the checkout opens). A lock already running is left as it is. */
 export const lockCartPrices = (cartId: string, who?: CartCallOptions) => cartApiCall<Cart>(`/${cartId}/lock-prices`, { method: "POST" }, who);
+/** Empties the cart after an order (its items, promo code and price lock): the same cart, so every device shows it empty. */
+export const clearCart = (cartId: string, who?: CartCallOptions) => cartApiCall<Cart>(`/${cartId}/clear`, { method: "POST" }, who);
 /** Puts a promo code on the cart (the server checks it; an invalid one is refused with the reason), or removes it with null. */
 export const applyCartPromoCode = (cartId: string, code: string | null, who?: CartCallOptions) => cartApiCall<Cart>(`/${cartId}/promo-code`, { method: "PATCH", body: JSON.stringify({ code }) }, who);
 

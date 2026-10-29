@@ -394,4 +394,5 @@ router.delete('/:cartId/items/:productId', optionalAuth, async (req, res, next) 
   }
 });
 
-module.exports = router;
+router.getFullCart = getFullCart;      // used by the account cart layer's POST /:cartId/clear
+module.exports = require('./accountCart').accountCartRouter(router);

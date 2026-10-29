@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth } = require('../auth/middleware');
+const { resolveCart } = require('../cart/accountCart');
 const { attachBuyerPrice } = require('../catalog/routes');
 
 /**
@@ -290,13 +291,14 @@ router.post('/:id/place-order', requireAuth, async (req, res, next) => {
     );
     if (items.length === 0) return res.status(400).json({ error: 'No items are ready to order yet -- they may still be pending review' });
 
+    // ONE CART PER ACCOUNT: the quote's items go into the buyer's account cart (the id the device sends may be the old id of a cart that was combined into it).
+    const targetCartId = (await resolveCart(cartId, req.user.sub, 'en')).cartId;
     await client.query('BEGIN');
-    await client.query('INSERT INTO carts (id) VALUES ($1) ON CONFLICT (id) DO NOTHING', [cartId]);
     for (const item of items) {
       await client.query(
         `INSERT INTO cart_items (cart_id, product_id, quantity) VALUES ($1, $2, $3)
          ON CONFLICT (cart_id, product_id) DO UPDATE SET quantity = EXCLUDED.quantity`,
-        [cartId, item.product_id, item.quantity]
+        [targetCartId, item.product_id, item.quantity]
       );
     }
     await client.query('COMMIT');

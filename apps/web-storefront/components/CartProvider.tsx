@@ -1,7 +1,7 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from "react";
-import { Cart, addCartItem, applyCartPromoCode, fetchCart, lockCartPrices, removeCartItem, setCartItemQuantity } from "@/lib/api";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, ReactNode } from "react";
+import { Cart, CartMerge, addCartItem, applyCartPromoCode, clearCart, fetchCart, lockCartPrices, removeCartItem, setCartItemQuantity } from "@/lib/api";
 import { itemCount as countOf, subtotal as subtotalOf, totals as totalsOf } from "@/lib/cart";
 import { getAuthToken, useAuth } from "./AuthProvider";
 import { useLang } from "./LangProvider";
@@ -47,6 +47,9 @@ interface CartContextValue {
   refreshCart: () => Promise<void>;
   /** After an order: a brand new empty cart, so the count in the header drops at once (not only after a reload). */
   clearAfterOrder: () => void;
+  /** Set when this device's basket was just combined with the account basket (one cart per account); null once dismissed. */
+  mergeNotice: CartMerge | null;
+  dismissMergeNotice: () => void;
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -63,12 +66,30 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [cart, setCart] = useState<Cart | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mergeNotice, setMergeNotice] = useState<CartMerge | null>(null);
+  const cartIdRef = useRef(cartId);
+  cartIdRef.current = cartId;
+  /** What the server answered: the cart on screen. A signed-in buyer has ONE cart: when the answer is another cart (the account cart) this device uses its id from now on; a notice of carts combined is kept until dismissed. */
+  const adopt = useCallback((c: Cart) => {
+    setCart(c);
+    if (c.cartId && c.cartId !== cartIdRef.current) { writeCartIdCookie(c.cartId); cartIdRef.current = c.cartId; setCartId(c.cartId); }
+    if (c.merge) setMergeNotice(c.merge);
+  }, []);
+  // Signed out: this device gets a fresh empty guest cart, so the next person never sees the account's cart.
+  const previousUserId = useRef(userId);
+  useEffect(() => {
+    if (previousUserId.current && !userId) {
+      const id = crypto.randomUUID();
+      writeCartIdCookie(id); cartIdRef.current = id; setCartId(id); setCart({ cartId: id, items: [] }); setMergeNotice(null); setError(null);
+    }
+    previousUserId.current = userId;
+  }, [userId]);
 
   useEffect(() => {
     if (!cartId) return;
     let current = true;
     fetchCart(cartId, { token: getAuthToken(), lang })
-      .then((c) => { if (current) { setCart(c); setError(null); } })
+      .then((c) => { if (current) { adopt(c); setError(null); } })
       .catch((err) => { if (current) setError(err.message); })
       .finally(() => { if (current) setIsLoading(false); });
     return () => { current = false; };
@@ -80,7 +101,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     if (!cartId) return;
     setError(null);
     try {
-      setCart(await addCartItem(cartId, productId, quantity, who()));
+      adopt(await addCartItem(cartId, productId, quantity, who()));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add to cart");
       throw err;
@@ -91,7 +112,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     if (!cartId) return;
     setError(null);
     try {
-      setCart(await setCartItemQuantity(cartId, productId, quantity, who()));
+      adopt(await setCartItemQuantity(cartId, productId, quantity, who()));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update quantity");
     }
@@ -101,7 +122,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     if (!cartId) return;
     setError(null);
     try {
-      setCart(await removeCartItem(cartId, productId, who()));
+      adopt(await removeCartItem(cartId, productId, who()));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to remove item");
     }
@@ -110,7 +131,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const lockPrices = useCallback(async () => {
     if (!cartId) return;
     try {
-      setCart(await lockCartPrices(cartId, who()));
+      adopt(await lockCartPrices(cartId, who()));
     } catch {
       // a lock that could not be taken is not worth stopping the checkout for: the live prices are shown instead
     }
@@ -118,21 +139,26 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const applyPromo = useCallback(async (code: string | null) => {
     if (!cartId) return;
-    setCart(await applyCartPromoCode(cartId, code, who()));
+    adopt(await applyCartPromoCode(cartId, code, who()));
   }, [cartId, who]);
 
   const refreshCart = useCallback(async () => {
     if (!cartId) return;
-    try { setCart(await fetchCart(cartId, who())); } catch { /* the cart on screen stays as it was */ }
+    try { adopt(await fetchCart(cartId, who())); } catch { /* the cart on screen stays as it was */ }
   }, [cartId, who]);
 
   const clearAfterOrder = useCallback(() => {
-    const id = crypto.randomUUID();
-    writeCartIdCookie(id);
-    setCartId(id);
-    setCart({ cartId: id, items: [] });
     setError(null);
-  }, []);
+    if (getAuthToken()) {      // a signed-in buyer has ONE cart: it is emptied (every device shows it empty), not replaced by another
+      setCart({ cartId: cartIdRef.current, items: [] });
+      clearCart(cartIdRef.current, who()).then(adopt).catch(() => { /* the cart on screen is already empty; the next refresh shows the server's */ });
+      return;
+    }
+    const id = crypto.randomUUID();
+    writeCartIdCookie(id); cartIdRef.current = id; setCartId(id);
+    setCart({ cartId: id, items: [] });
+  }, [who, adopt]);
+  const dismissMergeNotice = useCallback(() => setMergeNotice(null), []);
 
   const value = useMemo<CartContextValue>(() => {
     const source = cart ?? { items: [] as Cart["items"] };
@@ -140,9 +166,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
       cart, isLoading, error,
       itemCount: countOf(source), total: subtotalOf(source),
       summary: totalsOf({ items: source.items, appliedDiscountUsd: cart?.appliedDiscountUsd, appliedDiscountSource: cart?.appliedDiscountSource, loyaltyDiscountPercentage: cart?.loyaltyDiscountPercentage, appliedPromoCode: cart?.appliedPromoCode, shipping: cart?.shipping }),
-      addItem, updateQuantity, removeItem, lockPrices, applyPromo, refreshCart, clearAfterOrder,
+      addItem, updateQuantity, removeItem, lockPrices, applyPromo, refreshCart, clearAfterOrder, mergeNotice, dismissMergeNotice,
     };
-  }, [cart, isLoading, error, addItem, updateQuantity, removeItem, lockPrices, applyPromo, refreshCart, clearAfterOrder]);
+  }, [cart, isLoading, error, addItem, updateQuantity, removeItem, lockPrices, applyPromo, refreshCart, clearAfterOrder, mergeNotice, dismissMergeNotice]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

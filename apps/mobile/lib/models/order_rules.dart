@@ -23,3 +23,10 @@ bool needsEnglishAddressCheckFor(Map<String, dynamic>? order) {
   final english = order?['addressEnglish'];
   return order?['address'] != null && english is Map<String, dynamic> && english['source'] == 'auto' && !isOrderFullyCancelled(order);
 }
+
+/// "Request a return" is offered for a part only while it can be returned: never for a cancelled part or a cancelled order, and not once the server says the return window after delivery (the admin's 3 to 7 days) has passed.
+/// An older server sends no answer ('returnable' missing): then only the cancelled rule applies.
+bool isSubOrderReturnable(Map<String, dynamic> subOrder, Map<String, dynamic>? order) {
+  if (isOrderFullyCancelled(order) || subOrder['status'] == 'cancelled') return false;
+  return subOrder['returnable'] != false;
+}

@@ -8,6 +8,7 @@ import '../core/config/app_config.dart';
 import '../models/product.dart';
 import '../models/category.dart';
 import '../models/cart_item.dart';
+import '../models/cart_merge.dart';
 import '../models/cart.dart';
 import '../models/cart_shipping.dart';
 import '../models/vehicle.dart';
@@ -735,6 +736,9 @@ class ApiClient {
 
   /// The shipping answer of the last cart the server sent (free shipping above a limit); CartState reads it right after each cart call.
   CartShipping lastCartShipping = CartShipping.off;
+  /// ONE CART PER ACCOUNT: the cart id the server answered with (the account cart's, which may not be the id that was asked), and what it combined (only in the answer that did); CartState reads both right after each cart call.
+  String? lastCartId;
+  CartMerge? lastCartMerge;
 
   Cart _decodeCart(http.Response response) {
     if (response.statusCode >= 400) {
@@ -743,6 +747,8 @@ class ApiClient {
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     lastCartShipping = CartShipping.fromJson(body['shipping']);
+    lastCartId = body['cartId'] as String?;
+    lastCartMerge = CartMerge.fromJson(body['merge']);
     return Cart.fromJson(body);
   }
 

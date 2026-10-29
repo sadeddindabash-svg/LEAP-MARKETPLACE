@@ -63,4 +63,22 @@ void main() {
       expect(needsEnglishAddressCheckFor(null), isFalse);
     });
   });
+  group('"Request a return" follows one rule', () {
+    Map<String, dynamic> part(String status, [bool? returnable]) => {'status': status, if (returnable != null) 'returnable': returnable};
+    test('CRITICAL: never for a cancelled part or a part of a cancelled order, whatever the server says', () {
+      expect(isSubOrderReturnable(part('cancelled', true), _order()), isFalse);
+      expect(isSubOrderReturnable(part('preparing', true), _order(status: 'cancelled', parts: ['cancelled'])), isFalse);
+      expect(isSubOrderReturnable(part('preparing', true), _order(parts: ['cancelled', 'cancelled'])), isFalse);
+    });
+    test('CRITICAL: the server decides for a part that is going: true shows, false (the return window has passed) hides', () {
+      expect(isSubOrderReturnable(part('shipped', true), _order()), isTrue);
+      expect(isSubOrderReturnable(part('shipped', false), _order()), isFalse);
+    });
+    test('an older server (no answer): returnable unless cancelled; a part still going in a partly cancelled order is returnable', () {
+      expect(isSubOrderReturnable(part('preparing'), _order()), isTrue);
+      expect(isSubOrderReturnable(part('cancelled'), _order()), isFalse);
+      expect(isSubOrderReturnable(part('preparing', true), _order(parts: ['cancelled', 'preparing'])), isTrue);
+      expect(isSubOrderReturnable(part('preparing'), null), isTrue);
+    });
+  });
 }
