@@ -4,7 +4,7 @@
 import type { Lang } from "./i18n";
 
 export type GridSource =
-  | { kind: "search"; params: { q?: string; category?: string; part?: string; generationId?: string; year?: number } }
+  | { kind: "search"; params: { q?: string; category?: string; part?: string; generationId?: string; year?: number; versionId?: string } }
   | { kind: "sameBrand"; productId: string }
   | { kind: "sameModel"; productId: string }
   | { kind: "newest" };
@@ -19,12 +19,13 @@ export function gridQuery(source: GridSource, page: number, pageSize: number, la
   if (lang === "ar") q.set("lang", "ar");
   if (source.kind === "sameBrand" || source.kind === "sameModel") q.set("productId", source.productId);
   if (source.kind === "search") {
-    const { q: text, category, part, generationId, year } = source.params;
+    const { q: text, category, part, generationId, year, versionId } = source.params;
     if (text) q.set("q", text);
     if (category) q.set("category", category);
     if (part) q.set("part", part);
     if (generationId) q.set("generationId", generationId);
     if (year) q.set("year", String(year));
+    if (versionId) q.set("versionId", versionId);
   }
   return q.toString();
 }
@@ -52,10 +53,10 @@ export function parseGridQuery(sp: URLSearchParams): ParsedGrid | { error: strin
     return ID.test(productId) ? { source: { kind, productId }, page, limit, lang } : { error: "productId is missing or not valid" };
   }
   if (kind !== "search") return { error: "kind must be search, sameBrand, sameModel or newest" };
-  const params: { q?: string; category?: string; part?: string; generationId?: string; year?: number } = {};
+  const params: { q?: string; category?: string; part?: string; generationId?: string; year?: number; versionId?: string } = {};
   const text = sp.get("q");
   if (text) { if (text.length > 200) return { error: "q is too long" }; params.q = text; }
-  for (const name of ["category", "part", "generationId"] as const) {
+  for (const name of ["category", "part", "generationId", "versionId"] as const) {
     const value = sp.get(name);
     if (value) { if (!ID.test(value)) return { error: `${name} is not valid` }; params[name] = value; }
   }

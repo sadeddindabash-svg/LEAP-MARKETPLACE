@@ -57,13 +57,14 @@ export function VehicleFilter() {
     const params = new URLSearchParams(searchParams.toString());
     if (generationId) params.set("generationId", generationId); else params.delete("generationId");
     if (year) params.set("year", year); else params.delete("year");
+    params.delete("versionId");      // another car chosen by hand: the version of the switch no longer belongs to it
     router.push(`/search?${params.toString()}`);
   };
 
   const clearFilter = () => {
     setSelectedBrandId(""); setSelectedModelId(""); setSelectedGenerationId(""); setSelectedYear("");
     const params = new URLSearchParams(searchParams.toString());
-    params.delete("generationId"); params.delete("year");
+    params.delete("generationId"); params.delete("year"); params.delete("versionId");
     router.push(`/search?${params.toString()}`);
   };
 

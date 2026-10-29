@@ -1,4 +1,5 @@
 const express = require('express');
+const { resolveVersionChoice, insertFitmentEntry } = require('../orderVehicles/fitmentVersions');
 const { describeControls, refuseChange } = require('./orderRules');
 const db = require('../../../db/pool');
 const { loadProductCars } = require('../orderVehicles/productCars');
@@ -548,6 +549,13 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
       }
     }
 
+    // Optional: only some versions of this car (none = every version, as before).
+    const versionChoice = await resolveVersionChoice(client, generationId, fitment.versionIds);
+    if (versionChoice.error) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: versionChoice.error });
+    }
+
     // ---- Create the product. `name` starts equal to the Chinese
     // original (shown as-is until an admin approves a real translation
     // — see PATCH /catalog/products/:id/moderate in the catalog module),
@@ -574,10 +582,7 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
         shippingFromPart ? null : weightKg, shippingFromPart ? null : lengthCm, shippingFromPart ? null : widthCm, shippingFromPart ? null : heightCm, videoUrl || null]
     );
 
-    await client.query(
-      `INSERT INTO product_fitment_entries (product_id, generation_id, year, engine_id, transmission_id) VALUES ($1, $2, $3, $4, $5)`,
-      [id, generationId, year, engineId || null, transmissionId || null]
-    );
+    await insertFitmentEntry(client, id, { generationId, year, engineId, transmissionId }, versionChoice.ids);
 
     // Confirmed with the person, seeded from their own real
     // spreadsheet (migration 078): already validated upfront (name

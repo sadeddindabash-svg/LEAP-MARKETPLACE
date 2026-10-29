@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 import { fetchProductById, type ProductDetail } from "@/lib/api";
 import { vehicleLabel } from "@/lib/garage";
+import { fitVerdict } from "@/lib/fitVerdict";
 import { pickName } from "@/lib/i18n";
 import { useGarage } from "./GarageProvider";
 import { useLang, useT } from "./LangProvider";
 
-type Fit = Partial<Pick<ProductDetail, "fitCars" | "fitCarCount" | "fitKeys" | "fitsVehicleIds">>;
+type Fit = Partial<Pick<ProductDetail, "fitCars" | "fitCarCount" | "fitKeys" | "fitsVehicleIds" | "fitVersions" | "fitVersionNames">>;
 type Props = Fit & { productId?: string };
 
 const TEXT = {
@@ -19,7 +20,7 @@ const TEXT = {
 const remembered = new Map<string, Promise<Fit | null>>();
 function loadFit(productId: string): Promise<Fit | null> {
   if (!remembered.has(productId)) {
-    remembered.set(productId, fetchProductById(productId).then((p) => (p ? { fitCars: p.fitCars, fitCarCount: p.fitCarCount, fitKeys: p.fitKeys, fitsVehicleIds: p.fitsVehicleIds } : null)).catch(() => null));
+    remembered.set(productId, fetchProductById(productId).then((p) => (p ? { fitCars: p.fitCars, fitCarCount: p.fitCarCount, fitKeys: p.fitKeys, fitsVehicleIds: p.fitsVehicleIds, fitVersions: p.fitVersions, fitVersionNames: p.fitVersionNames } : null)).catch(() => null));
   }
   return remembered.get(productId) as Promise<Fit | null>;
 }
@@ -32,7 +33,7 @@ function loadFit(productId: string): Promise<Fit | null> {
  * The product page passes what the product already carries; in the cart only the productId is given and the fit is read from the product. A part that only has the older fit list
  * (generations without a year) still gets the green message when its model matches.
  */
-export default function FitCheck({ productId, fitCars, fitCarCount, fitKeys, fitsVehicleIds }: Props) {
+export default function FitCheck({ productId, fitCars, fitCarCount, fitKeys, fitsVehicleIds, fitVersions, fitVersionNames }: Props) {
   const { defaultVehicle } = useGarage();
   const lang = useLang();
   const t = useT();
@@ -45,16 +46,34 @@ export default function FitCheck({ productId, fitCars, fitCarCount, fitKeys, fit
     return () => { live = false; };
   }, [given, productId, defaultVehicle]);
 
-  const fit: Fit | null = given ? { fitCars, fitCarCount, fitKeys, fitsVehicleIds } : loaded;
+  const fit: Fit | null = given ? { fitCars, fitCarCount, fitKeys, fitsVehicleIds, fitVersions, fitVersionNames } : loaded;
   if (!defaultVehicle || !fit) return null;
 
-  const matches = (fit.fitKeys ?? []).includes(`${defaultVehicle.generationId}|${defaultVehicle.year}`) || (fit.fitsVehicleIds ?? []).includes(defaultVehicle.generationId);
-  if (matches) {
+  const verdict = fitVerdict(defaultVehicle, fit, lang);
+  if (verdict.kind === "fits" || verdict.kind === "fits_versions") {
     return (
-      <p role="status" className="mt-3 inline-flex items-center gap-2 rounded-full bg-[#e2f4ec] px-3.5 py-1.5 text-sm font-bold text-[#0f6b49]">
-        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
-        {t("confirmed_fit_for", { car: vehicleLabel(lang, defaultVehicle) })}
-      </p>
+      <>
+        <p role="status" className="mt-3 inline-flex items-center gap-2 rounded-full bg-[#e2f4ec] px-3.5 py-1.5 text-sm font-bold text-[#0f6b49]">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+          {t("confirmed_fit_for", { car: vehicleLabel(lang, defaultVehicle) })}
+        </p>
+        {verdict.kind === "fits_versions" && <p data-testid="fit-versions" className="mt-1 text-[13px] text-muted">{t("fit_part_is_for", { versions: verdict.versions.join(", ") })}</p>}
+      </>
+    );
+  }
+  if (verdict.kind === "wrong_version") {
+    return (
+      <div role="status" data-testid="fit-wrong-version" className="mt-3 rounded-xl border border-[#f0d9a0] bg-[#fff8e5] px-4 py-3 text-sm leading-relaxed text-[#7a4e00]">
+        <p><strong>{t("fit_wrong_version")}</strong></p>
+        <p>{t("fit_wrong_version_detail", { versions: verdict.versions.join(", "), car: vehicleLabel(lang, defaultVehicle) })}</p>
+      </div>
+    );
+  }
+  if (verdict.kind === "need_version") {
+    return (
+      <div role="status" data-testid="fit-need-version" className="mt-3 rounded-xl border border-line bg-[#eef1f3] px-4 py-3 text-sm leading-relaxed text-ink">
+        <p>{t("fit_need_version", { car: vehicleLabel(lang, defaultVehicle), versions: verdict.versions.join(", ") })} <a href={lang === "ar" ? "/ar/garage" : "/garage"} className="font-bold underline">{t("fit_choose_version")}</a></p>
+      </div>
     );
   }
   const cars = fit.fitCars ?? [];

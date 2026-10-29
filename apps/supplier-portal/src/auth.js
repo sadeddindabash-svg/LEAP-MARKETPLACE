@@ -103,6 +103,13 @@ export async function fetchGenerationsForModel(modelId) {
   return response.json();
 }
 
+// The versions (trims) of a generation, for the optional Versions step of a product's fitment.
+export async function fetchVersionsForGeneration(generationId) {
+  const response = await fetch(`${API_BASE_URL}/fitment/generations/${generationId}/versions`);
+  if (!response.ok) throw new Error(`Failed to load versions (${response.status})`);
+  return response.json();
+}
+
 export async function fetchEnginesForGeneration(generationId) {
   const response = await fetch(`${API_BASE_URL}/fitment/generations/${generationId}/engines`);
   if (!response.ok) throw new Error(`Failed to load engines (${response.status})`);

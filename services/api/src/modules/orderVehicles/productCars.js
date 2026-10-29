@@ -4,6 +4,7 @@
 //   loadBuyerFit     for the BUYER'S product page and cart: the first few cars the product fits, how many in all, and a compact key (generation|year) of EVERY car it fits, so the storefront can
 //                    tell whether the buyer's own car is one of them.
 // The first car is the one the supplier added first (the same "primary" car the product page already shows).
+const { readVersionsByEntry, buyerVersionRules } = require('./fitmentVersions');
 const MAX_SUPPLIER_CARS = 4;
 const MAX_BUYER_CARS = 3;
 const MAX_KEYS = 500;
@@ -33,7 +34,7 @@ const names = (en, ar, zh) => (en ? { en, ar: ar || null, zh: zh || null } : nul
 
 async function readFitment(q, productIds) {
   const { rows } = await q.query(
-    `SELECT pfe.product_id, pfe.generation_id, pfe.year, b.name AS brand, b.name_ar AS brand_ar, b.name_zh AS brand_zh, m.name AS model, m.name_ar AS model_ar, m.name_zh AS model_zh,
+    `SELECT pfe.id AS entry_id, pfe.product_id, pfe.generation_id, pfe.year, b.name AS brand, b.name_ar AS brand_ar, b.name_zh AS brand_zh, m.name AS model, m.name_ar AS model_ar, m.name_zh AS model_zh,
             g.photo_url AS generation_photo, m.photo_url AS model_photo, b.photo_url AS brand_photo, e.name AS engine, t.name AS transmission
      FROM product_fitment_entries pfe
      JOIN vehicle_generations g ON g.id = pfe.generation_id
@@ -43,6 +44,8 @@ async function readFitment(q, productIds) {
      LEFT JOIN vehicle_transmissions t ON t.id = pfe.transmission_id
      WHERE pfe.product_id = ANY($1)
      ORDER BY pfe.product_id, pfe.id`, [productIds]);
+  const versionsOf = await readVersionsByEntry(q, rows.map((r) => r.entry_id));      // the versions each car is narrowed to (none = every version)
+  for (const r of rows) r.versions = versionsOf.get(r.entry_id) || null;
   const byProduct = new Map();
   for (const r of rows) { if (!byProduct.has(r.product_id)) byProduct.set(r.product_id, []); byProduct.get(r.product_id).push(r); }
   return byProduct;
@@ -63,7 +66,10 @@ async function loadProductCars(q, productIds) {
       carCount: entries.length,
       cars: entries.slice(0, MAX_SUPPLIER_CARS).map((r) => ({
         year: r.year, brand: names(r.brand, r.brand_ar, r.brand_zh), model: names(r.model, r.model_ar, r.model_zh),
-        engine: r.engine || null, transmission: r.transmission || null, photoUrl: r.generation_photo || r.model_photo || r.brand_photo || null,
+        engine: r.engine || null, transmission: r.transmission || null,
+        // null = every version
+        versions: r.versions ? r.versions.map((v) => ({ id: v.id, name: names(v.name, v.nameAr, v.nameZh), engine: v.engine, seats: v.seats })) : null,
+        photoUrl: r.generation_photo || r.model_photo || r.brand_photo || null,
       })),
     });
   }
@@ -79,6 +85,8 @@ async function loadBuyerFit(q, productId) {
       fitCarCount: entries.length,
       fitCars: entries.slice(0, MAX_BUYER_CARS).map((r) => ({ generationId: r.generation_id, year: r.year, brand: r.brand, brandAr: r.brand_ar || null, model: r.model, modelAr: r.model_ar || null })),
       fitKeys: entries.slice(0, MAX_KEYS).map((r) => `${r.generation_id}|${r.year}`),
+      // The cars of this part that are NARROWED to some versions ({ "generation|year": [version ids] }) and the names of those versions. A car that is not in it fits EVERY version.
+      ...buyerVersionRules(entries.slice(0, MAX_KEYS)),
       // Every model it fits with its year ranges, how many models in all, and how many different vehicles (a generation and a year): see groupFit. Left OUT when the fitment could not be read, so an error never looks like "fits every vehicle".
       fitGroups: groups.slice(0, MAX_FIT_GROUPS),
       fitGroupCount: groups.length,

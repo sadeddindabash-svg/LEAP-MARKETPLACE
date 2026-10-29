@@ -15,6 +15,8 @@ import '../../widgets/fits_spec_row.dart';
 import '../../core/language_state.dart';
 import '../../models/product.dart';
 import '../../models/vehicle.dart';
+import '../../models/fit_verdict.dart';
+import '../../widgets/fit_version_note.dart';
 import '../../services/api_client.dart';
 import '../../widgets/reviews_section.dart';
 import '../../widgets/alternatives_section.dart';
@@ -237,7 +239,11 @@ class _ProductDetailBody extends StatelessWidget {
     // Real fitment confirmation check (new) -- only ever true when a
     // real default vehicle exists AND this real product's own real
     // fitsVehicleIds genuinely includes it.
-    final isConfirmedFit = defaultVehicle != null && product.fitsVehicleIds.contains(defaultVehicle!.generationId);
+    // The buyer's VERSION counts when the part is narrowed to some versions (a part that is not narrowed fits every version, as before).
+    final fitResult = defaultVehicle == null
+        ? null
+        : fitVerdict(generationId: defaultVehicle!.generationId, year: defaultVehicle!.year, versionId: defaultVehicle!.versionId, fitsVehicleIds: product.fitsVehicleIds, fitVersions: product.fitVersions);
+    final isConfirmedFit = fitResult != null && fitResult.confirmed;
 
     return Stack(
       children: [
@@ -268,6 +274,7 @@ class _ProductDetailBody extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(product.name, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: palette.ink)),
+            FitVersionNote(verdict: fitResult, vehicle: defaultVehicle, versionNames: product.fitVersionNames, onChooseVersion: () => context.push('/garage')),
             const SizedBox(height: 12),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,

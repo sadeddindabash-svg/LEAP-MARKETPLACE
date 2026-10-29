@@ -3,6 +3,7 @@ const { createListCache } = require('./listCache');
 const crypto = require('crypto');
 const db = require('../../../db/pool');
 const { loadBuyerFit } = require('../orderVehicles/productCars');
+const { replaceProductFitment } = require('../orderVehicles/fitmentVersions');
 const { withFallbackSections, withFallbackParts } = require('../catalogPhotos/fallback');
 const { loadSiteStats } = require('../siteStats/stats');
 const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
@@ -305,7 +306,7 @@ async function loadPartPhoto(row) {
 // (lightweight -- sufficient for saved-search diffing, which never
 // needs full DTOs); GET /products still does its own DTO-building
 // with these IDs' underlying rows.
-function buildProductMatchQuery({ category, part, vehicleId, search, generationId, year }) {
+function buildProductMatchQuery({ category, part, vehicleId, search, generationId, year, versionId }) {
   const conditions = [];
   const params = [];
   let sql = `SELECT p.* FROM products p`;
@@ -338,15 +339,25 @@ function buildProductMatchQuery({ category, part, vehicleId, search, generationI
   if (generationId) {
     const genIdx = params.length + 1;
     params.push(generationId);
+    // The buyer's VERSION: a part narrowed to some versions of the car only counts when the buyer's version is one of them (a part that is not narrowed fits every version).
+    // A version that does not belong to this generation (a stale one) is ignored.
+    let versionSql = '';
+    if (versionId) {
+      const versionIdx = params.length + 1;
+      params.push(versionId);
+      versionSql = ` AND (NOT EXISTS (SELECT 1 FROM product_fitment_entry_versions pfev WHERE pfev.entry_id = pfe2.id)
+        OR EXISTS (SELECT 1 FROM product_fitment_entry_versions pfev WHERE pfev.entry_id = pfe2.id AND pfev.version_id = $${versionIdx})
+        OR NOT EXISTS (SELECT 1 FROM vehicle_versions vv WHERE vv.id = $${versionIdx} AND vv.generation_id = $${genIdx}))`;
+    }
     if (year) {
       const yearIdx = params.length + 1;
       params.push(Number(year));
       conditions.push(
-        `EXISTS (SELECT 1 FROM product_fitment_entries pfe2 WHERE pfe2.product_id = p.id AND pfe2.generation_id = $${genIdx} AND pfe2.year = $${yearIdx})`
+        `EXISTS (SELECT 1 FROM product_fitment_entries pfe2 WHERE pfe2.product_id = p.id AND pfe2.generation_id = $${genIdx} AND pfe2.year = $${yearIdx}${versionSql})`
       );
     } else {
       conditions.push(
-        `EXISTS (SELECT 1 FROM product_fitment_entries pfe2 WHERE pfe2.product_id = p.id AND pfe2.generation_id = $${genIdx})`
+        `EXISTS (SELECT 1 FROM product_fitment_entries pfe2 WHERE pfe2.product_id = p.id AND pfe2.generation_id = $${genIdx}${versionSql})`
       );
     }
   }
@@ -389,11 +400,11 @@ function buildProductMatchQuery({ category, part, vehicleId, search, generationI
 
 router.get('/products', async (req, res, next) => {
   try {
-    const { category, part, vehicleId, search, sort, lang, generationId, year, minPrice, maxPrice, maxDeliveryDays, page, limit, more } = req.query;
+    const { category, part, vehicleId, search, sort, lang, generationId, year, versionId, minPrice, maxPrice, maxDeliveryDays, page, limit, more } = req.query;
     // ?more=1 means "this CONTINUES a list the buyer is already scrolling through" (the website's lazy loading): it does not count as a new search, and it may use the
     // short-lived cache of the computed list (see listCache.js). Every other request is exactly as before: computed fresh, and logged.
     const isContinuation = more === '1';
-    const { sql: baseSql, params } = buildProductMatchQuery({ category, part, vehicleId, search, generationId, year });
+    const { sql: baseSql, params } = buildProductMatchQuery({ category, part, vehicleId, search, generationId, year, versionId });
     let sql = baseSql;
 
     // Real search query logging (new) -- the foundation for real, genuinely computed trending searches (see the new GET /trending-searches below), not fabricated
@@ -450,7 +461,7 @@ router.get('/products', async (req, res, next) => {
 
     // The answer depends on everything that shaped it, INCLUDING the destination (delivery estimates differ by country): all of it is in the key.
     let dtos = isContinuation
-      ? await continuationCache.get(JSON.stringify({ category, part, vehicleId, search, sort, lang, generationId, year, minPrice, maxPrice, maxDeliveryDays, destinationIsoCode }), computeList)
+      ? await continuationCache.get(JSON.stringify({ category, part, vehicleId, search, sort, lang, generationId, year, versionId, minPrice, maxPrice, maxDeliveryDays, destinationIsoCode }), computeList)
       : await computeList();
 
     // Real pagination, deliberately opt-in and fully backward compatible: every existing caller (mobile, the website's own non-paginated calls, admin dashboard)
@@ -1362,12 +1373,11 @@ router.patch('/admin/products/:id', requireAuth, requireRole('admin'), requirePa
       }
     }
     if (fitment !== undefined) {
-      await client.query('DELETE FROM product_fitment_entries WHERE product_id = $1', [req.params.id]);
-      for (const f of fitment) {
-        await client.query(
-          `INSERT INTO product_fitment_entries (product_id, generation_id, year, engine_id, transmission_id) VALUES ($1, $2, $3, $4, $5)`,
-          [req.params.id, f.generationId, f.year, f.engineId || null, f.transmissionId || null]
-        );
+      // Re-saving the list must not lose a car's narrowing to some versions: it is kept for the same car, or replaced when the edit says (fitment[].versionIds).
+      const replaced = await replaceProductFitment(client, req.params.id, fitment);
+      if (replaced.error) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: replaced.error });
       }
     }
 

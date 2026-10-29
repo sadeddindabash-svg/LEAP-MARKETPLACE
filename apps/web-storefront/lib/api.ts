@@ -76,6 +76,9 @@ export interface ProductDetail extends ProductSummary {
   fitCars?: { generationId: string; year: number | null; brand: string | null; brandAr?: string | null; model: string | null; modelAr?: string | null }[];
   fitCarCount?: number;
   fitKeys?: string[];
+  /** The cars of this part that are narrowed to some versions ({ "generation|year": [version ids] }) and the names of those versions. A car that is not in it fits every version. */
+  fitVersions?: Record<string, string[]>;
+  fitVersionNames?: Record<string, { name: string; nameAr?: string | null; nameZh?: string | null }>;
   /** EVERY model the part fits with its year ranges, in the order they were added; [] = fits every vehicle; absent = an older server (or the fitment could not be read). */
   fitGroups?: FitGroup[];
   /** How many models in all (the list is capped at 60) and how many different vehicles (a generation and a year). */
@@ -188,6 +191,8 @@ export async function fetchProductsPaginated(params: {
   sort?: string;
   generationId?: string;
   year?: number;
+  /** The buyer's VERSION of that car: a part narrowed to other versions is then not listed. */
+  versionId?: string;
   page?: number;
   limit?: number;
   lang?: Lang;
@@ -202,6 +207,7 @@ export async function fetchProductsPaginated(params: {
   if (params.sort) query.set("sort", params.sort);
   if (params.generationId) query.set("generationId", params.generationId);
   if (params.year) query.set("year", String(params.year));
+  if (params.versionId) query.set("versionId", params.versionId);
   if (params.lang === "ar") query.set("lang", "ar");
   if (params.more) query.set("more", "1");
   query.set("page", String(params.page || 1));

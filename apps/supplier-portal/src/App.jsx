@@ -33,6 +33,7 @@ import {
 import { vehicleSummary } from "./vehicleLabels";
 import OrderVehicle, { OrderVehicleCell, carHeader } from "./OrderVehicle";
 import VehiclePicker from "./VehiclePicker";
+import VersionsStep from "./VersionsStep";
 import PartShippingBlock from "./PartShippingBlock";
 import { partShippingOf } from "./partShipping";
 import { useVehicleCascade } from "./vehicleCascade";
@@ -872,6 +873,7 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
   // The vehicle picker (Brand, then Model, then Year): shared with Bulk upload. A vehicle already chosen by a buyer comes in as the starting point.
   const cascade = useVehicleCascade({ initialGenerationId: prefill?.generationId || "", initialYear: prefill?.year, onError: setError });
   const { selectedGenerationId, selectedYear } = cascade;
+  const [versionChoice, setVersionChoice] = useState({ mode: "all", ids: [] });      // the optional Versions step: every version (default) or only some
   // A PART (the sub-category) whose weight and package size the admin has set supplies them: the supplier enters none, and the shipping cost uses the part's (migration 104).
   const selectedPart = parts.find((p) => p.nameEn === part);
   const partShipping = partShippingOf(selectedPart);
@@ -958,6 +960,7 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
     if (!price) missing.push(lang === "zh" ? "价格" : "price");
     if (!selectedGenerationId) missing.push(lang === "zh" ? "品牌、车型和年份" : "brand, model and year");
     else if (!selectedYear) missing.push(lang === "zh" ? "年份" : "year");
+    if (versionChoice.mode === "some" && versionChoice.ids.length === 0) missing.push(lang === "zh" ? "至少一个车型版本（或选择全部版本）" : "at least one version (or choose All versions)");
     if (requirements.photosRequired && photos.length !== requirements.minPhotos) missing.push(lang === "zh" ? `${requirements.minPhotos} 张照片` : `exactly ${requirements.minPhotos} photos`);
     if (requirements.videoRequired && !video) missing.push(lang === "zh" ? "商品视频" : "product video");
     if (!partShipping) {
@@ -988,6 +991,7 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
         fitment: {
             generationId: selectedGenerationId,
             year: parseInt(selectedYear, 10),
+            versionIds: versionChoice.mode === "some" ? versionChoice.ids : undefined,      // only some versions of the car (none: every version)
           },
         images: photos.map((p) => p.url),
         videoUrl: video?.url || undefined,
@@ -1050,6 +1054,7 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
           ) : (
           <VehiclePicker cascade={cascade} />
           )}
+          <VersionsStep generationId={selectedGenerationId} year={selectedYear} value={versionChoice} onChange={setVersionChoice} />
         </div>
 
         {/* ---- Product Details ---- */}

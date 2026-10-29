@@ -13,7 +13,7 @@ import { alternatesFor, categoryPageDescription, categoryPageTitle, searchIndexi
 const PAGE_SIZE = 24;
 
 interface PageProps {
-  searchParams: Promise<{ q?: string; category?: string; part?: string; generationId?: string; year?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; part?: string; generationId?: string; year?: string; versionId?: string; page?: string }>;
 }
 
 export async function generateMetadata({
@@ -44,12 +44,12 @@ export async function generateMetadata({
 // so a search engine can index each real filtered result page on its
 // own, with its own real URL.
 export default async function SearchPage({ searchParams }: PageProps) {
-  const { q, category, part, generationId, year, page } = await searchParams;
+  const { q, category, part, generationId, year, versionId, page } = await searchParams;
   const lang = await getLang();
   const pageNum = Math.max(Number(page) || 1, 1);
   const [categories, { items: products, total, unreachable }] = await Promise.all([
     fetchCategories(),
-    fetchProductsPaginated({ search: q, category, part, generationId, year: year ? Number(year) : undefined, page: pageNum, limit: PAGE_SIZE, lang }),
+    fetchProductsPaginated({ search: q, category, part, generationId, year: year ? Number(year) : undefined, versionId, page: pageNum, limit: PAGE_SIZE, lang }),
   ]);
   const totalPages = Math.max(Math.ceil(total / PAGE_SIZE), 1);
   // The section being looked at, as a chip above the results (the list of sections that used to stand in a left column is gone: sections are chosen from the menu and the home page).
@@ -135,7 +135,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
               <InfiniteProductGrid
                 key={`${q ?? ""}|${category ?? ""}|${part ?? ""}|${generationId ?? ""}|${year ?? ""}|${pageNum}`}
                 id="results"
-                source={{ kind: "search", params: { q, category, part, generationId, year: year ? Number(year) : undefined } }}
+                source={{ kind: "search", params: { q, category, part, generationId, year: year ? Number(year) : undefined, versionId } }}
                 initial={products}
                 total={total}
                 startPage={pageNum}

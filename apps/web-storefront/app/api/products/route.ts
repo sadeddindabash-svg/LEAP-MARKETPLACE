@@ -30,8 +30,8 @@ export async function GET(request: NextRequest) {
     } else if (source.kind === "newest") {
       result = await fetchProductsPaginated({ sort: "newest", page, limit, lang, more: true });
     } else {
-      const { q, category, part, generationId, year } = source.params;
-      result = await fetchProductsPaginated({ search: q, category, part, generationId, year, page, limit, lang, more: true });
+      const { q, category, part, generationId, year, versionId } = source.params;
+      result = await fetchProductsPaginated({ search: q, category, part, generationId, year, versionId, page, limit, lang, more: true });
     }
   } catch (e) {
     if (e instanceof NetworkError) return NextResponse.json({ error: networkMessage() }, { status: 503 });

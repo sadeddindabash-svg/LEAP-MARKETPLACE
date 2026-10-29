@@ -117,6 +117,11 @@ class AppStrings {
     'filter_my_car': {'en': 'My Car', 'ar': 'سيارتي'},
     'in_stock': {'en': 'In stock', 'ar': 'متوفر'},
     'confirmed_fit': {'en': 'CONFIRMED FIT', 'ar': 'توافق مؤكد'},
+    'fit_part_is_for': {'en': 'This part is for: {versions}', 'ar': 'هذه القطعة مخصصة لـ: {versions}'},
+    'fit_wrong_version': {'en': "Doesn't fit your version.", 'ar': 'لا تناسب إصدار سيارتك.'},
+    'fit_wrong_version_detail': {'en': 'This part is for {versions}. Your car: {car}. You can still order it.', 'ar': 'هذه القطعة مخصصة لـ {versions}. سيارتك: {car}. يمكنك طلبها مع ذلك.'},
+    'fit_need_version': {'en': 'This part fits only some versions of {car}: {versions}.', 'ar': 'هذه القطعة تناسب بعض إصدارات {car} فقط: {versions}.'},
+    'fit_choose_version': {'en': 'Choose your version to check', 'ar': 'اختر إصدار سيارتك للتحقق'},
     'no_reviews_yet': {'en': 'No reviews yet', 'ar': 'لا توجد تقييمات بعد'},
 
     // ---- Notifications (new) ----

@@ -1,4 +1,5 @@
 import 'fit_group.dart';
+import 'fit_verdict.dart';
 
 /// Corresponds to SRS "Product / SKU" entity (Section 7.1).
 ///
@@ -57,6 +58,9 @@ class Product {
   final double? widthCm;
   final double? heightCm;
   final List<String> fitsVehicleIds; // BUY-013: fitment-confirmed vehicles
+  // The cars of this part narrowed to some VERSIONS ({ "generationId|year": [version ids] }) and those versions' names: a car that is not in it fits every version (an older server sends none).
+  final Map<String, List<String>> fitVersions;
+  final Map<String, Map<String, String?>> fitVersionNames;
   // Every MODEL it fits with its years (the server's fitGroups): null from an older server (the screen keeps its old rows), an empty list when the part has no fitment at all (universal).
   final List<FitGroup>? fitGroups;
   final int? fitGroupCount; // how many models in all (the list is capped at 60)
@@ -95,6 +99,8 @@ class Product {
     this.widthCm,
     this.heightCm,
     required this.fitsVehicleIds,
+    this.fitVersions = const {},
+    this.fitVersionNames = const {},
     this.fitGroups,
     this.fitGroupCount,
     this.fitVehicleCount,
@@ -131,6 +137,8 @@ class Product {
         widthCm: (json['widthCm'] as num?)?.toDouble(),
         heightCm: (json['heightCm'] as num?)?.toDouble(),
         fitsVehicleIds: (json['fitsVehicleIds'] as List?)?.cast<String>() ?? const [],
+        fitVersions: parseFitVersions(json['fitVersions']),
+        fitVersionNames: parseFitVersionNames(json['fitVersionNames']),
         fitGroups: FitGroup.listFromJson(json['fitGroups']),
         fitGroupCount: json['fitGroupCount'] as int?,
         fitVehicleCount: json['fitVehicleCount'] as int?,
