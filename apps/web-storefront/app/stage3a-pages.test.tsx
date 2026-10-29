@@ -118,7 +118,7 @@ describe("order detail: seeing it", () => {
     buyer();
     m.api.fetchOrderById.mockResolvedValue(order([part(1, "shipped", "shipped_to_buyer", { trackingNumber: "TRK123" }), part(2, "preparing")], { discountAmount: 10, promoCode: "SAVE10", total: 90 }));
     await detail();
-    expect(m.api.fetchOrderById).toHaveBeenCalledWith("tok", "ord_1", null);
+    expect(m.api.fetchOrderById).toHaveBeenCalledWith("tok", "ord_1", null, "en");
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Order ord_1");
     expect(screen.getByText("Placed on Oct 1, 2026")).toBeInTheDocument();
     expect(screen.getByText("TRK123")).toBeInTheDocument();
@@ -134,7 +134,7 @@ describe("order detail: seeing it", () => {
     m.params.current = new URLSearchParams("guestEmail=sam%40example.com");
     m.api.fetchOrderById.mockResolvedValue(order([part(1, "preparing")], { isGuestOrder: true, userId: null, guestEmail: "sam@example.com" }));
     await detail();
-    expect(m.api.fetchOrderById).toHaveBeenCalledWith(null, "ord_1", "sam@example.com");
+    expect(m.api.fetchOrderById).toHaveBeenCalledWith(null, "ord_1", "sam@example.com", "en");
     expect(screen.getByText("You are viewing this order as a guest.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Track your package" }).getAttribute("href")).toBe("/orders/ord_1/tracking?guestEmail=sam%40example.com");
   });

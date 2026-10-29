@@ -679,8 +679,8 @@ async function orderCall<T>(path: string, who: OrderWho, init: { method?: string
   return data as T;
 }
 
-export const fetchOrderById = (token: string | null, orderId: string, guestEmail?: string | null) =>
-  orderCall<OrderDetail>(`/${encodeURIComponent(orderId)}`, { token, guestEmail }, {}, "Failed to load order");
+export const fetchOrderById = (token: string | null, orderId: string, guestEmail?: string | null, lang?: Lang) =>
+  orderCall<OrderDetail>(`/${encodeURIComponent(orderId)}`, { token, guestEmail }, { query: lang === "ar" ? { lang: "ar" } : {} }, "Failed to load order");
 
 // ---------------- Real wishlist (client-side calls, new) ----------------
 // Same reasoning as saved searches/orders above -- real logged-in

@@ -651,9 +651,9 @@ class ApiClient {
   /// real gap: this method previously required a token unconditionally,
   /// so a real guest-checkout buyer could never actually call it at
   /// all, even though the backend was already built to allow it.
-  Future<Map<String, dynamic>> fetchOrderDetail(String? token, String orderId, {String? guestEmail}) async {
+  Future<Map<String, dynamic>> fetchOrderDetail(String? token, String orderId, {String? guestEmail, String? lang}) async {
     final uri = Uri.parse('$baseUrl/order/$orderId').replace(
-      queryParameters: guestEmail != null ? {'guestEmail': guestEmail} : null,
+      queryParameters: (guestEmail != null || lang == 'ar') ? {if (guestEmail != null) 'guestEmail': guestEmail, if (lang == 'ar') 'lang': 'ar'} : null,
     );
     final response = await _client.get(
       uri,

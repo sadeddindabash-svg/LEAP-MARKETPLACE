@@ -107,7 +107,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
     // first load or an explicit pull-to-refresh.
     if (!silent) setState(() => _isLoading = true);
     try {
-      final order = await ApiClient().fetchOrderDetail(auth.token, widget.orderId, guestEmail: widget.guestEmail);
+      final lang = context.read<LanguageState>().isArabic ? 'ar' : 'en'; // read BEFORE the await below
+      final order = await ApiClient().fetchOrderDetail(auth.token, widget.orderId, guestEmail: widget.guestEmail, lang: lang);
       setState(() {
         _order = order;
         _isLoading = false;

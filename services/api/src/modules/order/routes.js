@@ -546,7 +546,7 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
     const supplierSubOrders = [];
     for (const so of subOrders) {
       const { rows: items } = await db.query(
-        `SELECT oli.product_id, oli.quantity, oli.unit_price, p.name
+        `SELECT oli.product_id, oli.quantity, oli.unit_price, p.name, p.name_ar
          FROM order_line_items oli JOIN products p ON p.id = oli.product_id
          WHERE oli.sub_order_id = $1`,
         [so.id]
@@ -559,7 +559,7 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
       // session -- see cart/routes.js's own comment for why.
       const itemsWithImages = await Promise.all(items.map(async (i) => {
         const { rows: imageRows } = await db.query('SELECT url FROM product_images WHERE product_id = $1 ORDER BY sort_order LIMIT 1', [i.product_id]);
-        return { productId: i.product_id, name: i.name, quantity: i.quantity, unitPrice: order.replacement_of && !isAdmin ? 0 : Number(i.unit_price), imageUrl: imageRows[0]?.url || null };
+        return { productId: i.product_id, name: (req.query.lang === 'ar' && i.name_ar) ? i.name_ar : i.name, quantity: i.quantity, unitPrice: order.replacement_of && !isAdmin ? 0 : Number(i.unit_price), imageUrl: imageRows[0]?.url || null };
       }));
 
       // The hub's leg of the journey, if this sub-order has reached the

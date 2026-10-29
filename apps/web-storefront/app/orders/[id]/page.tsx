@@ -79,7 +79,7 @@ function OrderView({ orderId }: { orderId: string }) {
   useEffect(() => {
     if (authLoading || !canSee) return;
     let current = true;
-    fetchOrderById(token, orderId, token ? null : guestEmail)
+    fetchOrderById(token, orderId, token ? null : guestEmail, lang)
       .then((o) => { if (current) { setOrder(o); setState("ok"); } })
       .catch((e) => {
         if (!current) return;
@@ -88,7 +88,7 @@ function OrderView({ orderId }: { orderId: string }) {
         setState(/not found|غير موجود/i.test(message) ? "notfound" : "error");
       });
     return () => { current = false; };
-  }, [authLoading, canSee, token, orderId, guestEmail, reloads]);
+  }, [authLoading, canSee, token, orderId, guestEmail, reloads, lang]);
 
   const act = async (work: () => Promise<void>, okText: string) => {
     setBusy(true); setNotice(null);
