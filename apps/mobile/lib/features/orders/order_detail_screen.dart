@@ -49,7 +49,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
   // didChangeAppLifecycleState below) to avoid real, wasted network
   // calls for a screen the person isn't even looking at right now.
   Timer? _pollTimer;
-  static const _pollInterval = Duration(seconds: 20);
+  static const _pollInterval = Duration(seconds: 5);
 
   @override
   void initState() {

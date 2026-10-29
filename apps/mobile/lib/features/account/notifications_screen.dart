@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
+import '../../core/auto_refresher.dart';
 import '../../core/language_state.dart';
 import '../../services/api_client.dart';
 import '../../widgets/skeleton.dart';
@@ -32,6 +33,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   void initState() {
     super.initState();
     _load();
+    _refresher.start();
+  }
+
+  late final AutoRefresher _refresher = AutoRefresher(_silentRefresh);
+
+  @override
+  void dispose() {
+    _refresher.dispose();
+    super.dispose();
+  }
+
+  /// Every 5 seconds while the app is open: quietly (no error shown, the list stays if the server cannot be reached).
+  Future<void> _silentRefresh() async {
+    final token = context.read<AuthState>().token;
+    if (token == null || !mounted) return;
+    final lang = context.read<LanguageState>().language;
+    final notifications = await ApiClient().fetchNotifications(token, lang: lang);
+    if (mounted) setState(() => _notifications = notifications);
   }
 
   Future<void> _load() async {

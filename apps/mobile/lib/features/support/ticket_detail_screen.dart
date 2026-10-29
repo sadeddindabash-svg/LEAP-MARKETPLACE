@@ -1,10 +1,10 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
+import '../../core/auto_refresher.dart';
 import '../../services/api_client.dart';
 
 /// Real message thread for one ticket — GET/POST /support/my-tickets/:id.
@@ -44,7 +44,6 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   bool _isSending = false;
   bool _needsEmail = false;
   String? _activeGuestEmail;
-  Timer? _pollTimer;
   final _replyController = TextEditingController();
   final _emailController = TextEditingController();
   // Real ticket-helpfulness feedback (#100) -- tracks whether this
@@ -54,19 +53,25 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   bool _feedbackJustSubmitted = false;
   bool _isSubmittingFeedback = false;
 
-  static const _pollInterval = Duration(seconds: 20);
+  // Every 5 seconds while the app is open (and at once when it comes back): a reply from support appears by itself. Quiet: no spinner, an error keeps the thread on screen.
+  late final AutoRefresher _refresher = AutoRefresher(_silentRefresh);
+
+  Future<void> _silentRefresh() async {
+    if (!mounted || _needsEmail || _isLoading || _isSending) return; // not while a reply is being sent
+    await _load(showSpinner: false);
+  }
 
   @override
   void initState() {
     super.initState();
     _activeGuestEmail = widget.guestEmail;
     _load(showSpinner: true);
-    _pollTimer = Timer.periodic(_pollInterval, (_) => _load(showSpinner: false));
+    _refresher.start();
   }
 
   @override
   void dispose() {
-    _pollTimer?.cancel();
+    _refresher.dispose();
     _replyController.dispose();
     _emailController.dispose();
     super.dispose();

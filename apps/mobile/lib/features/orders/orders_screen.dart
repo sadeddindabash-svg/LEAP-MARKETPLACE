@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../widgets/order_status_timeline.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
+import '../../core/auto_refresher.dart';
 import '../../core/language_state.dart';
 import '../../core/currency_state.dart';
 import '../../services/api_client.dart';
@@ -82,6 +83,23 @@ class _OrdersScreenState extends State<OrdersScreen> {
     }
   }
 
+  late final AutoRefresher _refresher = AutoRefresher(_silentRefresh);
+
+  @override
+  void initState() {
+    super.initState();
+    _refresher.start();
+  }
+
+  /// Every 5 seconds while the app is open: the orders are read again quietly (no spinner; the list stays until the new one arrives; an error keeps the list).
+  Future<void> _silentRefresh() async {
+    final auth = context.read<AuthState>();
+    if (!mounted || !auth.isLoggedIn || auth.token == null) return;
+    final fresh = await ApiClient().fetchMyOrders(auth.token!, status: _selectedTab == 'all' ? null : _selectedTab);
+    if (!mounted) return;
+    setState(() => _ordersFuture = Future.value(fresh));
+  }
+
   void _selectTab(String tabKey) {
     if (_selectedTab == tabKey) return;
     setState(() => _selectedTab = tabKey);
@@ -89,6 +107,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   @override
   void dispose() {
+    _refresher.dispose();
     _lookupIdController.dispose();
     _lookupEmailController.dispose();
     super.dispose();
@@ -200,7 +219,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                 future: _ordersFuture,
                 builder: (context, snapshot) {
                   final palette = LeapPalette.of(context);
-                  if (snapshot.connectionState == ConnectionState.waiting) {
+                  if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
                     return const ListSkeleton();
                   }
                   if (snapshot.hasError) {

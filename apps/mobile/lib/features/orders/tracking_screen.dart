@@ -46,7 +46,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
   Timer? _pollTimer;
   String? _token;
 
-  static const _pollInterval = Duration(seconds: 20);
+  static const _pollInterval = Duration(seconds: 5);
 
   @override
   void initState() {

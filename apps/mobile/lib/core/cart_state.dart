@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import '../models/cart_item.dart';
 import '../models/cart.dart';
 import '../models/cart_merge.dart';
+import 'auto_refresher.dart';
 import '../models/cart_shipping.dart';
 import '../services/api_client.dart';
 
@@ -40,6 +41,9 @@ class CartState extends ChangeNotifier {
   CartShipping _shipping = CartShipping.off;
   // ONE CART PER ACCOUNT: set when the server combined this device's basket with the account basket; shown on the cart screen until dismissed.
   CartMerge? _mergeNotice;
+  // The signed-in buyer's cart is the same on every device: it is read again every 5 seconds while the app is open (quietly). _applied counts the answers put on screen: a quiet answer that was overtaken by another one is dropped.
+  int _applied = 0;
+  late final AutoRefresher _refresher = AutoRefresher(_quietRefresh);
   // Confirmed with the person: whole-basket checkout price lock,
   // starts when checkout genuinely begins (not when an item is
   // added).
@@ -112,6 +116,17 @@ class CartState extends ChangeNotifier {
     refresh();
   }
 
+  @override
+  void dispose() {
+    _refresher.dispose();
+    super.dispose();
+  }
+
+  Future<void> _quietRefresh() async {
+    if (_token == null) return; // a guest's cart is for this device only: nothing else changes it
+    await refresh(silent: true);
+  }
+
   bool get isLoading => _isLoading;
   List<CartItem> get items => List.unmodifiable(_items);
   String? get errorMessage => _errorMessage;
@@ -163,6 +178,7 @@ class CartState extends ChangeNotifier {
   // the real, full state -- items AND the real, persisted promo
   // fields together, never one without the other.
   void _applyCart(Cart cart) {
+    _applied += 1;
     _items = cart.items;
     _appliedPromoCode = cart.appliedPromoCode;
     _appliedPromoDetails = cart.appliedPromoDetails;
@@ -191,22 +207,28 @@ class CartState extends ChangeNotifier {
       await _secureStorage.write(key: _cartIdKey, value: cartId);
     }
     _cartId = cartId;
+    _refresher.start();
     await refresh();
   }
 
-  Future<void> refresh() async {
+  /// [silent]: the 5-second refresh: no spinner, an error keeps what is on screen, and an answer that was overtaken by another one (the buyer's own change) is dropped.
+  Future<void> refresh({bool silent = false}) async {
     if (_cartId == null) return;
-    _isLoading = true;
-    notifyListeners();
+    if (!silent) {
+      _isLoading = true;
+      notifyListeners();
+    }
+    final before = _applied;
     try {
-      _applyCart(await _apiClient.fetchCart(_cartId!, token: _token, lang: _language));
+      final cart = await _apiClient.fetchCart(_cartId!, token: _token, lang: _language);
+      if (!silent || _applied == before) _applyCart(cart);
       _errorMessage = null;
     } catch (e) {
       // A string-table KEY, not a sentence: CartState has no BuildContext to translate with,
       // so cart_screen translates it with tr() where it is drawn.
-      _errorMessage = 'cart_load_failed';
+      if (!silent) _errorMessage = 'cart_load_failed';
     } finally {
-      _isLoading = false;
+      if (!silent) _isLoading = false;
       notifyListeners();
     }
   }
