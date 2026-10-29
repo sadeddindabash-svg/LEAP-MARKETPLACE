@@ -17,7 +17,7 @@ import { fetchUnreadNotificationCount } from "@/lib/api";
 // causing here, so a one-time fetch on page load would silently go
 // stale. Same reasoning as apps/mobile/lib/features/orders/
 // tracking_screen.dart's real auto-refresh fix earlier this session.
-const POLL_INTERVAL_MS = 30_000;
+const POLL_INTERVAL_MS = 5_000;
 
 export default function NotificationBell() {
   const { user, isLoading: authLoading } = useAuth();

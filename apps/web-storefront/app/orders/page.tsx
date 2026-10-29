@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAutoRefresh } from "@/components/useAutoRefresh";
 import Link from "@/components/LocLink";
 import { getAuthToken, useAuth } from "@/components/AuthProvider";
 import { useLang, useT } from "@/components/LangProvider";
@@ -58,6 +59,7 @@ export default function OrdersPage() {
     fetchAnnualSpend(token).then((s) => { if (current) setSpend(s); }).catch(() => {});
     return () => { current = false; };
   }, [user]);
+  useAutoRefresh(async () => { const token = getAuthToken(); if (!token) return; setOrders(await fetchMyOrders(token)); }, { enabled: !!user });
 
   if (isLoading) return <div className="mx-auto max-w-4xl px-4 py-10 sm:px-8" aria-busy="true">{t("search_loading")}</div>;
   return (

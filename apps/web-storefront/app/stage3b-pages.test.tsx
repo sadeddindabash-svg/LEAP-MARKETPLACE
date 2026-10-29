@@ -174,12 +174,12 @@ describe("support: a ticket's conversation", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Feedback can only be given once this ticket is resolved.");
   });
 
-  it("CRITICAL: it refreshes every 20 seconds while open and stops when left; not found and a failed load say so", async () => {
+  it("CRITICAL: it refreshes every 5 seconds while open and stops when left; not found and a failed load say so", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const view = open();
     await screen.findByRole("heading", { level: 1 });
     expect(m.api.fetchSupportTicket).toHaveBeenCalledTimes(1);
-    await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
     expect(m.api.fetchSupportTicket).toHaveBeenCalledTimes(2);
     view.unmount();
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
@@ -253,7 +253,7 @@ describe("returns", () => {
     await waitFor(() => expect(m.api.sendReturnCaseMessage).toHaveBeenCalledWith("RC-1", "Thank you", { token: undefined, guestEmail: "sam@example.com" }));
   });
 
-  it("a guest without the email is asked for it; the return refreshes every 20 seconds; a case that is not there says 'Not found'", async () => {
+  it("a guest without the email is asked for it; the return refreshes every 5 seconds; a case that is not there says 'Not found'", async () => {
     m.route.current = { id: "RC-1" };
     const a = show(<ReturnCasePage />);
     expect(screen.getByText("Enter the email this return was filed under to view it.")).toBeInTheDocument();
@@ -261,7 +261,7 @@ describe("returns", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const b = openCase();
     await screen.findByRole("heading", { level: 1 });
-    await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
     expect(m.api.fetchReturnCase).toHaveBeenCalledTimes(2);
     b.unmount();
     vi.useRealTimers();

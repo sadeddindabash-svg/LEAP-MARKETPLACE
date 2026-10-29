@@ -8,7 +8,7 @@ import { useLang, useT } from "@/components/LangProvider";
 import { fetchOrderTracking, type OrderTracking } from "@/lib/api";
 import { formatDate } from "@/lib/orders";
 
-const POLL_MS = 20_000;                    // like the app: the page refreshes itself while it is open
+const POLL_MS = 5_000;                    // like the app: the page refreshes itself while it is open
 
 function Tracking({ orderId }: { orderId: string }) {
   const lang = useLang();

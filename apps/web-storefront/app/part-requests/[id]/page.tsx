@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useState } from "react";
+import { useAutoRefresh } from "@/components/useAutoRefresh";
 import SafeImage from "@/components/SafeImage";
 import { useParams } from "next/navigation";
 import Link from "@/components/LocLink";
@@ -76,6 +77,7 @@ function RequestView() {
       .catch((e) => { if (current) setState(/not found|غير موجود/i.test(e instanceof Error ? e.message : "") ? "notfound" : "error"); });
     return () => { current = false; };
   }, [user, id, reloads]);
+  useAutoRefresh(async () => { const token = getAuthToken(); if (!token) return; setRequest(await fetchQuoteRequest(token, id)); }, { enabled: !!user && state === "ok" });
 
   const run = async (work: (token: string) => Promise<void>) => {
     const token = getAuthToken();

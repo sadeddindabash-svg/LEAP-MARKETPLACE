@@ -35,15 +35,15 @@ describe("the notification bell", () => {
     expect(screen.queryByText("0")).not.toBeInTheDocument();
   });
 
-  it("CRITICAL: a check that fails later keeps the last number, and the next check (30 seconds later) updates it again once the server is back", async () => {
+  it("CRITICAL: a check that fails later keeps the last number, and the next check (5 seconds later) updates it again once the server is back", async () => {
     m.count.mockResolvedValueOnce(2);
     show(); await settle();
     expect(screen.getByText("2")).toBeInTheDocument();
     m.count.mockRejectedValueOnce(new NetworkError());       // the server goes down for one check
-    await afterSeconds(30);
+    await afterSeconds(5);
     expect(screen.getByText("2")).toBeInTheDocument();       // still the last known number
     m.count.mockResolvedValueOnce(5);                        // and comes back
-    await afterSeconds(30);
+    await afterSeconds(5);
     expect(screen.getByText("5")).toBeInTheDocument();
     expect(m.count).toHaveBeenCalledTimes(3);
   });

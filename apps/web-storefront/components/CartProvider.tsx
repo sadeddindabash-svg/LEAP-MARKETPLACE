@@ -5,6 +5,7 @@ import { Cart, CartMerge, addCartItem, applyCartPromoCode, clearCart, fetchCart,
 import { itemCount as countOf, subtotal as subtotalOf, totals as totalsOf } from "@/lib/cart";
 import { getAuthToken, useAuth } from "./AuthProvider";
 import { useLang } from "./LangProvider";
+import { useAutoRefresh } from "./useAutoRefresh";
 
 const CART_ID_COOKIE = "leap_cart_id";
 
@@ -69,8 +70,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [mergeNotice, setMergeNotice] = useState<CartMerge | null>(null);
   const cartIdRef = useRef(cartId);
   cartIdRef.current = cartId;
+  const adoptions = useRef(0);      // counts the answers put on screen: a quiet refresh that was overtaken by another answer is dropped
   /** What the server answered: the cart on screen. A signed-in buyer has ONE cart: when the answer is another cart (the account cart) this device uses its id from now on; a notice of carts combined is kept until dismissed. */
   const adopt = useCallback((c: Cart) => {
+    adoptions.current += 1;
     setCart(c);
     if (c.cartId && c.cartId !== cartIdRef.current) { writeCartIdCookie(c.cartId); cartIdRef.current = c.cartId; setCartId(c.cartId); }
     if (c.merge) setMergeNotice(c.merge);
@@ -146,6 +149,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
     if (!cartId) return;
     try { adopt(await fetchCart(cartId, who())); } catch { /* the cart on screen stays as it was */ }
   }, [cartId, who]);
+
+  // A signed-in buyer's cart is the same on every device: it is read again every 5 seconds (quietly; an answer that arrives after a newer one is dropped, and an error keeps what is on screen).
+  useAutoRefresh(async () => {
+    const before = adoptions.current;
+    const fresh = await fetchCart(cartIdRef.current, who());
+    if (adoptions.current === before) adopt(fresh);
+  }, { enabled: !!userId && !!cartId });
 
   const clearAfterOrder = useCallback(() => {
     setError(null);

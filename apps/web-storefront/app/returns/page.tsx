@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAutoRefresh } from "@/components/useAutoRefresh";
 import { useLocRouter } from "@/components/useLocRouter";
 import Link from "@/components/LocLink";
 import { useAuth, getAuthToken } from "@/components/AuthProvider";
@@ -39,6 +40,7 @@ export default function ReturnsPage() {
       .then((data) => { setCases(data); setLoadState("ready"); })
       .catch((err) => { setError(err.message); setLoadState("error"); });
   }, [authLoading, user]);
+  useAutoRefresh(async () => { const token = getAuthToken(); if (!token) return; setCases(await fetchMyReturnCases(token)); }, { enabled: !authLoading && !!user && loadState === "ready" });
 
   const handleLookup = (e: React.FormEvent) => {
     e.preventDefault();

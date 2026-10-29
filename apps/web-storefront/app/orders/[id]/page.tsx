@@ -13,6 +13,7 @@ import { useCurrency } from "@/components/CurrencyProvider";
 import { useLang, useT } from "@/components/LangProvider";
 import { Price } from "@/components/Price";
 import { cancelOrder, cancelSubOrder, fetchOrderById, fetchOrderReceipt, resolveImageUrl, type OrderDetail, type OrderWho, type SupplierSubOrder } from "@/lib/api";
+import { useAutoRefresh } from "@/components/useAutoRefresh";
 import { supplierLabel } from "@/lib/cart";
 import { countryName } from "@/lib/countries";
 import { formatDate, isOrderCancellable, isPartiallyCancellable, isOrderFullyCancelled, isPartReturnable, isSubOrderCancellable, needsEnglishAddressCheck, reorder, reorderLines, showTrackingLink, statusLabel, subOrderStage } from "@/lib/orders";
@@ -89,6 +90,7 @@ function OrderView({ orderId }: { orderId: string }) {
       });
     return () => { current = false; };
   }, [authLoading, canSee, token, orderId, guestEmail, reloads, lang]);
+  useAutoRefresh(async () => { setOrder(await fetchOrderById(token, orderId, token ? null : guestEmail, lang)); }, { enabled: !authLoading && canSee && state === "ok" });
 
   const act = async (work: () => Promise<void>, okText: string) => {
     setBusy(true); setNotice(null);

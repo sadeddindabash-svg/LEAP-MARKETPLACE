@@ -353,7 +353,7 @@ describe("tracking page", () => {
     expect(screen.getByRole("link", { name: "Order ord_1" }).getAttribute("href")).toBe("/orders/ord_1?guestEmail=sam%40example.com");
   });
 
-  it("CRITICAL: it refreshes itself every 20 seconds while open, and stops when the page is left", async () => {
+  it("CRITICAL: it refreshes itself every 5 seconds while open, and stops when the page is left", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     buyer();
     m.api.fetchOrderTracking.mockResolvedValue(tracking);
@@ -361,9 +361,9 @@ describe("tracking page", () => {
     await screen.findByText("HUB1");
     expect(m.api.fetchOrderTracking).toHaveBeenCalledTimes(1);
     expect(m.api.fetchOrderTracking.mock.lastCall).toEqual(["ord_1", { token: "tok", guestEmail: null }, "ar"]);       // Arabic steps asked for
-    await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
     expect(m.api.fetchOrderTracking).toHaveBeenCalledTimes(2);
-    await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
     expect(m.api.fetchOrderTracking).toHaveBeenCalledTimes(3);
     unmount();
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });

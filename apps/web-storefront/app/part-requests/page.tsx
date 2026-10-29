@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAutoRefresh } from "@/components/useAutoRefresh";
 import Link from "@/components/LocLink";
 import { getAuthToken, useAuth } from "@/components/AuthProvider";
 import { useLang, useT } from "@/components/LangProvider";
@@ -24,6 +25,7 @@ export default function MyRequestsPage() {
     fetchMyQuoteRequests(token).then((r) => { if (current) setRequests(r); }).catch(() => { if (current) { setFailed(true); setRequests([]); } });
     return () => { current = false; };
   }, [user]);
+  useAutoRefresh(async () => { const token = getAuthToken(); if (!token) return; setRequests(await fetchMyQuoteRequests(token)); }, { enabled: !!user });
 
   if (isLoading) return <div className="mx-auto max-w-3xl px-4 py-10 sm:px-8" aria-busy="true">{t("search_loading")}</div>;
   if (!user) return <div className="mx-auto max-w-3xl px-4 py-12 sm:px-8"><p className="mb-4 text-lg text-muted">{t("quote_login_needed")}</p><Link href="/login?next=%2Fpart-requests" className="inline-flex min-h-12 items-center rounded-[10px] bg-signal px-6 font-bold text-on-signal">{t("log_in")}</Link></div>;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useAutoRefresh } from "@/components/useAutoRefresh";
 import SignInPrompt from "@/components/SignInPrompt";
 import { getAuthToken, useAuth } from "@/components/AuthProvider";
 import { useLang, useT } from "@/components/LangProvider";
@@ -26,6 +27,7 @@ export default function NotificationsPage() {
     fetchNotifications(token, lang).then((n) => { if (current) setItems(n); }).catch(() => { if (current) { setFailed(true); setItems([]); } });
     return () => { current = false; };
   }, [user, lang]);
+  useAutoRefresh(async () => { const token = getAuthToken(); if (!token) return; setItems(await fetchNotifications(token, lang)); }, { enabled: !!user });
 
   const open = useCallback(async (n: Notification) => {
     const token = getAuthToken();
