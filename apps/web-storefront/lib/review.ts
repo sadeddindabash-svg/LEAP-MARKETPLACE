@@ -37,3 +37,12 @@ export function canAddPhoto(current: number, file: { type: string }): boolean {
 
 /** The 5 average-rating stars as whole stars, rounded like the app. */
 export const wholeStars = (average: number | null): number => (average == null ? 0 : Math.round(average));
+
+/** A reviewer's name as other buyers see it: the first 2 letters in capitals, ***, the last 2 ("michael" -> "MI***el"). 4 letters or fewer: the first and *** ("Ali" -> "A***"). Spaces are ignored. Empty -> null (the page shows "Buyer"). */
+export function maskReviewerName(name: string | null | undefined): string | null {
+  if (!name) return null;
+  const chars = Array.from(name.replace(/\s+/g, ""));
+  if (chars.length === 0) return null;
+  if (chars.length <= 4) return `${chars[0].toUpperCase()}***`;
+  return `${chars[0]}${chars[1]}`.toUpperCase() + "***" + chars.slice(-2).join("");
+}

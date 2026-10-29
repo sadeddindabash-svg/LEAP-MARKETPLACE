@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import SafeImage from "@/components/SafeImage";
 import Link from "@/components/LocLink";
 import { ApiError, fetchMyReviews, flagReview, resolveImageUrl, submitReview, uploadReviewPhoto, type MyReview, type ReviewsSummary } from "@/lib/api";
-import { MAX_REVIEW_PHOTOS, REVIEW_BATCH, canAddPhoto, myReviewOf, reviewErrorKey, reviewState, wholeStars } from "@/lib/review";
+import { MAX_REVIEW_PHOTOS, REVIEW_BATCH, canAddPhoto, maskReviewerName, myReviewOf, reviewErrorKey, reviewState, wholeStars } from "@/lib/review";
 import { getAuthToken, useAuth } from "./AuthProvider";
 import { useT } from "./LangProvider";
 
@@ -106,7 +106,7 @@ export default function ReviewsSection({ productId, summary }: { productId: stri
             <li key={r.id} className="rounded-xl border border-line bg-white p-5">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <Stars value={r.rating} size={15} />
-                <span className="text-sm font-semibold">{r.buyerName || t("buyer")}</span>
+                <span className="text-sm font-semibold">{maskReviewerName(r.buyerName) || t("buyer")}</span>
                 {r.isVerifiedPurchase && <span className="text-xs font-bold text-[#0f6b49]">{t("verified_purchase")}</span>}
               </div>
               {r.comment && <p className="mt-2 text-[15px] leading-relaxed">{r.comment}</p>}

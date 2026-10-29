@@ -6,6 +6,7 @@ import '../core/theme.dart';
 import '../core/auth_state.dart';
 import '../core/app_strings.dart';
 import '../models/review.dart';
+import '../core/reviewer_name.dart';
 import '../services/api_client.dart';
 import '../core/config/app_config.dart';
 
@@ -226,7 +227,7 @@ class _ReviewsSectionState extends State<ReviewsSection> {
                             children: [
                               _StarRow(rating: r.rating, size: 13),
                               const SizedBox(width: 8),
-                              Text(r.buyerName ?? (widget.isAr ? 'مشترٍ' : 'Buyer'), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5)),
+                              Text(maskReviewerName(r.buyerName) ?? (widget.isAr ? 'مشترٍ' : 'Buyer'), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5)),
                               if (r.isVerifiedPurchase) ...[
                                 const SizedBox(width: 6),
                                 Container(
