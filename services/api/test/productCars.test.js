@@ -71,7 +71,7 @@ test('the supplier gets the part\'s MAIN photo: the first one by order, not the 
 test('the supplier gets the car the product is listed for: names in three languages, the year, the engine and transmission, and the car\'s photo', async () => {
   const v = itemOf(await view(), 'zz-pc-single').vehicle;
   assert.equal(v.fitsAnyCar, false); assert.equal(v.carCount, 1); assert.equal(v.cars.length, 1);
-  assert.deepEqual(v.cars[0], { year: 2022, brand: { en: 'PC Brand', ar: 'ب', zh: '品牌' }, model: { en: 'PC Model', ar: 'م', zh: '车型' }, engine: '2.0T', transmission: 'Automatic', photoUrl: '/uploads/zz-pc-genA.png', versions: null });
+  assert.deepEqual(v.cars[0], { year: 2022, brand: { en: 'PC Brand', ar: 'ب', zh: '品牌' }, model: { en: 'PC Model', ar: 'م', zh: '车型' }, engine: '2.0T', transmission: 'Automatic', photoUrl: '/uploads/zz-pc-genA.png', generation: { name: '2022', yearStart: 2022, yearEnd: 2022, versionCount: 0 }, versions: null });
 });
 
 test('PRIVACY: the buyer\'s own car is never sent to the supplier, and nothing about a "fit check" against it', async () => {

@@ -2594,7 +2594,7 @@ function OrdersPage({ onOpen }) {
                     <tr key={o.subOrderId} onClick={() => onOpen(o)} style={{ cursor: "pointer" }}>
                       <Td><PlateChip small>{o.orderId}</PlateChip></Td>
                       <Td style={{ maxWidth: 260 }}>{o.items.map(i => i.name).join(lang === "zh" ? "，" : ", ")}</Td>
-                      <Td style={{ minWidth: 150 }}><OrderVehicleCell items={o.items} /></Td>
+                      <Td style={{ minWidth: 300 }}><OrderVehicleCell items={o.items} /></Td>
                       <Td align="right" style={{ fontWeight: 700 }}>{cny(amount)}</Td>
                       <Td><Badge label={t.statusOrder[o.status] || o.status} statusKey={o.status} /></Td>
                       <Td align="right"><ChevronRight size={15} color={C.muted} /></Td>

@@ -35,6 +35,7 @@ const names = (en, ar, zh) => (en ? { en, ar: ar || null, zh: zh || null } : nul
 async function readFitment(q, productIds) {
   const { rows } = await q.query(
     `SELECT pfe.id AS entry_id, pfe.product_id, pfe.generation_id, pfe.year, b.name AS brand, b.name_ar AS brand_ar, b.name_zh AS brand_zh, m.name AS model, m.name_ar AS model_ar, m.name_zh AS model_zh,
+            g.name AS generation_name, g.year_start AS generation_start, g.year_end AS generation_end, (SELECT COUNT(*)::int FROM vehicle_versions vv WHERE vv.generation_id = pfe.generation_id) AS version_count,
             g.photo_url AS generation_photo, m.photo_url AS model_photo, b.photo_url AS brand_photo, e.name AS engine, t.name AS transmission
      FROM product_fitment_entries pfe
      JOIN vehicle_generations g ON g.id = pfe.generation_id
@@ -67,6 +68,7 @@ async function loadProductCars(q, productIds) {
       cars: entries.slice(0, MAX_SUPPLIER_CARS).map((r) => ({
         year: r.year, brand: names(r.brand, r.brand_ar, r.brand_zh), model: names(r.model, r.model_ar, r.model_zh),
         engine: r.engine || null, transmission: r.transmission || null,
+        generation: { name: r.generation_name, yearStart: r.generation_start, yearEnd: r.generation_end, versionCount: r.version_count },
         // null = every version
         versions: r.versions ? r.versions.map((v) => ({ id: v.id, name: names(v.name, v.nameAr, v.nameZh), engine: v.engine, seats: v.seats })) : null,
         photoUrl: r.generation_photo || r.model_photo || r.brand_photo || null,
