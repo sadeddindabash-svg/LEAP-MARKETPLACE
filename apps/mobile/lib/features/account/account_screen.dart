@@ -13,6 +13,8 @@ import '../../core/config/app_config.dart';
 import '../../core/app_lock_state.dart';
 import '../../core/push_state.dart';
 import '../../core/theme_state.dart';
+import '../../widgets/sun_moon_switch.dart';
+import '../../widgets/theme_reveal.dart';
 import '../../services/api_client.dart';
 import 'loyalty_card.dart';
 import '../../core/api_error_text.dart';
@@ -574,9 +576,11 @@ class _ThemeSection extends StatelessWidget {
           ),
           Text(tr(context, isDarkNow ? 'dark_mode' : 'light_mode'), style: TextStyle(fontSize: 12.5, color: LeapPalette.of(context).muted)),
           const SizedBox(width: 8),
-          Switch(
+          // the animated sun / moon switch; the new theme spreads from it over the whole app (widgets/theme_reveal.dart)
+          SunMoonSwitch(
             value: isDarkNow,
-            onChanged: (wantsDark) => context.read<ThemeState>().setMode(wantsDark ? ThemeMode.dark : ThemeMode.light),
+            semanticLabel: tr(context, isDarkNow ? 'dark_mode' : 'light_mode'),
+            onChanged: (wantsDark, center) => ThemeReveal.switchTheme(context, wantsDark ? ThemeMode.dark : ThemeMode.light, center),
           ),
         ],
       ),

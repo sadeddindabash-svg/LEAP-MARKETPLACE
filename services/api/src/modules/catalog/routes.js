@@ -399,6 +399,34 @@ function buildProductMatchQuery({ category, part, vehicleId, search, generationI
   return { sql, params };
 }
 
+// "Newest products" (the home page of the website and of the app): the newest product of EACH car brand first, then the 2nd newest of
+// each brand, then the 3rd, and so on; a brand with nothing left is skipped. Inside a round, the brand whose newest product is the most
+// recent comes first. A product's brand is the brand of its first car; a product with no car (it fits any car) is in a group of its own.
+// `dtos` is already newest first, so each brand's list and the brands' order come out right by keeping first-seen order.
+async function interleaveNewestByBrand(dtos) {
+  if (dtos.length < 2) return dtos;
+  const { rows } = await db.query(
+    `SELECT DISTINCT ON (pfe.product_id) pfe.product_id, vm.brand_id
+     FROM product_fitment_entries pfe
+     JOIN vehicle_generations vg ON vg.id = pfe.generation_id
+     JOIN vehicle_models vm ON vm.id = vg.model_id
+     WHERE pfe.product_id = ANY($1)
+     ORDER BY pfe.product_id, pfe.id`,
+    [dtos.map((d) => d.id)]
+  );
+  const brandOf = new Map(rows.map((r) => [r.product_id, r.brand_id]));
+  const groups = new Map();
+  for (const d of dtos) {
+    const brand = brandOf.has(d.id) ? brandOf.get(d.id) : '(any car)';
+    if (!groups.has(brand)) groups.set(brand, []);
+    groups.get(brand).push(d);
+  }
+  const lists = [...groups.values()];
+  const out = [];
+  for (let round = 0; out.length < dtos.length; round++) for (const list of lists) if (list[round]) out.push(list[round]);
+  return out;
+}
+
 router.get('/products', async (req, res, next) => {
   try {
     const { category, part, vehicleId, search, sort, lang, generationId, year, versionId, minPrice, maxPrice, maxDeliveryDays, page, limit, more } = req.query;
@@ -457,6 +485,8 @@ router.get('/products', async (req, res, next) => {
       }
       if (sort === 'price_asc') dtos.sort((a, b) => a.price - b.price);
       else if (sort === 'price_desc') dtos.sort((a, b) => b.price - a.price);
+      // the home page's "Newest products" (no search, category or car chosen): one product per brand at a time
+      if (sort === 'newest' && !category && !part && !search && !vehicleId && !generationId) dtos = await interleaveNewestByBrand(dtos);
       return dtos;
     };
 

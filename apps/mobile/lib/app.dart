@@ -11,6 +11,7 @@ import 'core/theme_state.dart';
 import 'core/garage_state.dart';
 import 'widgets/app_lock_gate.dart';
 import 'widgets/force_update_gate.dart';
+import 'widgets/theme_reveal.dart';
 import 'core/app_strings.dart';
 import 'services/api_client.dart';
 import 'features/splash/splash_screen.dart';
@@ -315,8 +316,11 @@ class LeapApp extends StatelessWidget {
               // outdated app should take priority over asking for
               // biometric auth (see widgets/force_update_gate.dart's
               // own header comment for the honest scope).
-              child: ForceUpdateGate(
-                child: AppLockGate(child: child ?? const SizedBox.shrink()),
+              // the animated theme change (Account > Appearance): the new theme spreads from the switch in a growing circle
+              child: ThemeReveal(
+                child: ForceUpdateGate(
+                  child: AppLockGate(child: child ?? const SizedBox.shrink()),
+                ),
               ),
             ),
           );

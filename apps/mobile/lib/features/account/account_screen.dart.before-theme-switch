@@ -1,0 +1,640 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../../core/theme.dart';
+import '../../core/app_strings.dart';
+import '../../core/auth_state.dart';
+import '../../core/language_state.dart';
+import '../../core/currency_state.dart';
+import '../../core/config/app_config.dart';
+import '../../core/app_lock_state.dart';
+import '../../core/push_state.dart';
+import '../../core/theme_state.dart';
+import '../../services/api_client.dart';
+import 'loyalty_card.dart';
+import '../../core/api_error_text.dart';
+
+class AccountScreen extends StatefulWidget {
+  const AccountScreen({super.key});
+
+  @override
+  State<AccountScreen> createState() => _AccountScreenState();
+}
+
+class _AccountScreenState extends State<AccountScreen> {
+  int _unreadCount = 0;
+  // Real, honestly-computed profile stats (new) -- matches the real
+  // Stitch reference's own stats bento concept, but only for the
+  // three counts genuinely computable from real data (each fetched
+  // fresh here). The reference's fourth stat, "Points," is
+  // deliberately NOT shown -- no loyalty-points system exists
+  // anywhere in the real backend (Referrals tracks a real reward
+  // count, not points, and that's a separate real concept already
+  // shown on its own real screen).
+  int? _vehicleCount;
+  int? _orderCount;
+  int? _wishlistCount;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadUnreadCount();
+    _loadStats();
+    // Real push registration (new) -- covers the "already logged in,
+    // reopening the app" case (the login screen's own call covers a
+    // fresh login). Safe to call every time this screen loads: has
+    // its own internal one-time guard, and does nothing at all
+    // without a real logged-in session (see PushState's own header
+    // comment).
+    PushState.initialize(context);
+  }
+
+  Future<void> _loadUnreadCount() async {
+    final token = context.read<AuthState>().token;
+    if (token == null) return;
+    try {
+      final count = await ApiClient().fetchUnreadNotificationCount(token, lang: context.read<LanguageState>().language);
+      if (mounted) setState(() => _unreadCount = count);
+    } catch (_) {} // non-critical -- the badge just stays at 0 rather than breaking the page
+  }
+
+  Future<void> _loadStats() async {
+    final token = context.read<AuthState>().token;
+    if (token == null) return;
+    try {
+      final results = await Future.wait([
+        ApiClient().fetchMyGarage(token),
+        ApiClient().fetchMyOrders(token),
+        ApiClient().fetchWishlist(token),
+      ]);
+      if (mounted) {
+        setState(() {
+          _vehicleCount = (results[0] as List).length;
+          _orderCount = (results[1] as List).length;
+          _wishlistCount = (results[2] as List).length;
+        });
+      }
+    } catch (_) {} // non-critical -- stats just stay hidden rather than breaking the page
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthState>();
+
+    final rows = [
+      (icon: Icons.directions_car_outlined, label: tr(context, 'my_garage'), route: '/garage'),
+      (icon: Icons.location_on_outlined, label: tr(context, 'addresses'), route: '/addresses'),
+      (icon: Icons.favorite_border, label: tr(context, 'wishlist'), route: '/wishlist'),
+      (icon: Icons.bookmark_outlined, label: tr(context, 'saved_searches'), route: '/saved-searches'),
+      (icon: Icons.card_giftcard_outlined, label: tr(context, 'referrals'), route: '/referrals'),
+      (icon: Icons.inventory_2_outlined, label: tr(context, 'orders_and_returns'), route: '/orders'),
+      (icon: Icons.request_quote_outlined, label: tr(context, 'my_part_requests'), route: '/part-requests'),
+      (icon: Icons.assignment_return_outlined, label: tr(context, 'my_returns'), route: '/returns'),
+      (icon: Icons.chat_bubble_outline, label: tr(context, 'contact_us_label'), route: '/contact-us'),
+      (icon: Icons.alternate_email, label: tr(context, 'change_email'), route: '/account/change-email'),
+      (icon: Icons.shield_outlined, label: tr(context, 'two_factor_auth_label'), route: '/account/two-factor'),
+    ];
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(tr(context, 'account')),
+        actions: [
+          // Real, compact language dropdown (new), moved here beside
+          // the notification bell per request -- was previously a
+          // full section further down this same screen; that section
+          // below is now removed to avoid showing the same real
+          // choice twice.
+          PopupMenuButton<String>(
+            tooltip: tr(context, 'language'),
+            icon: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(context.watch<LanguageState>().isArabic ? 'AR' : 'EN', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                const Icon(Icons.arrow_drop_down, size: 18),
+              ],
+            ),
+            onSelected: (lang) => context.read<LanguageState>().setLanguage(lang),
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: 'en', child: Text('English')),
+              const PopupMenuItem(value: 'ar', child: Text('العربية')),
+            ],
+          ),
+          PopupMenuButton<String?>(
+            tooltip: trRead(context, 'currency'),
+            icon: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(context.watch<CurrencyState>().currencyCode, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                const Icon(Icons.arrow_drop_down, size: 18),
+              ],
+            ),
+            onSelected: (code) async {
+              final currency = context.read<CurrencyState>();
+              await currency.setCurrencyCode(code);
+              if (code != null && code != 'USD' && !currency.hasConversion && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(trRead(context, 'currency_rate_unavailable'))));
+              }
+            },
+            itemBuilder: (context) {
+              final allCodes = List<String>.from(AppConfig.launchMarkets.map((m) => m.currencyCode).where((c) => c != 'USD').toSet());
+              // Real, confirmed fixed order for these 8, requested
+              // directly -- everything else falls back to the
+              // original alphabetical order.
+              const priorityOrder = ['EUR', 'SAR', 'AED', 'GBP', 'JOD', 'BHD', 'QAR', 'KWD'];
+              final priority = priorityOrder.where(allCodes.contains).toList();
+              final rest = allCodes.where((c) => !priorityOrder.contains(c)).toList()..sort();
+              final orderedCodes = [...priority, ...rest];
+              return [
+                PopupMenuItem(value: null, child: Text(trRead(context, 'currency_automatic'))),
+                const PopupMenuDivider(),
+                PopupMenuItem(value: 'USD', child: Text('${currencyFlags['USD']} USD')),
+                ...orderedCodes.map((code) => PopupMenuItem(value: code, child: Text('${currencyFlags[code] ?? ''} $code'))),
+              ];
+            },
+          ),
+          if (auth.isLoggedIn)
+            Stack(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.notifications_none),
+                  tooltip: tr(context, 'notifications'),
+                  onPressed: () => context.push('/notifications').then((_) => _loadUnreadCount()),
+                ),
+                if (_unreadCount > 0)
+                  Positioned(
+                    right: 6,
+                    top: 6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(color: LeapPalette.of(context).signal, borderRadius: BorderRadius.circular(8)),
+                      constraints: const BoxConstraints(minWidth: 16),
+                      child: Text(
+                        _unreadCount > 9 ? '9+' : '$_unreadCount',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: LeapPalette.of(context).onSignal, fontSize: 10, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+        ],
+      ),
+      body: ListView(
+        children: [
+          if (auth.isLoading)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (auth.isLoggedIn)
+            _LoggedInHeader(user: auth.user!)
+          else
+            _LoggedOutHeader(),
+          // Real stats bento grid (new) -- only shown once real counts
+          // have genuinely loaded, never a placeholder/fake number in
+          // the meantime.
+          if (auth.isLoggedIn && _vehicleCount != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+              child: Row(
+                children: [
+                  Expanded(child: _ProfileStat(value: _vehicleCount!, label: tr(context, 'vehicles_stat'), index: 0)),
+                  const SizedBox(width: 10),
+                  Expanded(child: _ProfileStat(value: _orderCount!, label: tr(context, 'orders_stat'), index: 1)),
+                  const SizedBox(width: 10),
+                  Expanded(child: _ProfileStat(value: _wishlistCount!, label: tr(context, 'wishlist_stat'), index: 2)),
+                ],
+              ),
+            ),
+          if (auth.isLoggedIn) const LoyaltyCard(),
+          const Divider(height: 24),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              tr(context, 'account_settings_header').toUpperCase(),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: LeapPalette.of(context).signalDark, letterSpacing: 1),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              children: rows.map((r) {
+                final palette = LeapPalette.of(context);
+                // Real, confirmed mode-specific badge treatment (new):
+                // dark mode keeps a gold-tinted transparent fill with
+                // a gold icon; light mode uses a solid gold fill with
+                // a near-black icon instead, since bright gold on a
+                // light container reads with much weaker contrast --
+                // confirmed directly via real rendered mockups (option
+                // "L2"/"W1") before writing this.
+                final isDark = Theme.of(context).brightness == Brightness.dark;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: r.route == null ? null : () => context.push(r.route!),
+                      child: Container(
+                        decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(14)),
+                        padding: const EdgeInsets.all(14),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: isDark ? palette.signal.withValues(alpha: 0.12) : palette.signal,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(r.icon, size: 16, color: isDark ? palette.signal : palette.onSignal),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text(r.label, style: TextStyle(fontSize: 14, color: palette.ink))),
+                            Icon(Icons.chevron_right, size: 16, color: palette.muted),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const Divider(height: 1),
+          const _ThemeSection(),
+          if (auth.isLoggedIn) const _AppLockSection(),
+          if (auth.isLoggedIn)
+            ListTile(
+              leading: Icon(Icons.logout, color: LeapPalette.of(context).muted),
+              title: Text(tr(context, 'log_out')),
+              onTap: () => context.read<AuthState>().logout(),
+            ),
+          if (auth.isLoggedIn)
+            ListTile(
+              leading: const Icon(Icons.delete_forever_outlined, color: Colors.red),
+              title: Text(tr(context, 'delete_account_label'), style: const TextStyle(color: Colors.red)),
+              onTap: () => _confirmDeleteAccount(context),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteAccount(BuildContext context) async {
+    final confirmedIntent = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(tr(context, 'delete_account_confirm_title')),
+        content: Text(tr(context, 'delete_account_confirm_body')),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: Text(tr(context, 'cancel'))),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: Text(tr(context, 'continue_label'), style: const TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (confirmedIntent != true || !context.mounted) return;
+
+    final passwordController = TextEditingController();
+    String? errorMessage;
+    final confirmedWithPassword = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: Text(tr(context, 'confirm_password_title')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: passwordController, obscureText: true, decoration: InputDecoration(labelText: tr(context, 'password_field'))),
+              if (errorMessage != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 12))),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: Text(tr(context, 'cancel'))),
+            TextButton(
+              onPressed: () async {
+                if (passwordController.text.isEmpty) return;
+                try {
+                  final auth = dialogContext.read<AuthState>();
+                  await ApiClient().deleteAccount(auth.token!, passwordController.text);
+                  if (dialogContext.mounted) Navigator.of(dialogContext).pop(true);
+                } on ApiException catch (e) {
+                  // Real, honest, narrow mapping: the backend itself
+                  // only ever returns this exact English string here
+                  // (services/api/src/modules/auth/routes.js) --
+                  // translating it client-side for this one known
+                  // case, not a general backend-message translation
+                  // solution.
+                  setDialogState(() => errorMessage = e.message == 'Incorrect password' ? tr(context, 'incorrect_password_error') : e.message);
+                }
+              },
+              child: Text(tr(context, 'delete'), style: const TextStyle(color: Colors.red)),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmedWithPassword == true && context.mounted) {
+      // Real logout after real success -- this session's own token is
+      // now for a real, already-anonymized account.
+      context.read<AuthState>().logout();
+    }
+  }
+}
+
+class _ProfileStat extends StatefulWidget {
+  final int value;
+  final String label;
+  final int index;
+  const _ProfileStat({required this.value, required this.label, required this.index});
+
+  @override
+  State<_ProfileStat> createState() => _ProfileStatState();
+}
+
+class _ProfileStatState extends State<_ProfileStat> {
+  int _displayValue = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _startCountUp();
+  }
+
+  // Real, confirmed timing (approved directly against a real rendered
+  // mockup before building this): each card starts counting 450ms
+  // after the previous one (index * 450ms), then ticks up one integer
+  // at a time every 90ms until it reaches its real target value. Runs
+  // once per real screen load -- didChangeDependencies re-fetches the
+  // real counts and this widget rebuilds fresh each time the Account
+  // tab is opened, so the animation genuinely replays every visit.
+  void _startCountUp() {
+    _timer?.cancel();
+    final target = widget.value;
+    if (target <= 0) {
+      Future.delayed(Duration(milliseconds: widget.index * 450), () {
+        if (mounted) setState(() => _displayValue = target);
+      });
+      return;
+    }
+    Future.delayed(Duration(milliseconds: widget.index * 450), () {
+      if (!mounted) return;
+      var current = 0;
+      _timer = Timer.periodic(const Duration(milliseconds: 90), (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        current++;
+        setState(() => _displayValue = current > target ? target : current);
+        if (current >= target) timer.cancel();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = LeapPalette.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(12), border: Border.all(color: palette.line)),
+      child: Column(
+        children: [
+          Text('$_displayValue', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: palette.signal)),
+          const SizedBox(height: 2),
+          Text(widget.label.toUpperCase(), style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: palette.muted, letterSpacing: 0.5)),
+        ],
+      ),
+    );
+  }
+}
+
+class _LoggedInHeader extends StatefulWidget {
+  final Map<String, dynamic> user;
+  const _LoggedInHeader({required this.user});
+
+  @override
+  State<_LoggedInHeader> createState() => _LoggedInHeaderState();
+}
+
+class _LoggedInHeaderState extends State<_LoggedInHeader> {
+  bool _isUploading = false;
+
+  Future<void> _changePhoto() async {
+    final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
+    if (picked == null || !mounted) return;
+    final auth = context.read<AuthState>();
+    setState(() => _isUploading = true);
+    try {
+      final url = await ApiClient().uploadAvatarPhoto(auth.token!, picked);
+      await ApiClient().updateAvatar(auth.token!, url);
+      final updatedUser = await ApiClient().getCurrentUser(auth.token!);
+      await auth.updateSession(auth.token!, updatedUser);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? apiErrorText(context, e) : tr(context, 'could_not_update_photo'))));
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = widget.user;
+    final name = (user['name'] as String?) ?? (user['email'] as String);
+    final palette = LeapPalette.of(context);
+    final avatarUrl = user['avatarUrl'] as String?;
+    return Container(
+      // Deliberately, always dark regardless of the active theme --
+      // a real design choice matching the reference's own dark hero
+      // header across both light and dark mode, not a bug. Uses a
+      // proper named dark color (LeapColorsDark.background), not
+      // palette.ink, which is semantically a text color being misused
+      // as a background would be a real mistake.
+      color: LeapColorsDark.background,
+      padding: const EdgeInsets.all(20),
+      child: Row(
+        children: [
+          // Real gold accent ring (existing) matching the reference's
+          // own gold-ringed avatar treatment -- now tappable to add or
+          // change a real profile photo (#B).
+          GestureDetector(
+            onTap: _isUploading ? null : _changePhoto,
+            child: Stack(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: palette.signal, width: 2)),
+                  child: CircleAvatar(
+                    radius: 22,
+                    backgroundColor: const Color(0xFF2A2F38),
+                    backgroundImage: avatarUrl != null ? CachedNetworkImageProvider(ApiClient.resolveMediaUrl(avatarUrl)) : null,
+                    child: avatarUrl == null ? const Icon(Icons.person, color: Colors.white) : null,
+                  ),
+                ),
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(color: palette.signal, shape: BoxShape.circle, border: Border.all(color: LeapColorsDark.background, width: 1.5)),
+                    child: _isUploading
+                        ? SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5, color: palette.onSignal))
+                        : Icon(Icons.camera_alt, size: 10, color: palette.onSignal),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16)),
+                const SizedBox(height: 2),
+                Text(user['email'] as String, style: const TextStyle(color: Color(0xFF9AA1AC), fontSize: 12)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LoggedOutHeader extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(tr(context, 'guest_browsing'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+          const SizedBox(height: 4),
+          Text(
+            tr(context, 'guest_prompt'),
+            style: TextStyle(color: LeapPalette.of(context).muted, fontSize: 12.5),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton(onPressed: () => context.push('/login'), child: Text(tr(context, 'log_in'))),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton(onPressed: () => context.push('/signup'), child: Text(tr(context, 'sign_up'))),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+// Real dark/light toggle switch (new) -- closes a real, confirmed
+// gap, the single most commonly-requested item from this session's
+// own suggestions list. A simple switch, per request, rather than
+// separate light/dark/system buttons -- see this class's own build()
+// for how it still correctly reflects the real system default for a
+// first install (#26, an earlier batch) without needing a third,
+// explicit "system" option in this simplified UI.
+class _ThemeSection extends StatelessWidget {
+  const _ThemeSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final themeState = context.watch<ThemeState>();
+    // Real effective-theme check (new) -- when mode is still
+    // ThemeMode.system (the real default for a first install, #26,
+    // last batch), the switch needs to reflect the real, current
+    // system brightness, not silently show as "off" regardless of
+    // what dark/light the device is actually in right now.
+    final isDarkNow = themeState.mode == ThemeMode.dark ||
+        (themeState.mode == ThemeMode.system && MediaQuery.platformBrightnessOf(context) == Brightness.dark);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(tr(context, 'appearance'), style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: LeapPalette.of(context).ink)),
+          ),
+          Text(tr(context, isDarkNow ? 'dark_mode' : 'light_mode'), style: TextStyle(fontSize: 12.5, color: LeapPalette.of(context).muted)),
+          const SizedBox(width: 8),
+          Switch(
+            value: isDarkNow,
+            onChanged: (wantsDark) => context.read<ThemeState>().setMode(wantsDark ? ThemeMode.dark : ThemeMode.light),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Real biometric app lock toggle (new) -- closes a real gap: no
+// optional security setting existed to lock the app behind Face ID/
+// fingerprint before showing real account/order info. Only ever
+// rendered at all when AppLockState.isSupported is genuinely true --
+// no dead toggle shown on a real platform (like web) or a real device
+// with no enrolled biometrics AND no device passcode set, where it
+// couldn't do anything anyway.
+class _AppLockSection extends StatelessWidget {
+  const _AppLockSection();
+
+  Future<void> _handleToggle(BuildContext context, bool wantsEnabled) async {
+    final lockState = context.read<AppLockState>();
+    if (wantsEnabled) {
+      // Real, required authentication check before turning this ON --
+      // see AppLockState.enable()'s own header comment for why.
+      final success = await lockState.enable(reason: trRead(context, 'app_lock_enable_reason'));
+      if (!success && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(trRead(context, 'app_lock_enable_failed'))),
+        );
+      }
+    } else {
+      await lockState.disable();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lockState = context.watch<AppLockState>();
+    if (!lockState.isReady || !lockState.isSupported) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(tr(context, 'app_lock_title'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                const SizedBox(height: 2),
+                Text(tr(context, 'app_lock_subtitle'), style: TextStyle(fontSize: 11.5, color: LeapPalette.of(context).muted)),
+              ],
+            ),
+          ),
+          Switch(
+            value: lockState.isEnabled,
+            onChanged: (value) => _handleToggle(context, value),
+          ),
+        ],
+      ),
+    );
+  }
+}
