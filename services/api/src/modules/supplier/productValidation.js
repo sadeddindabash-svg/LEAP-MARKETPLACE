@@ -92,7 +92,6 @@ function validateCompleteFields({ category, part, position, weightKg, lengthCm, 
   const missing = [];
   if (!category) missing.push('category');
   if (!part) missing.push('part');
-  if (!position) missing.push('position');
   if (!shippingFromPart) {
     if (weightKg === undefined || weightKg === null) missing.push('weightKg');
     if (lengthCm === undefined || lengthCm === null) missing.push('lengthCm');
@@ -102,7 +101,7 @@ function validateCompleteFields({ category, part, position, weightKg, lengthCm, 
   if (missing.length > 0) {
     return { valid: false, error: `Missing required field(s): ${missing.join(', ')}` };
   }
-  if (!ALLOWED_POSITIONS.includes(position)) {
+  if (position && !ALLOWED_POSITIONS.includes(position)) {      // position is optional (not required any more)
     return { valid: false, error: `position must be one of: ${ALLOWED_POSITIONS.join(', ')}` };
   }
   if (!shippingFromPart) {

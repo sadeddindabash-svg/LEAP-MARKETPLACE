@@ -779,7 +779,7 @@ router.get('/me/products/drafts', requireAuth, requireRole('supplier'), async (r
       const missing = [];
       if (!row.category) missing.push('category');
       if (!row.part) missing.push('part');
-      if (!row.position) missing.push('position');
+      // position: not required any more
       if (requirements.photos_required && Number(row.photo_count) !== requirements.min_photos) missing.push('photos');
       if (requirements.video_required && !row.video_url) missing.push('video');
       return { ...dto, missing };

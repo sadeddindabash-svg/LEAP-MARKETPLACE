@@ -1740,14 +1740,12 @@ function CompleteDraftForm({ draft, onCancel, onCompleted }) {
   const cascadeLabel = (zh, en) => (lang === 'zh' ? zh : en);
 
   const needsCategory = draft.missing.includes('category') || draft.missing.includes('part');
-  const needsPosition = draft.missing.includes('position');
 
   const [categories, setCategories] = useState([]);
   const [category, setCategory] = useState(draft.category || '');
   const [parts, setParts] = useState([]);
   const [part, setPart] = useState(draft.part || '');
   // Weight and size: set by Leap (the admin), never asked of the supplier.
-  const [position, setPosition] = useState(draft.position || POSITION_OPTIONS[0].id);
   const [photos, setPhotos] = useState(draft.images ? draft.images.map((url) => ({ url })) : []);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [video, setVideo] = useState(draft.videoUrl ? { url: draft.videoUrl } : null);
@@ -1825,7 +1823,6 @@ function CompleteDraftForm({ draft, onCancel, onCompleted }) {
       await completeDraftProduct(getStoredToken(), draft.id, {
         category: needsCategory ? category : undefined,
         part: needsCategory ? part : undefined,
-        position: needsPosition ? position : undefined,
         images: photos.map((p) => p.url),
         videoUrl: video?.url || undefined,
       });
@@ -1861,14 +1858,7 @@ function CompleteDraftForm({ draft, onCancel, onCompleted }) {
           </div>
         )}
 
-        {needsPosition && (
-          <Field label={cascadeLabel('位置', 'Position')}>
-            <select style={selectStyle} value={position} onChange={(e) => setPosition(e.target.value)}>
-              {POSITION_OPTIONS.map((p) => <option key={p.id} value={p.id}>{p[lang]}</option>)}
-            </select>
-          </Field>
-        )}
-
+        {/* Position: not required any more (not asked). */}
         <div>
           <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 8 }}>
             {cascadeLabel(
@@ -1974,7 +1964,7 @@ function DraftsPanel({ onCancel }) {
             <div>
               <div style={{ ...font, fontWeight: 700, fontSize: 13 }}>{d.name}</div>
               <div style={{ ...font, fontSize: 11.5, color: C.muted, marginTop: 2 }}>
-                {d.oemNumber}{d.missing.filter((m) => m !== 'dimensions').length > 0 && <> · {cascadeLabel('缺少：', 'Needs: ')}{d.missing.filter((m) => m !== 'dimensions').map(draftMissingText).join(cascadeLabel('、', ', '))}</>}
+                {d.oemNumber}{d.missing.filter((m) => m !== 'dimensions' && m !== 'position').length > 0 && <> · {cascadeLabel('缺少：', 'Needs: ')}{d.missing.filter((m) => m !== 'dimensions' && m !== 'position').map(draftMissingText).join(cascadeLabel('、', ', '))}</>}
               </div>
             </div>
             <button onClick={() => setEditingId(d.id)} style={{ ...font, padding: '7px 14px', borderRadius: 8, border: 'none', background: C.signal, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>

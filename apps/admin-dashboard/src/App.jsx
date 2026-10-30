@@ -1824,7 +1824,7 @@ function ModerationPage({ onSessionExpired }) {
                   <div>
                     <div style={{ ...body, fontWeight: 700, fontSize: 13.5, color: C.ink }}>{m.nameZh || m.name}</div>
                     <div style={{ ...body, fontSize: 12, color: C.muted, marginTop: 2 }}>
-                      {m.supplierName} · {m.category} · {m.part} · {m.position} · OEM {m.oemNumber} · submitted {new Date(m.submittedAt).toLocaleDateString()}
+                      {m.supplierName} · {m.category} · {m.part} · OEM {m.oemNumber} · submitted {new Date(m.submittedAt).toLocaleDateString()}
                     </div>
                     {m.flags.length > 0 && (
                       <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
@@ -2558,7 +2558,6 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
   const [descriptionAr, setDescriptionAr] = useState("");
   const [category, setCategory] = useState("");
   const [part, setPart] = useState("");
-  const [position, setPosition] = useState("");
   const [oemNumber, setOemNumber] = useState("");
   const [stockQuantity, setStockQuantity] = useState("");
   const [lowStockThreshold, setLowStockThreshold] = useState("");
@@ -2597,7 +2596,6 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
         setDescriptionAr(detail.descriptionAr || "");
         setCategory(detail.category || "");
         setPart(detail.part || "");
-        setPosition(detail.position || "");
         setOemNumber(detail.oemNumber || "");
         setStockQuantity(String(detail.stockQuantity ?? ""));
         setLowStockThreshold(String(detail.lowStockThreshold ?? ""));
@@ -2735,7 +2733,7 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
       // touched. undefined here correctly means "not being changed,"
       // matching the backend's own already-established convention.
       const payload = {
-        category, part, position, oemNumber: oemNumber || null,
+        category, part, oemNumber: oemNumber || null,      // position: not edited any more (kept as it is)
         stockQuantity: stockQuantity === "" ? undefined : Number(stockQuantity),
         lowStockThreshold: lowStockThreshold === "" ? undefined : Number(lowStockThreshold),
         weightKg: weightKg === "" ? null : Number(weightKg),
@@ -2815,13 +2813,6 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
                 <option value={part}>{part} (no longer in this category)</option>
               )}
               {parts.map((p) => <option key={p.id} value={p.nameEn}>{p.nameEn}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={labelStyle}>Position</label>
-            <select style={inputStyle} value={position} onChange={(e) => setPosition(e.target.value)}>
-              <option value="">Select…</option>
-              {ALLOWED_POSITIONS.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
           <div>
