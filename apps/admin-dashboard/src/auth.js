@@ -366,6 +366,19 @@ export async function downloadVehicleImportTemplate(token) {
   if (!response.ok) throw new Error(`Could not download the template (${response.status})`);
   return response.blob();
 }
+/** The vehicle data as an Excel file: one brand (brandId) or all brands (null). Returns { blob, fileName }. */
+export async function downloadVehicleExport(token, brandId) {
+  const query = brandId ? `?brandId=${encodeURIComponent(brandId)}` : "";
+  const response = await fetch(`${API_BASE_URL}/fitment/export${query}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (!response.ok) {
+    let message = `Could not download the vehicle data (${response.status})`;
+    try { const data = await response.json(); if (data.error) message = data.error; } catch { /* not JSON */ }
+    throw new Error(message);
+  }
+  const match = /filename="([^"]+)"/.exec(response.headers.get("Content-Disposition") || "");
+  return { blob: await response.blob(), fileName: match ? match[1] : "Leap_Vehicles.xlsx" };
+}
 
 export const createEngine = (token, generationId, name) => fitmentMutate("POST", `/fitment/generations/${generationId}/engines`, token, { name });
 export const deleteEngine = (token, id) => fitmentMutate("DELETE", `/fitment/engines/${id}`, token);

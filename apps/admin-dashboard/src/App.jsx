@@ -17,6 +17,7 @@ import FitmentSummary from "./FitmentSummary";
 import FreeShippingSection from "./FreeShippingSection";
 import VersionsPanel from "./VersionsPanel";
 import VehicleImportPanel from "./VehicleImportPanel";
+import VehicleExportPanel from "./VehicleExportPanel";
 import ProductDeleteDialog, { ProductSelectionBar, SelectBox, SelectAllBox, useProductSelection, ProductViewSwitch, ProductReviewDialog, ProductPageDelete } from "./ProductDeleteDialog";
 import CategoryInUseDialog from "./CategoryInUseDialog";
 import CategoriesTabs from "./CategoriesTabs";
@@ -3719,7 +3720,7 @@ function VehicleDataPage({ onSessionExpired }) {
       <TopBar title="Vehicle Data" subtitle="Add a vehicle step by step: Brand, Model, Year, then its Versions, by hand or by importing an Excel sheet. Names in English, Arabic and Chinese. Also the VIN decoder's own data tables" />
       <div style={{ padding: "24px 24px 0" }}>
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-          {[["brands", "Brands"], ["import", "Import from Excel"], ["wmi", "VIN WMI"], ["patterns", "VIN model patterns"]].map(([id, label]) => (
+          {[["brands", "Brands"], ["import", "Import from Excel"], ["export", "Download Excel"], ["wmi", "VIN WMI"], ["patterns", "VIN model patterns"]].map(([id, label]) => (
             <button key={id} onClick={() => setActiveTab(id)} style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: activeTab === id ? C.ink : C.line, color: activeTab === id ? "#fff" : C.muted, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{label}</button>
           ))}
         </div>
@@ -3881,6 +3882,11 @@ function VehicleDataPage({ onSessionExpired }) {
       {activeTab === "import" && (
         <div style={{ padding: "0 24px 24px" }}>
           <VehicleImportPanel onSessionExpired={onSessionExpired} onGoToBrands={() => setActiveTab("brands")} />
+        </div>
+      )}
+      {activeTab === "export" && (
+        <div style={{ padding: "0 24px 24px" }}>
+          <VehicleExportPanel onSessionExpired={onSessionExpired} />
         </div>
       )}
       {activeTab === "wmi" && (

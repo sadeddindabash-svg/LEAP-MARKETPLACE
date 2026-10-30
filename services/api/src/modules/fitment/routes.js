@@ -6,6 +6,7 @@ const { moveItem } = require('../../lib/reorder');
 const multer = require('multer');
 const { MIN_CATALOG_DIMENSION_PX, MAX_FILE_SIZE_BYTES, ALLOWED_MIME_TYPES, inspectImage, saveImage } = require('../uploads/imageRules');
 const { validateVersionFields, optionalName, cleanLine } = require('./vehicleRules');
+const { buildVehicleWorkbook } = require('./vehicleExport');
 
 /**
  * Fitment module — Year/Make/Model/Trim reference data (Phase 1, BUY-010).
@@ -1082,5 +1083,25 @@ router.delete('/versions/:id', requireAuth, requireRole('admin'), requirePageAcc
 
 // The Excel import of vehicle data (preview, commit, template): see ../vehicleImport. It checks the admin and Vehicle Data access itself.
 router.use('/import', require('../vehicleImport/routes'));
+
+// GET /fitment/export?brandId=<id> -- the vehicle data as an Excel file (English, Arabic, Chinese, photo in the cell),
+// one brand, or every brand without brandId. Admin, Vehicle data page.
+router.get('/export', requireAuth, requireRole('admin'), requirePageAccess('vehicleData'), async (req, res, next) => {
+  try {
+    const brandId = typeof req.query.brandId === 'string' && req.query.brandId.trim() ? req.query.brandId.trim() : null;
+    const out = await buildVehicleWorkbook(db, { brandId, baseUrl: `${req.protocol}://${req.get('host')}` });
+    if (!out) return res.status(404).json({ error: 'Brand not found' });
+    await logAdminAction(req, 'vehicle_data_exported', 'brand', brandId || 'all', { rows: out.rowCount });
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${out.fileName}"`,
+      'Content-Length': String(out.buffer.length),
+      'Access-Control-Expose-Headers': 'Content-Disposition',
+    });
+    res.send(Buffer.from(out.buffer));
+  } catch (err) {
+    next(err);
+  }
+});
 
 module.exports = router;
