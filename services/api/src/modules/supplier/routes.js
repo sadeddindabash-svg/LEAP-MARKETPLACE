@@ -698,11 +698,8 @@ router.post('/me/products/bulk-import', requireAuth, requireRole('supplier'), as
         results.push({ index: i, success: false, error: 'oemNumber, itemName, and a positive price are all required' });
         continue;
       }
-      const nameLengthError = validateSupplierName(itemName, 'itemName', supplierNameMinimums(requirements));   // a row outside the rules is not imported
-      if (nameLengthError) {
-        results.push({ index: i, success: false, error: nameLengthError });
-        continue;
-      }
+      // A row with its three cells filled is imported even when its name is outside the name rule: the rule is reported as a warning.
+      const nameWarning = validateSupplierName(itemName, 'itemName', supplierNameMinimums(requirements));
       // The row's photos and video (uploaded by the portal first, as for one product): at most the number Settings asks for.
       const images = Array.isArray(item.images) ? item.images.filter((u) => typeof u === 'string' && u.trim()).map((u) => u.trim()) : [];
       if (images.length > requirements.min_photos) {
@@ -746,7 +743,7 @@ router.post('/me/products/bulk-import', requireAuth, requireRole('supplier'), as
       for (let k = 0; k < images.length; k++) {
         await client.query('INSERT INTO product_images (product_id, url, sort_order) VALUES ($1, $2, $3)', [id, images[k], k]);
       }
-      results.push({ index: i, success: true, productId: id, status, missing });
+      results.push({ index: i, success: true, productId: id, status, missing, nameWarning: nameWarning || null });
     }
     await client.query('COMMIT');
 

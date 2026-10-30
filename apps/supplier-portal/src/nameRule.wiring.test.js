@@ -11,8 +11,12 @@ describe("Product name minimums", () => {
   it("Add product shows the minimum for the name's language", () => {
     expect(app).toContain('data-testid="name-counter"');
   });
-  it("Bulk upload shows a row outside the rule in red and does not count it as ready or draft", () => {
-    expect(app).toContain("if (!supplierNameRule(r.itemName, requirements).ok) return 'name';");
-    expect(app).toContain("names outside the rules (not imported)");
+  it("Bulk upload imports a row whose three cells are filled even outside the name rule, and shows the rule as a warning", () => {
+    expect(app).not.toContain("return 'name';");
+    expect(app).toContain("names outside the length rule (still imported)");
+    expect(app).toContain("data-testid={`bulk-name-warning-${i}`}");
+  });
+  it("the results show Row, OE Number, Name, Price and Status", () => {
+    expect(app).toContain("<Th>{L('名称', 'Name')}</Th><Th align=\"right\">{L('价格 (¥)', 'Price (¥)')}</Th>");
   });
 });

@@ -1473,7 +1473,6 @@ function BulkUploadPanel({ onCancel, onImported }) {
   const videoOk = (r) => !requirements.videoRequired || Boolean(r.video);
   // What the row will become: the server decides in the end (a part without a weight and size also keeps it a draft).
   const rowState = (r) => {
-    if (!supplierNameRule(r.itemName, requirements).ok) return 'name';      // outside the name rule: shown in red, not imported
     if (!r.category || !r.part) return 'choose';
     if (!photosOk(r)) return 'photos';
     if (!videoOk(r)) return 'video';
@@ -1581,8 +1580,8 @@ function BulkUploadPanel({ onCancel, onImported }) {
   const AMBER = ['#8A5A12', '#FDF3E1'];
   const nameRuleText = (r) => {
     const rule = supplierNameRule(r.itemName, requirements);
-    return rule.length > rule.max ? L(`名称过长：最多 ${rule.max} 个字符（现有 ${rule.length}），不会导入`, `Name too long: at most ${rule.max} characters (has ${rule.length}), not imported`)
-      : L(`名称过短：至少 ${rule.min} 个字符（现有 ${rule.length}），不会导入`, `Name too short: at least ${rule.min} characters (has ${rule.length}), not imported`);
+    return rule.length > rule.max ? L(`名称过长：最多 ${rule.max} 个字符（现有 ${rule.length}），仍会导入`, `Name too long: at most ${rule.max} characters (has ${rule.length}), still imported`)
+      : L(`名称过短：至少 ${rule.min} 个字符（现有 ${rule.length}），仍会导入`, `Name too short: at least ${rule.min} characters (has ${rule.length}), still imported`);
   };
   const missingText = (m) => ({ category: L('分类', 'category'), part: L('部件', 'part'), dimensions: L('重量和尺寸', 'weight and size'), photos: L('照片', 'photos'), video: L('视频', 'video'), position: L('位置', 'position') }[m] || m);
 
@@ -1599,15 +1598,18 @@ function BulkUploadPanel({ onCancel, onImported }) {
           </div>
           {drafts > 0 && <div style={{ ...font, fontSize: 12.5, color: C.muted, marginBottom: 14 }}>{L('草稿请前往"待完善"补全缺少的内容。', 'Finish the drafts in My Drafts: each one says what it still needs.')}</div>}
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr><Th>{L('行', 'Row')}</Th><Th>OE Number</Th><Th>{L('状态', 'Status')}</Th></tr></thead>
+            <thead><tr><Th>{L('行', 'Row')}</Th><Th>OE Number</Th><Th>{L('名称', 'Name')}</Th><Th align="right">{L('价格 (¥)', 'Price (¥)')}</Th><Th>{L('状态', 'Status')}</Th></tr></thead>
             <tbody>
               {results.map((r) => (
                 <tr key={r.index}>
                   <Td>{r.index + 1}</Td>
                   <Td>{rows[r.index]?.oemNumber}</Td>
+                  <Td>{rows[r.index]?.itemName}</Td>
+                  <Td align="right">{rows[r.index]?.price ?? '—'}</Td>
                   <Td>{!r.success ? <span style={{ ...font, color: C.red, fontSize: 12 }}>{r.error}</span>
                     : r.status === 'translating' ? chip(L('已提交审核', 'Sent for review'), ...GREEN)
-                    : chip(L(`草稿：缺少 ${(r.missing || []).map(missingText).join('、')}`, `Draft: needs ${(r.missing || []).map(missingText).join(', ')}`), ...AMBER)}</Td>
+                    : chip(L(`草稿：缺少 ${(r.missing || []).map(missingText).join('、')}`, `Draft: needs ${(r.missing || []).map(missingText).join(', ')}`), ...AMBER)}
+                    {r.success && r.nameWarning && <div style={{ ...font, fontSize: 11, color: '#8A5A12', marginTop: 4 }}>{L('名称不符合字数要求', 'Name outside the length rule')}</div>}</Td>
                 </tr>
               ))}
             </tbody>
@@ -1676,9 +1678,9 @@ function BulkUploadPanel({ onCancel, onImported }) {
               {chip(L(`${rows.length} 行`, `${rows.length} rows`), C.ink, '#EEF0F3')}
               {chip(L(`${counts.found || 0} 行已根据名称识别`, `${counts.found || 0} found from the name`), ...GREEN)}
               {(counts.choose || 0) > 0 && chip(L(`${counts.choose} 行需要选择`, `${counts.choose} need a choice`), ...AMBER)}
-              {(counts.name || 0) > 0 && chip(L(`${counts.name} 行名称不符合要求（不会导入）`, `${counts.name} names outside the rules (not imported)`), C.red, '#FBE7E5')}
+              {rows.filter((r) => !supplierNameRule(r.itemName, requirements).ok).length > 0 && chip(L(`${rows.filter((r) => !supplierNameRule(r.itemName, requirements).ok).length} 行名称不符合字数要求（仍会导入）`, `${rows.filter((r) => !supplierNameRule(r.itemName, requirements).ok).length} names outside the length rule (still imported)`), ...AMBER)}
               {chip(L(`${counts.ready || 0} 行可提交审核`, `${counts.ready || 0} ready for review`), ...GREEN)}
-              {rows.length - (counts.ready || 0) - (counts.name || 0) > 0 && chip(L(`${rows.length - (counts.ready || 0) - (counts.name || 0)} 行将成为草稿`, `${rows.length - (counts.ready || 0) - (counts.name || 0)} will be drafts`), ...AMBER)}
+              {rows.length - (counts.ready || 0) > 0 && chip(L(`${rows.length - (counts.ready || 0)} 行将成为草稿`, `${rows.length - (counts.ready || 0)} will be drafts`), ...AMBER)}
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, border: '1.5px dashed #9DB4D6', background: '#F4F8FD', borderRadius: 10, padding: '12px 14px', marginBottom: 12, flexWrap: 'wrap' }}>
@@ -1758,10 +1760,10 @@ function BulkUploadPanel({ onCancel, onImported }) {
                           )}
                         </Td>
                         <Td>
-                          {state === 'name' ? chip(nameRuleText(r), C.red, '#FBE7E5')
-                            : state === 'ready' ? chip(L('可提交审核', 'Ready: goes to review'), ...GREEN)
+                          {state === 'ready' ? chip(L('可提交审核', 'Ready: goes to review'), ...GREEN)
                             : state === 'choose' ? chip(r.match === 'many' ? L(`${r.candidates.length} 个可能：请选择`, `${r.candidates.length} possible: choose`) : L('未识别：请选择', 'Not found: choose'), ...AMBER)
                             : chip(L(`草稿：缺少${missingText(state)}`, `Draft: ${missingText(state)} missing`), ...AMBER)}
+                          {!supplierNameRule(r.itemName, requirements).ok && <div data-testid={`bulk-name-warning-${i}`} style={{ ...font, fontSize: 11, color: '#8A5A12', marginTop: 4, maxWidth: 240 }}>{nameRuleText(r)}</div>}
                           {r.rowError && <div style={{ ...font, fontSize: 11, color: C.red, marginTop: 4, maxWidth: 220 }}>{r.rowError}</div>}
                         </Td>
                       </tr>
