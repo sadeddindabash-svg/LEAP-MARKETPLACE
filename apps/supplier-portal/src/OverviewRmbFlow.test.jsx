@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import LeapSupplierPortalApp from './App';
 
-// The supplier Overview: Payout summary FIRST, one pie chart of how the orders ended up, everything in RMB (¥), and the rest of the page kept in the same order (mocked fetch, real component tree).
+// The supplier Overview: rows of three (Payout summary | Order status breakdown | Orders, then Orders per day | Recent orders | Low-stock products), one pie chart of how the orders ended up, everything in RMB (¥), and the rest of the page kept in the same order (mocked fetch, real component tree).
 const SUPPLIER_USER = { id: 'supplier_dev_seed', email: 'supplier@leap.dev', name: 'Wei Zhang', role: 'supplier', supplierId: 's1' };
 const SUPPLIER_PROFILE = { id: 's1', name: 'Guangzhou AutoParts Co.', country: 'China', contactEmail: 'wei@gz.cn', verificationStatus: 'verified', listingCount: 2, createdAt: '2025-11-02T00:00:00.000Z' };
 const OUTCOMES = { total: 50, succeeded: 31, inProgress: 9, cancelled: 6, returned: 4 };
@@ -34,17 +34,23 @@ beforeEach(() => { localStorage.clear(); });
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('Supplier Overview: the order of the page', () => {
-  it('CRITICAL: Payout summary is at the TOP of the page, then the Total orders tile, then the pie chart, then the sections that were there before, in their old order', async () => {
-    await open(); fireEvent.click(screen.getByRole('button', { name: 'EN' })); const payout = await screen.findByTestId('payout-summary'); const pie = screen.getByTestId('outcomes-pie'); const tile = screen.getAllByText('Total orders')[0];      // the tile (the pie has the same words in its middle)
-    expect(within(pie).queryByText('Total orders')).toBeInTheDocument(); expect(pie.contains(tile)).toBe(false);
-    expect(before(payout, tile)).toBe(true); expect(before(tile, pie)).toBe(true);
-    const titles = ['Revenue trend (last 30 days)', 'Top-selling products', 'Order status breakdown', 'Low-stock products', 'Orders per day (last 7 days)', 'Top products (by units sold)', 'Recent orders'];
-    const els = titles.map((t) => screen.getByText(t)); els.forEach((el, i) => { expect(before(pie, el), titles[i]).toBe(true); if (i > 0) expect(before(els[i - 1], el), `${titles[i - 1]} before ${titles[i]}`).toBe(true); });
-    expect(payout.parentElement.firstElementChild).toBe(payout);      // the very first thing in the page body
+  it('CRITICAL: row 1 is Payout summary, Order status breakdown and the Orders pie; row 2 is Orders per day, Recent orders and Low-stock products; then the tiles and the rest, in their old order', async () => {
+    await open(); fireEvent.click(screen.getByRole('button', { name: 'EN' })); const payout = await screen.findByTestId('payout-summary'); const pie = screen.getByTestId('outcomes-pie');
+    const tile = screen.getAllByText('Total orders').find((el) => !pie.contains(el));      // the tile (the pie has the same words in its middle)
+    expect(tile).toBeTruthy(); expect(within(pie).queryByText('Total orders')).toBeInTheDocument();
+    const row1 = screen.getByTestId('overview-row-1'); const row2 = screen.getByTestId('overview-row-2');
+    const status = screen.getByText('Order status breakdown');
+    [payout, status, pie].forEach((el) => expect(row1.contains(el)).toBe(true));
+    const row2Titles = ['Orders per day (last 7 days)', 'Recent orders', 'Low-stock products'];
+    row2Titles.forEach((t) => expect(row2.contains(screen.getByText(t)), t).toBe(true));
+    const order = [payout, status, pie, ...row2Titles.map((t) => screen.getByText(t)), tile, ...['Revenue trend (last 30 days)', 'Top-selling products', 'Top products (by units sold)'].map((t) => screen.getByText(t))];
+    order.forEach((el, i) => { if (i > 0) expect(before(order[i - 1], el), `item ${i - 1} before item ${i}`).toBe(true); });
+    expect(row1.parentElement.firstElementChild).toBe(row1);      // row 1 is the very first thing in the page body
+    expect(row1.contains(tile)).toBe(false); expect(row2.contains(tile)).toBe(false);
   });
   it('the Total orders tile (50), Orders per day, Top products and Recent orders are all still there', async () => {
     await open(); fireEvent.click(screen.getByRole('button', { name: 'EN' })); await screen.findAllByText('Total orders'); expect(screen.getByText('LP-200900')).toBeInTheDocument(); expect(screen.getByText('Orders per day (last 7 days)')).toBeInTheDocument(); expect(screen.getByText('Top products (by units sold)')).toBeInTheDocument();
-    const tile = screen.getAllByText('Total orders')[0].closest('div').parentElement; expect(screen.getByTestId('outcomes-pie').contains(tile)).toBe(false); expect(tile).toHaveTextContent('50');
+    const pie = screen.getByTestId('outcomes-pie'); const tile = screen.getAllByText('Total orders').find((el) => !pie.contains(el)).closest('div').parentElement; expect(pie.contains(tile)).toBe(false); expect(tile).toHaveTextContent('50');
   });
 });
 describe('Supplier Overview: everything in RMB', () => {
