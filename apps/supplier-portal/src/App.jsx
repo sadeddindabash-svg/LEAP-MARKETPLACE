@@ -28,7 +28,7 @@ import {
   fetchMyMessages, sendMyMessage,
   fetchMyFinance, fetchMyPayoutMethod, updateMyPayoutMethod,
   fetchMyNotifications, fetchUnreadNotificationCount, markNotificationRead, markAllNotificationsRead,
-  bulkImportProducts, fetchMyDrafts, completeDraftProduct,
+  bulkImportProducts, matchBulkItemNames, fetchMyDrafts, completeDraftProduct,
   fetchPartRequestQueue, fetchPartRequestDetail, sendPartRequestQuote,
 } from "./auth";
 import { vehicleSummary } from "./vehicleLabels";
@@ -1343,24 +1343,21 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
   );
 }
 
-const BULK_TEMPLATE_HEADERS = [
-  'OE Number', 'Item Name', 'Price RMB', 'Category', 'Part', 'Position',
-];
+const BULK_TEMPLATE_HEADERS = ['OE Number', 'Item Name', 'Price (RMB)'];
 
-// Real, live-generated .xlsx template (new) -- CONFIRMED SCOPE: only
-// OE Number/Item Name/Price are required; Category/Part/Position/
-// dimensions are optional for a supplier willing to fill in more
-// upfront; there is deliberately NO photo column and NO per-row
-// vehicle columns (the vehicle is picked once for the whole batch) --
-// see services/api/README.md's "Real supplier bulk product import"
-// section for the full confirmed design.
+// The bulk upload template: THREE columns only (OE Number, Item Name, Price in RMB). The category and part class are found from the
+// item name; the vehicle (and its versions) is chosen once for the whole file; photos and video are added row by row after the
+// file is read (they never go in the sheet).
 async function downloadBulkTemplate() {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('Products');
   sheet.addRow(BULK_TEMPLATE_HEADERS);
-  sheet.getRow(1).font = { bold: true };
-  sheet.addRow(['BMW-BD-2018-F20', 'Front Brake Disc', 200, 'Brake System', 'Front Brake Disc', 'Front']);
-  sheet.columns.forEach((col) => { col.width = 16; });
+  const header = sheet.getRow(1);
+  header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  header.eachCell((cell) => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF17365D' } }; });
+  sheet.addRow(['34116792217', '前刹车盘 300mm', 200]);
+  sheet.columns = [{ width: 20 }, { width: 36 }, { width: 14 }];
+  sheet.views = [{ state: 'frozen', ySplit: 1 }];
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const url = URL.createObjectURL(blob);
@@ -1424,23 +1421,55 @@ async function parseBulkUploadFile(file) {
   return items;
 }
 
+// "34116792217-2.jpg" -> { key: "34116792217", n: 2, kind: "image" }; "34116792217.mp4" -> { key, n: 0, kind: "video" }; anything else -> null.
+function bulkMediaFileInfo(fileName) {
+  const m = /^(.*)\.([a-z0-9]+)$/i.exec(String(fileName || ''));
+  if (!m) return null;
+  const ext = m[2].toLowerCase();
+  const kind = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? 'image' : ['mp4', 'webm', 'mov'].includes(ext) ? 'video' : null;
+  if (!kind) return null;
+  const parts = /^(.*?)(?:[-_ ](\d{1,2}))?$/.exec(m[1].trim());
+  return { key: bulkOeKey(parts[1]), n: parts[2] ? Number(parts[2]) : 0, kind };
+}
+const bulkOeKey = (s) => String(s || '').toUpperCase().replace(/[\s\-_.]/g, '');
+
 function BulkUploadPanel({ onCancel, onImported }) {
   const { t, lang } = useLang();
   const b = t.products.bulk;
   const font = useBodyFont();
+  const L = (zh, en) => (lang === 'zh' ? zh : en);
 
   const [step, setStep] = useState('setup'); // 'setup' | 'preview' | 'results'
   const [nameLanguage, setNameLanguage] = useState('zh');
   const [error, setError] = useState(null);
   const [isParsing, setIsParsing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [parsedItems, setParsedItems] = useState([]);
+  const [rows, setRows] = useState([]);          // { oemNumber, itemName, price, category, part, match, images: [url], video: {url}|null, busy, rowError }
+  const [catalog, setCatalog] = useState([]);    // [{ id, nameEn, nameZh, parts: [{ nameEn, nameZh, hasShipping }] }]
+  const [unplaced, setUnplaced] = useState([]);  // file names that matched no row
   const [results, setResults] = useState(null);
+  const [requirements, setRequirements] = useState({ minPhotos: 4, photosRequired: true, videoRequired: true, maxVideoDurationSeconds: 8 });
+  const [versionChoice, setVersionChoice] = useState({ mode: 'all', ids: [] });
 
-  // The vehicle picker (Brand, then Model, then Year): the same one as the single-product form.
+  // The vehicle (Brand, Model, Year, then its versions): the same as the single-product form; it applies to every row.
   const cascade = useVehicleCascade({ onError: setError });
   const { selectedGenerationId, selectedYear } = cascade;
+  useEffect(() => { fetchProductRequirements().then(setRequirements).catch(() => {}); }, []);
 
+  const updateRow = (i, patch) => setRows((prev) => prev.map((r, k) => (k === i ? { ...r, ...(typeof patch === 'function' ? patch(r) : patch) } : r)));
+  const catName = (c) => (lang === 'zh' ? c.nameZh || c.nameEn : c.nameEn);
+  const partsOf = (categoryId) => (catalog.find((c) => c.id === categoryId) || { parts: [] }).parts;
+  const partInfo = (r) => partsOf(r.category).find((p) => p.nameEn === r.part) || null;
+  const photosOk = (r) => (requirements.photosRequired ? r.images.length === requirements.minPhotos : true);
+  const videoOk = (r) => !requirements.videoRequired || Boolean(r.video);
+  // What the row will become: the server decides in the end (a part without a weight and size also keeps it a draft).
+  const rowState = (r) => {
+    if (!r.category || !r.part) return 'choose';
+    if (!photosOk(r)) return 'photos';
+    if (!videoOk(r)) return 'video';
+    if (!partInfo(r)?.hasShipping) return 'dimensions';
+    return 'ready';
+  };
 
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
@@ -1451,84 +1480,147 @@ function BulkUploadPanel({ onCancel, onImported }) {
     try {
       const items = await parseBulkUploadFile(file);
       if (items.length === 0) {
-        setError(lang === 'zh' ? '未能在此文件中识别出任何商品行。' : "Couldn't recognize any product rows in this file.");
-      } else {
-        setParsedItems(items);
-        setStep('preview');
+        setError(L('未能在此文件中识别出任何商品行。', "Couldn't recognize any product rows in this file."));
+        return;
       }
+      let found = { catalog: [], results: [] };
+      try { found = await matchBulkItemNames(getStoredToken(), items.map((it) => it.itemName)); }
+      catch (err) { if (err instanceof SessionExpiredError) throw err; setError(L('无法根据名称识别分类，请逐行选择。', 'The category could not be found from the names; choose it on each row.')); }
+      setCatalog(found.catalog || []);
+      setRows(items.map((it, i) => {
+        const m = (found.results || [])[i] || { state: 'none' };
+        return { oemNumber: it.oemNumber, itemName: it.itemName, price: it.price, category: m.category || '', part: m.part || '', match: m.state || 'none', candidates: m.candidates || [], images: [], video: null, busy: 0, rowError: null };
+      }));
+      setUnplaced([]);
+      setStep('preview');
     } catch (err) {
-      setError(lang === 'zh' ? '无法读取此文件，请确认它是有效的 .xlsx 文件。' : "Couldn't read this file — make sure it's a valid .xlsx file.");
+      setError(L('无法读取此文件，请确认它是有效的 .xlsx 文件。', "Couldn't read this file — make sure it's a valid .xlsx file."));
     } finally {
       setIsParsing(false);
     }
   };
 
-  const handleSubmitImport = async () => {
-    if (!selectedGenerationId || !selectedYear) {
-      setError(lang === 'zh' ? '请先选择适配车型' : 'Choose the vehicle this batch is for first.');
-      return;
+  // One photo or one video for one row (the same checks as for one product: the server checks the photo; the video's length is checked here first).
+  const uploadToRow = async (i, file, kind) => {
+    updateRow(i, (r) => ({ busy: r.busy + 1, rowError: null }));
+    try {
+      if (kind === 'video') {
+        const seconds = await getVideoDurationClientSide(file);
+        if (seconds > requirements.maxVideoDurationSeconds) throw new Error(L(`视频过长（${seconds.toFixed(1)} 秒），最长 ${requirements.maxVideoDurationSeconds} 秒`, `Video too long (${seconds.toFixed(1)}s), max ${requirements.maxVideoDurationSeconds}s`));
+        const result = await uploadProductVideo(getStoredToken(), file);
+        updateRow(i, { video: result });
+      } else {
+        const result = await uploadProductImage(getStoredToken(), file);
+        updateRow(i, (r) => ({ images: r.images.length < requirements.minPhotos ? [...r.images, result.url] : r.images }));
+      }
+    } catch (err) {
+      updateRow(i, { rowError: `${file.name}: ${err.message}` });
+    } finally {
+      updateRow(i, (r) => ({ busy: r.busy - 1 }));
     }
+  };
+  const handleRowFiles = async (i, e, kind) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    for (const f of files) await uploadToRow(i, f, kind);   // one at a time, in order
+  };
+
+  // Many files at once, each to the row of its OE number ("34116792217-1.jpg", "34116792217.mp4").
+  const handleBulkMedia = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    const byKey = new Map(rows.map((r, i) => [bulkOeKey(r.oemNumber), i]));
+    const jobs = [];
+    const notPlaced = [];
+    for (const f of files) {
+      const info = bulkMediaFileInfo(f.name);
+      const i = info ? byKey.get(info.key) : undefined;
+      if (i === undefined) notPlaced.push(f.name); else jobs.push({ i, f, info });
+    }
+    setUnplaced(notPlaced);
+    jobs.sort((x, y) => x.i - y.i || x.info.n - y.info.n);
+    for (const j of jobs) await uploadToRow(j.i, j.f, j.info.kind);
+  };
+
+  const handleSubmitImport = async () => {
+    if (!selectedGenerationId || !selectedYear) { setError(L('请先选择适配车型', 'Choose the vehicle this batch is for first.')); return; }
+    if (versionChoice.mode === 'some' && versionChoice.ids.length === 0) { setError(L('请至少选择一个版本，或选择"所有版本"', 'Tick at least one version, or choose "All versions".')); return; }
     setIsSubmitting(true);
     setError(null);
     try {
+      const fitment = { generationId: selectedGenerationId, year: Number(selectedYear), ...(versionChoice.mode === 'some' ? { versionIds: versionChoice.ids } : {}) };
       const data = await bulkImportProducts(getStoredToken(), {
-        fitment: { generationId: selectedGenerationId, year: Number(selectedYear) },
+        fitment,
         nameLanguage,
-        items: parsedItems,
+        items: rows.map((r) => ({ oemNumber: r.oemNumber, itemName: r.itemName, price: r.price, category: r.category || undefined, part: r.part || undefined, images: r.images, videoUrl: r.video ? r.video.url : null })),
       });
       setResults(data.results);
       setStep('results');
       onImported?.();
     } catch (err) {
+      if (err instanceof SessionExpiredError) { setError(err.message); return; }
       setError(err.message);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const cascadeLabel = (zh, en) => (lang === 'zh' ? zh : en);
+  const closeButton = <button onClick={onCancel} aria-label={L('关闭', 'Close')} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={17} color={C.muted} /></button>;
+  const chip = (text, color, bg) => <span style={{ ...font, fontSize: 11.5, fontWeight: 700, color, background: bg, borderRadius: 6, padding: '3px 8px', whiteSpace: 'nowrap' }}>{text}</span>;
+  const GREEN = ['#127A4B', '#E6F5EE'];
+  const AMBER = ['#8A5A12', '#FDF3E1'];
+  const missingText = (m) => ({ category: L('分类', 'category'), part: L('部件', 'part'), dimensions: L('重量和尺寸', 'weight and size'), photos: L('照片', 'photos'), video: L('视频', 'video'), position: L('位置', 'position') }[m] || m);
 
   if (step === 'results') {
-    const successCount = results.filter((r) => r.success).length;
-    const failCount = results.length - successCount;
+    const ok = results.filter((r) => r.success);
+    const review = ok.filter((r) => r.status === 'translating').length;
+    const drafts = ok.length - review;
+    const failed = results.length - ok.length;
     return (
-      <Card title={b.title} action={<button onClick={onCancel} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={17} color={C.muted} /></button>}>
+      <Card title={b.title} action={closeButton}>
         <div style={{ padding: 20 }}>
-          <div style={{ ...font, fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 4 }}>
-            {cascadeLabel(`导入完成：${successCount} 成功`, `Import complete: ${successCount} succeeded`)}{failCount > 0 && cascadeLabel(`，${failCount} 失败`, `, ${failCount} failed`)}
+          <div data-testid="bulk-results-summary" style={{ ...font, fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 6 }}>
+            {L(`导入完成：${review} 件已提交审核，${drafts} 件为草稿`, `Import complete: ${review} sent for review, ${drafts} saved as drafts`)}{failed > 0 && L(`，${failed} 件失败`, `, ${failed} failed`)}
           </div>
-          <div style={{ ...font, fontSize: 12.5, color: C.muted, marginBottom: 16 }}>
-            {cascadeLabel('成功导入的商品仍需添加照片才能提交审核，请前往"待完善"查看。', 'Successfully imported products still need photos before they can be submitted for review — see My Drafts.')}
-          </div>
+          {drafts > 0 && <div style={{ ...font, fontSize: 12.5, color: C.muted, marginBottom: 14 }}>{L('草稿请前往"待完善"补全缺少的内容。', 'Finish the drafts in My Drafts: each one says what it still needs.')}</div>}
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr><Th>{cascadeLabel('行', 'Row')}</Th><Th>{cascadeLabel('状态', 'Status')}</Th></tr></thead>
+            <thead><tr><Th>{L('行', 'Row')}</Th><Th>OE Number</Th><Th>{L('状态', 'Status')}</Th></tr></thead>
             <tbody>
               {results.map((r) => (
                 <tr key={r.index}>
                   <Td>{r.index + 1}</Td>
-                  <Td>{r.success ? <Badge label={cascadeLabel('成功', 'Success')} statusKey="active" /> : <span style={{ ...font, color: C.red, fontSize: 12 }}>{r.error}</span>}</Td>
+                  <Td>{rows[r.index]?.oemNumber}</Td>
+                  <Td>{!r.success ? <span style={{ ...font, color: C.red, fontSize: 12 }}>{r.error}</span>
+                    : r.status === 'translating' ? chip(L('已提交审核', 'Sent for review'), ...GREEN)
+                    : chip(L(`草稿：缺少 ${(r.missing || []).map(missingText).join('、')}`, `Draft: needs ${(r.missing || []).map(missingText).join(', ')}`), ...AMBER)}</Td>
                 </tr>
               ))}
             </tbody>
           </table>
           <button onClick={onCancel} style={{ ...font, marginTop: 16, padding: '9px 16px', borderRadius: 8, border: 'none', background: C.signal, color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
-            {cascadeLabel('完成', 'Done')}
+            {L('完成', 'Done')}
           </button>
         </div>
       </Card>
     );
   }
 
+  const selectStyle = { ...font, width: '100%', border: `1px solid ${C.line}`, borderRadius: 6, padding: '6px 8px', fontSize: 12, background: '#fff', boxSizing: 'border-box' };
+  const box = { border: `1px solid ${C.line}`, borderRadius: 12, padding: 18, marginBottom: 16 };
+  const slot = { width: 38, height: 38, borderRadius: 6, border: `1.5px dashed ${C.line}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: C.muted, cursor: 'pointer', flex: 'none' };
+  const busyAny = rows.some((r) => r.busy > 0);
+  const counts = rows.reduce((acc, r) => { const s = rowState(r); acc[s] = (acc[s] || 0) + 1; acc[r.match] = (acc[r.match] || 0) + 1; return acc; }, {});
+
   return (
-    <Card title={b.title} action={<button onClick={onCancel} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={17} color={C.muted} /></button>}>
+    <Card title={b.title} action={closeButton}>
       <div style={{ padding: 20 }}>
-        {error && <div style={{ ...font, fontSize: 12, color: C.red, background: '#FBE7E5', borderRadius: 8, padding: 10, marginBottom: 14 }}>{error}</div>}
+        {error && <div role="alert" style={{ ...font, fontSize: 12, color: C.red, background: '#FBE7E5', borderRadius: 8, padding: 10, marginBottom: 14 }}>{error}</div>}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 14, background: C.canvas, borderRadius: 10, marginBottom: 16 }}>
           <FileSpreadsheet size={22} color={C.torque} />
           <div style={{ flex: 1 }}>
-            <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink }}>{b.templateTitle}</div>
-            <div style={{ ...font, fontSize: 11.5, color: C.muted }}>{b.templateSub}</div>
+            <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink }}>{L('Excel 模板：3 列', 'Excel template: 3 columns')}</div>
+            <div style={{ ...font, fontSize: 11.5, color: C.muted }}>{L('OE 编号 · 商品名称 · 价格（人民币）。分类和部件类型将根据商品名称自动识别。', 'OE Number · Item Name · Price (RMB). The category and part class are found from the item name.')}</div>
           </div>
           <button onClick={downloadBulkTemplate} style={{ ...font, display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: `1px solid ${C.line}`, background: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
             <Download size={13} /> {b.download}
@@ -1537,62 +1629,142 @@ function BulkUploadPanel({ onCancel, onImported }) {
 
         {step === 'setup' && (
           <>
-            <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 10 }}>
-              {cascadeLabel('这批商品适配的车型', 'Vehicle this batch is for')}
+            <div style={box}>
+              <div style={{ ...font, fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 14 }}>{L('这批商品适配的车型', 'Vehicle this batch is for')}</div>
+              <VehiclePicker cascade={cascade} idPrefix="bulk">
+                <VersionsStep generationId={selectedGenerationId} year={selectedYear} value={versionChoice} onChange={setVersionChoice} />
+              </VehiclePicker>
             </div>
-            <div style={{ marginBottom: 16 }}>
-                <VehiclePicker cascade={cascade} compact idPrefix="bulk" />
-              </div>
 
-            <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 8 }}>
-              {cascadeLabel('商品名称语言', 'Item name language')}
-            </div>
-            <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16, flexWrap: 'wrap' }}>
+              <span style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink }}>{L('商品名称语言', 'Item name language')}</span>
               <label style={{ ...font, display: 'flex', alignItems: 'center', gap: 5, fontSize: 13 }}>
-                <input type="radio" checked={nameLanguage === 'zh'} onChange={() => setNameLanguage('zh')} /> {cascadeLabel('中文', 'Chinese')}
+                <input type="radio" checked={nameLanguage === 'zh'} onChange={() => setNameLanguage('zh')} /> {L('中文', 'Chinese')}
               </label>
               <label style={{ ...font, display: 'flex', alignItems: 'center', gap: 5, fontSize: 13 }}>
-                <input type="radio" checked={nameLanguage === 'en'} onChange={() => setNameLanguage('en')} /> {cascadeLabel('英文', 'English')}
+                <input type="radio" checked={nameLanguage === 'en'} onChange={() => setNameLanguage('en')} /> {L('英文', 'English')}
               </label>
             </div>
 
             <label style={{ display: 'block', border: `1.5px dashed ${C.line}`, borderRadius: 10, padding: 28, textAlign: 'center', color: C.muted, cursor: selectedGenerationId && selectedYear ? 'pointer' : 'default', opacity: selectedGenerationId && selectedYear ? 1 : 0.5 }}>
               <Upload size={22} style={{ marginBottom: 8 }} />
-              <div style={{ ...font, fontSize: 12.5 }}>{isParsing ? cascadeLabel('正在读取文件…', 'Reading file…') : b.dropHint}</div>
+              <div style={{ ...font, fontSize: 12.5 }}>{isParsing ? L('正在读取文件…', 'Reading file…') : b.dropHint}</div>
               <input type="file" accept=".xlsx" style={{ display: 'none' }} onChange={handleFileSelect} disabled={!selectedGenerationId || !selectedYear || isParsing} />
             </label>
           </>
         )}
 
         {step === 'preview' && (
-          <>
-            <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 10 }}>
-              {cascadeLabel(`已识别 ${parsedItems.length} 行`, `${parsedItems.length} rows recognized`)}
+          <div style={box}>
+            <div style={{ ...font, fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 10 }}>{L('导入前请检查每一行', 'Check the rows before importing')}</div>
+            <div data-testid="bulk-counts" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+              {chip(L(`${rows.length} 行`, `${rows.length} rows`), C.ink, '#EEF0F3')}
+              {chip(L(`${counts.found || 0} 行已根据名称识别`, `${counts.found || 0} found from the name`), ...GREEN)}
+              {(counts.choose || 0) > 0 && chip(L(`${counts.choose} 行需要选择`, `${counts.choose} need a choice`), ...AMBER)}
+              {chip(L(`${counts.ready || 0} 行可提交审核`, `${counts.ready || 0} ready for review`), ...GREEN)}
+              {rows.length - (counts.ready || 0) > 0 && chip(L(`${rows.length - (counts.ready || 0)} 行将成为草稿`, `${rows.length - (counts.ready || 0)} will be drafts`), ...AMBER)}
             </div>
-            <div style={{ maxHeight: 280, overflowY: 'auto', marginBottom: 16 }}>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, border: '1.5px dashed #9DB4D6', background: '#F4F8FD', borderRadius: 10, padding: '12px 14px', marginBottom: 12, flexWrap: 'wrap' }}>
+              <ImagePlus size={22} color={C.torque} />
+              <div style={{ flex: '1 1 300px' }}>
+                <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink }}>{L('一次为多行添加照片和视频', 'Add photos and videos for many rows at once')}</div>
+                <div style={{ ...font, fontSize: 11.5, color: C.muted }}>{L('按 OE 编号命名文件：34116792217-1.jpg、34116792217-2.jpg、34116792217.mp4。每个文件会放到对应的行。', 'Name each file by its OE number: 34116792217-1.jpg, 34116792217-2.jpg, 34116792217.mp4. Each file goes to its row.')}</div>
+              </div>
+              <label style={{ ...font, padding: '8px 14px', borderRadius: 8, border: '1px solid #9DB4D6', background: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+                {L('选择文件', 'Choose files')}
+                <input type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" style={{ display: 'none' }} onChange={handleBulkMedia} data-testid="bulk-media-input" />
+              </label>
+            </div>
+            {unplaced.length > 0 && (
+              <div data-testid="bulk-unplaced" style={{ ...font, fontSize: 12, color: '#8A5A12', background: '#FDF3E1', borderRadius: 8, padding: 10, marginBottom: 12 }}>
+                {L('这些文件没有对应的 OE 编号，请在对应行手动添加：', 'These files match no OE number; add them on their row by hand: ')}{unplaced.join(', ')}
+              </div>
+            )}
+
+            <div style={{ overflowX: 'auto', maxHeight: 520, overflowY: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead><tr><Th>OE Number</Th><Th>Item Name</Th><Th align="right">Price</Th><Th>Category</Th></tr></thead>
+                <thead><tr>
+                  <Th>OE Number</Th><Th>{L('商品名称', 'Item Name')}</Th><Th align="right">{L('价格 (¥)', 'Price (¥)')}</Th>
+                  <Th>{L('分类', 'Category')}</Th><Th>{L('部件类型', 'Part class')}</Th>
+                  <Th>{L(`照片（${requirements.minPhotos}${requirements.photosRequired ? '，必填' : '，选填'}）`, `Photos (${requirements.minPhotos}, ${requirements.photosRequired ? 'required' : 'optional'})`)}</Th>
+                  <Th>{L(`视频（${requirements.videoRequired ? '必填' : '选填'}）`, `Video (${requirements.videoRequired ? 'required' : 'optional'})`)}</Th>
+                  <Th></Th>
+                </tr></thead>
                 <tbody>
-                  {parsedItems.map((item, i) => (
-                    <tr key={i}>
-                      <Td>{item.oemNumber || <span style={{ color: C.red }}>{cascadeLabel('缺失', 'missing')}</span>}</Td>
-                      <Td>{item.itemName || <span style={{ color: C.red }}>{cascadeLabel('缺失', 'missing')}</span>}</Td>
-                      <Td align="right">{item.price ?? <span style={{ color: C.red }}>{cascadeLabel('缺失', 'missing')}</span>}</Td>
-                      <Td style={{ color: C.muted }}>{item.category || '—'}</Td>
-                    </tr>
-                  ))}
+                  {rows.map((r, i) => {
+                    const state = rowState(r);
+                    const needsChoice = !r.category || !r.part;
+                    const warn = needsChoice ? { border: '1.5px solid #B26A00' } : {};
+                    return (
+                      <tr key={i} data-testid={`bulk-row-${i}`}>
+                        <Td>{r.oemNumber || <span style={{ color: C.red }}>{L('缺失', 'missing')}</span>}</Td>
+                        <Td>{r.itemName || <span style={{ color: C.red }}>{L('缺失', 'missing')}</span>}</Td>
+                        <Td align="right">{r.price ?? <span style={{ color: C.red }}>{L('缺失', 'missing')}</span>}</Td>
+                        <Td style={{ minWidth: 130 }}>
+                          <select aria-label={L(`第 ${i + 1} 行分类`, `Category of row ${i + 1}`)} style={{ ...selectStyle, ...warn }} value={r.category} onChange={(e) => updateRow(i, { category: e.target.value, part: '', match: 'chosen' })}>
+                            <option value="">{L('请选择…', 'Choose…')}</option>
+                            {catalog.map((c) => <option key={c.id} value={c.id}>{catName(c)}</option>)}
+                          </select>
+                        </Td>
+                        <Td style={{ minWidth: 160 }}>
+                          <select aria-label={L(`第 ${i + 1} 行部件类型`, `Part class of row ${i + 1}`)} style={{ ...selectStyle, ...warn }} value={r.part} onChange={(e) => updateRow(i, { part: e.target.value, match: 'chosen' })} disabled={!r.category}>
+                            <option value="">{L('请选择…', 'Choose…')}</option>
+                            {partsOf(r.category).map((p) => <option key={p.nameEn} value={p.nameEn}>{lang === 'zh' ? p.nameZh || p.nameEn : p.nameEn}</option>)}
+                          </select>
+                        </Td>
+                        <Td>
+                          <div style={{ display: 'flex', gap: 5 }}>
+                            {Array.from({ length: requirements.minPhotos }, (_, k) => k).map((k) => (r.images[k] ? (
+                              <div key={k} style={{ position: 'relative', width: 38, height: 38, flex: 'none' }}>
+                                <img src={`${API_BASE_URL}${r.images[k]}`} alt="" style={{ width: 38, height: 38, objectFit: 'cover', borderRadius: 6, border: `1px solid ${C.line}` }} />
+                                <button aria-label={L('删除照片', 'Remove photo')} onClick={() => updateRow(i, (row) => ({ images: row.images.filter((_, x) => x !== k) }))} style={{ position: 'absolute', top: -6, right: -6, width: 16, height: 16, borderRadius: '50%', border: 'none', background: C.red, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}><X size={10} /></button>
+                              </div>
+                            ) : (
+                              <label key={k} style={slot} aria-label={L(`第 ${i + 1} 行添加照片`, `Add a photo to row ${i + 1}`)}>
+                                {r.busy > 0 && k === r.images.length ? <span style={{ fontSize: 10 }}>…</span> : <Plus size={14} />}
+                                <input type="file" multiple accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={(e) => handleRowFiles(i, e, 'image')} />
+                              </label>
+                            )))}
+                          </div>
+                        </Td>
+                        <Td>
+                          {r.video ? (
+                            <div style={{ position: 'relative', width: 52, height: 38 }}>
+                              <div style={{ width: 52, height: 38, borderRadius: 6, background: '#C9D6E8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Video size={14} color={C.ink} /></div>
+                              <button aria-label={L('删除视频', 'Remove video')} onClick={() => updateRow(i, { video: null })} style={{ position: 'absolute', top: -6, right: -6, width: 16, height: 16, borderRadius: '50%', border: 'none', background: C.red, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}><X size={10} /></button>
+                            </div>
+                          ) : (
+                            <label style={{ ...slot, width: 52 }} aria-label={L(`第 ${i + 1} 行添加视频`, `Add a video to row ${i + 1}`)}>
+                              <Video size={14} />
+                              <input type="file" accept="video/mp4,video/webm,video/quicktime" style={{ display: 'none' }} onChange={(e) => handleRowFiles(i, e, 'video')} />
+                            </label>
+                          )}
+                        </Td>
+                        <Td>
+                          {state === 'ready' ? chip(L('可提交审核', 'Ready: goes to review'), ...GREEN)
+                            : state === 'choose' ? chip(r.match === 'many' ? L(`${r.candidates.length} 个可能：请选择`, `${r.candidates.length} possible: choose`) : L('未识别：请选择', 'Not found: choose'), ...AMBER)
+                            : chip(L(`草稿：缺少${missingText(state)}`, `Draft: ${missingText(state)} missing`), ...AMBER)}
+                          {r.rowError && <div style={{ ...font, fontSize: 11, color: C.red, marginTop: 4, maxWidth: 220 }}>{r.rowError}</div>}
+                        </Td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ ...font, fontSize: 11.5, color: C.muted, marginTop: 10 }}>
+              {L('每一行都可以在这里修改。信息完整的行将直接提交审核；缺少内容的行会保存为草稿，并在"待完善"中提示补全。', 'Every row can be changed here. A row with everything goes straight to review; a row still missing something is imported as a draft with what it has, and asks for the rest in My Drafts.')}
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
               <button onClick={() => setStep('setup')} style={{ ...font, padding: '9px 16px', borderRadius: 8, border: `1px solid ${C.line}`, background: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
-                {cascadeLabel('返回', 'Back')}
+                {L('返回', 'Back')}
               </button>
-              <button disabled={isSubmitting} onClick={handleSubmitImport} style={{ ...font, padding: '9px 16px', borderRadius: 8, border: 'none', background: isSubmitting ? '#D1D5DB' : C.signal, color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? 'default' : 'pointer' }}>
-                {isSubmitting ? cascadeLabel('导入中…', 'Importing…') : cascadeLabel(`导入 ${parsedItems.length} 项`, `Import ${parsedItems.length} items`)}
+              <button disabled={isSubmitting || busyAny} onClick={handleSubmitImport} style={{ ...font, padding: '9px 16px', borderRadius: 8, border: 'none', background: isSubmitting || busyAny ? '#D1D5DB' : C.signal, color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: isSubmitting || busyAny ? 'not-allowed' : 'pointer' }}>
+                {isSubmitting ? L('导入中…', 'Importing…') : busyAny ? L('正在上传…', 'Uploading…') : L(`导入 ${rows.length} 项`, `Import ${rows.length} items`)}
               </button>
             </div>
-          </>
+          </div>
         )}
       </div>
     </Card>

@@ -7,6 +7,7 @@ const { requireAuth, requireRole, requirePageAccess } = require('../auth/middlew
 const { createNotification } = require('../notifications/helpers');
 const { logAdminAction } = require('../audit/helpers');
 const { validateFitment, tryMatchCategoryAndPart, tryMatchPosition, tryMatchDimensions, validateCompleteFields } = require('./productValidation');
+const { matchName, loadCatalog, positionFromPartName } = require('./bulkMatch');
 const { withEffectiveShipping, getPartShipping } = require('../shared/partShipping');
 const { getSupplierAnalytics } = require('../supplierAnalytics/queries');
 const { getSupplierFinance } = require('../supplierFinance/queries');
@@ -635,6 +636,21 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
 // accidental upload.
 const MAX_BULK_IMPORT_ITEMS = 1000;
 
+// POST /me/products/bulk-import/match { names: [itemName, ...] } -- before importing, each row's Category and Part class found from its
+// item name (see bulkMatch.js), and the whole catalog for the portal's dropdowns. Reads only; saves nothing.
+router.post('/me/products/bulk-import/match', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    const { names } = req.body || {};
+    if (!Array.isArray(names) || names.length > MAX_BULK_IMPORT_ITEMS) {
+      return res.status(400).json({ error: `names must be an array of at most ${MAX_BULK_IMPORT_ITEMS} item names` });
+    }
+    const { catalog, flat } = await loadCatalog(db);
+    res.json({ catalog, results: names.map((name) => matchName(name, flat)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /me/products/bulk-import — real, best-effort per item (same
 // pattern as the admin dashboard's bulk moderation): one item missing
 // its real required OE Number/Item Name/Price shouldn't cost the rest
@@ -663,6 +679,13 @@ router.post('/me/products/bulk-import', requireAuth, requireRole('supplier'), as
       return res.status(400).json({ error: fitmentResult.error });
     }
     const { generationId, year, engineId, transmissionId } = fitment;
+    // Optional: only some versions of this car, for every row of the batch (none = every version, as for one product).
+    const versionChoice = await resolveVersionChoice(client, generationId, fitment.versionIds);
+    if (versionChoice.error) {
+      return res.status(400).json({ error: versionChoice.error });
+    }
+    const { rows: reqRows } = await client.query('SELECT * FROM product_requirements WHERE id = 1');
+    const requirements = reqRows[0] || { min_photos: 4, photos_required: true, video_required: true };
 
     const results = [];
     await client.query('BEGIN');
@@ -678,30 +701,50 @@ router.post('/me/products/bulk-import', requireAuth, requireRole('supplier'), as
         results.push({ index: i, success: false, error: nameLengthError });
         continue;
       }
+      // The row's photos and video (uploaded by the portal first, as for one product): at most the number Settings asks for.
+      const images = Array.isArray(item.images) ? item.images.filter((u) => typeof u === 'string' && u.trim()).map((u) => u.trim()) : [];
+      if (images.length > requirements.min_photos) {
+        results.push({ index: i, success: false, error: `At most ${requirements.min_photos} product photos (got ${images.length})` });
+        continue;
+      }
+      const videoUrl = typeof item.videoUrl === 'string' && item.videoUrl.trim() ? item.videoUrl.trim() : null;
 
       const { category, part } = await tryMatchCategoryAndPart(item.category, item.part, client);
-      const position = tryMatchPosition(item.position);
+      // Position: the row's own, else what the part's name says ("Front Brake Disc" -> Front); optional, as for one product.
+      const position = tryMatchPosition(item.position) || positionFromPartName(part);
       // A row whose part has a weight and size set by the admin (migration 104) keeps none of its own; the part's are used.
       const rowPartShipping = category && part ? await getPartShipping(category, part, client) : null;
       const dims = rowPartShipping ? { weightKg: null, lengthCm: null, widthCm: null, heightCm: null } : tryMatchDimensions(item);
+
+      // A row with everything one product needs goes straight to review ('translating'); any other row is a draft that keeps what it has.
+      const check = validateCompleteFields({ category, part, position: position || 'Universal', ...dims, images, videoUrl, shippingFromPart: Boolean(rowPartShipping) }, requirements);
+      const status = check.valid ? 'translating' : 'draft';
+      const missing = [];
+      if (status === 'draft') {
+        if (!category) missing.push('category');
+        if (!part) missing.push('part');
+        if (!rowPartShipping && (dims.weightKg === null || dims.lengthCm === null || dims.widthCm === null || dims.heightCm === null)) missing.push('dimensions');
+        if (requirements.photos_required ? images.length !== requirements.min_photos : false) missing.push('photos');
+        if (requirements.video_required && !videoUrl) missing.push('video');
+      }
 
       const id = `p_${Date.now()}_${i}`;
       await client.query(
         `INSERT INTO products
            (id, supplier_id, name, name_zh, category, part, position, oem_number,
-            price, currency_code, status, weight_kg, length_cm, width_cm, height_cm)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'CNY', 'draft', $10, $11, $12, $13)`,
+            price, currency_code, status, weight_kg, length_cm, width_cm, height_cm, video_url)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'CNY', $10, $11, $12, $13, $14, $15)`,
         [
           id, req.user.supplierId, itemName, nameLanguage === 'zh' ? itemName : null,
-          category, part, position, oemNumber, price,
-          dims.weightKg, dims.lengthCm, dims.widthCm, dims.heightCm,
+          category, part, position, oemNumber, price, status,
+          dims.weightKg, dims.lengthCm, dims.widthCm, dims.heightCm, videoUrl,
         ]
       );
-      await client.query(
-        `INSERT INTO product_fitment_entries (product_id, generation_id, year, engine_id, transmission_id) VALUES ($1, $2, $3, $4, $5)`,
-        [id, generationId, year, engineId || null, transmissionId || null]
-      );
-      results.push({ index: i, success: true, productId: id });
+      await insertFitmentEntry(client, id, { generationId, year, engineId, transmissionId }, versionChoice.ids);
+      for (let k = 0; k < images.length; k++) {
+        await client.query('INSERT INTO product_images (product_id, url, sort_order) VALUES ($1, $2, $3)', [id, images[k], k]);
+      }
+      results.push({ index: i, success: true, productId: id, status, missing });
     }
     await client.query('COMMIT');
 
