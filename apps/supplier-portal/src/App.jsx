@@ -1530,7 +1530,7 @@ function BulkUploadPanel({ onCancel, onImported }) {
           <div data-testid="bulk-results-summary" style={{ ...font, fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 6 }}>
             {L(`导入完成：${review} 件已提交审核，${drafts} 件为草稿`, `Import complete: ${review} sent for review, ${drafts} saved as drafts`)}{updated > 0 && L(`，${updated} 件已更新价格`, `, ${updated} prices updated`)}{skipped > 0 && L(`，${skipped} 件重复已跳过`, `, ${skipped} repeated rows skipped`)}{failed > 0 && L(`，${failed} 件失败`, `, ${failed} failed`)}
           </div>
-          {drafts > 0 && <div style={{ ...font, fontSize: 12.5, color: C.muted, marginBottom: 14 }}>{L('草稿请前往"待完善"补全缺少的内容。', 'Finish the drafts in My Drafts: each one says what it still needs.')}</div>}
+          {drafts > 0 && <div style={{ ...font, fontSize: 12.5, color: C.muted, marginBottom: 14 }}>{L('草稿请前往"我的草稿（未发布）"补全缺少的内容。', 'Finish the drafts in My Drafts (Not published): each one says what it still needs.')}</div>}
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr><Th>{L('行', 'Row')}</Th><Th>OE Number</Th><Th>{L('名称', 'Name')}</Th><Th align="right">{L('价格 (¥)', 'Price (¥)')}</Th><Th>{L('状态', 'Status')}</Th></tr></thead>
             <tbody>
@@ -1712,7 +1712,7 @@ function BulkUploadPanel({ onCancel, onImported }) {
               </table>
             </div>
             <div style={{ ...font, fontSize: 11.5, color: C.muted, marginTop: 10 }}>
-              {L('每一行都可以在这里修改。信息完整的行将直接提交审核；缺少内容的行会保存为草稿，并在"待完善"中提示补全。', 'Every row can be changed here. A row with everything goes straight to review; a row still missing something is imported as a draft with what it has, and asks for the rest in My Drafts.')}
+              {L('每一行都可以在这里修改。信息完整的行将直接提交审核；缺少内容的行会保存为草稿，并在"我的草稿（未发布）"中提示补全。', 'Every row can be changed here. A row with everything goes straight to review; a row still missing something is imported as a draft with what it has, and asks for the rest in My Drafts (Not published).')}
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
               <button onClick={() => setStep('setup')} style={{ ...font, padding: '9px 16px', borderRadius: 8, border: `1px solid ${C.line}`, background: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
@@ -1953,7 +1953,7 @@ function DraftsPanel({ onCancel }) {
   const draftMissingText = (m) => ({ category: cascadeLabel('分类', 'category'), part: cascadeLabel('部件类型', 'classification'), position: cascadeLabel('位置', 'position'), photos: cascadeLabel('照片', 'photos'), video: cascadeLabel('视频', 'video') }[m] || m);
 
   return (
-    <Card title={cascadeLabel('待完善的商品', 'Drafts needing completion')} action={<button onClick={onCancel} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={17} color={C.muted} /></button>}>
+    <Card title={cascadeLabel('我的草稿（未发布）', 'My Drafts (Not published)')} action={<button onClick={onCancel} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={17} color={C.muted} /></button>}>
       <div style={{ padding: 6 }}>
         {loadState === 'loading' && <div style={{ padding: 24, textAlign: 'center', ...font, fontSize: 13, color: C.muted }}>{cascadeLabel('加载中…', 'Loading…')}</div>}
         {loadState === 'ready' && drafts.length === 0 && (
@@ -2217,7 +2217,7 @@ function ProductsPage() {
           <Upload size={13} /> {t.products.bulkUpload}
         </button>
         <button onClick={() => setMode("drafts")} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}>
-          <FileSpreadsheet size={13} /> {lang === "zh" ? "待完善的商品" : "My Drafts"}
+          <FileSpreadsheet size={13} /> {lang === "zh" ? "我的草稿（未发布）" : "My Drafts (Not published)"}
         </button>
         {/* Export: the products shown now (it follows the filter), in the portal's language. */}
         <button

@@ -7,7 +7,7 @@ describe("Products toolbar", () => {
   const bar = app.slice(app.indexOf('data-testid="products-toolbar"'));
   it("the buttons are in this order, left to right", () => {
     const at = (s) => bar.indexOf(s);
-    const order = ["t.products.addProduct", "t.products.bulkUpload", '"My Drafts"', "t.products.export", "t.products.bulkPriceUpdate"].map(at);
+    const order = ["t.products.addProduct", "t.products.bulkUpload", '"My Drafts (Not published)"', "t.products.export", "t.products.bulkPriceUpdate"].map(at);
     order.forEach((i) => expect(i).toBeGreaterThan(-1));
     expect(order.every((v, i) => i === 0 || order[i - 1] < v)).toBe(true);
   });
