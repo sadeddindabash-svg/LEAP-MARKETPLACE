@@ -14,7 +14,7 @@ describe("Bulk upload: 3-column template, vehicle with versions, category from t
   });
   it("the category and part class come from the item name, and every row can change them", () => {
     expect(auth).toContain("/supplier/me/products/bulk-import/match");
-    expect(app).toContain("matchBulkItemNames(getStoredToken(), items.map((it) => it.itemName))");
+    expect(app).toContain("matchBulkItemNames(getStoredToken(), items.map((it) => it.itemName), items.map((it) => it.oemNumber), batchCar)");
     expect(app).toContain("onChange={(e) => updateRow(i, { category: e.target.value, part: '', match: 'chosen' })}");
   });
   it("each row takes the photos and video Settings ask for, also many files at once by OE number", () => {

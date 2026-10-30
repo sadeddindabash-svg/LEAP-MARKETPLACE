@@ -1495,7 +1495,8 @@ function BulkUploadPanel({ onCancel, onImported }) {
         return;
       }
       let found = { catalog: [], results: [] };
-      try { found = await matchBulkItemNames(getStoredToken(), items.map((it) => it.itemName), items.map((it) => it.oemNumber)); }
+      const batchCar = { generationId: selectedGenerationId, year: Number(selectedYear), ...(versionChoice.mode === 'some' ? { versionIds: versionChoice.ids } : {}) };
+      try { found = await matchBulkItemNames(getStoredToken(), items.map((it) => it.itemName), items.map((it) => it.oemNumber), batchCar); }
       catch (err) { if (err instanceof SessionExpiredError) throw err; setError(L('无法根据名称识别分类，请逐行选择。', 'The category could not be found from the names; choose it on each row.')); }
       setCatalog(found.catalog || []);
       // An OE number the supplier already has updates that product's price; the same OE number again in this file is skipped (only its first row counts).
@@ -1691,7 +1692,7 @@ function BulkUploadPanel({ onCancel, onImported }) {
               {(counts.choose || 0) > 0 && chip(L(`${counts.choose} 行需要选择`, `${counts.choose} need a choice`), ...AMBER)}
               {rows.filter((r) => !supplierNameRule(r.itemName, requirements).ok).length > 0 && chip(L(`${rows.filter((r) => !supplierNameRule(r.itemName, requirements).ok).length} 行名称不符合字数要求（仍会导入）`, `${rows.filter((r) => !supplierNameRule(r.itemName, requirements).ok).length} names outside the length rule (still imported)`), ...AMBER)}
               {chip(L(`${counts.ready || 0} 行可提交审核`, `${counts.ready || 0} ready for review`), ...GREEN)}
-              {(counts.update || 0) > 0 && chip(L(`${counts.update} 行已有此 OE 编号（更新价格）`, `${counts.update} already yours (price updated)`), '#1D4E89', '#E5EEF9')}
+              {(counts.update || 0) > 0 && chip(L(`${counts.update} 行此车型已有此 OE 编号（更新价格）`, `${counts.update} already yours for this car (price updated)`), '#1D4E89', '#E5EEF9')}
               {(counts.repeated || 0) > 0 && chip(L(`${counts.repeated} 行在文件中重复（跳过）`, `${counts.repeated} repeated in this file (skipped)`), C.muted, '#EEF0F3')}
               {rows.length - (counts.ready || 0) - (counts.update || 0) - (counts.repeated || 0) > 0 && chip(L(`${rows.length - (counts.ready || 0) - (counts.update || 0) - (counts.repeated || 0)} 行将成为草稿`, `${rows.length - (counts.ready || 0) - (counts.update || 0) - (counts.repeated || 0)} will be drafts`), ...AMBER)}
             </div>
@@ -1774,7 +1775,7 @@ function BulkUploadPanel({ onCancel, onImported }) {
                         </Td>
                         <Td>
                           {state === 'repeated' ? chip(L(`与第 ${r.repeatOf + 1} 行 OE 编号重复：跳过`, `Repeated in this file (row ${r.repeatOf + 1}): skipped`), C.muted, '#EEF0F3')
-                            : state === 'update' ? chip(L('已有此 OE 编号：将更新价格', 'Already yours: price will be updated'), '#1D4E89', '#E5EEF9')
+                            : state === 'update' ? chip(L('此车型已有此 OE 编号：将更新价格', 'Already yours for this car: price will be updated'), '#1D4E89', '#E5EEF9')
                             : state === 'ready' ? chip(L('可提交审核', 'Ready: goes to review'), ...GREEN)
                             : state === 'choose' ? chip(r.match === 'many' ? L(`${r.candidates.length} 个可能：请选择`, `${r.candidates.length} possible: choose`) : L('未识别：请选择', 'Not found: choose'), ...AMBER)
                             : chip(L(`草稿：缺少${missingText(state)}`, `Draft: ${missingText(state)} missing`), ...AMBER)}
