@@ -2320,71 +2320,63 @@ function ProductsPage() {
   return (
     <div>
       <TopBar title={t.products.title} subtitle={loadState === "ready" ? t.products.subtitle(products.length) : "…"} />
-      <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "flex-end", gap: 8 }}>
+      {/* Row 1, left to right: Add product, Bulk upload, My Drafts, Export, Bulk edit. Row 2: the filters, each with its number of products. */}
+      <div data-testid="products-toolbar" style={{ padding: "16px 24px 0", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <button onClick={() => setMode("add")} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}>
+          <Plus size={13} /> {t.products.addProduct}
+        </button>
         <button onClick={() => setMode("bulk")} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}>
           <Upload size={13} /> {t.products.bulkUpload}
         </button>
         <button onClick={() => setMode("drafts")} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}>
           <FileSpreadsheet size={13} /> {lang === "zh" ? "待完善的商品" : "My Drafts"}
         </button>
-        <button onClick={() => setMode("add")} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}>
-          <Plus size={13} /> {t.products.addProduct}
+        {/* Export: the products shown now (it follows the filter), in the portal's language. */}
+        <button
+          disabled={loadState !== "ready" || visibleProducts.length === 0}
+          onClick={() => exportToExcel({
+            filename: `products-${new Date().toISOString().slice(0, 10)}`,
+            sheetName: lang === "zh" ? "商品" : "Products",
+            columns: [
+              { header: t.products.thProduct, key: "name", width: 30 },
+              { header: t.products.thCategory, key: "category", width: 16 },
+              { header: t.products.thPrice, key: "price", width: 14 },
+              { header: t.products.thStock, key: "stock", width: 12 },
+              { header: t.products.thStatus, key: "status", width: 16 },
+            ],
+            rows: visibleProducts.map((p) => ({
+              name: p.name, category: p.category, price: `${Number(p.price).toFixed(2)} ${p.currencyCode}`,
+              stock: p.stockQuantity, status: t.statusProduct[p.status] || p.status,
+            })),
+          })}
+          style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: loadState !== "ready" || visibleProducts.length === 0 ? "default" : "pointer", opacity: loadState !== "ready" || visibleProducts.length === 0 ? 0.5 : 1, fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}
+        >
+          <Download size={13} /> {t.products.export}
+        </button>
+        {/* Bulk edit: always here, active once products are ticked (it says how many). */}
+        <button
+          disabled={selectedIds.size === 0}
+          onClick={() => setShowBulkPriceModal(true)}
+          title={selectedIds.size === 0 ? (lang === "zh" ? "请先勾选商品" : "Tick products first") : undefined}
+          style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: selectedIds.size === 0 ? "default" : "pointer", opacity: selectedIds.size === 0 ? 0.5 : 1, fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}
+        >
+          <Settings size={13} /> {selectedIds.size > 0 ? `${t.products.bulkPriceUpdate} (${selectedIds.size})` : t.products.bulkPriceUpdate}
         </button>
       </div>
       {loadState === "ready" && (
-        <div style={{ padding: "14px 24px 0", display: "flex", gap: 6, alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", gap: 6 }}>
-            {["all", "lowStock"].map((f) => (
-              <button
-                key={f}
-                onClick={() => setStockFilter(f)}
-                style={{
-                  padding: "7px 13px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
-                  border: `1px solid ${stockFilter === f ? C.ink : C.line}`, background: stockFilter === f ? C.ink : "#fff",
-                  color: stockFilter === f ? "#fff" : (f === "lowStock" && lowStockProducts.length > 0 ? C.amber : C.ink),
-                  fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif",
-                }}
-              >{f === "all" ? t.products.filterAll : t.products.filterLowStock(lowStockProducts.length)}</button>
-            ))}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            {selectedIds.size > 0 && (
-              <>
-                <span style={{ fontSize: 12.5, color: C.muted, fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}>
-                  {t.products.bulkPriceSelected(selectedIds.size)}
-                </span>
-                <button
-                  onClick={() => setShowBulkPriceModal(true)}
-                  style={{ padding: "7px 13px", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}
-                >{t.products.bulkPriceUpdate}</button>
-              </>
-            )}
-            {/* Real export (new) -- closes a real gap: this portal had
-                no export capability anywhere before this. Exports
-                whatever's currently visible (respects the active
-                stock filter), not always the full product list. */}
+        <div style={{ padding: "12px 24px 0", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          {["all", "lowStock"].map((f) => (
             <button
-              disabled={visibleProducts.length === 0}
-              onClick={() => exportToExcel({
-                filename: `products-${new Date().toISOString().slice(0, 10)}`,
-                sheetName: lang === "zh" ? "商品" : "Products",
-                columns: [
-                  { header: t.products.thProduct, key: "name", width: 30 },
-                  { header: t.products.thCategory, key: "category", width: 16 },
-                  { header: t.products.thPrice, key: "price", width: 14 },
-                  { header: t.products.thStock, key: "stock", width: 12 },
-                  { header: t.products.thStatus, key: "status", width: 16 },
-                ],
-                rows: visibleProducts.map((p) => ({
-                  name: p.name, category: p.category, price: `${Number(p.price).toFixed(2)} ${p.currencyCode}`,
-                  stock: p.stockQuantity, status: t.statusProduct[p.status] || p.status,
-                })),
-              })}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 13px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: visibleProducts.length === 0 ? "default" : "pointer", opacity: visibleProducts.length === 0 ? 0.5 : 1, fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}
-            >
-              <Download size={13} /> {t.products.export}
-            </button>
-          </div>
+              key={f}
+              onClick={() => setStockFilter(f)}
+              style={{
+                padding: "7px 13px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+                border: `1px solid ${stockFilter === f ? C.ink : C.line}`, background: stockFilter === f ? C.ink : "#fff",
+                color: stockFilter === f ? "#fff" : (f === "lowStock" && lowStockProducts.length > 0 ? C.amber : C.ink),
+                fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif",
+              }}
+            >{f === "all" ? `${t.products.filterAll} (${products.length})` : t.products.filterLowStock(lowStockProducts.length)}</button>
+          ))}
         </div>
       )}
       {successMessage && (
