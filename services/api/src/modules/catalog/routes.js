@@ -1509,6 +1509,10 @@ function toProductRequirementsDto(row) {
     photosRequired: row.photos_required,
     videoRequired: row.video_required,
     maxVideoDurationSeconds: row.max_video_duration_seconds,
+    // the minimum product name length by language (migration 117; all characters count)
+    nameMinEn: row.name_min_en ?? 15,
+    nameMinZh: row.name_min_zh ?? 5,
+    nameMinAr: row.name_min_ar ?? 15,
   };
 }
 
@@ -1523,7 +1527,12 @@ router.get('/product-requirements', async (req, res, next) => {
 
 router.patch('/admin/product-requirements', requireAuth, requireRole('admin'), requirePageAccess('products'), async (req, res, next) => {
   try {
-    const { minPhotos, photosRequired, videoRequired, maxVideoDurationSeconds } = req.body || {};
+    const { minPhotos, photosRequired, videoRequired, maxVideoDurationSeconds, nameMinEn, nameMinZh, nameMinAr } = req.body || {};
+    for (const [field, value] of [['nameMinEn', nameMinEn], ['nameMinZh', nameMinZh], ['nameMinAr', nameMinAr]]) {
+      if (value !== undefined && (!Number.isInteger(value) || value < 1 || value > 100)) {
+        return res.status(400).json({ error: `${field} must be a whole number from 1 to 100` });
+      }
+    }
     if (minPhotos !== undefined && (!Number.isInteger(minPhotos) || minPhotos < 1)) {
       return res.status(400).json({ error: 'minPhotos must be a whole number of at least 1' });
     }
@@ -1536,10 +1545,13 @@ router.patch('/admin/product-requirements', requireAuth, requireRole('admin'), r
          photos_required = COALESCE($2, photos_required),
          video_required = COALESCE($3, video_required),
          max_video_duration_seconds = COALESCE($4, max_video_duration_seconds),
+         name_min_en = COALESCE($5, name_min_en),
+         name_min_zh = COALESCE($6, name_min_zh),
+         name_min_ar = COALESCE($7, name_min_ar),
          updated_at = now()
        WHERE id = 1
        RETURNING *`,
-      [minPhotos ?? null, photosRequired ?? null, videoRequired ?? null, maxVideoDurationSeconds ?? null]
+      [minPhotos ?? null, photosRequired ?? null, videoRequired ?? null, maxVideoDurationSeconds ?? null, nameMinEn ?? null, nameMinZh ?? null, nameMinAr ?? null]
     );
     res.json(toProductRequirementsDto(rows[0]));
   } catch (err) {

@@ -889,6 +889,15 @@ const POSITION_OPTIONS = [
   { id: "Universal", zh: "通用", en: "Universal" },
 ];
 
+// The supplier's product name rule, the same as the server's: the language is found from the name (Chinese characters, else Arabic letters,
+// else English); each language has the admin's minimum (Settings: nameMinEn / nameMinZh / nameMinAr); every character counts; at most 100.
+function supplierNameRule(name, requirements) {
+  const text = String(name || '').trim();
+  const lang = /[㐀-鿿豈-﫿]/.test(text) ? 'zh' : /[؀-ۿݐ-ݿࢠ-ࣿ]/.test(text) ? 'ar' : 'en';
+  const min = { zh: requirements?.nameMinZh ?? 5, ar: requirements?.nameMinAr ?? 15, en: requirements?.nameMinEn ?? 15 }[lang];
+  return { lang, min, max: 100, length: text.length, ok: text.length >= min && text.length <= 100 };
+}
+
 function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = false }) {
   const { t, lang } = useLang();
   const { onSessionExpired } = useSupplier();
@@ -1145,7 +1154,7 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 16, alignContent: "start", minWidth: 0 }}>
               <Field label={cascadeLabel("商品名称（中文）", "Product name (Chinese)")}>
                 <input style={inputStyle} placeholder="例如：前刹车盘 300mm" value={nameZh} onChange={(e) => setNameZh(e.target.value)} maxLength={100} />
-                <div style={{ fontSize: 10.5, color: nameZh.length > 0 && (nameZh.length < 10 || nameZh.length > 100) ? C.red : C.muted, marginTop: 2 }}>{nameZh.length}/100 (min 10)</div>
+                {(() => { const rule = supplierNameRule(nameZh, requirements); return <div data-testid="name-counter" style={{ fontSize: 10.5, color: nameZh.length > 0 && !rule.ok ? C.red : C.muted, marginTop: 2 }}>{rule.length}/100 ({cascadeLabel(`至少 ${rule.min}`, `min ${rule.min}`)}, {cascadeLabel({ zh: "中文", en: "英文", ar: "阿拉伯文" }[rule.lang], { zh: "Chinese", en: "English", ar: "Arabic" }[rule.lang])})</div>; })()}
               </Field>
               <Field label={cascadeLabel("类别", "Category")}>
                 <select style={selectStyle} value={category} onChange={(e) => setCategory(e.target.value)}>
@@ -1464,6 +1473,7 @@ function BulkUploadPanel({ onCancel, onImported }) {
   const videoOk = (r) => !requirements.videoRequired || Boolean(r.video);
   // What the row will become: the server decides in the end (a part without a weight and size also keeps it a draft).
   const rowState = (r) => {
+    if (!supplierNameRule(r.itemName, requirements).ok) return 'name';      // outside the name rule: shown in red, not imported
     if (!r.category || !r.part) return 'choose';
     if (!photosOk(r)) return 'photos';
     if (!videoOk(r)) return 'video';
@@ -1569,6 +1579,11 @@ function BulkUploadPanel({ onCancel, onImported }) {
   const chip = (text, color, bg) => <span style={{ ...font, fontSize: 11.5, fontWeight: 700, color, background: bg, borderRadius: 6, padding: '3px 8px', whiteSpace: 'nowrap' }}>{text}</span>;
   const GREEN = ['#127A4B', '#E6F5EE'];
   const AMBER = ['#8A5A12', '#FDF3E1'];
+  const nameRuleText = (r) => {
+    const rule = supplierNameRule(r.itemName, requirements);
+    return rule.length > rule.max ? L(`名称过长：最多 ${rule.max} 个字符（现有 ${rule.length}），不会导入`, `Name too long: at most ${rule.max} characters (has ${rule.length}), not imported`)
+      : L(`名称过短：至少 ${rule.min} 个字符（现有 ${rule.length}），不会导入`, `Name too short: at least ${rule.min} characters (has ${rule.length}), not imported`);
+  };
   const missingText = (m) => ({ category: L('分类', 'category'), part: L('部件', 'part'), dimensions: L('重量和尺寸', 'weight and size'), photos: L('照片', 'photos'), video: L('视频', 'video'), position: L('位置', 'position') }[m] || m);
 
   if (step === 'results') {
@@ -1661,8 +1676,9 @@ function BulkUploadPanel({ onCancel, onImported }) {
               {chip(L(`${rows.length} 行`, `${rows.length} rows`), C.ink, '#EEF0F3')}
               {chip(L(`${counts.found || 0} 行已根据名称识别`, `${counts.found || 0} found from the name`), ...GREEN)}
               {(counts.choose || 0) > 0 && chip(L(`${counts.choose} 行需要选择`, `${counts.choose} need a choice`), ...AMBER)}
+              {(counts.name || 0) > 0 && chip(L(`${counts.name} 行名称不符合要求（不会导入）`, `${counts.name} names outside the rules (not imported)`), C.red, '#FBE7E5')}
               {chip(L(`${counts.ready || 0} 行可提交审核`, `${counts.ready || 0} ready for review`), ...GREEN)}
-              {rows.length - (counts.ready || 0) > 0 && chip(L(`${rows.length - (counts.ready || 0)} 行将成为草稿`, `${rows.length - (counts.ready || 0)} will be drafts`), ...AMBER)}
+              {rows.length - (counts.ready || 0) - (counts.name || 0) > 0 && chip(L(`${rows.length - (counts.ready || 0) - (counts.name || 0)} 行将成为草稿`, `${rows.length - (counts.ready || 0) - (counts.name || 0)} will be drafts`), ...AMBER)}
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, border: '1.5px dashed #9DB4D6', background: '#F4F8FD', borderRadius: 10, padding: '12px 14px', marginBottom: 12, flexWrap: 'wrap' }}>
@@ -1742,7 +1758,8 @@ function BulkUploadPanel({ onCancel, onImported }) {
                           )}
                         </Td>
                         <Td>
-                          {state === 'ready' ? chip(L('可提交审核', 'Ready: goes to review'), ...GREEN)
+                          {state === 'name' ? chip(nameRuleText(r), C.red, '#FBE7E5')
+                            : state === 'ready' ? chip(L('可提交审核', 'Ready: goes to review'), ...GREEN)
                             : state === 'choose' ? chip(r.match === 'many' ? L(`${r.candidates.length} 个可能：请选择`, `${r.candidates.length} possible: choose`) : L('未识别：请选择', 'Not found: choose'), ...AMBER)
                             : chip(L(`草稿：缺少${missingText(state)}`, `Draft: ${missingText(state)} missing`), ...AMBER)}
                           {r.rowError && <div style={{ ...font, fontSize: 11, color: C.red, marginTop: 4, maxWidth: 220 }}>{r.rowError}</div>}

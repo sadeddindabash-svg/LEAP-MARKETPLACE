@@ -396,7 +396,7 @@ router.get('/me/products', requireAuth, requireRole('supplier'), async (req, res
 // A fixed, real list rather than free text — "Position" in the SRS
 // cascade (Brand -> ... -> Category -> Part -> Position -> OEM Number)
 // means where on the vehicle the part sits, not a free-form description.
-const { ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS, validateSupplierNameLength, validateProductAttributes } = require('../shared/productValidation');
+const { ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS, validateSupplierNameLength, validateSupplierName, supplierNameMinimums, validateProductAttributes } = require('../shared/productValidation');
 
 router.post('/me/products', requireAuth, requireRole('supplier'), async (req, res, next) => {
   const {
@@ -457,7 +457,9 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
   if (missing.length > 0) {
     return res.status(400).json({ error: `Missing required field(s): ${missing.join(', ')}` });
   }
-  const nameLengthError = validateSupplierNameLength(nameZh, 'nameZh');
+  // the name's minimum depends on its language (English / Chinese / Arabic), as the admin set it (migration 117)
+  const { rows: nameRuleRows } = await db.query('SELECT * FROM product_requirements WHERE id = 1');
+  const nameLengthError = validateSupplierName(nameZh, 'nameZh', supplierNameMinimums(nameRuleRows[0]));
   if (nameLengthError) {
     return res.status(400).json({ error: nameLengthError });
   }
@@ -696,7 +698,7 @@ router.post('/me/products/bulk-import', requireAuth, requireRole('supplier'), as
         results.push({ index: i, success: false, error: 'oemNumber, itemName, and a positive price are all required' });
         continue;
       }
-      const nameLengthError = validateSupplierNameLength(itemName, 'itemName');
+      const nameLengthError = validateSupplierName(itemName, 'itemName', supplierNameMinimums(requirements));   // a row outside the rules is not imported
       if (nameLengthError) {
         results.push({ index: i, success: false, error: nameLengthError });
         continue;

@@ -2301,6 +2301,10 @@ function ProductRequirementsSettings({ onSessionExpired }) {
   const [photosRequired, setPhotosRequired] = useState(true);
   const [videoRequired, setVideoRequired] = useState(true);
   const [maxVideoDuration, setMaxVideoDuration] = useState("");
+  // The minimum product name length by language (all characters count): English, Chinese, Arabic.
+  const [nameMinEn, setNameMinEn] = useState("");
+  const [nameMinZh, setNameMinZh] = useState("");
+  const [nameMinAr, setNameMinAr] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -2313,6 +2317,9 @@ function ProductRequirementsSettings({ onSessionExpired }) {
         setPhotosRequired(r.photosRequired);
         setVideoRequired(r.videoRequired);
         setMaxVideoDuration(String(r.maxVideoDurationSeconds));
+        setNameMinEn(String(r.nameMinEn ?? 15));
+        setNameMinZh(String(r.nameMinZh ?? 5));
+        setNameMinAr(String(r.nameMinAr ?? 15));
         setIsLoading(false);
       })
       .catch((e) => { setError(e.message); setIsLoading(false); });
@@ -2328,11 +2335,17 @@ function ProductRequirementsSettings({ onSessionExpired }) {
         photosRequired,
         videoRequired,
         maxVideoDurationSeconds: parseInt(maxVideoDuration, 10),
+        nameMinEn: parseInt(nameMinEn, 10),
+        nameMinZh: parseInt(nameMinZh, 10),
+        nameMinAr: parseInt(nameMinAr, 10),
       });
       setMinPhotos(String(updated.minPhotos));
       setPhotosRequired(updated.photosRequired);
       setVideoRequired(updated.videoRequired);
       setMaxVideoDuration(String(updated.maxVideoDurationSeconds));
+      setNameMinEn(String(updated.nameMinEn ?? 15));
+      setNameMinZh(String(updated.nameMinZh ?? 5));
+      setNameMinAr(String(updated.nameMinAr ?? 15));
       setSaveSuccess(true);
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
@@ -2366,6 +2379,12 @@ function ProductRequirementsSettings({ onSessionExpired }) {
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ ...body, fontSize: 12.5, color: C.muted }}>Max video length (seconds)</span>
               <input type="number" min="1" style={numberInputStyle} value={maxVideoDuration} onChange={(e) => setMaxVideoDuration(e.target.value)} />
+            </div>
+            <div data-testid="name-minimums" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ ...body, fontSize: 12.5, color: C.muted }}>Minimum product name length (characters)</span>
+              <label style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ ...body, fontSize: 12.5, color: C.ink }}>English</span><input type="number" min="1" max="100" aria-label="Minimum name length in English" style={numberInputStyle} value={nameMinEn} onChange={(e) => setNameMinEn(e.target.value)} /></label>
+              <label style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ ...body, fontSize: 12.5, color: C.ink }}>Chinese</span><input type="number" min="1" max="100" aria-label="Minimum name length in Chinese" style={numberInputStyle} value={nameMinZh} onChange={(e) => setNameMinZh(e.target.value)} /></label>
+              <label style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ ...body, fontSize: 12.5, color: C.ink }}>Arabic</span><input type="number" min="1" max="100" aria-label="Minimum name length in Arabic" style={numberInputStyle} value={nameMinAr} onChange={(e) => setNameMinAr(e.target.value)} /></label>
             </div>
             <button
               onClick={handleSave}

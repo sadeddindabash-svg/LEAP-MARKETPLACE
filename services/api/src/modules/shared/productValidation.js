@@ -61,6 +61,30 @@ function validateSupplierNameLength(name, fieldLabel) {
   return validateTextLength(name, fieldLabel, MIN_SUPPLIER_NAME_LENGTH, MAX_SUPPLIER_NAME_LENGTH);
 }
 
+// The supplier's product name, by its LANGUAGE (found from the name itself): Chinese when it has Chinese characters, else Arabic when it
+// has Arabic letters, else English. Each language has its own minimum, set by the admin (product_requirements.name_min_en / _zh / _ar,
+// migration 117); every character counts (spaces, digits and signs too). The maximum stays MAX_SUPPLIER_NAME_LENGTH.
+const DEFAULT_SUPPLIER_NAME_MINIMUMS = { en: 15, zh: 5, ar: 15 };
+const NAME_LANGUAGE_LABEL = { en: 'English', zh: 'Chinese', ar: 'Arabic' };
+function nameLanguageOf(text) {
+  if (/[㐀-鿿豈-﫿]/.test(text)) return 'zh';
+  if (/[؀-ۿݐ-ݿࢠ-ࣿ]/.test(text)) return 'ar';
+  return 'en';
+}
+/** The three minimums from the product_requirements row (the defaults when a column is not there yet). */
+function supplierNameMinimums(row) {
+  const pick = (v, d) => (Number.isInteger(v) && v > 0 ? v : d);
+  return { en: pick(row?.name_min_en, 15), zh: pick(row?.name_min_zh, 5), ar: pick(row?.name_min_ar, 15) };
+}
+function validateSupplierName(name, fieldLabel, minimums = DEFAULT_SUPPLIER_NAME_MINIMUMS) {
+  const trimmed = (name || '').trim();
+  const lang = nameLanguageOf(trimmed);
+  const min = minimums[lang];
+  if (trimmed.length < min) return `${fieldLabel} in ${NAME_LANGUAGE_LABEL[lang]} must be at least ${min} characters (got ${trimmed.length})`;
+  if (trimmed.length > MAX_SUPPLIER_NAME_LENGTH) return `${fieldLabel} must be at most ${MAX_SUPPLIER_NAME_LENGTH} characters (got ${trimmed.length})`;
+  return null;
+}
+
 const MIN_NAME_LENGTH = 25;
 const MAX_NAME_LENGTH = 100;
 function validateNameLength(name, fieldLabel) {
@@ -86,6 +110,7 @@ function validateDescriptionLength(description, fieldLabel) {
 module.exports = {
   ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS,
   MIN_SUPPLIER_NAME_LENGTH, MAX_SUPPLIER_NAME_LENGTH, validateSupplierNameLength,
+  DEFAULT_SUPPLIER_NAME_MINIMUMS, nameLanguageOf, supplierNameMinimums, validateSupplierName,
   MIN_NAME_LENGTH, MAX_NAME_LENGTH, validateNameLength,
   MIN_DESCRIPTION_LENGTH, MAX_DESCRIPTION_LENGTH, validateDescriptionLength,
   MAX_PRODUCT_ATTRIBUTES, validateProductAttributes,
