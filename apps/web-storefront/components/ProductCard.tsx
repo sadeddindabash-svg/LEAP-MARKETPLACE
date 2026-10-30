@@ -7,6 +7,7 @@ import WishlistHeart from "@/components/WishlistHeart";
 import { resolveImageUrl, type ProductSummary } from "@/lib/api";
 import { cardDiscount, cardDiscountTagClasses } from "@/lib/cardDiscount";
 import { deliveryLine } from "@/lib/delivery";
+import { cardReviews } from "@/lib/review";
 import { t, type Lang } from "@/lib/i18n";
 import { Price } from "./Price";
 
@@ -37,6 +38,7 @@ export default function ProductCard({ product: p, lang }: { product: ProductSumm
         <div className="flex flex-1 flex-col gap-2 p-4">
           <h3 className="line-clamp-2 text-base font-bold leading-snug">{p.name}</h3>
           {p.oemNumber && <p className="font-plate text-[13px] text-muted">{p.oemNumber}</p>}
+          <CardReviews rating={p.rating} count={p.reviewCount} lang={lang} />
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13.5px] text-muted">
             <span data-testid="stock-box" data-stock={inStock ? "in" : "out"} className={`rounded-md px-2.5 py-0.5 text-[12.5px] font-bold text-white ${inStock ? "bg-[#0f6b49]" : "bg-[#c62f26]"}`}>{t(lang, inStock ? "in_stock" : "out_of_stock")}</span>
             {delivery ? <span>{delivery}</span> : null}
@@ -50,5 +52,33 @@ export default function ProductCard({ product: p, lang }: { product: ProductSumm
       <div className="absolute bottom-4 end-4"><CardAddToCart productId={p.id} name={p.name} inStock={inStock} /></div>
       <WishlistHeart productId={p.id} name={p.name} variant="card" />
     </li>
+  );
+}
+
+/** The part's stars, average and number of reviews (approved reviews only, counted by the server), or "No reviews yet". */
+function CardReviews({ rating, count, lang }: { rating: number | null; count: number; lang: Lang }) {
+  const r = cardReviews(rating, count);
+  if (!r) {
+    return (
+      <p data-testid="card-reviews" className="flex items-center gap-1.5 text-[13px] text-muted">
+        <CardStar filled={false} />
+        <span>{t(lang, "card_no_reviews")}</span>
+      </p>
+    );
+  }
+  return (
+    <p data-testid="card-reviews" className="flex items-center gap-1.5 text-[13px] text-muted">
+      <span className="flex" aria-hidden="true">{[0, 1, 2, 3, 4].map((i) => <CardStar key={i} filled={i < r.fullStars} />)}</span>
+      <bdi dir="ltr" className="font-bold text-navy">{r.average}</bdi>
+      <span>({r.count === 1 ? t(lang, "card_review_one") : t(lang, "reviews_count", { n: r.count })})</span>
+    </p>
+  );
+}
+
+function CardStar({ filled }: { filled: boolean }) {
+  return (
+    <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24">
+      <path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3 6.1 20.6l1.3-6.6L2.5 9.4l6.6-.8z" fill={filled ? "#F5A623" : "none"} stroke="#F5A623" strokeWidth="1.6" strokeLinejoin="round" />
+    </svg>
   );
 }

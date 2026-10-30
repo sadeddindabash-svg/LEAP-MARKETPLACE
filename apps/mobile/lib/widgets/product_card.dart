@@ -55,7 +55,8 @@ double productCardHeightFor(double cardWidth) {
   // even when no discount exists, so every card in a row stays the
   // same real height regardless of whether that specific product is
   // discounted. +18px generous allowance for this new second line.
-  return imageHeight + 193;
+  // -12: the 12 px padding that used to sit below the card is gone (the rows are now the grid's spacing apart).
+  return imageHeight + 181;
 }
 
 // Confirmed with the person via a full mockup showing all 4 tiers in
@@ -190,11 +191,11 @@ class _ProductCardState extends State<ProductCard> {
     final discountPercent = hasDiscount ? (((p.originalPrice! - p.price) / p.originalPrice!) * 100).round() : 0;
     final isAr = context.watch<LanguageState>().isArabic;
     final isLoggedIn = context.watch<AuthState>().isLoggedIn;
-    return UnconstrainedBox(
-      alignment: Alignment.topCenter,
-      constrainedAxis: Axis.horizontal,
+    // The card fills its grid cell, so the rows are exactly the grid's spacing apart, the same as the columns (it used to sit at the top of
+    // a taller cell with 12 px more below it). Every list that shows a card gives it a fixed height (productCardHeightFor).
+    return SizedBox.expand(
       child: Padding(
-        padding: const EdgeInsets.only(bottom: 12),
+        padding: EdgeInsets.zero,
         child: Card(
       margin: EdgeInsets.zero,
       color: palette.card,

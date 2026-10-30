@@ -102,6 +102,8 @@ const EN = {
   out_of_stock: "Out of stock",
   part_number: "Part number",
   reviews_count: "{n} reviews",
+  card_review_one: "1 review",
+  card_no_reviews: "No reviews yet",
   // search page
   search_all_parts: "Browse all parts",
   search_results_for: "Search results for \"{q}\"",
@@ -828,6 +830,8 @@ const AR: Record<DictKey, string> = {
   out_of_stock: "غير متوفر",
   part_number: "رقم القطعة",
   reviews_count: "{n} تقييمات",
+  card_review_one: "تقييم واحد",
+  card_no_reviews: "لا توجد تقييمات بعد",
   search_all_parts: "تصفح كل القطع",
   search_results_for: "نتائج البحث عن \"{q}\"",
   no_parts_found: "لم يتم العثور على قطع.",

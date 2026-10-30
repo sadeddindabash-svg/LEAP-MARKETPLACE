@@ -35,6 +35,18 @@ async function hasVerifiedPurchase(client, buyerId, productId) {
 
 const MAX_REVIEW_PHOTOS = 3;
 
+// The product's rating and number of reviews, as the product cards show them: from its APPROVED reviews only.
+// Called after every change that can move them (a review written or edited -> back to pending, approved, rejected, deleted).
+// A product left with no approved review keeps its old rating number, but its count is 0, so the cards say "No reviews yet".
+async function refreshProductReviewTotals(client, productId) {
+  await client.query(
+    `UPDATE products p SET review_count = s.cnt, rating = COALESCE(s.avg, p.rating)
+     FROM (SELECT COUNT(*)::int AS cnt, ROUND(AVG(rating)::numeric, 2) AS avg FROM product_reviews WHERE product_id = $1 AND status = 'approved') s
+     WHERE p.id = $1`,
+    [productId]
+  );
+}
+
 function toReviewDto(row) {
   return {
     id: row.id,
@@ -115,6 +127,7 @@ router.post('/', requireAuth, async (req, res, next) => {
       }
     }
     await client.query('COMMIT');
+    await refreshProductReviewTotals(db, productId); // an edited review is back to pending: it stops counting until approved again
 
     const [withPhotos] = await attachPhotos(db, [rows[0]]);
     res.status(201).json(toReviewDto(withPhotos));
@@ -142,8 +155,9 @@ router.get('/me', requireAuth, async (req, res, next) => {
 // DELETE /reviews/:id — a buyer can only delete their real own review.
 router.delete('/:id', requireAuth, async (req, res, next) => {
   try {
-    const { rows } = await db.query('DELETE FROM product_reviews WHERE id = $1 AND buyer_id = $2 RETURNING id', [req.params.id, req.user.sub]);
+    const { rows } = await db.query('DELETE FROM product_reviews WHERE id = $1 AND buyer_id = $2 RETURNING id, product_id', [req.params.id, req.user.sub]);
     if (rows.length === 0) return res.status(404).json({ error: 'Review not found' });
+    await refreshProductReviewTotals(db, rows[0].product_id);
     res.status(204).send();
   } catch (err) {
     next(err);
@@ -183,6 +197,7 @@ router.patch('/:id/moderate', requireAuth, requireRole('admin'), requirePageAcce
       [newStatus, req.params.id]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Review not found' });
+    await refreshProductReviewTotals(db, rows[0].product_id);
     await logAdminAction(req, `review_${action}`, 'review', req.params.id, { productId: rows[0].product_id });
     const [withPhotos] = await attachPhotos(db, rows);
     res.json(toReviewDto(withPhotos));

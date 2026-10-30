@@ -38,6 +38,12 @@ export function canAddPhoto(current: number, file: { type: string }): boolean {
 /** The 5 average-rating stars as whole stars, rounded like the app. */
 export const wholeStars = (average: number | null): number => (average == null ? 0 : Math.round(average));
 
+/** What a product card shows about reviews: the average to one decimal, the count and the whole stars; null when the part has no approved review (the card says "No reviews yet"). */
+export function cardReviews(rating: number | null | undefined, count: number | null | undefined): { average: string; count: number; fullStars: number } | null {
+  if (!count || count <= 0 || rating == null || !Number.isFinite(rating)) return null;
+  return { average: rating.toFixed(1), count, fullStars: Math.round(rating) };
+}
+
 /** A reviewer's name as other buyers see it: the first 2 letters in capitals, ***, the last 2 ("michael" -> "MI***el"). 4 letters or fewer: the first and *** ("Ali" -> "A***"). Spaces are ignored. Empty -> null (the page shows "Buyer"). */
 export function maskReviewerName(name: string | null | undefined): string | null {
   if (!name) return null;
