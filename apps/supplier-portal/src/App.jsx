@@ -28,7 +28,7 @@ import {
   fetchMyMessages, sendMyMessage,
   fetchMyFinance, fetchMyPayoutMethod, updateMyPayoutMethod,
   fetchMyNotifications, fetchUnreadNotificationCount, markNotificationRead, markAllNotificationsRead,
-  bulkImportProducts, matchBulkItemNames, fetchMyDrafts, completeDraftProduct,
+  bulkImportProducts, matchBulkItemNames, fetchMyDrafts, completeDraftProduct, resubmitRejectedProduct,
   fetchPartRequestQueue, fetchPartRequestDetail, sendPartRequestQuote,
 } from "./auth";
 import { vehicleSummary } from "./vehicleLabels";
@@ -172,7 +172,7 @@ const STRINGS = {
       notifTitle: "通知设置",
       toggles: ["新订单提醒", "库存不足预警", "结算到账通知", "翻译审核结果通知"],
     },
-    statusProduct: { active: "上架中", translating: "翻译审核中", inactive: "已下架" },
+    statusProduct: { active: "上架中", translating: "翻译审核中", inactive: "已下架", rejected: "已拒绝" },
     statusOrder: { pending: "待确认", preparing: "备货中", shipped: "已发货", delivered: "已送达", dispute: "异常/纠纷", cancelled: "已取消", canceled: "已取消", refused: "已拒绝", returned: "已退货", accepted: "已接单", in_transit: "运输中", at_hub: "已到质检中心", completed: "已完成" },
     statusReturn: { awaiting: "待供应商回复", inProgress: "处理中", approved: "已批准", rejected: "已驳回", completed: "已完成" },
     statusPayout: { paid: "已结算", pending: "待结算", calculating: "统计中" },
@@ -294,7 +294,7 @@ const STRINGS = {
       notifTitle: "Notification settings",
       toggles: ["New order alerts", "Low stock warnings", "Payout notifications", "Translation review results"],
     },
-    statusProduct: { active: "Active", translating: "In translation review", inactive: "Inactive" },
+    statusProduct: { active: "Active", translating: "In translation review", inactive: "Inactive", rejected: "Rejected" },
     statusOrder: { pending: "Pending", preparing: "Preparing", shipped: "Shipped", delivered: "Delivered", dispute: "Dispute", cancelled: "Cancelled", canceled: "Cancelled", refused: "Refused", returned: "Returned", accepted: "Accepted", in_transit: "In transit", at_hub: "At the hub", completed: "Completed" },
     statusReturn: { awaiting: "Awaiting your reply", inProgress: "In progress", approved: "Approved", rejected: "Rejected", completed: "Completed" },
     statusPayout: { paid: "Paid", pending: "Pending", calculating: "Calculating" },
@@ -1733,18 +1733,32 @@ function BulkUploadPanel({ onCancel, onImported }) {
 // fields this specific draft is still missing (per its real `missing`
 // array from GET /me/products/drafts), plus its real required photos
 // (always needed, since photos are never in the bulk-import sheet).
+// Why Leap rejected a product (Catalog moderation, migration 118): the keys the admin ticks, in the portal's language.
+const REJECTION_REASON_TEXT = {
+  wrong_category: { zh: "分类错误", en: "Wrong category" }, wrong_photos: { zh: "照片不符", en: "Wrong photos" },
+  wrong_part: { zh: "部件类型错误", en: "Wrong part classification" }, wrong_fitment: { zh: "适配车型错误", en: "Wrong vehicle (fitment)" },
+  wrong_oe: { zh: "OE 编号错误", en: "Wrong OE number" }, wrong_price: { zh: "价格异常", en: "Price looks wrong" },
+  unclear_text: { zh: "名称或描述不清楚", en: "Name or description not clear" }, duplicate: { zh: "重复商品", en: "Duplicate product" },
+  other: { zh: "其他", en: "Other" },
+};
+const rejectionReasonsText = (keys, lang) => (keys || []).map((k) => REJECTION_REASON_TEXT[k]?.[lang] || k).join(lang === "zh" ? "、" : ", ");
+
 function CompleteDraftForm({ draft, onCancel, onCompleted }) {
   const { t, lang } = useLang();
   const font = useBodyFont();
   const selectStyle = useInputStyle();
   const cascadeLabel = (zh, en) => (lang === 'zh' ? zh : en);
 
-  const needsCategory = draft.missing.includes('category') || draft.missing.includes('part');
+  // a product Leap rejected can change its category and part too (and its name, OE number and price, below)
+  const needsCategory = Boolean(draft.rejected) || draft.missing.includes('category') || draft.missing.includes('part');
 
   const [categories, setCategories] = useState([]);
   const [category, setCategory] = useState(draft.category || '');
   const [parts, setParts] = useState([]);
   const [part, setPart] = useState(draft.part || '');
+  const [nameZh, setNameZh] = useState(draft.nameZh || draft.name || '');
+  const [oemNumber, setOemNumber] = useState(draft.oemNumber || '');
+  const [price, setPrice] = useState(draft.price != null ? String(draft.price) : '');
   // Weight and size: set by Leap (the admin), never asked of the supplier.
   const [photos, setPhotos] = useState(draft.images ? draft.images.map((url) => ({ url })) : []);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
@@ -1765,8 +1779,9 @@ function CompleteDraftForm({ draft, onCancel, onCompleted }) {
 
   useEffect(() => {
     if (!needsCategory || !category) return;
+    const keep = part;      // the part already chosen stays when it belongs to this category (a rejected product opens with its own)
     setPart(""); // real fix: a stale part from a PREVIOUS category selection must not survive a category change
-    fetchPartsForCategory(category).then((p) => { setParts(p); if (p.length > 0) setPart(p[0].nameEn); }).catch((e) => setError(e.message));
+    fetchPartsForCategory(category).then((p) => { setParts(p); if (p.length > 0) setPart(p.some((x) => x.nameEn === keep) ? keep : p[0].nameEn); }).catch((e) => setError(e.message));
   }, [category]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePhotoSelect = async (e) => {
@@ -1820,6 +1835,14 @@ function CompleteDraftForm({ draft, onCancel, onCompleted }) {
     setIsSubmitting(true);
     setError(null);
     try {
+      if (draft.rejected) {
+        await resubmitRejectedProduct(getStoredToken(), draft.id, {
+          nameZh: nameZh.trim(), category, part, oemNumber: oemNumber.trim(), price: Number(price),
+          images: photos.map((p) => p.url), videoUrl: video?.url || undefined,
+        });
+        onCompleted();
+        return;
+      }
       await completeDraftProduct(getStoredToken(), draft.id, {
         category: needsCategory ? category : undefined,
         part: needsCategory ? part : undefined,
@@ -1839,9 +1862,29 @@ function CompleteDraftForm({ draft, onCancel, onCompleted }) {
     <Card title={draft.name} action={<button onClick={onCancel} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={17} color={C.muted} /></button>}>
       <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
         {error && <div style={{ ...font, fontSize: 12, color: C.red, background: '#FBE7E5', borderRadius: 8, padding: 10 }}>{error}</div>}
-        <div style={{ ...font, fontSize: 12, color: C.muted }}>
-          {draft.oemNumber} · ¥{Number(draft.price).toFixed(2)}
-        </div>
+        {draft.rejected ? (
+          <>
+            <div data-testid="rejection-box" style={{ ...font, background: C.redBg, borderRadius: 8, padding: '10px 12px', fontSize: 12.5, color: C.ink }}>
+              <b style={{ color: C.red }}>{cascadeLabel('拒绝原因：', 'Why it was rejected: ')}</b>{rejectionReasonsText(draft.rejectionReasons, lang)}
+              {draft.rejectionNote && <div style={{ marginTop: 4, color: C.muted }}>{cascadeLabel('说明：', 'Note: ')}{draft.rejectionNote}</div>}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12 }}>
+              <Field label={cascadeLabel('商品名称（中文）', 'Product name (Chinese)')}>
+                <input style={selectStyle} value={nameZh} onChange={(e) => setNameZh(e.target.value)} maxLength={100} />
+              </Field>
+              <Field label={cascadeLabel('OEM 编号', 'OEM Number')}>
+                <input style={selectStyle} value={oemNumber} onChange={(e) => setOemNumber(e.target.value)} />
+              </Field>
+              <Field label={cascadeLabel('价格 (¥ 人民币)', 'Price (¥ RMB)')}>
+                <input type="number" step="0.01" style={selectStyle} value={price} onChange={(e) => setPrice(e.target.value)} />
+              </Field>
+            </div>
+          </>
+        ) : (
+          <div style={{ ...font, fontSize: 12, color: C.muted }}>
+            {draft.oemNumber} · ¥{Number(draft.price).toFixed(2)}
+          </div>
+        )}
 
         {needsCategory && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -1918,7 +1961,7 @@ function CompleteDraftForm({ draft, onCancel, onCompleted }) {
             {cascadeLabel('取消', 'Cancel')}
           </button>
           <button disabled={isSubmitting} onClick={handleSubmit} style={{ ...font, padding: '9px 16px', borderRadius: 8, border: 'none', background: isSubmitting ? '#D1D5DB' : C.gauge, color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: isSubmitting ? 'default' : 'pointer' }}>
-            {isSubmitting ? cascadeLabel('提交中…', 'Submitting…') : cascadeLabel('提交审核', 'Submit for review')}
+            {isSubmitting ? cascadeLabel('提交中…', 'Submitting…') : draft.rejected ? cascadeLabel('重新提交审核', 'Submit for review again') : cascadeLabel('提交审核', 'Submit for review')}
           </button>
         </div>
       </div>
@@ -1935,6 +1978,7 @@ function DraftsPanel({ onCancel }) {
   const [drafts, setDrafts] = useState([]);
   const [loadState, setLoadState] = useState('loading');
   const [editingId, setEditingId] = useState(null);
+  const [filter, setFilter] = useState('all');      // all | rejected | incomplete
 
   const load = () => {
     setLoadState('loading');
@@ -1950,25 +1994,46 @@ function DraftsPanel({ onCancel }) {
   }
 
   // What a draft still needs, in the portal's language (weight and size are set by Leap, so never listed).
+  const rejectedCount = drafts.filter((d) => d.rejected).length;
+  const shown = drafts.filter((d) => filter === 'all' || (filter === 'rejected' ? d.rejected : !d.rejected));
   const draftMissingText = (m) => ({ category: cascadeLabel('分类', 'category'), part: cascadeLabel('部件类型', 'classification'), position: cascadeLabel('位置', 'position'), photos: cascadeLabel('照片', 'photos'), video: cascadeLabel('视频', 'video') }[m] || m);
 
   return (
     <Card title={cascadeLabel('我的草稿（未发布）', 'My Drafts (Not published)')} action={<button onClick={onCancel} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={17} color={C.muted} /></button>}>
       <div style={{ padding: 6 }}>
+        {/* All, the products Leap rejected (with why), and the drafts still missing something */}
+        {loadState === 'ready' && drafts.length > 0 && (
+          <div data-testid="drafts-filter" style={{ display: 'flex', gap: 6, padding: '6px 8px 10px' }}>
+            {[['all', cascadeLabel('全部', 'All'), drafts.length], ['rejected', cascadeLabel('被拒绝', 'Rejected'), rejectedCount], ['incomplete', cascadeLabel('待完善', 'Needs completion'), drafts.length - rejectedCount]].map(([key, label, n]) => (
+              <button key={key} onClick={() => setFilter(key)} style={{ ...font, padding: '6px 12px', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', border: `1px solid ${filter === key ? C.ink : C.line}`, background: filter === key ? C.ink : '#fff', color: filter === key ? '#fff' : (key === 'rejected' && n > 0 ? C.red : C.ink) }}>{label} ({n})</button>
+            ))}
+          </div>
+        )}
         {loadState === 'loading' && <div style={{ padding: 24, textAlign: 'center', ...font, fontSize: 13, color: C.muted }}>{cascadeLabel('加载中…', 'Loading…')}</div>}
         {loadState === 'ready' && drafts.length === 0 && (
           <div style={{ padding: 24, textAlign: 'center', ...font, fontSize: 13, color: C.muted }}>{cascadeLabel('没有待完善的商品。', 'No drafts need completion right now.')}</div>
         )}
-        {loadState === 'ready' && drafts.map((d, i) => (
-          <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', borderBottom: i < drafts.length - 1 ? `1px solid ${C.line}` : 'none' }}>
-            <div>
-              <div style={{ ...font, fontWeight: 700, fontSize: 13 }}>{d.name}</div>
-              <div style={{ ...font, fontSize: 11.5, color: C.muted, marginTop: 2 }}>
-                {d.oemNumber}{d.missing.filter((m) => m !== 'dimensions' && m !== 'position').length > 0 && <> · {cascadeLabel('缺少：', 'Needs: ')}{d.missing.filter((m) => m !== 'dimensions' && m !== 'position').map(draftMissingText).join(cascadeLabel('、', ', '))}</>}
+        {loadState === 'ready' && shown.map((d, i) => (
+          <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 14, padding: '12px 14px', borderBottom: i < shown.length - 1 ? `1px solid ${C.line}` : 'none' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ ...font, fontWeight: 700, fontSize: 13 }}>{d.name}</span>
+                {d.rejected && <span style={{ ...font, fontSize: 11, fontWeight: 700, color: C.red, background: C.redBg, borderRadius: 6, padding: '2px 7px' }}>{cascadeLabel('已拒绝', 'Rejected')}</span>}
               </div>
+              <div style={{ ...font, fontSize: 11.5, color: C.muted, marginTop: 2 }}>
+                {d.oemNumber}{d.rejected
+                  ? <> · {cascadeLabel('拒绝于 ', 'Rejected on ')}{d.rejectedAt ? new Date(d.rejectedAt).toLocaleDateString(uiLocale()) : ''}</>
+                  : d.missing.filter((m) => m !== 'dimensions' && m !== 'position').length > 0 && <> · {cascadeLabel('缺少：', 'Needs: ')}{d.missing.filter((m) => m !== 'dimensions' && m !== 'position').map(draftMissingText).join(cascadeLabel('、', ', '))}</>}
+              </div>
+              {d.rejected && (
+                <div style={{ ...font, fontSize: 12.5, color: C.ink, marginTop: 6 }}>
+                  <b style={{ color: C.red }}>{cascadeLabel('拒绝原因：', 'Why: ')}</b>{rejectionReasonsText(d.rejectionReasons, lang)}
+                </div>
+              )}
+              {d.rejected && d.rejectionNote && <div style={{ ...font, fontSize: 12, color: C.muted, marginTop: 3 }}>{cascadeLabel('说明：', 'Note: ')}{d.rejectionNote}</div>}
             </div>
-            <button onClick={() => setEditingId(d.id)} style={{ ...font, padding: '7px 14px', borderRadius: 8, border: 'none', background: C.signal, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-              {cascadeLabel('完善', 'Complete')}
+            <button onClick={() => setEditingId(d.id)} style={{ ...font, padding: '7px 14px', borderRadius: 8, border: 'none', background: C.signal, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              {d.rejected ? cascadeLabel('修改并重新提交', 'Fix and resubmit') : cascadeLabel('完善', 'Complete')}
             </button>
           </div>
         ))}
@@ -2234,7 +2299,7 @@ function ProductsPage() {
             ],
             rows: visibleProducts.map((p) => ({
               name: p.name, category: p.category, price: `${Number(p.price).toFixed(2)} ${p.currencyCode}`,
-              stock: p.stockQuantity, status: t.statusProduct[p.status] || p.status,
+              stock: p.stockQuantity, status: t.statusProduct[p.rejected ? "rejected" : p.status] || p.status,
             })),
           })}
           style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: loadState !== "ready" || visibleProducts.length === 0 ? "default" : "pointer", opacity: loadState !== "ready" || visibleProducts.length === 0 ? 0.5 : 1, fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}
@@ -2336,7 +2401,7 @@ function ProductsPage() {
                         already used the real per-product threshold
                         correctly -- this table just hadn't been. */}
                     <Td align="right" style={{ color: p.stockQuantity === 0 ? C.red : p.stockQuantity < p.lowStockThreshold ? C.amber : C.ink, fontWeight: p.stockQuantity < p.lowStockThreshold ? 700 : 400 }}>{p.stockQuantity}</Td>
-                    <Td><Badge label={t.statusProduct[p.status] || p.status} statusKey={p.status} /></Td>
+                    <Td><Badge label={t.statusProduct[p.rejected ? "rejected" : p.status] || p.status} statusKey={p.status} /></Td>
                     <Td align="right">
                       <button
                         onClick={() => setEditingProduct(p)}

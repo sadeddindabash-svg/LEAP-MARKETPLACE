@@ -169,6 +169,11 @@ function toProductDto(row) {
     videoUrl: row.video_url,
     status: row.status,
     createdAt: row.created_at,
+    // rejected by Leap in Catalog moderation, and why (migration 118); cleared when it is approved or sent back for review
+    rejected: Boolean(row.rejected_at),
+    rejectionReasons: row.rejection_reasons || [],
+    rejectionNote: row.rejection_note || null,
+    rejectedAt: row.rejected_at || null,
   };
 }
 
@@ -770,12 +775,13 @@ router.get('/me/products/drafts', requireAuth, requireRole('supplier'), async (r
       `SELECT p.*, COALESCE(img.count, 0) AS photo_count
        FROM products p
        LEFT JOIN (SELECT product_id, COUNT(*) AS count FROM product_images GROUP BY product_id) img ON img.product_id = p.id
-       WHERE p.supplier_id = $1 AND p.status = 'draft'
-       ORDER BY p.created_at DESC`,
+       WHERE p.supplier_id = $1 AND (p.status = 'draft' OR (p.status = 'inactive' AND p.rejected_at IS NOT NULL))      -- drafts, and the products Leap rejected
+       ORDER BY COALESCE(p.rejected_at, p.created_at) DESC`,
       [req.user.supplierId]
     );
     const dtos = await Promise.all(rows.map(async (row) => {
       const dto = await attachImagesAndFitment(toProductDto(row));
+      if (row.rejected_at) return { ...dto, missing: [] };      // rejected by Leap: it shows its reasons instead
       const missing = [];
       if (!row.category) missing.push('category');
       if (!row.part) missing.push('part');
@@ -888,6 +894,65 @@ router.patch('/me/products/:id/complete', requireAuth, requireRole('supplier'), 
 // correctly in one query, not stale data from before the request
 // started. Clamped at a real minimum (0.01) so a large enough negative
 // adjustment can't produce a zero or negative price.
+// PATCH /me/products/:id/resubmit — a product Leap rejected in Catalog moderation (migration 118), fixed by the supplier and sent
+// back for review. The name, category and part, OE number, price, photos and video can be changed; the reasons are cleared.
+router.patch('/me/products/:id/resubmit', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  const client = await db.getPool().connect();
+  try {
+    const { rows: found } = await client.query(
+      `SELECT * FROM products WHERE id = $1 AND supplier_id = $2 AND status = 'inactive' AND rejected_at IS NOT NULL`,
+      [req.params.id, req.user.supplierId]
+    );
+    if (found.length === 0) return res.status(404).json({ error: 'Rejected product not found' });
+    const p = found[0];
+    const b = req.body || {};
+    const nameZh = typeof b.nameZh === 'string' ? b.nameZh.trim() : (p.name_zh || '');
+    const oemNumber = typeof b.oemNumber === 'string' ? b.oemNumber.trim() : (p.oem_number || '');
+    const price = b.price !== undefined && b.price !== null && b.price !== '' ? Number(b.price) : Number(p.price);
+    const images = b.images;
+    const videoUrl = b.videoUrl ?? p.video_url;
+    let category = p.category;
+    let part = p.part;
+    if (b.category !== undefined || b.part !== undefined) {
+      const matched = await tryMatchCategoryAndPart(b.category, b.part, client);
+      if (!matched.category || !matched.part) return res.status(400).json({ error: 'part must be a real part belonging to the given category' });
+      category = matched.category;
+      part = matched.part;
+    }
+    const missing = [];
+    if (!nameZh) missing.push('nameZh');
+    if (!oemNumber) missing.push('oemNumber');
+    if (missing.length > 0) return res.status(400).json({ error: `Missing required field(s): ${missing.join(', ')}` });
+    if (!Number.isFinite(price) || price <= 0) return res.status(400).json({ error: 'price must be a positive number' });
+    const { rows: reqRows } = await client.query('SELECT * FROM product_requirements WHERE id = 1');
+    const requirements = reqRows[0] || { min_photos: 4, photos_required: true, video_required: true };
+    const nameError = validateSupplierName(nameZh, 'nameZh', supplierNameMinimums(requirements));
+    if (nameError) return res.status(400).json({ error: nameError });
+    // the same photo / video rules as completing a draft (weight, size and position are not asked)
+    const validation = validateCompleteFields({ category, part, position: p.position, images, videoUrl, shippingFromPart: true }, requirements);
+    if (!validation.valid) return res.status(400).json({ error: validation.error });
+
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE products SET name_zh = $2, category = $3, part = $4, oem_number = $5, price = $6, video_url = $7, status = 'translating',
+         rejection_reasons = NULL, rejection_note = NULL, rejected_at = NULL
+       WHERE id = $1`,
+      [req.params.id, nameZh, category, part, oemNumber, price, videoUrl || null]
+    );
+    await client.query('DELETE FROM product_images WHERE product_id = $1', [req.params.id]);
+    for (let i = 0; i < images.length; i++) {
+      await client.query('INSERT INTO product_images (product_id, url, sort_order) VALUES ($1, $2, $3)', [req.params.id, images[i], i]);
+    }
+    await client.query('COMMIT');
+    res.json({ id: req.params.id, status: 'translating' });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
 router.patch('/me/products/bulk-price-update', requireAuth, requireRole('supplier'), async (req, res, next) => {
   try {
     const { productIds, adjustmentType, adjustmentValue } = req.body || {};

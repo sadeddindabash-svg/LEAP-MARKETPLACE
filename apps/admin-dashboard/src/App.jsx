@@ -1565,12 +1565,57 @@ function SuppliersPage({ onOpenSupplier, onSessionExpired }) {
   );
 }
 
+// Catalog moderation: a reject says why. The admin ticks one or more reasons (and may write a note, required for "Other");
+// the supplier gets them in a notification and sees them in My Drafts (Not published) (migration 118).
+const REJECTION_REASONS = [
+  ["wrong_category", "Wrong category"], ["wrong_photos", "Wrong photos"], ["wrong_part", "Wrong part classification"],
+  ["wrong_fitment", "Wrong vehicle (fitment)"], ["wrong_oe", "Wrong OE number"], ["wrong_price", "Price looks wrong"],
+  ["unclear_text", "Name or description not clear"], ["duplicate", "Duplicate product"], ["other", "Other (write a note)"],
+];
+function RejectReasonPanel({ count = 1, busy = false, onCancel, onConfirm }) {
+  const [picked, setPicked] = useState([]);
+  const [note, setNote] = useState("");
+  const toggle = (key) => setPicked((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  const needsNote = picked.includes("other") && !note.trim();
+  const canSend = picked.length > 0 && !needsNote && !busy;
+  return (
+    <div data-testid="reject-reasons" style={{ borderTop: `1px solid ${C.line}`, padding: 16 }}>
+      <div style={{ ...body, fontSize: 13, fontWeight: 800, color: C.red }}>
+        {count > 1 ? `Reject ${count} products – why?` : "Reject this product – why?"}{" "}
+        <span style={{ fontWeight: 600, color: C.muted }}>(choose at least one; the supplier sees them in Chinese)</span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, marginTop: 10 }}>
+        {REJECTION_REASONS.map(([key, label]) => {
+          const on = picked.includes(key);
+          return (
+            <label key={key} style={{ ...body, display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", border: `1px solid ${on ? C.red : C.line}`, background: on ? C.redBg : "#fff", borderRadius: 8, fontSize: 12.5, cursor: "pointer" }}>
+              <input type="checkbox" checked={on} onChange={() => toggle(key)} />{label}
+            </label>
+          );
+        })}
+      </div>
+      <div style={{ ...body, marginTop: 10, fontSize: 11.5, fontWeight: 700, color: C.muted }}>Note to the supplier (optional; required for “Other”)</div>
+      <textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} rows={2}
+        style={{ ...body, marginTop: 5, width: "100%", boxSizing: "border-box", border: `1px solid ${needsNote ? C.red : C.line}`, borderRadius: 8, padding: "9px 11px", fontSize: 12.5, resize: "vertical" }} />
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
+        <button onClick={onCancel} disabled={busy} style={{ ...body, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+        <button data-testid="reject-confirm" disabled={!canSend} onClick={() => onConfirm(picked, note.trim())}
+          style={{ ...body, padding: "8px 14px", borderRadius: 8, border: "none", background: C.red, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: canSend ? "pointer" : "default", opacity: canSend ? 1 : 0.45 }}>
+          {busy ? "Rejecting…" : `Reject and tell the supplier${picked.length > 0 ? ` (${picked.length} reason${picked.length === 1 ? "" : "s"})` : ""}`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ModerationPage({ onSessionExpired }) {
   const [queue, setQueue] = useState([]);
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
   const [actioningId, setActioningId] = useState(null);
   const [reviewingId, setReviewingId] = useState(null); // which item has the translation panel open
+  const [rejectingId, setRejectingId] = useState(null); // which item has the reject reasons open
+  const [bulkRejecting, setBulkRejecting] = useState(false); // the reject reasons for the selected items are open
   const [nameEn, setNameEn] = useState("");
   const [descriptionEn, setDescriptionEn] = useState("");
   const [nameAr, setNameAr] = useState("");
@@ -1645,10 +1690,11 @@ function ModerationPage({ onSessionExpired }) {
     }
   };
 
-  const handleReject = async (productId) => {
+  const handleReject = async (productId, reasons, note) => {
     setActioningId(productId);
     try {
-      await moderateProduct(getStoredToken(), productId, "reject");
+      await moderateProduct(getStoredToken(), productId, "reject", { rejectionReasons: reasons, rejectionNote: note || undefined });
+      setRejectingId(null);
       load();
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
@@ -1668,13 +1714,13 @@ function ModerationPage({ onSessionExpired }) {
   const toggleSelectAll = () => {
     setSelectedIds((prev) => (prev.size === queue.length ? new Set() : new Set(queue.map((m) => m.id))));
   };
-  const clearSelection = () => { setSelectedIds(new Set()); setBulkMode("none"); };
+  const clearSelection = () => { setSelectedIds(new Set()); setBulkMode("none"); setBulkRejecting(false); };
 
-  const handleBulkReject = async () => {
+  const handleBulkReject = async (reasons, note) => {
     setIsBulkSubmitting(true);
     setBulkResultMessage(null);
     try {
-      const items = Array.from(selectedIds).map((productId) => ({ productId, action: "reject" }));
+      const items = Array.from(selectedIds).map((productId) => ({ productId, action: "reject", rejectionReasons: reasons, rejectionNote: note || undefined }));
       const { results } = await bulkModerateProducts(getStoredToken(), items);
       const failCount = results.filter((r) => !r.success).length;
       setBulkResultMessage(failCount === 0 ? `${results.length} listing(s) rejected.` : `${results.length - failCount} rejected, ${failCount} failed.`);
@@ -1762,7 +1808,7 @@ function ModerationPage({ onSessionExpired }) {
                 ><Check size={13} />Review &amp; approve selected</button>
                 <button
                   disabled={isBulkSubmitting}
-                  onClick={handleBulkReject}
+                  onClick={() => setBulkRejecting(true)}
                   style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "7px 13px", borderRadius: 8, border: "none", background: C.redBg, color: C.red, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
                 ><X size={13} />{isBulkSubmitting ? "Rejecting…" : "Reject selected"}</button>
                 <button onClick={() => { clearSelection(); setBulkResultMessage(null); }} style={{ ...body, padding: "7px 13px", borderRadius: 8, border: `1px solid ${C.line}`, background: "none", color: C.muted, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
@@ -1812,6 +1858,12 @@ function ModerationPage({ onSessionExpired }) {
           </Card>
         )}
 
+        {bulkMode === "none" && bulkRejecting && selectedIds.size > 0 && (
+          <Card>
+            <RejectReasonPanel count={selectedIds.size} busy={isBulkSubmitting} onCancel={() => setBulkRejecting(false)} onConfirm={handleBulkReject} />
+          </Card>
+        )}
+
         {bulkMode === "none" && loadState === "ready" && queue.map(m => {
           const isReviewing = reviewingId === m.id;
           return (
@@ -1838,7 +1890,7 @@ function ModerationPage({ onSessionExpired }) {
                     )}
                   </div>
                 </div>
-                {!isReviewing && (
+                {!isReviewing && rejectingId !== m.id && (
                   <div style={{ display: "flex", gap: 8 }}>
                     <button
                       disabled={actioningId === m.id}
@@ -1847,12 +1899,16 @@ function ModerationPage({ onSessionExpired }) {
                     ><Check size={13} />Review &amp; Approve</button>
                     <button
                       disabled={actioningId === m.id}
-                      onClick={() => handleReject(m.id)}
+                      onClick={() => { setReviewingId(null); setRejectingId(m.id); }}
                       style={{ ...body, display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 8, border: "none", background: C.redBg, color: C.red, fontSize: 12.5, fontWeight: 700, cursor: actioningId === m.id ? "default" : "pointer", opacity: actioningId === m.id ? 0.5 : 1 }}
                     ><X size={13} />Reject</button>
                   </div>
                 )}
               </div>
+
+              {rejectingId === m.id && (
+                <RejectReasonPanel busy={actioningId === m.id} onCancel={() => setRejectingId(null)} onConfirm={(reasons, note) => handleReject(m.id, reasons, note)} />
+              )}
 
               {isReviewing && (
                 <div style={{ padding: "0 16px 16px" }}>

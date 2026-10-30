@@ -349,6 +349,19 @@ export async function fetchMyDrafts(token) {
   return response.json();
 }
 
+// A product Leap rejected, fixed and sent back for review (name, category/part, OE number, price, photos, video).
+export async function resubmitRejectedProduct(token, productId, payload) {
+  const response = await fetch(`${API_BASE_URL}/supplier/me/products/${productId}/resubmit`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  if (response.status === 401) throw new SessionExpiredError(apiMessage("Your session has expired. Please log in again."));
+  const data = await response.json();
+  if (!response.ok) throw apiError(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
 export async function completeDraftProduct(token, productId, payload) {
   const response = await fetch(`${API_BASE_URL}/supplier/me/products/${productId}/complete`, {
     method: "PATCH",

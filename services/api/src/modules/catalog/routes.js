@@ -12,6 +12,7 @@ const { withEffectiveShipping } = require('../shared/partShipping');
 const { findMatchingDiscountRule } = require('../pricing/discountRules');
 const { resolveDestinationIsoCode, calculateDeliveryDays } = require('../deliveryEstimate/engine');
 const { ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS, validateNameLength, validateDescriptionLength, validateProductAttributes, supplierNameMinimums } = require('../shared/productValidation');
+const { validateRejection, saveRejection, clearRejection, notifySupplierOfRejection } = require('./rejection');      // reject with a reason (migration 118)
 const { logAdminAction } = require('../audit/helpers');
 const { moveItem } = require('../../lib/reorder');
 
@@ -807,10 +808,13 @@ router.get('/moderation-queue', requireAuth, requireRole('admin'), requirePageAc
 router.patch('/products/:id/moderate', requireAuth, requireRole('admin'), requirePageAccess('moderation'), async (req, res, next) => {
   const client = await db.getPool().connect();
   try {
-    const { action, nameEn, descriptionEn, nameAr, descriptionAr } = req.body || {};      // attributes: no longer used
+    const { action, nameEn, descriptionEn, nameAr, descriptionAr, rejectionReasons, rejectionNote } = req.body || {};      // attributes: no longer used
     if (!['approve', 'reject'].includes(action)) {
       return res.status(400).json({ error: "action must be 'approve' or 'reject'" });
     }
+    // A reject says why: the reasons the admin ticked (and an optional note), shown to the supplier (migration 118).
+    const rejection = action === 'reject' ? validateRejection(rejectionReasons, rejectionNote) : null;
+    if (rejection?.error) return res.status(400).json({ error: rejection.error });
     // Both required, not just English — the confirmed 40-country launch
     // list includes the entire GCC plus Jordan, real markets where
     // Arabic isn't optional. Reported together so an admin doesn't have
@@ -873,8 +877,11 @@ router.patch('/products/:id/moderate', requireAuth, requireRole('admin'), requir
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Product not found' });
     }
+    if (action === 'reject') await saveRejection(client, req.params.id, rejection.reasons, rejection.note);
+    else await clearRejection(client, req.params.id);
     await client.query('COMMIT');
-    await logAdminAction(req, action === 'approve' ? 'product_approved' : 'product_rejected', 'product', req.params.id, { name: rows[0].name });
+    await logAdminAction(req, action === 'approve' ? 'product_approved' : 'product_rejected', 'product', req.params.id, { name: rows[0].name, ...(rejection ? { reasons: rejection.reasons } : {}) });
+    if (action === 'reject') await notifySupplierOfRejection(req.params.id, rejection.reasons, rejection.note);
     res.json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -907,9 +914,15 @@ router.post('/products/bulk-moderate', requireAuth, requireRole('admin'), requir
 
     const results = [];
     for (const item of items) {
-      const { productId, action, nameEn, descriptionEn, nameAr, descriptionAr } = item || {};
+      const { productId, action, nameEn, descriptionEn, nameAr, descriptionAr, rejectionReasons, rejectionNote } = item || {};
       if (!productId || !['approve', 'reject'].includes(action)) {
         results.push({ productId: productId || null, success: false, error: "productId and a valid action ('approve' or 'reject') are required" });
+        continue;
+      }
+      // A reject says why (migration 118): the same reasons and note go to each product's supplier.
+      const rejection = action === 'reject' ? validateRejection(rejectionReasons, rejectionNote) : null;
+      if (rejection?.error) {
+        results.push({ productId, success: false, error: rejection.error });
         continue;
       }
       if (action === 'approve' && (!nameEn || !nameAr)) {
@@ -967,7 +980,10 @@ router.post('/products/bulk-moderate', requireAuth, requireRole('admin'), requir
         if (rows.length === 0) {
           results.push({ productId, success: false, error: 'Product not found' });
         } else {
+          if (action === 'reject') await saveRejection(db, productId, rejection.reasons, rejection.note);
+          else await clearRejection(db, productId);
           results.push({ productId, success: true });
+          if (action === 'reject') await notifySupplierOfRejection(productId, rejection.reasons, rejection.note);
         }
       } catch (err) {
         results.push({ productId, success: false, error: 'Internal error processing this item' });
