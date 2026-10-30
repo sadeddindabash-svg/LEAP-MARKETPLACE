@@ -948,14 +948,79 @@ router.patch('/me/products/bulk-price-update', requireAuth, requireRole('supplie
   }
 });
 
-router.patch('/me/products/:id', requireAuth, requireRole('supplier'), async (req, res, next) => {
+// PATCH /supplier/me/products/bulk-update { productIds, priceAdjustment?: { type: 'percent'|'flat', value }, stockQuantity?, lowStockThreshold? }
+// Bulk edit of the supplier's own products: the price (a percentage or a flat RMB amount, never below 0.01), the stock (set to a number)
+// and the low-stock threshold (set to a number). Anything left out is unchanged. Registered BEFORE /me/products/:id (Express matches in order).
+router.patch('/me/products/bulk-update', requireAuth, requireRole('supplier'), async (req, res, next) => {
   try {
-    const { price, stockQuantity, lowStockThreshold } = req.body || {};
-    if (price === undefined && stockQuantity === undefined && lowStockThreshold === undefined) {
-      return res.status(400).json({ error: 'Provide at least one of: price, stockQuantity, lowStockThreshold' });
+    const { productIds, priceAdjustment, stockQuantity, lowStockThreshold } = req.body || {};
+    if (!Array.isArray(productIds) || productIds.length === 0) {
+      return res.status(400).json({ error: 'productIds is required and must be non-empty' });
+    }
+    if (priceAdjustment === undefined && stockQuantity === undefined && lowStockThreshold === undefined) {
+      return res.status(400).json({ error: 'Provide at least one of: priceAdjustment, stockQuantity, lowStockThreshold' });
+    }
+    if (priceAdjustment !== undefined && (!priceAdjustment || !['percent', 'flat'].includes(priceAdjustment.type) || typeof priceAdjustment.value !== 'number' || Number.isNaN(priceAdjustment.value))) {
+      return res.status(400).json({ error: "priceAdjustment must be { type: 'percent' or 'flat', value: a number }" });
+    }
+    if (stockQuantity !== undefined && (!Number.isInteger(stockQuantity) || stockQuantity < 0)) {
+      return res.status(400).json({ error: 'stockQuantity must be a whole number of 0 or more' });
     }
     if (lowStockThreshold !== undefined && (!Number.isInteger(lowStockThreshold) || lowStockThreshold < 0)) {
       return res.status(400).json({ error: 'lowStockThreshold must be a whole number of 0 or more' });
+    }
+    // The price is changed only when asked: its value is then the 5th parameter.
+    const params = [productIds, req.user.supplierId, stockQuantity ?? null, lowStockThreshold ?? null];
+    let priceExpr = 'price';
+    if (priceAdjustment !== undefined) {
+      params.push(priceAdjustment.value);
+      priceExpr = priceAdjustment.type === 'percent' ? 'GREATEST(price * (1 + $5::numeric / 100.0), 0.01)' : 'GREATEST(price + $5::numeric, 0.01)';
+    }
+    const { rows: before } = await db.query('SELECT id, stock_quantity FROM products WHERE id = ANY($1::text[]) AND supplier_id = $2', [productIds, req.user.supplierId]);
+    const { rows } = await db.query(
+      `UPDATE products SET
+         price = ${priceExpr},
+         stock_quantity = COALESCE($3::int, stock_quantity),
+         low_stock_threshold = COALESCE($4::int, low_stock_threshold)
+       WHERE id = ANY($1::text[]) AND supplier_id = $2
+       RETURNING *`,
+      params
+    );
+    // Back in stock (0 -> more): the buyers who saved it are told, as for one product.
+    const wasEmpty = new Set(before.filter((r) => r.stock_quantity === 0).map((r) => r.id));
+    for (const r of rows) if (wasEmpty.has(r.id) && r.stock_quantity > 0) notifyRestock(r).catch((err) => console.error('[back-in-stock] Real notify failed (non-fatal):', err.message));
+    const dtos = await Promise.all(rows.map((r) => attachImagesAndFitment(toProductDto(r))));
+    res.json(dtos);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/me/products/:id', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    const { price, stockQuantity, lowStockThreshold, category, part } = req.body || {};
+    if (price === undefined && stockQuantity === undefined && lowStockThreshold === undefined && category === undefined && part === undefined) {
+      return res.status(400).json({ error: 'Provide at least one of: price, stockQuantity, lowStockThreshold, category and part' });
+    }
+    if (lowStockThreshold !== undefined && (!Number.isInteger(lowStockThreshold) || lowStockThreshold < 0)) {
+      return res.status(400).json({ error: 'lowStockThreshold must be a whole number of 0 or more' });
+    }
+    // The category and classification (part) can change together: the part must belong to the category. A product moved to a part that has
+    // no weight and size set by Leap must have its own complete set, or its shipping (and so its buyer price) could not be worked out.
+    let newCategory = null;
+    let newPart = null;
+    if (category !== undefined || part !== undefined) {
+      if (!category || !part) return res.status(400).json({ error: 'category and part are changed together: send both' });
+      const matched = await tryMatchCategoryAndPart(category, part, db);
+      if (!matched.category || !matched.part) return res.status(400).json({ error: 'part must be a real part belonging to the given category' });
+      const { rows: current } = await db.query('SELECT weight_kg, length_cm, width_cm, height_cm FROM products WHERE id = $1 AND supplier_id = $2', [req.params.id, req.user.supplierId]);
+      if (current.length === 0) return res.status(404).json({ error: 'Product not found' });
+      const ownSet = ['weight_kg', 'length_cm', 'width_cm', 'height_cm'].every((k) => current[0][k] !== null);
+      if (!ownSet && !(await getPartShipping(matched.category, matched.part))) {
+        return res.status(400).json({ error: 'This classification has no weight and size set by Leap, and this product has none of its own, so it cannot be moved there. Please contact Leap.', code: 'part_without_shipping' });
+      }
+      newCategory = matched.category;
+      newPart = matched.part;
     }
 
     // Real back-in-stock detection (new, migration 045) -- captures
@@ -972,10 +1037,12 @@ router.patch('/me/products/:id', requireAuth, requireRole('supplier'), async (re
       `UPDATE products SET
          price = COALESCE($1, price),
          stock_quantity = COALESCE($2, stock_quantity),
-         low_stock_threshold = COALESCE($3, low_stock_threshold)
+         low_stock_threshold = COALESCE($3, low_stock_threshold),
+         category = COALESCE($6, category),
+         part = COALESCE($7, part)
        WHERE id = $4 AND supplier_id = $5
        RETURNING *`,
-      [price ?? null, stockQuantity ?? null, lowStockThreshold ?? null, req.params.id, req.user.supplierId]
+      [price ?? null, stockQuantity ?? null, lowStockThreshold ?? null, req.params.id, req.user.supplierId, newCategory, newPart]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
 

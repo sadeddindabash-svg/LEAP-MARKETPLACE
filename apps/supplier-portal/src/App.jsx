@@ -20,7 +20,7 @@ import ExcelJS from "exceljs";
 import { QRCodeSVG } from "qrcode.react";
 import {
   getStoredToken, saveToken, clearToken, getCurrentUser, SessionExpiredError,
-  fetchMySupplierProfile, fetchMyProducts, createProduct, updateProduct, bulkUpdateProductPrices,
+  fetchMySupplierProfile, fetchMyProducts, createProduct, updateProduct, bulkUpdateProductPrices, bulkUpdateProducts,
   fetchMyOrders, updateSubOrder, acceptSubOrder, refuseSubOrder, fetchMyReturnCases, fetchMyReturnCaseById, replyToReturnCase, fetchMyFaultCases, answerFaultCase, fetchMyReturnAddress, saveMyReturnAddress,
   fetchMyOverview,
   uploadProductImage, uploadProductVideo, fetchProductRequirements, fetchAttributeDefinitions, API_BASE_URL,
@@ -71,14 +71,14 @@ const STRINGS = {
     products: {
       title: "商品管理", subtitle: (n) => `共 ${n} 个商品 · 平台展示语言由系统自动翻译`,
       bulkUpload: "批量上传", addProduct: "手动添加商品",
-      thProduct: "商品", thCategory: "分类", thPrice: "价格", thStock: "库存", thFitment: "适配车型", thStatus: "状态",
+      thProduct: "商品", thCategory: "分类", thClass: "部件类型", thPrice: "价格", thStock: "库存", thFitment: "适配车型", thStatus: "状态",
       filterAll: "全部", filterLowStock: (n) => `库存预警 (${n})`,
-      bulkPriceSelected: (n) => `已选择 ${n} 个商品`, bulkPriceUpdate: "批量调价", export: "导出",
+      bulkPriceSelected: (n) => `已选择 ${n} 个商品`, bulkPriceUpdate: "批量编辑", export: "导出",
       bulkPriceTitle: "批量调整价格", bulkPricePercent: "百分比", bulkPriceFlat: "固定金额",
       bulkPricePercentHint: "例如：输入 10 表示涨价 10%，输入 -10 表示降价 10%",
-      bulkPriceFlatHint: "例如：输入 5 表示每件加 $5，输入 -5 表示每件减 $5",
+      bulkPriceFlatHint: "例如：输入 5 表示每件加 ¥5，输入 -5 表示每件减 ¥5",
       bulkPriceApply: "应用", bulkPriceApplying: "应用中…", bulkPriceCancel: "取消",
-      bulkPriceSuccess: (n) => `已成功更新 ${n} 个商品的价格`,
+      bulkPriceSuccess: (n) => `已成功更新 ${n} 个商品`,
       addForm: {
         title: "手动添加商品", nameLabel: "商品名称（中文）", namePlaceholder: "例如：RIDEX 前刹车盘（通风型 300mm）",
         categoryLabel: "商品分类", categories: ["刹车系统", "发动机", "电气系统", "滤清器", "悬挂系统", "照明系统"],
@@ -193,14 +193,14 @@ const STRINGS = {
     products: {
       title: "Products", subtitle: (n) => `${n} products · buyer-facing text is translated automatically`,
       bulkUpload: "Bulk upload", addProduct: "Add product",
-      thProduct: "Product", thCategory: "Category", thPrice: "Price", thStock: "Stock", thFitment: "Fitment", thStatus: "Status",
+      thProduct: "Product", thCategory: "Category", thClass: "Classification", thPrice: "Price", thStock: "Stock", thFitment: "Fitment", thStatus: "Status",
       filterAll: "All", filterLowStock: (n) => `Low stock (${n})`,
-      bulkPriceSelected: (n) => `${n} selected`, bulkPriceUpdate: "Bulk price update", export: "Export",
+      bulkPriceSelected: (n) => `${n} selected`, bulkPriceUpdate: "Bulk edit", export: "Export",
       bulkPriceTitle: "Bulk price adjustment", bulkPricePercent: "Percentage", bulkPriceFlat: "Flat amount",
       bulkPricePercentHint: "e.g. enter 10 for a 10% increase, -10 for a 10% decrease",
-      bulkPriceFlatHint: "e.g. enter 5 to add $5 per item, -5 to subtract $5 per item",
+      bulkPriceFlatHint: "e.g. enter 5 to add ¥5 per item, -5 to subtract ¥5 per item",
       bulkPriceApply: "Apply", bulkPriceApplying: "Applying…", bulkPriceCancel: "Cancel",
-      bulkPriceSuccess: (n) => `Successfully updated pricing for ${n} product(s)`,
+      bulkPriceSuccess: (n) => `Successfully updated ${n} product(s)`,
       addForm: {
         title: "Add product", nameLabel: "Product name (Chinese)", namePlaceholder: "e.g. RIDEX Front Brake Disc, Vented 300mm",
         categoryLabel: "Category", categories: ["Brake System", "Engine", "Electrical", "Filters", "Suspension", "Lighting"],
@@ -2279,6 +2279,9 @@ function ProductsPage() {
   const [successMessage, setSuccessMessage] = useState(null);
   const { t, lang } = useLang();
   const { onSessionExpired } = useSupplier();
+  // The category NAMES for the list (a product keeps the category id).
+  const [categoryById, setCategoryById] = useState({});
+  useEffect(() => { fetchCategories().then((list) => setCategoryById(Object.fromEntries((Array.isArray(list) ? list : []).map((c) => [c.id, c])))).catch(() => {}); }, []);
 
   const load = () => {
     setLoadState("loading");
@@ -2401,12 +2404,12 @@ function ProductsPage() {
                       }}
                     />
                   </Th>
-                  <Th>{t.products.thProduct}</Th><Th>{t.products.thCategory}</Th><Th align="right">{t.products.thPrice}</Th><Th align="right">{t.products.thStock}</Th><Th>{t.products.thStatus}</Th><Th></Th>
+                  <Th>{t.products.thProduct}</Th><Th>{t.products.thCategory}</Th><Th>{t.products.thClass}</Th><Th align="right">{t.products.thPrice}</Th><Th align="right">{t.products.thStock}</Th><Th>{t.products.thStatus}</Th><Th></Th>
                 </tr>
               </thead>
               <tbody>
                 {visibleProducts.length === 0 && (
-                  <tr><td colSpan={7} style={{ textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>{lang === "zh" ? "暂无商品" : "No products yet."}</td></tr>
+                  <tr><td colSpan={8} style={{ textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>{lang === "zh" ? "暂无商品" : "No products yet."}</td></tr>
                 )}
                 {visibleProducts.map(p => (
                   <tr key={p.id}>
@@ -2424,7 +2427,8 @@ function ProductsPage() {
                       />
                     </Td>
                     <Td style={{ fontWeight: 700 }}>{p.name}</Td>
-                    <Td style={{ color: C.muted }}>{p.category}</Td>
+                    <Td style={{ color: C.muted }}>{categoryById[p.category] ? (lang === "zh" ? categoryById[p.category].nameZh || categoryById[p.category].nameEn : categoryById[p.category].nameEn) : (p.category || "—")}</Td>
+                    <Td style={{ color: C.muted }}>{p.part || "—"}</Td>
                     <Td align="right" style={{ fontWeight: 700 }}>{p.currencyCode === 'CNY' ? '¥' : '$'}{Number(p.price).toFixed(2)} {p.currencyCode}</Td>
                     {/* REAL BUG FOUND AND FIXED HERE: this used to hardcode
                         `< 20` for every product, ignoring each product's own
@@ -2487,32 +2491,39 @@ function ProductsPage() {
 function EditProductModal({ product, onClose, onSaved }) {
   const { lang } = useLang();
   const { onSessionExpired } = useSupplier();
+  const L = (zh, en) => (lang === "zh" ? zh : en);
   const [price, setPrice] = useState(String(product.price));
   const [stockQuantity, setStockQuantity] = useState(String(product.stockQuantity));
   const [lowStockThreshold, setLowStockThreshold] = useState(String(product.lowStockThreshold ?? 5));
+  // The category and the classification (the part) change together: the classification list is the chosen category's parts.
+  const [categories, setCategories] = useState([]);
+  const [category, setCategory] = useState(product.category || "");
+  const [parts, setParts] = useState([]);
+  const [part, setPart] = useState(product.part || "");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
+
+  useEffect(() => { fetchCategories().then(setCategories).catch(() => {}); }, []);
+  useEffect(() => {
+    if (!category) { setParts([]); return undefined; }
+    let live = true;
+    fetchPartsForCategory(category).then((list) => { if (live) setParts(Array.isArray(list) ? list : []); }).catch(() => { if (live) setParts([]); });
+    return () => { live = false; };
+  }, [category]);
 
   const handleSave = async () => {
     const priceNum = parseFloat(price);
     const stockNum = parseInt(stockQuantity, 10);
     const thresholdNum = parseInt(lowStockThreshold, 10);
-    if (!Number.isFinite(priceNum) || priceNum < 0) {
-      setError(lang === "zh" ? "请输入有效价格" : "Enter a valid price.");
-      return;
-    }
-    if (!Number.isInteger(stockNum) || stockNum < 0) {
-      setError(lang === "zh" ? "请输入有效库存数量" : "Enter a valid stock quantity.");
-      return;
-    }
-    if (!Number.isInteger(thresholdNum) || thresholdNum < 0) {
-      setError(lang === "zh" ? "请输入有效的库存预警阈值" : "Enter a valid low-stock threshold.");
-      return;
-    }
+    if (!Number.isFinite(priceNum) || priceNum <= 0) { setError(L("请输入有效价格", "Enter a valid price.")); return; }
+    if (!Number.isInteger(stockNum) || stockNum < 0) { setError(L("请输入有效库存数量", "Enter a valid stock quantity.")); return; }
+    if (!Number.isInteger(thresholdNum) || thresholdNum < 0) { setError(L("请输入有效的库存预警阈值", "Enter a valid low-stock threshold.")); return; }
+    const classificationChanged = category !== (product.category || "") || part !== (product.part || "");
+    if (classificationChanged && (!category || !part)) { setError(L("请选择分类和部件类型", "Choose the category and the classification.")); return; }
     setIsSaving(true);
     setError(null);
     try {
-      await updateProduct(getStoredToken(), product.id, { price: priceNum, stockQuantity: stockNum, lowStockThreshold: thresholdNum });
+      await updateProduct(getStoredToken(), product.id, { price: priceNum, stockQuantity: stockNum, lowStockThreshold: thresholdNum, ...(classificationChanged ? { category, part } : {}) });
       onSaved();
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
@@ -2522,65 +2533,92 @@ function EditProductModal({ product, onClose, onSaved }) {
     }
   };
 
+  const label = { fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 };
+  const input = { width: "100%", padding: "8px 11px", borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13, marginBottom: 12, boxSizing: "border-box", background: "#fff" };
+  const catLabel = (c) => (lang === "zh" ? c.nameZh || c.nameEn : c.nameEn);
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
-      <div style={{ background: "#fff", borderRadius: 12, padding: 24, width: 380, maxWidth: "90vw" }}>
+      <div role="dialog" aria-label={L("编辑商品", "Edit product")} style={{ background: "#fff", borderRadius: 12, padding: 24, width: 440, maxWidth: "92vw" }}>
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{product.name}</div>
-        <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>{lang === "zh" ? "编辑价格、库存与库存预警阈值" : "Edit price, stock, and low-stock alert threshold"}</div>
+        <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>{L("编辑价格、分类、部件类型、库存与库存预警阈值", "Edit price, category, classification, stock and low-stock threshold")}</div>
 
-        <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>{lang === "zh" ? "价格 (¥ 人民币)" : "Price (¥ RMB)"}</label>
-        <input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)}
-          style={{ width: "100%", padding: "8px 11px", borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13, marginBottom: 12, boxSizing: "border-box" }} />
+        <label style={label} htmlFor="edit-price">{L("价格 (¥ 人民币)", "Price (¥ RMB)")}</label>
+        <input id="edit-price" type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} style={input} />
 
-        <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>{lang === "zh" ? "库存数量" : "Stock quantity"}</label>
-        <input type="number" step="1" value={stockQuantity} onChange={(e) => setStockQuantity(e.target.value)}
-          style={{ width: "100%", padding: "8px 11px", borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13, marginBottom: 12, boxSizing: "border-box" }} />
-
-        <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>{lang === "zh" ? "库存预警阈值" : "Low-stock alert threshold"}</label>
-        <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>
-          {lang === "zh" ? "库存降至此数量或以下时，您将收到通知。" : "You'll be notified once when stock falls to this level or below."}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div>
+            <label style={label} htmlFor="edit-category">{L("分类", "Category")}</label>
+            <select id="edit-category" value={category} onChange={(e) => { setCategory(e.target.value); setPart(""); }} style={input}>
+              {!categories.some((c) => c.id === category) && <option value={category}>{category || L("请选择…", "Choose…")}</option>}
+              {categories.map((c) => <option key={c.id} value={c.id}>{catLabel(c)}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={label} htmlFor="edit-part">{L("部件类型", "Classification")}</label>
+            <select id="edit-part" value={part} onChange={(e) => setPart(e.target.value)} style={input} disabled={!category}>
+              <option value="">{L("请选择…", "Choose…")}</option>
+              {part && !parts.some((p) => p.nameEn === part) && <option value={part}>{part}</option>}
+              {parts.map((p) => <option key={p.nameEn} value={p.nameEn}>{lang === "zh" ? p.nameZh || p.nameEn : p.nameEn}</option>)}
+            </select>
+          </div>
         </div>
-        <input type="number" step="1" value={lowStockThreshold} onChange={(e) => setLowStockThreshold(e.target.value)}
-          style={{ width: "100%", padding: "8px 11px", borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13, marginBottom: 12, boxSizing: "border-box" }} />
 
-        {error && <div style={{ fontSize: 12, color: C.red, marginBottom: 12 }}>{error}</div>}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div>
+            <label style={label} htmlFor="edit-stock">{L("库存数量", "Stock quantity")}</label>
+            <input id="edit-stock" type="number" step="1" min="0" value={stockQuantity} onChange={(e) => setStockQuantity(e.target.value)} style={input} />
+          </div>
+          <div>
+            <label style={label} htmlFor="edit-threshold">{L("库存预警阈值", "Low-stock threshold")}</label>
+            <input id="edit-threshold" type="number" step="1" min="0" value={lowStockThreshold} onChange={(e) => setLowStockThreshold(e.target.value)} style={input} />
+          </div>
+        </div>
+        <div style={{ fontSize: 11, color: C.muted, marginTop: -6, marginBottom: 12 }}>{L("库存降至此数量或以下时，您将收到通知。", "You'll be notified once when stock falls to the threshold or below.")}</div>
+
+        {error && <div role="alert" style={{ fontSize: 12, color: C.red, marginBottom: 12 }}>{error}</div>}
 
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-          <button onClick={onClose} disabled={isSaving} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-            {lang === "zh" ? "取消" : "Cancel"}
-          </button>
-          <button onClick={handleSave} disabled={isSaving} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-            {isSaving ? "…" : (lang === "zh" ? "保存" : "Save")}
-          </button>
+          <button onClick={onClose} disabled={isSaving} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{L("取消", "Cancel")}</button>
+          <button onClick={handleSave} disabled={isSaving} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{isSaving ? "…" : L("保存", "Save")}</button>
         </div>
       </div>
     </div>
   );
 }
-
-// Real bulk price update modal (new) -- closes a real gap: there was
-// no way to adjust multiple real products' prices at once before
-// this, only one at a time via EditProductModal above. A real, single
-// backend call (PATCH /supplier/me/products/bulk-price-update),
-// applied server-side per real product's own existing price -- not a
-// fetch-then-recompute-in-JS loop.
 function BulkPriceModal({ selectedCount, productIds, onClose, onApplied, onSessionExpired }) {
   const { t, lang } = useLang();
+  const L = (zh, en) => (lang === "zh" ? zh : en);
+  // Bulk edit: tick what to change. Price by a percentage or a flat RMB amount; stock and threshold are set to the number given.
+  const [changePrice, setChangePrice] = useState(true);
   const [adjustmentType, setAdjustmentType] = useState("percent");
   const [value, setValue] = useState("");
+  const [changeStock, setChangeStock] = useState(false);
+  const [stock, setStock] = useState("");
+  const [changeThreshold, setChangeThreshold] = useState(false);
+  const [threshold, setThreshold] = useState("");
   const [isApplying, setIsApplying] = useState(false);
   const [error, setError] = useState(null);
 
+  const nothingChosen = !changePrice && !changeStock && !changeThreshold;
   const handleApply = async () => {
     const num = parseFloat(value);
-    if (!Number.isFinite(num)) {
-      setError(lang === "zh" ? "请输入有效数字" : "Enter a valid number.");
-      return;
-    }
+    const stockNum = parseInt(stock, 10);
+    const thresholdNum = parseInt(threshold, 10);
+    if (changePrice && !Number.isFinite(num)) { setError(L("请输入有效数字", "Enter a valid number.")); return; }
+    if (changeStock && (!Number.isInteger(stockNum) || stockNum < 0)) { setError(L("请输入有效库存数量", "Enter a valid stock quantity.")); return; }
+    if (changeThreshold && (!Number.isInteger(thresholdNum) || thresholdNum < 0)) { setError(L("请输入有效的库存预警阈值", "Enter a valid low-stock threshold.")); return; }
     setIsApplying(true);
     setError(null);
     try {
-      const updated = await bulkUpdateProductPrices(getStoredToken(), productIds, adjustmentType, num);
+      // Only the price: the same request as before. Anything else: the bulk edit request (the price too, when ticked).
+      const updated = changePrice && !changeStock && !changeThreshold
+        ? await bulkUpdateProductPrices(getStoredToken(), productIds, adjustmentType, num)
+        : await bulkUpdateProducts(getStoredToken(), {
+          productIds,
+          ...(changePrice ? { priceAdjustment: { type: adjustmentType, value: num } } : {}),
+          ...(changeStock ? { stockQuantity: stockNum } : {}),
+          ...(changeThreshold ? { lowStockThreshold: thresholdNum } : {}),
+        });
       onApplied(updated.length);
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
@@ -2590,44 +2628,47 @@ function BulkPriceModal({ selectedCount, productIds, onClose, onApplied, onSessi
     }
   };
 
+  const section = (on) => ({ border: `1px solid ${on ? C.ink : C.line}`, borderRadius: 10, padding: 12, marginBottom: 10 });
+  const tick = { display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, cursor: "pointer" };
+  const input = { width: "100%", padding: "8px 11px", borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13, marginTop: 8, boxSizing: "border-box" };
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
-      <div style={{ background: "#fff", borderRadius: 12, padding: 24, width: 380, maxWidth: "90vw" }}>
-        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{t.products.bulkPriceTitle}</div>
-        <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>{t.products.bulkPriceSelected(selectedCount)}</div>
+      <div role="dialog" aria-label={L("批量编辑", "Bulk edit")} style={{ background: "#fff", borderRadius: 12, padding: 24, width: 420, maxWidth: "92vw" }}>
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{L("批量编辑", "Bulk edit")}</div>
+        <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>{t.products.bulkPriceSelected(selectedCount)} · {L("勾选要修改的内容", "tick what to change")}</div>
 
-        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-          {["percent", "flat"].map((type) => (
-            <button
-              key={type}
-              onClick={() => setAdjustmentType(type)}
-              style={{
-                flex: 1, padding: "8px 0", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
-                border: `1px solid ${adjustmentType === type ? C.ink : C.line}`, background: adjustmentType === type ? C.ink : "#fff",
-                color: adjustmentType === type ? "#fff" : C.ink,
-              }}
-            >{type === "percent" ? t.products.bulkPricePercent : t.products.bulkPriceFlat}</button>
-          ))}
+        <div style={section(changePrice)}>
+          <label style={tick}><input type="checkbox" checked={changePrice} onChange={(e) => setChangePrice(e.target.checked)} /> {L("价格", "Price")}</label>
+          {changePrice && (
+            <>
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                {["percent", "flat"].map((type) => (
+                  <button key={type} onClick={() => setAdjustmentType(type)} style={{ flex: 1, padding: "7px 0", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: `1px solid ${adjustmentType === type ? C.ink : C.line}`, background: adjustmentType === type ? C.ink : "#fff", color: adjustmentType === type ? "#fff" : C.ink }}>
+                    {type === "percent" ? t.products.bulkPricePercent : t.products.bulkPriceFlat}
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>{adjustmentType === "percent" ? t.products.bulkPricePercentHint : t.products.bulkPriceFlatHint}</div>
+              <input aria-label={adjustmentType === "percent" ? L("百分比 (%)", "Percentage (%)") : L("金额 (¥ 人民币)", "Amount (¥ RMB)")} placeholder={adjustmentType === "percent" ? L("例如 10 或 -5", "e.g. 10 or -5") : L("例如 20 或 -15 (¥)", "e.g. 20 or -15 (¥)")} type="number" step="0.01" value={value} onChange={(e) => setValue(e.target.value)} style={input} />
+            </>
+          )}
         </div>
 
-        <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 4 }}>
-          {adjustmentType === "percent" ? (lang === "zh" ? "百分比 (%)" : "Percentage (%)") : (lang === "zh" ? "金额 ($)" : "Amount ($)")}
-        </label>
-        <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>
-          {adjustmentType === "percent" ? t.products.bulkPricePercentHint : t.products.bulkPriceFlatHint}
+        <div style={section(changeStock)}>
+          <label style={tick}><input type="checkbox" checked={changeStock} onChange={(e) => setChangeStock(e.target.checked)} /> {L("库存数量", "Stock quantity")}</label>
+          {changeStock && <input aria-label={L("新的库存数量", "New stock quantity")} placeholder={L("所有选中的商品都设为此数量", "Every selected product is set to this number")} type="number" step="1" min="0" value={stock} onChange={(e) => setStock(e.target.value)} style={input} />}
         </div>
-        <input
-          type="number" step="0.01" value={value} onChange={(e) => setValue(e.target.value)}
-          style={{ width: "100%", padding: "8px 11px", borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13, marginBottom: 12, boxSizing: "border-box" }}
-        />
 
-        {error && <div style={{ fontSize: 12, color: C.red, marginBottom: 12 }}>{error}</div>}
+        <div style={section(changeThreshold)}>
+          <label style={tick}><input type="checkbox" checked={changeThreshold} onChange={(e) => setChangeThreshold(e.target.checked)} /> {L("库存预警阈值", "Low-stock threshold")}</label>
+          {changeThreshold && <input aria-label={L("新的库存预警阈值", "New low-stock threshold")} placeholder={L("所有选中的商品都设为此数量", "Every selected product is set to this number")} type="number" step="1" min="0" value={threshold} onChange={(e) => setThreshold(e.target.value)} style={input} />}
+        </div>
+
+        {error && <div role="alert" style={{ fontSize: 12, color: C.red, marginBottom: 12 }}>{error}</div>}
 
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-          <button onClick={onClose} disabled={isApplying} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-            {t.products.bulkPriceCancel}
-          </button>
-          <button onClick={handleApply} disabled={isApplying || !value} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+          <button onClick={onClose} disabled={isApplying} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{t.products.bulkPriceCancel}</button>
+          <button onClick={handleApply} disabled={isApplying || nothingChosen || (changePrice && !value) || (changeStock && stock === "") || (changeThreshold && threshold === "")} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
             {isApplying ? t.products.bulkPriceApplying : t.products.bulkPriceApply}
           </button>
         </div>

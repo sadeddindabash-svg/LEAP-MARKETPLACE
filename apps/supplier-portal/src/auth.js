@@ -178,6 +178,11 @@ export function bulkUpdateProductPrices(token, productIds, adjustmentType, adjus
   return authedMutate("PATCH", "/supplier/me/products/bulk-price-update", token, { productIds, adjustmentType, adjustmentValue });
 }
 
+// Bulk edit: { productIds, priceAdjustment?: { type: "percent"|"flat", value }, stockQuantity?, lowStockThreshold? } (anything left out is unchanged).
+export function bulkUpdateProducts(token, payload) {
+  return authedMutate("PATCH", "/supplier/me/products/bulk-update", token, payload);
+}
+
 export function fetchMyOrders(token) {
   return authedGet("/supplier/me/orders", token);
 }
