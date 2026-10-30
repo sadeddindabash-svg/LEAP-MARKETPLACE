@@ -652,7 +652,7 @@ function AttentionRow({ icon: Icon, color, text, sub, last }) {
 
 // ---------------------------------------------------------------- Orders: the refused orders, and the ones nobody answered in 24 hours (a supplier answers a NEW order: accept or refuse)
 const cny2 = (n) => `¥${Number(n).toFixed(2)}`;
-function RefusedOrdersSection({ onSessionExpired }) {
+function RefusedOrdersSection({ onSessionExpired, counts, onChanged }) {
   const [filter, setFilter] = useState("open");
   const [rows, setRows] = useState(null);
   const [error, setError] = useState(null);
@@ -674,7 +674,7 @@ function RefusedOrdersSection({ onSessionExpired }) {
       try { const a = await fetchResponseAlternatives(getStoredToken(), row.subOrderId); setAlts((cur) => ({ ...cur, [row.subOrderId]: a })); } catch (err) { failWith(err); }
     }
   };
-  const act = async (call, doneText) => { setBusy(true); setError(null); try { await call(); setMessage(doneText); setOpenId(null); await load(); } catch (err) { failWith(err); } finally { setBusy(false); } };
+  const act = async (call, doneText) => { setBusy(true); setError(null); try { await call(); setMessage(doneText); setOpenId(null); await load(); if (onChanged) onChanged(); } catch (err) { failWith(err); } finally { setBusy(false); } };
   const reassign = (row) => act(() => reassignSupplierResponse(getStoredToken(), row.subOrderId, row.items.map((i) => ({ productId: i.productId, alternativeProductId: picks[i.productId] }))), "Reassigned: the new supplier has been asked, and the buyer was told.");
   const handled = (row) => act(() => markResponseHandled(getStoredToken(), row.subOrderId, note), "Marked as handled.");
   const when = (v) => (v ? new Date(v).toLocaleString() : "");
@@ -684,7 +684,7 @@ function RefusedOrdersSection({ onSessionExpired }) {
         <div style={{ padding: 12 }}>
           <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
             {[["open", "Needs attention"], ["handled", "Handled"]].map(([k, label]) => (
-              <button key={k} data-testid={`refused-filter-${k}`} onClick={() => setFilter(k)} style={{ ...body, padding: "6px 12px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: filter === k ? `2px solid ${C.signal}` : `1px solid ${C.line}`, background: filter === k ? "#FDF1EB" : "#fff" }}>{label}</button>
+              <button key={k} data-testid={`refused-filter-${k}`} onClick={() => setFilter(k)} style={{ ...body, padding: "6px 12px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: filter === k ? `2px solid ${C.signal}` : `1px solid ${C.line}`, background: filter === k ? "#FDF1EB" : "#fff", color: k === "open" && counts && counts.open > 0 ? C.red : C.ink }}>{label}{counts ? ` (${counts[k] ?? 0})` : ""}</button>
             ))}
           </div>
           {error && <div role="alert" style={{ ...body, fontSize: 12.5, color: C.red, marginBottom: 8 }}>{error}</div>}
@@ -737,11 +737,93 @@ function RefusedOrdersSection({ onSessionExpired }) {
   );
 }
 
+// Orders > Export: EVERY field the server gives for each order of the tab (its list row and its full detail, one row per order),
+// and a second sheet with one row per item (its sub-order's fields and the item's own). Nested details are flattened into
+// "Part · Field" columns, so a field the server adds later shows up too.
+const ORDER_FIRST_COLUMNS = ["id", "placedAt", "status", "displayStatus", "hubStatus", "userId", "guestEmail", "total", "currencyCode"];
+const humanizeKey = (key) => key.split(".").map((k) => k.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())).join(" · ");
+const isScalar = (v) => v === null || v === undefined || typeof v !== "object";
+function flattenRecord(obj, prefix = "", out = {}, depth = 0) {
+  for (const [k, v] of Object.entries(obj || {})) {
+    const key = prefix ? `${prefix}.${k}` : k;
+    if (isScalar(v)) out[key] = v;
+    else if (Array.isArray(v)) { if (v.every(isScalar)) out[key] = v.join("; "); }      // a list of objects goes to its own sheet (items) or is left out
+    else if (depth < 2) flattenRecord(v, key, out, depth + 1);
+  }
+  return out;
+}
+async function exportOrdersWorkbook({ orders, tabName, onProgress }) {
+  const details = new Array(orders.length);
+  let done = 0;
+  for (let i = 0; i < orders.length; i += 6) {      // 6 at a time
+    await Promise.all(orders.slice(i, i + 6).map(async (o, k) => {
+      try { details[i + k] = await fetchOrderById(getStoredToken(), o.id); } catch (err) { if (err instanceof SessionExpiredError) throw err; details[i + k] = null; }
+      onProgress(++done, orders.length);
+    }));
+  }
+  const workbook = new ExcelJS.Workbook();
+  const addSheet = (name, records, first = []) => {
+    const keys = [];
+    for (const r of records) for (const k of Object.keys(r)) if (!keys.includes(k)) keys.push(k);
+    const ordered = [...first.filter((k) => keys.includes(k)), ...keys.filter((k) => !first.includes(k))];
+    const sheet = workbook.addWorksheet(name);
+    sheet.columns = ordered.map((k) => ({ header: humanizeKey(k), key: k, width: Math.min(40, Math.max(12, humanizeKey(k).length + 2)) }));
+    for (const r of records) sheet.addRow(Object.fromEntries(ordered.map((k) => [k, r[k] === undefined || r[k] === null ? "" : r[k]])));
+    const head = sheet.getRow(1);
+    head.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    head.eachCell((cell) => { cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1D4E89" } }; });
+    sheet.views = [{ state: "frozen", ySplit: 1 }];
+    if (ordered.length > 0) sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: ordered.length } };
+  };
+  const orderRows = orders.map((o, i) => {
+    const d = details[i] || {};
+    const subOrders = Array.isArray(d.supplierSubOrders) ? d.supplierSubOrders : [];
+    const items = subOrders.flatMap((so) => (Array.isArray(so.items) ? so.items : []));
+    const { supplierSubOrders, ...rest } = d;
+    return {
+      ...flattenRecord({ ...o, ...rest }),
+      statusLabel: getOrderStatusMeta(o.status === "cancelled" ? "cancelled" : (o.displayStatus || o.status)).label,
+      hubStatusLabel: getHubStatusMeta(o.hubStatus).label,
+      itemCount: items.length,
+      units: items.reduce((sum, it) => sum + (Number(it.quantity) || 0), 0),
+      suppliers: subOrders.map((so) => so.supplierName).filter(Boolean).join("; "),
+      supplierTracking: subOrders.map((so) => so.trackingNumber).filter(Boolean).join("; "),
+      hubTracking: subOrders.map((so) => so.hubTrackingNumber).filter(Boolean).join("; "),
+      detailLoaded: details[i] ? "yes" : "no (could not load)",
+    };
+  });
+  addSheet("Orders", orderRows, [...ORDER_FIRST_COLUMNS, "statusLabel", "hubStatusLabel", "itemCount", "units", "suppliers", "supplierTracking", "hubTracking"]);
+  const itemRows = [];
+  details.forEach((d, i) => {
+    for (const so of (d && Array.isArray(d.supplierSubOrders) ? d.supplierSubOrders : [])) {
+      const { items, ...subOrder } = so;
+      for (const it of (Array.isArray(items) ? items : [])) itemRows.push({ orderId: orders[i].id, ...flattenRecord(subOrder, "subOrder"), ...flattenRecord(it, "item") });
+    }
+  });
+  addSheet("Items", itemRows, ["orderId", "subOrder.supplierName", "item.name", "item.quantity", "item.unitPrice"]);
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `orders-${tabName}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function OrdersPage({ onOpenOrder, onSessionExpired }) {
   const [orders, setOrders] = useState([]);
   const [loadState, setLoadState] = useState("loading"); // loading | ready | error
   const [errorMessage, setErrorMessage] = useState(null);
   const [filter, setFilter] = useState("all");
+  // Refused by a supplier or not answered in 24 hours: their own tab, with Needs attention / Handled (each counted).
+  const [refused, setRefused] = useState({ open: [], handled: [] });
+  const [exporting, setExporting] = useState(null);      // { done, total } while the export fetches each order's detail
+  const loadRefused = () => Promise.all([fetchSupplierResponses(getStoredToken(), "open"), fetchSupplierResponses(getStoredToken(), "handled")])
+    .then(([open, handled]) => setRefused({ open: Array.isArray(open) ? open : [], handled: Array.isArray(handled) ? handled : [] }))
+    .catch((err) => { if (err instanceof SessionExpiredError) onSessionExpired(); });
+  useEffect(() => { loadRefused(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useAutoRefresh(loadRefused, { enabled: loadState === "ready" });
 
   useEffect(() => {
     let cancelled = false;
@@ -769,7 +851,19 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
   // field. An order with no real hub shipment yet (too early) shows
   // only under "All" -- excluded from every specific real filter.
   const TO_SHIP_HUB_STATUSES = ["awaiting_receipt", "received", "opened", "inspected", "packed"];
-  const filtered = orders.filter((o) => {
+  const matches = (o, f) => {
+    if (f === "all") return true;
+    if (o.hubStatus == null) return false;
+    if (f === "to_ship") return TO_SHIP_HUB_STATUSES.includes(o.hubStatus);
+    if (f === "shipped") return o.hubStatus === "shipped_to_buyer";
+    if (f === "delivered") return o.hubStatus === "delivered";
+    if (f === "dispute") return o.hubStatus === "flagged";
+    return false;
+  };
+  const refusedOrderIds = new Set([...refused.open, ...refused.handled].map((r) => r.orderId));
+  // each tab shows how many orders it holds (Refused: the orders with a refused or unanswered supplier part, open or handled)
+  const countOf = (f) => (f === "refused" ? refusedOrderIds.size : orders.filter((o) => matches(o, f)).length);
+  const filtered = filter === "refused" ? orders.filter((o) => refusedOrderIds.has(o.id)) : orders.filter((o) => {
     if (filter === "all") return true;
     if (o.hubStatus == null) return false;
     if (filter === "to_ship") return TO_SHIP_HUB_STATUSES.includes(o.hubStatus);
@@ -778,7 +872,7 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
     if (filter === "dispute") return o.hubStatus === "flagged";
     return false;
   });
-  const filters = [["all", "All"], ["to_ship", "To ship"], ["shipped", "Shipped"], ["delivered", "Delivered"], ["dispute", "Disputes"]];
+  const filters = [["all", "All"], ["to_ship", "To ship"], ["shipped", "Shipped"], ["delivered", "Delivered"], ["dispute", "Disputes"], ["refused", "Refused"]];
 
   return (
     <div>
@@ -789,41 +883,31 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
             <button key={id} onClick={() => setFilter(id)} style={{
               ...body, padding: "7px 13px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
               border: `1px solid ${filter === id ? C.ink : C.line}`, background: filter === id ? C.ink : "#fff", color: filter === id ? "#fff" : C.ink,
-            }}>{label}</button>
+            }}>{label} <span data-testid={`orders-count-${id}`} style={{ display: "inline-block", minWidth: 18, padding: "0 6px", marginLeft: 4, borderRadius: 999, fontSize: 11, fontWeight: 700, background: id === "refused" && refused.open.length > 0 ? C.red : filter === id ? "rgba(255,255,255,0.2)" : "#EEF0F3", color: (id === "refused" && refused.open.length > 0) || filter === id ? "#fff" : C.muted }}>{countOf(id)}</span></button>
           ))}
         </div>
         <button
-          disabled={filtered.length === 0}
-          onClick={() => exportToExcel({
-            filename: `orders-${filter}-${new Date().toISOString().slice(0, 10)}`,
-            sheetName: "Orders",
-            columns: [
-              { header: "Order ID", key: "id", width: 16 },
-              { header: "Buyer", key: "buyer", width: 30 },
-              { header: "Total", key: "total", width: 12 },
-              { header: "Currency", key: "currencyCode", width: 10 },
-              { header: "Placed", key: "placedAt", width: 18 },
-              { header: "Status", key: "status", width: 14 },
-              { header: "Hub status", key: "hubStatus", width: 16 },
-            ],
-            rows: filtered.map((o) => ({
-              id: o.id,
-              buyer: o.userId || o.guestEmail || "—",
-              total: Number(o.total),
-              currencyCode: o.currencyCode,
-              placedAt: new Date(o.placedAt).toLocaleDateString(),
-              status: getOrderStatusMeta(o.displayStatus || o.status).label,
-              hubStatus: getHubStatusMeta(o.hubStatus).label,
-            })),
-          })}
-          style={{ ...body, display: "flex", alignItems: "center", gap: 6, padding: "7px 13px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, border: `1px solid ${C.line}`, background: "#fff", cursor: filtered.length === 0 ? "default" : "pointer", opacity: filtered.length === 0 ? 0.5 : 1 }}
+          data-testid="orders-export"
+          disabled={filtered.length === 0 || Boolean(exporting)}
+          onClick={async () => {
+            setExporting({ done: 0, total: filtered.length });
+            try {
+              await exportOrdersWorkbook({ orders: filtered, tabName: filter, onProgress: (done, total) => setExporting({ done, total }) });
+            } catch (err) {
+              if (err instanceof SessionExpiredError) return onSessionExpired();
+              setErrorMessage(err.message);
+            } finally {
+              setExporting(null);
+            }
+          }}
+          style={{ ...body, display: "flex", alignItems: "center", gap: 6, padding: "7px 13px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, border: `1px solid ${C.line}`, background: "#fff", cursor: filtered.length === 0 || exporting ? "default" : "pointer", opacity: filtered.length === 0 || exporting ? 0.5 : 1 }}
         >
-          <Download size={13} /> Export
+          <Download size={13} /> {exporting ? `Exporting… ${exporting.done}/${exporting.total}` : "Export"}
         </button>
       </div>
       <div style={{ padding: 24 }}>
         {loadState === "loading" && <Card><div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Loading orders…</div></Card>}
-        <RefusedOrdersSection onSessionExpired={onSessionExpired} />
+        {filter === "refused" && <RefusedOrdersSection onSessionExpired={onSessionExpired} counts={{ open: refused.open.length, handled: refused.handled.length }} onChanged={loadRefused} />}
         {loadState === "error" && (
           <Card>
             <div style={{ padding: 32, textAlign: "center", ...body, fontSize: 13, color: C.red }}>
@@ -831,7 +915,7 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
             </div>
           </Card>
         )}
-        {loadState === "ready" && (
+        {loadState === "ready" && filter !== "refused" && (
           <Card>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
