@@ -3627,10 +3627,10 @@ function FinancePage() {
           </>
         )}
         {/* Payout history and Payout account in the same row (they stack on a narrow window). */}
-        <div data-testid="finance-payouts-row" style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+        <div data-testid="finance-payouts-row" style={{ display: "flex", gap: 16, alignItems: "stretch", flexWrap: "wrap" }}>      {/* same height */}
         {finance && (
-          <div style={{ flex: "2 1 520px", minWidth: 0 }}>
-            <Card title={fi.recordsTitle}>
+          <div style={{ flex: "2 1 520px", minWidth: 0, display: "flex", flexDirection: "column" }}>
+            <Card title={fi.recordsTitle} style={{ flex: 1 }}>
               {finance.payouts.length === 0 ? (
                 <div style={{ ...font, padding: 22, fontSize: 13, color: C.muted, textAlign: "center" }}>{fi.emptyRecords}</div>
               ) : (
@@ -3652,8 +3652,8 @@ function FinancePage() {
             </Card>
           </div>
         )}
-        <div style={{ flex: "1 1 320px", minWidth: 0 }}>
-        <Card title={fi.bankTitle}>
+        <div style={{ flex: "1 1 320px", minWidth: 0, display: "flex", flexDirection: "column" }}>
+        <Card title={fi.bankTitle} style={{ flex: 1 }}>
           <div style={{ padding: 16 }}>
             {payoutMethod === undefined && <div style={{ fontSize: 12.5, color: C.muted }}>{lang === "zh" ? "加载中…" : "Loading…"}</div>}
             {payoutMethod !== undefined && !isEditing && payoutMethod && (
