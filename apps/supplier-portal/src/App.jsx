@@ -1122,13 +1122,17 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
             {cascadeLabel("适配车型", "Vehicle Fitment")}
           </div>
           {prefill?.generationId ? (
-            <div style={{ ...font, fontSize: 13, color: C.ink, background: C.canvas, border: `1px solid ${C.line}`, borderRadius: 8, padding: "10px 12px" }}>
-              {prefill.vehicleLabel} <span style={{ color: C.muted, fontSize: 11.5 }}>({cascadeLabel("已由买家选定，不可更改", "already chosen by the buyer, can't be changed")})</span>
-            </div>
+            <>
+              <div style={{ ...font, fontSize: 13, color: C.ink, background: C.canvas, border: `1px solid ${C.line}`, borderRadius: 8, padding: "10px 12px" }}>
+                {prefill.vehicleLabel} <span style={{ color: C.muted, fontSize: 11.5 }}>({cascadeLabel("已由买家选定，不可更改", "already chosen by the buyer, can't be changed")})</span>
+              </div>
+              <div style={{ marginTop: 14 }}><VersionsStep generationId={selectedGenerationId} year={selectedYear} value={versionChoice} onChange={setVersionChoice} /></div>
+            </>
           ) : (
-          <VehiclePicker cascade={cascade} />
+          <VehiclePicker cascade={cascade}>
+            <VersionsStep generationId={selectedGenerationId} year={selectedYear} value={versionChoice} onChange={setVersionChoice} />
+          </VehiclePicker>
           )}
-          <VersionsStep generationId={selectedGenerationId} year={selectedYear} value={versionChoice} onChange={setVersionChoice} />
         </div>
 
         {/* ---- Product Details ---- */}
@@ -1136,171 +1140,182 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
           <div style={{ ...font, fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 14 }}>
             {cascadeLabel("商品详情", "Product Details")}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-            <Field label={cascadeLabel("商品名称（中文）", "Product name (Chinese)")}>
-              <input style={inputStyle} placeholder="例如：前刹车盘 300mm" value={nameZh} onChange={(e) => setNameZh(e.target.value)} maxLength={100} />
-              <div style={{ fontSize: 10.5, color: nameZh.length > 0 && (nameZh.length < 10 || nameZh.length > 100) ? C.red : C.muted, marginTop: 2 }}>{nameZh.length}/100 (min 10)</div>
-            </Field>
-            <Field label={cascadeLabel("类别", "Category")}>
-              <select style={selectStyle} value={category} onChange={(e) => setCategory(e.target.value)}>
-                {categories.map(c => <option key={c.id} value={c.id}>{c.nameEn}</option>)}
-              </select>
-            </Field>
-            <Field label={cascadeLabel("部件类型", "Part Class.")}>
-              <select style={selectStyle} value={part} onChange={(e) => setPart(e.target.value)} disabled={isLoadingParts || parts.length === 0}>
-                {isLoadingParts && <option>{cascadeLabel("加载中…", "Loading…")}</option>}
-                {!isLoadingParts && parts.length === 0 && <option>{cascadeLabel("此类别暂无部件", "No parts yet for this category")}</option>}
-                {!isLoadingParts && parts.map(p => <option key={p.id} value={p.nameEn}>{p.nameEn}</option>)}
-              </select>
-            </Field>
-            <div>
-              <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 8 }}>{cascadeLabel("属性", "Attributes")}</div>
-              {selectedAttributes.map((attr) => (
-                <div key={attr.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: `1px solid ${C.line}`, borderRadius: 6, padding: '7px 10px', marginBottom: 6 }}>
-                  <span style={{ ...font, fontSize: 12.5, color: C.ink }}>{attr.name}: <strong>{attr.value}</strong></span>
-                  <button onClick={() => setSelectedAttributes((prev) => prev.filter((a) => a.name !== attr.name))} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }}>
-                    <X size={14} color={C.muted} />
-                  </button>
-                </div>
-              ))}
-              {(() => {
-                const availableNames = attributeDefinitions.filter((def) => !selectedAttributes.some((a) => a.name === def.name));
-                if (selectedAttributes.length >= 5 || availableNames.length === 0) return null;
-                if (!isAddingAttribute) {
-                  return (
-                    <button onClick={() => setIsAddingAttribute(true)} style={{ width: '100%', border: `1px dashed ${C.line}`, borderRadius: 6, padding: 7, fontSize: 12, color: C.muted, background: 'none', cursor: 'pointer' }}>
-                      + {cascadeLabel("添加属性", "Add attribute")}
+          {/* Line 1: name, category, part. Line 2: attributes, OEM, price. Line 3: stock. Beside them: the 320 x 320 Weight and size box (as the car photo above). */}
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: 28, alignItems: "start" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 16, alignContent: "start", minWidth: 0 }}>
+              <Field label={cascadeLabel("商品名称（中文）", "Product name (Chinese)")}>
+                <input style={inputStyle} placeholder="例如：前刹车盘 300mm" value={nameZh} onChange={(e) => setNameZh(e.target.value)} maxLength={100} />
+                <div style={{ fontSize: 10.5, color: nameZh.length > 0 && (nameZh.length < 10 || nameZh.length > 100) ? C.red : C.muted, marginTop: 2 }}>{nameZh.length}/100 (min 10)</div>
+              </Field>
+              <Field label={cascadeLabel("类别", "Category")}>
+                <select style={selectStyle} value={category} onChange={(e) => setCategory(e.target.value)}>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.nameEn}</option>)}
+                </select>
+              </Field>
+              <Field label={cascadeLabel("部件类型", "Part Class.")}>
+                <select style={selectStyle} value={part} onChange={(e) => setPart(e.target.value)} disabled={isLoadingParts || parts.length === 0}>
+                  {isLoadingParts && <option>{cascadeLabel("加载中…", "Loading…")}</option>}
+                  {!isLoadingParts && parts.length === 0 && <option>{cascadeLabel("此类别暂无部件", "No parts yet for this category")}</option>}
+                  {!isLoadingParts && parts.map(p => <option key={p.id} value={p.nameEn}>{p.nameEn}</option>)}
+                </select>
+              </Field>
+              <div>
+                <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 8 }}>{cascadeLabel("属性", "Attributes")}</div>
+                {selectedAttributes.map((attr) => (
+                  <div key={attr.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: `1px solid ${C.line}`, borderRadius: 6, padding: '7px 10px', marginBottom: 6 }}>
+                    <span style={{ ...font, fontSize: 12.5, color: C.ink }}>{attr.name}: <strong>{attr.value}</strong></span>
+                    <button onClick={() => setSelectedAttributes((prev) => prev.filter((a) => a.name !== attr.name))} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }}>
+                      <X size={14} color={C.muted} />
                     </button>
+                  </div>
+                ))}
+                {(() => {
+                  const availableNames = attributeDefinitions.filter((def) => !selectedAttributes.some((a) => a.name === def.name));
+                  if (selectedAttributes.length >= 5 || availableNames.length === 0) return null;
+                  if (!isAddingAttribute) {
+                    return (
+                      <button onClick={() => setIsAddingAttribute(true)} style={{ width: '100%', border: `1px dashed ${C.line}`, borderRadius: 6, padding: 7, fontSize: 12, color: C.muted, background: 'none', cursor: 'pointer' }}>
+                        + {cascadeLabel("添加属性", "Add attribute")}
+                      </button>
+                    );
+                  }
+                  const valuesForName = attributeDefinitions.find((def) => def.name === newAttrName)?.values || [];
+                  return (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <select style={{ ...selectStyle, flex: 1 }} value={newAttrName} onChange={(e) => { setNewAttrName(e.target.value); setNewAttrValue(''); }}>
+                        <option value="">{cascadeLabel("选择属性", "Choose attribute")}</option>
+                        {availableNames.map((def) => <option key={def.name} value={def.name}>{def.name}</option>)}
+                      </select>
+                      <select style={{ ...selectStyle, flex: 1 }} value={newAttrValue} onChange={(e) => setNewAttrValue(e.target.value)} disabled={!newAttrName}>
+                        <option value="">{cascadeLabel("选择值", "Choose value")}</option>
+                        {valuesForName.map((v) => <option key={v} value={v}>{v}</option>)}
+                      </select>
+                      <button
+                        onClick={() => {
+                          if (!newAttrName || !newAttrValue) return;
+                          setSelectedAttributes((prev) => [...prev, { name: newAttrName, value: newAttrValue }]);
+                          setIsAddingAttribute(false); setNewAttrName(''); setNewAttrValue('');
+                        }}
+                        disabled={!newAttrName || !newAttrValue}
+                        style={{ padding: '0 12px', borderRadius: 6, border: 'none', background: C.signal, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        {cascadeLabel("添加", "Add")}
+                      </button>
+                    </div>
+                  );
+                })()}
+              </div>
+              <Field label={cascadeLabel("OEM 编号", "OEM Number")}>
+                <input style={inputStyle} placeholder="e.g. 34116792217" value={oemNumber} onChange={(e) => setOemNumber(e.target.value)} />
+              </Field>
+              <Field label={cascadeLabel("价格 (¥ 人民币)", "Price (¥ RMB)")}>
+                <input type="number" step="0.01" style={inputStyle} placeholder="0.00" value={price} onChange={(e) => setPrice(e.target.value)} />
+              </Field>
+              <Field label={cascadeLabel("库存数量", "Stock quantity")}>
+                <input type="number" style={inputStyle} placeholder="0" value={stock} onChange={(e) => setStock(e.target.value)} />
+              </Field>
+          </div>
+          <div data-testid="weight-size-square" style={{ width: 320, height: 320, maxWidth: "100%" }}>
+            {partShipping ? (
+              <PartShippingBlock part={selectedPart} shipping={partShipping} square />
+            ) : (
+              <div style={{ width: "100%", height: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 10, background: "#F9FAFB", padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink }}>{cascadeLabel("重量和尺寸", "Weight and size")}</div>
+                <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, alignContent: "start" }}>
+                  <Field label={cascadeLabel("重量 (kg)", "Weight (kg)")}>
+                    <input type="number" step="0.01" min="0" style={inputStyle} placeholder="0.00" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} />
+                  </Field>
+                  <Field label={cascadeLabel("长度 (cm)", "Length (cm)")}>
+                    <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={lengthCm} onChange={(e) => setLengthCm(e.target.value)} />
+                  </Field>
+                  <Field label={cascadeLabel("宽度 (cm)", "Width (cm)")}>
+                    <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={widthCm} onChange={(e) => setWidthCm(e.target.value)} />
+                  </Field>
+                  <Field label={cascadeLabel("高度 (cm)", "Height (cm)")}>
+                    <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={heightCm} onChange={(e) => setHeightCm(e.target.value)} />
+                  </Field>
+                </div>
+              </div>
+            )}
+          </div>
+          </div>
+        </div>
+
+        {/* Photos left, video right, on one line (they stack on a narrow window). */}
+        <div data-testid="photos-video-row" style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "stretch" }}>
+          {/* ---- Product Photos ---- */}
+          <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, padding: 18, flex: "1 1 380px", minWidth: 0 }}>
+            <div style={{ ...font, fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 4 }}>
+              {cascadeLabel(
+                `商品照片（${requirements.minPhotos} 张${requirements.photosRequired ? "，必填" : "，选填"}，高清）`,
+                `Product Photos (${requirements.minPhotos}${requirements.photosRequired ? ", required" : ", optional"}, high resolution)`
+              )}
+            </div>
+            <div style={{ ...font, fontSize: 11, color: C.muted, marginBottom: 10 }}>
+              {cascadeLabel("最短边至少 800 像素。", "Shortest side must be at least 800px.")}
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {Array.from({ length: requirements.minPhotos }, (_, i) => i).map((i) => {
+                const p = photos[i];
+                if (p) {
+                  return (
+                    <div key={p.url} style={{ position: "relative", width: 84, height: 84 }}>
+                      <img src={`${API_BASE_URL}${p.url}`} alt="" style={{ width: 84, height: 84, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.line}` }} />
+                      <button
+                        onClick={() => removePhoto(p.url)}
+                        style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", border: "none", background: C.red, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
                   );
                 }
-                const valuesForName = attributeDefinitions.find((def) => def.name === newAttrName)?.values || [];
                 return (
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <select style={{ ...selectStyle, flex: 1 }} value={newAttrName} onChange={(e) => { setNewAttrName(e.target.value); setNewAttrValue(''); }}>
-                      <option value="">{cascadeLabel("选择属性", "Choose attribute")}</option>
-                      {availableNames.map((def) => <option key={def.name} value={def.name}>{def.name}</option>)}
-                    </select>
-                    <select style={{ ...selectStyle, flex: 1 }} value={newAttrValue} onChange={(e) => setNewAttrValue(e.target.value)} disabled={!newAttrName}>
-                      <option value="">{cascadeLabel("选择值", "Choose value")}</option>
-                      {valuesForName.map((v) => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                    <button
-                      onClick={() => {
-                        if (!newAttrName || !newAttrValue) return;
-                        setSelectedAttributes((prev) => [...prev, { name: newAttrName, value: newAttrValue }]);
-                        setIsAddingAttribute(false); setNewAttrName(''); setNewAttrValue('');
-                      }}
-                      disabled={!newAttrName || !newAttrValue}
-                      style={{ padding: '0 12px', borderRadius: 6, border: 'none', background: C.signal, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
-                    >
-                      {cascadeLabel("添加", "Add")}
-                    </button>
-                  </div>
+                  <label key={i} style={{
+                    width: 84, height: 84, borderRadius: 8, border: `1.5px dashed ${C.line}`, display: "flex",
+                    flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, cursor: "pointer", color: C.muted,
+                  }}>
+                    {isUploadingPhoto ? <span style={{ fontSize: 11 }}>...</span> : <ImagePlus size={20} />}
+                    <span style={{ fontSize: 10 }}>{cascadeLabel("添加", "Add")}</span>
+                    <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={handlePhotoSelect} disabled={isUploadingPhoto} />
+                  </label>
                 );
-              })()}
+              })}
             </div>
-            <Field label={cascadeLabel("OEM 编号", "OEM Number")}>
-              <input style={inputStyle} placeholder="e.g. 34116792217" value={oemNumber} onChange={(e) => setOemNumber(e.target.value)} />
-            </Field>
-            <Field label={cascadeLabel("价格 (¥ 人民币)", "Price (¥ RMB)")}>
-              <input type="number" step="0.01" style={inputStyle} placeholder="0.00" value={price} onChange={(e) => setPrice(e.target.value)} />
-            </Field>
-            <Field label={cascadeLabel("库存数量", "Stock quantity")}>
-              <input type="number" style={inputStyle} placeholder="0" value={stock} onChange={(e) => setStock(e.target.value)} />
-            </Field>
-            {partShipping ? (
-              <PartShippingBlock part={selectedPart} shipping={partShipping} />
+          </div>
+
+          {/* ---- Product Video ---- */}
+          <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, padding: 18, flex: "1 1 380px", minWidth: 0 }}>
+            <div style={{ ...font, fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 4 }}>
+              {cascadeLabel(
+                `商品视频（${requirements.videoRequired ? "必填" : "选填"}，最长 ${requirements.maxVideoDurationSeconds} 秒）`,
+                `Product Video (${requirements.videoRequired ? "required" : "optional"}, max ${requirements.maxVideoDurationSeconds}s)`
+              )}
+            </div>
+            <div style={{ ...font, fontSize: 11, color: C.muted, marginBottom: 10 }}>
+              {cascadeLabel("视频过长将被拒绝上传。", "A video longer than the limit will be rejected.")}
+            </div>
+            {video ? (
+              <div style={{ position: "relative", width: 160, height: 120 }}>
+                <video src={`${API_BASE_URL}${video.url}`} controls style={{ width: 160, height: 120, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.line}` }} />
+                <button
+                  onClick={removeVideo}
+                  style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", border: "none", background: C.red, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                >
+                  <X size={12} />
+                </button>
+              </div>
             ) : (
-              <>
-              <Field label={cascadeLabel("重量 (kg)", "Weight (kg)")}>
-                <input type="number" step="0.01" min="0" style={inputStyle} placeholder="0.00" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} />
-              </Field>
-              <Field label={cascadeLabel("长度 (cm)", "Length (cm)")}>
-                <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={lengthCm} onChange={(e) => setLengthCm(e.target.value)} />
-              </Field>
-              <Field label={cascadeLabel("宽度 (cm)", "Width (cm)")}>
-                <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={widthCm} onChange={(e) => setWidthCm(e.target.value)} />
-              </Field>
-              <Field label={cascadeLabel("高度 (cm)", "Height (cm)")}>
-                <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={heightCm} onChange={(e) => setHeightCm(e.target.value)} />
-              </Field>
-              </>
+              <label style={{
+                width: 160, height: 120, borderRadius: 8, border: `1.5px dashed ${C.line}`, display: "flex",
+                flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, cursor: "pointer", color: C.muted,
+              }}>
+                {isUploadingVideo ? <span style={{ fontSize: 11 }}>...</span> : <Video size={22} />}
+                <span style={{ fontSize: 10 }}>{cascadeLabel("添加视频", "Add video")}</span>
+                <input type="file" accept="video/mp4,video/webm,video/quicktime" style={{ display: "none" }} onChange={handleVideoSelect} disabled={isUploadingVideo} />
+              </label>
             )}
           </div>
-        </div>
-
-        {/* ---- Product Photos ---- */}
-        <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, padding: 18 }}>
-          <div style={{ ...font, fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 4 }}>
-            {cascadeLabel(
-              `商品照片（${requirements.minPhotos} 张${requirements.photosRequired ? "，必填" : "，选填"}，高清）`,
-              `Product Photos (${requirements.minPhotos}${requirements.photosRequired ? ", required" : ", optional"}, high resolution)`
-            )}
-          </div>
-          <div style={{ ...font, fontSize: 11, color: C.muted, marginBottom: 10 }}>
-            {cascadeLabel("最短边至少 800 像素。", "Shortest side must be at least 800px.")}
-          </div>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {Array.from({ length: requirements.minPhotos }, (_, i) => i).map((i) => {
-              const p = photos[i];
-              if (p) {
-                return (
-                  <div key={p.url} style={{ position: "relative", width: 84, height: 84 }}>
-                    <img src={`${API_BASE_URL}${p.url}`} alt="" style={{ width: 84, height: 84, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.line}` }} />
-                    <button
-                      onClick={() => removePhoto(p.url)}
-                      style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", border: "none", background: C.red, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-                );
-              }
-              return (
-                <label key={i} style={{
-                  width: 84, height: 84, borderRadius: 8, border: `1.5px dashed ${C.line}`, display: "flex",
-                  flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, cursor: "pointer", color: C.muted,
-                }}>
-                  {isUploadingPhoto ? <span style={{ fontSize: 11 }}>...</span> : <ImagePlus size={20} />}
-                  <span style={{ fontSize: 10 }}>{cascadeLabel("添加", "Add")}</span>
-                  <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={handlePhotoSelect} disabled={isUploadingPhoto} />
-                </label>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* ---- Product Video ---- */}
-        <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, padding: 18 }}>
-          <div style={{ ...font, fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 4 }}>
-            {cascadeLabel(
-              `商品视频（${requirements.videoRequired ? "必填" : "选填"}，最长 ${requirements.maxVideoDurationSeconds} 秒）`,
-              `Product Video (${requirements.videoRequired ? "required" : "optional"}, max ${requirements.maxVideoDurationSeconds}s)`
-            )}
-          </div>
-          <div style={{ ...font, fontSize: 11, color: C.muted, marginBottom: 10 }}>
-            {cascadeLabel("视频过长将被拒绝上传。", "A video longer than the limit will be rejected.")}
-          </div>
-          {video ? (
-            <div style={{ position: "relative", width: 160, height: 120 }}>
-              <video src={`${API_BASE_URL}${video.url}`} controls style={{ width: 160, height: 120, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.line}` }} />
-              <button
-                onClick={removeVideo}
-                style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", border: "none", background: C.red, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-              >
-                <X size={12} />
-              </button>
-            </div>
-          ) : (
-            <label style={{
-              width: 160, height: 120, borderRadius: 8, border: `1.5px dashed ${C.line}`, display: "flex",
-              flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, cursor: "pointer", color: C.muted,
-            }}>
-              {isUploadingVideo ? <span style={{ fontSize: 11 }}>...</span> : <Video size={22} />}
-              <span style={{ fontSize: 10 }}>{cascadeLabel("添加视频", "Add video")}</span>
-              <input type="file" accept="video/mp4,video/webm,video/quicktime" style={{ display: "none" }} onChange={handleVideoSelect} disabled={isUploadingVideo} />
-            </label>
-          )}
         </div>
 
         <div style={{ ...font, fontSize: 11, color: C.muted, background: C.canvas, borderRadius: 8, padding: 10 }}>
