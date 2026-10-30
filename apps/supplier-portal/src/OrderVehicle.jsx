@@ -54,11 +54,41 @@ export function versionFacts(v, lang) {
   return [v.engine, v.seats ? `${v.seats}${lang === "zh" ? "" : " "}${t.seats}` : null].filter(Boolean).join(" \u00b7 ");
 }
 
-function Photo({ url, width, height, label, Icon }) {
+// Mouse over a photo (the part or the car) and it shows large beside it, the whole photo with its name: 360 x 360 in the order
+// details, 220 x 220 for the small photos of the orders list. It closes when the mouse leaves (or the page scrolls).
+function Photo({ url, width, height, label, Icon, zoom = width >= 90 ? 360 : 220 }) {
   const address = src(url);
+  const font = useBodyFont();
+  const [at, setAt] = React.useState(null);
+  React.useEffect(() => {
+    if (!at) return undefined;
+    const close = () => setAt(null);
+    window.addEventListener("scroll", close, true);
+    return () => window.removeEventListener("scroll", close, true);
+  }, [at]);
+  const open = (e) => {
+    if (!address || !zoom) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const boxW = zoom + 18;
+    const boxH = zoom + 44;
+    const left = r.right + 10 + boxW <= window.innerWidth ? r.right + 10 : Math.max(8, r.left - 10 - boxW);
+    const top = Math.min(Math.max(8, r.top - 20), Math.max(8, window.innerHeight - boxH - 8));
+    setAt({ left, top });
+  };
   return (
-    <div style={{ width, height, borderRadius: 6, border: `1px solid ${C.line}`, background: C.canvas, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+    <div
+      data-testid="zoomable-photo"
+      onMouseEnter={open}
+      onMouseLeave={() => setAt(null)}
+      style={{ width, height, borderRadius: 6, border: `1px solid ${C.line}`, background: C.canvas, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0, cursor: address ? "zoom-in" : "default" }}
+    >
       {address ? <img src={address} alt={label} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Icon size={Math.round(height / 2.2)} color={C.muted} aria-hidden="true" />}
+      {at ? (
+        <div data-testid="photo-zoom" style={{ position: "fixed", left: at.left, top: at.top, zIndex: 1000, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 10, boxShadow: "0 12px 32px rgba(0,0,0,0.22)", padding: 8, pointerEvents: "none" }}>
+          <img src={address} alt={label} style={{ width: zoom, height: zoom, objectFit: "contain", display: "block", background: C.canvas, borderRadius: 6 }} />
+          <div style={{ ...font, fontSize: 12, fontWeight: 600, color: C.ink, textAlign: "center", marginTop: 6, maxWidth: zoom, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</div>
+        </div>
+      ) : null}
     </div>
   );
 }
