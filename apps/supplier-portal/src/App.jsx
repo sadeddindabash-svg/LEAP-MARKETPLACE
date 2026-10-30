@@ -23,7 +23,7 @@ import {
   fetchMySupplierProfile, fetchMyProducts, createProduct, updateProduct, bulkUpdateProductPrices, bulkUpdateProducts,
   fetchMyOrders, updateSubOrder, acceptSubOrder, refuseSubOrder, fetchMyReturnCases, fetchMyReturnCaseById, replyToReturnCase, fetchMyFaultCases, answerFaultCase, fetchMyReturnAddress, saveMyReturnAddress,
   fetchMyOverview,
-  uploadProductImage, uploadProductVideo, fetchProductRequirements, fetchAttributeDefinitions, API_BASE_URL,
+  uploadProductImage, uploadProductVideo, fetchProductRequirements, API_BASE_URL,
   fetchCategories, fetchPartsForCategory,
   fetchMyMessages, sendMyMessage,
   fetchMyFinance, fetchMyPayoutMethod, updateMyPayoutMethod,
@@ -917,15 +917,6 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
   const [parts, setParts] = useState([]);
   const [part, setPart] = useState("");
   const [isLoadingParts, setIsLoadingParts] = useState(false);
-  // Confirmed with the person, seeded from their own real spreadsheet:
-  // attribute definitions fetched once on mount, and the product's
-  // own already-added attributes (max 5, enforced by simply running
-  // out of undefined names to pick from).
-  const [attributeDefinitions, setAttributeDefinitions] = useState([]);
-  const [selectedAttributes, setSelectedAttributes] = useState([]);
-  const [isAddingAttribute, setIsAddingAttribute] = useState(false);
-  const [newAttrName, setNewAttrName] = useState("");
-  const [newAttrValue, setNewAttrValue] = useState("");
   const [oemNumber, setOemNumber] = useState("");
   const [price, setPrice] = useState("");
   const [stock, setStock] = useState("");
@@ -951,7 +942,6 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
 
   useEffect(() => {
     fetchProductRequirements().then(setRequirements).catch(() => {}); // non-critical -- falls back to the real defaults above
-    fetchAttributeDefinitions().then((data) => setAttributeDefinitions(Array.isArray(data) ? data : [])).catch(() => {});
   }, []);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1078,7 +1068,6 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
         images: photos.map((p) => p.url),
         videoUrl: video?.url || undefined,
         // weight and size: set by Leap (the admin); the supplier sends none
-        attributes: selectedAttributes,
         fulfillsRequestItemId: prefill?.fulfillsRequestItemId || undefined,
       });
       if (staysOpenAfterSave) {
@@ -1093,7 +1082,6 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
         setPhotos([]);
         setVideo(null);
         setPart(parts.length > 0 ? parts[0].nameEn : "");
-        setSelectedAttributes([]); setIsAddingAttribute(false); setNewAttrName(""); setNewAttrValue("");
         setIsSubmitting(false);
         setSaveSuccess(true);
         onCreated();
@@ -1144,7 +1132,7 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
           <div style={{ ...font, fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 14 }}>
             {cascadeLabel("商品详情", "Product Details")}
           </div>
-          {/* Line 1: name, category, part. Line 2: attributes, OEM, price. Line 3: stock. Beside them: the 320 x 320 Weight and size box (as the car photo above). */}
+          {/* Line 1: name, category, part. Line 2: OEM, price, stock. Beside them: the 320 x 320 Weight and size box (as the car photo above). */}
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: 28, alignItems: "start" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 16, alignContent: "start", minWidth: 0 }}>
               <Field label={cascadeLabel("商品名称（中文）", "Product name (Chinese)")}>
@@ -1163,52 +1151,6 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
                   {!isLoadingParts && parts.map(p => <option key={p.id} value={p.nameEn}>{lang === "zh" ? p.nameZh || p.nameEn : p.nameEn}</option>)}
                 </select>
               </Field>
-              <div>
-                <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink, marginBottom: 8 }}>{cascadeLabel("属性", "Attributes")}</div>
-                {selectedAttributes.map((attr) => (
-                  <div key={attr.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: `1px solid ${C.line}`, borderRadius: 6, padding: '7px 10px', marginBottom: 6 }}>
-                    <span style={{ ...font, fontSize: 12.5, color: C.ink }}>{attr.name}: <strong>{attr.value}</strong></span>
-                    <button onClick={() => setSelectedAttributes((prev) => prev.filter((a) => a.name !== attr.name))} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }}>
-                      <X size={14} color={C.muted} />
-                    </button>
-                  </div>
-                ))}
-                {(() => {
-                  const availableNames = attributeDefinitions.filter((def) => !selectedAttributes.some((a) => a.name === def.name));
-                  if (selectedAttributes.length >= 5 || availableNames.length === 0) return null;
-                  if (!isAddingAttribute) {
-                    return (
-                      <button onClick={() => setIsAddingAttribute(true)} style={{ width: '100%', border: `1px dashed ${C.line}`, borderRadius: 6, padding: 7, fontSize: 12, color: C.muted, background: 'none', cursor: 'pointer' }}>
-                        + {cascadeLabel("添加属性", "Add attribute")}
-                      </button>
-                    );
-                  }
-                  const valuesForName = attributeDefinitions.find((def) => def.name === newAttrName)?.values || [];
-                  return (
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <select style={{ ...selectStyle, flex: 1 }} value={newAttrName} onChange={(e) => { setNewAttrName(e.target.value); setNewAttrValue(''); }}>
-                        <option value="">{cascadeLabel("选择属性", "Choose attribute")}</option>
-                        {availableNames.map((def) => <option key={def.name} value={def.name}>{def.name}</option>)}
-                      </select>
-                      <select style={{ ...selectStyle, flex: 1 }} value={newAttrValue} onChange={(e) => setNewAttrValue(e.target.value)} disabled={!newAttrName}>
-                        <option value="">{cascadeLabel("选择值", "Choose value")}</option>
-                        {valuesForName.map((v) => <option key={v} value={v}>{v}</option>)}
-                      </select>
-                      <button
-                        onClick={() => {
-                          if (!newAttrName || !newAttrValue) return;
-                          setSelectedAttributes((prev) => [...prev, { name: newAttrName, value: newAttrValue }]);
-                          setIsAddingAttribute(false); setNewAttrName(''); setNewAttrValue('');
-                        }}
-                        disabled={!newAttrName || !newAttrValue}
-                        style={{ padding: '0 12px', borderRadius: 6, border: 'none', background: C.signal, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
-                      >
-                        {cascadeLabel("添加", "Add")}
-                      </button>
-                    </div>
-                  );
-                })()}
-              </div>
               <Field label={cascadeLabel("OEM 编号", "OEM Number")}>
                 <input style={inputStyle} placeholder={cascadeLabel("例如：34116792217", "e.g. 34116792217")} value={oemNumber} onChange={(e) => setOemNumber(e.target.value)} />
               </Field>

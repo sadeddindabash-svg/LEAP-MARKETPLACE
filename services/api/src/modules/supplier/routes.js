@@ -454,10 +454,6 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
   if (nameLengthError) {
     return res.status(400).json({ error: nameLengthError });
   }
-  const attributesError = await validateProductAttributes(attributes);
-  if (attributesError) {
-    return res.status(400).json({ error: attributesError });
-  }
   if (!shippingFromPart) {
     if (weightKg !== undefined && weightKg !== null && weightKg <= 0) {
       return res.status(400).json({ error: 'weightKg must be a positive number' });
@@ -562,13 +558,8 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
     // commonly show the untranslated original in the interim rather than
     // a blank placeholder. ----
     const id = `p_${Date.now()}`;
-    // Confirmed with the person: Position is now a fully optional,
-    // selectable attribute like the others -- derived from the real
-    // attributes array when picked there (the normal path now). The
-    // separate top-level position field is kept only as a fallback
-    // for backward compatibility with anything still sending it that
-    // way directly.
-    const derivedPosition = position || (Array.isArray(attributes) ? attributes.find((a) => a.name === 'Position')?.value : null) || null;
+    // Position: the supplier's own if sent, else what the part's name says ("Front Brake Disc" -> Front), as Bulk upload does. Attributes are no longer used.
+    const derivedPosition = position || positionFromPartName(part) || null;
     await client.query(
       `INSERT INTO products
          (id, supplier_id, name, name_zh, description, description_zh, category, part, position, oem_number,
@@ -583,18 +574,6 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
 
     await insertFitmentEntry(client, id, { generationId, year, engineId, transmissionId }, versionChoice.ids);
 
-    // Confirmed with the person, seeded from their own real
-    // spreadsheet (migration 078): already validated upfront (name
-    // and value both genuinely defined, max 5, no duplicates) before
-    // this transaction began.
-    if (Array.isArray(attributes)) {
-      for (const attr of attributes) {
-        await client.query(
-          'INSERT INTO product_attributes (product_id, attribute_name, attribute_value) VALUES ($1, $2, $3)',
-          [id, attr.name.trim(), attr.value.trim()]
-        );
-      }
-    }
 
     for (let i = 0; i < images.length; i++) {
       await client.query('INSERT INTO product_images (product_id, url, sort_order) VALUES ($1, $2, $3)', [id, images[i], i]);

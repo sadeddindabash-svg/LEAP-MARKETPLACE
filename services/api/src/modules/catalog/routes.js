@@ -504,16 +504,11 @@ router.get('/products/:id', async (req, res, next) => {
     }
     dto = await attachSupplierSignals(dto, rows[0].supplier_id);
     dto = await attachDeliveryEstimate(dto, await resolveDestinationIsoCode(req));
-    const { rows: attrRows } = await db.query(
-      'SELECT attribute_name, attribute_value FROM product_attributes WHERE product_id = $1 ORDER BY attribute_name',
-      [req.params.id]
-    );
     res.json({
       ...dto,
       fitsVehicleIds: fitmentResult.rows.map((r) => r.vehicle_id),
       partPhotoUrl: await loadPartPhoto(rows[0]),      // the part class's photo (shown beside the part chip)
       ...(await loadBuyerFit(db, req.params.id)),      // the cars it fits (names, how many, and a key of each) for the "fits your car?" message
-      attributes: attrRows.map((a) => ({ name: a.attribute_name, value: a.attribute_value })),
     });
   } catch (err) {
     next(err);
@@ -777,10 +772,6 @@ router.get('/moderation-queue', requireAuth, requireRole('admin'), requirePageAc
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const withImages = await Promise.all(rows.map(async (r) => {
       const { rows: images } = await db.query('SELECT url FROM product_images WHERE product_id = $1 ORDER BY sort_order', [r.id]);
-      const { rows: attrRows } = await db.query(
-        'SELECT attribute_name, attribute_value FROM product_attributes WHERE product_id = $1 ORDER BY attribute_name',
-        [r.id]
-      );
       const flags = [];
       if (Number(r.fitment_count) === 0) flags.push('Missing fitment data');
       if (r.supplier_created_at && new Date(r.supplier_created_at) > thirtyDaysAgo) flags.push('New supplier');
@@ -795,7 +786,6 @@ router.get('/moderation-queue', requireAuth, requireRole('admin'), requirePageAc
         oemNumber: r.oem_number,
         images: images.map((i) => i.url),
         videoUrl: r.video_url,
-        attributes: attrRows.map((a) => ({ name: a.attribute_name, value: a.attribute_value })),
         supplierName: r.supplier_name,
         submittedAt: r.created_at,
         flags,
@@ -817,13 +807,9 @@ router.get('/moderation-queue', requireAuth, requireRole('admin'), requirePageAc
 router.patch('/products/:id/moderate', requireAuth, requireRole('admin'), requirePageAccess('moderation'), async (req, res, next) => {
   const client = await db.getPool().connect();
   try {
-    const { action, nameEn, descriptionEn, nameAr, descriptionAr, attributes } = req.body || {};
+    const { action, nameEn, descriptionEn, nameAr, descriptionAr } = req.body || {};      // attributes: no longer used
     if (!['approve', 'reject'].includes(action)) {
       return res.status(400).json({ error: "action must be 'approve' or 'reject'" });
-    }
-    const attributesError = await validateProductAttributes(attributes);
-    if (attributesError) {
-      return res.status(400).json({ error: attributesError });
     }
     // Both required, not just English — the confirmed 40-country launch
     // list includes the entire GCC plus Jordan, real markets where
@@ -864,10 +850,7 @@ router.patch('/products/:id/moderate', requireAuth, requireRole('admin'), requir
       }
     }
     const newStatus = action === 'approve' ? 'active' : 'inactive';
-    // Confirmed via audit: derived exactly like the other two real
-    // product-write endpoints, so the legacy position column never
-    // drifts from whatever the Position attribute says here either.
-    const derivedPosition = Array.isArray(attributes) ? attributes.find((a) => a.name === 'Position')?.value : undefined;
+    const derivedPosition = undefined;      // moderation keeps the product's position (attributes are no longer used)
 
     await client.query('BEGIN');
     const { rows } = await client.query(
@@ -888,15 +871,6 @@ router.patch('/products/:id/moderate', requireAuth, requireRole('admin'), requir
     if (rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Product not found' });
-    }
-    if (attributes !== undefined) {
-      await client.query('DELETE FROM product_attributes WHERE product_id = $1', [req.params.id]);
-      for (const attr of attributes) {
-        await client.query(
-          'INSERT INTO product_attributes (product_id, attribute_name, attribute_value) VALUES ($1, $2, $3)',
-          [req.params.id, attr.name.trim(), attr.value.trim()]
-        );
-      }
     }
     await client.query('COMMIT');
     await logAdminAction(req, action === 'approve' ? 'product_approved' : 'product_rejected', 'product', req.params.id, { name: rows[0].name });
@@ -1158,10 +1132,6 @@ router.get('/admin/products/:id', requireAuth, requireRole('admin'), requirePage
        WHERE pfe.product_id = $1`,
       [row.id]
     );
-    const { rows: attrRows } = await db.query(
-      'SELECT attribute_name, attribute_value FROM product_attributes WHERE product_id = $1 ORDER BY attribute_name',
-      [row.id]
-    );
 
     res.json({
       id: row.id,
@@ -1193,7 +1163,6 @@ router.get('/admin/products/:id', requireAuth, requireRole('admin'), requirePage
         brandName: f.brand_name, modelName: f.model_name,
         label: `${f.brand_name} ${f.model_name} (${f.generation_name}) · ${f.year}`,
       })),
-      attributes: attrRows.map((a) => ({ name: a.attribute_name, value: a.attribute_value })),
     });
   } catch (err) {
     next(err);
@@ -1217,10 +1186,6 @@ router.patch('/admin/products/:id', requireAuth, requireRole('admin'), requirePa
 
     if (position !== undefined && position !== null && !ALLOWED_POSITIONS.includes(position)) {
       return res.status(400).json({ error: `position must be one of: ${ALLOWED_POSITIONS.join(', ')}` });
-    }
-    const attributesError = await validateProductAttributes(attributes);
-    if (attributesError) {
-      return res.status(400).json({ error: attributesError });
     }
     if (nameEn !== undefined) {
       const nameEnError = validateNameLength(nameEn, 'nameEn');
@@ -1325,10 +1290,7 @@ router.patch('/admin/products/:id', requireAuth, requireRole('admin'), requirePa
       }
     }
 
-    // Confirmed with the person: same real derivation already
-    // established in the supplier submission endpoint -- Position
-    // can be set purely via the attributes array now.
-    const derivedPosition = position ?? (Array.isArray(attributes) ? attributes.find((a) => a.name === 'Position')?.value : null) ?? null;
+    const derivedPosition = position ?? null;      // attributes are no longer used
 
     await client.query('BEGIN');
     const { rows } = await client.query(
@@ -1361,15 +1323,6 @@ router.patch('/admin/products/:id', requireAuth, requireRole('admin'), requirePa
       await client.query('DELETE FROM product_images WHERE product_id = $1', [req.params.id]);
       for (let i = 0; i < images.length; i++) {
         await client.query('INSERT INTO product_images (product_id, url, sort_order) VALUES ($1, $2, $3)', [req.params.id, images[i], i]);
-      }
-    }
-    if (attributes !== undefined) {
-      await client.query('DELETE FROM product_attributes WHERE product_id = $1', [req.params.id]);
-      for (const attr of attributes) {
-        await client.query(
-          'INSERT INTO product_attributes (product_id, attribute_name, attribute_value) VALUES ($1, $2, $3)',
-          [req.params.id, attr.name.trim(), attr.value.trim()]
-        );
       }
     }
     if (fitment !== undefined) {
