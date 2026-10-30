@@ -570,7 +570,7 @@ const OUTCOME_TEXT = {
   en: { title: "Orders", total: "Total orders", succeeded: "Succeeded (delivered)", inProgress: "In progress", cancelled: "Refused / cancelled", returned: "Returns", empty: "No orders yet." },
   zh: { title: "订单", total: "订单总数", succeeded: "成功（已送达）", inProgress: "进行中", cancelled: "已拒绝 / 已取消", returned: "退货", empty: "暂无订单。" },
 };
-function OrderOutcomesCard({ outcomes, lang }) {
+function OrderOutcomesCard({ outcomes, lang, style }) {
   const x = OUTCOME_TEXT[lang === "zh" ? "zh" : "en"];
   const slices = [
     { key: "succeeded", color: C.gauge }, { key: "inProgress", color: C.signal }, { key: "cancelled", color: C.red }, { key: "returned", color: C.muted },
@@ -579,7 +579,7 @@ function OrderOutcomesCard({ outcomes, lang }) {
   const R = 56, CIRC = 2 * Math.PI * R;
   let used = 0;
   return (
-    <Card title={x.title}>
+    <Card title={x.title} style={style}>
       <div data-testid="outcomes-pie" style={{ display: "flex", alignItems: "center", gap: 28, padding: "16px 20px" }}>
         <svg width="150" height="150" viewBox="0 0 140 140" role="img" aria-label={`${x.total}: ${total}`}>
           <circle cx="70" cy="70" r={R} fill="none" stroke={C.line} strokeWidth="22" />
@@ -752,7 +752,7 @@ function OverviewPage({ onSessionExpired }) {
             {data.analytics && <SupplierAnalyticsSection analytics={data.analytics} lang={lang} part="status" />}
           </div>
           <div style={{ flex: "1 1 340px", minWidth: 0, display: "flex", flexDirection: "column" }}>
-            {data.analytics && data.analytics.outcomes && <OrderOutcomesCard outcomes={data.analytics.outcomes} lang={lang} />}
+            {data.analytics && data.analytics.outcomes && <OrderOutcomesCard outcomes={data.analytics.outcomes} lang={lang} style={{ flex: 1 }} />}
           </div>
         </div>
 
