@@ -444,16 +444,7 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
   if (!price) missing.push('price');
   if (!currencyCode) missing.push('currencyCode');
   if (!fitment) missing.push('fitment');
-  // Mandatory going forward, real numbers not free text — see migration
-  // 013's header comment: these will feed a real shipping-fee
-  // calculation in the admin dashboard, which needs actual operable
-  // numbers, not "about 2kg" as a string.
-  if (!shippingFromPart) {
-    if (weightKg === undefined || weightKg === null) missing.push('weightKg');
-    if (lengthCm === undefined || lengthCm === null) missing.push('lengthCm');
-    if (widthCm === undefined || widthCm === null) missing.push('widthCm');
-    if (heightCm === undefined || heightCm === null) missing.push('heightCm');
-  }
+  // Weight and size are set by Leap (the admin) and never asked of the supplier: not required here (any sent must still be positive numbers).
   if (missing.length > 0) {
     return res.status(400).json({ error: `Missing required field(s): ${missing.join(', ')}` });
   }
@@ -747,13 +738,13 @@ router.post('/me/products/bulk-import', requireAuth, requireRole('supplier'), as
       const dims = rowPartShipping ? { weightKg: null, lengthCm: null, widthCm: null, heightCm: null } : tryMatchDimensions(item);
 
       // A row with everything one product needs goes straight to review ('translating'); any other row is a draft that keeps what it has.
-      const check = validateCompleteFields({ category, part, position: position || 'Universal', ...dims, images, videoUrl, shippingFromPart: Boolean(rowPartShipping) }, requirements);
+      // weight and size: set by Leap, never required of the supplier
+      const check = validateCompleteFields({ category, part, position: position || 'Universal', ...dims, images, videoUrl, shippingFromPart: true }, requirements);
       const status = check.valid ? 'translating' : 'draft';
       const missing = [];
       if (status === 'draft') {
         if (!category) missing.push('category');
         if (!part) missing.push('part');
-        if (!rowPartShipping && (dims.weightKg === null || dims.lengthCm === null || dims.widthCm === null || dims.heightCm === null)) missing.push('dimensions');
         if (requirements.photos_required ? images.length !== requirements.min_photos : false) missing.push('photos');
         if (requirements.video_required && !videoUrl) missing.push('video');
       }
@@ -810,7 +801,6 @@ router.get('/me/products/drafts', requireAuth, requireRole('supplier'), async (r
       if (!row.category) missing.push('category');
       if (!row.part) missing.push('part');
       if (!row.position) missing.push('position');
-      if (dto.weightKg === null) missing.push('dimensions');       // the effective weight (own, else the category's)
       if (requirements.photos_required && Number(row.photo_count) !== requirements.min_photos) missing.push('photos');
       if (requirements.video_required && !row.video_url) missing.push('video');
       return { ...dto, missing };
@@ -869,7 +859,8 @@ router.patch('/me/products/:id/complete', requireAuth, requireRole('supplier'), 
     // A part with a weight and size set by the admin supplies them: the supplier enters none, and the product stores none of its own (migration 104).
     const partShipping = await getPartShipping(category, part, client);
     const shippingFromPart = Boolean(partShipping);
-    const validation = validateCompleteFields({ category, part, position, weightKg, lengthCm, widthCm, heightCm, images, videoUrl, shippingFromPart }, requirements);
+    // weight and size: set by Leap, never required of the supplier
+    const validation = validateCompleteFields({ category, part, position, weightKg, lengthCm, widthCm, heightCm, images, videoUrl, shippingFromPart: true }, requirements);
     if (!validation.valid) {
       return res.status(400).json({ error: validation.error });
     }

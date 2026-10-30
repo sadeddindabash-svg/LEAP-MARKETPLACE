@@ -1,0 +1,1312 @@
+const express = require('express');
+const { resolveVersionChoice, insertFitmentEntry } = require('../orderVehicles/fitmentVersions');
+const { describeControls, refuseChange } = require('./orderRules');
+const db = require('../../../db/pool');
+const { loadProductCars } = require('../orderVehicles/productCars');
+const { requireAuth, requireRole, requirePageAccess } = require('../auth/middleware');
+const { createNotification } = require('../notifications/helpers');
+const { logAdminAction } = require('../audit/helpers');
+const { validateFitment, tryMatchCategoryAndPart, tryMatchPosition, tryMatchDimensions, validateCompleteFields } = require('./productValidation');
+const { matchName, loadCatalog, positionFromPartName } = require('./bulkMatch');
+const { withEffectiveShipping, getPartShipping } = require('../shared/partShipping');
+const { getSupplierAnalytics } = require('../supplierAnalytics/queries');
+const { getSupplierFinance } = require('../supplierFinance/queries');
+const { validateReturnAddress, getReturnAddress, saveReturnAddress } = require('../supplierReturnAddress/helpers');
+const messages = require('../notifications/messages');
+const { notifyRestock } = require('../restockAlerts/notify');
+
+/**
+ * Supplier module — SUP-001–003 (onboarding/verification) from the
+ * supplier's own side; this is the ADMIN-facing view (ADM-001: review,
+ * approve, reject supplier accounts).
+ *
+ * Admin-only: both routes require an authenticated admin. There is no
+ * supplier-facing login/session yet (see the Supplier Portal prototype) —
+ * this module only covers the platform-admin half of supplier management.
+ */
+const router = express.Router();
+
+function toSupplierDto(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    country: row.country,
+    countryAr: row.country_ar,
+    contactEmail: row.contact_email,
+    verificationStatus: row.verification_status,
+    listingCount: Number(row.listing_count) || 0,
+    createdAt: row.created_at,
+  };
+}
+
+function toPayoutMethodDto(row) {
+  return {
+    bankName: row.bank_name,
+    accountNumber: row.account_number,
+    accountHolderName: row.account_holder_name,
+    updatedAt: row.updated_at,
+  };
+}
+
+// GET /supplier — admin only. Listing count is derived via a live join
+// against products rather than stored, so it's never stale.
+router.get('/', requireAuth, requireRole('admin'), requirePageAccess('suppliers'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query(`
+      SELECT s.*, COUNT(p.id) AS listing_count
+      FROM suppliers s
+      LEFT JOIN products p ON p.supplier_id = s.id
+      GROUP BY s.id
+      ORDER BY s.created_at DESC
+    `);
+    res.json(rows.map(toSupplierDto));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /supplier/:id (admin) -- real gap closed, but see this route's
+// ACTUAL registration further down this file (right after GET /me) for
+// why it can't live here: this exact spot, before GET /me, would let
+// a bare :id route incorrectly intercept every real GET /supplier/me
+// request too (both are single-segment paths under this mount point;
+// Express matches by registration order, not specificity) -- a real,
+// severe bug that would have broken every supplier's own profile
+// fetch. Caught before ever running this, not after.
+
+// PATCH /supplier/:id/verify  { status: 'verified' | 'rejected' }
+router.patch('/:id/verify', requireAuth, requireRole('admin'), requirePageAccess('suppliers'), async (req, res, next) => {
+  try {
+    const { status } = req.body || {};
+    if (!['verified', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: "status must be 'verified' or 'rejected'" });
+    }
+    const { rows } = await db.query(
+      `UPDATE suppliers SET verification_status = $1 WHERE id = $2 RETURNING *`,
+      [status, req.params.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Supplier not found' });
+    await logAdminAction(req, 'supplier_verification', 'supplier', req.params.id, { status, supplierName: rows[0].name });
+    // Note: listingCount is intentionally omitted here (not re-joined) —
+    // the client already has it from the list view and this response is
+    // just confirming the status change, not a full record refresh.
+    const { id, name, country, contact_email, verification_status, created_at } = rows[0];
+    res.json({ id, name, country, contactEmail: contact_email, verificationStatus: verification_status, createdAt: created_at });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /supplier/:id/country  { country: string }
+// Real, confirmed with the person: this is a real buyer-facing trust/
+// logistics signal (shipsFromCountry, catalog/routes.js's own
+// attachSupplierSignals), directly shaping a real buyer's delivery
+// expectations -- admin-only, matching the exact same established
+// pattern as verification_status right above, not supplier self-edit.
+router.patch('/:id/country', requireAuth, requireRole('admin'), requirePageAccess('suppliers'), async (req, res, next) => {
+  try {
+    const { country, countryAr } = req.body || {};
+    if (!country || typeof country !== 'string' || !country.trim()) {
+      return res.status(400).json({ error: 'country is required' });
+    }
+    const { rows } = await db.query(
+      `UPDATE suppliers SET country = $1, country_ar = $2 WHERE id = $3 RETURNING *`,
+      [country.trim(), countryAr?.trim() || null, req.params.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Supplier not found' });
+    await logAdminAction(req, 'supplier_country_updated', 'supplier', req.params.id, { country: country.trim(), countryAr: countryAr?.trim() || null, supplierName: rows[0].name });
+    const { id: sid, name: sname, country: updatedCountry, country_ar: updatedCountryAr, contact_email: sEmail, verification_status: sVerif, created_at: sCreated } = rows[0];
+    res.json({ id: sid, name: sname, country: updatedCountry, countryAr: updatedCountryAr, contactEmail: sEmail, verificationStatus: sVerif, createdAt: sCreated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /supplier/:id/analytics — admin-only, real analytics for any one
+// real supplier the admin picks (confirmed scope: not a platform-wide
+// aggregate). Same real getSupplierAnalytics() the supplier's own
+// overview endpoint uses below, just for a supplier the admin chooses
+// rather than forced to req.user.supplierId.
+router.get('/:id/analytics', requireAuth, requireRole('admin'), requirePageAccess('suppliers'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT id FROM suppliers WHERE id = $1', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Supplier not found' });
+    const analytics = await getSupplierAnalytics(req.params.id);
+    res.json(analytics);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ============================================================
+// Supplier-facing endpoints (the actual Supplier Portal) — SUP-001–022.
+// Everything below requires role='supplier' and scopes to req.user.supplierId
+// (from the JWT — see auth/middleware.js signToken). A supplier can only
+// ever see/modify their OWN products and order fulfillment, never another
+// supplier's — enforced with a WHERE clause on every query below, not just
+// a UI assumption.
+// ============================================================
+
+function toProductDto(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    nameZh: row.name_zh,
+    description: row.description,
+    descriptionZh: row.description_zh,
+    category: row.category,
+    part: row.part,
+    position: row.position,
+    oemNumber: row.oem_number,
+    price: Number(row.price),
+    currencyCode: row.currency_code,
+    stockQuantity: row.stock_quantity,
+    lowStockThreshold: row.low_stock_threshold,
+    weightKg: row.weight_kg === null ? null : Number(row.weight_kg),
+    lengthCm: row.length_cm === null ? null : Number(row.length_cm),
+    widthCm: row.width_cm === null ? null : Number(row.width_cm),
+    heightCm: row.height_cm === null ? null : Number(row.height_cm),
+    videoUrl: row.video_url,
+    status: row.status,
+    createdAt: row.created_at,
+  };
+}
+
+// Attaches images and fitment entries to an already-built product DTO —
+// separate queries since they're separate tables (product_images,
+// product_fitment_entries), not columns on `products` itself.
+async function attachImagesAndFitment(dto) {
+  // The weight and size shown are the ones the shipping cost really uses: the product's own, else its part's (migration 104).
+  const shipped = await withEffectiveShipping({ category: dto.category, part: dto.part, weight_kg: dto.weightKg, length_cm: dto.lengthCm, width_cm: dto.widthCm, height_cm: dto.heightCm });
+  const num = (v) => (v === null || v === undefined ? null : Number(v));
+  dto = { ...dto, weightKg: num(shipped.weight_kg), lengthCm: num(shipped.length_cm), widthCm: num(shipped.width_cm), heightCm: num(shipped.height_cm), shippingSource: shipped.shipping_source };
+  const [imagesRes, fitmentRes] = await Promise.all([
+    db.query('SELECT url FROM product_images WHERE product_id = $1 ORDER BY sort_order', [dto.id]),
+    db.query(
+      `SELECT pfe.year, pfe.engine_id, pfe.transmission_id, vg.id AS generation_id, vg.name AS generation_name,
+              vm.name AS model_name, vb.name AS brand_name, ve.name AS engine_name, vt.name AS transmission_name
+       FROM product_fitment_entries pfe
+       JOIN vehicle_generations vg ON vg.id = pfe.generation_id
+       JOIN vehicle_models vm ON vm.id = vg.model_id
+       JOIN vehicle_brands vb ON vb.id = vm.brand_id
+       LEFT JOIN vehicle_engines ve ON ve.id = pfe.engine_id
+       LEFT JOIN vehicle_transmissions vt ON vt.id = pfe.transmission_id
+       WHERE pfe.product_id = $1`,
+      [dto.id]
+    ),
+  ]);
+  return {
+    ...dto,
+    images: imagesRes.rows.map((r) => r.url),
+    fitment: fitmentRes.rows.map((r) => ({
+      brand: r.brand_name,
+      model: r.model_name,
+      generation: r.generation_name,
+      year: r.year,
+      engine: r.engine_name,
+      transmission: r.transmission_name,
+    })),
+  };
+}
+
+// GET /supplier/me — own supplier profile.
+router.get('/me', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT * FROM suppliers WHERE id = $1', [req.user.supplierId]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Supplier not found' });
+    res.json(toSupplierDto({ ...rows[0], listing_count: 0 }));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /supplier/:id (admin) -- real gap closed: there was no way to
+// view a single specific supplier's real profile + real product
+// listings at all before this; the global search's supplier results
+// could only ever navigate to the whole Suppliers list page, never a
+// specific one. Deliberately scoped to profile + real products for
+// this pass -- orders/payouts-by-supplier would be a real, separate,
+// larger addition (aggregating across other modules' own tables),
+// not a quick addition alongside this.
+//
+// REGISTERED HERE, DELIBERATELY, NOT RIGHT AFTER THE LIST ENDPOINT
+// ABOVE: a bare :id route is a wildcard that matches ANY single path
+// segment -- placed before GET /me (also a single segment), it would
+// silently intercept every real supplier's own GET /supplier/me
+// request too, rejecting it with the wrong role check. Confirmed and
+// fixed before ever testing this, not after. Every OTHER :id-based
+// route in this file (verify, analytics, payout-method) is safe
+// regardless of position, since they all have additional path
+// segments that a bare /me alone doesn't share.
+router.get('/:id', requireAuth, requireRole('admin'), requirePageAccess('suppliers'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query(`
+      SELECT s.*, COUNT(p.id) AS listing_count
+      FROM suppliers s
+      LEFT JOIN products p ON p.supplier_id = s.id
+      WHERE s.id = $1
+      GROUP BY s.id
+    `, [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Supplier not found' });
+
+    const { rows: productRows } = await db.query(
+      `SELECT id, name, category, price, currency_code, stock_quantity, status, created_at
+       FROM products WHERE supplier_id = $1 ORDER BY created_at DESC`,
+      [req.params.id]
+    );
+
+    res.json({
+      ...toSupplierDto(rows[0]),
+      products: productRows.map((p) => ({
+        id: p.id, name: p.name, category: p.category, price: Number(p.price), currencyCode: p.currency_code,
+        stockQuantity: p.stock_quantity, status: p.status, createdAt: p.created_at,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /supplier/me/finance -- the supplier's own real money picture: what is ready to be paid,
+// what is still inside the return window, what has been paid, the commission rates that apply to
+// what they sell, and their payout history. Scoped to the logged-in supplier (no id in the URL),
+// so one supplier can never read another's figures. See supplierFinance/queries.js.
+router.get('/me/finance', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    res.json(await getSupplierFinance(req.user.supplierId));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET/PUT /supplier/me/payout-method — real supplier payout method
+// (migration 034). CONFIRMED SCOPE: simple, universal fields only.
+// One real row per supplier -- a PUT always replaces whatever was
+// there before, rather than keeping a history.
+router.get('/me/payout-method', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT * FROM supplier_payout_methods WHERE supplier_id = $1', [req.user.supplierId]);
+    if (rows.length === 0) return res.json(null);
+    res.json(toPayoutMethodDto(rows[0]));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/me/payout-method', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    const { bankName, accountNumber, accountHolderName } = req.body || {};
+    if (!bankName || !accountNumber || !accountHolderName) {
+      return res.status(400).json({ error: 'bankName, accountNumber, and accountHolderName are all required.' });
+    }
+    const { rows } = await db.query(
+      `INSERT INTO supplier_payout_methods (supplier_id, bank_name, account_number, account_holder_name, updated_at)
+       VALUES ($1, $2, $3, $4, now())
+       ON CONFLICT (supplier_id) DO UPDATE SET bank_name = $2, account_number = $3, account_holder_name = $4, updated_at = now()
+       RETURNING *`,
+      [req.user.supplierId, bankName, accountNumber, accountHolderName]
+    );
+    res.json(toPayoutMethodDto(rows[0]));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET/PUT /supplier/me/return-address (migration 092): where the inspection hub sends a faulty unit back to. The
+// supplier maintains their own; saving replaces it. Declared before '/:id/return-address' so "me" is never read as an id.
+router.get('/me/return-address', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    res.json(await getReturnAddress(req.user.supplierId));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/me/return-address', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    const { error, value } = validateReturnAddress(req.body);
+    if (error) return res.status(400).json({ error });
+    res.json(await saveReturnAddress(req.user.supplierId, value, req.user.sub));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET/PUT /supplier/:id/return-address -- an admin can read and correct any supplier's return address (a supplier who
+// hasn't filled theirs in, or got it wrong, would otherwise leave the hub with nowhere to send a faulty unit).
+router.get('/:id/return-address', requireAuth, requireRole('admin'), requirePageAccess('suppliers'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT 1 FROM suppliers WHERE id = $1', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Supplier not found' });
+    res.json(await getReturnAddress(req.params.id));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/:id/return-address', requireAuth, requireRole('admin'), requirePageAccess('suppliers'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT 1 FROM suppliers WHERE id = $1', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Supplier not found' });
+    const { error, value } = validateReturnAddress(req.body);
+    if (error) return res.status(400).json({ error });
+    const saved = await saveReturnAddress(req.params.id, value, req.user.sub);
+    // the address itself is not copied into the audit log: it records WHO changed WHOSE address
+    await logAdminAction(req, 'supplier_return_address_updated', 'supplier', req.params.id, {});
+    res.json(saved);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /supplier/:id/payout-method — real admin view, needed when
+// recording a payout so an admin can see (or confirm the real absence
+// of) where the money is actually supposed to go.
+router.get('/:id/payout-method', requireAuth, requireRole('admin'), requirePageAccess('payouts'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT * FROM supplier_payout_methods WHERE supplier_id = $1', [req.params.id]);
+    if (rows.length === 0) return res.json(null);
+    res.json(toPayoutMethodDto(rows[0]));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /supplier/me/products — only this supplier's own products.
+router.get('/me/products', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT * FROM products WHERE supplier_id = $1 ORDER BY created_at DESC', [req.user.supplierId]);
+    const dtos = await Promise.all(rows.map((r) => attachImagesAndFitment(toProductDto(r))));
+    res.json(dtos);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /supplier/me/products — manual add (SUP-010). New listings start
+// as 'translating' (awaiting admin review, see catalog moderation-queue),
+// NOT 'active' — a supplier cannot make their own product live to buyers
+// without going through moderation first.
+//
+// Category and Part are now REAL, admin-managed reference data
+// (migration 015, product_categories / category_parts) — a supplier
+// picks a real Part from a real list scoped to the Category they
+// selected, per the confirmed requirement, rather than typing free
+// text. Validated against the database below, not a hardcoded array.
+// A fixed, real list rather than free text — "Position" in the SRS
+// cascade (Brand -> ... -> Category -> Part -> Position -> OEM Number)
+// means where on the vehicle the part sits, not a free-form description.
+const { ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS, validateSupplierNameLength, validateSupplierName, supplierNameMinimums, validateProductAttributes } = require('../shared/productValidation');
+
+router.post('/me/products', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  const {
+    nameZh, descriptionZh, category, part, position, oemNumber,
+    price, currencyCode, stockQuantity,
+    fitment, images, videoUrl, weightKg, lengthCm, widthCm, heightCm,
+    fulfillsRequestItemId, attributes,
+  } = req.body || {};
+
+  // Real, confirmed integration point for the "request a part we
+  // don't carry" system (migration 067): only the one real, shared
+  // "Leap Supplier" account can submit a product that fulfils a real
+  // buyer's request item -- confirmed directly with the person that
+  // this real product must go through the exact same real submission
+  // requirements as any other supplier's, with zero shortcuts, so
+  // this is validated here rather than via a separate, simplified
+  // endpoint.
+  let requestItem = null;
+  if (fulfillsRequestItemId) {
+    if (req.user.supplierId !== 'supplier_leap') {
+      return res.status(403).json({ error: 'Only the Leap Supplier account can fulfil a part request' });
+    }
+    const { rows: itemRows } = await db.query(
+      `SELECT qri.*, qr.status AS request_status FROM quote_request_items qri
+       JOIN quote_requests qr ON qr.id = qri.request_id
+       WHERE qri.id = $1`,
+      [fulfillsRequestItemId]
+    );
+    if (itemRows.length === 0) return res.status(404).json({ error: 'Unknown fulfillsRequestItemId' });
+    requestItem = itemRows[0];
+    if (requestItem.request_status !== 'submitted') return res.status(409).json({ error: 'This request is no longer open for new listings' });
+    if (requestItem.status !== 'pending') return res.status(409).json({ error: 'This item already has a listing or was marked unavailable' });
+  }
+
+  // ---- Validation (fail loudly and specifically, not with one generic message) ----
+  // When the product's PART (the sub-category) has a weight and package size set by the admin (migration 104), the supplier enters none of them: they are not required,
+  // and any sent anyway are ignored (the product then uses its part's, the same for every product with that part).
+  const partShipping = await getPartShipping(category, part);
+  const shippingFromPart = Boolean(partShipping);
+  const missing = [];
+  if (!nameZh) missing.push('nameZh');
+  if (!category) missing.push('category');
+  if (!part) missing.push('part');
+  if (!oemNumber) missing.push('oemNumber');
+  if (!price) missing.push('price');
+  if (!currencyCode) missing.push('currencyCode');
+  if (!fitment) missing.push('fitment');
+  // Mandatory going forward, real numbers not free text — see migration
+  // 013's header comment: these will feed a real shipping-fee
+  // calculation in the admin dashboard, which needs actual operable
+  // numbers, not "about 2kg" as a string.
+  if (!shippingFromPart) {
+    if (weightKg === undefined || weightKg === null) missing.push('weightKg');
+    if (lengthCm === undefined || lengthCm === null) missing.push('lengthCm');
+    if (widthCm === undefined || widthCm === null) missing.push('widthCm');
+    if (heightCm === undefined || heightCm === null) missing.push('heightCm');
+  }
+  if (missing.length > 0) {
+    return res.status(400).json({ error: `Missing required field(s): ${missing.join(', ')}` });
+  }
+  // the name's minimum depends on its language (English / Chinese / Arabic), as the admin set it (migration 117)
+  const { rows: nameRuleRows } = await db.query('SELECT * FROM product_requirements WHERE id = 1');
+  const nameLengthError = validateSupplierName(nameZh, 'nameZh', supplierNameMinimums(nameRuleRows[0]));
+  if (nameLengthError) {
+    return res.status(400).json({ error: nameLengthError });
+  }
+  const attributesError = await validateProductAttributes(attributes);
+  if (attributesError) {
+    return res.status(400).json({ error: attributesError });
+  }
+  if (!shippingFromPart) {
+    if (weightKg !== undefined && weightKg !== null && weightKg <= 0) {
+      return res.status(400).json({ error: 'weightKg must be a positive number' });
+    }
+    for (const [field, value] of [['lengthCm', lengthCm], ['widthCm', widthCm], ['heightCm', heightCm]]) {
+      if (value !== undefined && value !== null && value <= 0) {
+        return res.status(400).json({ error: `${field} must be a positive number` });
+      }
+    }
+  }
+  const categoryCheck = await db.query('SELECT id FROM product_categories WHERE id = $1', [category]);
+  if (categoryCheck.rows.length === 0) {
+    const { rows: allCategories } = await db.query('SELECT id FROM product_categories ORDER BY sort_order ASC');
+    return res.status(400).json({ error: `category must be one of: ${allCategories.map((c) => c.id).join(', ')}` });
+  }
+  // Real, scoped validation: the part must be a real one that belongs
+  // to THIS category specifically (matching by name, since
+  // products.part stays plain text — see this file's header comment
+  // and migration 015's for why) — a part from a different category
+  // isn't accepted even if its name happens to be right.
+  const partCheck = await db.query('SELECT id FROM category_parts WHERE category_id = $1 AND name_en = $2', [category, part]);
+  if (partCheck.rows.length === 0) {
+    const { rows: allParts } = await db.query('SELECT name_en FROM category_parts WHERE category_id = $1 ORDER BY sort_order ASC', [category]);
+    return res.status(400).json({ error: `part must be one of: ${allParts.map((p) => p.name_en).join(', ')}` });
+  }
+  if (position !== undefined && position !== null && !ALLOWED_POSITIONS.includes(position)) {
+    return res.status(400).json({ error: `position must be one of: ${ALLOWED_POSITIONS.join(', ')}` });
+  }
+  // CONFIRMED: suppliers price in RMB. The buyer-facing USD price is
+  // computed live from this cost by the pricing engine (see
+  // services/api/src/modules/pricing/engine.js) — never entered
+  // directly. Locking this here rather than just documenting it,
+  // because a stray non-RMB submission would silently corrupt the
+  // pricing equation (treating, say, a USD amount as if it were RMB).
+  if (currencyCode !== 'CNY') {
+    return res.status(400).json({ error: "currencyCode must be 'CNY' — suppliers price in RMB; the buyer-facing USD price is computed automatically" });
+  }
+  const { rows: reqRows } = await db.query('SELECT * FROM product_requirements WHERE id = 1');
+  const requirements = reqRows[0] || { min_photos: 4, photos_required: true, video_required: true };
+  const photoCount = Array.isArray(images) ? images.length : 0;
+  if (requirements.photos_required && photoCount !== requirements.min_photos) {
+    return res.status(400).json({ error: `Exactly ${requirements.min_photos} product photos are required (got ${photoCount}). Upload via POST /uploads/product-image first.` });
+  }
+  if (!requirements.photos_required && photoCount > requirements.min_photos) {
+    return res.status(400).json({ error: `At most ${requirements.min_photos} product photos are allowed (got ${photoCount}).` });
+  }
+  if (requirements.video_required && !videoUrl) {
+    return res.status(400).json({ error: 'A product video is required. Upload via POST /uploads/product-video first.' });
+  }
+  const { generationId, year, engineId, transmissionId } = fitment;
+  if (!generationId || !year) {
+    return res.status(400).json({ error: 'fitment.generationId and fitment.year are required' });
+  }
+
+  const client = await db.getPool().connect();
+  try {
+    await client.query('BEGIN');
+
+    // ---- Fitment validation against the real reference cascade ----
+    const genCheck = await client.query('SELECT * FROM vehicle_generations WHERE id = $1', [generationId]);
+    if (genCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Unknown fitment.generationId' });
+    }
+    const generation = genCheck.rows[0];
+    const maxYear = generation.year_end || new Date().getFullYear() + 1;
+    if (year < generation.year_start || year > maxYear) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `fitment.year ${year} is outside this generation's range (${generation.year_start}–${generation.year_end || 'present'})` });
+    }
+    if (engineId) {
+      const engCheck = await client.query('SELECT id FROM vehicle_engines WHERE id = $1 AND generation_id = $2', [engineId, generationId]);
+      if (engCheck.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'fitment.engineId does not belong to the given generation' });
+      }
+    }
+    if (transmissionId) {
+      const transCheck = await client.query('SELECT id FROM vehicle_transmissions WHERE id = $1 AND generation_id = $2', [transmissionId, generationId]);
+      if (transCheck.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'fitment.transmissionId does not belong to the given generation' });
+      }
+    }
+
+    // Optional: only some versions of this car (none = every version, as before).
+    const versionChoice = await resolveVersionChoice(client, generationId, fitment.versionIds);
+    if (versionChoice.error) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: versionChoice.error });
+    }
+    // One product per supplier + OE number + car: the same OE number for exactly this car (brand, model, year and versions) already exists.
+    if ((await findSameCarProducts(client, req.user.supplierId, [oemNumber], generationId, year, versionChoice.ids)).size > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'You already have a product with this OE number for this car (brand, model, year and versions). Change its price or stock in Products instead.', code: 'duplicate_oe_for_car' });
+    }
+
+    // ---- Create the product. `name` starts equal to the Chinese
+    // original (shown as-is until an admin approves a real translation
+    // — see PATCH /catalog/products/:id/moderate in the catalog module),
+    // not left NULL, since `name` is NOT NULL and real marketplaces
+    // commonly show the untranslated original in the interim rather than
+    // a blank placeholder. ----
+    const id = `p_${Date.now()}`;
+    // Confirmed with the person: Position is now a fully optional,
+    // selectable attribute like the others -- derived from the real
+    // attributes array when picked there (the normal path now). The
+    // separate top-level position field is kept only as a fallback
+    // for backward compatibility with anything still sending it that
+    // way directly.
+    const derivedPosition = position || (Array.isArray(attributes) ? attributes.find((a) => a.name === 'Position')?.value : null) || null;
+    await client.query(
+      `INSERT INTO products
+         (id, supplier_id, name, name_zh, description, description_zh, category, part, position, oem_number,
+          price, currency_code, stock_quantity, status,
+          weight_kg, length_cm, width_cm, height_cm, video_url)
+       VALUES ($1, $2, $3, $3, NULL, $4, $5, $6, $7, $8, $9, $10, $11, 'translating', $12, $13, $14, $15, $16)`,
+      [id, req.user.supplierId, nameZh, descriptionZh || null, category, part, derivedPosition, oemNumber,
+        price, currencyCode, stockQuantity || 0,
+        // a product whose part has a weight and size stores none of its own: it always uses the part's (migration 104)
+        shippingFromPart ? null : weightKg, shippingFromPart ? null : lengthCm, shippingFromPart ? null : widthCm, shippingFromPart ? null : heightCm, videoUrl || null]
+    );
+
+    await insertFitmentEntry(client, id, { generationId, year, engineId, transmissionId }, versionChoice.ids);
+
+    // Confirmed with the person, seeded from their own real
+    // spreadsheet (migration 078): already validated upfront (name
+    // and value both genuinely defined, max 5, no duplicates) before
+    // this transaction began.
+    if (Array.isArray(attributes)) {
+      for (const attr of attributes) {
+        await client.query(
+          'INSERT INTO product_attributes (product_id, attribute_name, attribute_value) VALUES ($1, $2, $3)',
+          [id, attr.name.trim(), attr.value.trim()]
+        );
+      }
+    }
+
+    for (let i = 0; i < images.length; i++) {
+      await client.query('INSERT INTO product_images (product_id, url, sort_order) VALUES ($1, $2, $3)', [id, images[i], i]);
+    }
+
+    if (requestItem) {
+      await client.query(`UPDATE quote_request_items SET status = 'priced', product_id = $1 WHERE id = $2`, [id, requestItem.id]);
+    }
+
+    await client.query('COMMIT');
+    const { rows } = await db.query('SELECT * FROM products WHERE id = $1', [id]);
+    res.status(201).json(await attachImagesAndFitment(toProductDto(rows[0])));
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+// ============================================================
+// Real bulk product import (migration 023). CONFIRMED SCOPE, refined
+// over several rounds before building: most suppliers keep a real
+// spreadsheet for ONE vehicle, with simple columns (OE Number, Item
+// Name, Price) — not the full structured single-item submission above.
+// The vehicle is picked ONCE for the whole batch; Category/Part/
+// Position/dimensions are OPTIONAL per row, used directly when they
+// validate and simply left for later otherwise; photos are NEVER in
+// the sheet — every item still needs its real 3 required photos added
+// afterward before it can be submitted for the same real moderation
+// review every product goes through.
+// ============================================================
+
+// Raised from an initial 200 after a real supplier's real single-vehicle
+// catalog turned out to genuinely exceed that -- 1000 comfortably covers
+// large real catalogs while still guarding against a wildly oversized
+// accidental upload.
+const MAX_BULK_IMPORT_ITEMS = 1000;
+
+// One product per supplier + OE number + car (brand, model, year and versions); see sameCar.js.
+const { oeKey, findSameCarProducts } = require('./sameCar');
+
+// POST /me/products/bulk-import/match { names: [itemName, ...] } -- before importing, each row's Category and Part class found from its
+// item name (see bulkMatch.js), and the whole catalog for the portal's dropdowns. Reads only; saves nothing.
+router.post('/me/products/bulk-import/match', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    const { names, oemNumbers, fitment } = req.body || {};
+    if (!Array.isArray(names) || names.length > MAX_BULK_IMPORT_ITEMS) {
+      return res.status(400).json({ error: `names must be an array of at most ${MAX_BULK_IMPORT_ITEMS} item names` });
+    }
+    const { catalog, flat } = await loadCatalog(db);
+    // The OE numbers of the file this supplier already has for exactly this car (brand, model, year and versions): those rows will update
+    // that product's price instead of adding a product. The same OE number for another car is a new product.
+    let existingOemNumbers = [];
+    if (Array.isArray(oemNumbers) && fitment && fitment.generationId && fitment.year) {
+      const choice = await resolveVersionChoice(db, fitment.generationId, fitment.versionIds);
+      if (!choice.error) existingOemNumbers = [...(await findSameCarProducts(db, req.user.supplierId, oemNumbers, fitment.generationId, fitment.year, choice.ids)).keys()];
+    }
+    res.json({ catalog, results: names.map((name) => matchName(name, flat)), existingOemNumbers });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /me/products/bulk-import — real, best-effort per item (same
+// pattern as the admin dashboard's bulk moderation): one item missing
+// its real required OE Number/Item Name/Price shouldn't cost the rest
+// of a supplier's real batch.
+router.post('/me/products/bulk-import', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  const client = await db.getPool().connect();
+  try {
+    const { fitment, nameLanguage, items } = req.body || {};
+    if (!fitment) {
+      return res.status(400).json({ error: 'fitment is required' });
+    }
+    if (!['zh', 'en'].includes(nameLanguage)) {
+      return res.status(400).json({ error: "nameLanguage must be 'zh' or 'en'" });
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'items must be a non-empty array' });
+    }
+    if (items.length > MAX_BULK_IMPORT_ITEMS) {
+      return res.status(400).json({ error: `Cannot import more than ${MAX_BULK_IMPORT_ITEMS} items in a single batch` });
+    }
+
+    // The real vehicle is shared by the whole batch — validated ONCE,
+    // not per item.
+    const fitmentResult = await validateFitment(fitment, client);
+    if (!fitmentResult.valid) {
+      return res.status(400).json({ error: fitmentResult.error });
+    }
+    const { generationId, year, engineId, transmissionId } = fitment;
+    // Optional: only some versions of this car, for every row of the batch (none = every version, as for one product).
+    const versionChoice = await resolveVersionChoice(client, generationId, fitment.versionIds);
+    if (versionChoice.error) {
+      return res.status(400).json({ error: versionChoice.error });
+    }
+    const { rows: reqRows } = await client.query('SELECT * FROM product_requirements WHERE id = 1');
+    const requirements = reqRows[0] || { min_photos: 4, photos_required: true, video_required: true };
+
+    const results = [];
+    const seenOe = new Map();          // OE key -> the first row of this file that has it
+    await client.query('BEGIN');
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i] || {};
+      const { oemNumber, itemName, price } = item;
+      if (!oemNumber || !itemName || price === undefined || price === null || price <= 0) {
+        results.push({ index: i, success: false, error: 'oemNumber, itemName, and a positive price are all required' });
+        continue;
+      }
+      // A row with its three cells filled is imported even when its name is outside the name rule: the rule is reported as a warning.
+      const nameWarning = validateSupplierName(itemName, 'itemName', supplierNameMinimums(requirements));
+      // The same OE number again in this file: only its first row counts; the others are skipped.
+      const key = oeKey(oemNumber);
+      if (seenOe.has(key)) {
+        results.push({ index: i, success: false, repeated: true, error: `Repeated in this file (same OE number as row ${seenOe.get(key) + 1}): skipped` });
+        continue;
+      }
+      seenOe.set(key, i);
+      // The same OE number for exactly this car (brand, model, year and versions): update that product's price (RMB) instead of adding a product;
+      // nothing else changes. The same OE number for another car is a new product.
+      const sameCar = (await findSameCarProducts(client, req.user.supplierId, [key], generationId, year, versionChoice.ids)).get(key) || [];
+      if (sameCar.length > 0) {
+        await client.query('UPDATE products SET price = $1 WHERE id = ANY($2)', [price, sameCar]);
+        results.push({ index: i, success: true, productId: sameCar[0], status: 'updated', updatedCount: sameCar.length, missing: [], nameWarning: null });
+        continue;
+      }
+      // The row's photos and video (uploaded by the portal first, as for one product): at most the number Settings asks for.
+      const images = Array.isArray(item.images) ? item.images.filter((u) => typeof u === 'string' && u.trim()).map((u) => u.trim()) : [];
+      if (images.length > requirements.min_photos) {
+        results.push({ index: i, success: false, error: `At most ${requirements.min_photos} product photos (got ${images.length})` });
+        continue;
+      }
+      const videoUrl = typeof item.videoUrl === 'string' && item.videoUrl.trim() ? item.videoUrl.trim() : null;
+
+      const { category, part } = await tryMatchCategoryAndPart(item.category, item.part, client);
+      // Position: the row's own, else what the part's name says ("Front Brake Disc" -> Front); optional, as for one product.
+      const position = tryMatchPosition(item.position) || positionFromPartName(part);
+      // A row whose part has a weight and size set by the admin (migration 104) keeps none of its own; the part's are used.
+      const rowPartShipping = category && part ? await getPartShipping(category, part, client) : null;
+      const dims = rowPartShipping ? { weightKg: null, lengthCm: null, widthCm: null, heightCm: null } : tryMatchDimensions(item);
+
+      // A row with everything one product needs goes straight to review ('translating'); any other row is a draft that keeps what it has.
+      const check = validateCompleteFields({ category, part, position: position || 'Universal', ...dims, images, videoUrl, shippingFromPart: Boolean(rowPartShipping) }, requirements);
+      const status = check.valid ? 'translating' : 'draft';
+      const missing = [];
+      if (status === 'draft') {
+        if (!category) missing.push('category');
+        if (!part) missing.push('part');
+        if (!rowPartShipping && (dims.weightKg === null || dims.lengthCm === null || dims.widthCm === null || dims.heightCm === null)) missing.push('dimensions');
+        if (requirements.photos_required ? images.length !== requirements.min_photos : false) missing.push('photos');
+        if (requirements.video_required && !videoUrl) missing.push('video');
+      }
+
+      const id = `p_${Date.now()}_${i}`;
+      await client.query(
+        `INSERT INTO products
+           (id, supplier_id, name, name_zh, category, part, position, oem_number,
+            price, currency_code, status, weight_kg, length_cm, width_cm, height_cm, video_url)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'CNY', $10, $11, $12, $13, $14, $15)`,
+        [
+          id, req.user.supplierId, itemName, nameLanguage === 'zh' ? itemName : null,
+          category, part, position, oemNumber, price, status,
+          dims.weightKg, dims.lengthCm, dims.widthCm, dims.heightCm, videoUrl,
+        ]
+      );
+      await insertFitmentEntry(client, id, { generationId, year, engineId, transmissionId }, versionChoice.ids);
+      for (let k = 0; k < images.length; k++) {
+        await client.query('INSERT INTO product_images (product_id, url, sort_order) VALUES ($1, $2, $3)', [id, images[k], k]);
+      }
+      results.push({ index: i, success: true, productId: id, status, missing, nameWarning: nameWarning || null });
+    }
+    await client.query('COMMIT');
+
+    res.status(201).json({ results });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+// GET /me/products/drafts — this supplier's own real bulk-imported
+// drafts still needing completion before they can be submitted for
+// real moderation. Reports exactly what's still missing per item so
+// the portal can show a real, specific "needs: photos, category" state
+// rather than a generic "incomplete."
+router.get('/me/products/drafts', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    const { rows: reqRows } = await db.query('SELECT * FROM product_requirements WHERE id = 1');
+    const requirements = reqRows[0] || { min_photos: 4, photos_required: true, video_required: true };
+    const { rows } = await db.query(
+      `SELECT p.*, COALESCE(img.count, 0) AS photo_count
+       FROM products p
+       LEFT JOIN (SELECT product_id, COUNT(*) AS count FROM product_images GROUP BY product_id) img ON img.product_id = p.id
+       WHERE p.supplier_id = $1 AND p.status = 'draft'
+       ORDER BY p.created_at DESC`,
+      [req.user.supplierId]
+    );
+    const dtos = await Promise.all(rows.map(async (row) => {
+      const dto = await attachImagesAndFitment(toProductDto(row));
+      const missing = [];
+      if (!row.category) missing.push('category');
+      if (!row.part) missing.push('part');
+      if (!row.position) missing.push('position');
+      if (dto.weightKg === null) missing.push('dimensions');       // the effective weight (own, else the category's)
+      if (requirements.photos_required && Number(row.photo_count) !== requirements.min_photos) missing.push('photos');
+      if (requirements.video_required && !row.video_url) missing.push('video');
+      return { ...dto, missing };
+    }));
+    res.json(dtos);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /me/products/:id/complete — the real finishing step: fills in
+// whichever of category/part/position/dimensions weren't already set
+// (or overrides them), requires the real 3 photos, and — only once
+// every real requirement is met — moves the draft into 'translating',
+// entering the exact same real moderation queue every product goes
+// through. Real ownership enforced via the WHERE clause, and only a
+// genuine draft can be completed (an already-submitted product can't
+// be re-completed through this endpoint).
+router.patch('/me/products/:id/complete', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  const client = await db.getPool().connect();
+  try {
+    const draftCheck = await client.query(
+      `SELECT * FROM products WHERE id = $1 AND supplier_id = $2 AND status = 'draft'`,
+      [req.params.id, req.user.supplierId]
+    );
+    if (draftCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Draft product not found' });
+    }
+    const draft = draftCheck.rows[0];
+
+    const category = req.body.category || draft.category;
+    const part = req.body.part || draft.part;
+    const position = req.body.position || draft.position;
+    const weightKg = req.body.weightKg ?? (draft.weight_kg === null ? null : Number(draft.weight_kg));
+    const lengthCm = req.body.lengthCm ?? (draft.length_cm === null ? null : Number(draft.length_cm));
+    const widthCm = req.body.widthCm ?? (draft.width_cm === null ? null : Number(draft.width_cm));
+    const heightCm = req.body.heightCm ?? (draft.height_cm === null ? null : Number(draft.height_cm));
+    const images = req.body.images;
+    const videoUrl = req.body.videoUrl ?? draft.video_url;
+
+    if (category && category !== draft.category) {
+      const { category: matchedCategory } = await tryMatchCategoryAndPart(category, null, client);
+      if (!matchedCategory) {
+        return res.status(400).json({ error: 'Unknown category' });
+      }
+    }
+    if (part && category) {
+      const { part: matchedPart } = await tryMatchCategoryAndPart(category, part, client);
+      if (!matchedPart) {
+        return res.status(400).json({ error: 'part must be a real part belonging to the given category' });
+      }
+    }
+
+    const { rows: reqRows } = await client.query('SELECT * FROM product_requirements WHERE id = 1');
+    const requirements = reqRows[0] || { min_photos: 4, photos_required: true, video_required: true };
+    // A part with a weight and size set by the admin supplies them: the supplier enters none, and the product stores none of its own (migration 104).
+    const partShipping = await getPartShipping(category, part, client);
+    const shippingFromPart = Boolean(partShipping);
+    const validation = validateCompleteFields({ category, part, position, weightKg, lengthCm, widthCm, heightCm, images, videoUrl, shippingFromPart }, requirements);
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.error });
+    }
+
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE products SET
+         category = $1, part = $2, position = $3, weight_kg = $4, length_cm = $5, width_cm = $6, height_cm = $7,
+         video_url = $8, status = 'translating'
+       WHERE id = $9`,
+      [category, part, position, shippingFromPart ? null : weightKg, shippingFromPart ? null : lengthCm, shippingFromPart ? null : widthCm, shippingFromPart ? null : heightCm, videoUrl || null, req.params.id]
+    );
+    await client.query('DELETE FROM product_images WHERE product_id = $1', [req.params.id]);
+    for (let i = 0; i < images.length; i++) {
+      await client.query('INSERT INTO product_images (product_id, url, sort_order) VALUES ($1, $2, $3)', [req.params.id, images[i], i]);
+    }
+    await client.query('COMMIT');
+
+    const { rows } = await db.query('SELECT * FROM products WHERE id = $1', [req.params.id]);
+    res.json(await attachImagesAndFitment(toProductDto(rows[0])));
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+// PATCH /supplier/me/products/:id — edit price/stock. Ownership enforced
+// via the WHERE clause (supplier_id = $N), not just a lookup-then-check —
+// an UPDATE that matches zero rows because it belongs to someone else
+// looks identical to "not found", which is the correct thing to leak here.
+// PATCH /supplier/me/products/bulk-price-update
+// { productIds: string[], adjustmentType: 'percent'|'flat', adjustmentValue: number }
+//
+// REAL BUG-PRONE ORDERING, HANDLED CORRECTLY: this route is deliberately
+// registered BEFORE the PATCH /me/products/:id route below -- Express
+// matches routes in registration order, and :id is a wildcard that
+// would otherwise swallow the literal string "bulk-price-update" as if
+// it were a real product id, silently routing every bulk request to
+// the wrong (single-product) handler instead.
+//
+// A real, single SQL UPDATE, not a fetch-then-recompute-in-JS loop --
+// each matched product's OWN existing price feeds the expression
+// directly, so a batch with different starting prices is adjusted
+// correctly in one query, not stale data from before the request
+// started. Clamped at a real minimum (0.01) so a large enough negative
+// adjustment can't produce a zero or negative price.
+router.patch('/me/products/bulk-price-update', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    const { productIds, adjustmentType, adjustmentValue } = req.body || {};
+    if (!Array.isArray(productIds) || productIds.length === 0) {
+      return res.status(400).json({ error: 'productIds is required and must be non-empty' });
+    }
+    if (!['percent', 'flat'].includes(adjustmentType)) {
+      return res.status(400).json({ error: "adjustmentType must be 'percent' or 'flat'" });
+    }
+    if (typeof adjustmentValue !== 'number' || Number.isNaN(adjustmentValue)) {
+      return res.status(400).json({ error: 'adjustmentValue must be a real number' });
+    }
+
+    const priceExpr = adjustmentType === 'percent'
+      ? `GREATEST(price * (1 + $1 / 100.0), 0.01)`
+      : `GREATEST(price + $1, 0.01)`;
+
+    const { rows } = await db.query(
+      `UPDATE products SET price = ${priceExpr}
+       WHERE id = ANY($2::text[]) AND supplier_id = $3
+       RETURNING *`,
+      [adjustmentValue, productIds, req.user.supplierId]
+    );
+    const dtos = await Promise.all(rows.map((r) => attachImagesAndFitment(toProductDto(r))));
+    res.json(dtos);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /supplier/me/products/bulk-update { productIds, priceAdjustment?: { type: 'percent'|'flat', value }, stockQuantity?, lowStockThreshold? }
+// Bulk edit of the supplier's own products: the price (a percentage or a flat RMB amount, never below 0.01), the stock (set to a number)
+// and the low-stock threshold (set to a number). Anything left out is unchanged. Registered BEFORE /me/products/:id (Express matches in order).
+router.patch('/me/products/bulk-update', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    const { productIds, priceAdjustment, stockQuantity, lowStockThreshold } = req.body || {};
+    if (!Array.isArray(productIds) || productIds.length === 0) {
+      return res.status(400).json({ error: 'productIds is required and must be non-empty' });
+    }
+    if (priceAdjustment === undefined && stockQuantity === undefined && lowStockThreshold === undefined) {
+      return res.status(400).json({ error: 'Provide at least one of: priceAdjustment, stockQuantity, lowStockThreshold' });
+    }
+    if (priceAdjustment !== undefined && (!priceAdjustment || !['percent', 'flat'].includes(priceAdjustment.type) || typeof priceAdjustment.value !== 'number' || Number.isNaN(priceAdjustment.value))) {
+      return res.status(400).json({ error: "priceAdjustment must be { type: 'percent' or 'flat', value: a number }" });
+    }
+    if (stockQuantity !== undefined && (!Number.isInteger(stockQuantity) || stockQuantity < 0)) {
+      return res.status(400).json({ error: 'stockQuantity must be a whole number of 0 or more' });
+    }
+    if (lowStockThreshold !== undefined && (!Number.isInteger(lowStockThreshold) || lowStockThreshold < 0)) {
+      return res.status(400).json({ error: 'lowStockThreshold must be a whole number of 0 or more' });
+    }
+    // The price is changed only when asked: its value is then the 5th parameter.
+    const params = [productIds, req.user.supplierId, stockQuantity ?? null, lowStockThreshold ?? null];
+    let priceExpr = 'price';
+    if (priceAdjustment !== undefined) {
+      params.push(priceAdjustment.value);
+      priceExpr = priceAdjustment.type === 'percent' ? 'GREATEST(price * (1 + $5::numeric / 100.0), 0.01)' : 'GREATEST(price + $5::numeric, 0.01)';
+    }
+    const { rows: before } = await db.query('SELECT id, stock_quantity FROM products WHERE id = ANY($1::text[]) AND supplier_id = $2', [productIds, req.user.supplierId]);
+    const { rows } = await db.query(
+      `UPDATE products SET
+         price = ${priceExpr},
+         stock_quantity = COALESCE($3::int, stock_quantity),
+         low_stock_threshold = COALESCE($4::int, low_stock_threshold)
+       WHERE id = ANY($1::text[]) AND supplier_id = $2
+       RETURNING *`,
+      params
+    );
+    // Back in stock (0 -> more): the buyers who saved it are told, as for one product.
+    const wasEmpty = new Set(before.filter((r) => r.stock_quantity === 0).map((r) => r.id));
+    for (const r of rows) if (wasEmpty.has(r.id) && r.stock_quantity > 0) notifyRestock(r).catch((err) => console.error('[back-in-stock] Real notify failed (non-fatal):', err.message));
+    const dtos = await Promise.all(rows.map((r) => attachImagesAndFitment(toProductDto(r))));
+    res.json(dtos);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/me/products/:id', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    const { price, stockQuantity, lowStockThreshold, category, part } = req.body || {};
+    if (price === undefined && stockQuantity === undefined && lowStockThreshold === undefined && category === undefined && part === undefined) {
+      return res.status(400).json({ error: 'Provide at least one of: price, stockQuantity, lowStockThreshold, category and part' });
+    }
+    if (lowStockThreshold !== undefined && (!Number.isInteger(lowStockThreshold) || lowStockThreshold < 0)) {
+      return res.status(400).json({ error: 'lowStockThreshold must be a whole number of 0 or more' });
+    }
+    // The category and classification (part) can change together: the part must belong to the category. A product moved to a part that has
+    // no weight and size set by Leap must have its own complete set, or its shipping (and so its buyer price) could not be worked out.
+    let newCategory = null;
+    let newPart = null;
+    if (category !== undefined || part !== undefined) {
+      if (!category || !part) return res.status(400).json({ error: 'category and part are changed together: send both' });
+      const matched = await tryMatchCategoryAndPart(category, part, db);
+      if (!matched.category || !matched.part) return res.status(400).json({ error: 'part must be a real part belonging to the given category' });
+      const { rows: current } = await db.query('SELECT weight_kg, length_cm, width_cm, height_cm FROM products WHERE id = $1 AND supplier_id = $2', [req.params.id, req.user.supplierId]);
+      if (current.length === 0) return res.status(404).json({ error: 'Product not found' });
+      const ownSet = ['weight_kg', 'length_cm', 'width_cm', 'height_cm'].every((k) => current[0][k] !== null);
+      if (!ownSet && !(await getPartShipping(matched.category, matched.part))) {
+        return res.status(400).json({ error: 'This classification has no weight and size set by Leap, and this product has none of its own, so it cannot be moved there. Please contact Leap.', code: 'part_without_shipping' });
+      }
+      newCategory = matched.category;
+      newPart = matched.part;
+    }
+
+    // Real back-in-stock detection (new, migration 045) -- captures
+    // the real stock level BEFORE this update so a genuine 0 ->
+    // positive transition can be detected after it. Only relevant
+    // when stockQuantity is actually part of this request.
+    let previousStock = null;
+    if (stockQuantity !== undefined) {
+      const { rows: beforeRows } = await db.query('SELECT stock_quantity FROM products WHERE id = $1 AND supplier_id = $2', [req.params.id, req.user.supplierId]);
+      if (beforeRows.length > 0) previousStock = beforeRows[0].stock_quantity;
+    }
+
+    const { rows } = await db.query(
+      `UPDATE products SET
+         price = COALESCE($1, price),
+         stock_quantity = COALESCE($2, stock_quantity),
+         low_stock_threshold = COALESCE($3, low_stock_threshold),
+         category = COALESCE($6, category),
+         part = COALESCE($7, part)
+       WHERE id = $4 AND supplier_id = $5
+       RETURNING *`,
+      [price ?? null, stockQuantity ?? null, lowStockThreshold ?? null, req.params.id, req.user.supplierId, newCategory, newPart]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
+
+    // Real, best-effort -- a genuine 0 -> positive transition, and
+    // only that (raising 3 to 10 was never actually unavailable to a
+    // buyer). Never blocks or fails the real product update itself.
+    if (previousStock === 0 && rows[0].stock_quantity > 0) {
+      notifyRestock(rows[0]).catch((err) => console.error('[back-in-stock] Real notify failed (non-fatal):', err.message));
+    }
+
+    res.json(await attachImagesAndFitment(toProductDto(rows[0])));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /supplier/me/orders — this supplier's sub-orders only (SUP-020),
+// with the buyer never exposed beyond what's needed to ship (no direct
+// buyer contact — all communication routes through the Platform).
+router.get('/me/orders', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    const { rows: subOrders } = await db.query(
+      `SELECT so.id, so.order_id, so.status, so.tracking_number, so.hub_id, h.name AS hub_name, h.address AS hub_address, o.placed_at, hs.id AS hub_shipment_id, hs.status AS hub_shipment_status, so.respond_by, so.accepted_at, so.refused_at, so.refusal_reason, so.refusal_note
+       FROM supplier_sub_orders so
+       JOIN orders o ON o.id = so.order_id
+       LEFT JOIN hubs h ON h.id = so.hub_id
+       LEFT JOIN hub_shipments hs ON hs.sub_order_id = so.id
+       WHERE so.supplier_id = $1
+       ORDER BY o.placed_at DESC`,
+      [req.user.supplierId]
+    );
+
+    const result = [];
+    for (const so of subOrders) {
+      const { rows: items } = await db.query(
+        `SELECT oli.id AS line_id, oli.product_id, oli.quantity, oli.supplier_unit_price_cny, p.name
+         FROM order_line_items oli JOIN products p ON p.id = oli.product_id
+         WHERE oli.sub_order_id = $1`,
+        [so.id]
+      );
+      const productCars = await loadProductCars(db, items.map((i) => i.product_id));      // the part's photo and the car(s) it is listed for: never the buyer's car
+      result.push({
+        subOrderId: so.id,
+        orderId: so.order_id,
+        status: so.status,
+        trackingNumber: so.tracking_number,
+        hubId: so.hub_id,
+        hubName: so.hub_name,
+        hubAddress: so.hub_address,
+        hubShipmentId: so.hub_shipment_id,
+        placedAt: so.placed_at,
+        respondBy: so.respond_by,
+        acceptedAt: so.accepted_at,
+        refusedAt: so.refused_at,
+        refusalReason: so.refusal_reason,
+        refusalNote: so.refusal_note,
+          // What this supplier may do right now (see ./orderRules.js): the portal shows only these, the server enforces them.
+          ...describeControls({ status: so.status, hubShipmentStatus: so.hub_shipment_status }),
+          items: items.map((i) => ({ productId: i.product_id, name: i.name, quantity: i.quantity, unitPriceCny: i.supplier_unit_price_cny == null ? null : Number(i.supplier_unit_price_cny), vehicle: productCars.get(i.product_id) || null })),
+      });
+    }
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /supplier/me/orders/:subOrderId  { status?, trackingNumber? }
+// (SUP-021/022: accept/prepare/ship + tracking). Ownership enforced the
+// same way as the product PATCH above.
+// PATCH /supplier/me/orders/:subOrderId  { status?, trackingNumber? }
+// (SUP-021/022: accept/prepare/ship + tracking).
+//
+// IMPORTANT MEANING CHANGE (migration 011): 'shipped' here now means
+// "shipped to the assigned HUB", NOT "shipped to the buyer" — every
+// order now routes Supplier -> Hub -> Buyer, never supplier direct to
+// buyer (see services/api/README.md's Inspection Hubs section). A
+// supplier CANNOT mark a sub-order 'shipped' until an admin has
+// assigned a hub to it (PATCH /hub/assign/:subOrderId) — enforced here,
+// not just a UI nicety. The moment a sub-order transitions to 'shipped',
+// its hub_shipments row is created automatically (status
+// 'awaiting_receipt') — that's the bridge from the supplier's leg to
+// the hub's leg of the journey.
+router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  const { status, trackingNumber } = req.body || {};
+  // CONFIRMED (migration 027): a supplier's own real leg ends at
+  // 'shipped' -- to the assigned hub, never to the buyer directly (see
+  // migration 011's original two-leg design). 'delivered' was removed
+  // from here entirely -- a supplier has no real visibility into
+  // whether a buyer actually received anything; only the hub's own
+  // final leg does (see hub/routes.js).
+  // 'dispute' used to be allowed here: nothing ever reacted to it (disputes come from the hub), so it is gone.
+  if (status !== undefined && !['pending', 'preparing', 'shipped'].includes(status)) {
+    return res.status(400).json({ error: "status must be one of: pending, preparing, shipped" });
+  }
+  if (status === undefined && trackingNumber === undefined) {
+    return res.status(400).json({ error: 'Provide at least one of: status, trackingNumber' });
+  }
+
+  const client = await db.getPool().connect();
+  try {
+    await client.query('BEGIN');
+
+    // The rules (./orderRules.js): forward only, and nothing at all once the hub has received the parcel or the buyer cancelled it. The row is locked
+    // first, so a click cannot slip in between the hub receiving the parcel and this check.
+    const current = await client.query('SELECT status, hub_id FROM supplier_sub_orders WHERE id = $1 AND supplier_id = $2 FOR UPDATE', [req.params.subOrderId, req.user.supplierId]);
+    if (current.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Sub-order not found' });
+    }
+    const hubNow = await client.query('SELECT status FROM hub_shipments WHERE sub_order_id = $1 FOR UPDATE', [req.params.subOrderId]);
+    const refusal = refuseChange({ status: current.rows[0].status, hubShipmentStatus: hubNow.rows[0]?.status || null }, { status, trackingNumber });
+    if (refusal) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: refusal.message, code: refusal.code });
+    }
+
+    if (status === 'shipped') {
+      const ownCheck = { rows: [{ hub_id: current.rows[0].hub_id }] };
+      if (!ownCheck.rows[0].hub_id) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'This sub-order has no inspection hub assigned yet — an admin must assign one before it can be marked shipped.' });
+      }
+    }
+
+    const { rows } = await client.query(
+      `UPDATE supplier_sub_orders SET
+         status = COALESCE($1, status),
+         accepted_at = CASE WHEN $1::text IN ('preparing', 'shipped') AND accepted_at IS NULL THEN now() ELSE accepted_at END,
+         tracking_number = COALESCE($2, tracking_number)
+       WHERE id = $3 AND supplier_id = $4
+       RETURNING *`,
+      [status ?? null, trackingNumber ?? null, req.params.subOrderId, req.user.supplierId]
+    );
+    if (rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Sub-order not found' });
+    }
+
+    let hubShipmentId = null;
+    if (status === 'shipped') {
+      await client.query(
+        `INSERT INTO hub_shipments (sub_order_id, hub_id) VALUES ($1, $2) ON CONFLICT (sub_order_id) DO NOTHING`,
+        [rows[0].id, rows[0].hub_id]
+      );
+      const { rows: hsRows } = await client.query('SELECT id FROM hub_shipments WHERE sub_order_id = $1', [rows[0].id]);
+      hubShipmentId = hsRows[0]?.id ?? null;
+    }
+
+    // Real trigger #1 (of the 4 confirmed for notifications — see
+    // migration 019's header comment): a real sub-order status change
+    // to 'shipped' notifies the real buyer that their order is now on
+    // its way to the assigned hub. Part of the SAME transaction as the
+    // real status update itself, not a separate best-effort step.
+    // Only on the real change TO shipped: re-sending "shipped" to correct a tracking number must not notify the buyer a second time.
+    if (status === 'shipped' && current.rows[0].status !== 'shipped') {
+      const { rows: orderRows } = await client.query('SELECT buyer_id FROM orders WHERE id = $1', [rows[0].order_id]);
+      await createNotification({
+        userId: orderRows[0]?.buyer_id,
+        type: 'order_status',
+        // The SUPPLIER shipping is only the leg to our inspection hub -- the buyer's "shipped" notice (with the hub's own
+        // tracking number) is sent when the HUB ships it to them (see hub/routes.js). Saying "shipped" here, and
+        // emailing the supplier's domestic tracking number, was wrong on both counts.
+        ...messages.orderToInspectionHub(rows[0].order_id),
+        linkType: 'order',
+        linkId: rows[0].order_id,
+      }, client);
+    }
+
+    await client.query('COMMIT');
+
+    // REAL BUG FOUND AND FIXED HERE (same real bug already found and
+    // fixed on hub/routes.js's own confirm-delivery handler, found by
+    // an actual person reporting a stuck "Pending" request): res.json
+    // now happens FIRST -- a real, best-effort email send must never
+    // be able to block the real, already-successful response if an
+    // SMTP server is ever slow or unreachable.
+    // after this change the parcel is either still with the supplier or (just shipped) waiting for the hub to receive it
+    res.json({
+      subOrderId: rows[0].id, orderId: rows[0].order_id, status: rows[0].status, trackingNumber: rows[0].tracking_number, hubShipmentId,
+      ...describeControls({ status: rows[0].status, hubShipmentStatus: hubShipmentId ? 'awaiting_receipt' : (hubNow.rows[0]?.status || null) }),
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+// GET /supplier/me/overview — real aggregate KPIs for this supplier's own
+// dashboard landing page. Same honesty principle as the admin dashboard's
+// GET /overview (see that module's header comment): NO fabricated ¥
+// sales figure. The "settlement currency is RMB" business rule (see
+// apps/supplier-portal/README.md) is about how a supplier gets PAID OUT
+// once a payout system exists — it does not mean summing raw
+// order_line_items amounts (which are in whatever currency the BUYER
+// paid in, not RMB) and calling that a real RMB sales total. That would
+// require both a payout/commission system and FX conversion, neither of
+// which exist yet. Uses counts everywhere a currency amount would be
+// fabricated. Also no fake star rating — there's no reviews/ratings
+// system in this schema yet (see db/README.md's "not yet covered" list).
+router.get('/me/overview', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    const supplierId = req.user.supplierId;
+    const [totalOrders, pendingOrders, totalListings, pendingReturns, ordersByDay, topProducts, recentOrders, analytics] = await Promise.all([
+      db.query('SELECT COUNT(*) AS n FROM supplier_sub_orders WHERE supplier_id = $1', [supplierId]),
+      db.query(`SELECT COUNT(*) AS n FROM supplier_sub_orders WHERE supplier_id = $1 AND status IN ('pending', 'preparing')`, [supplierId]),
+      db.query('SELECT COUNT(*) AS n FROM products WHERE supplier_id = $1', [supplierId]),
+      db.query(
+        `SELECT COUNT(*) AS n FROM return_cases rc JOIN supplier_sub_orders so ON so.id = rc.sub_order_id
+         WHERE so.supplier_id = $1 AND rc.status IN ('awaiting', 'in_progress')`,
+        [supplierId]
+      ),
+      db.query(
+        // every one of the last 7 days (today and the 6 before), 0 where there were no orders (see the admin overview)
+        `SELECT d AS day, COALESCE(c.n, 0) AS n
+         FROM generate_series(date_trunc('day', now()) - interval '6 days', date_trunc('day', now()), interval '1 day') AS d
+         LEFT JOIN (
+           SELECT date_trunc('day', o.placed_at) AS day, COUNT(*) AS n
+           FROM supplier_sub_orders so JOIN orders o ON o.id = so.order_id
+           WHERE so.supplier_id = $1 AND o.placed_at >= date_trunc('day', now()) - interval '6 days' GROUP BY 1
+         ) c ON c.day = d
+         ORDER BY d ASC`,
+        [supplierId]
+      ),
+      db.query(
+        `SELECT p.id, p.name, SUM(oli.quantity) AS units
+         FROM order_line_items oli
+         JOIN supplier_sub_orders so ON so.id = oli.sub_order_id
+         JOIN products p ON p.id = oli.product_id
+         WHERE so.supplier_id = $1
+         GROUP BY p.id, p.name ORDER BY units DESC LIMIT 4`,
+        [supplierId]
+      ),
+      db.query(
+        `SELECT so.id AS sub_order_id, so.order_id, so.status, o.placed_at
+         FROM supplier_sub_orders so JOIN orders o ON o.id = so.order_id
+         WHERE so.supplier_id = $1
+         ORDER BY o.placed_at DESC LIMIT 5`,
+        [supplierId]
+      ),
+      // Real analytics (confirmed scope, picked from a list of 10 real
+      // options): revenue+volume over time, top-selling products,
+      // order status breakdown, low-stock products, payout summary --
+      // added alongside the existing real overview fields above,
+      // none of which are removed or changed, to avoid disrupting any
+      // real existing consumer of this same endpoint.
+      getSupplierAnalytics(supplierId),
+    ]);
+
+    res.json({
+      totalOrders: Number(totalOrders.rows[0].n),
+      pendingOrders: Number(pendingOrders.rows[0].n),
+      totalListings: Number(totalListings.rows[0].n),
+      pendingReturns: Number(pendingReturns.rows[0].n),
+      ordersByDay: ordersByDay.rows.map((r) => ({ day: r.day, count: Number(r.n) })),
+      topProducts: topProducts.rows.map((r) => ({ id: r.id, name: r.name, units: Number(r.units) })),
+      recentOrders: recentOrders.rows.map((r) => ({ subOrderId: r.sub_order_id, orderId: r.order_id, status: r.status, placedAt: r.placed_at })),
+      analytics,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+module.exports = router;

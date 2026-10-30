@@ -1050,12 +1050,7 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
     if (versionChoice.mode === "some" && versionChoice.ids.length === 0) missing.push(lang === "zh" ? "至少一个车型版本（或选择全部版本）" : "at least one version (or choose All versions)");
     if (requirements.photosRequired && photos.length !== requirements.minPhotos) missing.push(lang === "zh" ? `${requirements.minPhotos} 张照片` : `exactly ${requirements.minPhotos} photos`);
     if (requirements.videoRequired && !video) missing.push(lang === "zh" ? "商品视频" : "product video");
-    if (!partShipping) {
-      if (!weightKg) missing.push(lang === "zh" ? "重量" : "weight");
-      if (!lengthCm) missing.push(lang === "zh" ? "长度" : "length");
-      if (!widthCm) missing.push(lang === "zh" ? "宽度" : "width");
-      if (!heightCm) missing.push(lang === "zh" ? "高度" : "height");
-    }
+    // Weight and size: set by Leap (the admin), never asked of the supplier.
 
     if (missing.length > 0) {
       setError((lang === "zh" ? "请填写：" : "Please fill in: ") + missing.join(lang === "zh" ? "、" : ", "));
@@ -1082,11 +1077,7 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
           },
         images: photos.map((p) => p.url),
         videoUrl: video?.url || undefined,
-        // the part's weight and size are used; the supplier sends none (the server would ignore them anyway)
-        weightKg: partShipping ? undefined : parseFloat(weightKg),
-        lengthCm: partShipping ? undefined : parseFloat(lengthCm),
-        widthCm: partShipping ? undefined : parseFloat(widthCm),
-        heightCm: partShipping ? undefined : parseFloat(heightCm),
+        // weight and size: set by Leap (the admin); the supplier sends none
         attributes: selectedAttributes,
         fulfillsRequestItemId: prefill?.fulfillsRequestItemId || undefined,
       });
@@ -1232,22 +1223,9 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
             {partShipping ? (
               <PartShippingBlock part={selectedPart} shipping={partShipping} square />
             ) : (
-              <div style={{ width: "100%", height: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 10, background: "#F9FAFB", padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+              <div data-testid="weight-size-by-leap" style={{ width: "100%", height: "100%", boxSizing: "border-box", border: `1px solid ${C.line}`, borderRadius: 10, background: "#F9FAFB", padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ ...font, fontSize: 13, fontWeight: 700, color: C.ink }}>{cascadeLabel("重量和尺寸", "Weight and size")}</div>
-                <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, alignContent: "start" }}>
-                  <Field label={cascadeLabel("重量 (kg)", "Weight (kg)")}>
-                    <input type="number" step="0.01" min="0" style={inputStyle} placeholder="0.00" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} />
-                  </Field>
-                  <Field label={cascadeLabel("长度 (cm)", "Length (cm)")}>
-                    <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={lengthCm} onChange={(e) => setLengthCm(e.target.value)} />
-                  </Field>
-                  <Field label={cascadeLabel("宽度 (cm)", "Width (cm)")}>
-                    <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={widthCm} onChange={(e) => setWidthCm(e.target.value)} />
-                  </Field>
-                  <Field label={cascadeLabel("高度 (cm)", "Height (cm)")}>
-                    <input type="number" step="0.1" min="0" style={inputStyle} placeholder="0.0" value={heightCm} onChange={(e) => setHeightCm(e.target.value)} />
-                  </Field>
-                </div>
+                <div style={{ ...font, fontSize: 12.5, color: C.muted, lineHeight: 1.6 }}>{cascadeLabel("由 Leap 设置，您无需填写。", "Set by Leap. You don't need to enter them.")}</div>
               </div>
             )}
           </div>
@@ -1475,14 +1453,13 @@ function BulkUploadPanel({ onCancel, onImported }) {
   const partInfo = (r) => partsOf(r.category).find((p) => p.nameEn === r.part) || null;
   const photosOk = (r) => (requirements.photosRequired ? r.images.length === requirements.minPhotos : true);
   const videoOk = (r) => !requirements.videoRequired || Boolean(r.video);
-  // What the row will become: the server decides in the end (a part without a weight and size also keeps it a draft).
+  // What the row will become: the server decides in the end (weight and size are set by Leap, never asked of the supplier).
   const rowState = (r) => {
     if (r.repeatOf !== null && r.repeatOf !== undefined) return 'repeated';   // skipped: the first row with this OE number counts
     if (r.exists) return 'update';                                           // updates the price of the supplier's product with this OE number
     if (!r.category || !r.part) return 'choose';
     if (!photosOk(r)) return 'photos';
     if (!videoOk(r)) return 'video';
-    if (!partInfo(r)?.hasShipping) return 'dimensions';
     return 'ready';
   };
 
@@ -1822,21 +1799,13 @@ function CompleteDraftForm({ draft, onCancel, onCompleted }) {
 
   const needsCategory = draft.missing.includes('category') || draft.missing.includes('part');
   const needsPosition = draft.missing.includes('position');
-  const needsDimensionsFromSupplier = draft.missing.includes('dimensions');
 
   const [categories, setCategories] = useState([]);
   const [category, setCategory] = useState(draft.category || '');
   const [parts, setParts] = useState([]);
   const [part, setPart] = useState(draft.part || '');
-  // A PART whose weight and package size the admin has set supplies them: the supplier then enters none (migration 104).
-  const draftPart = parts.find((p) => p.nameEn === part);
-  const draftPartShipping = partShippingOf(draftPart);
-  const needsDimensions = needsDimensionsFromSupplier && !draftPartShipping;
+  // Weight and size: set by Leap (the admin), never asked of the supplier.
   const [position, setPosition] = useState(draft.position || POSITION_OPTIONS[0].id);
-  const [weightKg, setWeightKg] = useState(draft.weightKg || '');
-  const [lengthCm, setLengthCm] = useState(draft.lengthCm || '');
-  const [widthCm, setWidthCm] = useState(draft.widthCm || '');
-  const [heightCm, setHeightCm] = useState(draft.heightCm || '');
   const [photos, setPhotos] = useState(draft.images ? draft.images.map((url) => ({ url })) : []);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [video, setVideo] = useState(draft.videoUrl ? { url: draft.videoUrl } : null);
@@ -1915,10 +1884,6 @@ function CompleteDraftForm({ draft, onCancel, onCompleted }) {
         category: needsCategory ? category : undefined,
         part: needsCategory ? part : undefined,
         position: needsPosition ? position : undefined,
-        weightKg: needsDimensions ? Number(weightKg) : undefined,
-        lengthCm: needsDimensions ? Number(lengthCm) : undefined,
-        widthCm: needsDimensions ? Number(widthCm) : undefined,
-        heightCm: needsDimensions ? Number(heightCm) : undefined,
         images: photos.map((p) => p.url),
         videoUrl: video?.url || undefined,
       });
@@ -1960,18 +1925,6 @@ function CompleteDraftForm({ draft, onCancel, onCompleted }) {
               {POSITION_OPTIONS.map((p) => <option key={p.id} value={p.id}>{p[lang]}</option>)}
             </select>
           </Field>
-        )}
-
-        {needsDimensionsFromSupplier && draftPartShipping && (
-          <PartShippingBlock part={draftPart} shipping={draftPartShipping} />
-        )}
-        {needsDimensions && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
-            <Field label={cascadeLabel('重量 kg', 'Weight kg')}><input style={selectStyle} type="number" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} /></Field>
-            <Field label={cascadeLabel('长 cm', 'Length cm')}><input style={selectStyle} type="number" value={lengthCm} onChange={(e) => setLengthCm(e.target.value)} /></Field>
-            <Field label={cascadeLabel('宽 cm', 'Width cm')}><input style={selectStyle} type="number" value={widthCm} onChange={(e) => setWidthCm(e.target.value)} /></Field>
-            <Field label={cascadeLabel('高 cm', 'Height cm')}><input style={selectStyle} type="number" value={heightCm} onChange={(e) => setHeightCm(e.target.value)} /></Field>
-          </div>
         )}
 
         <div>
@@ -2064,6 +2017,9 @@ function DraftsPanel({ onCancel }) {
     return <CompleteDraftForm draft={draft} onCancel={() => setEditingId(null)} onCompleted={() => { setEditingId(null); load(); }} />;
   }
 
+  // What a draft still needs, in the portal's language (weight and size are set by Leap, so never listed).
+  const draftMissingText = (m) => ({ category: cascadeLabel('分类', 'category'), part: cascadeLabel('部件类型', 'classification'), position: cascadeLabel('位置', 'position'), photos: cascadeLabel('照片', 'photos'), video: cascadeLabel('视频', 'video') }[m] || m);
+
   return (
     <Card title={cascadeLabel('待完善的商品', 'Drafts needing completion')} action={<button onClick={onCancel} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={17} color={C.muted} /></button>}>
       <div style={{ padding: 6 }}>
@@ -2076,7 +2032,7 @@ function DraftsPanel({ onCancel }) {
             <div>
               <div style={{ ...font, fontWeight: 700, fontSize: 13 }}>{d.name}</div>
               <div style={{ ...font, fontSize: 11.5, color: C.muted, marginTop: 2 }}>
-                {d.oemNumber} · {cascadeLabel('缺少：', 'Needs: ')}{d.missing.join(', ')}
+                {d.oemNumber}{d.missing.filter((m) => m !== 'dimensions').length > 0 && <> · {cascadeLabel('缺少：', 'Needs: ')}{d.missing.filter((m) => m !== 'dimensions').map(draftMissingText).join(cascadeLabel('、', ', '))}</>}
               </div>
             </div>
             <button onClick={() => setEditingId(d.id)} style={{ ...font, padding: '7px 14px', borderRadius: 8, border: 'none', background: C.signal, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
