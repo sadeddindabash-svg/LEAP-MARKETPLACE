@@ -762,6 +762,35 @@ router.post('/me/products/bulk-import', requireAuth, requireRole('supplier'), as
   }
 });
 
+// GET /me/products/export-fitment — for the Products export (sheet 2): one row per product and car (brand, model, generation), with
+// the years and the versions chosen (none chosen: every version). Only this supplier's products.
+router.get('/me/products/export-fitment', requireAuth, requireRole('supplier'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT pfe.product_id, vb.name AS brand, vm.name AS model, vg.name AS generation,
+              MIN(pfe.year) AS year_from, MAX(pfe.year) AS year_to,
+              COALESCE(array_agg(DISTINCT vv.name ORDER BY vv.name) FILTER (WHERE vv.id IS NOT NULL), '{}') AS versions_en,
+              COALESCE(array_agg(DISTINCT COALESCE(vv.name_zh, vv.name) ORDER BY COALESCE(vv.name_zh, vv.name)) FILTER (WHERE vv.id IS NOT NULL), '{}') AS versions_zh
+       FROM product_fitment_entries pfe
+       JOIN products p ON p.id = pfe.product_id AND p.supplier_id = $1
+       JOIN vehicle_generations vg ON vg.id = pfe.generation_id
+       JOIN vehicle_models vm ON vm.id = vg.model_id
+       JOIN vehicle_brands vb ON vb.id = vm.brand_id
+       LEFT JOIN product_fitment_entry_versions pfev ON pfev.entry_id = pfe.id
+       LEFT JOIN vehicle_versions vv ON vv.id = pfev.version_id
+       GROUP BY pfe.product_id, vb.name, vm.name, vg.name
+       ORDER BY pfe.product_id, vb.name, vm.name, vg.name`,
+      [req.user.supplierId]
+    );
+    res.json(rows.map((r) => ({
+      productId: r.product_id, brand: r.brand, model: r.model, generation: r.generation,
+      yearFrom: r.year_from, yearTo: r.year_to, versionsEn: r.versions_en, versionsZh: r.versions_zh,
+    })));
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /me/products/drafts — this supplier's own real bulk-imported
 // drafts still needing completion before they can be submitted for
 // real moderation. Reports exactly what's still missing per item so

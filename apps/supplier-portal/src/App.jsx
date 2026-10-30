@@ -27,7 +27,7 @@ import {
   fetchCategories, fetchPartsForCategory,
   fetchMyMessages, sendMyMessage,
   fetchMyFinance, fetchMyPayoutMethod, updateMyPayoutMethod,
-  fetchMyNotifications, fetchUnreadNotificationCount, markNotificationRead, markAllNotificationsRead,
+  fetchMyNotifications, fetchUnreadNotificationCount, markNotificationRead, markAllNotificationsRead, fetchMyProductsFitmentForExport,
   bulkImportProducts, matchBulkItemNames, fetchMyDrafts, completeDraftProduct, resubmitRejectedProduct,
   fetchPartRequestQueue, fetchPartRequestDetail, sendPartRequestQuote,
 } from "./auth";
@@ -1281,6 +1281,107 @@ const BULK_TEMPLATE_HEADERS = ['OE Number / OE编号', 'Item Name / 商品名称
 // The bulk upload template: THREE columns only (OE Number, Item Name, Price in RMB). The category and part class are found from the
 // item name; the vehicle (and its versions) is chosen once for the whole file; photos and video are added row by row after the
 // file is read (they never go in the sheet).
+// Products > Export: every field of the products shown (it follows the All / Low stock filter), headers in Chinese and English.
+// Sheet 1: one row per product, the first photo inside its cell, links to every photo and the video. Sheet 2: one row per car it fits.
+const hasChinese = (s) => /[\u3400-\u9fff]/.test(String(s || ""));
+async function photoThumbnail(url) {      // a small JPEG of the photo (Excel cannot show WebP); null when it cannot be read
+  try {
+    const response = await fetch(`${API_BASE_URL}${url}`);
+    if (!response.ok) return null;
+    const bitmap = await createImageBitmap(await response.blob());
+    const size = 120;
+    const scale = Math.min(size / bitmap.width, size / bitmap.height, 1);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.8));
+    return blob ? { buffer: await blob.arrayBuffer(), width: canvas.width, height: canvas.height } : null;
+  } catch {
+    return null;
+  }
+}
+async function exportProductsWorkbook({ products, fitment, lang, categoryText, partText, statusText }) {
+  const L = (zh, en) => (lang === "zh" ? zh : en);
+  const workbook = new ExcelJS.Workbook();
+  const head = (sheet) => {
+    const row = sheet.getRow(1);
+    row.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    row.alignment = { vertical: "middle", wrapText: true };
+    row.height = 32;
+    row.eachCell((cell) => { cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1D4E89" } }; });
+    sheet.views = [{ state: "frozen", ySplit: 1 }];
+    sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: sheet.columnCount } };
+  };
+  const link = (text, url) => (url ? { text, hyperlink: `${API_BASE_URL}${url}` } : "");
+  const maxPhotos = Math.max(1, ...products.map((p) => (p.images || []).length));
+  const fitsByProduct = {};
+  for (const f of fitment) (fitsByProduct[f.productId] = fitsByProduct[f.productId] || []).push(f);
+  const years = (f) => (f.yearFrom === f.yearTo ? `${f.yearFrom}` : `${f.yearFrom}–${f.yearTo}`);
+  const versions = (f) => {
+    const list = lang === "zh" ? f.versionsZh : f.versionsEn;
+    return list && list.length > 0 ? list.join(L("；", "; ")) : L("全部版本", "All versions");
+  };
+
+  const sheet = workbook.addWorksheet(L("商品", "Products"));
+  sheet.columns = [
+    { header: "商品编号\nProduct ID", width: 16 }, { header: "照片\nPhoto", width: 10 },
+    { header: "商品名称（中文）\nName (Chinese)", width: 30 }, { header: "英文名称\nName (English)", width: 32 },
+    { header: "分类\nCategory", width: 14 }, { header: "部件类型\nClassification", width: 18 }, { header: "OE 编号\nOE number", width: 18 },
+    { header: "价格 (¥)\nPrice", width: 11 }, { header: "库存\nStock", width: 8 }, { header: "库存预警\nLow-stock alert", width: 11 },
+    { header: "状态\nStatus", width: 14 }, { header: "拒绝原因\nRejection reasons", width: 24 }, { header: "拒绝说明\nRejection note", width: 28 },
+    { header: "适配车型\nFits", width: 40 }, { header: "重量 kg\nWeight", width: 9 }, { header: "尺寸 cm\nSize (L×W×H)", width: 14 },
+    ...Array.from({ length: maxPhotos }, (_, i) => ({ header: `照片${i + 1}\nPhoto ${i + 1}`, width: 10 })),
+    { header: "视频\nVideo", width: 9 }, { header: "创建日期\nCreated", width: 12 },
+  ];
+  head(sheet);
+  const thumbs = await Promise.all(products.map((p) => ((p.images || [])[0] ? photoThumbnail(p.images[0]) : null)));
+  products.forEach((p, i) => {
+    const fits = fitsByProduct[p.id] || [];
+    const size = [p.lengthCm, p.widthCm, p.heightCm].every((v) => v != null) ? `${p.lengthCm}×${p.widthCm}×${p.heightCm}` : "";
+    const row = sheet.addRow([
+      p.id, "", p.nameZh || p.name, p.name && !hasChinese(p.name) ? p.name : "—",
+      categoryText(p), partText(p), p.oemNumber, Number(p.price), p.stockQuantity, p.lowStockThreshold,
+      statusText(p), p.rejected ? rejectionReasonsText(p.rejectionReasons, lang) : "", p.rejected ? p.rejectionNote || "" : "",
+      fits.map((f) => `${f.brand} ${f.model} ${f.generation} ${years(f)}${L("（", " (")}${versions(f)}${L("）", ")")}`).join(L("；", "; ")),
+      p.weightKg ?? "", size,
+      ...Array.from({ length: maxPhotos }, (_, k) => link(L(`照片${k + 1}`, `Photo ${k + 1}`), (p.images || [])[k])),
+      link(L("视频", "Video"), p.videoUrl), p.createdAt ? String(p.createdAt).slice(0, 10) : "",
+    ]);
+    row.height = 48;
+    row.alignment = { vertical: "top", wrapText: true };
+    row.getCell(8).numFmt = "0.00";
+    row.eachCell((cell) => { if (cell.value && cell.value.hyperlink) cell.font = { color: { argb: "FF1D4E89" }, underline: true }; });
+    if (thumbs[i]) {
+      const id = workbook.addImage({ buffer: thumbs[i].buffer, extension: "jpeg" });
+      const k = 44 / Math.max(thumbs[i].width, thumbs[i].height);
+      sheet.addImage(id, { tl: { col: 1.1, row: row.number - 1 + 0.1 }, ext: { width: thumbs[i].width * k, height: thumbs[i].height * k } });
+    }
+  });
+
+  const fitSheet = workbook.addWorksheet(L("适配车型", "Fitment"));
+  fitSheet.columns = [
+    { header: "商品编号\nProduct ID", width: 16 }, { header: "OE 编号\nOE number", width: 18 }, { header: "商品名称（中文）\nName (Chinese)", width: 30 },
+    { header: "品牌\nBrand", width: 14 }, { header: "车型\nModel", width: 16 }, { header: "代别\nGeneration", width: 16 },
+    { header: "年份\nYears", width: 12 }, { header: "版本\nVersions", width: 40 },
+  ];
+  head(fitSheet);
+  for (const p of products) {
+    for (const f of fitsByProduct[p.id] || []) {
+      fitSheet.addRow([p.id, p.oemNumber, p.nameZh || p.name, f.brand, f.model, f.generation, years(f), versions(f)]).alignment = { vertical: "top", wrapText: true };
+    }
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `products-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 async function downloadBulkTemplate() {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('Products');
@@ -2229,6 +2330,7 @@ function ProductsPage() {
   const [errorMessage, setErrorMessage] = useState(null);
   const [editingProduct, setEditingProduct] = useState(null);
   const [stockFilter, setStockFilter] = useState("all");
+  const [isExporting, setIsExporting] = useState(false);      // the Excel export is being built (photos are fetched)
   // Real bulk price update (new) -- closes a real gap: there was no
   // way to adjust multiple real products' prices at once before this.
   const [selectedIds, setSelectedIds] = useState(() => new Set());
@@ -2284,27 +2386,33 @@ function ProductsPage() {
         <button onClick={() => setMode("drafts")} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}>
           <FileSpreadsheet size={13} /> {lang === "zh" ? "我的草稿（未发布）" : "My Drafts (Not published)"}
         </button>
-        {/* Export: the products shown now (it follows the filter), in the portal's language. */}
+        {/* Export: every field of the products shown now (it follows the filter): sheet 1 the products with their first photo, sheet 2 the cars they fit. */}
         <button
-          disabled={loadState !== "ready" || visibleProducts.length === 0}
-          onClick={() => exportToExcel({
-            filename: `products-${new Date().toISOString().slice(0, 10)}`,
-            sheetName: lang === "zh" ? "商品" : "Products",
-            columns: [
-              { header: t.products.thProduct, key: "name", width: 30 },
-              { header: t.products.thCategory, key: "category", width: 16 },
-              { header: t.products.thPrice, key: "price", width: 14 },
-              { header: t.products.thStock, key: "stock", width: 12 },
-              { header: t.products.thStatus, key: "status", width: 16 },
-            ],
-            rows: visibleProducts.map((p) => ({
-              name: p.name, category: p.category, price: `${Number(p.price).toFixed(2)} ${p.currencyCode}`,
-              stock: p.stockQuantity, status: t.statusProduct[p.rejected ? "rejected" : p.status] || p.status,
-            })),
-          })}
-          style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: loadState !== "ready" || visibleProducts.length === 0 ? "default" : "pointer", opacity: loadState !== "ready" || visibleProducts.length === 0 ? 0.5 : 1, fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}
+          data-testid="products-export"
+          disabled={loadState !== "ready" || visibleProducts.length === 0 || isExporting}
+          onClick={async () => {
+            setIsExporting(true);
+            try {
+              const fitment = await fetchMyProductsFitmentForExport(getStoredToken());
+              const ids = new Set(visibleProducts.map((p) => p.id));
+              await exportProductsWorkbook({
+                products: visibleProducts,
+                fitment: fitment.filter((f) => ids.has(f.productId)),
+                lang,
+                categoryText: (p) => { const c = categoryById[p.category]; return c ? (lang === "zh" ? c.nameZh || c.nameEn : c.nameEn) : p.category || ""; },
+                partText: (p) => (lang === "zh" && partZhByKey[`${p.category}|${p.part}`]) || p.part || "",
+                statusText: (p) => t.statusProduct[p.rejected ? "rejected" : p.status] || p.status,
+              });
+            } catch (err) {
+              if (err instanceof SessionExpiredError) return onSessionExpired();
+              setErrorMessage(err.message);
+            } finally {
+              setIsExporting(false);
+            }
+          }}
+          style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: loadState !== "ready" || visibleProducts.length === 0 || isExporting ? "default" : "pointer", opacity: loadState !== "ready" || visibleProducts.length === 0 || isExporting ? 0.5 : 1, fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}
         >
-          <Download size={13} /> {t.products.export}
+          <Download size={13} /> {isExporting ? (lang === "zh" ? "导出中…" : "Exporting…") : t.products.export}
         </button>
         {/* Bulk edit: always here, active once products are ticked (it says how many). */}
         <button

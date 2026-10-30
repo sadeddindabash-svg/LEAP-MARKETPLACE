@@ -350,6 +350,10 @@ export async function fetchMyDrafts(token) {
 }
 
 // A product Leap rejected, fixed and sent back for review (name, category/part, OE number, price, photos, video).
+export function fetchMyProductsFitmentForExport(token) {      // the Products export, sheet 2 (one row per product and car)
+  return authedGet("/supplier/me/products/export-fitment", token);
+}
+
 export async function resubmitRejectedProduct(token, productId, payload) {
   const response = await fetch(`${API_BASE_URL}/supplier/me/products/${productId}/resubmit`, {
     method: "PATCH",
