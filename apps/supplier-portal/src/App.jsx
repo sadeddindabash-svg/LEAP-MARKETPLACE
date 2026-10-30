@@ -38,6 +38,7 @@ import VersionsStep from "./VersionsStep";
 import PartShippingBlock from "./PartShippingBlock";
 import { partShippingOf } from "./partShipping";
 import { useVehicleCascade } from "./vehicleCascade";
+import { setApiLanguage, apiMessage, uiLocale } from "./serverMessages";
 
 /* ============================================================
    LEAP 供应商门户 / Supplier Portal — bilingual (中文 / English)
@@ -399,7 +400,7 @@ function TopBar({ title, subtitle }) {
 // (an admin picks which real supplier to view).
 function SupplierAnalyticsSection({ analytics, lang, part = "all" }) {
   const revenueTrend = analytics.revenueAndVolume.map((d) => ({
-    d: new Date(d.day).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+    d: new Date(d.day).toLocaleDateString(uiLocale(), { month: "short", day: "numeric" }),
     revenue: d.revenue,
     orders: d.orderCount,
   }));
@@ -563,7 +564,7 @@ function SupplierAnalyticsSection({ analytics, lang, part = "all" }) {
 }
 
 // ---------------------------------------------------------------- RMB: the supplier portal shows the supplier's own price in yuan (¥), never dollars
-const cny = (n) => `¥${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const cny = (n) => `¥${Number(n).toLocaleString(uiLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 // ---------------------------------------------------------------- Overview: how the orders ended up (one pie chart)
 const OUTCOME_TEXT = {
@@ -724,7 +725,7 @@ function OverviewPage({ onSessionExpired }) {
     );
   }
 
-  const dayTrend = data.ordersByDay.map(d => ({ d: new Date(d.day).toLocaleDateString(undefined, { weekday: "short" }), v: d.count }));
+  const dayTrend = data.ordersByDay.map(d => ({ d: new Date(d.day).toLocaleDateString(uiLocale(), { weekday: "short" }), v: d.count }));
   const l = {
     totalOrders: lang === "zh" ? "总订单数" : "Total orders",
     pendingOrders: lang === "zh" ? "待处理订单" : "Pending orders",
@@ -790,7 +791,7 @@ function OverviewPage({ onSessionExpired }) {
                   <div key={o.subOrderId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderBottom: i < data.recentOrders.length - 1 ? `1px solid ${C.line}` : "none" }}>
                     <div>
                       <div style={{ ...font, fontSize: 12.5, fontWeight: 700, color: C.ink }}>{o.orderId}</div>
-                      <div style={{ ...font, fontSize: 10.5, color: C.muted, marginTop: 2 }}>{new Date(o.placedAt).toLocaleDateString()}</div>
+                      <div style={{ ...font, fontSize: 10.5, color: C.muted, marginTop: 2 }}>{new Date(o.placedAt).toLocaleDateString(uiLocale())}</div>
                     </div>
                     <Badge label={t.statusOrder[o.status] || o.status} statusKey={o.status} />
                   </div>
@@ -867,7 +868,7 @@ function getVideoDurationClientSide(file) {
     };
     videoEl.onerror = () => {
       URL.revokeObjectURL(videoEl.src);
-      reject(new Error('Could not read this video file'));
+      reject(new Error(apiMessage('Could not read this video file')));
     };
     videoEl.src = URL.createObjectURL(file);
   });
@@ -1158,14 +1159,14 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
               </Field>
               <Field label={cascadeLabel("类别", "Category")}>
                 <select style={selectStyle} value={category} onChange={(e) => setCategory(e.target.value)}>
-                  {categories.map(c => <option key={c.id} value={c.id}>{c.nameEn}</option>)}
+                  {categories.map(c => <option key={c.id} value={c.id}>{lang === "zh" ? c.nameZh || c.nameEn : c.nameEn}</option>)}
                 </select>
               </Field>
               <Field label={cascadeLabel("部件类型", "Part Class.")}>
                 <select style={selectStyle} value={part} onChange={(e) => setPart(e.target.value)} disabled={isLoadingParts || parts.length === 0}>
                   {isLoadingParts && <option>{cascadeLabel("加载中…", "Loading…")}</option>}
                   {!isLoadingParts && parts.length === 0 && <option>{cascadeLabel("此类别暂无部件", "No parts yet for this category")}</option>}
-                  {!isLoadingParts && parts.map(p => <option key={p.id} value={p.nameEn}>{p.nameEn}</option>)}
+                  {!isLoadingParts && parts.map(p => <option key={p.id} value={p.nameEn}>{lang === "zh" ? p.nameZh || p.nameEn : p.nameEn}</option>)}
                 </select>
               </Field>
               <div>
@@ -1215,7 +1216,7 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
                 })()}
               </div>
               <Field label={cascadeLabel("OEM 编号", "OEM Number")}>
-                <input style={inputStyle} placeholder="e.g. 34116792217" value={oemNumber} onChange={(e) => setOemNumber(e.target.value)} />
+                <input style={inputStyle} placeholder={cascadeLabel("例如：34116792217", "e.g. 34116792217")} value={oemNumber} onChange={(e) => setOemNumber(e.target.value)} />
               </Field>
               <Field label={cascadeLabel("价格 (¥ 人民币)", "Price (¥ RMB)")}>
                 <input type="number" step="0.01" style={inputStyle} placeholder="0.00" value={price} onChange={(e) => setPrice(e.target.value)} />
@@ -1352,7 +1353,7 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
   );
 }
 
-const BULK_TEMPLATE_HEADERS = ['OE Number', 'Item Name', 'Price (RMB)'];
+const BULK_TEMPLATE_HEADERS = ['OE Number / OE编号', 'Item Name / 商品名称', 'Price (RMB) / 价格（人民币）'];
 
 // The bulk upload template: THREE columns only (OE Number, Item Name, Price in RMB). The category and part class are found from the
 // item name; the vehicle (and its versions) is chosen once for the whole file; photos and video are added row by row after the
@@ -1396,8 +1397,8 @@ async function parseBulkUploadFile(file) {
   headerRow.eachCell((cell, colNumber) => {
     const h = normalizeHeader(cell.value);
     if (h.includes('oe') || h.includes('oem')) columnIndex.oemNumber = colNumber;
-    else if (h.includes('item name') || h.includes('name')) columnIndex.itemName = colNumber;
-    else if (h.includes('price')) columnIndex.price = colNumber;
+    else if (h.includes('item name') || h.includes('name') || h.includes('名称')) columnIndex.itemName = colNumber;
+    else if (h.includes('price') || h.includes('价格')) columnIndex.price = colNumber;
     else if (h.includes('category')) columnIndex.category = colNumber;
     else if (h.includes('part')) columnIndex.part = colNumber;
     else if (h.includes('position')) columnIndex.position = colNumber;
@@ -1617,7 +1618,7 @@ function BulkUploadPanel({ onCancel, onImported }) {
                   <Td>{rows[r.index]?.oemNumber}</Td>
                   <Td>{rows[r.index]?.itemName}</Td>
                   <Td align="right">{rows[r.index]?.price ?? '—'}</Td>
-                  <Td>{!r.success ? (r.repeated ? chip(L('文件中重复：已跳过', 'Repeated in this file: skipped'), C.muted, '#EEF0F3') : <span style={{ ...font, color: C.red, fontSize: 12 }}>{r.error}</span>)
+                  <Td>{!r.success ? (r.repeated ? chip(L('文件中重复：已跳过', 'Repeated in this file: skipped'), C.muted, '#EEF0F3') : <span style={{ ...font, color: C.red, fontSize: 12 }}>{apiMessage(r.error)}</span>)
                     : r.status === 'updated' ? chip(L('已更新价格', 'Price updated'), '#1D4E89', '#E5EEF9')
                     : r.status === 'translating' ? chip(L('已提交审核', 'Sent for review'), ...GREEN)
                     : chip(L(`草稿：缺少 ${(r.missing || []).map(missingText).join('、')}`, `Draft: needs ${(r.missing || []).map(missingText).join(', ')}`), ...AMBER)}
@@ -1939,12 +1940,12 @@ function CompleteDraftForm({ draft, onCancel, onCompleted }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <Field label={cascadeLabel('分类', 'Category')}>
               <select style={selectStyle} value={category} onChange={(e) => setCategory(e.target.value)}>
-                {categories.map((c) => <option key={c.id} value={c.id}>{c.nameEn}</option>)}
+                {categories.map((c) => <option key={c.id} value={c.id}>{lang === "zh" ? c.nameZh || c.nameEn : c.nameEn}</option>)}
               </select>
             </Field>
             <Field label={cascadeLabel('部件', 'Part Class.')}>
               <select style={selectStyle} value={part} onChange={(e) => setPart(e.target.value)} disabled={parts.length === 0}>
-                {parts.map((p) => <option key={p.nameEn} value={p.nameEn}>{p.nameEn}</option>)}
+                {parts.map((p) => <option key={p.nameEn} value={p.nameEn}>{lang === "zh" ? p.nameZh || p.nameEn : p.nameEn}</option>)}
               </select>
             </Field>
           </div>
@@ -2282,6 +2283,16 @@ function ProductsPage() {
   // The category NAMES for the list (a product keeps the category id).
   const [categoryById, setCategoryById] = useState({});
   useEffect(() => { fetchCategories().then((list) => setCategoryById(Object.fromEntries((Array.isArray(list) ? list : []).map((c) => [c.id, c])))).catch(() => {}); }, []);
+  // The classifications' Chinese names (a product keeps the English one): "category|part" -> Chinese.
+  const [partZhByKey, setPartZhByKey] = useState({});
+  useEffect(() => {
+    const ids = Object.keys(categoryById);
+    if (ids.length === 0) return undefined;
+    let live = true;
+    Promise.all(ids.map((id) => fetchPartsForCategory(id).then((list) => (Array.isArray(list) ? list : []).map((p) => [`${id}|${p.nameEn}`, p.nameZh])).catch(() => [])))
+      .then((pairs) => { if (live) setPartZhByKey(Object.fromEntries(pairs.flat().filter(([, zh]) => zh))); });
+    return () => { live = false; };
+  }, [categoryById]);
 
   const load = () => {
     setLoadState("loading");
@@ -2428,7 +2439,7 @@ function ProductsPage() {
                     </Td>
                     <Td style={{ fontWeight: 700 }}>{p.name}</Td>
                     <Td style={{ color: C.muted }}>{categoryById[p.category] ? (lang === "zh" ? categoryById[p.category].nameZh || categoryById[p.category].nameEn : categoryById[p.category].nameEn) : (p.category || "—")}</Td>
-                    <Td style={{ color: C.muted }}>{p.part || "—"}</Td>
+                    <Td style={{ color: C.muted }}>{(lang === "zh" && partZhByKey[`${p.category}|${p.part}`]) || p.part || "—"}</Td>
                     <Td align="right" style={{ fontWeight: 700 }}>{p.currencyCode === 'CNY' ? '¥' : '$'}{Number(p.price).toFixed(2)} {p.currencyCode}</Td>
                     {/* REAL BUG FOUND AND FIXED HERE: this used to hardcode
                         `< 20` for every product, ignoring each product's own
@@ -2955,7 +2966,7 @@ function OrdersPage({ onOpen }) {
 // A click-to-enlarge evidence photo: a thumbnail that opens full size. Escape, the close button, or a click outside the picture
 // closes it; "Open original" opens the file in a new tab.
 function EvidencePhoto({ url }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const font = useBodyFont();
   const [open, setOpen] = useState(false);
   const src = `${API_BASE_URL}${url}`;
@@ -2980,8 +2991,8 @@ function EvidencePhoto({ url }) {
         style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.line}`, cursor: "zoom-in" }}
       />
       {open && (
-        <div role="dialog" aria-label="Photo" onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-          <img src={src} alt="Evidence photo" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 8, background: "#111" }} />
+        <div role="dialog" aria-label={lang === "zh" ? "照片" : "Photo"} onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <img src={src} alt={lang === "zh" ? "质检照片" : "Evidence photo"} onClick={(e) => e.stopPropagation()} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 8, background: "#111" }} />
           <button aria-label={t.replacement.photoClose} onClick={(e) => { e.stopPropagation(); setOpen(false); }} style={{ ...font, position: "absolute", top: 16, right: 16, width: 36, height: 36, borderRadius: 18, border: "none", background: "#fff", color: C.ink, fontSize: 20, lineHeight: "36px", cursor: "pointer" }}>×</button>
           <a href={src} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ ...font, position: "absolute", bottom: 16, left: "50%", transform: "translateX(-50%)", padding: "8px 16px", borderRadius: 8, background: "#fff", color: C.ink, fontSize: 12.5, fontWeight: 700, textDecoration: "none" }}>{t.replacement.photoOriginal}</a>
         </div>
@@ -3334,7 +3345,7 @@ function SupplierNotificationsPage({ onRefreshBadge }) {
                   <div style={{ ...font, fontSize: 13, fontWeight: n.isRead ? 500 : 700, color: C.ink }}>{n.title}</div>
                   <div style={{ ...font, fontSize: 12, color: C.muted, marginTop: 2 }}>{n.body}</div>
                 </div>
-                <span style={{ ...font, fontSize: 10.5, color: C.muted, whiteSpace: "nowrap" }}>{new Date(n.createdAt).toLocaleDateString()}</span>
+                <span style={{ ...font, fontSize: 10.5, color: C.muted, whiteSpace: "nowrap" }}>{new Date(n.createdAt).toLocaleDateString(uiLocale())}</span>
               </div>
             ))}
           </div>
@@ -3520,7 +3531,7 @@ function FinancePage() {
   };
 
   // Amounts are RMB (¥): the supplier's own price x quantity (Leap's fees are inside the buyer's price, so nothing is taken from it).
-  const cny = (n) => `¥${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const cny = (n) => `¥${Number(n).toLocaleString(uiLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const font = useBodyFont();
   const legacyText = lang === "zh" ? `此前以美元 (USD) 记录的结算（不计入上方合计）：$${Number(finance && finance.legacyUsdPaid || 0).toFixed(2)}` : `Earlier payouts recorded in US dollars (not included in the total above): $${Number(finance && finance.legacyUsdPaid || 0).toFixed(2)}`;
 
@@ -3531,13 +3542,13 @@ function FinancePage() {
         {financeError && (
           <div style={{ ...font, fontSize: 12.5, color: C.red, background: C.redBg, borderRadius: 8, padding: 12 }}>{fi.loadError}{financeError}</div>
         )}
-        {finance === undefined && !financeError && <div style={{ ...font, fontSize: 13, color: C.muted }}>Loading…</div>}
+        {finance === undefined && !financeError && <div style={{ ...font, fontSize: 13, color: C.muted }}>{lang === "zh" ? "加载中…" : "Loading…"}</div>}
         {finance && (
           <>
             <div style={{ display: "flex", gap: 16 }}>
               <KpiCard label={fi.kpiReady} value={cny(finance.readyToPay.amount)} sub={fi.kpiReadySub(finance.readyToPay.orderCount)} icon={Wallet} accent={C.torque} />
               <KpiCard label={fi.kpiWaiting} value={cny(finance.inReturnWindow.amount)} sub={fi.kpiWaitingSub(finance.inReturnWindow.orderCount, finance.returnWindowDays)} icon={RotateCcw} accent={C.amber} />
-              <KpiCard label={fi.kpiPaid} value={cny(finance.totalPaid)} sub={fi.kpiPaidSub(finance.lastPayout ? new Date(finance.lastPayout.paidAt).toLocaleDateString() : null)} icon={Check} accent={C.gauge} />
+              <KpiCard label={fi.kpiPaid} value={cny(finance.totalPaid)} sub={fi.kpiPaidSub(finance.lastPayout ? new Date(finance.lastPayout.paidAt).toLocaleDateString(uiLocale()) : null)} icon={Check} accent={C.gauge} />
             </div>
             {finance.legacyUsdPaid > 0 && <div data-testid="legacy-usd-note" style={{ ...font, fontSize: 12, color: C.muted }}>{legacyText}</div>}
             {/* Payments Leap released for a fault that happened in ITS care (migration 097): why "ready to pay" can include more than delivered orders. */}
@@ -3566,7 +3577,7 @@ function FinancePage() {
                   <tbody>
                     {finance.payouts.map((p) => (
                       <tr key={p.id}>
-                        <Td style={{ fontWeight: 600 }}>{new Date(p.paidAt).toLocaleDateString()}</Td>
+                        <Td style={{ fontWeight: 600 }}>{new Date(p.paidAt).toLocaleDateString(uiLocale())}</Td>
                         <Td align="right">{p.orderCount}</Td>
                         <Td align="right" style={{ fontWeight: 700 }}>{p.currencyCode === "CNY" ? cny(p.amount) : `$${Number(p.amount).toFixed(2)} USD`}</Td>
                         <Td style={{ color: C.muted }}>{p.notes || ""}</Td>
@@ -3581,7 +3592,7 @@ function FinancePage() {
         )}
         <Card title={fi.bankTitle}>
           <div style={{ padding: 16 }}>
-            {payoutMethod === undefined && <div style={{ fontSize: 12.5, color: C.muted }}>Loading…</div>}
+            {payoutMethod === undefined && <div style={{ fontSize: 12.5, color: C.muted }}>{lang === "zh" ? "加载中…" : "Loading…"}</div>}
             {payoutMethod !== undefined && !isEditing && payoutMethod && (
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -3837,7 +3848,7 @@ function PortalShell() {
           <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 10 }}>
             <BadgeCheck size={13} color={C.gauge} />
             <span style={{ ...font, fontSize: 10.5, color: "#9AA1AC" }}>
-              {profile ? t.verifiedSince(new Date(profile.createdAt).toLocaleDateString()) : ""}
+              {profile ? t.verifiedSince(new Date(profile.createdAt).toLocaleDateString(uiLocale())) : ""}
             </span>
           </div>
           <button onClick={onLogout} style={{
@@ -3868,6 +3879,7 @@ export default function LeapSupplierPortalApp() {
   const [lang, setLang] = useState("zh");
   const t = STRINGS[lang];
   const toggle = () => setLang(l => (l === "zh" ? "en" : "zh"));
+  setApiLanguage(lang);      // the server's messages, dates and numbers follow the chosen language
 
   const [authState, setAuthState] = useState({ status: "checking", user: null, profile: null });
 

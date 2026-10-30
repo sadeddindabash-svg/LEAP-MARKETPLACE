@@ -6,7 +6,7 @@ describe("Bulk upload: 3-column template, vehicle with versions, category from t
   const app = readFileSync("src/App.jsx", "utf8");
   const auth = readFileSync("src/auth.js", "utf8");
   it("the template has exactly three columns", () => {
-    expect(app).toContain("const BULK_TEMPLATE_HEADERS = ['OE Number', 'Item Name', 'Price (RMB)'];");
+    expect(app).toContain("const BULK_TEMPLATE_HEADERS = ['OE Number / OE编号', 'Item Name / 商品名称', 'Price (RMB) / 价格（人民币）'];");
   });
   it("the vehicle is chosen like a single product, with its versions, and the versions are sent", () => {
     expect(app).toContain('<VehiclePicker cascade={cascade} idPrefix="bulk">');

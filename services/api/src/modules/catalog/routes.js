@@ -1419,12 +1419,12 @@ function parseShipping(body) {
 }
 
 function toCategoryDto(row) {
-  return { id: row.id, nameEn: row.name_en, nameAr: row.name_ar, photoUrl: row.photo_url, sortOrder: row.sort_order, commissionPercent: Number(row.commission_percent) };
+  return { id: row.id, nameEn: row.name_en, nameAr: row.name_ar, nameZh: row.name_zh || null, photoUrl: row.photo_url, sortOrder: row.sort_order, commissionPercent: Number(row.commission_percent) };
 }
 
 function toPartDto(row) {
   const num = (v) => (v === null || v === undefined ? null : Number(v));
-  return { id: row.id, categoryId: row.category_id, nameEn: row.name_en, nameAr: row.name_ar, sortOrder: row.sort_order, photoUrl: row.photo_url,
+  return { id: row.id, categoryId: row.category_id, nameEn: row.name_en, nameAr: row.name_ar, nameZh: row.name_zh || null, sortOrder: row.sort_order, photoUrl: row.photo_url,
     // The admin-set weight and package size the shipping cost uses for every product with this part (null until set; migration 104). All four or none.
     weightKg: num(row.weight_kg), lengthCm: num(row.length_cm), widthCm: num(row.width_cm), heightCm: num(row.height_cm),
   };

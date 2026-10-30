@@ -1,3 +1,4 @@
+import { apiError, apiMessage } from "./serverMessages";
 // Points at services/api. Override at build time with
 // VITE_API_BASE_URL=https://your-deployed-api npm run build
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
@@ -23,7 +24,7 @@ export async function login(email, password) {
     body: JSON.stringify({ email, password }),
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Login failed");
+  if (!response.ok) throw apiError(data.error || "Login failed");
   return data; // { token, user }
 }
 
@@ -31,7 +32,7 @@ export async function getCurrentUser(token) {
   const response = await fetch(`${API_BASE_URL}/auth/me`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!response.ok) throw new Error("Session expired or invalid");
+  if (!response.ok) throw apiError("Session expired or invalid");
   return response.json();
 }
 
@@ -39,9 +40,9 @@ async function authedGet(path, token) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (response.status === 401) throw new SessionExpiredError(apiMessage("Your session has expired. Please log in again."));
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  if (!response.ok) throw apiError(data.error || `Request failed (${response.status})`);
   return data;
 }
 
@@ -51,9 +52,9 @@ async function authedMutate(method, path, token, body) {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
   });
-  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (response.status === 401) throw new SessionExpiredError(apiMessage("Your session has expired. Please log in again."));
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  if (!response.ok) throw apiError(data.error || `Request failed (${response.status})`);
   return data;
 }
 
@@ -87,38 +88,38 @@ export function sendPartRequestQuote(token, id) {
 
 export async function fetchBrands() {
   const response = await fetch(`${API_BASE_URL}/fitment/brands`);
-  if (!response.ok) throw new Error(`Failed to load brands (${response.status})`);
+  if (!response.ok) throw apiError(`Failed to load brands (${response.status})`);
   return response.json();
 }
 
 export async function fetchModelsForBrand(brandId) {
   const response = await fetch(`${API_BASE_URL}/fitment/brands/${brandId}/models`);
-  if (!response.ok) throw new Error(`Failed to load models (${response.status})`);
+  if (!response.ok) throw apiError(`Failed to load models (${response.status})`);
   return response.json();
 }
 
 export async function fetchGenerationsForModel(modelId) {
   const response = await fetch(`${API_BASE_URL}/fitment/models/${modelId}/generations`);
-  if (!response.ok) throw new Error(`Failed to load generations (${response.status})`);
+  if (!response.ok) throw apiError(`Failed to load generations (${response.status})`);
   return response.json();
 }
 
 // The versions (trims) of a generation, for the optional Versions step of a product's fitment.
 export async function fetchVersionsForGeneration(generationId) {
   const response = await fetch(`${API_BASE_URL}/fitment/generations/${generationId}/versions`);
-  if (!response.ok) throw new Error(`Failed to load versions (${response.status})`);
+  if (!response.ok) throw apiError(`Failed to load versions (${response.status})`);
   return response.json();
 }
 
 export async function fetchEnginesForGeneration(generationId) {
   const response = await fetch(`${API_BASE_URL}/fitment/generations/${generationId}/engines`);
-  if (!response.ok) throw new Error(`Failed to load engines (${response.status})`);
+  if (!response.ok) throw apiError(`Failed to load engines (${response.status})`);
   return response.json();
 }
 
 export async function fetchTransmissionsForGeneration(generationId) {
   const response = await fetch(`${API_BASE_URL}/fitment/generations/${generationId}/transmissions`);
-  if (!response.ok) throw new Error(`Failed to load transmissions (${response.status})`);
+  if (!response.ok) throw apiError(`Failed to load transmissions (${response.status})`);
   return response.json();
 }
 
@@ -136,7 +137,7 @@ export async function uploadProductImage(token, file) {
     body: formData,
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || `Upload failed (${response.status})`);
+  if (!response.ok) throw apiError(data.error || `Upload failed (${response.status})`);
   return data; // { url, width, height }
 }
 
@@ -149,21 +150,21 @@ export async function uploadProductVideo(token, file) {
     body: formData,
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || `Upload failed (${response.status})`);
+  if (!response.ok) throw apiError(data.error || `Upload failed (${response.status})`);
   return data; // { url, durationSeconds }
 }
 
 export async function fetchProductRequirements() {
   const response = await fetch(`${API_BASE_URL}/catalog/product-requirements`);
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  if (!response.ok) throw apiError(data.error || `Request failed (${response.status})`);
   return data;
 }
 
 export async function fetchAttributeDefinitions() {
   const response = await fetch(`${API_BASE_URL}/catalog/attribute-definitions`);
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  if (!response.ok) throw apiError(data.error || `Request failed (${response.status})`);
   return data;
 }
 
@@ -239,13 +240,13 @@ export function replyToReturnCase(token, caseId, message) {
 
 export async function fetchCategories() {
   const response = await fetch(`${API_BASE_URL}/catalog/categories`);
-  if (!response.ok) throw new Error(`Failed to load categories (${response.status})`);
+  if (!response.ok) throw apiError(`Failed to load categories (${response.status})`);
   return response.json();
 }
 
 export async function fetchPartsForCategory(categoryId) {
   const response = await fetch(`${API_BASE_URL}/catalog/categories/${categoryId}/parts`);
-  if (!response.ok) throw new Error(`Failed to load parts (${response.status})`);
+  if (!response.ok) throw apiError(`Failed to load parts (${response.status})`);
   return response.json();
 }
 
@@ -306,8 +307,8 @@ export async function markAllNotificationsRead(token) {
     method: "PATCH",
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
-  if (response.status !== 204) throw new Error(`Request failed (${response.status})`);
+  if (response.status === 401) throw new SessionExpiredError(apiMessage("Your session has expired. Please log in again."));
+  if (response.status !== 204) throw apiError(`Request failed (${response.status})`);
 }
 
 // ---------------- Real bulk product import (new) ----------------
@@ -320,9 +321,9 @@ export async function bulkImportProducts(token, payload) {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(payload),
   });
-  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (response.status === 401) throw new SessionExpiredError(apiMessage("Your session has expired. Please log in again."));
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  if (!response.ok) throw apiError(data.error || `Request failed (${response.status})`);
   return data;
 }
 
@@ -333,9 +334,9 @@ export async function matchBulkItemNames(token, names, oemNumbers = [], fitment 
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ names, oemNumbers, fitment }),
   });
-  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (response.status === 401) throw new SessionExpiredError(apiMessage("Your session has expired. Please log in again."));
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  if (!response.ok) throw apiError(data.error || `Request failed (${response.status})`);
   return data; // { catalog, results: [{ state, category, part, candidates }], existingOemNumbers: [OE keys this supplier already has] }
 }
 
@@ -343,8 +344,8 @@ export async function fetchMyDrafts(token) {
   const response = await fetch(`${API_BASE_URL}/supplier/me/products/drafts`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
-  if (!response.ok) throw new Error(`Failed to load drafts (${response.status})`);
+  if (response.status === 401) throw new SessionExpiredError(apiMessage("Your session has expired. Please log in again."));
+  if (!response.ok) throw apiError(`Failed to load drafts (${response.status})`);
   return response.json();
 }
 
@@ -354,8 +355,8 @@ export async function completeDraftProduct(token, productId, payload) {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(payload),
   });
-  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  if (response.status === 401) throw new SessionExpiredError(apiMessage("Your session has expired. Please log in again."));
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  if (!response.ok) throw apiError(data.error || `Request failed (${response.status})`);
   return data;
 }

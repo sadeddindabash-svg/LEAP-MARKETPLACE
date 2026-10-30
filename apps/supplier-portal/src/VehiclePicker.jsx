@@ -20,7 +20,10 @@ export default function VehiclePicker({ cascade, compact = false, idPrefix = "ve
   const t = T[lang === "zh" ? "zh" : "en"];
   const photoSize = compact ? 130 : 320;
   const photo = pickerPhoto({ brand: cascade.selectedBrand, generation: cascade.selectedGeneration });
-  const caption = cascade.selectedBrand ? vehicleCaption({ brand: cascade.selectedBrand, model: cascade.selectedModel, generation: cascade.selectedGeneration, year: cascade.selectedYear }) : "";
+  // Brand and model in the supplier's language (the admin's Chinese names when there are some).
+  const localName = (o) => (lang === "zh" && o?.nameZh ? o.nameZh : o?.name);
+  const local = (o) => (o ? { ...o, name: localName(o) } : o);
+  const caption = cascade.selectedBrand ? vehicleCaption({ brand: local(cascade.selectedBrand), model: local(cascade.selectedModel), generation: cascade.selectedGeneration, year: cascade.selectedYear }) : "";
   const src = photo.url ? (photo.url.startsWith("http") ? photo.url : `${API_BASE_URL}${photo.url}`) : null;
 
   const selectStyle = { ...font, width: "100%", border: `1px solid ${C.line}`, borderRadius: 8, padding: "9px 11px", fontSize: 13, outline: "none", boxSizing: "border-box", background: "#fff" };
@@ -44,13 +47,13 @@ export default function VehiclePicker({ cascade, compact = false, idPrefix = "ve
             {step(1, "brand", t.brand, true, (
               <select id={`${idPrefix}-brand`} style={selectStyle} value={cascade.selectedBrandId} onChange={(e) => cascade.chooseBrand(e.target.value)}>
                 <option value="">{t.select}</option>
-                {cascade.brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                {cascade.brands.map((b) => <option key={b.id} value={b.id}>{localName(b)}</option>)}
               </select>
             ))}
             {step(2, "model", t.model, Boolean(cascade.selectedBrandId), (
               <select id={`${idPrefix}-model`} style={selectStyle} value={cascade.selectedModelId} onChange={(e) => cascade.chooseModel(e.target.value)} disabled={!cascade.selectedBrandId}>
                 <option value="">{t.select}</option>
-                {cascade.models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                {cascade.models.map((m) => <option key={m.id} value={m.id}>{localName(m)}</option>)}
               </select>
             ))}
             {step(3, "year", t.year, Boolean(cascade.selectedModelId), (
