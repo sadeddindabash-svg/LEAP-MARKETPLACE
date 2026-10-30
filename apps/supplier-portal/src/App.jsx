@@ -419,8 +419,8 @@ function SupplierAnalyticsSection({ analytics, lang, part = "all" }) {
 
   return (
     <>
-      {part !== "rest" && (
-      <div data-testid="payout-summary" style={{ display: "flex", gap: 16 }}>
+      {(part === "all" || part === "top" || part === "payout") && (
+      <div data-testid="payout-summary" style={{ display: "flex", gap: 16, flex: 1 }}>
         <Card title={l.payoutTitle} style={{ flex: 1 }}>
           <div style={{ padding: "18px 20px", display: "flex", gap: 24 }}>
             <div>
@@ -436,7 +436,7 @@ function SupplierAnalyticsSection({ analytics, lang, part = "all" }) {
       </div>
       )}
 
-      {part !== "top" && (
+      {(part === "all" || part === "rest") && (
       <>
       <Card title={l.revenueTitle}>
         <div style={{ padding: "16px 18px 8px", height: 200 }}>
@@ -456,6 +456,7 @@ function SupplierAnalyticsSection({ analytics, lang, part = "all" }) {
         </div>
       </Card>
 
+      {part === "all" && (
       <div style={{ display: "flex", gap: 16 }}>
         <Card title={l.topProductsTitle} style={{ flex: 1 }}>
           <div style={{ padding: 6 }}>
@@ -490,8 +491,9 @@ function SupplierAnalyticsSection({ analytics, lang, part = "all" }) {
           </div>
         </Card>
       </div>
+      )}
 
-      {analytics.lowStockProducts.length > 0 && (
+      {part === "all" && analytics.lowStockProducts.length > 0 && (
         <Card title={l.lowStockTitle}>
           <div style={{ padding: 6 }}>
             {analytics.lowStockProducts.slice(0, 8).map((p, i) => (
@@ -504,6 +506,57 @@ function SupplierAnalyticsSection({ analytics, lang, part = "all" }) {
         </Card>
       )}
       </>
+      )}
+
+      {part === "topSelling" && (
+        <Card title={l.topProductsTitle} style={{ flex: 1 }}>
+          <div style={{ padding: 6 }}>
+            {analytics.topProducts.length === 0 && <div style={{ padding: 20, textAlign: "center", fontSize: 12.5, color: C.muted }}>{l.noProducts}</div>}
+            {analytics.topProducts.map((p, i) => (
+              <div key={p.productId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderBottom: i < analytics.topProducts.length - 1 ? `1px solid ${C.line}` : "none" }}>
+                <span style={{ fontSize: 12.5, fontWeight: 600 }}>{p.name}</span>
+                <span style={{ fontSize: 12, color: C.muted }}>{p.unitsSold} {l.units} · {cny(p.revenue)}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {part === "status" && (
+        <Card title={l.statusTitle} style={{ flex: 1 }}>
+          <div style={{ padding: 12 }}>
+            {analytics.statusBreakdown.length === 0 && <div style={{ padding: 20, textAlign: "center", fontSize: 12.5, color: C.muted }}>{l.noProducts}</div>}
+            {analytics.statusBreakdown.map((s) => {
+              const total = analytics.statusBreakdown.reduce((sum, x) => sum + x.count, 0);
+              const pct = total > 0 ? (s.count / total) * 100 : 0;
+              return (
+                <div key={s.status} style={{ marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}>
+                    <span style={{ textTransform: "capitalize", fontWeight: 600 }}>{s.status.replace(/_/g, " ")}</span>
+                    <span style={{ color: C.muted }}>{s.count}</span>
+                  </div>
+                  <div style={{ height: 6, borderRadius: 3, background: C.line, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${pct}%`, background: C.signal, borderRadius: 3 }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      {part === "lowStock" && (
+        <Card title={l.lowStockTitle} style={{ flex: 1 }}>
+          <div data-testid="low-stock" style={{ padding: 6 }}>
+            {analytics.lowStockProducts.length === 0 && <div style={{ padding: 20, textAlign: "center", fontSize: 12.5, color: C.muted }}>{l.noLowStock}</div>}
+            {analytics.lowStockProducts.slice(0, 8).map((p, i) => (
+              <div key={p.productId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderBottom: i < Math.min(analytics.lowStockProducts.length, 8) - 1 ? `1px solid ${C.line}` : "none" }}>
+                <span style={{ fontSize: 12.5, fontWeight: 600 }}>{p.name}</span>
+                <span style={{ fontSize: 12, color: p.stockQuantity === 0 ? C.red : C.amber, fontWeight: 700 }}>{p.stockQuantity} / {p.lowStockThreshold}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
       )}
     </>
   );
@@ -690,7 +743,65 @@ function OverviewPage({ onSessionExpired }) {
     <div>
       <TopBar title={t.overview.title} subtitle={lang === "zh" ? "真实数据 — 不含虚构的销售额或评分" : "Real data — no fabricated sales totals or ratings"} />
       <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
-        {data.analytics && <SupplierAnalyticsSection analytics={data.analytics} lang={lang} part="top" />}
+        {/* Row 1: Payout summary | Order status breakdown | Orders. Row 2: Orders per day | Recent orders | Low-stock products. On a narrow window the rows wrap. */}
+        <div data-testid="overview-row-1" style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "stretch" }}>
+          <div style={{ flex: "1 1 340px", minWidth: 0, display: "flex", flexDirection: "column" }}>
+            {data.analytics && <SupplierAnalyticsSection analytics={data.analytics} lang={lang} part="payout" />}
+          </div>
+          <div style={{ flex: "1 1 340px", minWidth: 0, display: "flex", flexDirection: "column" }}>
+            {data.analytics && <SupplierAnalyticsSection analytics={data.analytics} lang={lang} part="status" />}
+          </div>
+          <div style={{ flex: "1 1 340px", minWidth: 0, display: "flex", flexDirection: "column" }}>
+            {data.analytics && data.analytics.outcomes && <OrderOutcomesCard outcomes={data.analytics.outcomes} lang={lang} />}
+          </div>
+        </div>
+
+        <div data-testid="overview-row-2" style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "stretch" }}>
+          <div style={{ flex: "1 1 340px", minWidth: 0, display: "flex", flexDirection: "column" }}>
+            <Card title={l.trendTitle} style={{ flex: 1 }}>
+              <div style={{ padding: "16px 18px 8px", height: 220 }}>
+                {dayTrend.length === 0 ? (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", ...font, fontSize: 12.5, color: C.muted }}>{l.noOrders}</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={dayTrend} margin={{ left: 0, right: 10, top: 6, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="ordersFillSupplier" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={C.signal} stopOpacity={0.28} />
+                          <stop offset="100%" stopColor={C.signal} stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid stroke={C.line} vertical={false} />
+                      <XAxis dataKey="d" tick={{ fontSize: 11, fill: C.muted, fontFamily: lang === "zh" ? "Noto Sans SC" : "Inter" }} axisLine={{ stroke: C.line }} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11, fill: C.muted, fontFamily: "Inter" }} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
+                      <Tooltip formatter={(v) => [v, lang === "zh" ? "订单" : "Orders"]} contentStyle={{ fontFamily: lang === "zh" ? "Noto Sans SC" : "Inter", fontSize: 12, borderRadius: 8, border: `1px solid ${C.line}` }} />
+                      <Area type="monotone" dataKey="v" stroke={C.signal} strokeWidth={2.5} fill="url(#ordersFillSupplier)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </Card>
+          </div>
+          <div style={{ flex: "1 1 340px", minWidth: 0, display: "flex", flexDirection: "column" }}>
+            <Card title={l.recentOrdersTitle} style={{ flex: 1 }}>
+              <div style={{ padding: 6 }}>
+                {data.recentOrders.length === 0 && <div style={{ padding: 20, textAlign: "center", ...font, fontSize: 12.5, color: C.muted }}>{l.noRecent}</div>}
+                {data.recentOrders.map((o, i) => (
+                  <div key={o.subOrderId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderBottom: i < data.recentOrders.length - 1 ? `1px solid ${C.line}` : "none" }}>
+                    <div>
+                      <div style={{ ...font, fontSize: 12.5, fontWeight: 700, color: C.ink }}>{o.orderId}</div>
+                      <div style={{ ...font, fontSize: 10.5, color: C.muted, marginTop: 2 }}>{new Date(o.placedAt).toLocaleDateString()}</div>
+                    </div>
+                    <Badge label={t.statusOrder[o.status] || o.status} statusKey={o.status} />
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+          <div style={{ flex: "1 1 340px", minWidth: 0, display: "flex", flexDirection: "column" }}>
+            {data.analytics && <SupplierAnalyticsSection analytics={data.analytics} lang={lang} part="lowStock" />}
+          </div>
+        </div>
 
         <div style={{ display: "flex", gap: 16 }}>
           <KpiCard label={l.totalOrders} value={String(data.totalOrders)} icon={ShoppingBag} accent={C.gauge} />
@@ -699,36 +810,11 @@ function OverviewPage({ onSessionExpired }) {
           <KpiCard label={l.pendingReturns} value={String(data.pendingReturns)} icon={AlertTriangle} accent={C.red} />
         </div>
 
-        {data.analytics && data.analytics.outcomes && <OrderOutcomesCard outcomes={data.analytics.outcomes} lang={lang} />}
-
         {data.analytics && <SupplierAnalyticsSection analytics={data.analytics} lang={lang} part="rest" />}
 
-        <Card title={l.trendTitle}>
-          <div style={{ padding: "16px 18px 8px", height: 220 }}>
-            {dayTrend.length === 0 ? (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", ...font, fontSize: 12.5, color: C.muted }}>{l.noOrders}</div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={dayTrend} margin={{ left: 0, right: 10, top: 6, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="ordersFillSupplier" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={C.signal} stopOpacity={0.28} />
-                      <stop offset="100%" stopColor={C.signal} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke={C.line} vertical={false} />
-                  <XAxis dataKey="d" tick={{ fontSize: 11, fill: C.muted, fontFamily: lang === "zh" ? "Noto Sans SC" : "Inter" }} axisLine={{ stroke: C.line }} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: C.muted, fontFamily: "Inter" }} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
-                  <Tooltip formatter={(v) => [v, lang === "zh" ? "订单" : "Orders"]} contentStyle={{ fontFamily: lang === "zh" ? "Noto Sans SC" : "Inter", fontSize: 12, borderRadius: 8, border: `1px solid ${C.line}` }} />
-                  <Area type="monotone" dataKey="v" stroke={C.signal} strokeWidth={2.5} fill="url(#ordersFillSupplier)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </Card>
-
-        <div style={{ display: "flex", gap: 16 }}>
-          <Card title={l.topProductsTitle} style={{ flex: 1 }}>
+        <div data-testid="overview-row-bottom" style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "stretch" }}>
+          {data.analytics && <div style={{ flex: "1 1 340px", minWidth: 0, display: "flex", flexDirection: "column" }}><SupplierAnalyticsSection analytics={data.analytics} lang={lang} part="topSelling" /></div>}
+          <Card title={l.topProductsTitle} style={{ flex: "1 1 340px", minWidth: 0 }}>
             <div style={{ padding: 6 }}>
               {data.topProducts.length === 0 && <div style={{ padding: 20, textAlign: "center", ...font, fontSize: 12.5, color: C.muted }}>{l.noProducts}</div>}
               {data.topProducts.map((p, i) => (
@@ -740,20 +826,6 @@ function OverviewPage({ onSessionExpired }) {
                     <div style={{ ...font, fontSize: 12.5, fontWeight: 700, color: C.ink }}>{p.name}</div>
                   </div>
                   <span style={{ ...disp, fontSize: 15, fontWeight: 700 }}>{p.units} {l.unitsSold}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-          <Card title={l.recentOrdersTitle} style={{ flex: 1 }}>
-            <div style={{ padding: 6 }}>
-              {data.recentOrders.length === 0 && <div style={{ padding: 20, textAlign: "center", ...font, fontSize: 12.5, color: C.muted }}>{l.noRecent}</div>}
-              {data.recentOrders.map((o, i) => (
-                <div key={o.subOrderId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderBottom: i < data.recentOrders.length - 1 ? `1px solid ${C.line}` : "none" }}>
-                  <div>
-                    <div style={{ ...font, fontSize: 12.5, fontWeight: 700, color: C.ink }}>{o.orderId}</div>
-                    <div style={{ ...font, fontSize: 10.5, color: C.muted, marginTop: 2 }}>{new Date(o.placedAt).toLocaleDateString()}</div>
-                  </div>
-                  <Badge label={t.statusOrder[o.status] || o.status} statusKey={o.status} />
                 </div>
               ))}
             </div>

@@ -1,0 +1,22 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+// The Overview's containers in the approved order. Reads the source text.
+describe("Supplier Overview layout", () => {
+  const app = readFileSync("src/App.jsx", "utf8");
+  const page = app.slice(app.indexOf("function OverviewPage("));
+  const at = (s) => { const i = page.indexOf(s); expect(i, s).toBeGreaterThan(-1); return i; };
+  it("row 1 is Payout summary beside Orders; row 2 is Low-stock products beside Orders per day", () => {
+    const r1 = at('data-testid="overview-row-1"'), pay = at('part="payout"'), orders = at("<OrderOutcomesCard");
+    const r2 = at('data-testid="overview-row-2"'), low = at('part="lowStock"'), trend = at("<Card title={l.trendTitle}");
+    expect(r1 < pay && pay < orders && orders < r2 && r2 < low && low < trend).toBe(true);
+  });
+  it("the rest follows below, in its old order", () => {
+    const trend = at("<Card title={l.trendTitle}"), kpi = at("<KpiCard"), rest = at('part="rest"'), top = at("<Card title={l.topProductsTitle}");
+    expect(trend < kpi && kpi < rest && rest < top).toBe(true);
+  });
+  it("low stock is not shown twice, and is always in row 2", () => {
+    expect(app).toContain('{part === "all" && analytics.lowStockProducts.length > 0 && (');
+    expect(app).toContain('{part === "lowStock" && (');
+  });
+});
