@@ -322,16 +322,16 @@ export async function bulkImportProducts(token, payload) {
 }
 
 // Bulk upload: each item name's category and part class (found from the name), and the catalog for the dropdowns. Saves nothing.
-export async function matchBulkItemNames(token, names) {
+export async function matchBulkItemNames(token, names, oemNumbers = []) {
   const response = await fetch(`${API_BASE_URL}/supplier/me/products/bulk-import/match`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ names }),
+    body: JSON.stringify({ names, oemNumbers }),
   });
   if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
-  return data; // { catalog, results: [{ state, category, part, candidates }] }
+  return data; // { catalog, results: [{ state, category, part, candidates }], existingOemNumbers: [OE keys this supplier already has] }
 }
 
 export async function fetchMyDrafts(token) {

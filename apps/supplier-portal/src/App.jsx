@@ -1473,6 +1473,8 @@ function BulkUploadPanel({ onCancel, onImported }) {
   const videoOk = (r) => !requirements.videoRequired || Boolean(r.video);
   // What the row will become: the server decides in the end (a part without a weight and size also keeps it a draft).
   const rowState = (r) => {
+    if (r.repeatOf !== null && r.repeatOf !== undefined) return 'repeated';   // skipped: the first row with this OE number counts
+    if (r.exists) return 'update';                                           // updates the price of the supplier's product with this OE number
     if (!r.category || !r.part) return 'choose';
     if (!photosOk(r)) return 'photos';
     if (!videoOk(r)) return 'video';
@@ -1493,12 +1495,18 @@ function BulkUploadPanel({ onCancel, onImported }) {
         return;
       }
       let found = { catalog: [], results: [] };
-      try { found = await matchBulkItemNames(getStoredToken(), items.map((it) => it.itemName)); }
+      try { found = await matchBulkItemNames(getStoredToken(), items.map((it) => it.itemName), items.map((it) => it.oemNumber)); }
       catch (err) { if (err instanceof SessionExpiredError) throw err; setError(L('无法根据名称识别分类，请逐行选择。', 'The category could not be found from the names; choose it on each row.')); }
       setCatalog(found.catalog || []);
+      // An OE number the supplier already has updates that product's price; the same OE number again in this file is skipped (only its first row counts).
+      const haveOe = new Set(found.existingOemNumbers || []);
+      const firstRowOf = new Map();
+      items.forEach((it, i) => { const k = String(it.oemNumber ?? '').trim().toUpperCase(); if (k && !firstRowOf.has(k)) firstRowOf.set(k, i); });
       setRows(items.map((it, i) => {
         const m = (found.results || [])[i] || { state: 'none' };
-        return { oemNumber: it.oemNumber, itemName: it.itemName, price: it.price, category: m.category || '', part: m.part || '', match: m.state || 'none', candidates: m.candidates || [], images: [], video: null, busy: 0, rowError: null };
+        const k = String(it.oemNumber ?? '').trim().toUpperCase();
+        const first = firstRowOf.get(k);
+        return { exists: Boolean(k) && haveOe.has(k), repeatOf: k && first !== i ? first : null, oemNumber: it.oemNumber, itemName: it.itemName, price: it.price, category: m.category || '', part: m.part || '', match: m.state || 'none', candidates: m.candidates || [], images: [], video: null, busy: 0, rowError: null };
       }));
       setUnplaced([]);
       setStep('preview');
@@ -1588,13 +1596,15 @@ function BulkUploadPanel({ onCancel, onImported }) {
   if (step === 'results') {
     const ok = results.filter((r) => r.success);
     const review = ok.filter((r) => r.status === 'translating').length;
-    const drafts = ok.length - review;
-    const failed = results.length - ok.length;
+    const updated = ok.filter((r) => r.status === 'updated').length;
+    const drafts = ok.length - review - updated;
+    const skipped = results.filter((r) => r.repeated).length;
+    const failed = results.length - ok.length - skipped;
     return (
       <Card title={b.title} action={closeButton}>
         <div style={{ padding: 20 }}>
           <div data-testid="bulk-results-summary" style={{ ...font, fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 6 }}>
-            {L(`导入完成：${review} 件已提交审核，${drafts} 件为草稿`, `Import complete: ${review} sent for review, ${drafts} saved as drafts`)}{failed > 0 && L(`，${failed} 件失败`, `, ${failed} failed`)}
+            {L(`导入完成：${review} 件已提交审核，${drafts} 件为草稿`, `Import complete: ${review} sent for review, ${drafts} saved as drafts`)}{updated > 0 && L(`，${updated} 件已更新价格`, `, ${updated} prices updated`)}{skipped > 0 && L(`，${skipped} 件重复已跳过`, `, ${skipped} repeated rows skipped`)}{failed > 0 && L(`，${failed} 件失败`, `, ${failed} failed`)}
           </div>
           {drafts > 0 && <div style={{ ...font, fontSize: 12.5, color: C.muted, marginBottom: 14 }}>{L('草稿请前往"待完善"补全缺少的内容。', 'Finish the drafts in My Drafts: each one says what it still needs.')}</div>}
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -1606,7 +1616,8 @@ function BulkUploadPanel({ onCancel, onImported }) {
                   <Td>{rows[r.index]?.oemNumber}</Td>
                   <Td>{rows[r.index]?.itemName}</Td>
                   <Td align="right">{rows[r.index]?.price ?? '—'}</Td>
-                  <Td>{!r.success ? <span style={{ ...font, color: C.red, fontSize: 12 }}>{r.error}</span>
+                  <Td>{!r.success ? (r.repeated ? chip(L('文件中重复：已跳过', 'Repeated in this file: skipped'), C.muted, '#EEF0F3') : <span style={{ ...font, color: C.red, fontSize: 12 }}>{r.error}</span>)
+                    : r.status === 'updated' ? chip(L('已更新价格', 'Price updated'), '#1D4E89', '#E5EEF9')
                     : r.status === 'translating' ? chip(L('已提交审核', 'Sent for review'), ...GREEN)
                     : chip(L(`草稿：缺少 ${(r.missing || []).map(missingText).join('、')}`, `Draft: needs ${(r.missing || []).map(missingText).join(', ')}`), ...AMBER)}
                     {r.success && r.nameWarning && <div style={{ ...font, fontSize: 11, color: '#8A5A12', marginTop: 4 }}>{L('名称不符合字数要求', 'Name outside the length rule')}</div>}</Td>
@@ -1680,7 +1691,9 @@ function BulkUploadPanel({ onCancel, onImported }) {
               {(counts.choose || 0) > 0 && chip(L(`${counts.choose} 行需要选择`, `${counts.choose} need a choice`), ...AMBER)}
               {rows.filter((r) => !supplierNameRule(r.itemName, requirements).ok).length > 0 && chip(L(`${rows.filter((r) => !supplierNameRule(r.itemName, requirements).ok).length} 行名称不符合字数要求（仍会导入）`, `${rows.filter((r) => !supplierNameRule(r.itemName, requirements).ok).length} names outside the length rule (still imported)`), ...AMBER)}
               {chip(L(`${counts.ready || 0} 行可提交审核`, `${counts.ready || 0} ready for review`), ...GREEN)}
-              {rows.length - (counts.ready || 0) > 0 && chip(L(`${rows.length - (counts.ready || 0)} 行将成为草稿`, `${rows.length - (counts.ready || 0)} will be drafts`), ...AMBER)}
+              {(counts.update || 0) > 0 && chip(L(`${counts.update} 行已有此 OE 编号（更新价格）`, `${counts.update} already yours (price updated)`), '#1D4E89', '#E5EEF9')}
+              {(counts.repeated || 0) > 0 && chip(L(`${counts.repeated} 行在文件中重复（跳过）`, `${counts.repeated} repeated in this file (skipped)`), C.muted, '#EEF0F3')}
+              {rows.length - (counts.ready || 0) - (counts.update || 0) - (counts.repeated || 0) > 0 && chip(L(`${rows.length - (counts.ready || 0) - (counts.update || 0) - (counts.repeated || 0)} 行将成为草稿`, `${rows.length - (counts.ready || 0) - (counts.update || 0) - (counts.repeated || 0)} will be drafts`), ...AMBER)}
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, border: '1.5px dashed #9DB4D6', background: '#F4F8FD', borderRadius: 10, padding: '12px 14px', marginBottom: 12, flexWrap: 'wrap' }}>
@@ -1760,7 +1773,9 @@ function BulkUploadPanel({ onCancel, onImported }) {
                           )}
                         </Td>
                         <Td>
-                          {state === 'ready' ? chip(L('可提交审核', 'Ready: goes to review'), ...GREEN)
+                          {state === 'repeated' ? chip(L(`与第 ${r.repeatOf + 1} 行 OE 编号重复：跳过`, `Repeated in this file (row ${r.repeatOf + 1}): skipped`), C.muted, '#EEF0F3')
+                            : state === 'update' ? chip(L('已有此 OE 编号：将更新价格', 'Already yours: price will be updated'), '#1D4E89', '#E5EEF9')
+                            : state === 'ready' ? chip(L('可提交审核', 'Ready: goes to review'), ...GREEN)
                             : state === 'choose' ? chip(r.match === 'many' ? L(`${r.candidates.length} 个可能：请选择`, `${r.candidates.length} possible: choose`) : L('未识别：请选择', 'Not found: choose'), ...AMBER)
                             : chip(L(`草稿：缺少${missingText(state)}`, `Draft: ${missingText(state)} missing`), ...AMBER)}
                           {!supplierNameRule(r.itemName, requirements).ok && <div data-testid={`bulk-name-warning-${i}`} style={{ ...font, fontSize: 11, color: '#8A5A12', marginTop: 4, maxWidth: 240 }}>{nameRuleText(r)}</div>}

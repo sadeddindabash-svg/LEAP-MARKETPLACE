@@ -638,16 +638,24 @@ router.post('/me/products', requireAuth, requireRole('supplier'), async (req, re
 // accidental upload.
 const MAX_BULK_IMPORT_ITEMS = 1000;
 
+// An OE number as bulk upload compares it: no spaces at the ends, any letter case (dashes and the rest still count: BI-1 is not BI1).
+const oeKey = (s) => String(s ?? '').trim().toUpperCase();
+
 // POST /me/products/bulk-import/match { names: [itemName, ...] } -- before importing, each row's Category and Part class found from its
 // item name (see bulkMatch.js), and the whole catalog for the portal's dropdowns. Reads only; saves nothing.
 router.post('/me/products/bulk-import/match', requireAuth, requireRole('supplier'), async (req, res, next) => {
   try {
-    const { names } = req.body || {};
+    const { names, oemNumbers } = req.body || {};
     if (!Array.isArray(names) || names.length > MAX_BULK_IMPORT_ITEMS) {
       return res.status(400).json({ error: `names must be an array of at most ${MAX_BULK_IMPORT_ITEMS} item names` });
     }
     const { catalog, flat } = await loadCatalog(db);
-    res.json({ catalog, results: names.map((name) => matchName(name, flat)) });
+    // The OE numbers of the file that this supplier already has: those rows will update that product's price instead of adding a product.
+    const keys = Array.isArray(oemNumbers) ? [...new Set(oemNumbers.map(oeKey).filter(Boolean))] : [];
+    const { rows: have } = keys.length
+      ? await db.query('SELECT DISTINCT upper(btrim(oem_number)) AS k FROM products WHERE supplier_id = $1 AND upper(btrim(oem_number)) = ANY($2)', [req.user.supplierId, keys])
+      : { rows: [] };
+    res.json({ catalog, results: names.map((name) => matchName(name, flat)), existingOemNumbers: have.map((r) => r.k) });
   } catch (err) {
     next(err);
   }
@@ -690,6 +698,7 @@ router.post('/me/products/bulk-import', requireAuth, requireRole('supplier'), as
     const requirements = reqRows[0] || { min_photos: 4, photos_required: true, video_required: true };
 
     const results = [];
+    const seenOe = new Map();          // OE key -> the first row of this file that has it
     await client.query('BEGIN');
     for (let i = 0; i < items.length; i++) {
       const item = items[i] || {};
@@ -700,6 +709,20 @@ router.post('/me/products/bulk-import', requireAuth, requireRole('supplier'), as
       }
       // A row with its three cells filled is imported even when its name is outside the name rule: the rule is reported as a warning.
       const nameWarning = validateSupplierName(itemName, 'itemName', supplierNameMinimums(requirements));
+      // The same OE number again in this file: only its first row counts; the others are skipped.
+      const key = oeKey(oemNumber);
+      if (seenOe.has(key)) {
+        results.push({ index: i, success: false, repeated: true, error: `Repeated in this file (same OE number as row ${seenOe.get(key) + 1}): skipped` });
+        continue;
+      }
+      seenOe.set(key, i);
+      // An OE number this supplier already has: update that product's price (RMB) instead of adding a new product; nothing else changes.
+      const { rows: existing } = await client.query('SELECT id FROM products WHERE supplier_id = $1 AND upper(btrim(oem_number)) = $2 ORDER BY created_at DESC', [req.user.supplierId, key]);
+      if (existing.length > 0) {
+        await client.query('UPDATE products SET price = $1 WHERE supplier_id = $2 AND upper(btrim(oem_number)) = $3', [price, req.user.supplierId, key]);
+        results.push({ index: i, success: true, productId: existing[0].id, status: 'updated', updatedCount: existing.length, missing: [], nameWarning: null });
+        continue;
+      }
       // The row's photos and video (uploaded by the portal first, as for one product): at most the number Settings asks for.
       const images = Array.isArray(item.images) ? item.images.filter((u) => typeof u === 'string' && u.trim()).map((u) => u.trim()) : [];
       if (images.length > requirements.min_photos) {
