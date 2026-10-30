@@ -3624,6 +3624,12 @@ function FinancePage() {
                 </table>
               </Card>
             )}
+          </>
+        )}
+        {/* Payout history and Payout account in the same row (they stack on a narrow window). */}
+        <div data-testid="finance-payouts-row" style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+        {finance && (
+          <div style={{ flex: "2 1 520px", minWidth: 0 }}>
             <Card title={fi.recordsTitle}>
               {finance.payouts.length === 0 ? (
                 <div style={{ ...font, padding: 22, fontSize: 13, color: C.muted, textAlign: "center" }}>{fi.emptyRecords}</div>
@@ -3644,8 +3650,9 @@ function FinancePage() {
               )}
               <div style={{ ...font, padding: "10px 16px", fontSize: 11.5, color: C.muted, borderTop: `1px solid ${C.line}` }}>{fi.returnCaseNote}</div>
             </Card>
-          </>
+          </div>
         )}
+        <div style={{ flex: "1 1 320px", minWidth: 0 }}>
         <Card title={fi.bankTitle}>
           <div style={{ padding: 16 }}>
             {payoutMethod === undefined && <div style={{ fontSize: 12.5, color: C.muted }}>{lang === "zh" ? "加载中…" : "Loading…"}</div>}
@@ -3693,6 +3700,8 @@ function FinancePage() {
             )}
           </div>
         </Card>
+        </div>
+        </div>
       </div>
     </div>
   );
