@@ -173,7 +173,7 @@ const STRINGS = {
       toggles: ["新订单提醒", "库存不足预警", "结算到账通知", "翻译审核结果通知"],
     },
     statusProduct: { active: "上架中", translating: "翻译审核中", inactive: "已下架" },
-    statusOrder: { pending: "待确认", preparing: "备货中", shipped: "已发货", delivered: "已送达", dispute: "异常/纠纷" },
+    statusOrder: { pending: "待确认", preparing: "备货中", shipped: "已发货", delivered: "已送达", dispute: "异常/纠纷", cancelled: "已取消", canceled: "已取消", refused: "已拒绝", returned: "已退货", accepted: "已接单", in_transit: "运输中", at_hub: "已到质检中心", completed: "已完成" },
     statusReturn: { awaiting: "待供应商回复", inProgress: "处理中", approved: "已批准", rejected: "已驳回", completed: "已完成" },
     statusPayout: { paid: "已结算", pending: "待结算", calculating: "统计中" },
   },
@@ -295,7 +295,7 @@ const STRINGS = {
       toggles: ["New order alerts", "Low stock warnings", "Payout notifications", "Translation review results"],
     },
     statusProduct: { active: "Active", translating: "In translation review", inactive: "Inactive" },
-    statusOrder: { pending: "Pending", preparing: "Preparing", shipped: "Shipped", delivered: "Delivered", dispute: "Dispute" },
+    statusOrder: { pending: "Pending", preparing: "Preparing", shipped: "Shipped", delivered: "Delivered", dispute: "Dispute", cancelled: "Cancelled", canceled: "Cancelled", refused: "Refused", returned: "Returned", accepted: "Accepted", in_transit: "In transit", at_hub: "At the hub", completed: "Completed" },
     statusReturn: { awaiting: "Awaiting your reply", inProgress: "In progress", approved: "Approved", rejected: "Rejected", completed: "Completed" },
     statusPayout: { paid: "Paid", pending: "Pending", calculating: "Calculating" },
   },
@@ -399,6 +399,9 @@ function TopBar({ title, subtitle }) {
 // Overview page (below) and the admin dashboard's equivalent section
 // (an admin picks which real supplier to view).
 function SupplierAnalyticsSection({ analytics, lang, part = "all" }) {
+  // An order status in the supplier's language (the order lists use the same names).
+  const { t } = useLang();
+  const statusName = (k) => (t && t.statusOrder && t.statusOrder[k]) || String(k).replace(/_/g, " ");
   const revenueTrend = analytics.revenueAndVolume.map((d) => ({
     d: new Date(d.day).toLocaleDateString(uiLocale(), { month: "short", day: "numeric" }),
     revenue: d.revenue,
@@ -480,7 +483,7 @@ function SupplierAnalyticsSection({ analytics, lang, part = "all" }) {
               return (
                 <div key={s.status} style={{ marginBottom: 10 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}>
-                    <span style={{ textTransform: "capitalize", fontWeight: 600 }}>{s.status.replace(/_/g, " ")}</span>
+                    <span style={{ textTransform: "capitalize", fontWeight: 600 }}>{statusName(s.status)}</span>
                     <span style={{ color: C.muted }}>{s.count}</span>
                   </div>
                   <div style={{ height: 6, borderRadius: 3, background: C.line, overflow: "hidden" }}>
@@ -533,7 +536,7 @@ function SupplierAnalyticsSection({ analytics, lang, part = "all" }) {
               return (
                 <div key={s.status} style={{ marginBottom: 10 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}>
-                    <span style={{ textTransform: "capitalize", fontWeight: 600 }}>{s.status.replace(/_/g, " ")}</span>
+                    <span style={{ textTransform: "capitalize", fontWeight: 600 }}>{statusName(s.status)}</span>
                     <span style={{ color: C.muted }}>{s.count}</span>
                   </div>
                   <div style={{ height: 6, borderRadius: 3, background: C.line, overflow: "hidden" }}>
@@ -2147,7 +2150,7 @@ function PartRequestQueue({ onSelect, onSessionExpired }) {
                       <p style={{ ...disp, fontSize: 15, fontWeight: 700, margin: 0, color: C.ink }}>{r.buyerName}</p>
                       <p style={{ ...font, fontSize: 12, color: C.muted, margin: 0 }}>{r.itemCount} {lang === "zh" ? "件商品" : `item${r.itemCount === 1 ? "" : "s"}`}</p>
                     </div>
-                    <span style={{ ...font, fontSize: 11, fontWeight: 700, color: style.text, background: style.bg, borderRadius: 20, padding: "3px 10px", textTransform: "capitalize" }}>{r.status}</span>
+                    <span style={{ ...font, fontSize: 11, fontWeight: 700, color: style.text, background: style.bg, borderRadius: 20, padding: "3px 10px", textTransform: "capitalize" }}>{(lang === "zh" ? { submitted: "待报价", quoted: "已报价", ordered: "已下单" } : { submitted: "Submitted", quoted: "Quoted", ordered: "Ordered" })[r.status] || r.status}</span>
                   </button>
                 );
               })}
@@ -2437,7 +2440,7 @@ function ProductsPage() {
                         }}
                       />
                     </Td>
-                    <Td style={{ fontWeight: 700 }}>{p.name}</Td>
+                    <Td style={{ fontWeight: 700 }}>{lang === "zh" ? p.nameZh || p.name : p.name}</Td>
                     <Td style={{ color: C.muted }}>{categoryById[p.category] ? (lang === "zh" ? categoryById[p.category].nameZh || categoryById[p.category].nameEn : categoryById[p.category].nameEn) : (p.category || "—")}</Td>
                     <Td style={{ color: C.muted }}>{(lang === "zh" && partZhByKey[`${p.category}|${p.part}`]) || p.part || "—"}</Td>
                     <Td align="right" style={{ fontWeight: 700 }}>{p.currencyCode === 'CNY' ? '¥' : '$'}{Number(p.price).toFixed(2)} {p.currencyCode}</Td>
@@ -2550,7 +2553,7 @@ function EditProductModal({ product, onClose, onSaved }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
       <div role="dialog" aria-label={L("编辑商品", "Edit product")} style={{ background: "#fff", borderRadius: 12, padding: 24, width: 440, maxWidth: "92vw" }}>
-        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{product.name}</div>
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{lang === "zh" ? product.nameZh || product.name : product.name}</div>
         <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>{L("编辑价格、分类、部件类型、库存与库存预警阈值", "Edit price, category, classification, stock and low-stock threshold")}</div>
 
         <label style={label} htmlFor="edit-price">{L("价格 (¥ 人民币)", "Price (¥ RMB)")}</label>
