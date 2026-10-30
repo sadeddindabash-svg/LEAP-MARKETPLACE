@@ -330,7 +330,7 @@ const CATEGORY_LABELS = {
   brake: "Brake System", engine: "Engine", electrical: "Electrical",
   filters: "Filters", suspension: "Suspension", lighting: "Lighting",
 };
-const CATEGORY_COLORS = [C.signal, C.torque, C.gauge, C.amber, "#9AA1AC", "#6E7681"];
+const CATEGORY_COLORS = [C.signal, C.torque, C.gauge, C.amber, "#7B5EA7", "#2A9D8F", "#9AA1AC"];      // 6 categories and "Other", each its own colour
 
 // Real supplier analytics (confirmed scope, picked from a list of 10
 // real options): revenue+volume over time, top-selling products,
@@ -488,6 +488,11 @@ function OverviewPage({ onSessionExpired }) {
   const [data, setData] = useState(null);
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
+  // The real categories (Categories page), so "Units sold by category" shows their names, not their ids.
+  const [categoryNames, setCategoryNames] = useState({});
+  useEffect(() => {
+    fetchCategories().then((list) => setCategoryNames(Object.fromEntries((Array.isArray(list) ? list : []).map((c) => [c.id, c.nameEn || c.nameZh || c.id])))).catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetchOverview(getStoredToken())
@@ -521,8 +526,15 @@ function OverviewPage({ onSessionExpired }) {
 
   const dayTrend = data.ordersByDay.map(d => ({ d: new Date(d.day).toLocaleDateString(undefined, { weekday: "short" }), v: d.count }));
   const totalUnits = data.unitsByCategory.reduce((sum, c) => sum + c.units, 0);
-  const categorySplit = data.unitsByCategory.map((c, i) => ({
-    name: CATEGORY_LABELS[c.category] || c.category,
+  // Units sold by category: the real category names, the 6 that sell most, then the rest together as "Other" (each its own colour).
+  const byUnits = [...data.unitsByCategory].filter((c) => c.units > 0).sort((a, b) => b.units - a.units);
+  const topCategories = byUnits.slice(0, 6);
+  const otherUnits = byUnits.slice(6).reduce((sum, c) => sum + c.units, 0);
+  const categorySplit = [
+    ...topCategories.map((c) => ({ name: categoryNames[c.category] || CATEGORY_LABELS[c.category] || c.category || "Uncategorised", units: c.units })),
+    ...(otherUnits > 0 ? [{ name: `Other (${byUnits.length - 6})`, units: otherUnits }] : []),
+  ].map((c, i) => ({
+    ...c,
     value: totalUnits > 0 ? Math.round((c.units / totalUnits) * 100) : 0,
     color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
   }));
