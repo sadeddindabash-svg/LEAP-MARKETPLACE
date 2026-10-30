@@ -1576,6 +1576,11 @@ function ModerationPage({ onSessionExpired }) {
   const [nameAr, setNameAr] = useState("");
   const [descriptionAr, setDescriptionAr] = useState("");
   // Attributes: removed from the moderation review (not used any more).
+  // The minimum name lengths set in All Products > Product requirements (English, Arabic): the reviewed names follow them.
+  const [nameMins, setNameMins] = useState({ en: 15, ar: 15 });
+  useEffect(() => {
+    fetchProductRequirements().then((r) => setNameMins({ en: r.nameMinEn ?? 15, ar: r.nameMinAr ?? 15 })).catch(() => {});
+  }, []);
 
   // Real bulk actions (new). Bulk reject is simple (no review needed,
   // matching the single-item reject flow). Bulk approve deliberately
@@ -1873,7 +1878,7 @@ function ModerationPage({ onSessionExpired }) {
                           maxLength={100}
                           style={{ ...body, width: "100%", border: `1px solid ${C.line}`, borderRadius: 8, padding: "9px 11px", fontSize: 13, boxSizing: "border-box" }}
                         />
-                        <span style={{ ...body, fontSize: 10.5, color: nameEn.length > 0 && (nameEn.length < 25 || nameEn.length > 100) ? C.red : C.muted }}>{nameEn.length}/100 (min 25)</span>
+                        <span style={{ ...body, fontSize: 10.5, color: nameEn.length > 0 && (nameEn.length < nameMins.en || nameEn.length > 100) ? C.red : C.muted }}>{nameEn.length}/100 (min {nameMins.en})</span>
                       </div>
                       <div>
                         <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 5 }}>English description (required to approve)</div>
@@ -1894,7 +1899,7 @@ function ModerationPage({ onSessionExpired }) {
                           maxLength={100}
                           style={{ ...body, width: "100%", border: `1px solid ${C.line}`, borderRadius: 8, padding: "9px 11px", fontSize: 13, boxSizing: "border-box" }}
                         />
-                        <span style={{ ...body, fontSize: 10.5, color: nameAr.length > 0 && (nameAr.length < 25 || nameAr.length > 100) ? C.red : C.muted }}>{nameAr.length}/100 (min 25)</span>
+                        <span style={{ ...body, fontSize: 10.5, color: nameAr.length > 0 && (nameAr.length < nameMins.ar || nameAr.length > 100) ? C.red : C.muted }}>{nameAr.length}/100 (min {nameMins.ar})</span>
                       </div>
                       <div>
                         <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 5 }}>Arabic description (required to approve)</div>
@@ -2559,6 +2564,11 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
   const [category, setCategory] = useState("");
   const [part, setPart] = useState("");
   const [oemNumber, setOemNumber] = useState("");
+  // The minimum name lengths set in All Products > Product requirements (English, Arabic): the reviewed names follow them.
+  const [nameMins, setNameMins] = useState({ en: 15, ar: 15 });
+  useEffect(() => {
+    fetchProductRequirements().then((r) => setNameMins({ en: r.nameMinEn ?? 15, ar: r.nameMinAr ?? 15 })).catch(() => {});
+  }, []);
   const [stockQuantity, setStockQuantity] = useState("");
   const [lowStockThreshold, setLowStockThreshold] = useState("");
   const [weightKg, setWeightKg] = useState("");
@@ -2783,12 +2793,12 @@ function ProductEditPage({ productId, onBack, onSessionExpired }) {
           <div>
             <label style={labelStyle}>Name (English)</label>
             <input style={inputStyle} value={nameEn} onChange={(e) => setNameEn(e.target.value)} maxLength={100} />
-            <span style={{ ...body, fontSize: 10.5, color: nameEn.length < 25 || nameEn.length > 100 ? C.red : C.muted }}>{nameEn.length}/100 (min 25)</span>
+            <span style={{ ...body, fontSize: 10.5, color: nameEn.length < nameMins.en || nameEn.length > 100 ? C.red : C.muted }}>{nameEn.length}/100 (min {nameMins.en})</span>
           </div>
           <div>
             <label style={labelStyle}>Name (Arabic)</label>
             <input style={{ ...inputStyle, direction: "rtl" }} value={nameAr} onChange={(e) => setNameAr(e.target.value)} maxLength={100} />
-            <span style={{ ...body, fontSize: 10.5, color: nameAr.length < 25 || nameAr.length > 100 ? C.red : C.muted }}>{nameAr.length}/100 (min 25)</span>
+            <span style={{ ...body, fontSize: 10.5, color: nameAr.length < nameMins.ar || nameAr.length > 100 ? C.red : C.muted }}>{nameAr.length}/100 (min {nameMins.ar})</span>
           </div>
           <div>
             <label style={labelStyle}>Description (English)</label>

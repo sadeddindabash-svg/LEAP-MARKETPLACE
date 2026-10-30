@@ -11,7 +11,7 @@ const { calculateBuyerPriceUsd, MissingShippingDataError } = require('../pricing
 const { withEffectiveShipping } = require('../shared/partShipping');
 const { findMatchingDiscountRule } = require('../pricing/discountRules');
 const { resolveDestinationIsoCode, calculateDeliveryDays } = require('../deliveryEstimate/engine');
-const { ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS, validateNameLength, validateDescriptionLength, validateProductAttributes } = require('../shared/productValidation');
+const { ALLOWED_POSITIONS, MIN_PRODUCT_PHOTOS, validateNameLength, validateDescriptionLength, validateProductAttributes, supplierNameMinimums } = require('../shared/productValidation');
 const { logAdminAction } = require('../audit/helpers');
 const { moveItem } = require('../../lib/reorder');
 
@@ -836,10 +836,11 @@ router.patch('/products/:id/moderate', requireAuth, requireRole('admin'), requir
       if (stillChinese.length > 0) {
         return res.status(400).json({ error: `${stillChinese.join(', ')} still contains Chinese characters — translate before approving` });
       }
+      const nameMins = supplierNameMinimums((await db.query('SELECT * FROM product_requirements WHERE id = 1')).rows[0]);      // the name minimums set in All Products (English, Arabic)
       const nameLengthErrors = [];
-      const enError = validateNameLength(nameEn, 'nameEn');
+      const enError = validateNameLength(nameEn, 'nameEn', nameMins.en);
       if (enError) nameLengthErrors.push(enError);
-      const arError = validateNameLength(nameAr, 'nameAr');
+      const arError = validateNameLength(nameAr, 'nameAr', nameMins.ar);
       if (arError) nameLengthErrors.push(arError);
       const descEnError = validateDescriptionLength(descriptionEn, 'descriptionEn');
       if (descEnError) nameLengthErrors.push(descEnError);
@@ -933,10 +934,11 @@ router.post('/products/bulk-moderate', requireAuth, requireRole('admin'), requir
           results.push({ productId, success: false, error: `${stillChinese.join(', ')} still contains Chinese characters — translate before approving` });
           continue;
         }
+        const nameMins = supplierNameMinimums((await db.query('SELECT * FROM product_requirements WHERE id = 1')).rows[0]);      // the name minimums set in All Products (English, Arabic)
         const nameLengthErrors = [];
-        const enError = validateNameLength(nameEn, 'nameEn');
+        const enError = validateNameLength(nameEn, 'nameEn', nameMins.en);
         if (enError) nameLengthErrors.push(enError);
-        const arError = validateNameLength(nameAr, 'nameAr');
+        const arError = validateNameLength(nameAr, 'nameAr', nameMins.ar);
         if (arError) nameLengthErrors.push(arError);
         const descEnError = validateDescriptionLength(descriptionEn, 'descriptionEn');
         if (descEnError) nameLengthErrors.push(descEnError);
@@ -1187,12 +1189,13 @@ router.patch('/admin/products/:id', requireAuth, requireRole('admin'), requirePa
     if (position !== undefined && position !== null && !ALLOWED_POSITIONS.includes(position)) {
       return res.status(400).json({ error: `position must be one of: ${ALLOWED_POSITIONS.join(', ')}` });
     }
+    const nameMins = supplierNameMinimums((await db.query('SELECT * FROM product_requirements WHERE id = 1')).rows[0]);      // the name minimums set in All Products (English, Arabic)
     if (nameEn !== undefined) {
-      const nameEnError = validateNameLength(nameEn, 'nameEn');
+      const nameEnError = validateNameLength(nameEn, 'nameEn', nameMins.en);
       if (nameEnError) return res.status(400).json({ error: nameEnError });
     }
     if (nameAr !== undefined) {
-      const nameArError = validateNameLength(nameAr, 'nameAr');
+      const nameArError = validateNameLength(nameAr, 'nameAr', nameMins.ar);
       if (nameArError) return res.status(400).json({ error: nameArError });
     }
     if (descriptionEn !== undefined) {

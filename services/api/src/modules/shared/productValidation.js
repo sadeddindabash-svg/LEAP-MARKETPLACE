@@ -87,8 +87,9 @@ function validateSupplierName(name, fieldLabel, minimums = DEFAULT_SUPPLIER_NAME
 
 const MIN_NAME_LENGTH = 25;
 const MAX_NAME_LENGTH = 100;
-function validateNameLength(name, fieldLabel) {
-  return validateTextLength(name, fieldLabel, MIN_NAME_LENGTH, MAX_NAME_LENGTH);
+// min: the minimum set by the admin for the language (All Products > Product requirements); MIN_NAME_LENGTH when not given.
+function validateNameLength(name, fieldLabel, min = MIN_NAME_LENGTH) {
+  return validateTextLength(name, fieldLabel, min, MAX_NAME_LENGTH);
 }
 
 // Real, confirmed with the person: description is now mandatory
