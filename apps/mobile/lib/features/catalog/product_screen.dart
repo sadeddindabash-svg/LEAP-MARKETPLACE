@@ -17,6 +17,7 @@ import '../../models/product.dart';
 import '../../models/vehicle.dart';
 import '../../models/fit_verdict.dart';
 import '../../widgets/fit_version_note.dart';
+import '../../widgets/product_gone_view.dart';
 import '../../services/api_client.dart';
 import '../../widgets/reviews_section.dart';
 import '../../widgets/alternatives_section.dart';
@@ -154,6 +155,10 @@ class _ProductScreenState extends State<ProductScreen> {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
+          }
+          // deleted by the admin: an old order, a notification or a shared link can still lead here
+          if (snapshot.hasError && ProductGoneView.isGone(snapshot.error)) {
+            return ProductGoneView(language: language);
           }
           if (snapshot.hasError) {
             return Center(
