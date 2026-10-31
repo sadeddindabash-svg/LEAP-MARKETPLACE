@@ -1,0 +1,213 @@
+﻿delete,id,placed,buyer,total,currency,status,items,refused,reasons
+no,LP-200900,2026-07-14 12:16,mec_dabash@yahoo.com,41.80,USD,to_ship,2,,
+no,LP-200901,2026-07-14 12:44,mec_dabash@yahoo.com,126.00,USD,to_ship,1,,
+no,LP-200902,2026-07-14 15:43,mec_dabash@yahoo.com,310.00,USD,to_ship,1,,
+no,LP-200903,2026-07-14 23:20,mec_dabash@yahoo.com,34.90,USD,to_ship,1,,
+no,LP-200904,2026-07-15 15:00,mec_dabash@yahoo.com,78.38,USD,to_ship,1,,
+no,LP-200905,2026-07-15 19:30,mec_dabash@yahoo.com,156.76,USD,to_ship,1,,
+no,LP-200906,2026-07-15 22:41,dfbdfbde@yahoo.com,78.38,USD,to_ship,1,,
+no,LP-200907,2026-07-19 09:49,mec_dabash@yahoo.com,547.27,USD,to_ship,1,,
+no,LP-200908,2026-07-19 12:41,info@leapautoparts.com,100.87,USD,to_ship,1,,
+no,LP-200909,2026-07-19 13:00,info@leapautoparts.com,89.00,USD,to_ship,1,,
+yes,LP-200910,2026-07-19 13:05,info@test.com,1153.58,USD,cancelled,1,,email info@test.com
+yes,LP-200911,2026-07-19 13:08,info@test.com,848.15,USD,cancelled,1,,email info@test.com
+no,LP-200912,2026-07-20 18:44,mec_dabash+old@yahoo.com,577.69,USD,to_ship,1,,
+no,LP-200913,2026-07-20 21:56,mec_dabash@yahoo.com,101.02,USD,to_ship,1,,
+no,LP-200914,2026-07-21 14:32,mec_dabash@yahoo.com,310.00,USD,to_ship,1,,
+no,LP-200915,2026-07-21 15:56,mec_dabash@yahoo.com,577.76,USD,to_ship,1,,
+no,LP-200916,2026-07-21 16:11,mec_dabash@yahoo.com,577.76,USD,to_ship,1,,
+no,LP-200917,2026-07-21 16:20,mec_dabash@yahoo.com,89.00,USD,to_ship,1,,
+no,LP-200918,2026-07-22 02:03,mec_dabash@yahoo.com,1726.50,USD,to_ship,1,,
+no,LP-200919,2026-07-22 02:16,mec_dabash@yahoo.com,620.00,USD,to_ship,1,,
+no,LP-200920,2026-07-22 02:23,mec_dabash@yahoo.com,620.00,USD,to_ship,1,,
+no,LP-200921,2026-07-22 11:41,mec_dabash@yahoo.com,300.00,USD,to_ship,1,,
+no,LP-200925,2026-07-29 14:35,mec_dabash@yahoo.com,2521.92,USD,to_ship,3,,
+yes,LP-200926,2026-07-29 14:58,mec_dabash@yahoo.com,1964.69,USD,to_ship,2,,test product this test 1
+yes,LP-200927,2026-07-29 14:59,mec_dabash@yahoo.com,1964.69,USD,to_ship,2,,test product this test 1
+no,LP-200928,2026-07-29 22:43,mec_dabash@yahoo.com,882.08,USD,to_ship,1,,
+no,LP-200929,2026-07-30 13:15,mec_dabash@yahoo.com,59.24,USD,to_ship,1,,
+no,LP-200930,2026-07-30 21:07,mec_dabash@yahoo.com,1193.57,USD,to_ship,2,,
+no,LP-200931,2026-07-30 21:50,mec_dabash@yahoo.com,89.00,USD,to_ship,1,,
+no,LP-200932,2026-07-31 08:48,mec_dabash@yahoo.com,557.01,USD,to_ship,1,,
+no,LP-200933,2026-08-01 21:40,mec_dabash@yahoo.com,59.38,USD,to_ship,1,,
+no,LP-200934,2026-08-08 08:18,mec_dabash@yahoo.com,671.36,USD,to_ship,3,,
+yes,LP-200935,2026-08-13 12:02,mec_dabash@yahoo.com,385.00,USD,to_ship,1,,test product this test 1
+no,LP-200936,2026-08-13 12:06,mec_dabash@yahoo.com,636.89,USD,to_ship,2,,
+no,LP-200937,2026-08-16 16:27,mec_dabash@yahoo.com,310.00,USD,to_ship,1,,
+no,LP-200938,2026-08-16 16:29,mec_dabash@yahoo.com,600.15,USD,to_ship,1,,
+no,LP-200939,2026-08-16 20:08,mec_dabash@yahoo.com,1253.21,USD,cancelled,2,,
+no,LP-200940,2026-08-17 09:37,mec_dabash@yahoo.com,2206.13,USD,to_ship,2,,
+no,LP-200941,2026-08-17 09:39,mec_dabash@yahoo.com,1896.13,USD,to_ship,1,,
+no,LP-200942,2026-08-17 12:58,mec_dabash@yahoo.com,1955.59,USD,to_ship,2,,
+no,LP-200943,2026-08-17 13:08,mec_dabash@yahoo.com,577.60,USD,to_ship,1,,
+no,LP-200944,2026-08-22 12:02,mec_dabash@yahoo.com,55.00,USD,to_ship,1,,
+no,LP-200945,2026-08-25 14:20,mec_dabash@yahoo.com,429.23,USD,to_ship,2,,
+no,LP-200946,2026-09-01 18:08,mec_dabash@yahoo.com,393.47,USD,to_ship,2,,
+no,LP-200947,2026-09-01 19:51,mec_dabash@yahoo.com,198.88,USD,to_ship,1,,
+no,LP-200948,2026-09-01 20:04,mec_dabash@yahoo.com,397.76,USD,to_ship,1,,
+no,LP-200949,2026-09-02 04:31,mec_dabash@yahoo.com,198.88,USD,to_ship,1,,
+no,LP-200950,2026-09-02 05:08,mec_dabash@yahoo.com,34.90,USD,to_ship,1,,
+no,LP-200951,2026-09-02 05:25,mec_dabash@yahoo.com,339.38,USD,to_ship,1,,
+no,LP-200952,2026-09-19 18:55,mec_dabash@yahoo.com,169.68,USD,to_ship,1,,
+no,LP-200953,2026-10-06 11:44,mec_dabash@yahoo.com,7.85,USD,to_ship,1,,
+yes,LP-200954,2026-10-06 12:03,mec_dabash@yahoo.com,76.23,USD,to_ship,1,,test product this test 1
+no,LP-200955,2026-10-06 12:14,mec_dabash@yahoo.com,543.09,USD,to_ship,1,,
+no,LP-200956,2026-10-06 19:22,mec_dabash@yahoo.com,31.41,USD,to_ship,1,,
+no,LP-200957,2026-10-06 20:10,mec_dabash@yahoo.com,31.41,USD,to_ship,1,,
+no,LP-200958,2026-10-06 21:16,mec_dabash@yahoo.com,543.09,USD,to_ship,1,,
+no,LP-200959,2026-10-07 04:32,mec_dabash@yahoo.com,31.41,USD,to_ship,1,,
+no,LP-200960,2026-10-07 08:25,mec_dabash@yahoo.com,179.47,USD,to_ship,1,,
+no,LP-200960-R1,2026-10-07 08:32,mec_dabash@yahoo.com,0.00,USD,to_ship,1,,
+no,LP-201131,2026-10-07 19:11,mec_dabash@yahoo.com,31.41,USD,to_ship,1,,
+no,LP-201132,2026-10-08 15:41,mec_dabash@yahoo.com,248.36,USD,to_ship,1,,
+no,LP-201133,2026-10-14 08:48,mec_dabash@yahoo.com,334.46,USD,to_ship,1,,
+no,LP-201134,2026-10-14 09:45,mec_dabash@yahoo.com,334.46,USD,to_ship,1,,
+yes,LP-201139,2026-10-14 18:36,storefront-guest-return-1792002987981@example.com,98.72,USD,to_ship,1,,email storefront-guest-return-1792002987981@example.com
+yes,LP-201140,2026-10-14 18:36,storefront-guest-wrong-email-1792002988106@example.com,98.72,USD,to_ship,1,,email storefront-guest-wrong-email-1792002988106@example.com
+yes,LP-201141,2026-10-14 18:36,storefront-buyer-return-1792002988216@example.com,98.72,USD,to_ship,1,,email storefront-buyer-return-1792002988216@example.com
+yes,LP-201144,2026-10-14 18:36,storefront-guest-checkout-test-1792002989171@example.com,6.90,USD,to_ship,1,,email storefront-guest-checkout-test-1792002989171@example.com
+yes,LP-201145,2026-10-14 18:36,promo-checkout-test-1792002990287@example.com-a,58.57,USD,to_ship,1,,email promo-checkout-test-1792002990287@example.com-a
+yes,LP-201146,2026-10-14 18:36,promo-checkout-test-1792002990287@example.com-b,48.57,USD,to_ship,1,,email promo-checkout-test-1792002990287@example.com-b
+no,LP-201147,2026-10-14 18:45,sadeddindabash@gmail.com,98.72,USD,to_ship,1,,
+yes,LP-201152,2026-10-15 10:22,storefront-guest-return-1792059760490@example.com,6.90,USD,to_ship,1,,email storefront-guest-return-1792059760490@example.com
+yes,LP-201153,2026-10-15 10:22,storefront-guest-wrong-email-1792059760599@example.com,6.90,USD,to_ship,1,,email storefront-guest-wrong-email-1792059760599@example.com
+yes,LP-201154,2026-10-15 10:22,storefront-buyer-return-1792059760676@example.com,6.90,USD,to_ship,1,,email storefront-buyer-return-1792059760676@example.com
+yes,LP-201157,2026-10-15 10:22,storefront-guest-checkout-test-1792059761291@example.com,6.90,USD,to_ship,1,,email storefront-guest-checkout-test-1792059761291@example.com
+yes,LP-201158,2026-10-15 10:22,promo-checkout-test-1792059762036@example.com-a,354.37,USD,to_ship,1,,email promo-checkout-test-1792059762036@example.com-a
+yes,LP-201159,2026-10-15 10:22,promo-checkout-test-1792059762036@example.com-b,344.37,USD,to_ship,1,,email promo-checkout-test-1792059762036@example.com-b
+yes,LP-201164,2026-10-15 13:10,storefront-guest-return-1792069801326@example.com,6.90,USD,to_ship,1,,email storefront-guest-return-1792069801326@example.com
+yes,LP-201165,2026-10-15 13:10,storefront-guest-wrong-email-1792069801485@example.com,6.90,USD,to_ship,1,,email storefront-guest-wrong-email-1792069801485@example.com
+yes,LP-201166,2026-10-15 13:10,storefront-buyer-return-1792069801639@example.com,58.57,USD,to_ship,1,,email storefront-buyer-return-1792069801639@example.com
+yes,LP-201169,2026-10-15 13:10,storefront-guest-checkout-test-1792069802610@example.com,6.90,USD,to_ship,1,,email storefront-guest-checkout-test-1792069802610@example.com
+yes,LP-201170,2026-10-15 13:10,promo-checkout-test-1792069803824@example.com-a,58.57,USD,to_ship,1,,email promo-checkout-test-1792069803824@example.com-a
+yes,LP-201171,2026-10-15 13:10,promo-checkout-test-1792069803824@example.com-b,48.57,USD,to_ship,1,,email promo-checkout-test-1792069803824@example.com-b
+no,LP-201172,2026-10-15 19:30,stage3-1792092614155-1@leap.dev,6.90,USD,to_ship,1,,
+yes,LP-201173,2026-10-15 19:30,stage3-guest-1792092614690-2@example.com,6.90,USD,to_ship,1,,email stage3-guest-1792092614690-2@example.com
+no,LP-201174,2026-10-15 19:30,stage3-1792092615071-4@leap.dev,6.90,USD,to_ship,1,,
+no,LP-201175,2026-10-15 19:30,stage3-1792092615380-5@leap.dev,6.90,USD,to_ship,1,,
+yes,LP-201176,2026-10-15 19:30,stage3-guest-1792092615870-6@example.com,6.90,USD,to_ship,1,,email stage3-guest-1792092615870-6@example.com
+no,LP-201177,2026-10-15 19:30,stage3-1792092616021-7@leap.dev,6.90,USD,to_ship,1,,
+yes,LP-201178,2026-10-15 19:30,stage3-guest-1792092617705-8@example.com,6.90,USD,to_ship,1,,email stage3-guest-1792092617705-8@example.com
+no,LP-201179,2026-10-15 19:30,stage3-1792092618161-10@leap.dev,6.90,USD,to_ship,1,,
+no,LP-201180,2026-10-15 19:30,stage3-1792092618754-11@leap.dev,6.90,USD,to_ship,1,,
+no,LP-201181,2026-10-15 19:30,stage3-1792092619238-13@leap.dev,6.90,USD,cancelled,1,,
+yes,LP-201182,2026-10-15 19:30,stage2-guest-1792092620152@example.com,6.90,USD,to_ship,1,,email stage2-guest-1792092620152@example.com
+yes,LP-201205,2026-10-15 19:52,e2e-guest-1792093966114@example.com,13.80,USD,to_ship,1,,email e2e-guest-1792093966114@example.com
+no,LP-201206,2026-10-15 19:52,e2e-1792093966445-1@leap.dev,6.90,USD,to_ship,1,,
+yes,LP-201207,2026-10-15 19:52,e2e3-guest-1792093969093@example.com,6.90,USD,cancelled,1,,email e2e3-guest-1792093969093@example.com
+no,LP-201208,2026-10-15 19:52,e2e3-1792093969503-1@leap.dev,6.90,USD,to_ship,1,,
+no,LP-201209,2026-10-15 19:52,e2e3-1792093969765-2@leap.dev,6.90,USD,to_ship,1,,
+no,LP-201210,2026-10-15 19:52,e2e3-1792093970389-3@leap.dev,6.90,USD,to_ship,1,,
+no,LP-201211,2026-10-15 19:52,e2e3-1792093970659-4@leap.dev,6.90,USD,to_ship,1,,
+yes,LP-201212,2026-10-15 19:52,e2e3-guest-1792093970977@example.com,6.90,USD,to_ship,1,,email e2e3-guest-1792093970977@example.com
+yes,LP-201217,2026-10-15 19:52,storefront-guest-return-1792093975266@example.com,6.90,USD,to_ship,1,,email storefront-guest-return-1792093975266@example.com
+yes,LP-201218,2026-10-15 19:52,storefront-guest-wrong-email-1792093975372@example.com,6.90,USD,to_ship,1,,email storefront-guest-wrong-email-1792093975372@example.com
+yes,LP-201219,2026-10-15 19:52,storefront-buyer-return-1792093975460@example.com,6.90,USD,to_ship,1,,email storefront-buyer-return-1792093975460@example.com
+yes,LP-201222,2026-10-15 19:52,storefront-guest-checkout-test-1792093976068@example.com,6.90,USD,to_ship,1,,email storefront-guest-checkout-test-1792093976068@example.com
+yes,LP-201223,2026-10-15 19:52,promo-checkout-test-1792093977186@example.com-a,126.00,USD,to_ship,1,,email promo-checkout-test-1792093977186@example.com-a
+yes,LP-201224,2026-10-15 19:52,promo-checkout-test-1792093977186@example.com-b,116.00,USD,to_ship,1,,email promo-checkout-test-1792093977186@example.com-b
+yes,LP-201225,2026-10-15 19:53,stage2-guest-1792093987158@example.com,6.90,USD,to_ship,1,,email stage2-guest-1792093987158@example.com
+no,LP-201226,2026-10-15 19:53,stage2-1792093987214-10@leap.dev,6.90,USD,to_ship,1,,
+no,LP-201227,2026-10-15 19:53,stage2-1792093987529-11@leap.dev,126.00,USD,to_ship,1,,
+no,LP-201228,2026-10-15 19:53,stage2-1792093987529-11@leap.dev,126.00,USD,to_ship,1,,
+no,LP-201229,2026-10-15 19:53,stage3-1792093989475-1@leap.dev,6.90,USD,to_ship,1,,
+yes,LP-201230,2026-10-15 19:53,stage3-guest-1792093989887-2@example.com,126.00,USD,to_ship,1,,email stage3-guest-1792093989887-2@example.com
+no,LP-201231,2026-10-15 19:53,stage3-1792093990262-4@leap.dev,6.90,USD,to_ship,1,,
+no,LP-201232,2026-10-15 19:53,stage3-1792093990646-5@leap.dev,126.00,USD,to_ship,1,,
+yes,LP-201233,2026-10-15 19:53,stage3-guest-1792093991016-6@example.com,6.90,USD,to_ship,1,,email stage3-guest-1792093991016-6@example.com
+no,LP-201234,2026-10-15 19:53,stage3-1792093991144-7@leap.dev,126.00,USD,to_ship,1,,
+yes,LP-201235,2026-10-15 19:53,stage3-guest-1792093991962-8@example.com,6.90,USD,to_ship,1,,email stage3-guest-1792093991962-8@example.com
+no,LP-201236,2026-10-15 19:53,stage3-1792093992480-10@leap.dev,126.00,USD,to_ship,1,,
+no,LP-201237,2026-10-15 19:53,stage3-1792093992895-11@leap.dev,6.90,USD,to_ship,1,,
+no,LP-201238,2026-10-15 19:53,stage3-1792093993524-13@leap.dev,126.00,USD,cancelled,1,,
+yes,LP-201239,2026-10-15 19:53,stage3-guest-1792093994170-15@example.com,6.90,USD,cancelled,1,,email stage3-guest-1792093994170-15@example.com
+no,LP-201240,2026-10-15 19:53,stage3-1792093994304-16@leap.dev,6.90,USD,cancelled,1,,
+no,LP-201241,2026-10-15 19:53,stage3-1792093995049-18@leap.dev,6.90,USD,to_ship,1,,
+yes,LP-201242,2026-10-15 19:53,stage3-guest-1792093995438-19@example.com,6.90,USD,to_ship,1,,email stage3-guest-1792093995438-19@example.com
+no,LP-201243,2026-10-15 19:53,stage3-1792093995519-20@leap.dev,6.90,USD,to_ship,1,,
+yes,LP-201244,2026-10-16 08:39,e2e-guest-1792139969909@example.com,13.80,USD,to_ship,1,,email e2e-guest-1792139969909@example.com
+no,LP-201245,2026-10-16 08:39,e2e-1792139970154-1@leap.dev,6.90,USD,to_ship,1,,
+yes,LP-201246,2026-10-16 08:39,e2e3-guest-1792139973310@example.com,6.90,USD,cancelled,1,,email e2e3-guest-1792139973310@example.com
+no,LP-201247,2026-10-16 08:39,e2e3-1792139973676-1@leap.dev,6.90,USD,to_ship,1,,
+no,LP-201248,2026-10-16 08:39,e2e3-1792139974142-2@leap.dev,6.90,USD,to_ship,1,,
+no,LP-201249,2026-10-16 08:39,e2e3-1792139975514-3@leap.dev,6.90,USD,to_ship,1,,
+no,LP-201250,2026-10-16 08:39,e2e3-1792139975935-4@leap.dev,6.90,USD,to_ship,1,,
+yes,LP-201251,2026-10-16 08:39,e2e3-guest-1792139976370@example.com,6.90,USD,to_ship,1,,email e2e3-guest-1792139976370@example.com
+yes,LP-201256,2026-10-16 08:39,storefront-guest-return-1792139982700@example.com,6.90,USD,to_ship,1,,email storefront-guest-return-1792139982700@example.com
+yes,LP-201257,2026-10-16 08:39,storefront-guest-wrong-email-1792139982825@example.com,6.90,USD,to_ship,1,,email storefront-guest-wrong-email-1792139982825@example.com
+yes,LP-201258,2026-10-16 08:39,storefront-buyer-return-1792139982903@example.com,6.90,USD,to_ship,1,,email storefront-buyer-return-1792139982903@example.com
+yes,LP-201261,2026-10-16 08:39,storefront-guest-checkout-test-1792139983863@example.com,6.90,USD,to_ship,1,,email storefront-guest-checkout-test-1792139983863@example.com
+yes,LP-201262,2026-10-16 08:39,promo-checkout-test-1792139984950@example.com-a,126.00,USD,to_ship,1,,email promo-checkout-test-1792139984950@example.com-a
+yes,LP-201263,2026-10-16 08:39,promo-checkout-test-1792139984950@example.com-b,116.00,USD,to_ship,1,,email promo-checkout-test-1792139984950@example.com-b
+yes,LP-201264,2026-10-16 08:40,stage2-guest-1792140000571@example.com,6.90,USD,to_ship,1,,email stage2-guest-1792140000571@example.com
+no,LP-201265,2026-10-16 08:40,stage2-1792140000590-10@leap.dev,6.90,USD,to_ship,1,,
+no,LP-201266,2026-10-16 08:40,stage2-1792140000919-11@leap.dev,126.00,USD,to_ship,1,,
+no,LP-201267,2026-10-16 08:40,stage2-1792140000919-11@leap.dev,126.00,USD,to_ship,1,,
+no,LP-201268,2026-10-16 08:40,stage3-1792140002817-1@leap.dev,6.90,USD,to_ship,1,,
+yes,LP-201269,2026-10-16 08:40,stage3-guest-1792140003201-2@example.com,126.00,USD,to_ship,1,,email stage3-guest-1792140003201-2@example.com
+no,LP-201270,2026-10-16 08:40,stage3-1792140003594-4@leap.dev,6.90,USD,to_ship,1,,
+no,LP-201271,2026-10-16 08:40,stage3-1792140003953-5@leap.dev,6.90,USD,to_ship,1,,
+yes,LP-201272,2026-10-16 08:40,stage3-guest-1792140004293-6@example.com,6.90,USD,to_ship,1,,email stage3-guest-1792140004293-6@example.com
+no,LP-201273,2026-10-16 08:40,stage3-1792140004380-7@leap.dev,6.90,USD,to_ship,1,,
+yes,LP-201274,2026-10-16 08:40,stage3-guest-1792140005221-8@example.com,6.90,USD,to_ship,1,,email stage3-guest-1792140005221-8@example.com
+no,LP-201275,2026-10-16 08:40,stage3-1792140005667-10@leap.dev,6.90,USD,to_ship,1,,
+no,LP-201276,2026-10-16 08:40,stage3-1792140006049-11@leap.dev,6.90,USD,to_ship,1,,
+no,LP-201277,2026-10-16 08:40,stage3-1792140006685-13@leap.dev,6.90,USD,cancelled,1,,
+yes,LP-201278,2026-10-16 08:40,stage3-guest-1792140007315-15@example.com,6.90,USD,cancelled,1,,email stage3-guest-1792140007315-15@example.com
+no,LP-201279,2026-10-16 08:40,stage3-1792140007415-16@leap.dev,6.90,USD,cancelled,1,,
+no,LP-201280,2026-10-16 08:40,stage3-1792140008041-18@leap.dev,6.90,USD,to_ship,1,,
+yes,LP-201281,2026-10-16 08:40,stage3-guest-1792140008477-19@example.com,6.90,USD,to_ship,1,,email stage3-guest-1792140008477-19@example.com
+no,LP-201282,2026-10-16 08:40,stage3-1792140008595-20@leap.dev,6.90,USD,to_ship,1,,
+yes,LP-201287,2026-10-16 09:19,storefront-guest-return-1792142371918@example.com,6.90,USD,to_ship,1,,email storefront-guest-return-1792142371918@example.com
+yes,LP-201288,2026-10-16 09:19,storefront-guest-wrong-email-1792142372063@example.com,6.90,USD,to_ship,1,,email storefront-guest-wrong-email-1792142372063@example.com
+yes,LP-201289,2026-10-16 09:19,storefront-buyer-return-1792142372152@example.com,6.90,USD,to_ship,1,,email storefront-buyer-return-1792142372152@example.com
+yes,LP-201292,2026-10-16 09:19,storefront-guest-checkout-test-1792142373128@example.com,6.90,USD,to_ship,1,,email storefront-guest-checkout-test-1792142373128@example.com
+yes,LP-201293,2026-10-16 09:19,promo-checkout-test-1792142374184@example.com-a,126.00,USD,to_ship,1,,email promo-checkout-test-1792142374184@example.com-a
+yes,LP-201294,2026-10-16 09:19,promo-checkout-test-1792142374184@example.com-b,116.00,USD,to_ship,1,,email promo-checkout-test-1792142374184@example.com-b
+no,LP-201295,2026-10-16 09:19,stage3-1792142384136-1@leap.dev,6.90,USD,to_ship,1,,
+yes,LP-201296,2026-10-16 09:19,stage3-guest-1792142384503-2@example.com,126.00,USD,to_ship,1,,email stage3-guest-1792142384503-2@example.com
+no,LP-201297,2026-10-16 09:19,stage3-1792142384856-4@leap.dev,6.90,USD,to_ship,1,,
+no,LP-201298,2026-10-16 09:19,stage3-1792142385142-5@leap.dev,126.00,USD,to_ship,1,,
+yes,LP-201299,2026-10-16 09:19,stage3-guest-1792142385524-6@example.com,6.90,USD,to_ship,1,,email stage3-guest-1792142385524-6@example.com
+no,LP-201300,2026-10-16 09:19,stage3-1792142385624-7@leap.dev,126.00,USD,to_ship,1,,
+yes,LP-201301,2026-10-16 09:19,stage3-guest-1792142386450-8@example.com,6.90,USD,to_ship,1,,email stage3-guest-1792142386450-8@example.com
+no,LP-201302,2026-10-16 09:19,stage3-1792142386962-10@leap.dev,126.00,USD,to_ship,1,,
+no,LP-201303,2026-10-16 09:19,stage3-1792142387397-11@leap.dev,126.00,USD,to_ship,1,,
+no,LP-201304,2026-10-16 09:19,stage3-1792142387965-13@leap.dev,126.00,USD,cancelled,1,,
+yes,LP-201305,2026-10-16 09:19,stage3-guest-1792142388626-15@example.com,126.00,USD,cancelled,1,,email stage3-guest-1792142388626-15@example.com
+no,LP-201306,2026-10-16 09:19,stage3-1792142388802-16@leap.dev,126.00,USD,cancelled,1,,
+no,LP-201307,2026-10-16 09:19,stage3-1792142389381-18@leap.dev,126.00,USD,to_ship,1,,
+yes,LP-201308,2026-10-16 09:19,stage3-guest-1792142389791-19@example.com,126.00,USD,to_ship,1,,email stage3-guest-1792142389791-19@example.com
+no,LP-201309,2026-10-16 09:19,stage3-1792142389922-20@leap.dev,126.00,USD,to_ship,1,,
+no,LP-201310,2026-10-16 09:19,stage4b-1792142394093-8@leap.dev,126.00,USD,to_ship,1,,
+yes,LP-201311,2026-10-16 09:20,e2e3-guest-1792142433278@example.com,126.00,USD,cancelled,1,,email e2e3-guest-1792142433278@example.com
+no,LP-201312,2026-10-16 09:20,e2e3-1792142433681-1@leap.dev,126.00,USD,to_ship,1,,
+no,LP-201313,2026-10-16 09:20,e2e3-1792142434237-2@leap.dev,126.00,USD,to_ship,1,,
+no,LP-201314,2026-10-16 09:20,e2e3-1792142434809-3@leap.dev,126.00,USD,to_ship,1,,
+no,LP-201315,2026-10-16 09:20,e2e3-1792142435390-4@leap.dev,126.00,USD,to_ship,1,,
+yes,LP-201316,2026-10-16 09:20,e2e3-guest-1792142435937@example.com,126.00,USD,to_ship,1,,email e2e3-guest-1792142435937@example.com
+yes,LP-201317,2026-10-16 09:20,stage2-guest-1792142439521@example.com,126.00,USD,to_ship,1,,email stage2-guest-1792142439521@example.com
+no,LP-201318,2026-10-16 09:20,stage2-1792142439535-10@leap.dev,126.00,USD,to_ship,1,,
+no,LP-201319,2026-10-16 09:20,stage2-1792142439880-11@leap.dev,126.00,USD,to_ship,1,,
+no,LP-201320,2026-10-16 09:20,stage2-1792142439880-11@leap.dev,126.00,USD,to_ship,1,,
+yes,LP-201321,2026-10-16 09:20,e2e-guest-1792142442573@example.com,13.80,USD,to_ship,1,,email e2e-guest-1792142442573@example.com
+yes,LP-201322,2026-10-16 09:20,e2e-1792142442883-1@leap.dev,126.00,USD,cancelled,1,yes,refused by a supplier
+no,LP-201323,2026-10-16 10:22,mec_dabash@yahoo.com,637.99,USD,to_ship,1,,
+no,LP-201324,2026-10-16 13:35,mec_dabash@yahoo.com,31.41,USD,to_ship,1,,
+no,LP-201325,2026-10-21 09:47,mec_dabash@yahoo.com,345.38,USD,to_ship,1,,
+no,LP-201326,2026-10-23 19:36,mec_dabash@yahoo.com,322.51,USD,to_ship,1,,
+no,LP-201327,2026-10-26 19:13,mec_dabash@yahoo.com,551.94,USD,to_ship,3,,
+no,LP-201328,2026-10-27 09:51,mec_dabash@yahoo.com,258.26,USD,to_ship,1,,
+no,LP-201329,2026-10-27 18:25,mec_dabash@yahoo.com,80.56,USD,to_ship,1,,
+yes,LP-201330,2026-10-29 06:06,mec_dabash@yahoo.com,146.74,USD,cancelled,1,yes,refused by a supplier
+no,LP-201331,2026-10-29 12:08,mec_dabash@yahoo.com,228.66,USD,to_ship,1,,
+yes,LP-201332,2026-10-29 12:48,mec_dabash@yahoo.com,234.67,USD,cancelled,1,yes,refused by a supplier
+yes,LP-201340,2026-10-30 09:23,portal-order-test-1793352199509@example.com,69.99,USD,to_ship,1,,email portal-order-test-1793352199509@example.com
+yes,LP-201341,2026-10-30 09:23,portal-ship-test-1793352201612@example.com,69.99,USD,to_ship,1,,email portal-ship-test-1793352201612@example.com
+yes,LP-201342,2026-10-30 09:23,supplier-returns-test-1793352206138@example.com,69.99,USD,to_ship,1,,email supplier-returns-test-1793352206138@example.com
+yes,LP-201343,2026-10-30 09:23,supplier-returns-test-1793352206354@example.com,36.90,USD,to_ship,1,,email supplier-returns-test-1793352206354@example.com
+yes,LP-201344,2026-10-30 09:23,supplier-returns-test-1793352206527@example.com,69.99,USD,to_ship,1,,email supplier-returns-test-1793352206527@example.com
+yes,LP-201345,2026-10-30 09:23,supplier-returns-test-1793352206685@example.com,69.99,USD,to_ship,1,,email supplier-returns-test-1793352206685@example.com
+yes,LP-201346,2026-10-30 09:23,supplier-returns-test-1793352207135@example.com,36.90,USD,to_ship,1,,email supplier-returns-test-1793352207135@example.com
+yes,LP-201347,2026-10-30 09:23,supplier-overview-test-1793352209633@example.com,69.99,USD,to_ship,1,,email supplier-overview-test-1793352209633@example.com
+yes,LP-201348,2026-10-30 09:23,cross-supplier-overview-test-1793352209801@example.com,36.90,USD,to_ship,1,,email cross-supplier-overview-test-1793352209801@example.com
