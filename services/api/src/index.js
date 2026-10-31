@@ -11,6 +11,7 @@ installAsyncErrorHandling();
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 
 const { apiRouter: deliveryProofApi, pageRouter: deliveryProofPage } = require('./modules/deliveryProof/routes');
+const { loginRouter: deliveryDriverLogin, adminRouter: deliveryDriverAdmin } = require('./modules/deliveryProof/drivers'); // migration 120
 const resetPageRoutes = require('./modules/auth/resetPageRoutes');
 const catalogRoutes = require('./modules/catalog/routes');
 const fitmentRoutes = require('./modules/fitment/routes');
@@ -152,6 +153,7 @@ app.get('/health', async (req, res) => {
 // The courier link (migration 096): public on purpose, no login; the token in the address is the credential.
 app.use('/proof', deliveryProofApi);
 app.use('/p', deliveryProofPage);
+app.use('/proof-driver', deliveryDriverLogin); // the partner driver's sign-in for that page (migration 120)
 app.use('/reset-password', resetPageRoutes); // the page the password reset email's button opens
 
 app.use('/catalog', catalogRoutes);
@@ -175,6 +177,7 @@ app.use('/overview', overviewRoutes);
 app.use('/uploads', uploadsRoutes);
 app.use('/hub', hubRoutes);
 app.use('/hub-staff', hubStaffRoutes);
+app.use('/delivery-drivers', deliveryDriverAdmin); // admin: the partner's delivery drivers (migration 120)
 app.use('/fault-cases', faultCaseRoutes);
 app.use('/supplier-messages', supplierMessagesRoutes);
 app.use('/addresses', addressesRoutes);

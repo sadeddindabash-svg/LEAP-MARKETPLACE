@@ -17,7 +17,7 @@ const { buildTrackingTimeline } = require('../tracking/liveTracking');
 const { buildSupplierLabelMap } = require('../shared/supplierAnonymize');
 const { logAdminAction } = require('../audit/helpers');
 const { recordOrderVehicles } = require('../orderVehicles/record');
-const { loadProofForShipment } = require('../deliveryProof/helpers');
+const { loadProofForShipment, loadAttemptsForShipment, buyerDeliveryInfo } = require('../deliveryProof/helpers');
 const { receiptItemsFor, receiptTitleFor } = require('./receiptHelpers');
 const { refreshEnglishAddress, ensureEnglishAddress, toEnglishDto, validateEnglishAddress, saveEnglishAddress, confirmEnglishAddressAsIs } = require('../addressEnglish/helpers');
 const { STATUS_ORDER } = require('../shared/hubStatusOrder');
@@ -597,7 +597,8 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
         }
         // Delivery proof photos sent by the courier through the label's link (migration 096), or null. Admin also gets who sent them.
         const deliveryProofData = await loadProofForShipment(shipment.id, { forAdmin: isAdmin });
-        hubShipment = { id: shipment.id, status: shipment.status, updatedAt: shipment.updated_at, events: eventsWithPhotos, deliveryProof: deliveryProofData, ...(isAdmin ? { resolution: shipment.resolution || null, resolvedAt: shipment.resolved_at || null } : {}) };
+        // Admin also gets every "couldn't deliver"; the BUYER gets the code to give the driver (while it is on its way) and the latest attempt (migration 120).
+        hubShipment = { id: shipment.id, status: shipment.status, updatedAt: shipment.updated_at, events: eventsWithPhotos, deliveryProof: deliveryProofData, ...(isAdmin ? { resolution: shipment.resolution || null, resolvedAt: shipment.resolved_at || null, deliveryAttempts: await loadAttemptsForShipment(shipment.id) } : await buyerDeliveryInfo(shipment)) };
       }
 
       supplierSubOrders.push({

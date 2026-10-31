@@ -21,6 +21,8 @@ import VehicleExportPanel from "./VehicleExportPanel";
 import ProductDeleteDialog, { ProductSelectionBar, SelectBox, SelectAllBox, useProductSelection, ProductViewSwitch, ProductReviewDialog, ProductPageDelete } from "./ProductDeleteDialog";
 import CategoryInUseDialog from "./CategoryInUseDialog";
 import CategoriesTabs from "./CategoriesTabs";
+import DeliveryProofCard from "./DeliveryProofCard";
+import DeliveryDriversSection from "./DeliveryDriversSection";
 import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchSupplierResponses, fetchResponseAlternatives, reassignSupplierResponse, markResponseHandled, fetchOrders, fetchOrderById, fetchSuppliers, fetchSupplierById, verifySupplier, updateSupplierCountry, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
   fetchCountriesList, fetchWarehouseCountries, fetchCountryGroups, createCountryGroup, deleteCountryGroup, addCountryGroupMember, removeCountryGroupMember,
   fetchAdminProducts, fetchAdminProductDetail, updateAdminProduct,
@@ -1039,27 +1041,8 @@ function HubAssignmentPanel({ subOrder, onAssigned, onSessionExpired }) {
           </button>
         )}
       </div>
-      {/* PROOF OF DELIVERY sent by the courier through the link / QR on the label (migration 096). Anyone holding the label could have sent it, so it is
-          labelled as evidence, not a guarantee. The courier's name and note are shown to admin only (the buyer sees the photos). */}
-      {shipment && shipment.deliveryProof && (
-        <div style={{ marginTop: 10, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 8, padding: 10 }}>
-          <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.ink }}>
-            PROOF OF DELIVERY <span style={{ color: C.amber }}>· sent through the courier's link, not verified</span>
-          </div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "8px 0" }}>
-            {shipment.deliveryProof.photos.map((p) => (
-              <EnlargeablePhoto key={p.url} src={`${API_BASE_URL}${p.url}`} style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 6, border: `1px solid ${C.line}` }} />
-            ))}
-          </div>
-          {[...new Set(shipment.deliveryProof.photos.map((p) => p.courierName).filter(Boolean))].length > 0 && (
-            <div style={{ ...body, fontSize: 11.5, color: C.ink }}>Courier: {[...new Set(shipment.deliveryProof.photos.map((p) => p.courierName).filter(Boolean))].join(", ")}</div>
-          )}
-          {[...new Set(shipment.deliveryProof.photos.map((p) => p.note).filter(Boolean))].map((note) => (
-            <div key={note} style={{ ...body, fontSize: 11.5, color: C.ink }}>Note: {note}</div>
-          ))}
-          <div style={{ ...body, fontSize: 10.5, color: C.muted, marginTop: 4 }}>Sent {new Date(shipment.deliveryProof.photos[0].submittedAt).toLocaleString()}</div>
-        </div>
-      )}
+      {/* PROOF OF DELIVERY from the partner driver (migrations 096 + 120) and every "couldn't deliver": see DeliveryProofCard.jsx. */}
+      {shipment && <DeliveryProofCard proof={shipment.deliveryProof} attempts={shipment.deliveryAttempts} apiBase={API_BASE_URL} />}
       {!shipment && (
         <div style={{ ...body, fontSize: 11.5, color: C.muted, marginTop: 6 }}>Awaiting the supplier to ship this leg — no evidence yet.</div>
       )}
@@ -4431,6 +4414,7 @@ function HubsPage({ onSessionExpired }) {
           </div>
         </Card>
         <HubStaffSection hubs={hubs} onSessionExpired={onSessionExpired} />
+        <DeliveryDriversSection onSessionExpired={onSessionExpired} />
       </div>
     </div>
   );
@@ -8353,6 +8337,8 @@ const AUDIT_ACTION_TYPES = [
   'supplier_verification',
   // Hub staff account management (migration 089)
   'hub_staff_created', 'hub_staff_updated', 'hub_staff_disabled', 'hub_staff_enabled', 'hub_staff_password_reset',
+  // Partner delivery drivers (migration 120)
+  'delivery_driver_created', 'delivery_driver_updated', 'delivery_driver_disabled', 'delivery_driver_enabled', 'delivery_driver_password_reset',
   // Resolving a flagged hub shipment (migration 090)
   'flagged_shipment_resolved', 'fault_case_created', 'fault_case_refund_confirmed', 'fault_case_refund_issued', 'supplier_return_address_updated', 'order_address_english_updated', 'fault_case_replacement_confirmed', 'fault_case_supplier_payment_released', 'fault_case_closed_manually',
   // Real catalog/fitment reference-data and product-listing moderation

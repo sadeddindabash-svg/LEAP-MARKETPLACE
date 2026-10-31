@@ -591,8 +591,9 @@ export interface HubShipmentEvent {
   photos: string[];
 }
 
-/** The photos the courier took when the parcel was delivered: the buyer's own evidence that it arrived. */
-export interface DeliveryProof { photos: Array<{ url: string; submittedAt: string }> }
+/** The photos the courier took when the parcel was delivered: the buyer's own evidence that it arrived. Since migration 120 also who received it, and
+ *  whether the driver confirmed it with the buyer's code. */
+export interface DeliveryProof { photos: Array<{ url: string; submittedAt: string }>; verified?: boolean; receivedBy?: "buyer" | "family" | "reception" | "door" | null; deliveredAt?: string }
 
 export interface HubShipment {
   id: number;
@@ -600,6 +601,10 @@ export interface HubShipment {
   updatedAt: string;
   events: HubShipmentEvent[];
   deliveryProof?: DeliveryProof | null;
+  /** The 4-digit code the buyer gives the driver; only while the parcel is on its way (migration 120). */
+  deliveryCode?: string | null;
+  /** The latest time the driver could not deliver, while it is still on its way. */
+  lastDeliveryAttempt?: { reason: "not_home" | "wrong_address" | "refused" | "other"; createdAt: string } | null;
 }
 
 export interface OrderLineItem {

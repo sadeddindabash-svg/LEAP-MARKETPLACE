@@ -269,6 +269,10 @@ async function buildTrackingTimeline(orderId, lang = 'en') {
       subOrderId: so.id,
       stage,                                  // 0 placed ... 6 delivered (the app's 7 steps); null when cancelled or refused
       cancelled: stage === null,
+      // proof of delivery for the BUYER (migration 120): the code to give the driver while it is on its way, the latest "couldn't deliver",
+      // and after delivery the photos and who received it (required lazily: deliveryProof loads email / notification modules)
+      ...(shipment ? await require('../deliveryProof/helpers').buyerDeliveryInfo(shipment) : { deliveryCode: null, lastDeliveryAttempt: null }),
+      deliveryProof: shipment ? await require('../deliveryProof/helpers').loadProofForShipment(shipment.id, { forAdmin: false }) : null,
       supplierTrackingNumber: so.supplier_tracking_number,
       hubTrackingNumber: hubTrackingNumber || null,
       timeline,

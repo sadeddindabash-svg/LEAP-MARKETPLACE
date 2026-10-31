@@ -559,6 +559,9 @@ router.get('/me/shipments/:id', requireAuth, requireRole('hub_staff'), async (re
       deliveryAddress,
       replacementFor: replacementRows[0] ? replacementRows[0].replacement_of : null, // the order the buyer paid for, or null for a normal shipment
       events,
+      // proof of delivery from the partner driver and every "couldn't deliver" (migration 120); the buyer's code is never shown to the hub
+      deliveryProof: await deliveryProof.loadProofForShipment(rows[0].id, { forAdmin: true }),
+      deliveryAttempts: await deliveryProof.loadAttemptsForShipment(rows[0].id),
     });
   } catch (err) {
     next(err);
@@ -715,8 +718,8 @@ router.get('/me/shipments/:id/address-label', requireAuth, requireRole('hub_staf
         }
       }
       const textLeft = qrLeft + qrSize + 16;
-      doc.font('ArabicCapable-Bold').fontSize(10).fillColor('#000').text('FOR THE COURIER', textLeft, qrTop, { width: pageRight - textLeft });
-      doc.font('ArabicCapable').fontSize(8.5).fillColor('#333').text('Scan to send a delivery photo. This confirms the parcel was delivered.', textLeft, doc.y + 2, { width: pageRight - textLeft });
+      doc.font('ArabicCapable-Bold').fontSize(10).fillColor('#000').text('FOR THE DELIVERY DRIVER', textLeft, qrTop, { width: pageRight - textLeft });
+      doc.font('ArabicCapable').fontSize(8.5).fillColor('#333').text("Scan, sign in, take a photo and enter the buyer's 4-digit code. This confirms the parcel was delivered.", textLeft, doc.y + 2, { width: pageRight - textLeft });
       doc.font('ArabicCapable').fontSize(6.5).fillColor('#888').text(link.url, textLeft, doc.y + 4, { width: pageRight - textLeft });
     } catch (qrErr) {
       console.error('Could not add the courier QR to the label (non-fatal):', qrErr.message);

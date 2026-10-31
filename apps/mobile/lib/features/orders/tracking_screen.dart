@@ -6,6 +6,7 @@ import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../core/language_state.dart';
 import '../../services/api_client.dart';
+import '../../widgets/delivery_confirm.dart';
 
 /// Real "track your package" screen (new). Shows a real, merged
 /// timeline: our own real hub milestones (received, opened, inspected,
@@ -191,6 +192,25 @@ class _TrackingScreenState extends State<TrackingScreen> {
                       isFirst: j == 0,
                       isLast: j == timeline.length - 1,
                     ),
+                // migration 120: the code for the driver while it is on its way; after delivery the photo, who received it and "not my parcel"
+                if (so['deliveryCode'] != null) DeliveryCodeCard(code: so['deliveryCode'] as String),
+                if (so['deliveryCode'] != null && so['lastDeliveryAttempt'] != null) DeliveryAttemptNotice(attempt: (so['lastDeliveryAttempt'] as Map).cast<String, dynamic>()),
+                if (so['deliveryProof'] != null) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final photo in ((so['deliveryProof'] as Map)['photos'] as List).cast<Map>())
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: Image.network(ApiClient.resolveMediaUrl(photo['url'] as String), width: 120, height: 96, fit: BoxFit.cover,
+                              errorBuilder: (context, error, stack) => Container(width: 120, height: 96, color: LeapColors.muted.withValues(alpha: 0.15))),
+                        ),
+                    ],
+                  ),
+                  DeliveryProofSummary(proof: (so['deliveryProof'] as Map).cast<String, dynamic>(), orderId: widget.orderId),
+                ],
               ],
             ),
           );

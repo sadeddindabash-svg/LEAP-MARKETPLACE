@@ -13,6 +13,7 @@ import '../../core/review_prompt_state.dart';
 import '../../services/api_client.dart';
 import '../../widgets/plate_chip.dart';
 import '../../widgets/order_status_timeline.dart';
+import '../../widgets/delivery_confirm.dart';
 import '../../models/order_rules.dart';
 import '../../core/cart_state.dart';
 import '../../core/language_state.dart';
@@ -451,6 +452,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
             showReturnButton: isSubOrderReturnable(so, _order),
             onCancelSubOrder: _confirmAndCancelSubOrder,
             showCancelButton: _isPartiallyCancellable() && isSubOrderCancellable(so),
+            orderId: widget.orderId,
+            guestEmail: widget.guestEmail,
           ),
           const SizedBox(height: 8),
           // Real fix (confirmed directly): don't show "Track your
@@ -756,7 +759,9 @@ class _SupplierSubOrderCard extends StatelessWidget {
   final void Function(int subOrderId, String supplierLabel)? onCancelSubOrder;
   final bool showCancelButton;
   final bool showReturnButton;
-  const _SupplierSubOrderCard({required this.subOrder, required this.onRequestReturn, this.onCancelSubOrder, this.showCancelButton = false, this.showReturnButton = true});
+  final String? orderId;      // for "This isn't my parcel" (migration 120)
+  final String? guestEmail;
+  const _SupplierSubOrderCard({required this.subOrder, required this.onRequestReturn, this.onCancelSubOrder, this.showCancelButton = false, this.showReturnButton = true, this.orderId, this.guestEmail});
 
   @override
   Widget build(BuildContext context) {
@@ -768,6 +773,9 @@ class _SupplierSubOrderCard extends StatelessWidget {
     final hubShipmentData = subOrder['hubShipment'] as Map<String, dynamic>?;
     final deliveryProof = hubShipmentData?['deliveryProof'] as Map<String, dynamic>?;
     final proofPhotos = deliveryProof == null ? <Map<String, dynamic>>[] : (deliveryProof['photos'] as List).cast<Map<String, dynamic>>();
+    // migration 120: the code to give the driver (only while the parcel is on its way) and the latest "couldn't deliver"
+    final deliveryCode = hubShipmentData?['deliveryCode'] as String?;
+    final lastAttempt = hubShipmentData?['lastDeliveryAttempt'] as Map<String, dynamic>?;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -827,6 +835,8 @@ class _SupplierSubOrderCard extends StatelessWidget {
                   ),
                 ),
               ),
+            if (deliveryCode != null) DeliveryCodeCard(code: deliveryCode),
+            if (deliveryCode != null && lastAttempt != null) DeliveryAttemptNotice(attempt: lastAttempt),
             if (proofPhotos.isNotEmpty) ...[
               const SizedBox(height: 6),
               Text(tr(context, 'delivery_proof_title'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
@@ -852,6 +862,7 @@ class _SupplierSubOrderCard extends StatelessWidget {
                     ),
                 ],
               ),
+              if (orderId != null) DeliveryProofSummary(proof: deliveryProof!, orderId: orderId!, guestEmail: guestEmail),
             ],
             const SizedBox(height: 8),
             if (showCancelButton && onCancelSubOrder != null)

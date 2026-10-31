@@ -433,6 +433,46 @@ function ReturnLabel({ shipment, onClose }) {
   );
 }
 
+// Proof of delivery from the partner driver and every "couldn't deliver" (migration 120). The buyer's code is never shown here.
+const HUB_PROOF_TEXT = {
+  zh: { title: "送达证明", verified: "司机已凭买家验证码确认", unverified: "通过快递员链接发送，未验证", driver: "司机", receivedBy: "签收人", location: "位置", map: "在地图上查看", attempts: "未能送达",
+    received: { buyer: "买家本人", family: "家人", reception: "门卫 / 前台", door: "放在门口" },
+    reasons: { not_home: "买家不在 / 无人应答", wrong_address: "地址错误或不完整", refused: "买家拒收", other: "其他" } },
+  en: { title: "Proof of delivery", verified: "Confirmed by the driver with the buyer's code", unverified: "Sent through the courier's link, not verified", driver: "Driver", receivedBy: "Received by", location: "Location", map: "Open on the map", attempts: "Couldn't deliver",
+    received: { buyer: "Buyer", family: "Family member", reception: "Guard / reception", door: "Left at the door" },
+    reasons: { not_home: "Buyer not home / no answer", wrong_address: "Wrong or incomplete address", refused: "Buyer refused the parcel", other: "Other" } },
+};
+function HubDeliveryProof({ proof, attempts }) {
+  const { lang } = useLang();
+  const tx = HUB_PROOF_TEXT[lang] || HUB_PROOF_TEXT.en;
+  const list = Array.isArray(attempts) ? attempts : [];
+  if (!proof && list.length === 0) return null;
+  const api = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+  const map = (l) => `https://www.google.com/maps?q=${l.latitude},${l.longitude}`;
+  return (
+    <div data-testid="hub-delivery-proof" style={{ marginTop: 12 }}>
+      {proof && (
+        <div style={{ background: "#fff", border: `1px solid ${proof.verified ? C.gauge : C.line}`, borderRadius: 10, padding: 14, ...body, fontSize: 13 }}>
+          <div style={{ fontWeight: 700 }}>{tx.title} <span style={{ color: proof.verified ? C.gauge : C.amber, fontWeight: 600 }}>· {proof.verified ? tx.verified : tx.unverified}</span></div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "8px 0" }}>
+            {proof.photos.map((p) => <a key={p.url} href={`${api}${p.url}`} target="_blank" rel="noreferrer"><img src={`${api}${p.url}`} alt="" style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.line}` }} /></a>)}
+          </div>
+          {proof.driver && <div>{tx.driver}: {proof.driver.name} · {proof.driver.company}</div>}
+          {proof.receivedBy && <div>{tx.receivedBy}: {tx.received[proof.receivedBy] || proof.receivedBy}</div>}
+          {proof.location && <div>{tx.location}: <a href={map(proof.location)} target="_blank" rel="noreferrer" style={{ color: C.torque }}>{tx.map}</a></div>}
+          <div style={{ color: C.muted, fontSize: 12, marginTop: 4 }}>{new Date(proof.deliveredAt || proof.photos[0].submittedAt).toLocaleString()}</div>
+        </div>
+      )}
+      {list.length > 0 && (
+        <div style={{ background: C.redBg, borderRadius: 10, padding: 12, marginTop: 8, ...body, fontSize: 12.5 }}>
+          <div style={{ fontWeight: 700, color: C.red }}>{tx.attempts} ({list.length})</div>
+          {list.map((a, i) => <div key={i} style={{ marginTop: 4 }}><b>{tx.reasons[a.reason] || a.reason}</b>{a.note ? `: ${a.note}` : ""} · {new Date(a.createdAt).toLocaleString()}{a.driver ? ` · ${a.driver.name} (${a.driver.company})` : ""}</div>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ShipmentDetailScreen({ shipmentId, onBack }) {
   const { onSessionExpired } = useHub();
   const { t } = useLang();
@@ -710,6 +750,8 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
             )}
           </div>
         )}
+
+        <HubDeliveryProof proof={shipment.deliveryProof} attempts={shipment.deliveryAttempts} />
 
         {/* A real fault was confirmed by the platform: this hub has to deal with the faulty unit (migration 091). */}
         {needsFaultReturn && (
