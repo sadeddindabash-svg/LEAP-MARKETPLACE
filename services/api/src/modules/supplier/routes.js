@@ -380,7 +380,7 @@ router.get('/:id/payout-method', requireAuth, requireRole('admin'), requirePageA
 // GET /supplier/me/products — only this supplier's own products.
 router.get('/me/products', requireAuth, requireRole('supplier'), async (req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT * FROM products WHERE supplier_id = $1 ORDER BY created_at DESC', [req.user.supplierId]);
+    const { rows } = await db.query('SELECT * FROM products WHERE supplier_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC', [req.user.supplierId]);      // deleted by the admin: gone from the supplier's list
     const dtos = await Promise.all(rows.map((r) => attachImagesAndFitment(toProductDto(r))));
     res.json(dtos);
   } catch (err) {
@@ -804,7 +804,7 @@ router.get('/me/products/drafts', requireAuth, requireRole('supplier'), async (r
       `SELECT p.*, COALESCE(img.count, 0) AS photo_count
        FROM products p
        LEFT JOIN (SELECT product_id, COUNT(*) AS count FROM product_images GROUP BY product_id) img ON img.product_id = p.id
-       WHERE p.supplier_id = $1 AND (p.status = 'draft' OR (p.status = 'inactive' AND p.rejected_at IS NOT NULL))      -- drafts, and the products Leap rejected
+       WHERE p.supplier_id = $1 AND p.deleted_at IS NULL AND (p.status = 'draft' OR (p.status = 'inactive' AND p.rejected_at IS NOT NULL))      -- drafts, and the products Leap rejected
        ORDER BY COALESCE(p.rejected_at, p.created_at) DESC`,
       [req.user.supplierId]
     );

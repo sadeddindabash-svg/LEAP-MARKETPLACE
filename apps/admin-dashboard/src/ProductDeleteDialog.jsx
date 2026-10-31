@@ -45,14 +45,25 @@ export default function ProductDeleteDialog({ ids, onClose, onChanged, onSession
           <div style={{ ...body, fontSize: 13, color: C.ink, lineHeight: 1.55 }}>
             {deletable.length > 0 && (
               <div style={{ marginBottom: 12 }}>
-                <b>{plural(deletable.length, "product", "products")} will be deleted:</b> {names(deletable)}.
+                <b>{plural(deletable.length, "product", "products")} will be deleted:</b>
+                <ul data-testid="delete-will-go" style={{ margin: "4px 0", paddingInlineStart: 20 }}>
+                  {deletable.slice(0, SHOWN).map((p) => (
+                    <li key={p.id}>{p.name}{" "}
+                      {p.keepsHistory
+                        ? <span style={{ color: C.muted }}>(has history: {p.usedIn}. It is marked deleted; past orders keep its name and show "no longer available")</span>
+                        : <span style={{ color: C.muted }}>(never ordered: removed completely)</span>}
+                    </li>
+                  ))}
+                  {deletable.length > SHOWN && <li style={{ color: C.muted }}>and {deletable.length - SHOWN} more</li>}
+                </ul>
+                <div style={{ color: C.muted }}>Shoppers no longer find them; they go from carts, wishlists and both portals' product lists.</div>
                 {plan.alsoRemoved.length > 0 && <div style={{ color: C.muted }}>This also removes: {plan.alsoRemoved.map((x) => `${x.count} ${x.what}`).join(", ")}.</div>}
                 <div style={{ color: "#B42318", fontWeight: 600, marginTop: 4 }}>This cannot be undone.</div>
               </div>
             )}
             {held.length > 0 && (
               <div style={{ marginBottom: 12, background: "#FDF3E1", borderRadius: 8, padding: 10 }}>
-                <b>{plural(held.length, "product cannot", "products cannot")} be deleted:</b>
+                <b>{plural(held.length, "product cannot", "products cannot")} be deleted now:</b>
                 <ul style={{ margin: "4px 0 6px", paddingInlineStart: 20 }}>{held.map((p) => <li key={p.id}>{p.name}: <span style={{ color: C.muted }}>{p.reason}</span>{p.status === "inactive" ? " (already hidden)" : ""}</li>)}</ul>
                 {hidden !== null ? <div role="status" style={{ color: "#16794F", fontWeight: 600 }}>{plural(hidden, "product is", "products are")} now hidden from shoppers.</div>
                   : hideable > 0 ? <button type="button" style={{ ...button(false), display: "inline-flex", gap: 6, alignItems: "center" }} disabled={hiding} onClick={hideThem}><EyeOff size={13} /> {hiding ? "Hiding…" : `Hide ${hideable === 1 ? "it" : "them"} instead`}</button> : null}

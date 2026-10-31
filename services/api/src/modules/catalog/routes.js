@@ -520,6 +520,8 @@ router.get('/products/:id', async (req, res, next) => {
     const { lang } = req.query;
     const { rows } = await db.query(`SELECT p.* FROM products p WHERE p.id = $1`, [req.params.id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
+    // deleted by the admin (migration 119): old orders and saved links still lead here, so say so plainly
+    if (rows[0].deleted_at) return res.status(410).json({ error: 'This product is no longer available', code: 'product_deleted' });
 
     const fitmentResult = await db.query('SELECT vehicle_id FROM product_fitment WHERE product_id = $1', [req.params.id]);
     let dto = toBuyerProductDto(rows[0], lang);
@@ -1097,7 +1099,7 @@ router.get('/admin/products', requireAuth, requireRole('admin'), requirePageAcce
     `;
 
     const params = [];
-    let where = req.query.status === 'hidden' ? `WHERE p.status = 'inactive'` : `WHERE p.status = 'active'`;      // ?status=hidden lists the HIDDEN products (the ones the admin hid or rejected), so they can be found again
+    let where = req.query.status === 'hidden' ? `WHERE p.status = 'inactive' AND p.deleted_at IS NULL` : `WHERE p.status = 'active'`;      // ?status=hidden lists the HIDDEN products (the ones the admin hid or rejected), so they can be found again
     if (search) {
       params.push(`%${search}%`);
       where += ` AND (p.name ILIKE $${params.length} OR p.oem_number ILIKE $${params.length} OR s.name ILIKE $${params.length})`;
@@ -1162,7 +1164,7 @@ router.get('/admin/products', requireAuth, requireRole('admin'), requirePageAcce
 // this is an internal editing view, not a storefront one).
 router.get('/admin/products/:id', requireAuth, requireRole('admin'), requirePageAccess('products'), async (req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT * FROM products p WHERE p.id = $1', [req.params.id]);
+    const { rows } = await db.query('SELECT * FROM products p WHERE p.id = $1 AND p.deleted_at IS NULL', [req.params.id]);      // a deleted product is gone from the admin too
     if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
     const row = rows[0];
     // weightKg / lengthCm / widthCm / heightCm below are the product's OWN values (null when it uses its part's): the edit form saves them back, so showing
