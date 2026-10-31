@@ -1,5 +1,5 @@
 const db = require('../../../db/pool');
-const { ELIGIBLE_SUB_ORDERS_CTE } = require('../payouts/routes');
+const { supplierTotals } = require('../payouts/terms');
 
 /**
  * Real supplier analytics (confirmed scope, picked from a list of 10
@@ -82,15 +82,13 @@ async function getPayoutSummary(supplierId) {
     `SELECT COALESCE(SUM(amount), 0) AS total_paid FROM payouts WHERE supplier_id = $1 AND currency_code = 'CNY'`,
     [supplierId]
   );
-  const { rows: owedRows } = await db.query(
-    `${ELIGIBLE_SUB_ORDERS_CTE}
-     SELECT COALESCE(SUM(net_amount), 0) AS amount_owed FROM eligible WHERE supplier_id = $1`,
-    [supplierId]
-  );
+  // migration 122: the same figure as the Finance page -- owed by the supplier's payment terms + released fault payments, minus what must be
+  // recovered (never below zero here; the Finance page shows the amount to recover on its own)
+  const t = await supplierTotals(db, supplierId);
   return {
     currencyCode: 'CNY',
     totalPaid: Number(paidRows[0].total_paid),
-    amountOwed: Number(owedRows[0].amount_owed),
+    amountOwed: Math.max(0, t.payNow),
   };
 }
 

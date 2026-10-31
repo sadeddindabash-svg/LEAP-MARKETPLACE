@@ -21,6 +21,8 @@ import VehicleExportPanel from "./VehicleExportPanel";
 import ProductDeleteDialog, { ProductSelectionBar, SelectBox, SelectAllBox, useProductSelection, ProductViewSwitch, ProductReviewDialog, ProductPageDelete } from "./ProductDeleteDialog";
 import CategoryInUseDialog from "./CategoryInUseDialog";
 import CategoriesTabs from "./CategoriesTabs";
+import SupplierPaymentTermsCard from "./SupplierPaymentTermsCard";
+import OwedSuppliersTable from "./OwedSuppliersTable";
 import DeliveryProofCard from "./DeliveryProofCard";
 // (DeliveryDriversSection is no longer used: migration 121, no delivery driver accounts)
 import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchSupplierResponses, fetchResponseAlternatives, reassignSupplierResponse, markResponseHandled, fetchOrders, fetchOrderById, fetchSuppliers, fetchSupplierById, verifySupplier, updateSupplierCountry, fetchModerationQueue, moderateProduct, bulkModerateProducts, fetchTickets, fetchTicketById, replyToTicket, updateTicketStatus, fetchReturnCases, fetchReturnCaseById, replyToReturnCaseBuyer, replyToReturnCaseSupplier, updateReturnCaseStatus, fetchOverview, API_BASE_URL, SessionExpiredError,
@@ -1266,6 +1268,9 @@ function SupplierDetailPage({ supplierId, onBack, onSessionExpired }) {
       )}
       <div style={{ padding: 24 }}>
         <div style={{ marginBottom: 16 }}>
+          <SupplierPaymentTermsCard supplierId={supplierId} onSessionExpired={onSessionExpired} />
+        </div>
+        <div style={{ marginBottom: 16 }}>
           <SupplierReturnAddressCard supplierId={supplierId} onSessionExpired={onSessionExpired} />
         </div>
         <Card title={`Products (${supplier.products.length})`}>
@@ -1617,7 +1622,7 @@ function SuppliersPage({ onOpenSupplier, onSessionExpired }) {
           <Card>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
-                <tr><Th>Supplier</Th><Th>Contact</Th><Th align="right">Listings</Th><Th>Status</Th><Th>Joined</Th><Th></Th></tr>
+                <tr><Th>Supplier</Th><Th>Contact</Th><Th align="right">Listings</Th><Th>Status</Th><Th>Payment terms</Th><Th>Joined</Th><Th></Th></tr>
               </thead>
               <tbody>
                 {suppliers.map(s => (
@@ -1630,6 +1635,7 @@ function SuppliersPage({ onOpenSupplier, onSessionExpired }) {
                       {s.verificationStatus === "pending" && <Badge label="Pending review" color={C.amber} bg={C.amberBg} />}
                       {s.verificationStatus === "rejected" && <Badge label="Rejected" color={C.red} bg={C.redBg} />}
                     </Td>
+                    <Td style={{ color: C.muted, fontSize: 12 }}>{s.verificationStatus === "verified" ? (s.paymentTermText || "—") : "set after verification"}</Td>
                     <Td style={{ color: C.muted }}>{new Date(s.createdAt).toLocaleDateString()}</Td>
                     <Td align="right">
                       {s.verificationStatus === "pending" ? (
@@ -7201,39 +7207,8 @@ function PayoutsPage({ onSessionExpired }) {
               {owed.length === 0 ? (
                 <div style={{ padding: 24, textAlign: "center", ...body, fontSize: 13, color: C.muted }}>Nothing is currently owed to any supplier.</div>
               ) : (
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr><Th>Supplier</Th><Th align="right">Owed</Th><Th align="right">Eligible orders</Th><Th>Payout method</Th><Th></Th></tr></thead>
-                  <tbody>
-                    {owed.map((o) => {
-                      const method = payoutMethods[o.supplierId];
-                      return (
-                      <tr key={o.supplierId}>
-                        <Td style={{ fontWeight: 600 }}>{o.supplierName}</Td>
-                        <Td align="right">¥{o.amountOwed.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Td>
-                        <Td align="right" style={{ color: C.muted }}>{o.eligibleSubOrderCount}</Td>
-                        <Td>
-                          {method ? (
-                            <div style={{ ...body, fontSize: 12 }}>
-                              <div style={{ fontWeight: 600 }}>{method.bankName} — {method.accountNumber}</div>
-                              <div style={{ color: C.muted, fontSize: 11 }}>{method.accountHolderName}</div>
-                            </div>
-                          ) : (
-                            <span style={{ ...body, fontSize: 11.5, color: C.red, background: C.redBg, padding: "3px 8px", borderRadius: 6 }}>No payout method on file</span>
-                          )}
-                        </Td>
-                        <Td align="right">
-                          <button
-                            disabled={payingSupplierId === o.supplierId || !method}
-                            onClick={() => handleRecordPayout(o.supplierId)}
-                            title={!method ? "This supplier has no payout method on file yet" : undefined}
-                            style={{ ...body, padding: "7px 14px", borderRadius: 8, border: "none", background: (payingSupplierId === o.supplierId || !method) ? "#D1D5DB" : C.gauge, color: "#fff", fontSize: 12, fontWeight: 700, cursor: (payingSupplierId === o.supplierId || !method) ? "default" : "pointer" }}
-                          >{payingSupplierId === o.supplierId ? "Recording…" : "Record payout"}</button>
-                        </Td>
-                      </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                // migration 122: each supplier's payment terms, owed now, to recover, pay this time, not due yet; "Details" lists the orders
+                <OwedSuppliersTable owed={owed} payoutMethods={payoutMethods} payingSupplierId={payingSupplierId} onRecord={handleRecordPayout} onSessionExpired={onSessionExpired} />
               )}
             </Card>
 
@@ -8336,6 +8311,8 @@ const AUDIT_ACTION_TYPES = [
   'supplier_verification',
   // Hub staff account management (migration 089)
   'hub_staff_created', 'hub_staff_updated', 'hub_staff_disabled', 'hub_staff_enabled', 'hub_staff_password_reset',
+  // Supplier payment terms (migration 122)
+  'supplier_payment_terms_changed',
   // Partner delivery drivers (migration 120)
   'delivery_driver_created', 'delivery_driver_updated', 'delivery_driver_disabled', 'delivery_driver_enabled', 'delivery_driver_password_reset',
   // Resolving a flagged hub shipment (migration 090)

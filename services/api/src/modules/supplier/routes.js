@@ -36,6 +36,10 @@ function toSupplierDto(row) {
     verificationStatus: row.verification_status,
     listingCount: Number(row.listing_count) || 0,
     createdAt: row.created_at,
+    // migration 122: when this supplier is paid
+    paymentTerm: row.payment_term || null,
+    paymentTermDays: row.payment_term_days || null,
+    paymentTermText: row.payment_term ? require('../payouts/terms').termText(row.payment_term, row.payment_term_days) : null,
   };
 }
 

@@ -148,16 +148,21 @@ const STRINGS = {
     },
     finance: {
       title: "财务与结算",
-      subtitle: (days) => `金额以人民币 (¥) 计，按您自己设定的价格 × 数量。订单送达并超过 ${days} 天退货期后，Leap 会记录一笔结算。`,
+      subtitle: () => "金额以人民币 (¥) 计，按您自己设定的价格 × 数量。订单何时可结算取决于您的结算方式。",
+      terms: { before_shipping: () => "接单后即结算", hub_arrival: () => "到达质检中心后结算", after_delivery: () => "送达买家后结算", after_return_window: () => "退货期结束后结算", days_after_shipping: (d) => `发货至质检中心后 ${d} 天结算` },
+      termBanner: (text) => `您的结算方式：${text}`,
+      kpiRecover: "待扣回", kpiRecoverSub: (n) => (n > 0 ? `${n} 个订单，将从下次结算中扣除` : "无"),
+      ordersTitle: "订单结算进度", thOrder: "订单", thState: "状态", thDue: "到期日", thAmount: "金额", thWhy: "说明",
+      states: { owed: "可结算", recover: "付款后被取消/退货", not_due: "未到期", on_hold: "暂缓" },
       adjTitle: "Leap 已放款", adjIntro: "以下款项因货物在 Leap 处受损而由 Leap 支付给您，已包含在上方金额中，并将计入您的下一次付款。", adjOriginal: "原订单", adjShipping: "国内运费",
-      kpiReady: "可结算金额", kpiReadySub: (n) => `${n} 个订单已过退货期`,
-      kpiWaiting: "退货期内", kpiWaitingSub: (n, days) => `${n} 个已送达订单 · ${days} 天退货期后可结算`,
+      kpiReady: "可结算金额", kpiReadySub: (n) => `${n} 个订单已到期`,
+      kpiWaiting: "未到期", kpiWaitingSub: (n, days, next) => `${n} 个订单${next ? ` · 下一笔 ${next}` : ""}`,
       kpiPaid: "累计已结算", kpiPaidSub: (date) => (date ? `最近一次：${date}` : "暂无结算记录"),
       kpiCommission: "佣金比例", kpiCommissionSub: "按类目设定",
       kpiCommissionNone: "—", kpiCommissionNoneSub: "上架商品后显示",
       recordsTitle: "结算记录", emptyRecords: "暂无结算记录。订单送达并过退货期后，Leap 会记录结算，并显示在这里。",
       thDate: "记录日期", thOrders: "订单数", thSales: "销售额", thCommission: "平台佣金", thPayout: "结算金额", thNotes: "备注",
-      returnCaseNote: "有退货申请的订单不计入以上金额。", loadError: "无法加载财务数据：",
+      returnCaseNote: "有未处理退货申请的订单暂缓结算；退货被拒绝的订单照常结算。付款后被取消或退货的订单金额将从下次结算中扣除。", loadError: "无法加载财务数据：",
       bankTitle: "收款账户",
     },
     settings: {
@@ -270,15 +275,20 @@ const STRINGS = {
     },
     finance: {
       title: "Finance & Payouts",
-      subtitle: (days) => `Amounts are in RMB (¥): your own price × quantity. Leap records a payout once your delivered orders have cleared the ${days}-day return window.`,
+      subtitle: () => "Amounts are in RMB (¥): your own price × quantity. When an order is paid depends on your payment terms.",
+      terms: { before_shipping: () => "paid as soon as you accept the order", hub_arrival: () => "paid when it arrives at the inspection hub", after_delivery: () => "paid when it is delivered to the buyer", after_return_window: () => "paid after the return window", days_after_shipping: (d) => `paid ${d} day${d === 1 ? "" : "s"} after you ship to the inspection hub` },
+      termBanner: (text) => `Your payment terms: ${text}`,
+      kpiRecover: "To recover", kpiRecoverSub: (n) => (n > 0 ? `${n} order${n === 1 ? "" : "s"}, taken off your next payout` : "Nothing"),
+      ordersTitle: "Orders and when they are paid", thOrder: "Order", thState: "Status", thDue: "Due on", thAmount: "Amount", thWhy: "Why",
+      states: { owed: "Ready to be paid", recover: "Cancelled or returned after payment", not_due: "Not due yet", on_hold: "On hold" },
       adjTitle: "Released by Leap", adjIntro: "Leap is paying you these for a shipment that was damaged while in Leap's care. They are included in the amount above and in your next payout.", adjOriginal: "Original order", adjShipping: "Local shipping",
-      kpiReady: "Ready to be paid", kpiReadySub: (n) => `${n} order${n === 1 ? "" : "s"} cleared the return window`,
-      kpiWaiting: "In return window", kpiWaitingSub: (n, days) => `${n} delivered order${n === 1 ? "" : "s"} · payable after ${days} days`,
+      kpiReady: "Ready to be paid", kpiReadySub: (n) => `${n} order${n === 1 ? "" : "s"} due`,
+      kpiWaiting: "Not due yet", kpiWaitingSub: (n, days, next) => `${n} order${n === 1 ? "" : "s"}${next ? ` · next on ${next}` : ""}`,
       kpiPaid: "Paid out so far", kpiPaidSub: (date) => (date ? `Last payout ${date}` : "No payouts yet"),
       kpiCommission: "Commission rate", kpiCommissionSub: "Set per category",
       kpiCommissionNone: "—", kpiCommissionNoneSub: "Shown once you have listings",
       recordsTitle: "Payout history", emptyRecords: "No payouts yet. Once your delivered orders clear the return window, Leap records a payout and it appears here.",
-      returnCaseNote: "Orders that have a return case are not included in these figures.", loadError: "Could not load your finance data: ",
+      returnCaseNote: "An order with an open return waits until it is decided; a rejected return is paid as normal. An order cancelled or returned after it was paid is taken off your next payout.", loadError: "Could not load your finance data: ",
       thDate: "Date recorded", thOrders: "Orders", thSales: "Sales", thCommission: "Commission", thPayout: "Payout", thNotes: "Notes",
       bankTitle: "Payout account",
     },
@@ -3601,9 +3611,14 @@ function FinancePage() {
         {finance === undefined && !financeError && <div style={{ ...font, fontSize: 13, color: C.muted }}>{lang === "zh" ? "加载中…" : "Loading…"}</div>}
         {finance && (
           <>
+            {/* migration 122: the supplier's own payment terms decide when an order is paid */}
+            {finance.paymentTerm && fi.terms[finance.paymentTerm] && (
+              <div data-testid="payment-terms-banner" style={{ ...font, background: C.torqueBg || "#EAF1FA", color: C.torque, borderRadius: 10, padding: "10px 14px", fontSize: 13, fontWeight: 700 }}>{fi.termBanner(fi.terms[finance.paymentTerm](finance.paymentTermDays))}</div>
+            )}
             <div style={{ display: "flex", gap: 16 }}>
               <KpiCard label={fi.kpiReady} value={cny(finance.readyToPay.amount)} sub={fi.kpiReadySub(finance.readyToPay.orderCount)} icon={Wallet} accent={C.torque} />
-              <KpiCard label={fi.kpiWaiting} value={cny(finance.inReturnWindow.amount)} sub={fi.kpiWaitingSub(finance.inReturnWindow.orderCount, finance.returnWindowDays)} icon={RotateCcw} accent={C.amber} />
+              {finance.toRecover && finance.toRecover.amount > 0 && <KpiCard label={fi.kpiRecover} value={`− ${cny(finance.toRecover.amount)}`} sub={fi.kpiRecoverSub(finance.toRecover.count)} icon={RotateCcw} accent={C.red} />}
+              <KpiCard label={fi.kpiWaiting} value={cny(finance.inReturnWindow.amount)} sub={fi.kpiWaitingSub(finance.inReturnWindow.orderCount, finance.returnWindowDays, finance.inReturnWindow.nextDueAt ? new Date(finance.inReturnWindow.nextDueAt).toLocaleDateString(uiLocale()) : null)} icon={RotateCcw} accent={C.amber} />
               <KpiCard label={fi.kpiPaid} value={cny(finance.totalPaid)} sub={fi.kpiPaidSub(finance.lastPayout ? new Date(finance.lastPayout.paidAt).toLocaleDateString(uiLocale()) : null)} icon={Check} accent={C.gauge} />
             </div>
             {finance.legacyUsdPaid > 0 && <div data-testid="legacy-usd-note" style={{ ...font, fontSize: 12, color: C.muted }}>{legacyText}</div>}
@@ -3618,6 +3633,23 @@ function FinancePage() {
                         <Td style={{ fontWeight: 600 }}>{a.orderId}</Td>
                         <Td>{a.kind === "original_order" ? fi.adjOriginal : fi.adjShipping}</Td>
                         <Td align="right">{cny(a.amount)}</Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Card>
+            )}
+            {Array.isArray(finance.orders) && finance.orders.length > 0 && (
+              <Card title={fi.ordersTitle}>
+                <table data-testid="finance-orders" style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr><Th>{fi.thOrder}</Th><Th>{fi.thState}</Th><Th>{fi.thDue}</Th><Th align="right">{fi.thAmount}</Th></tr></thead>
+                  <tbody>
+                    {finance.orders.map((o) => (
+                      <tr key={o.subOrderId}>
+                        <Td style={{ fontWeight: 600 }}>{o.orderId}</Td>
+                        <Td style={{ color: o.state === "recover" ? C.red : o.state === "owed" ? C.gauge : C.muted, fontWeight: 600 }}>{fi.states[o.state] || o.state}</Td>
+                        <Td style={{ color: C.muted }}>{o.dueAt ? new Date(o.dueAt).toLocaleDateString(uiLocale()) : "—"}</Td>
+                        <Td align="right" style={{ color: o.state === "recover" ? C.red : C.ink, fontWeight: 600 }}>{o.state === "recover" ? `− ${cny(o.amount)}` : cny(o.amount)}</Td>
                       </tr>
                     ))}
                   </tbody>

@@ -1,4 +1,5 @@
 const db = require('../../../db/pool');
+const { supplierTotals, supplierOrders, termText } = require('../payouts/terms');
 
 /**
  * A supplier's own finance picture, for the supplier portal's Finance page (replaces a page
@@ -26,46 +27,24 @@ async function getReturnWindowDays() {
   return rows[0].days;
 }
 
-// Delivered, unpaid, return-free orders for this supplier, split by whether the return
-// window has passed. window_elapsed = true is exactly the set /payouts/owed counts.
+// What this supplier is owed, by THEIR payment terms (migration 122; the same ledger admin Payouts uses): ready to pay (due orders + fault
+// payments Leap released), to recover (paid, then cancelled / refused / returned; taken off the next payout), and not due yet.
+// The keys readyToPay / inReturnWindow are kept for the portal; "inReturnWindow" now means "not due yet" under any term.
 async function getUnpaidDelivered(supplierId) {
-  const { rows } = await db.query(
-    `WITH window_setting AS (
-       SELECT COALESCE((SELECT value FROM platform_settings WHERE key = 'return_window_days'), '7')::int AS days
-     )
-     SELECT (hs.delivered_at + (w.days || ' days')::interval < now()) AS window_elapsed,
-            COUNT(DISTINCT so.id) AS order_count,
-            COALESCE(SUM(COALESCE(oli.supplier_unit_price_cny, 0) * oli.quantity), 0) AS net_amount
-     FROM supplier_sub_orders so
-     JOIN hub_shipments hs ON hs.sub_order_id = so.id
-     JOIN order_line_items oli ON oli.sub_order_id = so.id
-     JOIN products p ON p.id = oli.product_id
-     JOIN product_categories pc ON pc.id = p.category
-     CROSS JOIN window_setting w
-     WHERE so.supplier_id = $1
-       AND hs.status = 'delivered'
-       AND hs.delivered_at IS NOT NULL
-       AND so.id NOT IN (SELECT sub_order_id FROM payout_sub_orders)
-       AND NOT EXISTS (SELECT 1 FROM return_cases rc WHERE rc.sub_order_id = so.id)
-       AND NOT EXISTS (SELECT 1 FROM order_line_items nl WHERE nl.sub_order_id = so.id AND nl.supplier_unit_price_cny IS NULL)
-     GROUP BY 1`,
-    [supplierId]
-  );
-  const bucket = (elapsed) => {
-    const row = rows.find((r) => r.window_elapsed === elapsed);
-    return { amount: row ? Number(Number(row.net_amount).toFixed(2)) : 0, orderCount: row ? Number(row.order_count) : 0 };
-  };
-  const ready = bucket(true);
-  // Payments an admin released for a fault Leap bears the cost of (migration 097): owed at once, no return window.
+  const t = await supplierTotals(db, supplierId);
   const { rows: adjustmentRows } = await db.query(
     `SELECT a.kind, a.amount, so.order_id
      FROM payout_adjustments a JOIN fault_cases fc ON fc.id = a.fault_case_id JOIN supplier_sub_orders so ON so.id = fc.sub_order_id
      WHERE a.supplier_id = $1 AND a.payout_id IS NULL AND a.currency_code = 'CNY' ORDER BY a.id`, [supplierId]
   );
   const adjustments = adjustmentRows.map((r) => ({ kind: r.kind, amount: Number(r.amount), orderId: r.order_id }));
-  ready.amount = Number((ready.amount + adjustments.reduce((sum, a) => sum + a.amount, 0)).toFixed(2));
-  ready.adjustments = adjustments;
-  return { readyToPay: ready, inReturnWindow: bucket(false) };
+  return {
+    readyToPay: { amount: Number((t.owed.amount + t.adjustments.amount).toFixed(2)), orderCount: t.owed.count, adjustments },
+    inReturnWindow: { amount: t.notDue.amount, orderCount: t.notDue.count, nextDueAt: t.notDue.nextDueAt },
+    toRecover: t.toRecover,
+    onHold: t.onHold,
+    payNow: t.payNow,
+  };
 }
 
 // Each recorded payout, with the orders it covered. A payout's amount is computed by the
@@ -77,7 +56,8 @@ async function getPayoutHistory(supplierId) {
             COUNT(DISTINCT pso.sub_order_id) AS order_count,
             COALESCE(SUM(COALESCE(oli.supplier_unit_price_cny, 0) * oli.quantity), 0) AS sales,
             COALESCE((SELECT SUM(a.gross_amount) FROM payout_adjustments a WHERE a.payout_id = p.id), 0) AS adjustments_gross,
-            COALESCE((SELECT SUM(a.amount) FROM payout_adjustments a WHERE a.payout_id = p.id), 0) AS adjustments_net
+            COALESCE((SELECT SUM(a.amount) FROM payout_adjustments a WHERE a.payout_id = p.id), 0) AS adjustments_net,
+            COALESCE((SELECT SUM(r.amount) FROM supplier_recoveries r WHERE r.payout_id = p.id), 0) AS recovered
      FROM payouts p
      LEFT JOIN payout_sub_orders pso ON pso.payout_id = p.id
      LEFT JOIN order_line_items oli ON oli.sub_order_id = pso.sub_order_id
@@ -91,8 +71,10 @@ async function getPayoutHistory(supplierId) {
     const amount = Number(r.amount);
     // Released adjustments (migration 097) count as sales at their gross value, so "sales minus the payout" is still exactly the commission.
     const sales = Number((Number(r.sales) + Number(r.adjustments_gross)).toFixed(2));
+    const recovered = Number(Number(r.recovered).toFixed(2));
     return {
       adjustmentsTotal: Number(Number(r.adjustments_net).toFixed(2)),
+      recoveredTotal: recovered,          // taken off this payout for orders lost after an earlier payment (migration 122)
       id: r.id,
       amount,
       currencyCode: r.currency_code,
@@ -100,7 +82,7 @@ async function getPayoutHistory(supplierId) {
       paidAt: r.created_at,
       orderCount: Number(r.order_count),
       sales: r.currency_code === 'CNY' ? sales : amount,
-      commission: r.currency_code === 'CNY' ? Number((sales - amount).toFixed(2)) : 0,
+      commission: r.currency_code === 'CNY' ? Number((sales - amount - recovered).toFixed(2)) : 0,
     };
   });
 }
@@ -142,19 +124,29 @@ async function getCommissionRates(supplierId) {
 }
 
 async function getSupplierFinance(supplierId) {
-  const [returnWindowDays, unpaid, payouts, totalPaid, commission, legacyUsdPaid] = await Promise.all([
+  const [returnWindowDays, unpaid, payouts, totalPaid, commission, legacyUsdPaid, termRows, orders] = await Promise.all([
     getReturnWindowDays(),
     getUnpaidDelivered(supplierId),
     getPayoutHistory(supplierId),
     getTotalPaid(supplierId),
     Promise.resolve(NO_COMMISSION),
     getLegacyUsdPaid(supplierId),
+    db.query('SELECT payment_term, payment_term_days FROM suppliers WHERE id = $1', [supplierId]).then((r) => r.rows),
+    supplierOrders(db, supplierId),
   ]);
+  const term = termRows[0] || {};
   return {
     currencyCode: 'CNY',
     returnWindowDays,
     readyToPay: unpaid.readyToPay,
     inReturnWindow: unpaid.inReturnWindow,
+    toRecover: unpaid.toRecover,
+    onHold: unpaid.onHold,
+    payNow: unpaid.payNow,
+    paymentTerm: term.payment_term || 'after_return_window',
+    paymentTermDays: term.payment_term_days || null,
+    paymentTermText: termText(term.payment_term, term.payment_term_days),
+    orders,                              // owed / to recover / on hold / not due, with the due date and why
     totalPaid,
     legacyUsdPaid,
     lastPayout: payouts.length > 0 ? { amount: payouts[0].amount, paidAt: payouts[0].paidAt } : null,

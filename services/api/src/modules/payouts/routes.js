@@ -4,6 +4,7 @@ const { requireAuth, requireRole, requirePageAccess } = require('../auth/middlew
 const { sendTransactionalEmail } = require('../email/client');
 const { payoutConfirmationEmail } = require('../email/templates');
 const { logAdminAction } = require('../audit/helpers');
+const { ledgerCte, supplierTotals, supplierOrders, readTerm, termText, DEFAULT_TERM } = require('./terms');
 
 /**
  * Real payouts (migration 024). CONFIRMED SCOPE, discussed and refined
@@ -20,6 +21,10 @@ const { logAdminAction } = require('../audit/helpers');
  * for it — this avoids needing a clawback/repayment system for a
  * return that happens after a supplier's already been paid, rather
  * than leaving that as an unhandled gap.
+ *
+ * SINCE MIGRATION 122: when an order is owed depends on the supplier's own PAYMENT TERMS (before shipping, on arrival at the hub, after
+ * delivery, after the return window, or N days after shipping) -- see ./terms.js. An order lost after it was paid (cancelled, refused,
+ * returned) is "to recover": taken off the next payout and recorded in supplier_recoveries.
  */
 const router = express.Router();
 
@@ -27,56 +32,85 @@ const router = express.Router();
 // payout right now" — used by both the owed-amount calculation and the
 // actual payout-recording endpoint, so the two can never disagree
 // about which sub-orders qualify.
-const ELIGIBLE_SUB_ORDERS_CTE = `
-  WITH window_setting AS (
-    SELECT COALESCE((SELECT value FROM platform_settings WHERE key = 'return_window_days'), '7')::int AS days
-  ),
-  eligible AS (
-    SELECT so.id AS sub_order_id, so.supplier_id,
-           COALESCE(oli.supplier_unit_price_cny, 0) * oli.quantity AS net_amount
-    FROM supplier_sub_orders so
-    JOIN hub_shipments hs ON hs.sub_order_id = so.id
-    JOIN order_line_items oli ON oli.sub_order_id = so.id
-    JOIN products p ON p.id = oli.product_id
-    JOIN product_categories pc ON pc.id = p.category
-    CROSS JOIN window_setting w
-    WHERE hs.status = 'delivered'
-      AND hs.delivered_at IS NOT NULL
-      AND hs.delivered_at + (w.days || ' days')::interval < now()
-      AND so.id NOT IN (SELECT sub_order_id FROM payout_sub_orders)
-      AND NOT EXISTS (SELECT 1 FROM return_cases rc WHERE rc.sub_order_id = so.id)
-      AND NOT EXISTS (SELECT 1 FROM order_line_items nl WHERE nl.sub_order_id = so.id AND nl.supplier_unit_price_cny IS NULL)
-  )
+// One row per owed sub-order (migration 122: decided by the supplier's payment terms; see ./terms.js), with its supplier's net amount.
+const ELIGIBLE_SUB_ORDERS_CTE = `${ledgerCte()},
+  eligible AS (SELECT sub_order_id, supplier_id, net_amount FROM ledger WHERE state = 'owed')
 `;
 
+// GET /payouts/owed: per supplier, what is owed now (orders due by their terms + released fault payments), what must be recovered, what
+// would be paid now (owed - to recover), and what is not due yet. A supplier with nothing in any of these is left out.
 router.get('/owed', requireAuth, requireRole('admin'), requirePageAccess('payouts'), async (req, res, next) => {
   try {
-    const { rows } = await db.query(`
-      ${ELIGIBLE_SUB_ORDERS_CTE},
-      -- Adjustments an admin released for a fault Leap bears the cost of (migration 097) are owed straight away: no return window applies.
-      owed_items AS (
-        SELECT supplier_id, net_amount AS amount, sub_order_id, false AS is_adjustment FROM eligible
-        UNION ALL
-        SELECT supplier_id, amount, NULL::int, true FROM payout_adjustments WHERE payout_id IS NULL AND currency_code = 'CNY'
-      )
-      SELECT s.id AS supplier_id, s.name AS supplier_name,
-             COALESCE(SUM(o.amount), 0) AS amount_owed,
-             COUNT(DISTINCT o.sub_order_id) AS eligible_sub_order_count,
-             COUNT(*) FILTER (WHERE o.is_adjustment) AS adjustment_count
-      FROM suppliers s
-      LEFT JOIN owed_items o ON o.supplier_id = s.id
-      GROUP BY s.id, s.name
-      HAVING COALESCE(SUM(o.amount), 0) > 0
-      ORDER BY amount_owed DESC
-    `);
-    res.json(rows.map((r) => ({
-      supplierId: r.supplier_id,
-      supplierName: r.supplier_name,
-      amountOwed: Number(r.amount_owed),
-      currencyCode: 'CNY',
-      eligibleSubOrderCount: Number(r.eligible_sub_order_count),
-      adjustmentCount: Number(r.adjustment_count),
-    })));
+    const totals = await supplierTotals(db);
+    const { rows: suppliers } = await db.query('SELECT id, name, payment_term, payment_term_days FROM suppliers');
+    const out = [];
+    for (const s of suppliers) {
+      const t = totals[s.id];
+      if (!t) continue;
+      const owedNow = Number((t.owed.amount + t.adjustments.amount).toFixed(2));
+      if (owedNow <= 0 && t.toRecover.amount <= 0 && t.notDue.count === 0) continue;
+      out.push({
+        supplierId: s.id,
+        supplierName: s.name,
+        amountOwed: owedNow,                    // owed now: due orders + released fault payments (before anything is recovered)
+        currencyCode: 'CNY',
+        eligibleSubOrderCount: t.owed.count,
+        adjustmentCount: t.adjustments.count,
+        paymentTerm: s.payment_term || DEFAULT_TERM,
+        paymentTermDays: s.payment_term_days,
+        paymentTermText: termText(s.payment_term, s.payment_term_days),
+        toRecover: t.toRecover,                 // { amount, count }: paid, then cancelled / refused / returned
+        payNow: t.payNow,                       // what "Record payout" pays: owed now - to recover
+        notDue: t.notDue,                       // { amount, count, nextDueAt }
+        onHold: t.onHold,
+      });
+    }
+    out.sort((a, b) => b.amountOwed - a.amountOwed || b.notDue.amount - a.notDue.amount);
+    res.json(out);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /payouts/owed/:supplierId: the orders behind the figures (why each is owed, recovered, waiting or on hold).
+router.get('/owed/:supplierId', requireAuth, requireRole('admin'), requirePageAccess('payouts'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT id, name, payment_term, payment_term_days FROM suppliers WHERE id = $1', [req.params.supplierId]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Supplier not found' });
+    res.json({
+      supplierId: rows[0].id, supplierName: rows[0].name,
+      paymentTerm: rows[0].payment_term, paymentTermDays: rows[0].payment_term_days, paymentTermText: termText(rows[0].payment_term, rows[0].payment_term_days),
+      totals: await supplierTotals(db, rows[0].id),
+      orders: await supplierOrders(db, rows[0].id),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET / PUT /payouts/terms/:supplierId  { paymentTerm, paymentTermDays? }: the supplier's payment terms, set on the admin's supplier page.
+// Only for a VERIFIED supplier. A change applies to every order that is not paid yet.
+router.get('/terms/:supplierId', requireAuth, requireRole('admin'), requirePageAccess('suppliers'), async (req, res, next) => {
+  try {
+    const { rows } = await db.query('SELECT id, verification_status, payment_term, payment_term_days FROM suppliers WHERE id = $1', [req.params.supplierId]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Supplier not found' });
+    res.json({ supplierId: rows[0].id, verified: rows[0].verification_status === 'verified', paymentTerm: rows[0].payment_term, paymentTermDays: rows[0].payment_term_days, paymentTermText: termText(rows[0].payment_term, rows[0].payment_term_days) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/terms/:supplierId', requireAuth, requireRole('admin'), requirePageAccess('suppliers'), async (req, res, next) => {
+  try {
+    const t = readTerm(req.body || {});
+    if (t.error) return res.status(400).json({ error: t.error });
+    const { rows } = await db.query('SELECT verification_status, payment_term, payment_term_days FROM suppliers WHERE id = $1', [req.params.supplierId]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Supplier not found' });
+    if (rows[0].verification_status !== 'verified') return res.status(409).json({ error: 'Payment terms can be set once the supplier is verified.' });
+    await db.query('UPDATE suppliers SET payment_term = $1, payment_term_days = $2 WHERE id = $3', [t.term, t.days, req.params.supplierId]);
+    const from = termText(rows[0].payment_term, rows[0].payment_term_days), to = termText(t.term, t.days);
+    if (from !== to) await logAdminAction(req, 'supplier_payment_terms_changed', 'supplier', req.params.supplierId, { from, to });
+    res.json({ supplierId: req.params.supplierId, verified: true, paymentTerm: t.term, paymentTermDays: t.days, paymentTermText: to });
   } catch (err) {
     next(err);
   }
@@ -135,13 +169,20 @@ router.post('/', requireAuth, requireRole('admin'), requirePageAccess('payouts')
       [supplierId]
     );
     const { rows: adjustmentRows } = await client.query('SELECT id, amount FROM payout_adjustments WHERE supplier_id = $1 AND payout_id IS NULL AND currency_code = \'CNY\' FOR UPDATE', [supplierId]);
+    // paid earlier, then cancelled / refused / returned (migration 122): taken off this payout
+    const { rows: recoverRows } = await client.query(`${ledgerCte('so.supplier_id = $1')} SELECT sub_order_id, net_amount, lost_reason FROM ledger WHERE state = 'recover'`, [supplierId]);
     // The eligible rows are one per order LINE: add them up per sub-order, so a sub-order with several lines is recorded once (it used to fail with a duplicate key) and is counted once.
     const eligibleRows = Object.values(eligibleLineRows.reduce((acc, r) => { (acc[r.sub_order_id] ||= { sub_order_id: r.sub_order_id, net_amount: 0 }).net_amount += Number(r.net_amount); return acc; }, {}));
     if (eligibleRows.length === 0 && adjustmentRows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'This supplier has no real amount currently owed.' });
     }
-    const totalAmount = eligibleRows.reduce((sum, r) => sum + Number(r.net_amount), 0) + adjustmentRows.reduce((sum, r) => sum + Number(r.amount), 0);
+    const recoverAmount = recoverRows.reduce((sum, r) => sum + Number(r.net_amount), 0);
+    const totalAmount = eligibleRows.reduce((sum, r) => sum + Number(r.net_amount), 0) + adjustmentRows.reduce((sum, r) => sum + Number(r.amount), 0) - recoverAmount;
+    if (totalAmount <= 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `Nothing to pay this time: ¥${recoverAmount.toFixed(2)} must still be recovered from this supplier, which is more than is owed. It will be taken off a later payout.`, code: 'recover_exceeds_owed' });
+    }
 
     const { rows: payoutRows } = await client.query(
       `INSERT INTO payouts (supplier_id, amount, currency_code, notes, created_by_admin_id) VALUES ($1, $2, 'CNY', $3, $4) RETURNING *`,
@@ -154,8 +195,11 @@ router.post('/', requireAuth, requireRole('admin'), requirePageAccess('payouts')
     if (adjustmentRows.length > 0) {
       await client.query('UPDATE payout_adjustments SET payout_id = $1 WHERE id = ANY($2::int[])', [payoutId, adjustmentRows.map((r) => r.id)]);
     }
+    for (const r of recoverRows) {
+      await client.query('INSERT INTO supplier_recoveries (sub_order_id, supplier_id, amount, reason, payout_id) VALUES ($1, $2, $3, $4, $5)', [r.sub_order_id, supplierId, Number(r.net_amount).toFixed(2), r.lost_reason, payoutId]);
+    }
     await client.query('COMMIT');
-    await logAdminAction(req, 'payout_recorded', 'payout', payoutId, { supplierId, amount: Number(totalAmount.toFixed(2)), subOrderCount: eligibleRows.length });
+    await logAdminAction(req, 'payout_recorded', 'payout', payoutId, { supplierId, amount: Number(totalAmount.toFixed(2)), subOrderCount: eligibleRows.length, recovered: Number(recoverAmount.toFixed(2)), recoveredOrders: recoverRows.length });
 
     // REAL BUG FOUND AND FIXED HERE (same real bug already found and
     // fixed on hub/routes.js, order/routes.js, and supplier/routes.js
@@ -171,6 +215,8 @@ router.post('/', requireAuth, requireRole('admin'), requirePageAccess('payouts')
       notes: payoutRows[0].notes,
       subOrderCount: eligibleRows.length,
       adjustmentCount: adjustmentRows.length,
+      recoveredAmount: Number(recoverAmount.toFixed(2)),
+      recoveredCount: recoverRows.length,
       createdAt: payoutRows[0].created_at,
     });
 
