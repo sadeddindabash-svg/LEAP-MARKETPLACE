@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';      // RenderRepaintBoundary (the picture of the screen)
 import 'package:provider/provider.dart';
 import '../core/theme_state.dart';
 
