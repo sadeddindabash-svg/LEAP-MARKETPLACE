@@ -63,7 +63,7 @@ function Part({ order, so, who, canCancelPart, onCancel, busy }: { order: OrderD
           <p className="font-bold">{t("delivery_code_title")}</p>
           <p className="mt-1 text-sm text-muted">{t("delivery_code_text")}</p>
           <p dir="ltr" className="mt-3 flex justify-center gap-2">{deliveryCode.split("").map((d, i) => <span key={i} className="flex h-14 w-12 items-center justify-center rounded-[10px] bg-chalk font-plate text-3xl font-extrabold text-navy">{d}</span>)}</p>
-          <p className="mt-2 text-xs text-muted">{t("delivery_code_hint")}</p>
+          <p className="mt-2 text-sm font-semibold text-ink">{t("delivery_code_hint")}</p>
         </div>
       )}
       {deliveryCode && attempt && <p data-testid="delivery-attempt" className="mt-3 rounded-[10px] bg-[#fff4e5] p-3 text-sm text-[#7a4e00]">{t(`delivery_attempt_${attempt.reason}` as "delivery_attempt_other")}</p>}

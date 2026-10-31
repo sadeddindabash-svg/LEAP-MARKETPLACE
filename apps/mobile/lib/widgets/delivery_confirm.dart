@@ -30,7 +30,7 @@ class DeliveryCodeCard extends StatelessWidget {
           Text(ar ? 'رمز التسليم' : 'Your delivery code', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: palette.ink)),
           const SizedBox(height: 4),
           Text(
-            ar ? 'أعطِ هذا الرمز للسائق عندما تستلم طردك. لا يمكنه إتمام التسليم بدونه.' : "Give this code to the driver when you receive your parcel. The driver can't complete the delivery without it.",
+            ar ? 'يحتاج مندوب التوصيل إلى هذا الرمز لإتمام التسليم.' : 'The delivery person needs this code to complete the delivery.',
             style: TextStyle(fontSize: 12, color: palette.muted),
           ),
           const SizedBox(height: 10),
@@ -52,7 +52,10 @@ class DeliveryCodeCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Text(ar ? 'لا تعطه إلا عندما يكون الطرد بين يديك.' : 'Only give it when the parcel is in your hands.', style: TextStyle(fontSize: 11, color: palette.muted)),
+          Text(
+            ar ? 'لا تعطِ هذا الرمز إلا لمندوب التوصيل وجهاً لوجه وأنت ترى طردك.' : 'Only give this code to the delivery person when you are face to face and can see your parcel.',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: palette.ink),
+          ),
         ],
       ),
     );

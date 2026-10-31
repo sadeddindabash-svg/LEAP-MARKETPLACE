@@ -81,45 +81,27 @@ const tokenOf = async (shipmentId) => (await pool.query('SELECT token FROM deliv
 const shipmentRow = async (shipmentId) => (await pool.query('SELECT status, delivered_at, delivery_confirmed_by, delivery_note FROM hub_shipments WHERE id = $1', [shipmentId])).rows[0];
 const proofCount = async (shipmentId) => Number((await pool.query('SELECT count(*) AS n FROM delivery_proofs WHERE shipment_id = $1', [shipmentId])).rows[0].n);
 
-const stateOf = (token, driverToken) => fetch(`${BACKEND_URL}/proof/${token}`, { headers: driverToken ? { Authorization: `Bearer ${driverToken}` } : {} }).then((r) => r.json());
-
-// ---- partner delivery drivers (migration 120): made through the admin API, signed in through the driver login, one per name
-const COMPANY = 'Test Delivery Co';
-const drivers = new Map();
-const randomPhone = () => `+9665${String(Math.floor(Math.random() * 1e8)).padStart(8, '0')}`;
-async function createDriver(name = 'Test driver') {
-  const res = await fetch(`${BACKEND_URL}/delivery-drivers`, { method: 'POST', headers: auth(await adminToken()), body: JSON.stringify({ name, phone: randomPhone(), company: COMPANY }) });
-  expect(res.status).toBe(201);
-  const { driver, temporaryPassword } = await res.json();
-  const login = await fetch(`${BACKEND_URL}/proof-driver/login`, { method: 'POST', headers: json, body: JSON.stringify({ phone: driver.phone, password: temporaryPassword }) });
-  expect(login.status).toBe(200);
-  return { ...driver, password: temporaryPassword, token: (await login.json()).token };
-}
-async function driverToken(name = 'Test driver') {
-  if (!drivers.has(name)) drivers.set(name, await createDriver(name));
-  return drivers.get(name).token;
-}
+const stateOf = (token) => fetch(`${BACKEND_URL}/proof/${token}`).then((r) => r.json());
+// Since migrations 120 + 121: no sign-in, but the BUYER'S code is required (the helper reads the real one unless the test says otherwise).
 const codeOf = async (token) => (await pool.query('SELECT buyer_code FROM delivery_proof_links WHERE token = $1', [token])).rows[0]?.buyer_code;
-
-function formFor({ photos = [makePng()], note, types, code, receivedBy = 'buyer' } = {}) {
+function formFor({ photos = [makePng()], name, phone, note, types, code, receivedBy = 'buyer' } = {}) {
   const form = new FormData();
   photos.forEach((buf, i) => form.append('photos', new Blob([buf], { type: types?.[i] || 'image/png' }), `photo-${i}.png`));
+  if (name !== undefined) form.append('courierName', name);
+  if (phone !== undefined) form.append('courierPhone', phone);
   if (note !== undefined) form.append('note', note);
   if (code) form.append('code', code);
   if (receivedBy) form.append('receivedBy', receivedBy);
   return form;
 }
-// A signed-in driver (named by `name`) with the buyer's real code, unless the test says otherwise (code: '0000', anonymous: true ...).
 async function upload(token, options = {}) {
   const code = options.code !== undefined ? options.code : await codeOf(token);
-  const headers = options.anonymous ? {} : { Authorization: `Bearer ${options.driverToken || await driverToken(options.name)}` };
-  return fetch(`${BACKEND_URL}/proof/${token}`, { method: 'POST', headers, body: formFor({ ...options, code }) });
+  return fetch(`${BACKEND_URL}/proof/${token}`, { method: 'POST', body: formFor({ ...options, code }) });
 }
-async function attempt(token, fields = {}, options = {}) {
+async function attempt(token, fields = {}) {
   const form = new FormData();
   for (const [k, v] of Object.entries(fields)) form.append(k, v);
-  const headers = options.anonymous ? {} : { Authorization: `Bearer ${options.driverToken || await driverToken(options.name)}` };
-  return fetch(`${BACKEND_URL}/proof/${token}/attempt`, { method: 'POST', headers, body: form });
+  return fetch(`${BACKEND_URL}/proof/${token}/attempt`, { method: 'POST', body: form });
 }
 const orderAs = (token, orderId) => fetch(`${BACKEND_URL}/order/${orderId}`, { headers: auth(token) }).then((r) => r.json());
 const notificationsOf = (token, lang) => fetch(`${BACKEND_URL}/notifications/me${lang ? `?lang=${lang}` : ''}`, { headers: auth(token) }).then((r) => r.json());
@@ -156,9 +138,9 @@ describe.runIf(backendUp)('the courier\'s delivery link: photos AND delivery con
     const p = await createParcel();
     const token = await tokenOf(p.shipmentId); // created when the hub shipped it, even though no label was printed
     expect(token).toBeTruthy();
-    expect(await stateOf(token)).toMatchObject({ state: 'ready', orderId: p.orderId, photoCount: 0, maxPhotos: 8, signedIn: false });
+    expect(await stateOf(token)).toMatchObject({ state: 'ready', orderId: p.orderId, photoCount: 0, maxPhotos: 8 });
 
-    const res = await upload(token, { photos: [makePng(800, 600, 1), makePng(640, 480, 2)], name: 'Omar the courier', note: 'Left with the doorman' });
+    const res = await upload(token, { photos: [makePng(800, 600, 1), makePng(640, 480, 2)], name: 'Omar the courier', phone: '+966501112233', note: 'Left with the doorman' });
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ delivered: true, photoCount: 2 });
 
@@ -168,18 +150,18 @@ describe.runIf(backendUp)('the courier\'s delivery link: photos AND delivery con
     expect(row.delivery_note).toContain('Omar the courier');
 
     const en = (await notificationsOf(p.buyerToken)).find((n) => n.title === 'Your order has been delivered');
-    expect(en.body).toBe(`Order ${p.orderId} is now delivered.`);
+    expect(en.body).toContain(`Order ${p.orderId} was delivered and confirmed with your code`);
     expect((await notificationsOf(p.buyerToken, 'ar')).find((n) => n.id === en.id).title).toMatch(ARABIC);
 
     const admin = (await orderAs(await adminToken(), p.orderId)).supplierSubOrders[0].hubShipment.deliveryProof;
-    expect(admin).toMatchObject({ source: 'courier_link', verified: true, receivedBy: 'buyer', driver: { name: 'Omar the courier', company: COMPANY } });
+    expect(admin).toMatchObject({ source: 'courier_link', verified: true, receivedBy: 'buyer', driver: { name: 'Omar the courier', phone: '+966501112233' } });
     expect(admin.photos).toHaveLength(2);
-    expect(admin.photos[0]).toMatchObject({ courierName: `Omar the courier (${COMPANY})`, note: 'Left with the doorman' });
+    expect(admin.photos[0]).toMatchObject({ courierName: 'Omar the courier', note: 'Left with the doorman' });
 
     const buyerBlob = JSON.stringify((await orderAs(p.buyerToken, p.orderId)).supplierSubOrders[0].hubShipment.deliveryProof);
     expect(JSON.parse(buyerBlob).photos).toHaveLength(2);
     expect(JSON.parse(buyerBlob)).toMatchObject({ verified: true, receivedBy: 'buyer' });
-    for (const secret of ['Omar the courier', 'Left with the doorman', 'courierName', 'submitted_ip', 'userAgent', 'driver', 'location', COMPANY]) expect(buyerBlob).not.toContain(secret);
+    for (const secret of ['Omar the courier', '+966501112233', 'Left with the doorman', 'courierName', 'submitted_ip', 'userAgent', 'driver', 'location']) expect(buyerBlob).not.toContain(secret);
 
     const photo = await fetch(`${BACKEND_URL}${admin.photos[0].url}`);
     expect(photo.status).toBe(200);
@@ -212,7 +194,7 @@ describe.runIf(backendUp)('the courier\'s delivery link: photos AND delivery con
   it('refuses what is not a real, ordinary photo, and stores nothing when it does', async () => {
     const p = await createParcel();
     const token = await tokenOf(p.shipmentId);
-    const empty = await fetch(`${BACKEND_URL}/proof/${token}`, { method: 'POST', headers: { Authorization: `Bearer ${await driverToken()}` }, body: new FormData() });
+    const empty = await fetch(`${BACKEND_URL}/proof/${token}`, { method: 'POST', body: new FormData() });
     expect(empty.status).toBe(400);
     expect((await empty.json()).error).toMatch(/at least one photo/i);
 
@@ -281,6 +263,7 @@ describe.runIf(backendUp)('the courier\'s delivery link: photos AND delivery con
     expect(html).toContain(token);                 // it only needs the token to talk to the server
     expect(html).not.toContain(p.orderId);         // the order, the buyer and the address come from the API only when the link is valid
     expect(html).not.toContain('John Smith');
+    expect(html).not.toContain('Sign in');         // migration 121: no sign-in
   }, 40000);
 
   it('CRITICAL: a delivered REPLACEMENT that the courier confirms completes its fault case (the delivery hook runs for this path too)', async () => {
@@ -316,35 +299,17 @@ describe.runIf(backendUp)('the courier\'s delivery link: photos AND delivery con
     const token = await tokenOf(p.shipmentId);
     let blockedAt = null;
     for (let attempt = 1; attempt <= 24; attempt += 1) {
-      const res = await fetch(`${BACKEND_URL}/proof/${token}`, { method: 'POST', body: new FormData() }); // each is refused (not signed in), but each counts
+      const res = await fetch(`${BACKEND_URL}/proof/${token}`, { method: 'POST', body: new FormData() }); // each is refused as "no photo", but each counts (no code is needed to be refused)
       if (res.status === 429) { blockedAt = attempt; expect(res.headers.get('retry-after')).toBeTruthy(); break; }
-      expect(res.status).toBe(401);
+      expect(res.status).toBe(400);
     }
     expect(blockedAt).toBe(21);
     expect(await proofCount(p.shipmentId)).toBe(0);
   }, 60000);
 });
 
-describe.runIf(backendUp)('migration 120: only a signed-in partner driver WITH the buyer\'s code can confirm a delivery (real backend)', () => {
-  it('CRITICAL: someone who is not signed in (the buyer, a neighbour) can confirm nothing and sees no name or address', async () => {
-    const p = await createParcel();
-    const token = await tokenOf(p.shipmentId);
-    const anon = await stateOf(token);
-    expect(anon).toMatchObject({ state: 'ready', signedIn: false });
-    expect(JSON.stringify(anon)).not.toContain('John Smith');
-    const res = await upload(token, { anonymous: true });
-    expect(res.status).toBe(401);
-    expect((await res.json()).code).toBe('driver_login_required');
-    expect((await attempt(token, { reason: 'not_home' }, { anonymous: true })).status).toBe(401);
-    expect(await proofCount(p.shipmentId)).toBe(0);
-    expect((await shipmentRow(p.shipmentId)).status).toBe('shipped_to_buyer');
-
-    const signedIn = await stateOf(token, await driverToken());
-    expect(signedIn).toMatchObject({ state: 'ready', signedIn: true, parcel: { orderId: p.orderId, recipientName: 'John Smith', city: 'Springfield', index: 1, total: 1 } });
-    expect(signedIn.parcel.phone).not.toBe('555-0100'); // partly hidden
-  }, 60000);
-
-  it('CRITICAL: a WRONG code delivers nothing; 5 wrong codes lock the parcel for 15 minutes, even for the right code', async () => {
+describe.runIf(backendUp)('migrations 120 + 121: no sign-in, but only the BUYER\'S code (given face to face) confirms a delivery (real backend)', () => {
+  it('CRITICAL: without the right code nothing is delivered; 5 wrong codes lock the parcel for 15 minutes, even for the right code', async () => {
     const p = await createParcel();
     const token = await tokenOf(p.shipmentId);
     const right = await codeOf(token);
@@ -353,31 +318,39 @@ describe.runIf(backendUp)('migration 120: only a signed-in partner driver WITH t
     const first = await upload(token, { code: wrong });
     expect(first.status).toBe(400);
     expect(await first.json()).toMatchObject({ code: 'wrong_code', triesLeft: 4 });
-    expect((await upload(token, { code: '' })).status).toBe(400); // no code at all is a wrong code too
+    expect((await upload(token, { code: '' })).status).toBe(400); // no code at all counts as a wrong code
     for (let i = 0; i < 2; i += 1) expect((await upload(token, { code: wrong })).status).toBe(400);
     const fifth = await upload(token, { code: wrong });
     expect(fifth.status).toBe(429);
     expect((await fifth.json()).code).toBe('code_locked');
-    const locked = await upload(token, { code: right });
-    expect(locked.status).toBe(429);
+    expect((await upload(token, { code: right })).status).toBe(429);
     expect(await proofCount(p.shipmentId)).toBe(0);
     expect((await shipmentRow(p.shipmentId)).status).toBe('shipped_to_buyer');
-
-    await pool.query('UPDATE delivery_proof_links SET code_locked_until = now() - interval \'1 minute\' WHERE shipment_id = $1', [p.shipmentId]); // 15 minutes later
+    await pool.query("UPDATE delivery_proof_links SET code_locked_until = now() - interval '1 minute' WHERE shipment_id = $1", [p.shipmentId]); // 15 minutes later
     expect((await upload(token, { code: right })).status).toBe(200);
     expect((await shipmentRow(p.shipmentId)).status).toBe('delivered');
   }, 60000);
 
-  it('who received it is required, and the location is kept for admin and the hub only', async () => {
+  it('anyone who scans sees the name and city to check the door (as on the label), with the phone partly hidden; nothing after delivery', async () => {
+    const p = await createParcel();
+    const token = await tokenOf(p.shipmentId);
+    const seen = await stateOf(token);
+    expect(seen).toMatchObject({ state: 'ready', parcel: { orderId: p.orderId, recipientName: 'John Smith', city: 'Springfield', index: 1, total: 1 } });
+    expect(seen.parcel.phone).not.toBe('555-0100');
+    expect((await upload(token)).status).toBe(200);
+    expect((await stateOf(token)).parcel).toBeUndefined();
+  }, 60000);
+
+  it('who received it is required ("left at the door" is no longer allowed); the location is for admin and the hub only', async () => {
     const p = await createParcel();
     const token = await tokenOf(p.shipmentId);
     const none = await upload(token, { receivedBy: null });
     expect(none.status).toBe(400);
     expect((await none.json()).code).toBe('received_by_required');
+    expect((await upload(token, { receivedBy: 'door' })).status).toBe(400);
     const form = formFor({ code: await codeOf(token), receivedBy: 'reception' });
     form.append('latitude', '24.7136'); form.append('longitude', '46.6753'); form.append('accuracy', '12');
-    const res = await fetch(`${BACKEND_URL}/proof/${token}`, { method: 'POST', headers: { Authorization: `Bearer ${await driverToken()}` }, body: form });
-    expect(res.status).toBe(200);
+    expect((await fetch(`${BACKEND_URL}/proof/${token}`, { method: 'POST', body: form })).status).toBe(200);
     const admin = (await orderAs(await adminToken(), p.orderId)).supplierSubOrders[0].hubShipment.deliveryProof;
     expect(admin).toMatchObject({ verified: true, receivedBy: 'reception', location: { latitude: 24.7136, longitude: 46.6753, accuracyM: 12 } });
     const hub = await fetch(`${BACKEND_URL}/hub/me/shipments/${p.shipmentId}`, { headers: auth(await hubToken()) }).then((r) => r.json());
@@ -387,59 +360,31 @@ describe.runIf(backendUp)('migration 120: only a signed-in partner driver WITH t
   it('CRITICAL: the BUYER sees the code while the parcel is on its way (admin never does); after delivery it is gone', async () => {
     const p = await createParcel();
     const token = await tokenOf(p.shipmentId);
-    const buyerView = (await orderAs(p.buyerToken, p.orderId)).supplierSubOrders[0].hubShipment;
-    expect(buyerView.deliveryCode).toBe(await codeOf(token));
-    const adminView = (await orderAs(await adminToken(), p.orderId)).supplierSubOrders[0].hubShipment;
-    expect(adminView.deliveryCode).toBeUndefined();
+    expect((await orderAs(p.buyerToken, p.orderId)).supplierSubOrders[0].hubShipment.deliveryCode).toBe(await codeOf(token));
+    expect((await orderAs(await adminToken(), p.orderId)).supplierSubOrders[0].hubShipment.deliveryCode).toBeUndefined();
     expect((await upload(token)).status).toBe(200);
     expect((await orderAs(p.buyerToken, p.orderId)).supplierSubOrders[0].hubShipment.deliveryCode).toBeNull();
   }, 60000);
 
-  it('CRITICAL: a driver turned off is stopped at once; a new password signs the driver out everywhere', async () => {
-    const p = await createParcel();
-    const token = await tokenOf(p.shipmentId);
-    const d = await createDriver('Driver to turn off');
-    const admin = await adminToken();
-    expect((await fetch(`${BACKEND_URL}/delivery-drivers/${d.id}/disable`, { method: 'POST', headers: auth(admin) })).status).toBe(200);
-    const off = await upload(token, { driverToken: d.token });
-    expect(off.status).toBe(401);
-    expect((await off.json()).code).toBe('account_disabled');
-    expect((await fetch(`${BACKEND_URL}/proof-driver/login`, { method: 'POST', headers: json, body: JSON.stringify({ phone: d.phone, password: d.password }) })).status).toBe(403);
-    expect((await fetch(`${BACKEND_URL}/delivery-drivers/${d.id}/enable`, { method: 'POST', headers: auth(admin) })).status).toBe(200);
-    const reset = await fetch(`${BACKEND_URL}/delivery-drivers/${d.id}/reset-password`, { method: 'POST', headers: auth(admin) });
-    expect(reset.status).toBe(200);
-    expect((await upload(token, { driverToken: d.token })).status).toBe(401); // the old sign-in no longer works
-    const relog = await fetch(`${BACKEND_URL}/proof-driver/login`, { method: 'POST', headers: json, body: JSON.stringify({ phone: d.phone, password: (await reset.json()).temporaryPassword }) });
-    expect(relog.status).toBe(200);
-    expect((await upload(token, { driverToken: (await relog.json()).token })).status).toBe(200);
-  }, 60000);
-
-  it('admin: a phone number can belong to one driver only; the list shows deliveries; the password is never listed', async () => {
-    const d = await createDriver('Listed driver');
-    const admin = await adminToken();
-    const dup = await fetch(`${BACKEND_URL}/delivery-drivers`, { method: 'POST', headers: auth(admin), body: JSON.stringify({ name: 'Copy', phone: d.phone, company: COMPANY }) });
-    expect(dup.status).toBe(409);
-    const list = await fetch(`${BACKEND_URL}/delivery-drivers`, { headers: auth(admin) }).then((r) => r.json());
-    const row = list.find((x) => x.id === d.id);
-    expect(row).toMatchObject({ name: 'Listed driver', company: COMPANY, isDisabled: false, deliveries: 0 });
-    expect(JSON.stringify(list)).not.toContain('password');
-    expect((await fetch(`${BACKEND_URL}/delivery-drivers`)).status).toBe(401);
-  }, 60000);
-
-  it('"couldn\'t deliver": recorded with its reason; the buyer is told for "not home"; admin sees it; the parcel stays on its way', async () => {
+  it('"couldn\'t deliver": recorded with its reason; the buyer is told for "not home"; admin sees it; only one report per parcel in 3 hours', async () => {
     const p = await createParcel();
     const token = await tokenOf(p.shipmentId);
     expect((await attempt(token, { reason: 'nonsense' })).status).toBe(400);
     expect((await attempt(token, { reason: 'other' })).status).toBe(400); // "other" needs a note
-    expect((await attempt(token, { reason: 'not_home', note: 'Rang twice' })).status).toBe(201);
+    expect((await attempt(token, { reason: 'not_home', note: 'Rang twice', courierName: 'Ali', courierPhone: '+966500000009' })).status).toBe(201);
+    const again = await attempt(token, { reason: 'wrong_address' });
+    expect(again.status).toBe(429);
+    expect((await again.json()).code).toBe('attempt_recently_reported');
     expect((await shipmentRow(p.shipmentId)).status).toBe('shipped_to_buyer');
     expect((await notificationsOf(p.buyerToken)).some((n) => n.title === "The driver couldn't deliver your order")).toBe(true);
     const attempts = (await orderAs(await adminToken(), p.orderId)).supplierSubOrders[0].hubShipment.deliveryAttempts;
     expect(attempts).toHaveLength(1);
-    expect(attempts[0]).toMatchObject({ reason: 'not_home', note: 'Rang twice', driver: { company: COMPANY } });
-    expect((await orderAs(p.buyerToken, p.orderId)).supplierSubOrders[0].hubShipment.deliveryAttempts).toBeUndefined();
+    expect(attempts[0]).toMatchObject({ reason: 'not_home', note: 'Rang twice', driver: { name: 'Ali', company: '+966500000009' } });
+    const buyerView = (await orderAs(p.buyerToken, p.orderId)).supplierSubOrders[0].hubShipment;
+    expect(buyerView.deliveryAttempts).toBeUndefined();
+    expect(buyerView.lastDeliveryAttempt).toMatchObject({ reason: 'not_home' });
 
-    expect((await upload(token)).status).toBe(200); // delivered the next day
+    expect((await upload(token)).status).toBe(200); // delivered later
     expect((await attempt(token, { reason: 'refused' })).status).toBe(409);
   }, 60000);
 });

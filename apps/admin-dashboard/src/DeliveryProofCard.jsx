@@ -34,7 +34,7 @@ export default function DeliveryProofCard({ proof, attempts, apiBase }) {
             ))}
           </div>
           {proof.driver
-            ? <div style={line}>Driver: {proof.driver.name} · {proof.driver.company}{proof.driver.phone ? ` · ${proof.driver.phone}` : ""}</div>
+            ? <div style={line}>Driver: {[proof.driver.name, proof.driver.company, proof.driver.phone].filter(Boolean).join(" · ")}</div>
             : couriers.length > 0 && <div style={line}>Courier: {couriers.join(", ")}</div>}
           {proof.receivedBy && <div style={line}>Received by: {RECEIVED_BY[proof.receivedBy] || proof.receivedBy}</div>}
           {notes.map((note) => <div key={note} style={line}>Note: {note}</div>)}
@@ -49,7 +49,7 @@ export default function DeliveryProofCard({ proof, attempts, apiBase }) {
           <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.red }}>COULDN'T DELIVER ({list.length})</div>
           {list.map((a, i) => (
             <div key={i} style={{ ...line, marginTop: 4 }}>
-              <b>{a.reasonText}</b>{a.note ? `: ${a.note}` : ""} · {when(a.createdAt)}{a.driver ? ` · ${a.driver.name} (${a.driver.company})` : ""}
+              <b>{a.reasonText}</b>{a.note ? `: ${a.note}` : ""} · {when(a.createdAt)}{a.driver ? ` · ${[a.driver.name, a.driver.company].filter(Boolean).join(", ")}` : ""}
               {a.location && <> · <a href={mapUrl(a.location)} target="_blank" rel="noreferrer" style={{ color: C.torque }}>map</a></>}
               {a.photoUrl && <> · <a href={`${apiBase}${a.photoUrl}`} target="_blank" rel="noreferrer" style={{ color: C.torque }}>photo</a></>}
             </div>

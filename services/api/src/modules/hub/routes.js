@@ -719,7 +719,7 @@ router.get('/me/shipments/:id/address-label', requireAuth, requireRole('hub_staf
       }
       const textLeft = qrLeft + qrSize + 16;
       doc.font('ArabicCapable-Bold').fontSize(10).fillColor('#000').text('FOR THE DELIVERY DRIVER', textLeft, qrTop, { width: pageRight - textLeft });
-      doc.font('ArabicCapable').fontSize(8.5).fillColor('#333').text("Scan, sign in, take a photo and enter the buyer's 4-digit code. This confirms the parcel was delivered.", textLeft, doc.y + 2, { width: pageRight - textLeft });
+      doc.font('ArabicCapable').fontSize(8.5).fillColor('#333').text("Scan, take a photo and ask the buyer for their 4-digit code, face to face. This confirms the parcel was delivered.", textLeft, doc.y + 2, { width: pageRight - textLeft });
       doc.font('ArabicCapable').fontSize(6.5).fillColor('#888').text(link.url, textLeft, doc.y + 4, { width: pageRight - textLeft });
     } catch (qrErr) {
       console.error('Could not add the courier QR to the label (non-fatal):', qrErr.message);

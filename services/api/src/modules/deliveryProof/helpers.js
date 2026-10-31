@@ -22,8 +22,10 @@ const { getHubAddressRow } = require('../addressEnglish/helpers');
  *                     ready          shipped, awaiting delivery: the first upload marks it DELIVERED
  *                     delivered      already delivered (by the hub, the carrier or an earlier upload): uploads only ADD photos
  *
- * Migration 120 adds, for a parcel that is awaiting delivery: only a signed-in partner DRIVER can confirm it, with the BUYER'S 4-digit code
- * (5 wrong codes lock it for 15 minutes), who received it and, when the phone allows, where. A driver who cannot deliver records why.
+ * Migration 120 adds, for a parcel that is awaiting delivery: it is confirmed with the BUYER'S 4-digit code (5 wrong codes lock it for 15
+ * minutes), who received it and, when the phone allows, where. A courier who cannot deliver records why.
+ * Migration 121: NO sign-in. Whoever carries the parcel scans the label and asks the buyer for the code, face to face; the code is the proof.
+ * The courier may type their name and phone (optional) so Leap knows who delivered.
  */
 const MAX_PHOTOS = 8;
 const MIN_DIMENSION_PX = 400; // a real phone photo is far larger; this only refuses thumbnails and screenshots of icons
@@ -34,7 +36,8 @@ class ProofError extends Error {
   constructor(message, status = 400, code) { super(message); this.status = status; if (code) this.code = code; }
 }
 
-const RECEIVED_BY = ['buyer', 'family', 'reception', 'door'];
+const RECEIVED_BY = ['buyer', 'family', 'reception']; // 'door' only on older proofs: the code is given face to face now
+const ATTEMPT_COOLDOWN_HOURS = 3; // one "couldn't deliver" per parcel in this time, so nobody can flood the buyer with false reports
 const ATTEMPT_REASONS = ['not_home', 'wrong_address', 'refused', 'other'];
 const MAX_CODE_FAILURES = 5;
 const CODE_LOCK_MINUTES = 15;
@@ -66,7 +69,8 @@ const maskPhone = (phone) => {
   return s.length <= 5 ? s : `${s.slice(0, 2)}${'•'.repeat(Math.max(3, s.length - 5))}${s.slice(-3)}`;
 };
 
-// What a signed-in driver sees after scanning, to check they are at the right door: name, partly hidden phone, address, parcel "1 of 2".
+// What the courier sees after scanning, to check they are at the right door. The same as the label on the parcel already shows (name, city,
+// street, order, parcel "1 of 2"), and the phone only partly.
 async function parcelDetails(link) {
   const addr = await getHubAddressRow(link.order_id);
   const { rows: siblings } = await db.query(
@@ -101,13 +105,13 @@ function stateOf(link) {
   return 'not_shipped_yet';
 }
 
-async function describeLink(token, driver = null) {
+async function describeLink(token) {
   const link = await loadLink(token);
   const state = stateOf(link);
   if (!link) return { state };
   const { rows } = await db.query('SELECT count(*) AS n FROM delivery_proofs WHERE shipment_id = $1', [link.shipment_id]);
-  const info = { state, orderId: link.order_id, photoCount: Number(rows[0].n), maxPhotos: MAX_PHOTOS, signedIn: Boolean(driver) };
-  if (driver) info.parcel = await parcelDetails(link); // the buyer's name and address only for a signed-in driver, never for whoever scans the label
+  const info = { state, orderId: link.order_id, photoCount: Number(rows[0].n), maxPhotos: MAX_PHOTOS };
+  if (state === 'ready') info.parcel = await parcelDetails(link); // only while it is awaiting delivery
   return info;
 }
 
@@ -180,12 +184,11 @@ const clean = (value, max) => (typeof value === 'string' && value.trim() ? value
 
 // The DRIVER sends photos. Stores them; and if the parcel was awaiting delivery (which needs the buyer's code and who received it), marks it
 // DELIVERED exactly as the hub's own confirmation does (status, buyer notification, replacement-case hook, email).
-async function submitProof({ token, files, driver, code, receivedBy, note, latitude, longitude, accuracy, ip, userAgent }) {
+async function submitProof({ token, files, driver = null, courierName, courierPhone, code, receivedBy, note, latitude, longitude, accuracy, ip, userAgent }) {
   const link = await loadLink(token);
   const state = stateOf(link);
   if (state === 'unknown') throw new ProofError('This link was not found.', 404);
   if (state === 'expired') throw new ProofError('This link has expired.', 410);
-  if (!driver) throw new ProofError('Please sign in as a delivery driver first.', 401, 'driver_login_required');
   if (state === 'not_shipped_yet') throw new ProofError('This parcel has not been shipped yet.', 409);
   if (!files || files.length === 0) throw new ProofError('Please add at least one photo.');
   const received = typeof receivedBy === 'string' && RECEIVED_BY.includes(receivedBy) ? receivedBy : null;
@@ -201,7 +204,8 @@ async function submitProof({ token, files, driver, code, receivedBy, note, latit
   const urls = [];
   for (const file of files) urls.push(await savePhoto(file));
 
-  const name = `${driver.name} (${driver.company})`.slice(0, 120);
+  const name = driver ? `${driver.name} (${driver.company})`.slice(0, 120) : clean(courierName, 80);
+  const phone = driver ? driver.phone : clean(courierPhone, 30);
   const noteText = clean(note, 300);
   const client = await db.getPool().connect();
   let newlyDelivered = false;
@@ -215,19 +219,20 @@ async function submitProof({ token, files, driver, code, receivedBy, note, latit
 
     for (let i = 0; i < urls.length; i += 1) {
       await client.query(
-        `INSERT INTO delivery_proofs (shipment_id, photo_url, courier_name, note, submitted_ip, user_agent, marked_delivered, driver_id, received_by, code_verified, latitude, longitude, location_accuracy_m)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-        [shipment.id, urls[i], name, noteText, ip ? String(ip).slice(0, 64) : null, userAgent ? String(userAgent).slice(0, 300) : null, newlyDelivered && i === 0,
-          driver.id, received, newlyDelivered, where.lat, where.lng, where.accuracy]
+        `INSERT INTO delivery_proofs (shipment_id, photo_url, courier_name, courier_phone, note, submitted_ip, user_agent, marked_delivered, driver_id, received_by, code_verified, latitude, longitude, location_accuracy_m)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+        [shipment.id, urls[i], name, phone, noteText, ip ? String(ip).slice(0, 64) : null, userAgent ? String(userAgent).slice(0, 300) : null, newlyDelivered && i === 0,
+          driver ? driver.id : null, received, newlyDelivered, where.lat, where.lng, where.accuracy]
       );
     }
     if (newlyDelivered) {
       await client.query(
         `UPDATE hub_shipments SET status = 'delivered', delivered_at = now(), delivery_confirmed_by = 'courier_link', delivery_note = $1, updated_at = now() WHERE id = $2`,
-        [`Delivery confirmed by driver ${name} with the buyer's code, with ${urls.length} photo${urls.length === 1 ? '' : 's'}.`, shipment.id]
+        [`Delivery confirmed with the buyer's code${name ? ` by ${name}` : ''}, with ${urls.length} photo${urls.length === 1 ? '' : 's'}.`, shipment.id]
       );
       const { rows: orderRows } = await client.query('SELECT buyer_id FROM orders WHERE id = $1', [orderId]);
-      await createNotification({ userId: orderRows[0]?.buyer_id, type: 'order_status', ...messages.orderDelivered(orderId), linkType: 'order', linkId: orderId }, client);
+      // confirmed with the buyer's code: tell them at once, so a code given away by mistake is reported within minutes
+      await createNotification({ userId: orderRows[0]?.buyer_id, type: 'order_status', ...deliveredWithCodeMessage(orderId), linkType: 'order', linkId: orderId }, client);
     }
     await client.query('COMMIT');
   } catch (err) {
@@ -242,6 +247,15 @@ async function submitProof({ token, files, driver, code, receivedBy, note, latit
     sendDeliveredEmail(orderId); // best-effort, never awaited by the response
   }
   return { delivered: newlyDelivered, orderId, photoCount: existing + urls.length };
+}
+
+function deliveredWithCodeMessage(orderId) {
+  return {
+    title: 'Your order has been delivered',
+    body: `Order ${orderId} was delivered and confirmed with your code. If you did not receive it, open the order and tap "This isn't my parcel".`,
+    titleAr: 'تم تسليم طلبك',
+    bodyAr: `تم تسليم الطلب ${orderId} وتأكيده برمزك. إذا لم تستلمه، افتح الطلب واضغط "ليست طردي".`,
+  };
 }
 
 function sendDeliveredEmail(orderId) {
@@ -269,7 +283,7 @@ function sendDeliveredEmail(orderId) {
 // BUYER sees the photos, when, who received it and whether their code was used. The IP address and device are recorded but shown to nobody here.
 async function loadProofForShipment(shipmentId, { forAdmin }, client = db) {
   const { rows } = await client.query(
-    `SELECT p.photo_url, p.courier_name, p.note, p.submitted_at, p.marked_delivered, p.received_by, p.code_verified, p.latitude, p.longitude, p.location_accuracy_m,
+    `SELECT p.photo_url, p.courier_name, p.courier_phone, p.note, p.submitted_at, p.marked_delivered, p.received_by, p.code_verified, p.latitude, p.longitude, p.location_accuracy_m,
             d.name AS driver_name, d.company AS driver_company, d.phone AS driver_phone
      FROM delivery_proofs p LEFT JOIN delivery_drivers d ON d.id = p.driver_id
      WHERE p.shipment_id = $1 ORDER BY p.submitted_at ASC, p.id ASC`, [shipmentId]
@@ -287,7 +301,9 @@ async function loadProofForShipment(shipmentId, { forAdmin }, client = db) {
       : { url: r.photo_url, submittedAt: r.submitted_at })),
   };
   if (forAdmin) {
-    proof.driver = main.driver_name ? { name: main.driver_name, company: main.driver_company, phone: main.driver_phone } : null;
+    // who delivered: a driver account (migration 120) or, since 121, the name / phone the courier typed (both optional)
+    proof.driver = main.driver_name ? { name: main.driver_name, company: main.driver_company, phone: main.driver_phone }
+      : (main.courier_name || main.courier_phone) ? { name: main.courier_name || null, company: null, phone: main.courier_phone || null } : null;
     proof.location = main.latitude !== null && main.latitude !== undefined ? { latitude: main.latitude, longitude: main.longitude, accuracyM: main.location_accuracy_m } : null;
   }
   return proof;
@@ -306,17 +322,21 @@ const buyerAttemptMessage = (reason, orderId) => (reason === 'wrong_address'
   : { title: "The driver couldn't deliver your order", body: `The driver came to deliver order ${orderId} but couldn't reach you. Our team will contact you to arrange a new delivery time.`,
     titleAr: 'لم يتمكن السائق من تسليم طلبك', bodyAr: `حضر السائق لتسليم الطلب ${orderId} لكنه لم يتمكن من الوصول إليك. سيتواصل معك فريقنا لترتيب موعد توصيل جديد.` });
 
-async function recordAttempt({ token, driver, reason, note, file, latitude, longitude, accuracy }) {
+async function recordAttempt({ token, driver = null, courierName, courierPhone, reason, note, file, latitude, longitude, accuracy }) {
   const link = await loadLink(token);
   const state = stateOf(link);
   if (state === 'unknown') throw new ProofError('This link was not found.', 404);
   if (state === 'expired') throw new ProofError('This link has expired.', 410);
-  if (!driver) throw new ProofError('Please sign in as a delivery driver first.', 401, 'driver_login_required');
   if (state === 'not_shipped_yet') throw new ProofError('This parcel has not been shipped yet.', 409);
   if (state === 'delivered') throw new ProofError('This parcel is already delivered.', 409);
   if (!ATTEMPT_REASONS.includes(reason)) throw new ProofError('Choose why the parcel could not be delivered.');
   const noteText = clean(note, 300);
   if (reason === 'other' && !noteText) throw new ProofError('Write a short note for "Other".');
+  const { rows: recent } = await db.query(
+    `SELECT 1 FROM delivery_attempts WHERE shipment_id = $1 AND created_at > now() - ($2 || ' hours')::interval LIMIT 1`, [link.shipment_id, String(ATTEMPT_COOLDOWN_HOURS)]
+  );
+  if (recent.length > 0) throw new ProofError(`A problem was already reported for this parcel in the last ${ATTEMPT_COOLDOWN_HOURS} hours. Leap will contact the buyer.`, 429, 'attempt_recently_reported');
+  const who = driver ? `${driver.name} (${driver.company})` : [clean(courierName, 80), clean(courierPhone, 30)].filter(Boolean).join(', ') || null;
   const photoUrl = file ? await savePhoto(file) : null;
   const where = readLocation({ latitude, longitude, accuracy });
   const orderId = link.order_id;
@@ -324,8 +344,8 @@ async function recordAttempt({ token, driver, reason, note, file, latitude, long
   try {
     await client.query('BEGIN');
     await client.query(
-      `INSERT INTO delivery_attempts (shipment_id, driver_id, reason, note, photo_url, latitude, longitude, location_accuracy_m) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [link.shipment_id, driver.id, reason, noteText, photoUrl, where.lat, where.lng, where.accuracy]
+      `INSERT INTO delivery_attempts (shipment_id, driver_id, courier_name, courier_phone, reason, note, photo_url, latitude, longitude, location_accuracy_m) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [link.shipment_id, driver ? driver.id : null, driver ? driver.name : clean(courierName, 80), driver ? driver.phone : clean(courierPhone, 30), reason, noteText, photoUrl, where.lat, where.lng, where.accuracy]
     );
     // the buyer is told when it helps them (not home, wrong address); a refusal is for Leap to handle
     if (reason === 'not_home' || reason === 'wrong_address') {
@@ -336,8 +356,8 @@ async function recordAttempt({ token, driver, reason, note, file, latitude, long
     const why = `${ATTEMPT_TEXT[reason].en}${noteText ? `: ${noteText}` : ''}`;
     for (const a of admins) {
       await createNotification({
-        userId: a.id, type: 'order_status', title: `Delivery problem: order ${orderId}`, body: `Driver ${driver.name} (${driver.company}) could not deliver. ${why}`,
-        titleAr: `مشكلة في التوصيل: الطلب ${orderId}`, bodyAr: `لم يتمكن السائق ${driver.name} (${driver.company}) من التسليم. ${ATTEMPT_TEXT[reason].ar}${noteText ? `: ${noteText}` : ''}`,
+        userId: a.id, type: 'order_status', title: `Delivery problem: order ${orderId}`, body: `${who ? `The courier (${who})` : 'The courier'} could not deliver. ${why}`,
+        titleAr: `مشكلة في التوصيل: الطلب ${orderId}`, bodyAr: `لم يتمكن المندوب${who ? ` (${who})` : ''} من التسليم. ${ATTEMPT_TEXT[reason].ar}${noteText ? `: ${noteText}` : ''}`,
         linkType: 'order', linkId: orderId,
       }, client);
     }
@@ -354,12 +374,12 @@ async function recordAttempt({ token, driver, reason, note, file, latitude, long
 // Every "couldn't deliver" of one shipment, oldest first: for admin and the hub (the buyer only gets the latest one's reason).
 async function loadAttemptsForShipment(shipmentId, client = db) {
   const { rows } = await client.query(
-    `SELECT a.reason, a.note, a.photo_url, a.latitude, a.longitude, a.created_at, d.name AS driver_name, d.company AS driver_company
+    `SELECT a.reason, a.note, a.photo_url, a.latitude, a.longitude, a.created_at, a.courier_name, a.courier_phone, d.name AS driver_name, d.company AS driver_company
      FROM delivery_attempts a LEFT JOIN delivery_drivers d ON d.id = a.driver_id WHERE a.shipment_id = $1 ORDER BY a.created_at ASC, a.id ASC`, [shipmentId]
   );
   return rows.map((r) => ({
     reason: r.reason, reasonText: ATTEMPT_TEXT[r.reason].en, note: r.note, photoUrl: r.photo_url, createdAt: r.created_at,
-    driver: r.driver_name ? { name: r.driver_name, company: r.driver_company } : null,
+    driver: r.driver_name ? { name: r.driver_name, company: r.driver_company } : (r.courier_name || r.courier_phone) ? { name: r.courier_name || r.courier_phone, company: r.courier_name && r.courier_phone ? r.courier_phone : null } : null,
     location: r.latitude !== null ? { latitude: r.latitude, longitude: r.longitude } : null,
   }));
 }
@@ -378,7 +398,7 @@ async function buyerDeliveryInfo(shipment) {
 
 module.exports = {
   buyerDeliveryInfo,
-  ProofError, MAX_PHOTOS, LINK_VALID_DAYS, TOKEN_PATTERN, RECEIVED_BY, ATTEMPT_REASONS, MAX_CODE_FAILURES, CODE_LOCK_MINUTES,
+  ProofError, MAX_PHOTOS, LINK_VALID_DAYS, TOKEN_PATTERN, RECEIVED_BY, ATTEMPT_REASONS, MAX_CODE_FAILURES, CODE_LOCK_MINUTES, ATTEMPT_COOLDOWN_HOURS,
   ensureProofLink, proofUrl, describeLink, submitProof, loadProofForShipment, stateOf, loadLink,
   buyerCodeForShipment, recordAttempt, loadAttemptsForShipment, maskPhone,
 };

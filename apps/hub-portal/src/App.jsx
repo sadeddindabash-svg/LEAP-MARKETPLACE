@@ -457,7 +457,7 @@ function HubDeliveryProof({ proof, attempts }) {
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "8px 0" }}>
             {proof.photos.map((p) => <a key={p.url} href={`${api}${p.url}`} target="_blank" rel="noreferrer"><img src={`${api}${p.url}`} alt="" style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.line}` }} /></a>)}
           </div>
-          {proof.driver && <div>{tx.driver}: {proof.driver.name} · {proof.driver.company}</div>}
+          {proof.driver && <div>{tx.driver}: {[proof.driver.name, proof.driver.company, proof.driver.phone].filter(Boolean).join(" · ")}</div>}
           {proof.receivedBy && <div>{tx.receivedBy}: {tx.received[proof.receivedBy] || proof.receivedBy}</div>}
           {proof.location && <div>{tx.location}: <a href={map(proof.location)} target="_blank" rel="noreferrer" style={{ color: C.torque }}>{tx.map}</a></div>}
           <div style={{ color: C.muted, fontSize: 12, marginTop: 4 }}>{new Date(proof.deliveredAt || proof.photos[0].submittedAt).toLocaleString()}</div>
@@ -466,7 +466,7 @@ function HubDeliveryProof({ proof, attempts }) {
       {list.length > 0 && (
         <div style={{ background: C.redBg, borderRadius: 10, padding: 12, marginTop: 8, ...body, fontSize: 12.5 }}>
           <div style={{ fontWeight: 700, color: C.red }}>{tx.attempts} ({list.length})</div>
-          {list.map((a, i) => <div key={i} style={{ marginTop: 4 }}><b>{tx.reasons[a.reason] || a.reason}</b>{a.note ? `: ${a.note}` : ""} · {new Date(a.createdAt).toLocaleString()}{a.driver ? ` · ${a.driver.name} (${a.driver.company})` : ""}</div>)}
+          {list.map((a, i) => <div key={i} style={{ marginTop: 4 }}><b>{tx.reasons[a.reason] || a.reason}</b>{a.note ? `: ${a.note}` : ""} · {new Date(a.createdAt).toLocaleString()}{a.driver ? ` · ${[a.driver.name, a.driver.company].filter(Boolean).join(", ")}` : ""}</div>)}
         </div>
       )}
     </div>
