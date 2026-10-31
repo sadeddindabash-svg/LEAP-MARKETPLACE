@@ -36,6 +36,26 @@ const HUB_STEP_LABELS = {
   packed: { en: 'Repacked for shipping', ar: 'أُعيدت تعبئتها للشحن' },
   shipped_to_buyer: { en: 'Shipped to you', ar: 'تم شحنها إليك' },
 };
+// The steps BEFORE the hub (new): while the seller prepares the order the buyer sees progress, not an empty list. The seller stays
+// anonymous ("the seller"). Their kind names match the app's 7 steps (placed, preparing, shipped_to_hub, then the hub's own steps).
+const EARLY_STEP_LABELS = {
+  placed: { en: 'Order placed', ar: 'تم تقديم الطلب' },
+  preparing: { en: 'Preparing your order: the seller is packing your parts', ar: 'جارٍ تجهيز طلبك: البائع يجهّز قطعك' },
+  shipped_to_hub: { en: 'On the way to the LEAP hub', ar: 'في الطريق إلى مركز LEAP' },
+};
+/** How far a supplier part has come, 0 (placed) to 6 (delivered); null when cancelled or refused. The same steps as the admin's delivery bar. */
+function trackingStage(partStatus, refused, shipment) {
+  if (partStatus === 'cancelled' || refused) return null;
+  const hub = shipment ? shipment.status : null;
+  if (hub === 'delivered' || (shipment && shipment.delivered_at)) return 6;
+  if (hub === 'shipped_to_buyer') return 5;
+  if (hub === 'inspected' || hub === 'packed') return 4;
+  if (hub === 'received' || hub === 'opened' || hub === 'flagged' || hub === 'returned_to_supplier' || hub === 'discarded_at_hub') return 3;
+  if (partStatus === 'shipped' || partStatus === 'delivered') return 2;
+  if (partStatus === 'preparing') return 1;
+  return 0;
+}
+
 const DELIVERED_LABELS = {
   carrier: { en: 'Delivered (confirmed by carrier)', ar: 'تم التسليم (بتأكيد شركة الشحن)' },
   hub: { en: 'Delivered (confirmed by hub)', ar: 'تم التسليم (بتأكيد المركز)' },
@@ -152,7 +172,7 @@ async function fetchLiveTrackingEvents(trackingNumber, carrierCode) {
 async function buildTrackingTimeline(orderId, lang = 'en') {
   const language = lang === 'ar' ? 'ar' : 'en';
   const { rows: subOrders } = await db.query(
-    `SELECT so.id, so.status AS supplier_status, so.tracking_number AS supplier_tracking_number
+    `SELECT so.id, so.status AS supplier_status, so.tracking_number AS supplier_tracking_number, to_jsonb(so) AS raw
      FROM supplier_sub_orders so WHERE so.order_id = $1`,
     [orderId]
   );
@@ -173,6 +193,21 @@ async function buildTrackingTimeline(orderId, lang = 'en') {
     const shipment = shipmentRows[0] || null;
 
     const hubMilestones = [];
+    // the steps before the hub: placed, preparing, on the way to the hub (times from the order, the supplier's answer and the shipment)
+    const raw = so.raw || {};
+    const refused = Boolean(raw.refused_at);
+    const at = (...values) => values.find((v) => v) || null;
+    const later = (t, after) => (t && after && new Date(t) <= new Date(after) ? new Date(new Date(after).getTime() + 1000).toISOString() : t);
+    if (orderPlacedAt) hubMilestones.push({ time: orderPlacedAt, description: EARLY_STEP_LABELS.placed[language], kind: 'placed', location: null, source: 'leap' });
+    if (so.supplier_status !== 'cancelled' && !refused) {
+      const preparedAt = later(at(raw.accepted_at, raw.responded_at, orderPlacedAt), orderPlacedAt);
+      if (['preparing', 'shipped', 'delivered'].includes(so.supplier_status) || shipment) {
+        hubMilestones.push({ time: preparedAt, description: EARLY_STEP_LABELS.preparing[language], kind: 'preparing', location: null, source: 'leap' });
+      }
+      if (so.supplier_status === 'shipped' || so.supplier_status === 'delivered') {
+        hubMilestones.push({ time: later(at(raw.shipped_at, shipment && shipment.created_at, preparedAt), preparedAt), description: EARLY_STEP_LABELS.shipped_to_hub[language], kind: 'shipped_to_hub', location: null, source: 'leap' });
+      }
+    }
     if (shipment) {
       const { rows: events } = await db.query(
         'SELECT step, tracking_number, created_at FROM hub_shipment_events WHERE shipment_id = $1 ORDER BY created_at ASC',
@@ -229,8 +264,11 @@ async function buildTrackingTimeline(orderId, lang = 'en') {
     // falsely flagged as delayed. Checks the real hub status instead.
     const isDelayed = shipment?.status !== 'delivered' && daysSinceLastUpdate !== null && daysSinceLastUpdate >= 5;
 
+    const stage = trackingStage(so.supplier_status, refused, shipment);
     results.push({
       subOrderId: so.id,
+      stage,                                  // 0 placed ... 6 delivered (the app's 7 steps); null when cancelled or refused
+      cancelled: stage === null,
       supplierTrackingNumber: so.supplier_tracking_number,
       hubTrackingNumber: hubTrackingNumber || null,
       timeline,
@@ -240,4 +278,4 @@ async function buildTrackingTimeline(orderId, lang = 'en') {
   return results;
 }
 
-module.exports = { buildTrackingTimeline, fetchLiveTrackingEvents };
+module.exports = { buildTrackingTimeline, fetchLiveTrackingEvents, trackingStage };

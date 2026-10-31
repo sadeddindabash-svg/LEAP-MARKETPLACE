@@ -173,11 +173,14 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   Text(hubTracking, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 16),
                 ],
-                if (timeline.isEmpty)
+                if (timeline.isEmpty && so['stage'] == null)
                   Padding(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       child: Text(tr(context, 'tracking_no_updates'), style: const TextStyle(color: LeapColors.muted)),
                   )
+                // the 7 steps (placed ... delivered), the carrier's events under "Shipped to you"
+                else if (so['cancelled'] != true)
+                  _StepsList(stage: (so['stage'] as num?)?.toInt(), timeline: timeline, arabic: context.watch<LanguageState>().isArabic)
                 else
                   for (var j = 0; j < timeline.length; j++)
                     _TimelineRow(
@@ -193,6 +196,136 @@ class _TrackingScreenState extends State<TrackingScreen> {
           );
         },
       ),
+    );
+  }
+}
+
+// The 7 steps from the order being placed to delivery (the same as the admin's delivery bar): finished steps are ticked, the current one
+// is circled and marked "Now", later ones are grey. Each step shows when it happened; the carrier's live events are listed under
+// "Shipped to you". [stage] comes from the server (0-6); without it, the furthest step found in the timeline is used.
+const _stepKinds = [
+  ['placed'], ['preparing'], ['shipped_to_hub'], ['received', 'opened'], ['inspected', 'packed'], ['shipped_to_buyer'], ['delivered'],
+];
+const _stepNamesEn = ['Order placed', 'Preparing your order', 'On the way to the LEAP hub', 'Arrived at the LEAP hub', 'Checked and packed', 'Shipped to you', 'Delivered'];
+const _stepNamesAr = ['تم تقديم الطلب', 'جارٍ تجهيز طلبك', 'في الطريق إلى مركز LEAP', 'وصل إلى مركز LEAP', 'تم الفحص والتغليف', 'تم الشحن إليك', 'تم التسليم'];
+const _stepNotesEn = ['', 'The seller is packing your parts', '', 'Quality check', '', '', ''];
+const _stepNotesAr = ['', 'البائع يجهّز قطعك', '', 'فحص الجودة', '', '', ''];
+
+class _StepsList extends StatelessWidget {
+  final int? stage;
+  final List<Map<String, dynamic>> timeline;
+  final bool arabic;
+  const _StepsList({required this.stage, required this.timeline, required this.arabic});
+
+  int get _current {
+    if (stage != null) return stage! < 0 ? 0 : (stage! > 6 ? 6 : stage!);
+    var furthest = 0;
+    for (final e in timeline) {
+      for (var i = 0; i < _stepKinds.length; i++) {
+        if (_stepKinds[i].contains(e['kind']) && i > furthest) furthest = i;
+      }
+    }
+    return furthest;
+  }
+
+  DateTime? _timeOf(int step) {
+    DateTime? latest;
+    for (final e in timeline) {
+      if (!_stepKinds[step].contains(e['kind'])) continue;
+      final t = DateTime.tryParse('${e['time'] ?? ''}')?.toLocal();
+      if (t != null && (latest == null || t.isAfter(latest))) latest = t;
+    }
+    return latest;
+  }
+
+  String _fmt(DateTime t) => '${t.day.toString().padLeft(2, '0')}/${t.month.toString().padLeft(2, '0')}/${t.year} · ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = LeapPalette.of(context);
+    final current = _current;
+    final carrier = timeline.where((e) => e['source'] == 'carrier').toList();
+    return Column(
+      key: const ValueKey('tracking-steps'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < 7; i++)
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Column(
+                  children: [
+                    if (i < current || (i == current && current == 6))
+                      Container(
+                        width: 20, height: 20,
+                        decoration: BoxDecoration(color: palette.gauge, shape: BoxShape.circle),
+                        child: const Icon(Icons.check, size: 13, color: Colors.white),
+                      )
+                    else if (i == current)
+                      Container(width: 20, height: 20, decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: palette.torque, width: 3)))
+                    else
+                      Container(width: 20, height: 20, decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: palette.line, width: 2))),
+                    if (i < 6) Expanded(child: Container(width: 2, margin: const EdgeInsets.symmetric(vertical: 2), color: i < current ? palette.gauge : palette.line)),
+                  ],
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          Flexible(
+                            child: Text(
+                              arabic ? _stepNamesAr[i] : _stepNamesEn[i],
+                              style: TextStyle(fontSize: 13.5, fontWeight: i == current ? FontWeight.w800 : (i < current ? FontWeight.w600 : FontWeight.w500), color: i <= current ? palette.ink : palette.muted),
+                            ),
+                          ),
+                          if (i == current && current < 6) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                              decoration: BoxDecoration(color: palette.torque.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)),
+                              child: Text(arabic ? 'الآن' : 'Now', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: palette.torque)),
+                            ),
+                          ],
+                        ]),
+                        if (i <= current && (arabic ? _stepNotesAr[i] : _stepNotesEn[i]).isNotEmpty)
+                          Text(arabic ? _stepNotesAr[i] : _stepNotesEn[i], style: TextStyle(fontSize: 11.5, color: palette.muted)),
+                        if (i <= current && _timeOf(i) != null)
+                          Text(_fmt(_timeOf(i)!), style: TextStyle(fontSize: 11.5, color: palette.muted)),
+                        // the carrier's live events, under "Shipped to you"
+                        if (i == 5 && current >= 5 && carrier.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                for (final e in carrier)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 6),
+                                    child: Text(
+                                      [
+                                        '${e['description'] ?? ''}',
+                                        if ((e['location'] as String?)?.isNotEmpty == true) e['location'] as String,
+                                        if (DateTime.tryParse('${e['time'] ?? ''}') != null) _fmt(DateTime.parse('${e['time']}').toLocal()),
+                                      ].join(' · '),
+                                      style: TextStyle(fontSize: 12, color: palette.muted),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

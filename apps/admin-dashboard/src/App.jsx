@@ -851,8 +851,11 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
   // field. An order with no real hub shipment yet (too early) shows
   // only under "All" -- excluded from every specific real filter.
   const TO_SHIP_HUB_STATUSES = ["awaiting_receipt", "received", "opened", "inspected", "packed"];
+  // Need assign: at least one (not cancelled, not refused) supplier part has no hub yet
+  const needsAssign = (o) => Boolean(o.assigned) && o.assigned.of > 0 && o.assigned.done < o.assigned.of && o.status !== "cancelled";
   const matches = (o, f) => {
     if (f === "all") return true;
+    if (f === "assign") return needsAssign(o);
     if (o.hubStatus == null) return false;
     if (f === "to_ship") return TO_SHIP_HUB_STATUSES.includes(o.hubStatus);
     if (f === "shipped") return o.hubStatus === "shipped_to_buyer";
@@ -863,16 +866,9 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
   const refusedOrderIds = new Set([...refused.open, ...refused.handled].map((r) => r.orderId));
   // each tab shows how many orders it holds (Refused: the orders with a refused or unanswered supplier part, open or handled)
   const countOf = (f) => (f === "refused" ? refusedOrderIds.size : orders.filter((o) => matches(o, f)).length);
-  const filtered = filter === "refused" ? orders.filter((o) => refusedOrderIds.has(o.id)) : orders.filter((o) => {
-    if (filter === "all") return true;
-    if (o.hubStatus == null) return false;
-    if (filter === "to_ship") return TO_SHIP_HUB_STATUSES.includes(o.hubStatus);
-    if (filter === "shipped") return o.hubStatus === "shipped_to_buyer";
-    if (filter === "delivered") return o.hubStatus === "delivered";
-    if (filter === "dispute") return o.hubStatus === "flagged";
-    return false;
-  });
-  const filters = [["all", "All"], ["to_ship", "To ship"], ["shipped", "Shipped"], ["delivered", "Delivered"], ["dispute", "Disputes"], ["refused", "Refused"]];
+  const filtered = filter === "refused" ? orders.filter((o) => refusedOrderIds.has(o.id)) : orders.filter((o) => matches(o, filter));
+  const filters = [["all", "All"], ["assign", "Need assign"], ["to_ship", "To ship"], ["shipped", "Shipped"], ["delivered", "Delivered"], ["dispute", "Disputes"], ["refused", "Refused"]];
+  const redCount = (id) => (id === "refused" && refused.open.length > 0) || (id === "assign" && countOf("assign") > 0);      // red while something waits
 
   return (
     <div>
@@ -883,7 +879,7 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
             <button key={id} onClick={() => setFilter(id)} style={{
               ...body, padding: "7px 13px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
               border: `1px solid ${filter === id ? C.ink : C.line}`, background: filter === id ? C.ink : "#fff", color: filter === id ? "#fff" : C.ink,
-            }}>{label} <span data-testid={`orders-count-${id}`} style={{ display: "inline-block", minWidth: 18, padding: "0 6px", marginLeft: 4, borderRadius: 999, fontSize: 11, fontWeight: 700, background: id === "refused" && refused.open.length > 0 ? C.red : filter === id ? "rgba(255,255,255,0.2)" : "#EEF0F3", color: (id === "refused" && refused.open.length > 0) || filter === id ? "#fff" : C.muted }}>{countOf(id)}</span></button>
+            }}>{label} <span data-testid={`orders-count-${id}`} style={{ display: "inline-block", minWidth: 18, padding: "0 6px", marginLeft: 4, borderRadius: 999, fontSize: 11, fontWeight: 700, background: redCount(id) ? C.red : filter === id ? "rgba(255,255,255,0.2)" : "#EEF0F3", color: redCount(id) || filter === id ? "#fff" : C.muted }}>{countOf(id)}</span></button>
           ))}
         </div>
         <button
@@ -919,23 +915,41 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
           <Card>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
-                <tr><Th>Order</Th><Th>Buyer</Th><Th align="right">Total</Th><Th>Placed</Th><Th>Status</Th><Th>Hub status</Th><Th></Th></tr>
+                <tr><Th>Order</Th><Th>Buyer</Th><Th align="right">Total</Th><Th>Placed</Th><Th>Delivery status</Th><Th>Assign status</Th><Th>Hub status</Th><Th></Th></tr>
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={7} style={{ ...body, textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>No orders match this filter.</td></tr>
+                  <tr><td colSpan={8} style={{ ...body, textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>No orders match this filter.</td></tr>
                 )}
                 {filtered.map(o => {
-                  // the COMPUTED status: the stored one is only ever "to ship" or "cancelled", so it said "To ship" for orders that were long delivered
-                  const meta = getOrderStatusMeta(o.status === "cancelled" ? "cancelled" : (o.displayStatus || o.status));
                   const hubMeta = getHubStatusMeta(o.hubStatus);
+                  const pr = o.progress || { percent: 0, label: "—", cancelled: false, flagged: false };
+                  const barColor = pr.flagged ? C.red : pr.percent === 100 ? C.gauge : C.torque;
+                  const asg = o.assigned || { done: 0, of: 0 };
+                  const placed = new Date(o.placedAt);
+                  const ddmmyy = `${String(placed.getDate()).padStart(2, "0")}/${String(placed.getMonth() + 1).padStart(2, "0")}/${String(placed.getFullYear()).slice(2)}`;
                   return (
                     <tr key={o.id} onClick={() => onOpenOrder(o.id)} style={{ cursor: "pointer" }}>
                       <Td><PlateChip small>{o.id}</PlateChip></Td>
-                      <Td>{o.userId || o.guestEmail || "—"}{!o.userId && o.guestEmail ? " (guest)" : ""}</Td>
+                      <Td>{o.buyerName || (o.guestEmail ? `Guest · ${o.guestEmail}` : (o.userId || "—"))}</Td>
                       <Td align="right" style={{ fontWeight: 700 }}>${Number(o.total).toFixed(2)} {o.currencyCode}</Td>
-                      <Td style={{ color: C.muted }}>{new Date(o.placedAt).toLocaleDateString()}</Td>
-                      <Td><Badge label={meta.label} color={meta.color} bg={meta.bg} /></Td>
+                      <Td style={{ color: C.muted }}>{ddmmyy}</Td>
+                      <Td>
+                        {pr.cancelled ? <Badge label="Cancelled" color={C.muted} bg="#EEEFF1" /> : (
+                          <div data-testid={`delivery-bar-${o.id}`} title={pr.label} style={{ minWidth: 150 }}>
+                            <div style={{ ...body, display: "flex", justifyContent: "space-between", fontSize: 11, color: C.muted, marginBottom: 3 }}><span>{pr.label}</span><b style={{ color: barColor }}>{pr.percent}%</b></div>
+                            <div style={{ height: 7, borderRadius: 4, background: "#EEF0F3", overflow: "hidden" }}><div style={{ height: "100%", width: `${pr.percent}%`, background: barColor, borderRadius: 4 }} /></div>
+                          </div>
+                        )}
+                      </Td>
+                      <Td>
+                        {asg.of === 0 ? <span style={{ color: C.muted }}>—</span> : (
+                          <span style={{ ...body, display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, color: asg.done >= asg.of ? C.gauge : C.red, whiteSpace: "nowrap" }}>
+                            <span style={{ width: 9, height: 9, borderRadius: "50%", background: asg.done >= asg.of ? C.gauge : C.red }} />
+                            {asg.done >= asg.of ? "Assigned" : asg.of > 1 ? `Not assigned (${asg.done} of ${asg.of})` : "Not assigned"}
+                          </span>
+                        )}
+                      </Td>
                       <Td><Badge label={hubMeta.label} color={hubMeta.color} bg={hubMeta.bg} /></Td>
                       <Td align="right"><ChevronRight size={15} color={C.muted} /></Td>
                     </tr>

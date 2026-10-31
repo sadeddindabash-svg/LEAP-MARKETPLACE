@@ -782,6 +782,28 @@ async function computeHubStatus(orderId) {
   return leastAdvanced;
 }
 
+// How far one supplier part has come, from the order being placed (0) to delivered (6).
+const ORDER_STEPS = ['Placed', 'Supplier accepted', 'Shipped to hub', 'At hub', 'Inspected & packed', 'Shipped to buyer', 'Delivered'];
+function orderPartStep(partStatus, hubStatus) {
+  if (hubStatus === 'delivered') return 6;
+  if (hubStatus === 'shipped_to_buyer') return 5;
+  if (hubStatus === 'inspected' || hubStatus === 'packed') return 4;
+  if (hubStatus === 'received' || hubStatus === 'opened' || hubStatus === 'flagged' || hubStatus === 'returned_to_supplier' || hubStatus === 'discarded_at_hub') return 3;
+  if (partStatus === 'shipped' || partStatus === 'delivered') return 2;
+  if (partStatus === 'preparing') return 1;
+  return 0;
+}
+/** The admin list's extra fields: buyerName, progress { step, percent, label, cancelled, flagged }, assigned { done, of }. */
+function adminListExtras(o, p, buyerNames) {
+  const cancelled = o.status === 'cancelled' || !p || p.active === 0;
+  const step = cancelled ? 0 : Math.min(...p.steps);
+  return {
+    buyerName: o.buyer_id ? (buyerNames[o.buyer_id] || null) : null,
+    progress: { step, percent: cancelled ? 0 : Math.round((step / (ORDER_STEPS.length - 1)) * 100), label: cancelled ? 'Cancelled' : ORDER_STEPS[step], cancelled, flagged: Boolean(p && p.flagged) },
+    assigned: { done: p ? p.assigned : 0, of: p ? p.active : 0 },
+  };
+}
+
 router.get('/', requireAuth, requirePageAccessIfAdmin('orders'), async (req, res, next) => {
   try {
     const isAdmin = req.user.role === 'admin';
@@ -813,6 +835,34 @@ router.get('/', requireAuth, requirePageAccessIfAdmin('orders'), async (req, res
       }
     }
 
+    // Admin list (new): the buyer's name, how far each order has come (the step its SLOWEST supplier part has reached, 0-6), and
+    // whether every part has a hub. Cancelled and refused parts are left out. One query for all the orders.
+    const progressByOrder = {};
+    const buyerNames = {};
+    if (isAdmin && orderIds.length > 0) {
+      const { rows: parts } = await db.query(
+        `SELECT so.order_id, so.status AS part_status, so.hub_id, (to_jsonb(so) ->> 'refused_at') IS NOT NULL AS refused,
+                hs.status AS hub_status, hs.resolved_at
+         FROM supplier_sub_orders so
+         LEFT JOIN hub_shipments hs ON hs.sub_order_id = so.id
+         WHERE so.order_id = ANY($1::text[])`,
+        [orderIds]
+      );
+      for (const p of parts) {
+        const e = progressByOrder[p.order_id] || (progressByOrder[p.order_id] = { steps: [], assigned: 0, active: 0, flagged: false });
+        if (p.part_status === 'cancelled' || p.refused) continue;
+        e.active++;
+        if (p.hub_id) e.assigned++;
+        if (p.hub_status === 'flagged' && !p.resolved_at) e.flagged = true;
+        e.steps.push(orderPartStep(p.part_status, p.hub_status));
+      }
+      const buyerIds = [...new Set(rows.map((o) => o.buyer_id).filter(Boolean))];
+      if (buyerIds.length > 0) {
+        const { rows: users } = await db.query('SELECT id, name, email FROM users WHERE id::text = ANY($1::text[])', [buyerIds.map(String)]);
+        for (const u of users) buyerNames[u.id] = u.name || u.email;
+      }
+    }
+
     const withDisplayStatus = await Promise.all(rows.map(async (o) => {
       const suppliers = suppliersByOrder[o.id] || [];
       // Real per-order anonymization (new) -- scoped to THIS order's
@@ -831,6 +881,7 @@ router.get('/', requireAuth, requirePageAccessIfAdmin('orders'), async (req, res
         currencyCode: o.currency_code,
         placedAt: o.placed_at,
         supplierNames: isAdmin ? suppliers.map((s) => s.name) : suppliers.map((s) => labelMap.get(s.supplierId)),
+        ...(isAdmin ? adminListExtras(o, progressByOrder[o.id], buyerNames) : {}),
       };
     }));
 
