@@ -41,8 +41,8 @@ async function waitingOrders(q, ids) {
               ELSE 'to ship'
             END AS stage
      FROM order_line_items oli
-     JOIN orders o ON o.id = oli.order_id
-     LEFT JOIN supplier_sub_orders so ON so.id = oli.sub_order_id
+     JOIN supplier_sub_orders so ON so.id = oli.sub_order_id      -- an order line belongs to a supplier's part of the order
+     JOIN orders o ON o.id = so.order_id
      LEFT JOIN hub_shipments hs ON hs.sub_order_id = so.id
      WHERE oli.product_id = ANY($1)
        AND o.status <> 'cancelled' AND (so.id IS NULL OR so.status <> 'cancelled')
