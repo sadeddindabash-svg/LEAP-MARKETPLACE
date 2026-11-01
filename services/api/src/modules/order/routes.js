@@ -19,6 +19,7 @@ const { logAdminAction } = require('../audit/helpers');
 const { recordOrderVehicles } = require('../orderVehicles/record');
 const { loadProofForShipment, loadAttemptsForShipment, buyerDeliveryInfo } = require('../deliveryProof/helpers');
 const { receiptItemsFor, receiptTitleFor } = require('./receiptHelpers');
+const { drawReceipt, receiptCurrency } = require('./receiptPdf');
 const { refreshEnglishAddress, ensureEnglishAddress, toEnglishDto, validateEnglishAddress, saveEnglishAddress, confirmEnglishAddressAsIs } = require('../addressEnglish/helpers');
 const { STATUS_ORDER } = require('../shared/hubStatusOrder');
 const ArabicReshaper = require('arabic-reshaper');
@@ -73,7 +74,7 @@ async function nextOrderId(client) {
 
 // POST /order  { items: [{productId, quantity}], userId?, guestEmail?, address?, addressId? }
 router.post('/', async (req, res, next) => {
-  const { items, userId, guestEmail, promoCode, address, addressId, waitForAllShipments, idempotencyKey } = req.body || {};
+  const { items, userId, guestEmail, promoCode, address, addressId, waitForAllShipments, idempotencyKey, displayCurrency } = req.body || {};
   // Real idempotency check (#60) -- if a real order with this exact
   // key already exists (an earlier attempt that actually succeeded
   // server-side before the client lost track of the real response,
@@ -250,9 +251,13 @@ router.post('/', async (req, res, next) => {
     const total = Number((goodsTotal + shippingFee).toFixed(2));
 
     const orderId = await nextOrderId(client);
+    // the currency the buyer saw prices in, and today's rate for it (migration 123): the receipt shows the amounts in it, at this rate
+    const shownCurrency = typeof displayCurrency === 'string' && /^[A-Z]{3}$/.test(displayCurrency) && displayCurrency !== 'USD' ? displayCurrency : null;
+    const { rows: rateRows } = shownCurrency ? await client.query('SELECT rate FROM fx_rates WHERE currency_pair = $1', [`USD_${shownCurrency}`]) : { rows: [] };
+    const shownRate = rateRows.length > 0 && Number(rateRows[0].rate) > 0 ? Number(rateRows[0].rate) : null;
     await client.query(
-      `INSERT INTO orders (id, buyer_id, guest_email, status, total, currency_code, promo_code, discount_amount, wait_for_all_shipments, idempotency_key, shipping_fee) VALUES ($1, $2, $3, 'to_ship', $4, $5, $6, $7, $8, $9, $10)`,
-      [orderId, userId || null, normalizeEmail(guestEmail) || null, total, currencyCode, appliedPromoCode, discountUsd, Boolean(waitForAllShipments), idempotencyKey || null, shippingFee]
+      `INSERT INTO orders (id, buyer_id, guest_email, status, total, currency_code, promo_code, discount_amount, wait_for_all_shipments, idempotency_key, shipping_fee, display_currency, display_rate) VALUES ($1, $2, $3, 'to_ship', $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [orderId, userId || null, normalizeEmail(guestEmail) || null, total, currencyCode, appliedPromoCode, discountUsd, Boolean(waitForAllShipments), idempotencyKey || null, shippingFee, shownRate ? shownCurrency : null, shownRate]
     );
     if (appliedPromoCode) {
       await recordRedemption(appliedPromoCode, userId || null, orderId, client);
@@ -1206,231 +1211,64 @@ router.get('/:id/receipt', optionalAuth, async (req, res, next) => {
     // a real embedded Arabic-capable font (PDFKit's own built-in fonts
     // have no real Arabic glyphs at all), and a real mirrored RTL
     // layout throughout.
+    // The receipt follows the BUYER'S LANGUAGE (?lang=ar) and CURRENCY (saved with the order, migration 123; else ?currency=, else USD).
+    // Layout: theme B, see receiptPdf.js.
     const isAr = req.query.lang === 'ar';
-    const t = isAr
-      ? {
-          receiptTitle: shapeArabic('إيصال الطلب'), order: 'الطلب', placed: 'تاريخ الطلب',
-          customer: shapeArabic('العميل'), deliveryAddress: shapeArabic('عنوان التوصيل'), guest: 'ضيف',
-          item: shapeArabic('الصنف'), qty: shapeArabic('الكمية'), unitPrice: shapeArabic('سعر الوحدة'),
-          total: shapeArabic('الإجمالي'), discount: 'الخصم', shipping: 'رسوم الشحن', totalLine: 'الإجمالي الكلي',
-        }
-      : { receiptTitle: 'Order receipt', order: 'Order', placed: 'Placed', customer: 'CUSTOMER', deliveryAddress: 'DELIVERY ADDRESS', guest: 'Guest', item: 'Item', qty: 'Qty', unitPrice: 'Unit price', total: 'Total', discount: 'Discount', shipping: 'Shipping fees', totalLine: 'Total' };
-
     const { rows: itemRows } = await db.query(
       `SELECT oli.quantity, oli.unit_price, p.name, p.name_ar
        FROM order_line_items oli
        JOIN supplier_sub_orders so ON so.id = oli.sub_order_id
        JOIN products p ON p.id = oli.product_id
-       WHERE so.order_id = $1`,
+       WHERE so.order_id = $1
+       ORDER BY so.id, oli.id`,
       [req.params.id]
     );
-    // A free replacement (migration 095) shows no prices to the buyer, and says what it is.
-    const items = receiptItemsFor({ order, isAdmin, items: itemRows });
-    const receiptTitleText = receiptTitleFor({ order, isAr, defaultTitle: t.receiptTitle, shapeArabic });
+    const items = receiptItemsFor({ order, isAdmin, items: itemRows }).map((i) => ({
+      name: (isAr && i.name_ar) ? i.name_ar : i.name, quantity: Number(i.quantity), unitUsd: Number(i.unit_price),
+    }));
+    const title = order.replacement_of ? receiptTitleFor({ order, isAr, defaultTitle: null, shapeArabic: (text) => text }) : null;
     const { rows: addressRows } = await db.query('SELECT * FROM order_addresses WHERE order_id = $1', [req.params.id]);
     const address = addressRows[0] || null;
 
-    // Real customer name -- a registered buyer's own real account
-    // name, distinct from the real delivery recipient (who may be a
-    // different real person, e.g. ordering a gift). Falls back to the
-    // real recipient name for a real guest order, since a guest has
-    // no separate real account name to show at all.
     let customerName = null;
     if (order.buyer_id) {
       const { rows: userRows } = await db.query('SELECT name FROM users WHERE id = $1', [order.buyer_id]);
       customerName = userRows[0]?.name || null;
     }
-    if (!customerName) customerName = address?.recipient_name || t.guest;
-    if (isAr) customerName = shapeArabic(customerName);
+    if (!customerName) customerName = address?.recipient_name || null;
 
     const { rows: footerRows } = await db.query("SELECT key, value FROM platform_settings WHERE key IN ('receipt_footer_note_en', 'receipt_footer_note_ar')");
     const footerByKey = Object.fromEntries(footerRows.map((r) => [r.key, r.value]));
     const footerNote = isAr ? (footerByKey.receipt_footer_note_ar || '') : (footerByKey.receipt_footer_note_en || '');
+    const currency = await receiptCurrency(db, order, req.query.currency);
+    const placed = new Date(order.placed_at);
+    const placedAt = `${String(placed.getDate()).padStart(2, '0')}/${String(placed.getMonth() + 1).padStart(2, '0')}/${placed.getFullYear()}`;
 
     const PDFDocument = require('pdfkit');
     const path = require('path');
-    const doc = new PDFDocument({ margin: 50, bufferPages: true });
+    const doc = new PDFDocument({ size: 'A4', margins: { top: 44, bottom: 40, left: 46, right: 46 }, bufferPages: true });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="LEAP-receipt-${order.id}.pdf"`);
     doc.pipe(res);
-
-    // Real, registered only when actually needed -- Noto Sans Arabic,
-    // converted from its real bundled WOFF2 into real TTF (PDFKit can
-    // only load real TTF/OTF, not WOFF/WOFF2), confirmed to render
-    // real, correctly-shaped Arabic script directly before this was
-    // wired in here.
-    // Real, always registered regardless of isAr -- the admin-
-    // configured footer note (below) is a single, language-
-    // independent setting, so it could genuinely contain Arabic text
-    // even on an English receipt (or vice versa). Always rendering
-    // the footer with this font specifically, confirmed safe since it
-    // correctly handles both real Arabic and real Latin content,
-    // avoids the real garbled-text bug this would otherwise cause.
-    doc.registerFont('ArabicCapable', path.join(__dirname, '../../../assets/noto-sans-arabic-regular.ttf'));
-    if (isAr) {
-      doc.registerFont('Body', path.join(__dirname, '../../../assets/noto-sans-arabic-regular.ttf'));
-      doc.registerFont('Body-Bold', path.join(__dirname, '../../../assets/noto-sans-arabic-bold.ttf'));
-    } else {
-      doc.registerFont('Body', 'Helvetica');
-      doc.registerFont('Body-Bold', 'Helvetica-Bold');
-    }
-
-    const pageLeft = doc.page.margins.left;
-    const pageRight = doc.page.width - doc.page.margins.right;
-    const pageWidth = pageRight - pageLeft;
-    const pageBottom = doc.page.height - doc.page.margins.bottom;
-
-    // Real column layout for the items table below -- mirrored left
-    // to right for Arabic, since RTL reading starts from the right.
-    // Computed once, reused by both the real header row and every
-    // real item row, and again identically on every new real page.
-    const col = isAr
-      ? {
-          total: pageLeft,
-          totalWidth: pageWidth * 0.21,
-          price: pageLeft + pageWidth * 0.21,
-          priceWidth: pageWidth * 0.19,
-          qty: pageLeft + pageWidth * 0.4,
-          qtyWidth: pageWidth * 0.12,
-          item: pageLeft + pageWidth * 0.52,
-          itemWidth: pageWidth * 0.48,
-        }
-      : {
-          item: pageLeft,
-          itemWidth: pageWidth * 0.48,
-          qty: pageLeft + pageWidth * 0.48,
-          qtyWidth: pageWidth * 0.12,
-          price: pageLeft + pageWidth * 0.6,
-          priceWidth: pageWidth * 0.19,
-          total: pageLeft + pageWidth * 0.79,
-          totalWidth: pageWidth * 0.21,
-        };
-    const itemAlign = isAr ? 'right' : 'left';
-    const rowHeight = 22;
-    const headerHeight = 24;
-
-    function drawTableHeader(y) {
-      doc.rect(pageLeft, y, pageWidth, headerHeight).fill('#14171C');
-      doc.fillColor('#FFFFFF').fontSize(9).font('Body-Bold');
-      doc.text(t.item, col.item + (isAr ? 0 : 8), y + 7, { width: col.itemWidth - 8, align: itemAlign });
-      doc.text(t.qty, col.qty, y + 7, { width: col.qtyWidth, align: 'center' });
-      doc.text(t.unitPrice, col.price, y + 7, { width: col.priceWidth - 8, align: isAr ? 'left' : 'right' });
-      doc.text(t.total, col.total, y + 7, { width: col.totalWidth - 8, align: isAr ? 'left' : 'right' });
-      doc.font('Body').fillColor('#000000');
-      return y + headerHeight;
-    }
-
-    // Real logo + brand name header, confirmed at the very top of the
-    // page per the person's own explicit request. Mirrored for
-    // Arabic -- logo on the right, brand name to its left, right-
-    // aligned, matching RTL reading direction. Captures the real
-    // starting y position explicitly first -- doc.image() with
-    // explicit x/y coordinates does not advance doc.y the way
-    // doc.text() does, so positioning the brand name relative to a
-    // captured real value here (not doc.y after the image call) is
-    // what actually vertically centers it next to the logo.
-    const headerTop = doc.y;
-    const logoPath = path.join(__dirname, '../../../assets/leap-logo.png');
-    const logoX = isAr ? pageRight - 40 : pageLeft;
-    const textX = isAr ? pageLeft : pageLeft + 50;
-    const textWidth = isAr ? pageWidth - 50 : pageWidth - 50;
-    doc.image(logoPath, logoX, headerTop, { width: 40, height: 40 });
-    const brandName = isAr ? shapeArabic('ليب لقطع السيارات') : 'Leap Auto Parts';
-    doc.fontSize(20).font('Body-Bold').text(brandName, textX, headerTop + 2, { width: textWidth, align: isAr ? 'right' : 'left' });
-    doc.fontSize(10).font('Body').fillColor('#666').text(receiptTitleText, textX, headerTop + 32, { width: textWidth, align: isAr ? 'right' : 'left' });
-    doc.fillColor('#000');
-    doc.y = headerTop + 46 + 10;
-    doc.moveTo(pageLeft, doc.y).lineTo(pageRight, doc.y).strokeColor('#E4E6EA').stroke();
-    doc.moveDown(1);
-
-    doc.fontSize(11).font('Body-Bold').text(isAr ? shapeArabic(`${t.order} ${order.id}`) : `${t.order} ${order.id}`, { align: isAr ? 'right' : 'left' });
-    doc.font('Body').fontSize(10).fillColor('#666');
-    const placedLine = `${t.placed} ${new Date(order.placed_at).toLocaleDateString()}`;
-    doc.text(isAr ? shapeArabic(placedLine) : placedLine, { align: isAr ? 'right' : 'left' });
-    doc.fillColor('#000');
-    doc.moveDown(0.8);
-
-    // Real customer name and real full delivery address, confirmed
-    // added per the person's own explicit request -- shown side by
-    // side in two real columns when there's room, mirrored for
-    // Arabic (delivery address on the left, customer on the right,
-    // matching RTL reading direction), since neither is usually long
-    // enough to need the full real page width alone.
-    const infoTop = doc.y;
-    const customerX = isAr ? pageLeft + pageWidth * 0.52 : pageLeft;
-    const addrX = isAr ? pageLeft : pageLeft + pageWidth * 0.52;
-    const infoAlign = isAr ? 'right' : 'left';
-    doc.fontSize(9).font('Body-Bold').fillColor('#666').text(t.customer, customerX, infoTop, { width: pageWidth * 0.45, align: infoAlign });
-    doc.font('Body').fontSize(10).fillColor('#000').text(customerName, customerX, infoTop + 14, { width: pageWidth * 0.45, align: infoAlign });
-
-    if (address) {
-      doc.fontSize(9).font('Body-Bold').fillColor('#666').text(t.deliveryAddress, addrX, infoTop, { width: pageWidth * 0.45, align: infoAlign });
-      doc.font('Body').fontSize(10).fillColor('#000');
-      const s = (text) => (isAr ? shapeArabic(text) : text);
-      doc.text(s(address.recipient_name), addrX, infoTop + 14, { width: pageWidth * 0.45, align: infoAlign });
-      doc.text(s(address.phone), addrX, doc.y, { width: pageWidth * 0.45, align: infoAlign });
-      doc.text(s(address.street_address), addrX, doc.y, { width: pageWidth * 0.45, align: infoAlign });
-      const cityLine = [address.city, address.postal_code].filter(Boolean).join(' ');
-      doc.text(s(cityLine), addrX, doc.y, { width: pageWidth * 0.45, align: infoAlign });
-      doc.text(s(address.country), addrX, doc.y, { width: pageWidth * 0.45, align: infoAlign });
-    }
-    doc.y = Math.max(doc.y, infoTop + 14 + 14) + 20;
-
-    // Real items table -- bordered, alternating row shading, correctly
-    // re-draws its own real header on every new real page for long
-    // real orders (10-20+ items). Uses the real Arabic product name
-    // when set and requested, falling back to English per-product.
-    doc.y = drawTableHeader(doc.y);
-    items.forEach((item, i) => {
-      if (doc.y + rowHeight > pageBottom) {
-        doc.addPage();
-        doc.y = drawTableHeader(doc.page.margins.top);
-      }
-      const rowY = doc.y;
-      if (i % 2 === 1) doc.rect(pageLeft, rowY, pageWidth, rowHeight).fill('#F5F6F8').fillColor('#000');
-      const lineTotal = Number(item.unit_price) * item.quantity;
-      const rawDisplayName = (isAr && item.name_ar) ? item.name_ar : item.name;
-      const displayName = isAr ? shapeArabic(rawDisplayName) : rawDisplayName;
-      doc.fontSize(9.5);
-      doc.text(displayName, col.item + (isAr ? 0 : 8), rowY + 6, { width: col.itemWidth - 8, align: itemAlign, ellipsis: true });
-      doc.text(String(item.quantity), col.qty, rowY + 6, { width: col.qtyWidth, align: 'center' });
-      doc.text(`$${Number(item.unit_price).toFixed(2)}`, col.price, rowY + 6, { width: col.priceWidth - 8, align: isAr ? 'left' : 'right' });
-      doc.text(`$${lineTotal.toFixed(2)}`, col.total, rowY + 6, { width: col.totalWidth - 8, align: isAr ? 'left' : 'right' });
-      doc.moveTo(pageLeft, rowY + rowHeight).lineTo(pageRight, rowY + rowHeight).strokeColor('#E4E6EA').stroke();
-      doc.y = rowY + rowHeight;
-    });
-    doc.moveDown(1.5);
-
-    if (doc.y + 60 > pageBottom) {
-      doc.addPage();
-      doc.y = doc.page.margins.top;
-    }
-    const totalsAlign = isAr ? 'left' : 'right';
-    if (order.discount_amount && Number(order.discount_amount) > 0) {
-      const discountLine = `${t.discount}: -$${Number(order.discount_amount).toFixed(2)}`;
-      doc.fontSize(10).font('Body').text(isAr ? shapeArabic(discountLine) : discountLine, { align: totalsAlign });
-      doc.moveDown(0.3);
-    }
-    if (order.shipping_fee && Number(order.shipping_fee) > 0) {
-      const shippingLine = `${t.shipping}: +$${Number(order.shipping_fee).toFixed(2)}`;
-      doc.fontSize(10).font('Body').text(isAr ? shapeArabic(shippingLine) : shippingLine, { align: totalsAlign });
-      doc.moveDown(0.3);
-    }
-    const totalLineText = `${t.totalLine}: $${Number(order.total).toFixed(2)} ${order.currency_code}`;
-    doc.fontSize(14).font('Body-Bold').text(isAr ? shapeArabic(totalLineText) : totalLineText, { align: totalsAlign });
-    doc.font('Body');
-
-    // Real, admin-configurable footer note -- printed once at the
-    // very bottom of the LAST page only (matching the "compact grid"
-    // design direction confirmed in the earlier mockup round: a real
-    // long order's own extra pages stay focused on items, not a
-    // repeated footer on every real page).
-    if (footerNote) {
-      doc.font('ArabicCapable').fontSize(9).fillColor('#666').text(shapeArabic(footerNote), pageLeft, pageBottom - 30, { width: pageWidth, align: 'center' });
-      doc.fillColor('#000');
-    }
-
-    doc.end();
+    drawReceipt(doc, {
+      lang: isAr ? 'ar' : 'en',
+      orderId: order.id,
+      placedAt,
+      title,
+      customerName,
+      address: address ? [address.recipient_name, address.phone, address.street_address, [address.city, address.postal_code].filter(Boolean).join(' '), address.country] : null,
+      items,
+      discountUsd: Number(order.discount_amount) || 0,
+      shippingUsd: Number(order.shipping_fee) || 0,
+      totalUsd: Number(order.total) || 0,
+      currency,
+      footerNote,
+      logoPath: path.join(__dirname, '../../../assets/leap-logo.png'),
+      fonts: {
+        arabicRegular: path.join(__dirname, '../../../assets/noto-sans-arabic-regular.ttf'),
+        arabicBold: path.join(__dirname, '../../../assets/noto-sans-arabic-bold.ttf'),
+      },
+    }, bidi, ArabicReshaper);
   } catch (err) {
     next(err);
   }

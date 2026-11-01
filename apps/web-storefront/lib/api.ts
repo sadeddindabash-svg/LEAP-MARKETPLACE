@@ -420,6 +420,8 @@ export interface PlaceOrderOptions {
   /** The same key sent twice returns the FIRST order, so a double click or a retry never places the order twice. */
   idempotencyKey?: string;
   lang?: Lang;
+  /** The currency the buyer sees prices in (saved with the order for the receipt, migration 123). */
+  displayCurrency?: string;
 }
 
 export async function placeOrder(
@@ -437,6 +439,7 @@ export async function placeOrder(
       ...(promoCode ? { promoCode } : {}),
       ...(options.waitForAllShipments !== undefined ? { waitForAllShipments: options.waitForAllShipments } : {}),
       ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
+      ...(options.displayCurrency ? { displayCurrency: options.displayCurrency } : {}),
     }),
   });
   const body = await res.json();
@@ -1278,9 +1281,10 @@ export const confirmEnglishAddress = (orderId: string, who: OrderWho, edits?: { 
   orderCall<EnglishAddress>(`/${encodeURIComponent(orderId)}/address-english/confirm`, who, { method: "PUT", body: edits ?? {} }, "Failed to confirm the address");
 
 /** The receipt as a PDF (the sign-in token goes in a header, not in the address, so it can never end up in a link, a history or a log). */
-export async function fetchOrderReceipt(orderId: string, who: OrderWho, lang?: Lang): Promise<Blob> {
+export async function fetchOrderReceipt(orderId: string, who: OrderWho, lang?: Lang, currency?: string): Promise<Blob> {
   const query = new URLSearchParams();
   if (lang === "ar") query.set("lang", "ar");
+  if (currency) query.set("currency", currency);   // used only for an order placed before its currency was saved
   if (!who.token && who.guestEmail) query.set("guestEmail", who.guestEmail);
   const res = await netFetch(`${API_BASE_URL}/order/${encodeURIComponent(orderId)}/receipt?${query.toString()}`, { headers: who.token ? { Authorization: `Bearer ${who.token}` } : {} });
   if (!res.ok) {

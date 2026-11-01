@@ -17,6 +17,7 @@ import '../../widgets/delivery_confirm.dart';
 import '../../models/order_rules.dart';
 import '../../core/cart_state.dart';
 import '../../core/language_state.dart';
+import '../../core/currency_state.dart';
 
 /// BUY-052/053: order detail, showing the real per-supplier split (the
 /// buyer placed one order, but it's fulfilled by potentially multiple
@@ -483,7 +484,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
               final query = auth.isLoggedIn
                   ? 'token=${auth.token}'
                   : 'guestEmail=${Uri.encodeQueryComponent(widget.guestEmail ?? '')}';
-              final url = Uri.parse('${ApiClient().baseUrl}/order/${widget.orderId}/receipt?$query');
+              // the receipt in the buyer's language and currency
+              final lang = context.read<LanguageState>().isArabic ? '&lang=ar' : '';
+              final currency = '&currency=${Uri.encodeQueryComponent(context.read<CurrencyState>().currencyCode)}';
+              final url = Uri.parse('${ApiClient().baseUrl}/order/${widget.orderId}/receipt?$query$lang$currency');
               await launchUrl(url, mode: LaunchMode.externalApplication);
             },
             icon: const Icon(Icons.receipt_long_outlined, size: 18),

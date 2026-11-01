@@ -92,7 +92,7 @@ function Part({ order, so, who, canCancelPart, onCancel, busy }: { order: OrderD
 function OrderView({ orderId }: { orderId: string }) {
   const { user, isLoading: authLoading } = useAuth();
   const { addItem } = useCart();
-  const { format } = useCurrency();
+  const { format, code: currencyCode } = useCurrency();
   const lang = useLang();
   const t = useT();
   const guestEmail = useSearchParams().get("guestEmail");
@@ -134,7 +134,7 @@ function OrderView({ orderId }: { orderId: string }) {
   const downloadReceipt = async () => {
     setBusy(true); setNotice(null);
     try {
-      const blob = await fetchOrderReceipt(orderId, who, lang);
+      const blob = await fetchOrderReceipt(orderId, who, lang, currencyCode);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url; link.download = `receipt-${orderId}.pdf`;

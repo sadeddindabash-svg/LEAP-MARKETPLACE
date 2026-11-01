@@ -382,6 +382,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         addressId: addressId,
         address: inlineAddress,
         waitForAllShipments: _waitForAllShipments,
+        displayCurrency: context.read<CurrencyState>().currencyCode,
       );
       // Real guest-email autofill save (#20) -- device-local only,
       // best-effort, never blocks a real successful order over a

@@ -831,6 +831,8 @@ class ApiClient {
     // 'ar' makes the backend name a product in a stock error in Arabic (when it has an
     // Arabic name); anything else keeps the default name.
     String lang = 'en',
+    // the currency the buyer sees prices in, saved with the order for the receipt (migration 123)
+    String? displayCurrency,
   }) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/order?lang=$lang'),
@@ -844,6 +846,7 @@ class ApiClient {
         if (addressId != null) 'addressId': addressId,
         'waitForAllShipments': waitForAllShipments,
         if (idempotencyKey != null) 'idempotencyKey': idempotencyKey,
+        if (displayCurrency != null) 'displayCurrency': displayCurrency,
       }),
     );
     final body = jsonDecode(response.body) as Map<String, dynamic>;

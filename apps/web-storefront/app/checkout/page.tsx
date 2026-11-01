@@ -31,7 +31,7 @@ export default function CheckoutPage() {
   const { cart, isLoading, summary, lockPrices, applyPromo, clearAfterOrder } = useCart();
   const lang = useLang();
   const t = useT();
-  const { format } = useCurrency();
+  const { format, code: currencyCode } = useCurrency();
   const router = useLocRouter();
 
   const [guestEmail, setGuestEmail] = useState("");
@@ -132,7 +132,7 @@ export default function CheckoutPage() {
         user ? { userId: user.id } : { guestEmail: guestEmail.trim() },
         savedPick ? { addressId: savedPick.id } : { address: address! },
         cart.appliedPromoCode ?? undefined,
-        { waitForAllShipments: waitAll && several, idempotencyKey: keyRef.current, lang },
+        { waitForAllShipments: waitAll && several, idempotencyKey: keyRef.current, lang, displayCurrency: currencyCode },
       );
       // a new address typed by a signed-in buyer is kept for next time (best effort: the order is already placed)
       const token = getAuthToken();
