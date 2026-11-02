@@ -339,6 +339,7 @@ class AppStrings {
     'vparts_one': {'en': 'One part fits this car', 'ar': 'قطعة واحدة تناسب هذه السيارة'},
     'vparts_none': {'en': 'No parts fit this car yet.', 'ar': 'لا توجد قطع تناسب هذه السيارة حتى الآن.'},
     'set_as_default_vehicle': {'en': 'Set as default vehicle', 'ar': 'تعيين كإفتراضي'},
+    'set_as_default_short': {'en': 'Set as default', 'ar': 'تعيين كإفتراضي'},      // the garage card's button, beside "Remove vehicle"
     'label_field': {'en': 'Label (e.g. Home, Work)', 'ar': 'التسمية (مثال: المنزل، العمل)'},
     'search_for_address_hint': {'en': 'Search for your address (optional)', 'ar': 'إبحث عن عنوانك (إختياري)'},
     'compare_label': {'en': 'Compare', 'ar': 'مقارنة'},

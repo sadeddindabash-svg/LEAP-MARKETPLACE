@@ -68,6 +68,7 @@ async function openHubsPage() {
   fireEvent.click(screen.getByRole('button', { name: /log in/i }));
   await waitFor(() => expect(screen.getByRole('button', { name: /log out/i })).toBeInTheDocument());
   fireEvent.click(screen.getByRole('button', { name: /^hubs$/i }));
+  fireEvent.click(await screen.findByRole('tab', { name: 'Add hub staff' }));      // the hub staff list is the Hubs page's "Add hub staff" tab
   await screen.findByText('Hub staff');
 }
 

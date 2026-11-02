@@ -27,7 +27,7 @@ const body = { fontFamily: "'Inter', sans-serif" };
 // LoginPage and the authenticated shell share one toggle.
 const STRINGS = {
   zh: {
-    appName: "LEAP 质检中心", logout: "退出登录", checkingSession: "正在检查登录状态…",
+    appName: "LEAP 质检中心", portalName: "质检中心门户", logout: "退出登录", checkingSession: "正在检查登录状态…",
     login: {
       subtitle: "质检中心员工登录", email: "邮箱", password: "密码",
       signIn: "登录", signingIn: "登录中…",
@@ -104,7 +104,7 @@ const STRINGS = {
     },
   },
   en: {
-    appName: "LEAP HUB", logout: "Log out", checkingSession: "Checking session…",
+    appName: "LEAP HUB", portalName: "Inspection hub portal", logout: "Log out", checkingSession: "Checking session…",
     login: {
       subtitle: "Inspection hub sign-in", email: "Email", password: "Password",
       signIn: "Sign in", signingIn: "Signing in…",
@@ -234,16 +234,35 @@ function LangToggle() {
   );
 }
 
+// ---- The company logo: one image file, /brand/leap-logo.png in the portal's public folder (the same file in every portal and the apps).
+// Until that file is there (or if it cannot load), a simple "L" mark in the portal's color stands in, so nothing ever shows a broken image.
+const LOGO_URL = "/brand/leap-logo.png";
+function BrandLogo({ size = 36, tint = C.signal, label = "" }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 40 40" role={label ? "img" : undefined} aria-label={label || undefined} aria-hidden={label ? undefined : true} style={{ flexShrink: 0, display: "block" }}>
+        <rect width="40" height="40" rx="11" fill={C.ink} />
+        <path d="M12 9h6v16h11v6H12z" fill={tint} />
+        <path d="M24 9h6l-5 9h-6z" fill={tint} opacity="0.55" />
+      </svg>
+    );
+  }
+  return <img src={LOGO_URL} alt={label} width={size} height={size} onError={() => setFailed(true)} style={{ width: size, height: size, objectFit: "contain", borderRadius: "50%", flexShrink: 0, display: "block", boxShadow: "0 0 0 2px rgba(255, 255, 255, 0.85)" }} />;      // a thin white ring: the round gold logo stays clear on the gold menu
+}
+
 function TopBar() {
   const { currentUser, onLogout } = useHub();
   const { t } = useLang();
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <div style={{ width: 30, height: 30, borderRadius: 8, background: C.signal, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <PackageCheck size={16} color="#fff" />
+      {/* the company: logo, name, and which portal this is (follows the language switch) */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+        <BrandLogo size={38} />
+        <div style={{ minWidth: 0, lineHeight: 1.15 }}>
+          <div style={{ ...body, fontSize: 15, fontWeight: 800, color: C.ink, whiteSpace: "nowrap" }}>Leap Auto Parts</div>
+          <div style={{ ...body, fontSize: 11.5, fontWeight: 600, color: C.muted, marginTop: 2, whiteSpace: "nowrap" }}>{t.portalName}</div>
         </div>
-        <div style={{ ...disp, fontSize: 18, fontWeight: 700, color: C.ink }}>{t.appName}</div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <LangToggle />

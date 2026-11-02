@@ -1,7 +1,8 @@
 // What to do with every row, decided against the database. ONE function serves both the preview (apply = false: reads only, nothing is written) and the real import
 // (apply = true, inside one transaction), so the preview can never promise something the import then does differently.
 //
-//   brand    must EXIST already (brands need a photo, added by hand in Vehicle Data); a row whose brand does not exist is an error.
+//   brand    created if missing (English, Arabic and Chinese names, and the logo from the file's "Brand Logo" column, else "No logo yet");
+//            a brand that exists gets its Arabic and Chinese names, and its logo when the file has one, updated from the file (always).
 //   model    created if missing (English, Arabic and Chinese names).
 //   year     created if missing, with NO photo (the sheet carries one picture per version, not per year).
 //   version  created if missing (with its picture when the row has one, else "No photo yet"); if it already exists it is SKIPPED, or (mode "update") brought up to date.
@@ -13,7 +14,7 @@ const newId = (prefix) => `${prefix}_${Date.now()}${crypto.randomBytes(3).toStri
 const same = (a, b) => nameKey(a) === nameKey(b);
 
 async function runImport(q, items, mode, { apply = false, saveImage = null, savedUrls = [], replacePictures = false, oldUrls = [] } = {}) {
-  const counts = { newModels: 0, newYears: 0, newVersions: 0, existingVersions: 0, updatedVersions: 0, picturesToSave: 0, picturesReplaced: 0, newWithoutPicture: 0, brandNamesUpdated: 0, modelNamesUpdated: 0 };
+  const counts = { newBrands: 0, brandLogosSaved: 0, newBrandsWithoutLogo: 0, newModels: 0, newYears: 0, newVersions: 0, existingVersions: 0, updatedVersions: 0, picturesToSave: 0, picturesReplaced: 0, newWithoutPicture: 0, brandNamesUpdated: 0, modelNamesUpdated: 0 };
   const notes = [];
   const missingBrands = new Set();
   const rows = [];
@@ -27,37 +28,53 @@ async function runImport(q, items, mode, { apply = false, saveImage = null, save
   };
   const note = (key, text) => { if (!noted.has(key)) { noted.add(key); notes.push(text); } };
 
+  // the logo of each brand: the first row of that brand that has one
+  const logoOf = new Map();
+  for (const item of items) if (item.ok && item.data.logo && !logoOf.has(nameKey(item.data.brand.en))) logoOf.set(nameKey(item.data.brand.en), { logo: item.data.logo, row: item.rowNumber });
+
   for (const item of items) {
     const d = item.data;
     const messages = [...item.messages];
     const summary = { rowNumber: item.rowNumber, brand: d.brand.en, model: d.model.en, year: d.year, version: d.version.en, seats: d.seats, picture: d.picture ? { width: d.picture.width, height: d.picture.height } : null };
     if (!item.ok) { rows.push({ ...summary, status: 'error', messages }); continue; }
 
-    // ---- brand: must exist
+    // ---- brand: created if missing; an existing one is brought up to date from the file (names, and the logo when the file has one)
     const bkey = nameKey(d.brand.en);
+    const fileLogo = logoOf.get(bkey) || null;
     if (!brands.has(bkey)) {
       const { rows: found } = await q.query('SELECT * FROM vehicle_brands WHERE lower(btrim(name)) = $1', [bkey]);
-      brands.set(bkey, found[0] || null);
+      let brand = found[0] || null;
+      if (!brand) {
+        let logoUrl = null;
+        if (fileLogo) { counts.brandLogosSaved++; if (apply) { const saved = await saveImage(fileLogo.logo.buffer, fileLogo.logo.mime); logoUrl = saved.url; savedUrls.push(logoUrl); } }
+        else counts.newBrandsWithoutLogo++;
+        const ord = await nextOrder('brands', async () => (await q.query('SELECT COALESCE(MAX(sort_order), 0) AS m FROM vehicle_brands')).rows[0].m);
+        brand = { id: apply ? newId('brand') : `new:${bkey}`, name: d.brand.en, name_ar: d.brand.ar, name_zh: d.brand.zh, photo_url: logoUrl, isNew: true };
+        if (apply) await q.query('INSERT INTO vehicle_brands (id, name, name_ar, name_zh, photo_url, sort_order) VALUES ($1, $2, $3, $4, $5, $6)', [brand.id, d.brand.en, d.brand.ar, d.brand.zh, logoUrl, ord]);
+        counts.newBrands++;
+        notes.push(fileLogo ? `Brand "${d.brand.en}" is new: it will be created with the logo from row ${fileLogo.row}.` : `Brand "${d.brand.en}" is new and the file has no logo for it: it will be created marked "No logo yet" (add the logo later in Vehicle Data).`);
+      } else {
+        const differs = !same(brand.name_ar || '', d.brand.ar) || !same(brand.name_zh || '', d.brand.zh);
+        if (differs) {
+          counts.brandNamesUpdated++;
+          if (apply) await q.query('UPDATE vehicle_brands SET name_ar = $1, name_zh = $2 WHERE id = $3', [d.brand.ar, d.brand.zh, brand.id]);
+          notes.push(`Brand "${brand.name}": its Arabic and Chinese names will be updated from the file.`);
+          brand.name_ar = d.brand.ar; brand.name_zh = d.brand.zh;
+        }
+        if (fileLogo) {
+          counts.brandLogosSaved++;
+          if (apply) {
+            const saved = await saveImage(fileLogo.logo.buffer, fileLogo.logo.mime); savedUrls.push(saved.url);
+            if (brand.photo_url) oldUrls.push(brand.photo_url);
+            await q.query('UPDATE vehicle_brands SET photo_url = $1 WHERE id = $2', [saved.url, brand.id]);
+            brand.photo_url = saved.url;
+          }
+          notes.push(`Brand "${brand.name}": its logo will be replaced by the one in row ${fileLogo.row}.`);
+        }
+      }
+      brands.set(bkey, brand);
     }
     const brand = brands.get(bkey);
-    if (!brand) {
-      missingBrands.add(d.brand.en);
-      messages.push({ level: 'error', text: `Brand "${d.brand.en}" does not exist yet. Add it first in Vehicle Data (Brands tab, with its photo), then check the file again.` });
-      rows.push({ ...summary, status: 'error', messages });
-      continue;
-    }
-    if (!noted.has(`brand:${brand.id}`)) {
-      noted.add(`brand:${brand.id}`);
-      const differs = !same(brand.name_ar || '', d.brand.ar) || !same(brand.name_zh || '', d.brand.zh);
-      if (differs && mode === 'update') {
-        counts.brandNamesUpdated++;
-        brand.name_ar = d.brand.ar; brand.name_zh = d.brand.zh;
-        if (apply) await q.query('UPDATE vehicle_brands SET name_ar = $1, name_zh = $2 WHERE id = $3', [d.brand.ar, d.brand.zh, brand.id]);
-        notes.push(`Brand "${brand.name}": its Arabic and Chinese names will be updated from the file.`);
-      } else if (differs) {
-        notes.push(`Brand "${brand.name}" already exists and its saved Arabic/Chinese name is not the file's: it was left as it is (choose "Update existing" to change it).`);
-      }
-    }
 
     // ---- model: create if missing
     const mkey = `${brand.id}|${nameKey(d.model.en)}`;

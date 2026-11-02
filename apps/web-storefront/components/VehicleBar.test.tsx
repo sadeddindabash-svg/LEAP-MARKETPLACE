@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 
-// The "Shopping for" container, like the mobile app's card: the label, the default car in a chip, the car's picture in an angled panel; "Add a vehicle" for everyone without a car; a same-size empty box while loading;
+// The "Shopping for" container, like the mobile app's card: the label, the default car in a chip, the car's picture standing on the menu row and rising above it; "Add a vehicle" for everyone without a car; a same-size empty box while loading;
 // the whole container opens My garage. The sign-in state and the garage are replaced by fixed values.
 const m = vi.hoisted(() => ({ auth: { current: { user: { id: "u1" } as unknown, isLoading: false } }, garage: { current: { defaultVehicle: null as unknown, loading: false } } }));
 vi.mock("./AuthProvider", () => ({ useAuth: () => m.auth.current }));
@@ -27,7 +27,7 @@ describe("with a saved car", () => {
   it("a car with a version shows it after the year (as the website always did)", () => { m.garage.current = { defaultVehicle: car({ model: "M5", brand: "AITO", year: 2022, version: { name: "AWD Flagship", nameAr: null } }), loading: false }; show(); expect(screen.getByText("AITO M5 · 2022 · AWD Flagship")).toBeInTheDocument(); });
   it("a name that is too long for the space stays on ONE line and is cut with … (never wraps, never widens the menu row); the full text is in the tooltip", () => {
     const long = "Mercedes-Benz GLC 300 · 2024 · AMG Line Premium Plus"; m.garage.current = { defaultVehicle: car({ brand: "Mercedes-Benz", model: "GLC 300", version: { name: "AMG Line Premium Plus", nameAr: null } }), loading: false }; show();
-    const chip = screen.getByText(long); expect(chip.className).toContain("truncate"); expect(chip.className).toContain("max-w-full"); expect(card().getAttribute("title")).toBe(long); expect(card().className).toContain("h-10"); expect(card().className).toContain("overflow-hidden");
+    const chip = screen.getByText(long); expect(chip.className).toContain("truncate"); expect(chip.className).toContain("max-w-full"); expect(card().getAttribute("title")).toBe(long); expect(card().className.split(" ")).toContain("h-12"); expect(chip.parentElement!.className).toContain("min-w-0");
   });
   it("in Arabic: the Arabic label and brand, and the link keeps /ar", () => { show("menu", "ar"); expect(screen.getByText("التسوق لسيارة")).toBeInTheDocument(); expect(screen.getByText("بي واي دي Seal DM-i · 2024")).toBeInTheDocument(); expect(card().getAttribute("href")).toBe("/ar/garage"); });
 });
@@ -53,8 +53,13 @@ describe("the car's picture", () => {
       const c = car(over); m.garage.current = { defaultVehicle: c, loading: false }; const view = show(); expect(screen.getByTestId("car-photo").getAttribute("src")).toBe(`https://api.example.com${vehiclePhoto(c as never)}`); view.unmount();
     }
   });
-  it("the picture panel is angled, mirrored in Arabic, and is decoration (empty alt)", () => {
-    m.garage.current = { defaultVehicle: car({ brandPhotoUrl: "/b.png" }), loading: false }; show(); const c = screen.getByTestId("vehicle-card-picture").className; expect(c).toContain("[clip-path:polygon(22%_0,100%_0,100%_100%,0_100%)]"); expect(c).toContain("rtl:[clip-path:polygon(0_0,78%_0,100%_100%,0_100%)]"); expect(screen.getByTestId("car-photo").getAttribute("alt")).toBe("");
+  it("no border and no background; the car sits exactly in the middle of the row (68 px tall, 10 px out above and below), with a shadow; it is decoration (empty alt)", () => {
+    m.garage.current = { defaultVehicle: car({ brandPhotoUrl: "/b.png" }), loading: false }; show();
+    for (const c of ["border", "bg-chalk", "rounded-[10px]", "overflow-hidden"]) expect(card().className.split(" "), c).not.toContain(c);
+    const place = screen.getByTestId("vehicle-card-picture").className.split(" "); for (const c of ["relative", "h-12", "w-40"]) expect(place, c).toContain(c);
+    const rise = screen.getByTestId("vehicle-card-car").className.split(" "); for (const c of ["absolute", "top-1/2", "-translate-y-1/2", "h-[68px]", "z-10", "pointer-events-none"]) expect(rise, c).toContain(c); expect(rise).not.toContain("bottom-0");
+    expect(screen.getByTestId("vehicle-card-car").querySelector("[aria-hidden=true]")!.className).toContain("rounded-[50%]");
+    expect(screen.getByTestId("car-photo").getAttribute("alt")).toBe("");
   });
 });
 describe("with no car, or signed out (as in the app)", () => {
@@ -67,7 +72,7 @@ describe("with no car, or signed out (as in the app)", () => {
 });
 describe("while the sign-in or the garage is still being read", () => {
   it("is an empty box of the same height: no words, no link (so a signed-in buyer never sees \"Add a vehicle\" for a moment)", () => {
-    m.auth.current = { user: null, isLoading: true }; const a = show(); const box = screen.getByTestId("vehicle-card-loading"); expect(box.className).toContain("h-10"); expect(screen.queryByText("Add a vehicle")).not.toBeInTheDocument(); expect(screen.queryByRole("link")).not.toBeInTheDocument(); expect(box.getAttribute("aria-hidden")).toBe("true"); a.unmount();
+    m.auth.current = { user: null, isLoading: true }; const a = show(); const box = screen.getByTestId("vehicle-card-loading"); expect(box.className).toContain("h-12"); expect(screen.queryByText("Add a vehicle")).not.toBeInTheDocument(); expect(screen.queryByRole("link")).not.toBeInTheDocument(); expect(box.getAttribute("aria-hidden")).toBe("true"); a.unmount();
     m.auth.current = { user: { id: "u1" }, isLoading: false }; m.garage.current = { defaultVehicle: null, loading: true }; show(); expect(screen.getByTestId("vehicle-card-loading")).toBeInTheDocument(); expect(screen.queryByText("Add a vehicle")).not.toBeInTheDocument();
   });
   it("a signed-out visitor is not kept waiting by the garage (it has nothing to load)", () => { m.auth.current = { user: null, isLoading: false }; m.garage.current = { defaultVehicle: null, loading: true }; show(); expect(screen.getByText("Add a vehicle")).toBeInTheDocument(); });
@@ -79,5 +84,8 @@ describe("the two places", () => {
   it("row: its own row under the menu, only below the large breakpoint, inside the page's usual width", () => {
     const { container } = show("row"); const w = container.querySelector("[data-where]")!; expect(w.getAttribute("data-where")).toBe("row"); expect(w.className.split(" ")).toContain("lg:hidden"); expect(w.className).toContain("border-b"); expect(w.firstElementChild!.className).toContain("max-w-7xl");
   });
-  it("the container is 40 px high, inside the 48 px menu row, so the row does not grow", () => { show(); expect(card().className.split(" ")).toContain("h-10"); });
+  it("the container is 48 px high, like the menu row, so the row does not grow (the car reaches out above and below); the phone row leaves room for it", () => {
+    const a = show(); expect(card().className.split(" ")).toContain("h-12"); a.unmount();
+    const { container } = show("row"); expect(container.querySelector("[data-where]")!.firstElementChild!.className.split(" ")).toContain("py-3");
+  });
 });

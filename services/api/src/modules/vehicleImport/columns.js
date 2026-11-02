@@ -8,16 +8,18 @@ const FIELDS = [
   { key: 'engine', label: 'Engine', max: 200, headers: { en: 'Engine', ar: 'المحرك', zh: '发动机' } },
   { key: 'seats', label: 'Seats', headers: { en: 'Seats', ar: 'عدد المقاعد', zh: '座位数' } },
 ];
-const PHOTO_HEADER = 'Vehicle Photo';
+const PHOTO_HEADER = 'Version Photo';
+const OLD_PHOTO_HEADER = 'Vehicle Photo';        // the name of the version picture column in older templates: still read
+const LOGO_HEADER = 'Brand Logo';               // the brand's logo: one picture per brand, on any row of that brand
 const LANGS = [['en', 'English'], ['ar', 'Arabic'], ['zh', 'Chinese']];
-const MAX_ROWS = 2000;
-const MAX_UPLOAD_BYTES = 60 * 1024 * 1024;
+const MAX_ROWS = 50000;                         // a whole catalogue in one file
+const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;     // 500 MB (a file full of pictures); the server needs enough memory for it, see the patch notes
 
-/** The order the template uses (the same as the AITO sheet): English block, the picture, Arabic block, Chinese block. */
+/** The order the template uses: English block, the two pictures (brand logo, version photo), Arabic block, Chinese block. */
 const TEMPLATE_HEADERS = [
-  ...FIELDS.map((f) => f.headers.en), PHOTO_HEADER,
+  ...FIELDS.map((f) => f.headers.en), LOGO_HEADER, PHOTO_HEADER,
   ...FIELDS.map((f) => f.headers.ar),
   ...FIELDS.map((f) => f.headers.zh),
 ];
 
-module.exports = { FIELDS, PHOTO_HEADER, LANGS, MAX_ROWS, MAX_UPLOAD_BYTES, TEMPLATE_HEADERS };
+module.exports = { FIELDS, PHOTO_HEADER, OLD_PHOTO_HEADER, LOGO_HEADER, LANGS, MAX_ROWS, MAX_UPLOAD_BYTES, TEMPLATE_HEADERS };

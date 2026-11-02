@@ -6,7 +6,7 @@
 
 export const NAV_GROUPS = [
   { id: 'group:suppliers', label: 'Suppliers', children: ['suppliers', 'supplierMessages'] },
-  { id: 'group:products', label: 'Products', children: ['moderation', 'allProducts'] },
+  { id: 'group:products', label: 'Products', children: ['allProducts', 'moderation'] },      // opens on All products; the shell adds its Live / Hidden / Product requirements tabs
   { id: 'group:support', label: 'Support', children: ['tickets', 'reviews', 'promoCodes'] },
   { id: 'group:financial', label: 'Financial', children: ['paymentMethods', 'paymentProviders', 'payouts', 'pricing'] },
 ];
@@ -14,7 +14,7 @@ export const NAV_GROUPS = [
 // The text on a sub-tab (the sidebar used to say "Support" for the tickets page; inside the Support group that page is "Tickets").
 export const TAB_LABELS = {
   suppliers: 'Suppliers', supplierMessages: 'Supplier Messages',
-  moderation: 'Moderation', allProducts: 'All Products',
+  moderation: 'Moderation', allProducts: 'All products',
   tickets: 'Tickets', reviews: 'Reviews', promoCodes: 'Promo Codes',
   paymentMethods: 'Payment Methods', paymentProviders: 'Payment Providers', payouts: 'Payouts', pricing: 'Pricing',
 };

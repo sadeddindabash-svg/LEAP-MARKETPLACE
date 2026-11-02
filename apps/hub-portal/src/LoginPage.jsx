@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { PackageCheck } from "lucide-react";
 import { login } from "./auth";
 import { useLang } from "./langContext";
 
@@ -38,11 +37,13 @@ export default function LoginPage({ onLoginSuccess }) {
   return (
     <div style={{ ...body, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: C.canvas }}>
       <form onSubmit={handleSubmit} style={{ width: 360, background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: 32 }}>
+        {/* the logo, drawn like an engraving when the page opens (public/brand/leap-logo-animated.svg); the still logo if that file is missing */}
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+          <img src="/brand/leap-logo-animated.svg" alt="Leap Auto Parts" width={104} height={104} style={{ display: "block" }}
+            onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = "/brand/leap-logo.png"; }} />
+        </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 9, background: C.signal, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <PackageCheck size={18} color="#fff" />
-            </div>
             <div style={{ ...disp, fontSize: 24, fontWeight: 700, color: C.ink }}>{t.appName}</div>
           </div>
           <button type="button" onClick={toggle} style={{ border: `1px solid ${C.line}`, borderRadius: 6, background: "none", fontSize: 11, fontWeight: 700, padding: "4px 8px", cursor: "pointer", color: C.muted }}>

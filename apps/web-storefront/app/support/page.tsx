@@ -1,198 +1,138 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import Link from "@/components/LocLink";
+import { getAuthToken, useAuth } from "@/components/AuthProvider";
+import { useLang, useT } from "@/components/LangProvider";
 import { useAutoRefresh } from "@/components/useAutoRefresh";
 import { useLocRouter } from "@/components/useLocRouter";
-import Link from "@/components/LocLink";
-import { useAuth, getAuthToken } from "@/components/AuthProvider";
-import { SupportTicketSummary, fetchMyTickets, createSupportTicket } from "@/lib/api";
+import { createSupportTicket, fetchMyTickets, type SupportTicketSummary } from "@/lib/api";
+import { statusLabel } from "@/lib/orders";
 
-// Real support tickets page (new) -- closes a real, confirmed gap:
-// this storefront had no support-ticket UI at all (the notification
-// bell's own resolveNotificationLink deliberately returned null for
-// ticket-type notifications specifically because of this). Two real
-// modes, same pattern as /returns:
-// - Logged in: a real list (GET /support/my-tickets), plus a form to
-//   open a new one.
-// - Not logged in: a real "track your ticket" lookup (ticket ID + the
-//   real email it was filed under), plus a form to open a new one as
-//   a guest -- mirrors the real guest-access fix in
-//   services/api/src/modules/support/routes.js (GET/POST
-//   /support/my-tickets/:id* were requireAuth only before this).
-export default function SupportPage() {
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const OPEN = ["open", "in_progress"];
+const DONE = ["resolved", "closed"];
+
+// Support, like the app's screen, in the visitor's language: a signed-in buyer sees their tickets (how many, how many are open and resolved, and each with its
+// status) and opens a new one with the button; a guest opens one with their email, or tracks one with its ID and email. A ticket about an order (?orderId=)
+// opens the form at once and carries the order.
+function Support() {
   const { user, isLoading: authLoading } = useAuth();
+  const lang = useLang();
+  const t = useT();
   const router = useLocRouter();
+  const orderId = useSearchParams().get("orderId");
   const [tickets, setTickets] = useState<SupportTicketSummary[]>([]);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
-  const [error, setError] = useState<string | null>(null);
-
-  const [lookupTicketId, setLookupTicketId] = useState("");
-  const [lookupEmail, setLookupEmail] = useState("");
-
-  const [showNewForm, setShowNewForm] = useState(false);
-  const [newSubject, setNewSubject] = useState("");
-  const [newMessage, setNewMessage] = useState("");
-  const [newGuestEmail, setNewGuestEmail] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(!!orderId);
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [guestEmail, setGuestEmail] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [trackId, setTrackId] = useState("");
+  const [trackEmail, setTrackEmail] = useState("");
+  const [trackError, setTrackError] = useState<string | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
-    if (!user) {
-      Promise.resolve().then(() => setLoadState("ready"));
-      return;
-    }
+    if (!user) { Promise.resolve().then(() => setLoadState("ready")); return; }
     const token = getAuthToken();
     if (!token) return;
-    fetchMyTickets(token)
-      .then((data) => { setTickets(data); setLoadState("ready"); })
-      .catch((err) => { setError(err.message); setLoadState("error"); });
+    fetchMyTickets(token).then((data) => { setTickets(data); setLoadState("ready"); }).catch((err: Error) => { setLoadError(err.message); setLoadState("error"); });
   }, [authLoading, user]);
   useAutoRefresh(async () => { const token = getAuthToken(); if (!token) return; setTickets(await fetchMyTickets(token)); }, { enabled: !authLoading && !!user && loadState === "ready" });
 
-  const handleLookup = (e: React.FormEvent) => {
+  async function create(e: React.FormEvent) {
     e.preventDefault();
-    if (!lookupTicketId.trim() || !lookupEmail.trim()) return;
-    router.push(`/support/${encodeURIComponent(lookupTicketId.trim())}?guestEmail=${encodeURIComponent(lookupEmail.trim())}`);
-  };
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newSubject.trim() || !newMessage.trim()) return;
-    if (!user && !newGuestEmail.trim()) {
-      setError("Please provide an email so we can reach you.");
-      return;
-    }
-    setIsSubmitting(true);
-    setError(null);
+    if (!subject.trim() || !message.trim()) { setFormError(t("ticket_fill_both")); return; }
+    if (!user && !guestEmail.trim()) { setFormError(t("ticket_need_email")); return; }
+    if (!user && !EMAIL.test(guestEmail.trim())) { setFormError(t("please_enter_valid_email")); return; }
+    setFormError(null); setSending(true);
     try {
       const token = getAuthToken();
-      const result = await createSupportTicket(
-        { subject: newSubject.trim(), message: newMessage.trim() },
-        user ? { token: token || undefined } : { guestEmail: newGuestEmail.trim() }
-      );
-      if (user) {
-        router.push(`/support/${result.id}`);
-      } else {
-        router.push(`/support/${result.id}?guestEmail=${encodeURIComponent(newGuestEmail.trim())}`);
-      }
+      const input = { subject: subject.trim(), message: message.trim(), ...(orderId ? { orderId } : {}) };
+      const result = await createSupportTicket(input, user ? { token: token ?? undefined } : { guestEmail: guestEmail.trim() });
+      router.push(user ? `/support/${result.id}` : `/support/${result.id}?guestEmail=${encodeURIComponent(guestEmail.trim())}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create ticket");
-      setIsSubmitting(false);
+      setFormError(err instanceof Error ? err.message : t("ticket_load_error"));
+      setSending(false);
     }
-  };
-
-  if (authLoading || loadState === "loading") {
-    return <div className="mx-auto max-w-2xl px-6 py-16 text-muted">Loading…</div>;
   }
 
+  function track(e: React.FormEvent) {
+    e.preventDefault();
+    if (!trackId.trim() || !trackEmail.trim()) { setTrackError(t("ticket_fill_both")); return; }
+    setTrackError(null);
+    router.push(`/support/${encodeURIComponent(trackId.trim())}?guestEmail=${encodeURIComponent(trackEmail.trim())}`);
+  }
+
+  if (authLoading || loadState === "loading") return <div className="mx-auto max-w-2xl px-4 py-10 text-muted sm:px-8" aria-busy="true">{t("search_loading")}</div>;
+  const formOpen = showForm || !user;      // a guest gets the form straight away (there is no list to look at first)
+  const input = "w-full rounded-lg border border-line px-3 py-2 text-[15px]";
   return (
-    <div className="mx-auto max-w-2xl px-6 py-16">
-      <div className="flex items-center justify-between">
-        <h1 className="font-display font-bold text-3xl">Support</h1>
-        <button
-          onClick={() => setShowNewForm((v) => !v)}
-          className="text-sm font-semibold text-signal hover:text-signal-dark"
-        >
-          {showNewForm ? "Cancel" : "New ticket"}
-        </button>
+    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-8">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-3xl font-bold tracking-tight text-navy">{t("support_title")}</h1>
+        {user && <button type="button" onClick={() => setShowForm((v) => !v)} className="rounded-lg bg-signal px-4 py-2 text-sm font-semibold text-on-signal">{showForm ? t("cancel") : t("new_ticket_button")}</button>}
       </div>
+      <p className="mt-2 text-sm text-muted">{t("support_notice")}</p>
 
-      {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
-
-      {showNewForm && (
-        <form onSubmit={handleCreate} className="mt-6 space-y-3 rounded-lg border border-line bg-white p-4">
-          <input
-            placeholder="Subject"
-            value={newSubject}
-            onChange={(e) => setNewSubject(e.target.value)}
-            className="w-full rounded-md border border-line px-3 py-2 text-sm"
-          />
-          <textarea
-            placeholder="How can we help?"
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            rows={4}
-            className="w-full rounded-md border border-line px-3 py-2 text-sm"
-          />
+      {formOpen && (
+        <form onSubmit={create} noValidate className="mt-6 grid gap-3 rounded-[14px] border border-line bg-white p-5">
+          <h2 className="text-lg font-bold text-navy">{t("new_ticket_title")}</h2>
+          <label className="grid gap-1 text-sm font-semibold">{t("subject_field")}<input value={subject} onChange={(e) => setSubject(e.target.value)} className={input} /></label>
+          <label className="grid gap-1 text-sm font-semibold">{t("how_can_we_help")}<textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={4} className={input} /></label>
           {!user && (
-            <input
-              type="email"
-              placeholder="Your email"
-              value={newGuestEmail}
-              onChange={(e) => setNewGuestEmail(e.target.value)}
-              className="w-full rounded-md border border-line px-3 py-2 text-sm"
-            />
+            <div className="grid gap-1"><label htmlFor="nt-email" className="text-sm font-semibold">{t("email_label")}</label><input id="nt-email" type="email" dir="ltr" value={guestEmail} onChange={(e) => setGuestEmail(e.target.value)} className={input} /></div>
           )}
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full rounded-md bg-signal px-6 py-3 text-on-signal font-semibold hover:bg-signal-dark transition-colors disabled:opacity-60"
-          >
-            {isSubmitting ? "Sending…" : "Submit"}
-          </button>
+          {formError && <p role="alert" className="text-sm font-semibold text-[#a12a21]">{formError}</p>}
+          <button type="submit" disabled={sending} className="justify-self-start rounded-lg bg-signal px-5 py-2.5 font-semibold text-on-signal disabled:opacity-60">{sending ? t("sending") : t("send_button")}</button>
         </form>
       )}
 
       {!user ? (
-        <div className="mt-8">
-          <h2 className="font-display font-bold text-lg mb-2">Track an existing ticket</h2>
-          <p className="text-sm text-muted mb-4">
-            Enter your ticket ID (from your confirmation) and the email you used to file it.
-          </p>
-          <form onSubmit={handleLookup} className="space-y-3">
-            <input
-              placeholder="e.g. T-1234"
-              value={lookupTicketId}
-              onChange={(e) => setLookupTicketId(e.target.value)}
-              className="w-full rounded-md border border-line px-3 py-2 text-sm font-plate uppercase"
-            />
-            <input
-              type="email"
-              placeholder="Email"
-              value={lookupEmail}
-              onChange={(e) => setLookupEmail(e.target.value)}
-              className="w-full rounded-md border border-line px-3 py-2 text-sm"
-            />
-            <button
-              type="submit"
-              className="w-full rounded-md border border-line px-6 py-3 font-semibold hover:border-ink transition-colors"
-            >
-              Track ticket
-            </button>
+        <section className="mt-8 rounded-[14px] border border-line bg-white p-5">
+          <h2 className="text-lg font-bold text-navy">{t("track_a_ticket")}</h2>
+          <p className="mt-1 text-sm text-muted">{t("track_ticket_help")}</p>
+          <form onSubmit={track} noValidate className="mt-4 grid gap-3">
+            <label className="grid gap-1 text-sm font-semibold">{t("ticket_id_field")}<input value={trackId} onChange={(e) => setTrackId(e.target.value)} dir="ltr" placeholder="T-1234" className={`${input} font-plate uppercase`} /></label>
+            <div className="grid gap-1"><label htmlFor="tk-email" className="text-sm font-semibold">{t("email_label")}</label><input id="tk-email" type="email" dir="ltr" value={trackEmail} onChange={(e) => setTrackEmail(e.target.value)} className={input} /></div>
+            {trackError && <p role="alert" className="text-sm font-semibold text-[#a12a21]">{trackError}</p>}
+            <button type="submit" className="justify-self-start rounded-lg border border-line px-5 py-2.5 font-semibold hover:border-ink">{t("track_button")}</button>
           </form>
-          <p className="mt-6 text-sm text-muted">
-            Have an account?{" "}
-            <Link href="/login" className="text-signal font-medium">
-              Log in
-            </Link>{" "}
-            to see all your tickets in one place.
-          </p>
-        </div>
+          <p className="mt-4 text-sm text-muted">{t("tickets_login")}: <Link href="/login" className="font-semibold text-navy underline underline-offset-4">{t("sign_in")}</Link></p>
+        </section>
       ) : (
-        <div className="mt-8">
+        <section className="mt-8">
+          {loadState === "error" && <p role="alert" className="text-sm font-semibold text-[#a12a21]">{t("tickets_load_error")} {loadError}</p>}
+          <div className="grid grid-cols-3 gap-3">
+            {([[tickets.length, "total_tickets"], [tickets.filter((x) => OPEN.includes(x.status)).length, "open_requests"], [tickets.filter((x) => DONE.includes(x.status)).length, "status_resolved"]] as const).map(([n, key]) => (
+              <div key={key} className="rounded-[14px] border border-line bg-white p-4"><p className="text-2xl font-extrabold text-navy">{n}</p><p className="text-sm font-semibold text-muted">{t(key)}</p></div>
+            ))}
+          </div>
           {loadState === "ready" && tickets.length === 0 ? (
-            <p className="text-muted">No support tickets yet.</p>
+            <p className="mt-6 text-muted">{t("tickets_empty")}</p>
           ) : (
-            <div className="space-y-3">
-              {tickets.map((t) => (
-                <Link
-                  key={t.id}
-                  href={`/support/${t.id}`}
-                  className="flex items-center justify-between rounded-lg border border-line bg-white p-4 hover:border-signal transition-colors"
-                >
-                  <div>
-                    <p className="font-semibold text-sm">{t.subject}</p>
-                    <p className="text-xs text-muted mt-1">{t.id}{t.orderId ? ` · Order ${t.orderId}` : ""}</p>
-                  </div>
-                  <span className="text-xs font-semibold uppercase text-signal">
-                    {t.status.replace(/_/g, " ")}
-                  </span>
-                </Link>
+            <ul className="mt-6 grid gap-3">
+              {tickets.map((x) => (
+                <li key={x.id}>
+                  <Link href={`/support/${x.id}`} className="flex items-center justify-between gap-3 rounded-[14px] border border-line bg-white p-4 hover:border-navy">
+                    <span className="min-w-0"><span dir="auto" className="block font-semibold">{x.subject}</span><span className="block text-xs text-muted" dir="ltr">{x.id}{x.orderId ? ` · ${x.orderId}` : ""}</span></span>
+                    <span className="shrink-0 rounded-full bg-[#fff4d6] px-3 py-1 text-xs font-bold text-navy">{statusLabel(lang, x.status)}</span>
+                  </Link>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
-        </div>
+        </section>
       )}
     </div>
   );
+}
+
+export default function SupportPage() {
+  return <Suspense fallback={null}><Support /></Suspense>;
 }

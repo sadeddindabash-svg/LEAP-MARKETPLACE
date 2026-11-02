@@ -65,15 +65,14 @@ describe.runIf(backendUp)('adding a vehicle in three steps (real backend)', () =
     expect(models.every((m) => m.photoUrl === null)).toBe(true);
   }, 60000);
 
-  it('CRITICAL: a YEAR needs the year in English digits AND a photo; every wrong year or missing photo is refused and nothing is created', async () => {
+  it('CRITICAL: a YEAR needs the year in English digits (the photo is optional now); every wrong year is refused and nothing is created', async () => {
     const token = await adminToken();
     const { model } = await newModel(token);
     const bad = [['no year', { photoUrl: '/uploads/y.jpg' }, 'year is required'], ['empty year', { year: '  ', photoUrl: '/uploads/y.jpg' }, 'year is required'],
       ['letters', { year: 'abcd', photoUrl: '/uploads/y.jpg' }, 'four digits'], ['two digits', { year: '21', photoUrl: '/uploads/y.jpg' }, 'four digits'],
       ['five digits', { year: '20211', photoUrl: '/uploads/y.jpg' }, 'four digits'], ['a range', { year: '2019-2022', photoUrl: '/uploads/y.jpg' }, 'four digits'],
       ['too old', { year: 1949, photoUrl: '/uploads/y.jpg' }, `between 1950 and ${nextYear}`], ['too far ahead', { year: nextYear + 1, photoUrl: '/uploads/y.jpg' }, `between 1950 and ${nextYear}`],
-      ['no photo', { year: 2021 }, 'photoUrl is required'], ['blank photo', { year: 2021, photoUrl: '   ' }, 'photoUrl is required'],
-      ['photo not text', { year: 2021, photoUrl: 123 }, 'photoUrl is required'], ['null photo', { year: 2021, photoUrl: null }, 'photoUrl is required']];
+    ];
     for (const [label, body, fragment] of bad) {
       const res = await addYear(token, model.id, body);
       expect(res.status, label).toBe(400);
@@ -81,6 +80,9 @@ describe.runIf(backendUp)('adding a vehicle in three steps (real backend)', () =
     }
     expect(await yearsOf(model.id)).toEqual([]);                                                      // nothing was created by any refusal
     expect((await addYear(token, 'model_does_not_exist', { year: 2021, photoUrl: '/uploads/y.jpg' })).status).toBe(404);
+    const noPhoto = await addYear(token, model.id, { year: 2021 });                                   // no photo: fine now
+    expect(noPhoto.status).toBe(201);
+    expect((await noPhoto.json()).photoUrl).toBeNull();
   }, 60000);
 
   it('CRITICAL: a year is stored as a one-year entry named by the year, with its photo; the limits 1950 and next year are accepted', async () => {

@@ -1,0 +1,247 @@
+import React, { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
+import { C, body } from "../theme";
+
+/**
+ * The common page design of the admin portal ("Folder" design):
+ *   1. the header (TopBar in App.jsx): title, description, search, notifications, the admin's name; then a line across the page;
+ *   2. under it the page's MAIN TABS (every page has at least one: a page outside any group shows its own name) (FolderTabs): folder tabs joined to the page, at most 7 shown, the rest under "More";
+ *   3. inside the page, the BUTTONS that switch what is shown (FilterButtons): one joined strip, every button 40 px high, the number in a square box.
+ *
+ * The main tabs of a GROUP of pages (Support: Tickets | Reviews | Promo Codes, ...) are decided by the shell and handed to the header through
+ * PageTabsContext, so every page of the group shows them under its own header without knowing about the group. A page with tabs of its own
+ * (Settings, Categories, Vehicle Data) hands them to its header directly.
+ */
+export const PageTabsContext = createContext(null);
+
+const TAB_HEIGHT = 40;
+
+// ---- Motion: when a tab is clicked, its highlight SLIDES from the tab before to the new one (the side menu and the tabs in the pages), and
+// what the tab shows fades in. Nothing moves for people whose system asks for less motion.
+export const SLIDE_MS = 380;
+export const SLIDE_EASE = "cubic-bezier(0.65, 0, 0.25, 1)";
+export const lessMotion = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const nextFrame = (fn) => (typeof requestAnimationFrame === "function" ? requestAnimationFrame(fn) : setTimeout(fn, 16));
+const cancelFrame = (id) => (typeof cancelAnimationFrame === "function" ? cancelAnimationFrame(id) : clearTimeout(id));
+const LAST_SPOT = new Map();                // each strip's highlight: { spot, from, at }: a newly opened page with the same tabs slides on from there
+                                            // (a page that draws its header again while it loads picks up the same slide)
+const spotOf = (el) => ({ x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight });
+const sameSpot = (a, b) => Boolean(a && b) && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+
+/**
+ * Where the chosen item inside `boxRef` (the first element matching `selector`) is, for a highlight drawn under it: { x, y, w, h, anim }
+ * (anim: slide to it). `watch`: what changes the chosen item. `memoryKey`: remember the spot, so the same strip on the next page slides on.
+ * The box must be the items' offsetParent (position: relative).
+ */
+export function useSlidingMark(boxRef, selector, watch, memoryKey) {
+  const [mark, setMark] = useState(null);
+  const firstRun = useRef(true);
+  const pending = useRef(null);             // a slide about to start: { spot, frame } (the page drawing itself again meanwhile does not stop it)
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    if (!box) return undefined;
+    const el = box.querySelector(selector);
+    const wasFirst = firstRun.current;
+    firstRun.current = false;
+    if (!el) { setMark(null); return; }
+    const now = spotOf(el);
+    const startSlide = (to) => {
+      const slide = { spot: to, frame: 0, stopped: false };
+      slide.frame = nextFrame(() => { slide.frame = nextFrame(() => { pending.current = null; setMark({ ...to, anim: true }); }); });
+      pending.current = slide;
+    };
+    if (pending.current) {
+      if (sameSpot(pending.current.spot, now)) { if (pending.current.stopped) startSlide(now); return; }   // (React's development mode stops and starts the page once)
+      cancelFrame(pending.current.frame);
+      pending.current = null;
+    }
+    const prev = wasFirst && memoryKey ? LAST_SPOT.get(memoryKey) : null;
+    let before = null;
+    if (prev && !sameSpot(prev.spot, now)) { before = prev.spot; LAST_SPOT.set(memoryKey, { spot: now, from: prev.spot, at: Date.now() }); }
+    else if (prev && prev.from && Date.now() - prev.at < SLIDE_MS) before = prev.from;
+    else if (memoryKey) LAST_SPOT.set(memoryKey, { spot: now });
+    if (before && !sameSpot(before, now) && !lessMotion()) {
+      setMark({ ...before, anim: false });                          // start where the last page left it, then slide
+      startSlide(now);
+    } else {
+      setMark({ ...now, anim: !wasFirst && !lessMotion() });
+    }
+  }, watch); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => { if (pending.current) { cancelFrame(pending.current.frame); pending.current.stopped = true; } }, []);
+  // the box changes size (the window, the menu collapsing, fonts arriving, a bold label): follow the item
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!box || typeof ResizeObserver === "undefined") return undefined;
+    const ro = new ResizeObserver(() => {
+      const el = box.querySelector(selector);
+      if (!el || pending.current) return;                     // a slide is about to start: it goes to the right place itself
+      const s = spotOf(el);
+      if (memoryKey) LAST_SPOT.set(memoryKey, { ...(LAST_SPOT.get(memoryKey) || {}), spot: s });
+      setMark((m) => (sameSpot(m, s) ? m : { ...s, anim: m ? m.anim : false }));
+    });
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return mark;
+}
+
+/** Fades in what a tab shows: the elements after `el` (a tab strip) in the page. */
+export function fadeInAfter(el, { dx = 12, ms = 280 } = {}) {
+  if (!el || lessMotion()) return;
+  for (let s = el.nextElementSibling; s; s = s.nextElementSibling) {
+    if (s.hasAttribute("data-leap-tabbar") || typeof s.animate !== "function") continue;
+    s.animate([{ opacity: 0, transform: `translateX(${dx}px)` }, { opacity: 1, transform: "none" }], { duration: ms, easing: "ease-out" });
+  }
+}
+
+export const CONTROL_HEIGHT = 40;           // every button inside a page: the same height
+
+/** One tab: the label is the button's own text (no wrapper), so the tab's name is exactly its label. */
+function FolderTab({ tab, active, onSelect, marked }) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={() => onSelect(tab.id)}
+      style={{
+        ...body, display: "inline-flex", alignItems: "center", gap: 6, height: TAB_HEIGHT, padding: "0 16px", fontSize: 13, fontWeight: active ? 700 : 600, cursor: "pointer", whiteSpace: "nowrap",
+        border: `1px solid ${active && !marked ? C.line : "transparent"}`, borderBottom: active && !marked ? `1px solid ${C.canvas}` : "1px solid transparent", borderRadius: "10px 10px 0 0", marginBottom: -1,
+        background: active && !marked ? C.canvas : "transparent", color: active ? C.ink : C.muted, position: "relative", transition: "color 200ms ease",
+      }}
+    >
+      {tab.label}
+    </button>
+  );
+}
+
+/**
+ * The main tabs under the header. tabs: [{ id, label }]. When there are more than `maxVisible`, the rest go under "More (n)"; the tab that is
+ * chosen is always shown (it takes the last visible place when it is one of the others).
+ */
+export function FolderTabs({ label, tabs, activeId, onSelect, maxVisible = 7 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const wrapRef = useRef(null);
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const close = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setMenuOpen(false); };
+    const esc = (e) => { if (e.key === "Escape") setMenuOpen(false); };
+    document.addEventListener("mousedown", close); document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", esc); };
+  }, [menuOpen]);
+  const listRef = useRef(null);
+  const barRef = useRef(null);
+  const tabsKey = (tabs || []).map((t) => `${t.id}:${t.label}:${t.count}`).join("|");
+  const mark = useSlidingMark(listRef, '[role="tab"][aria-selected="true"]', [activeId, tabsKey], `tabs:${label}`);
+  // what the tab shows fades in when another tab is clicked
+  const shownTab = useRef(activeId);
+  useLayoutEffect(() => {
+    if (shownTab.current === activeId) return;
+    shownTab.current = activeId;
+    fadeInAfter(barRef.current);
+  }, [activeId]);
+  if (!tabs || tabs.length === 0) return null;
+  let visible = tabs.slice(0, maxVisible);
+  if (tabs.length > maxVisible && !visible.some((t) => t.id === activeId)) {
+    const chosen = tabs.find((t) => t.id === activeId);
+    if (chosen) visible = [...visible.slice(0, maxVisible - 1), chosen];
+  }
+  const shown = new Set(visible.map((t) => t.id));
+  const rest = tabs.filter((t) => !shown.has(t.id));
+  const pick = (id) => { setMenuOpen(false); onSelect(id); };
+  return (
+    <div ref={barRef} data-leap-tabbar="" style={{ display: "flex", alignItems: "flex-end", gap: 2, padding: "14px 28px 0", background: C.card, borderBottom: `1px solid ${C.line}`, flexWrap: "wrap" }}>
+      <div ref={listRef} role="tablist" aria-label={label} style={{ display: "flex", alignItems: "flex-end", gap: 2, flexWrap: "wrap", position: "relative" }}>
+        {/* the chosen tab's raised background: one shape that slides to the tab clicked (drawn first, so the labels sit on it) */}
+        {mark && (
+          <span aria-hidden="true" data-testid="tab-highlight" style={{
+            position: "absolute", left: 0, top: 0, width: mark.w, height: mark.h, transform: `translate(${mark.x}px, ${mark.y}px)`, boxSizing: "border-box", pointerEvents: "none",
+            border: `1px solid ${C.line}`, borderBottom: `1px solid ${C.canvas}`, borderRadius: "10px 10px 0 0", background: C.canvas,
+            transition: mark.anim ? `transform ${SLIDE_MS}ms ${SLIDE_EASE}, width ${SLIDE_MS}ms ${SLIDE_EASE}` : "none",
+          }} />
+        )}
+        {visible.map((tab) => <FolderTab key={tab.id} tab={tab} active={tab.id === activeId} onSelect={pick} marked={Boolean(mark && mark.w)} />)}
+      </div>
+      {rest.length > 0 && (
+        <div ref={wrapRef} style={{ position: "relative" }}>
+          <button
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((v) => !v)}
+            style={{ ...body, display: "inline-flex", alignItems: "center", gap: 4, height: TAB_HEIGHT, padding: "0 14px", border: "none", background: "transparent", color: C.ink, fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+          >
+            More ({rest.length}) <ChevronDown size={14} />
+          </button>
+          {menuOpen && (
+            <div role="menu" aria-label={`More ${label}`} style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, minWidth: 200, background: C.card, border: `1px solid ${C.line}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(20,23,28,0.12)", padding: 6, zIndex: 30 }}>
+              {rest.map((tab) => (
+                <button key={tab.id} type="button" role="menuitem" onClick={() => pick(tab.id)}
+                  style={{ ...body, display: "block", width: "100%", textAlign: "left", height: CONTROL_HEIGHT, padding: "0 12px", border: "none", borderRadius: 8, background: "transparent", color: C.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The main tabs of the page's group (from the shell), for the header to show under itself. */
+export function useGroupTabs() { return useContext(PageTabsContext); }
+
+const TONES = {
+  ink: { color: C.ink, bg: "#EEF0F3" },
+  red: { color: C.red, bg: C.redBg },
+  blue: { color: C.torque, bg: C.torqueBg },
+  green: { color: C.gauge, bg: C.gaugeBg },
+  amber: { color: C.amber, bg: C.amberBg },
+};
+
+/**
+ * The buttons inside a page that switch what is shown (All | Open | In progress | Resolved, ...): one joined strip, every button 40 px high, the
+ * chosen one white with a gold line under it, the number (when there is one) in a square box. items: [{ id, label, count?, tone?, alert?, countTestId? }]
+ * (tone: ink | red | blue | green | amber; alert: the box turns red while something waits). Each is a toggle button (aria-pressed); its name is its label.
+ */
+export function FilterButtons({ label, items, activeId, onSelect }) {
+  return (
+    <div role="group" aria-label={label} style={{ display: "inline-flex", flexWrap: "wrap", paddingLeft: 1 }}>
+      {items.map((item, i) => {
+        const active = item.id === activeId;
+        const tone = TONES[item.alert ? "red" : item.tone || "ink"];
+        const hasCount = item.count !== undefined && item.count !== null;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            aria-pressed={active}
+            title={hasCount ? `${item.label}: ${item.count}` : undefined}
+            onClick={() => onSelect(item.id)}
+            style={{
+              ...body, display: "inline-flex", alignItems: "center", gap: 8, height: CONTROL_HEIGHT, padding: `0 ${hasCount ? 8 : 16}px 0 16px`, marginLeft: -1, cursor: "pointer",
+              border: `1px solid ${C.line}`, borderRadius: i === 0 ? "10px 0 0 10px" : i === items.length - 1 ? "0 10px 10px 0" : 0,
+              background: active ? C.card : C.canvas, boxShadow: active ? `inset 0 -3px 0 ${C.signal}` : "none",
+              color: active ? C.ink : C.muted, fontSize: 13, fontWeight: 700, position: "relative", zIndex: active ? 1 : 0,
+            }}
+          >
+            {item.label}
+            {hasCount && (
+              <span aria-hidden="true" data-testid={item.countTestId} style={{
+                minWidth: 26, height: 24, padding: "0 6px", boxSizing: "border-box", borderRadius: 6, display: "inline-flex", alignItems: "center", justifyContent: "center",
+                fontSize: 12, fontWeight: 800, background: active || item.alert ? tone.color : tone.bg, color: active || item.alert ? "#fff" : tone.color,
+              }}>{item.count}</span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** A plain button in a page's toolbar (Export, ...): the same 40 px height as everything else. */
+export const toolbarButtonStyle = (disabled = false) => ({
+  ...body, display: "inline-flex", alignItems: "center", gap: 6, height: CONTROL_HEIGHT, padding: "0 16px", borderRadius: 10, border: `1px solid ${C.line}`,
+  background: C.card, color: C.ink, fontSize: 13, fontWeight: 700, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1,
+});

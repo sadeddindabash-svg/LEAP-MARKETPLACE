@@ -63,7 +63,8 @@ function toSavedGenerationDto(row) {
 }
 
 const SAVED_GENERATION_SELECT = `
-  SELECT usg.generation_id, usg.year, usg.is_default, vg.name AS generation_name, vg.year_start, vg.year_end, vg.photo_url AS generation_photo_url,
+  SELECT usg.generation_id, usg.year, usg.is_default, vg.name AS generation_name, vg.year_start, vg.year_end,
+         COALESCE(vg.photo_url, (SELECT v.photo_url FROM vehicle_versions v WHERE v.generation_id = vg.id AND v.photo_url IS NOT NULL ORDER BY v.sort_order, v.id LIMIT 1)) AS generation_photo_url,
          vm.name AS model_name, vm.name_ar AS model_name_ar, vm.photo_url AS model_photo_url,
          vb.name AS brand_name, vb.name_ar AS brand_name_ar, vb.photo_url AS brand_photo_url,
     usg.version_id, ver.name AS version_name, ver.name_ar AS version_name_ar, ver.engine AS version_engine, ver.engine_ar AS version_engine_ar,

@@ -1099,7 +1099,11 @@ router.get('/admin/products', requireAuth, requireRole('admin'), requirePageAcce
     `;
 
     const params = [];
-    let where = req.query.status === 'hidden' ? `WHERE p.status = 'inactive' AND p.deleted_at IS NULL` : `WHERE p.status = 'active'`;      // ?status=hidden lists the HIDDEN products (the ones the admin hid or rejected), so they can be found again
+    // ?status=hidden: the HIDDEN products (the admin hid or rejected them); ?status=all: every product that is not deleted and not a supplier's draft
+    // (live, hidden, waiting for review); otherwise the live ones
+    let where = req.query.status === 'hidden' ? `WHERE p.status = 'inactive' AND p.deleted_at IS NULL`
+      : req.query.status === 'all' ? `WHERE p.status IN ('active', 'inactive', 'translating') AND p.deleted_at IS NULL`
+      : `WHERE p.status = 'active'`;      // ?status=hidden lists the HIDDEN products (the ones the admin hid or rejected), so they can be found again
     if (search) {
       params.push(`%${search}%`);
       where += ` AND (p.name ILIKE $${params.length} OR p.oem_number ILIKE $${params.length} OR s.name ILIKE $${params.length})`;
@@ -1129,7 +1133,7 @@ router.get('/admin/products', requireAuth, requireRole('admin'), requirePageAcce
     const { rows: countRows } = await db.query(`SELECT COUNT(*) AS total ${baseFrom} ${where}`, params);
     params.push(pageSize, offset);
     const { rows } = await db.query(
-      `SELECT p.id, p.name, p.category, p.part, p.oem_number, p.price, p.currency_code, p.stock_quantity,
+      `SELECT p.id, p.name, p.status, p.category, p.part, p.oem_number, p.price, p.currency_code, p.stock_quantity,
               ${eff('weight_kg')} AS weight_kg, ${eff('length_cm')} AS length_cm, ${eff('width_cm')} AS width_cm, ${eff('height_cm')} AS height_cm,
               s.name AS supplier_name, pf.brand_name, pf.fitment_year,
               (SELECT url FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.sort_order ASC LIMIT 1) AS first_image
@@ -1141,7 +1145,7 @@ router.get('/admin/products', requireAuth, requireRole('admin'), requirePageAcce
     );
     res.json({
       products: rows.map((r) => ({
-        id: r.id, name: r.name, category: r.category, part: r.part, oemNumber: r.oem_number,
+        id: r.id, name: r.name, status: r.status, category: r.category, part: r.part, oemNumber: r.oem_number,
         price: Number(r.price), currencyCode: r.currency_code, stockQuantity: r.stock_quantity, supplierName: r.supplier_name,
         weightKg: r.weight_kg === null ? null : Number(r.weight_kg),
         volumeCm3: (r.length_cm != null && r.width_cm != null && r.height_cm != null) ? Number(r.length_cm) * Number(r.width_cm) * Number(r.height_cm) : null,
@@ -1826,7 +1830,7 @@ router.post('/categories/:id/move', requireAuth, requireRole('admin'), requirePa
 // Vehicle Data and Hubs, not silently allowed and not a raw DB error.
 router.delete('/categories/:id', requireAuth, requireRole('admin'), requirePageAccess('categories'), async (req, res, next) => {
   try {
-    const { rows: productsUsingIt } = await db.query('SELECT id FROM products WHERE category = $1 LIMIT 1', [req.params.id]);
+    const { rows: productsUsingIt } = await db.query('SELECT id FROM products WHERE category = $1 AND deleted_at IS NULL LIMIT 1', [req.params.id]);      // a product marked deleted no longer uses it
     if (productsUsingIt.length > 0) {
       return res.status(409).json({ error: 'Cannot delete this category — real products still reference it', inUse: true });
     }
@@ -1840,7 +1844,7 @@ router.delete('/categories/:id', requireAuth, requireRole('admin'), requirePageA
     // reference data.
     const { rows: partsUsingIt } = await db.query('SELECT id FROM category_parts WHERE category_id = $1 LIMIT 1', [req.params.id]);
     if (partsUsingIt.length > 0) {
-      return res.status(409).json({ error: 'Cannot delete this category — it still has parts. Delete those first.' });
+      return res.status(409).json({ error: 'Cannot delete this category — it still has parts. Delete those first.', inUse: true });      // the screen offers to delete them together
     }
     const { rows: categoryRow } = await db.query('SELECT name_en FROM product_categories WHERE id = $1', [req.params.id]);
     const { rowCount } = await db.query('DELETE FROM product_categories WHERE id = $1', [req.params.id]);
@@ -1901,9 +1905,10 @@ router.delete('/parts/:id', requireAuth, requireRole('admin'), requirePageAccess
   try {
     const { rows: partRows } = await db.query('SELECT * FROM category_parts WHERE id = $1', [req.params.id]);
     if (partRows.length === 0) return res.status(404).json({ error: 'Part not found' });
-    const { rows: productsUsingIt } = await db.query('SELECT id FROM products WHERE part = $1 LIMIT 1', [partRows[0].name_en]);
+    // only the products of THIS category (another category may have a sub-category with the same name), and not the ones marked deleted
+    const { rows: productsUsingIt } = await db.query('SELECT id FROM products WHERE category = $1 AND lower(btrim(part)) = lower(btrim($2)) AND deleted_at IS NULL LIMIT 1', [partRows[0].category_id, partRows[0].name_en]);
     if (productsUsingIt.length > 0) {
-      return res.status(409).json({ error: 'Cannot delete this part — real products still reference it' });
+      return res.status(409).json({ error: 'Cannot delete this part — real products still reference it', inUse: true });      // the screen shows which, and offers to delete them together
     }
     await db.query('DELETE FROM category_parts WHERE id = $1', [req.params.id]);
     await logAdminAction(req, 'part_deleted', 'part', req.params.id, { nameEn: partRows[0].name_en });
@@ -1997,6 +2002,7 @@ router.use('/admin/products', require('./productDelete'));
 
 // Categories > Delete: what still uses a category, and removing it together with its products (see categoryRemove.js).
 router.use('/admin/categories', require('./categoryRemove'));
+router.use('/admin/parts', require('./categoryRemove').partsRouter);      // the same for a sub-category
 
 module.exports = router;
 // Real product DTO helpers, exported for reuse by other modules that

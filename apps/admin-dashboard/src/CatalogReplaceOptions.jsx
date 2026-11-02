@@ -19,7 +19,7 @@ export function CatalogReplaceOptions({ replace, onChange }) {
       {replace.on && (
         <label style={{ display: "flex", gap: 6, alignItems: "flex-start", marginTop: 8, marginInlineStart: 22 }}>
           <input type="checkbox" checked={replace.alsoProducts} onChange={(e) => onChange({ alsoProducts: e.target.checked, confirm: "" })} style={{ marginTop: 2 }} />
-          <span>Also delete the products that use the old categories and sub-categories. A product that has ever been in an order is never deleted (order history keeps it), and neither is its category or sub-category. Leave this off if those products are real: a category or sub-category that a product still uses is then kept, and listed below with the reason.</span>
+          <span>Also delete the products that use the old categories and sub-categories. A product a buyer is still waiting for (an order not delivered yet, or still inside its return period) is never deleted, and neither is its category or sub-category. A product with finished orders is marked deleted: its old orders still show it. Leave this off if those products are real: a category or sub-category that a product still uses is then kept, and listed below with the reason.</span>
         </label>
       )}
     </div>

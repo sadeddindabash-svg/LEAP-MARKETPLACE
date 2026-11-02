@@ -1,22 +1,19 @@
 import React, { useState } from "react";
-import { C, body } from "./theme";
+import { FolderTabs } from "./components/PageChrome";
 import CatalogImportPanel from "./CatalogImportPanel";
 import CatalogEditorPanel from "./CatalogEditorPanel";
 import CatalogPhotosPanel from "./CatalogPhotosPanel";
 
-// The Categories page with two more tabs beside it: "Import from Excel" (the parts catalog) and "Edit details" (every field of a category or part). `main` is the page as it has always been.
+// The Categories page with more tabs beside it: "Import from Excel" (the parts catalog), "Edit details" (every field of a category or part) and "Photos". `main` is the page as it has always been.
+// `header(tabs)` draws the page's header with these tabs under it (the common page design); without it (tests) the tabs are drawn on their own.
 const TABS = [["categories", "Categories"], ["import", "Import from Excel"], ["edit", "Edit details"], ["photos", "Photos"]];
 
-export default function CategoriesTabs({ main, onSessionExpired }) {
+export default function CategoriesTabs({ main, onSessionExpired, header }) {
   const [tab, setTab] = useState("categories");
+  const tabs = { label: "Categories sections", tabs: TABS.map(([id, label]) => ({ id, label })), activeId: tab, onSelect: setTab };
   return (
     <div>
-      <div role="tablist" aria-label="Categories sections" style={{ display: "flex", gap: 6, padding: "14px 24px 0" }}>
-        {TABS.map(([id, label]) => (
-          <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
-            style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: tab === id ? C.ink : "transparent", color: tab === id ? "#fff" : C.muted, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>{label}</button>
-        ))}
-      </div>
+      {header ? header(tabs) : <FolderTabs {...tabs} />}
       {tab === "categories" && main}
       {tab === "import" && <div style={{ padding: "16px 24px 24px" }}><CatalogImportPanel onSessionExpired={onSessionExpired} /></div>}
       {tab === "edit" && <div style={{ padding: "16px 24px 24px" }}><CatalogEditorPanel onSessionExpired={onSessionExpired} /></div>}

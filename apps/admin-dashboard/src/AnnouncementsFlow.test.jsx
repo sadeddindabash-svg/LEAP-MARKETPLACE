@@ -38,6 +38,7 @@ async function loginAndGoToSettings() {
   fireEvent.click(screen.getByRole('button', { name: /log in/i }));
   await waitFor(() => expect(screen.getByRole('button', { name: /log out/i })).toBeInTheDocument());
   fireEvent.click(screen.getByRole('button', { name: /settings/i }));
+  fireEvent.click(await screen.findByRole('tab', { name: 'Announcements' }));      // every Settings container is its own tab
   await screen.findByText('Home page announcements');
 }
 const field = (n, lang) => screen.getByLabelText(`Announcement ${n}, ${lang}`);

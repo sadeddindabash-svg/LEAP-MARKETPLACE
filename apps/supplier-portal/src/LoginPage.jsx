@@ -8,7 +8,7 @@ const C = {
   canvas: "#F5F6F8",
   card: "#FFFFFF",
   line: "#E4E6EA",
-  signal: "#E8622C",
+  signal: "#F9B317", onSignal: "#0A3144",      // the brand gold (the logo), navy text on it
   muted: "#6B7280",
   redBg: "#FBE7E5",
   red: "#C0362C",
@@ -62,9 +62,14 @@ export default function LoginPage({ onLoginSuccess }) {
   return (
     <div style={{ ...font, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 700, background: C.canvas }}>
       <form onSubmit={handleSubmit} style={{ width: 360, background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: 32 }}>
+        {/* the logo, drawn like an engraving when the page opens (public/brand/leap-logo-animated.svg); the still logo if that file is missing */}
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+          <img src="/brand/leap-logo-animated.svg" alt="Leap Auto Parts" width={104} height={104} style={{ display: "block" }}
+            onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = "/brand/leap-logo.png"; }} />
+        </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ ...disp, fontSize: 26, fontWeight: 700, color: C.ink }}>LEAP</div>
+            <div style={{ ...disp, fontSize: 24, fontWeight: 700, color: C.ink }}>Leap Auto Parts</div>
             <span style={{ fontSize: 10, color: C.muted, border: `1px solid ${C.line}`, borderRadius: 4, padding: "2px 6px" }}>
               {lang === "zh" ? "供应商" : "Supplier"}
             </span>
@@ -107,7 +112,7 @@ export default function LoginPage({ onLoginSuccess }) {
           style={{
             width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
             marginTop: 8, padding: "11px 16px", borderRadius: 8, border: "none",
-            background: isSubmitting ? "#D1D5DB" : C.signal, color: "#fff", fontWeight: 700, fontSize: 14, cursor: isSubmitting ? "default" : "pointer",
+            background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontWeight: 700, fontSize: 14, cursor: isSubmitting ? "default" : "pointer",
             fontFamily: "inherit",
           }}
         >

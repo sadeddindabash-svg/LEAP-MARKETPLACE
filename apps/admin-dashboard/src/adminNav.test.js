@@ -15,7 +15,7 @@ describe('the admin sidebar groups (pure logic)', () => {
   it('CRITICAL: the four groups hold exactly the pages that were agreed, in the agreed order', () => {
     expect(NAV_GROUPS.map((g) => [g.label, g.children])).toEqual([
       ['Suppliers', ['suppliers', 'supplierMessages']],
-      ['Products', ['moderation', 'allProducts']],
+      ['Products', ['allProducts', 'moderation']],
       ['Support', ['tickets', 'reviews', 'promoCodes']],
       ['Financial', ['paymentMethods', 'paymentProviders', 'payouts', 'pricing']],
     ]);
@@ -33,7 +33,7 @@ describe('the admin sidebar groups (pure logic)', () => {
   });
 
   it('CRITICAL: for the owner the sidebar is the old list with each group at the place of its first member', () => {
-    expect(labels(sidebarEntries(NAV, allowing('all')))).toEqual(['Overview', 'Orders', 'Suppliers', 'Products', 'Returns', 'Vehicle Data', 'Delivery Rules', 'Categories', 'Support', 'Hubs', 'Financial', 'Flagged Shipments', 'Settings']);
+    expect(labels(sidebarEntries(NAV, allowing('all')))).toEqual(['Overview', 'Orders', 'Products', 'Vehicle Data', 'Categories', 'Suppliers', 'Hubs', 'Delivery Rules', 'Returns', 'Flagged Shipments', 'Support', 'Financial', 'Settings']);
   });
 
   it('CRITICAL: a group is shown when the admin may open AT LEAST ONE of its pages, and only those pages count', () => {

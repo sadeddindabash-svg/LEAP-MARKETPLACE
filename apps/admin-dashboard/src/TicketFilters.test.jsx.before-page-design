@@ -1,0 +1,46 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import LeapAdminApp from './App';
+
+// Support tickets: the status buttons above the table (All, Open, In progress, Resolved), each with its number inside, filtering the table. The server is replaced by fixed answers.
+const OWNER_USER = { id: 'admin_dev_seed', email: 'admin@leap.dev', name: 'Dev Admin', role: 'admin', isOwner: true, allowedPages: 'all' };
+const t = (id, status) => ({ id, subject: `Subject ${id}`, buyerId: 'u1', guestEmail: null, orderId: null, status, priority: 'medium', createdAt: '2026-10-27T10:00:00Z', updatedAt: '2026-10-27T10:00:00Z' });
+let tickets;
+const mockFetch = () => vi.fn((url) => {
+  const u = String(url);
+  if (u.includes('/auth/login')) return Promise.resolve({ ok: true, json: async () => ({ token: 'fake.jwt.token', user: OWNER_USER }) });
+  if (u.includes('/auth/me')) return Promise.resolve({ ok: true, json: async () => OWNER_USER });
+  if (u.endsWith('/support/tickets')) return Promise.resolve({ ok: true, json: async () => tickets.map((x) => ({ ...x })) });
+  return Promise.resolve({ ok: true, json: async () => ({}) });
+});
+async function openTickets() {
+  globalThis.fetch = mockFetch(); render(<LeapAdminApp />);
+  fireEvent.click(await screen.findByRole('button', { name: /log in/i })); await waitFor(() => screen.getByLabelText(/email/i));
+  fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'admin@leap.dev' } }); fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'admin_dev_password_123' } });
+  fireEvent.click(screen.getByRole('button', { name: /log in/i })); await waitFor(() => expect(screen.getByRole('button', { name: /log out/i })).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: /support/i })); await screen.findByText('T-1');
+}
+const tab = (name) => within(screen.getByRole('tablist', { name: 'Filter tickets by status' })).getByRole('tab', { name: new RegExp(`^${name}`) });
+const count = (id) => screen.getByTestId(`ticket-count-${id}`).textContent;
+const ids = () => screen.getAllByRole('row').slice(1).map((r) => within(r).queryByText(/^T-\d+$/)?.textContent).filter(Boolean);
+beforeEach(() => { localStorage.clear(); tickets = [t('T-1', 'open'), t('T-2', 'open'), t('T-3', 'in_progress'), t('T-4', 'resolved'), t('T-5', 'open')]; });
+afterEach(() => { vi.restoreAllMocks(); });
+
+describe('support tickets: status buttons', () => {
+  it('shows four buttons, each with its number; All is chosen at first and shows every ticket', async () => {
+    await openTickets();
+    expect([count('all'), count('open'), count('in_progress'), count('resolved')]).toEqual(['5', '3', '1', '1']);
+    expect(tab('All')).toHaveAttribute('aria-selected', 'true'); expect(ids()).toEqual(['T-1', 'T-2', 'T-3', 'T-4', 'T-5']);
+  });
+  it('each button shows only its tickets', async () => {
+    await openTickets();
+    fireEvent.click(tab('Open')); expect(tab('Open')).toHaveAttribute('aria-selected', 'true'); expect(tab('All')).toHaveAttribute('aria-selected', 'false'); expect(ids()).toEqual(['T-1', 'T-2', 'T-5']);
+    fireEvent.click(tab('In progress')); expect(ids()).toEqual(['T-3']);
+    fireEvent.click(tab('Resolved')); expect(ids()).toEqual(['T-4']);
+    fireEvent.click(tab('All')); expect(ids()).toHaveLength(5);
+  });
+  it('a button with nothing in it says so', async () => {
+    tickets = [t('T-1', 'open')]; await openTickets();
+    expect(count('resolved')).toBe('0'); fireEvent.click(tab('Resolved')); expect(screen.getByText('No resolved tickets.')).toBeInTheDocument();
+  });
+});

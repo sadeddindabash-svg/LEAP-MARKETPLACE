@@ -1,4 +1,5 @@
 import { C, disp, mono, useBodyFont } from "../theme";
+import { CountUpText } from "./CountUp";      // the big numbers count up from 0
 
 // Real, second step toward splitting App.jsx (see theme.js's own
 // comment for the first step, and the identical extraction already
@@ -36,7 +37,7 @@ export function KpiCard({ label, value, sub, icon: Icon, accent }) {
         <span style={{ ...font, fontSize: 12, fontWeight: 700, color: C.muted }}>{label}</span>
         <Icon size={16} color={accent || C.muted} />
       </div>
-      <div style={{ ...disp, fontSize: 27, fontWeight: 700, color: C.ink, marginBottom: 4 }}>{value}</div>
+      <div style={{ ...disp, fontSize: 27, fontWeight: 700, color: C.ink, marginBottom: 4, fontVariantNumeric: "tabular-nums" }}>{typeof value === "string" ? <CountUpText text={value} /> : value}</div>
       <div style={{ ...font, fontSize: 11.5, color: C.muted }}>{sub}</div>
     </div>
   );

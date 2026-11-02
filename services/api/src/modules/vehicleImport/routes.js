@@ -46,7 +46,7 @@ function describe(file, mode, parsed, run) {
   const errors = rows.filter((r) => r.status === 'error').length;
   const withWarning = rows.filter((r) => r.messages.some((m) => m.level === 'warning')).length;
   const fileErrors = parsed.issues.filter((i) => i.level === 'error');
-  const toImport = run.counts.newVersions + run.counts.updatedVersions;
+  const toImport = run.counts.newVersions + run.counts.updatedVersions + run.counts.newBrands + run.counts.brandNamesUpdated + run.counts.brandLogosSaved;   // brand changes alone are worth importing too
   const blocking = errors > 0 || fileErrors.length > 0;
   return {
     fileName: file.originalname, mode, sheet: parsed.sheetName,

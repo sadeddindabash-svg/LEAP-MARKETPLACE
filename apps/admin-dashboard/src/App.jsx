@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo, createContext, useContext } from "react";
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, createContext, useContext } from "react";
 import ExcelJS from "exceljs";
 import LoginPage from "./LoginPage";
 import { exportToExcel } from "./exportToExcel";
 import { sidebarEntries, groupOfPage, accessibleChildren, landingPage, TAB_LABELS } from "./adminNav";
-import GroupTabs from "./components/GroupTabs";
+import { PageTabsContext, useGroupTabs, FolderTabs, FilterButtons, toolbarButtonStyle, useSlidingMark, lessMotion, SLIDE_MS, SLIDE_EASE, BrandLogo } from "./components/PageChrome";      // the common page design: header, main tabs, buttons
 import { FONT_IMPORT, C, disp, body, mono } from "./theme";
 import { useAutoRefresh, setIfChanged, sameData } from "./autoRefresh";
 import HomePicturesSection from "./HomePicturesSection";
@@ -56,7 +56,7 @@ import { getStoredToken, saveToken, clearToken, getCurrentUser, fetchSupplierRes
 import { SHIPPING_FIELDS, emptyShipping, isShippingEmpty, parseShipping, describeShipping } from "./partShipping";
 import {
   LayoutGrid, ShoppingBag, Store, PackageSearch, Wallet, LifeBuoy, Settings,
-  Search, Bell, ChevronDown, ChevronUp, ChevronRight, TrendingUp, TrendingDown, Truck, Plus, Pencil,
+  LogOut, Search, Bell, ChevronDown, ChevronUp, ChevronRight, TrendingUp, TrendingDown, Truck, Plus, Pencil,
   CheckCircle2, XCircle, Clock, AlertTriangle, MoreHorizontal, ArrowUpRight,
   Filter as FilterIcon, Download, Check, X, MessageSquare, Star, Globe, Users,
   CreditCard, ExternalLink, ChevronLeft, RotateCcw, Warehouse, Calculator, Layers, Send, Tag, ImagePlus, Key, Package
@@ -151,7 +151,12 @@ const NavigationContext = createContext(null);
 // README for a while, never fixed until now. Now reads the real
 // logged-in admin via CurrentUserContext (same currentUser already
 // used correctly in the sidebar footer below).
-function TopBar({ title, subtitle }) {
+// Every page's header (the common page design): the title and its description on the left; search, notifications and the admin's name on the right.
+// Under it, the page's main tabs: those of its group (handed down by the shell), and/or the page's own (`tabs`: { label, tabs: [{ id, label }], activeId, onSelect }).
+// The header's colors: golden yellow, with dark text that reads well on it.
+const HEADER = { bg: C.card, line: C.line, text: C.ink, soft: C.muted };      // white: the side menu carries the gold
+function TopBar({ title, subtitle, tabs }) {
+  const groupTabs = useGroupTabs();
   const currentUser = useContext(CurrentUserContext);
   const nav = useContext(NavigationContext);
   const displayName = currentUser?.name || currentUser?.email || "Admin";
@@ -163,24 +168,30 @@ function TopBar({ title, subtitle }) {
     .join('') || "A";
   const roleLabel = currentUser?.isOwner ? "Owner" : "Admin";
 
+  // the page's own tabs replace the one tab a page outside any group gets (its own name); a group's tabs stay, with the page's own under them
+  const showGroup = Boolean(groupTabs && groupTabs.tabs.length > 0 && !(tabs && groupTabs.single));
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
-      <div>
-        <div style={{ ...disp, fontSize: 22, fontWeight: 700, color: C.ink }}>{title}</div>
-        {subtitle && <div style={{ ...body, fontSize: 12.5, color: C.muted, marginTop: 2 }}>{subtitle}</div>}
+    <>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 20, padding: "18px 28px", borderBottom: `1px solid ${HEADER.line}`, background: HEADER.bg }}>
+      <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+        <div style={{ ...disp, fontSize: 22, fontWeight: 700, color: HEADER.text }}>{title}</div>
+        {subtitle && <div style={{ ...body, fontSize: 12.5, color: HEADER.soft, marginTop: 2 }}>{subtitle}</div>}
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
         <GlobalSearch nav={nav} />
         <NotificationBell nav={nav} />
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.ink, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", ...body, fontWeight: 700, fontSize: 12.5 }}>{initials}</div>
+          <div style={{ width: 36, height: 36, borderRadius: "50%", background: C.ink, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", ...body, fontWeight: 700, fontSize: 12.5 }}>{initials}</div>
           <div>
-            <div style={{ ...body, fontSize: 12.5, fontWeight: 700, color: C.ink }}>{displayName}</div>
-            <div style={{ ...body, fontSize: 10.5, color: C.muted }}>{roleLabel}</div>
+            <div style={{ ...body, fontSize: 12.5, fontWeight: 700, color: HEADER.text }}>{displayName}</div>
+            <div style={{ ...body, fontSize: 10.5, color: HEADER.soft }}>{roleLabel}</div>
           </div>
         </div>
       </div>
     </div>
+    {showGroup && <FolderTabs label={groupTabs.label} tabs={groupTabs.tabs} activeId={groupTabs.activeId} onSelect={groupTabs.onSelect} />}
+    {tabs && tabs.tabs.length > 0 && <FolderTabs label={tabs.label} tabs={tabs.tabs} activeId={tabs.activeId} onSelect={tabs.onSelect} maxVisible={tabs.maxVisible || 7} />}
+    </>
   );
 }
 
@@ -232,14 +243,15 @@ function GlobalSearch({ nav }) {
 
   return (
     <div style={{ position: "relative", width: 280 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, background: C.canvas, borderRadius: 8, padding: "8px 12px" }}>
-        <Search size={14} color={C.muted} />
+      <div style={{ display: "flex", alignItems: "center", gap: 8, height: 40, boxSizing: "border-box", background: C.canvas, border: `1px solid ${C.line}`, borderRadius: 10, padding: "0 12px" }}>
+        <Search size={15} color={C.muted} />
         <input
           value={query}
           onChange={(e) => { setQuery(e.target.value); setIsOpen(true); }}
           onFocus={() => setIsOpen(true)}
           onBlur={() => setTimeout(() => setIsOpen(false), 150)} // real delay so a click on a result registers before the dropdown closes
           placeholder="Search orders, suppliers, tickets…"
+          aria-label="Search"
           style={{ ...body, fontSize: 12.5, color: C.ink, border: "none", background: "none", outline: "none", width: "100%" }}
         />
       </div>
@@ -297,11 +309,12 @@ function NotificationBell({ nav }) {
       <button
         onClick={() => setIsOpen((v) => !v)}
         onBlur={() => setTimeout(() => setIsOpen(false), 150)} // real delay so a click on an item registers before the dropdown closes
-        style={{ position: "relative", background: "none", border: "none", cursor: "pointer", display: "flex", padding: 0 }}
+        aria-label="Notifications"
+        style={{ position: "relative", width: 40, height: 40, boxSizing: "border-box", background: C.card, border: `1px solid ${C.line}`, borderRadius: 10, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
       >
-        <Bell size={18} color={C.ink} />
+        <Bell size={17} color={C.ink} />
         {total > 0 && (
-          <span style={{ position: "absolute", top: -6, right: -6, background: C.signal, color: C.onSignal, borderRadius: "50%", minWidth: 16, height: 16, fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>
+          <span style={{ position: "absolute", top: -6, right: -6, background: C.red, color: "#fff", borderRadius: 999, minWidth: 18, height: 18, fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>
             {total > 9 ? "9+" : total}
           </span>
         )}
@@ -877,15 +890,9 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
   return (
     <div>
       <TopBar title="Orders" subtitle={loadState === "ready" ? `${orders.length} orders across all suppliers` : "Loading…"} />
-      <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", gap: 6 }}>
-          {filters.map(([id, label]) => (
-            <button key={id} onClick={() => setFilter(id)} style={{
-              ...body, padding: "7px 13px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
-              border: `1px solid ${filter === id ? C.ink : C.line}`, background: filter === id ? C.ink : "#fff", color: filter === id ? "#fff" : C.ink,
-            }}>{label} <span data-testid={`orders-count-${id}`} style={{ display: "inline-block", minWidth: 18, padding: "0 6px", marginLeft: 4, borderRadius: 999, fontSize: 11, fontWeight: 700, background: redCount(id) ? C.red : filter === id ? "rgba(255,255,255,0.2)" : "#EEF0F3", color: redCount(id) || filter === id ? "#fff" : C.muted }}>{countOf(id)}</span></button>
-          ))}
-        </div>
+      <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <FilterButtons label="Filter orders" activeId={filter} onSelect={setFilter}
+          items={filters.map(([id, label]) => ({ id, label, count: countOf(id), alert: redCount(id), tone: id === "dispute" ? "amber" : id === "delivered" ? "green" : id === "shipped" ? "blue" : "ink", countTestId: `orders-count-${id}` }))} />
         <button
           data-testid="orders-export"
           disabled={filtered.length === 0 || Boolean(exporting)}
@@ -900,7 +907,7 @@ function OrdersPage({ onOpenOrder, onSessionExpired }) {
               setExporting(null);
             }
           }}
-          style={{ ...body, display: "flex", alignItems: "center", gap: 6, padding: "7px 13px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, border: `1px solid ${C.line}`, background: "#fff", cursor: filtered.length === 0 || exporting ? "default" : "pointer", opacity: filtered.length === 0 || exporting ? 0.5 : 1 }}
+          style={toolbarButtonStyle(filtered.length === 0 || Boolean(exporting))}
         >
           <Download size={13} /> {exporting ? `Exporting… ${exporting.done}/${exporting.total}` : "Export"}
         </button>
@@ -2105,7 +2112,23 @@ function ModerationPage({ onSessionExpired }) {
 // against a real, admin-configured number of days. Reorder uses this
 // app's own already-established up/down pattern (see moveCategory
 // etc.), not a new drag-and-drop library.
+// The page's header (the common page design) above the delivery rules screen.
+const DELIVERY_TABS = [
+  { id: "rules", label: "Delivery rules", subtitle: "How long a parcel takes from each warehouse country to each group of destination countries" },
+  { id: "groups", label: "Destination country groups", subtitle: "The groups of destination countries the delivery rules are written for" },
+];
 function DeliveryRulesPage({ onSessionExpired }) {
+  const [tab, setTab] = useState("rules");
+  const current = DELIVERY_TABS.find((t) => t.id === tab);
+  return (
+    <div>
+      <TopBar title={current.label} subtitle={current.subtitle} tabs={{ label: "Delivery Rules", tabs: DELIVERY_TABS.map(({ id, label }) => ({ id, label })), activeId: tab, onSelect: setTab }} />
+      <DeliveryRulesBody section={tab} onSessionExpired={onSessionExpired} />
+    </div>
+  );
+}
+
+function DeliveryRulesBody({ onSessionExpired, section = "rules" }) {
   const [groups, setGroups] = useState([]);
   const [rules, setRules] = useState([]);
   const [countries, setCountries] = useState([]);
@@ -2237,7 +2260,7 @@ function DeliveryRulesPage({ onSessionExpired }) {
         <div style={{ ...body, fontSize: 12.5, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>
       )}
 
-      <Card title="Destination country groups" style={{ marginBottom: 20 }}>
+      {section === "groups" && (<Card title="Destination country groups" style={{ marginBottom: 20 }}>
         <div style={{ padding: 16 }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
             {groups.map((g) => (
@@ -2284,9 +2307,9 @@ function DeliveryRulesPage({ onSessionExpired }) {
             </button>
           </div>
         </div>
-      </Card>
+      </Card>)}
 
-      <Card title="Delivery rules">
+      {section === "rules" && (<Card title="Delivery rules">
         <div style={{ padding: 16 }}>
           <p style={{ ...body, fontSize: 12, color: C.muted, marginTop: 0, marginBottom: 14 }}>First matching rule wins — order matters, use the arrows to reorder.</p>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -2368,7 +2391,7 @@ function DeliveryRulesPage({ onSessionExpired }) {
             + Add rule
           </button>
         </div>
-      </Card>
+      </Card>)}
     </div>
   );
 }
@@ -2382,11 +2405,25 @@ const ALLOWED_POSITIONS = ['Front', 'Rear', 'Left', 'Right', 'Front-Left', 'Fron
 // page, not folded into Moderation (which is specifically for
 // pending products awaiting a first real review, not already-live
 // ones).
-function AllProductsPage({ onSessionExpired }) {
+// Products > All products | Live products | Hidden products | Product requirements: one page, the tab (from the shell) says which.
+const PRODUCT_VIEWS = {
+  all: ["All products", "Every product on the marketplace: live, hidden and waiting for review. Search it, open it to edit, hide or delete it"],
+  live: ["Live products", "The products buyers can see and buy now"],
+  hidden: ["Hidden products", "Products the admin hid or rejected: buyers cannot see them. Send them back to review, or delete them"],
+  requirements: ["Product requirements", "What every product must have before a supplier can send it"],
+};
+function AllProductsPage({ onSessionExpired, view = "all" }) {
   const [selectedId, setSelectedId] = useState(null);
-  return selectedId
-    ? <ProductEditPage productId={selectedId} onBack={() => setSelectedId(null)} onSessionExpired={onSessionExpired} />
-    : <ProductListPage onSelect={setSelectedId} onSessionExpired={onSessionExpired} />;
+  const [title, subtitle] = PRODUCT_VIEWS[view] || PRODUCT_VIEWS.all;
+  if (selectedId) return <ProductEditPage productId={selectedId} onBack={() => setSelectedId(null)} onSessionExpired={onSessionExpired} />;
+  return (
+    <div>
+      <TopBar title={title} subtitle={subtitle} />
+      {view === "requirements"
+        ? <div style={{ padding: 24 }}><ProductRequirementsSettings onSessionExpired={onSessionExpired} /></div>
+        : <ProductListPage view={view} onSelect={setSelectedId} onSessionExpired={onSessionExpired} />}
+    </div>
+  );
 }
 
 // Confirmed with the person: a new settings container at the top of
@@ -2500,7 +2537,7 @@ function ProductRequirementsSettings({ onSessionExpired }) {
   );
 }
 
-function ProductListPage({ onSelect, onSessionExpired }) {
+function ProductListPage({ onSelect, onSessionExpired, view = "live" }) {      // view: all | live | hidden (the Products tab)
   const [data, setData] = useState(null);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -2519,7 +2556,6 @@ function ProductListPage({ onSelect, onSessionExpired }) {
   const [sortDir, setSortDir] = useState("asc");
   const [groupBy, setGroupBy] = useState("");
   const selection = useProductSelection();
-  const [view, setView] = useState("live");               // "live" or "hidden" products
   const [reviewing, setReviewing] = useState(null);       // the ids being sent back to review (the window is open), or null
   const [deleting, setDeleting] = useState(null);          // the ids being deleted (the window is open), or null
 
@@ -2529,7 +2565,7 @@ function ProductListPage({ onSelect, onSessionExpired }) {
   }, []);
 
   const load = async (overrides = {}) => {
-    const params = { search, page, supplierId, brand, year, weightMin, weightMax, volumeMin, volumeMax, sortBy, sortDir, groupBy, status: view === "hidden" ? "hidden" : undefined, ...overrides };
+    const params = { search, page, supplierId, brand, year, weightMin, weightMax, volumeMin, volumeMax, sortBy, sortDir, groupBy, status: view === "live" ? undefined : view, ...overrides };
     try {
       const result = await fetchAdminProducts(getStoredToken(), params);
       setData(result);
@@ -2540,6 +2576,9 @@ function ProductListPage({ onSelect, onSessionExpired }) {
     }
   };
   useEffect(() => { load({ page }); }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
+  // another Products tab (all / live / hidden): from page 1, nothing chosen
+  const firstView = React.useRef(true);
+  useEffect(() => { if (firstView.current) { firstView.current = false; return; } selection.clear(); setPage(1); load({ page: 1 }); }, [view]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Real, deliberate: every filter/sort/group control re-runs the
   // real query from page 1 -- staying on page 4 of a real, now-
@@ -2571,7 +2610,6 @@ function ProductListPage({ onSelect, onSessionExpired }) {
 
   return (
     <div style={{ padding: 24 }}>
-      <ProductRequirementsSettings onSessionExpired={onSessionExpired} />
       <form onSubmit={handleSearch} style={{ display: "flex", gap: 8, marginBottom: 12 }}>
         <input
           value={search}
@@ -2630,7 +2668,6 @@ function ProductListPage({ onSelect, onSessionExpired }) {
         <div style={{ ...body, fontSize: 12.5, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>
       )}
 
-      <ProductViewSwitch view={view} onChange={(next) => { setView(next); selection.clear(); setPage(1); load({ page: 1, status: next === "hidden" ? "hidden" : undefined }); }} />
       <ProductSelectionBar count={selection.picked.size} onDelete={() => setDeleting([...selection.picked])} onClear={selection.clear} onReview={view === "hidden" ? () => setReviewing([...selection.picked]) : undefined} />
       {reviewing && <ProductReviewDialog ids={reviewing} onClose={() => setReviewing(null)} onChanged={() => { selection.clear(); load(); }} onSessionExpired={onSessionExpired} />}
       {deleting && <ProductDeleteDialog ids={deleting} onClose={() => setDeleting(null)} onChanged={() => { selection.clear(); load(); }} onSessionExpired={onSessionExpired} />}
@@ -2671,7 +2708,7 @@ function ProductListPage({ onSelect, onSessionExpired }) {
                         <div style={{ width: 36, height: 36, borderRadius: 6, border: `1px solid ${C.line}`, background: C.canvas }} />
                       )}
                     </Td>
-                    <Td>{p.name}</Td>
+                    <Td>{p.name}{view === "all" && p.status && p.status !== "active" && <span style={{ marginLeft: 8 }}><Badge label={p.status === "inactive" ? "Hidden" : "Waiting for review"} color={p.status === "inactive" ? C.muted : C.amber} bg={p.status === "inactive" ? "#EEF0F3" : C.amberBg} /></span>}</Td>
                     <Td>{p.category}{p.part ? ` / ${p.part}` : ""}</Td>
                     <Td>{p.oemNumber || "—"}</Td>
                     <Td align="right">{p.price.toFixed(2)} {p.currencyCode}</Td>
@@ -3516,6 +3553,7 @@ const isSingleYearEntry = (g) => g.yearEnd === g.yearStart && String(g.name).tri
 
 function VehicleDataPage({ onSessionExpired }) {
   const [activeTab, setActiveTab] = useState("brands");
+  const VEHICLE_TABS = [["brands", "Brands"], ["import", "Import from Excel"], ["export", "Download Excel"], ["wmi", "VIN WMI"], ["patterns", "VIN model patterns"]];      // the page's main tabs, under its header
   const [brands, setBrands] = useState([]);
   const [selectedBrand, setSelectedBrand] = useState(null);
   const [models, setModels] = useState([]);
@@ -3622,14 +3660,10 @@ function VehicleDataPage({ onSessionExpired }) {
     if (!year) { setErrorMessage("Year is required."); return; }
     if (!/^\d{4}$/.test(year)) { setErrorMessage("Write the year as four digits, for example 2021."); return; }
     if (Number(year) < OLDEST_YEAR || Number(year) > newest) { setErrorMessage(`The year must be between ${OLDEST_YEAR} and ${newest}.`); return; }
-    if (!newYearPhotoFile) { setErrorMessage("A photo is required."); return; }
     setIsSubmitting(true); setErrorMessage(null);
     try {
       const token = getStoredToken();
-      setIsUploadingYearPhoto(true);
-      const upload = await uploadCatalogImage(token, newYearPhotoFile);
-      setIsUploadingYearPhoto(false);
-      await createYear(token, selectedModel.id, Number(year), upload.url);
+      await createYear(token, selectedModel.id, Number(year));            // the year only: the photos belong to its versions
       setNewYear(""); setNewYearPhotoFile(null); setNewYearPhotoPreview(null);
       openModel(selectedModel);
     } catch (err) {
@@ -3769,14 +3803,8 @@ function VehicleDataPage({ onSessionExpired }) {
 
   return (
     <div>
-      <TopBar title="Vehicle Data" subtitle="Add a vehicle step by step: Brand, Model, Year, then its Versions, by hand or by importing an Excel sheet. Names in English, Arabic and Chinese. Also the VIN decoder's own data tables" />
-      <div style={{ padding: "24px 24px 0" }}>
-        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-          {[["brands", "Brands"], ["import", "Import from Excel"], ["export", "Download Excel"], ["wmi", "VIN WMI"], ["patterns", "VIN model patterns"]].map(([id, label]) => (
-            <button key={id} onClick={() => setActiveTab(id)} style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: activeTab === id ? C.ink : C.line, color: activeTab === id ? "#fff" : C.muted, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{label}</button>
-          ))}
-        </div>
-      </div>
+      <TopBar title="Vehicle Data" subtitle="Add a vehicle step by step: Brand, Model, Year, then its Versions, by hand or by importing an Excel sheet. Names in English, Arabic and Chinese. Also the VIN decoder's own data tables" tabs={{ label: "Vehicle Data sections", tabs: VEHICLE_TABS.map(([id, label]) => ({ id, label })), activeId: activeTab, onSelect: setActiveTab }} />
+      <div style={{ height: 24 }} />
       {activeTab === "brands" && (
         <div style={{ padding: "0 24px 24px" }}>
           <Card>
@@ -3811,6 +3839,7 @@ function VehicleDataPage({ onSessionExpired }) {
                           <span style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>{b.name}</span>
                           {b.nameAr && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }} dir="rtl">{b.nameAr}</span>}
                           {b.nameZh && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }}>{b.nameZh}</span>}
+                          {!b.photoUrl && <span style={{ ...body, fontSize: 11, fontWeight: 700, color: "#8A5A12", background: "#FDF3E1", borderRadius: 999, padding: "2px 8px", marginLeft: 8 }}>No logo yet</span>}
                         </div>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -3853,13 +3882,12 @@ function VehicleDataPage({ onSessionExpired }) {
                 </>
               )}
 
-              {/* Step 3: Year (the year in English digits + photo, both required) */}
+              {/* Step 3: Year (the year in English digits only; the photos are on its versions) */}
               {selectedModel && (
                 <>
                   <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
                     <input value={newYear} onChange={(e) => setNewYear(e.target.value)} placeholder="Year (English digits, e.g. 2021)" inputMode="numeric" style={fieldStyle} />
-                    {photoPicker(newYearPhotoFile, newYearPhotoPreview, handleYearPhotoSelect)}
-                    {addButton(handleAddYear, isUploadingYearPhoto)}
+                    {addButton(handleAddYear, false)}
                   </div>
                   {sortedYears.length === 0 && <div style={{ ...body, fontSize: 12.5, color: C.muted, padding: 12 }}>No years yet.</div>}
                   {sortedYears.map((g) => {
@@ -3868,14 +3896,6 @@ function VehicleDataPage({ onSessionExpired }) {
                       <div key={g.id}>
                       <div style={rowStyle}>
                         <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10 }}>
-                          <label onClick={(e) => e.stopPropagation()} title="Click to add or replace this photo" style={{ position: "relative", width: 28, height: 28, borderRadius: 6, flexShrink: 0, cursor: replacingYearPhotoId === g.id ? "default" : "pointer", display: "block" }}>
-                            {g.photoUrl ? (
-                              <img src={mediaSrc(g.photoUrl)} alt="" style={{ width: 28, height: 28, borderRadius: 6, objectFit: "cover", display: "block", opacity: replacingYearPhotoId === g.id ? 0.4 : 1 }} />
-                            ) : (
-                              <div style={{ width: 28, height: 28, borderRadius: 6, background: C.canvas, display: "flex", alignItems: "center", justifyContent: "center" }}><ImagePlus size={12} color={C.muted} /></div>
-                            )}
-                            <input type="file" accept="image/jpeg,image/png,image/webp" disabled={replacingYearPhotoId === g.id} onChange={(e) => handleReplaceYearPhoto(g.id, e.target.files?.[0])} style={{ display: "none" }} />
-                          </label>
                           <div>
                             <span style={{ ...body, fontSize: 13, fontWeight: 700, color: C.ink }}>{g.name}</span>
                             {!single && <span style={{ ...body, fontSize: 11.5, color: C.muted, marginLeft: 8 }}>{g.yearStart} to {g.yearEnd || "present"}</span>}
@@ -3883,11 +3903,6 @@ function VehicleDataPage({ onSessionExpired }) {
                           </div>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <span style={{ ...body, fontSize: 11, fontWeight: 700, color: g.photoUrl ? "#16794F" : "#8A5A12", background: g.photoUrl ? "#E6F5EE" : "#FDF3E1", borderRadius: 999, padding: "3px 9px" }}>{g.photoUrl ? "Has photo" : "No photo yet"}</span>
-                          <label style={{ ...body, fontSize: 12, fontWeight: 700, borderRadius: 8, padding: "5px 11px", cursor: replacingYearPhotoId === g.id ? "default" : "pointer", border: g.photoUrl ? `1px solid ${C.line}` : "none", background: g.photoUrl ? C.card : C.signal, color: g.photoUrl ? C.ink : C.onSignal }}>
-                            {replacingYearPhotoId === g.id ? "Uploading…" : g.photoUrl ? "Replace photo" : "Add photo"}
-                            <input type="file" accept="image/jpeg,image/png,image/webp" disabled={replacingYearPhotoId === g.id} onChange={(e) => handleReplaceYearPhoto(g.id, e.target.files?.[0])} style={{ display: "none" }} />
-                          </label>
                           {!single && <button onClick={() => setPendingEdit({ kind: "generation", item: g })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }} title="Edit this older entry"><Pencil size={13} color={C.muted} /></button>}
                           <button onClick={() => setPendingDelete({ kind: "generation", id: g.id, label: g.name })} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }} aria-label={`Delete ${g.name}`}><X size={14} color={C.red} /></button>
                         </div>
@@ -4343,7 +4358,11 @@ function HubStaffSection({ hubs, onSessionExpired }) {
   );
 }
 
+const HUB_TABS = [
+  ["workload", "Hub workload & capacity"], ["performance", "Hub performance — average time per stage"], ["hubs", "Add hub"], ["staff", "Add hub staff"],
+];
 function HubsPage({ onSessionExpired }) {
+  const [tab, setTab] = useState("workload");
   const [hubs, setHubs] = useState([]);
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
@@ -4389,11 +4408,12 @@ function HubsPage({ onSessionExpired }) {
 
   return (
     <div>
-      <TopBar title="Inspection Hubs" subtitle="Regional facilities between suppliers and buyers — receive, inspect, pack, ship" />
+      <TopBar title="Inspection Hubs" subtitle="Regional facilities between suppliers and buyers — receive, inspect, pack, ship"
+        tabs={{ label: "Hubs", tabs: HUB_TABS.map(([id, label]) => ({ id, label })), activeId: tab, onSelect: setTab }} />
       <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
-        <HubWorkloadSection onSessionExpired={onSessionExpired} />
-        <HubPerformanceSection onSessionExpired={onSessionExpired} />
-        <Card>
+        {tab === "workload" && <HubWorkloadSection onSessionExpired={onSessionExpired} />}
+        {tab === "performance" && <HubPerformanceSection onSessionExpired={onSessionExpired} />}
+        {tab === "hubs" && <Card>
           <div style={{ padding: 18 }}>
             {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 14 }}>{errorMessage}</div>}
 
@@ -4418,8 +4438,8 @@ function HubsPage({ onSessionExpired }) {
               </div>
             ))}
           </div>
-        </Card>
-        <HubStaffSection hubs={hubs} onSessionExpired={onSessionExpired} />
+        </Card>}
+        {tab === "staff" && <HubStaffSection hubs={hubs} onSessionExpired={onSessionExpired} />}
       </div>
     </div>
   );
@@ -4432,7 +4452,12 @@ function HubsPage({ onSessionExpired }) {
 // reflected immediately in every listing's displayed price (not
 // retroactively in already-placed orders — see the Preview calculator's
 // note below on why).
+const PRICING_SECTIONS = [
+  { id: "fx", label: "Exchange rate (CNY → USD)" }, { id: "fees", label: "Fee components (applied in order, top to bottom)" }, { id: "preview", label: "Preview calculator" },
+  { id: "discounts", label: "Discount rules" }, { id: "loyalty", label: "Loyalty tiers" },
+];
 function PricingPage({ onSessionExpired }) {
+  const [section, setSection] = useState("fx");      // the button chosen under the tabs: one box at a time
   const [fees, setFees] = useState([]);
   const [fxRate, setFxRate] = useState(null);
   const [loadState, setLoadState] = useState("loading");
@@ -4596,9 +4621,10 @@ function PricingPage({ onSessionExpired }) {
     <div>
       <TopBar title="Pricing" subtitle="Real equation: supplier RMB cost → buyer USD price. Changes here apply live to every listing." />
       <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+        <div><FilterButtons label="Pricing sections" items={PRICING_SECTIONS} activeId={section} onSelect={setSection} /></div>
         {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10 }}>{errorMessage}</div>}
 
-        <Card title="Exchange rate (CNY → USD)">
+        {section === "fx" && (<Card title="Exchange rate (CNY → USD)">
           <div style={{ padding: 18 }}>
             {loadState === "ready" && (
               <>
@@ -4633,9 +4659,9 @@ function PricingPage({ onSessionExpired }) {
             )}
             {loadState === "loading" && <div style={{ ...body, fontSize: 12.5, color: C.muted }}>Loading…</div>}
           </div>
-        </Card>
+        </Card>)}
 
-        <Card title="Fee components (applied in order, top to bottom)">
+        {section === "fees" && (<Card title="Fee components (applied in order, top to bottom)">
           <div style={{ padding: 18 }}>
             <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
               <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Fee name (e.g. Insurance)" style={{ ...body, flex: 2, minWidth: 160, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 11px", fontSize: 13 }} />
@@ -4691,9 +4717,9 @@ function PricingPage({ onSessionExpired }) {
               </div>
             ))}
           </div>
-        </Card>
+        </Card>)}
 
-        <Card title="Preview calculator">
+        {section === "preview" && (<Card title="Preview calculator">
           <div style={{ padding: 18 }}>
             <div style={{ ...body, fontSize: 11.5, color: C.muted, marginBottom: 14 }}>
               Test the equation against a hypothetical product without needing a real one.
@@ -4727,10 +4753,10 @@ function PricingPage({ onSessionExpired }) {
               </div>
             )}
           </div>
-        </Card>
+        </Card>)}
       </div>
-      <DiscountRulesSection onSessionExpired={onSessionExpired} />
-      <LoyaltyTiersSection onSessionExpired={onSessionExpired} />
+      {section === "discounts" && <div style={{ padding: "0 24px 24px", marginTop: -24 }}><DiscountRulesSection onSessionExpired={onSessionExpired} /></div>}
+      {section === "loyalty" && <div style={{ padding: "0 24px 24px", marginTop: -24 }}><LoyaltyTiersSection onSessionExpired={onSessionExpired} /></div>}
     </div>
   );
 }
@@ -5105,7 +5131,12 @@ function DiscountRulesSection({ onSessionExpired }) {
 // Services, PayPal, Google Pay -- are re-added manually here rather
 // than auto-seeded), and country activation reuses the real,
 // existing 40-country launch-market list rather than a separate one.
+// The page's header (the common page design) above the payment methods screen.
 function PaymentMethodsPage({ onSessionExpired }) {
+  return <div><TopBar title="Payment Methods" subtitle="Control which payment methods buyers see, and in which countries." /><PaymentMethodsBody onSessionExpired={onSessionExpired} /></div>;
+}
+
+function PaymentMethodsBody({ onSessionExpired }) {
   const [methods, setMethods] = useState([]);
   const [countries, setCountries] = useState([]); // [{countryCode, countryName}]
   const [providers, setProviders] = useState([]); // [{providerId, label}]
@@ -5325,8 +5356,6 @@ function PaymentMethodsPage({ onSessionExpired }) {
 
   return (
     <div style={{ padding: 24 }}>
-      <p style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink, margin: "0 0 4px" }}>Payment Methods</p>
-      <p style={{ ...body, fontSize: 13, color: C.muted, margin: "0 0 20px" }}>Control which payment methods buyers see, and in which countries.</p>
       {errorMessage && <p style={{ ...body, fontSize: 12.5, color: C.red, margin: "0 0 12px" }}>{errorMessage}</p>}
 
       <Card style={{ padding: 16, marginBottom: 20 }}>
@@ -5428,7 +5457,12 @@ function PaymentMethodsPage({ onSessionExpired }) {
 // fields rendered dynamically from what the real backend returns
 // (rather than hardcoding each provider's own shape here) -- Stripe
 // needs 2 real fields, Amazon Payment Services needs 5, etc.
+// The page's header (the common page design) above the payment providers screen.
 function PaymentProvidersPage({ onSessionExpired }) {
+  return <div><TopBar title="Payment Providers" subtitle="Connect each payment method to its real gateway. Credentials are encrypted and never shown in full once saved." /><PaymentProvidersBody onSessionExpired={onSessionExpired} /></div>;
+}
+
+function PaymentProvidersBody({ onSessionExpired }) {
   const [providers, setProviders] = useState([]);
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
@@ -5539,8 +5573,6 @@ function PaymentProvidersPage({ onSessionExpired }) {
 
   return (
     <div style={{ padding: 24 }}>
-      <p style={{ ...disp, fontSize: 20, fontWeight: 700, color: C.ink, margin: "0 0 4px" }}>Payment Providers</p>
-      <p style={{ ...body, fontSize: 13, color: C.muted, margin: "0 0 20px" }}>Connect each payment method to its real gateway. Credentials are encrypted and never shown in full once saved.</p>
       {errorMessage && <p style={{ ...body, fontSize: 12.5, color: C.red, margin: "0 0 12px" }}>{errorMessage}</p>}
       <Card>
         {providers.map((p) => (
@@ -5983,9 +6015,10 @@ function FlaggedShipmentsPage({ onOpenOrder, onSessionExpired, onCountChange }) 
 }
 
 function CategoriesPage({ onSessionExpired }) {
-  return <CategoriesTabs main={<CategoriesPageMain onSessionExpired={onSessionExpired} />} onSessionExpired={onSessionExpired} />;
+  return <CategoriesTabs main={<CategoriesPageMain onSessionExpired={onSessionExpired} withHeader={false} />} onSessionExpired={onSessionExpired}
+    header={(tabs) => <TopBar title="Categories" subtitle="Major categories and the real parts a supplier picks from within each" tabs={tabs} />} />;
 }
-function CategoriesPageMain({ onSessionExpired }) {
+function CategoriesPageMain({ onSessionExpired, withHeader = true }) {      // withHeader=false: CategoriesTabs draws the header (with the tabs under it)
   const [categories, setCategories] = useState([]);
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
@@ -6117,7 +6150,7 @@ function CategoriesPageMain({ onSessionExpired }) {
 
   return (
     <div>
-      <TopBar title="Categories" subtitle="Major categories and the real parts a supplier picks from within each" />
+      {withHeader && <TopBar title="Categories" subtitle="Major categories and the real parts a supplier picks from within each" />}
       <div style={{ padding: 24 }}>
         <Card>
           <div style={{ padding: 18 }}>
@@ -6233,6 +6266,7 @@ function CategoryPartsPage({ category, onBack, onSessionExpired }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [replacingPhotoForPartId, setReplacingPhotoForPartId] = useState(null);
   const [pendingDeletePart, setPendingDeletePart] = useState(null); // {id, nameEn}
+  const [inUsePart, setInUsePart] = useState(null);                 // {id, nameEn}: the window that shows what still uses a sub-category, and deletes it with its products
   const [pendingEditPart, setPendingEditPart] = useState(null); // the full part object
   const [isSavingPartEdit, setIsSavingPartEdit] = useState(false);
   // The weight and package size of the new part: the shipping cost of every product with this part uses them (all four required).
@@ -6323,6 +6357,7 @@ function CategoryPartsPage({ category, onBack, onSessionExpired }) {
       load();
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
+      if (err.payload && err.payload.inUse) { setInUsePart({ id, nameEn: pendingDeletePart?.nameEn }); return; }          // products still use it: show WHICH, and offer to delete them with it
       setErrorMessage(err.message); // e.g. the real 409 "products still reference it" message
     } finally {
       setPendingDeletePart(null);
@@ -6471,6 +6506,7 @@ function CategoryPartsPage({ category, onBack, onSessionExpired }) {
         onConfirm={() => handleDeletePart(pendingDeletePart.id)}
         onCancel={() => setPendingDeletePart(null)}
       />
+      {inUsePart && <CategoryInUseDialog kind="part" categoryId={inUsePart.id} categoryName={inUsePart.nameEn} onClose={() => setInUsePart(null)} onChanged={() => load()} onSessionExpired={onSessionExpired} />}
       <EditDialog
         isOpen={!!pendingEditPart}
         title={`Edit "${pendingEditPart?.nameEn}"`}
@@ -7012,15 +7048,9 @@ function ReviewsPage({ onSessionExpired }) {
           </div>
         </Card>
 
-        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-          <button
-            onClick={() => setActiveTab("pending")}
-            style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: activeTab === "pending" ? C.ink : C.line, color: activeTab === "pending" ? "#fff" : C.muted, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}
-          >Pending</button>
-          <button
-            onClick={() => setActiveTab("flagged")}
-            style={{ ...body, padding: "8px 16px", borderRadius: 8, border: "none", background: activeTab === "flagged" ? C.ink : C.line, color: activeTab === "flagged" ? "#fff" : C.muted, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}
-          >Flagged</button>
+        <div style={{ marginBottom: 16 }}>
+          <FilterButtons label="Which reviews" activeId={activeTab} onSelect={setActiveTab}
+            items={[{ id: "pending", label: "Pending" }, { id: "flagged", label: "Flagged" }]} />
         </div>
 
         {errorMessage && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 10, marginBottom: 16 }}>{errorMessage}</div>}
@@ -7273,6 +7303,7 @@ function TicketsPage({ onOpenTicket, onSessionExpired }) {
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
   const priorityColor = { high: C.red, medium: C.amber, low: C.muted };
+  const [filter, setFilter] = useState("all");          // the status buttons: all | open | in_progress | resolved
 
   useEffect(() => {
     fetchTickets(getStoredToken())
@@ -7286,18 +7317,30 @@ function TicketsPage({ onOpenTicket, onSessionExpired }) {
   useAutoRefresh(() => fetchTickets(getStoredToken()).then(setIfChanged(setTickets)), { enabled: loadState === "ready" });
 
   const openCount = tickets.filter(t => t.status !== "resolved").length;
+  // The status buttons above the table: each shows how many tickets it holds (the page refreshes itself, so the numbers follow), and the table and Export show only that status.
+  const TICKET_FILTERS = [
+    { id: "all", label: "All", tone: "ink" },
+    { id: "open", label: "Open", tone: "red" },
+    { id: "in_progress", label: "In progress", tone: "blue" },
+    { id: "resolved", label: "Resolved", tone: "green" },
+  ];
+  const countOf = (id) => (id === "all" ? tickets.length : tickets.filter((t) => t.status === id).length);
+  const shown = filter === "all" ? tickets : tickets.filter((t) => t.status === filter);
+  const filterLabel = TICKET_FILTERS.find((f) => f.id === filter).label;
 
   return (
     <div>
       <TopBar title="Support tickets" subtitle={loadState === "ready" ? `${openCount} open · buyer ↔ platform only` : "Loading…"} />
-      <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "flex-end" }}>
+      <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <FilterButtons label="Filter tickets by status" activeId={filter} onSelect={setFilter}
+          items={TICKET_FILTERS.map((f) => ({ id: f.id, label: f.label, count: loadState === "ready" ? countOf(f.id) : "…", tone: f.tone, countTestId: `ticket-count-${f.id}` }))} />
         {/* Real export (new) -- same reusable exportToExcel() util
             already used for Orders/Suppliers/Payouts/Returns/Audit Log,
             just never added here. */}
         <button
-          disabled={tickets.length === 0}
+          disabled={shown.length === 0}
           onClick={() => exportToExcel({
-            filename: `support-tickets-${new Date().toISOString().slice(0, 10)}`,
+            filename: `support-tickets-${filter === "all" ? "" : `${filter.replace("_", "-")}-`}${new Date().toISOString().slice(0, 10)}`,
             sheetName: "Support Tickets",
             columns: [
               { header: "Ticket", key: "id", width: 14 },
@@ -7308,13 +7351,13 @@ function TicketsPage({ onOpenTicket, onSessionExpired }) {
               { header: "Status", key: "status", width: 16 },
               { header: "Updated", key: "updatedAt", width: 16 },
             ],
-            rows: tickets.map((t) => ({
+            rows: shown.map((t) => ({
               id: t.id, subject: t.subject, buyer: t.buyerId || t.guestEmail || "—",
               orderId: t.orderId || "—", priority: t.priority, status: t.status,
               updatedAt: new Date(t.updatedAt).toLocaleDateString(),
             })),
           })}
-          style={{ display: "flex", alignItems: "center", gap: 6, ...body, fontSize: 12.5, fontWeight: 700, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, cursor: tickets.length === 0 ? "default" : "pointer", opacity: tickets.length === 0 ? 0.5 : 1 }}
+          style={toolbarButtonStyle(shown.length === 0)}
         >
           <Download size={13} /> Export
         </button>
@@ -7327,10 +7370,10 @@ function TicketsPage({ onOpenTicket, onSessionExpired }) {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr><Th>Ticket</Th><Th>Subject</Th><Th>Buyer</Th><Th>Order</Th><Th>Priority</Th><Th>Status</Th><Th>Updated</Th></tr></thead>
               <tbody>
-                {tickets.length === 0 && (
-                  <tr><td colSpan={7} style={{ ...body, textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>No support tickets.</td></tr>
+                {shown.length === 0 && (
+                  <tr><td colSpan={7} style={{ ...body, textAlign: "center", color: C.muted, fontSize: 13, padding: 32 }}>{tickets.length === 0 || filter === "all" ? "No support tickets." : `No ${filterLabel.toLowerCase()} tickets.`}</td></tr>
                 )}
-                {tickets.map(t => (
+                {shown.map(t => (
                   <tr key={t.id} onClick={() => onOpenTicket(t.id)} style={{ cursor: "pointer" }}>
                     <Td><PlateChip small>{t.id}</PlateChip></Td>
                     <Td style={{ fontWeight: 600 }}>{t.subject}</Td>
@@ -8509,31 +8552,33 @@ function EmailTestSection() {
   );
 }
 
+// Settings: every container is its own page, chosen with the main tabs under the header (the common page design). 7 tabs are shown, the rest under "More".
+const SETTINGS_TABS = [
+  { id: "team", label: "Team", render: (p) => <TeamPermissionsSection currentUser={p.currentUser} onSessionExpired={p.onSessionExpired} /> },
+  { id: "audit", label: "Audit log", render: (p) => <AuditLogSection currentUser={p.currentUser} onSessionExpired={p.onSessionExpired} /> },
+  { id: "commission", label: "Commission", render: (p) => <CommissionRulesSection onSessionExpired={p.onSessionExpired} /> },
+  { id: "returnWindow", label: "Return window", render: (p) => <ReturnWindowSection onSessionExpired={p.onSessionExpired} /> },
+  { id: "freeShipping", label: "Free shipping", render: (p) => <FreeShippingSection onSessionExpired={p.onSessionExpired} /> },
+  { id: "receiptFooter", label: "Receipt footer", render: () => <ReceiptFooterSection /> },
+  { id: "announcements", label: "Announcements", render: (p) => <AnnouncementsSection onSessionExpired={p.onSessionExpired} /> },
+  { id: "homePictures", label: "Home pictures", render: (p) => <HomePicturesSection onSessionExpired={p.onSessionExpired} /> },
+  { id: "homeText", label: "Home text", render: (p) => <HomeTextSection onSessionExpired={p.onSessionExpired} /> },
+  { id: "homeBanner", label: "Home banner", render: (p) => <HomeBannerSection onSessionExpired={p.onSessionExpired} /> },
+  { id: "footerText", label: "Footer text", render: (p) => <FooterTextSection onSessionExpired={p.onSessionExpired} /> },
+  { id: "socialLinks", label: "Social links", render: (p) => <SocialLinksSection onSessionExpired={p.onSessionExpired} /> },
+  { id: "legalPages", label: "Legal pages", render: (p) => <LegalPagesSection onSessionExpired={p.onSessionExpired} /> },
+  { id: "emailTest", label: "Email test", render: () => <EmailTestSection /> },
+];
+
 function SettingsPage({ currentUser, onSessionExpired }) {
+  const [tab, setTab] = useState("team");
+  const current = SETTINGS_TABS.find((t) => t.id === tab) || SETTINGS_TABS[0];
   return (
     <div>
-      <TopBar title="Settings" subtitle="Team permissions, commission rules, and platform configuration" />
-      <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
-        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-          <TeamPermissionsSection currentUser={currentUser} onSessionExpired={onSessionExpired} />
-          <AuditLogSection currentUser={currentUser} onSessionExpired={onSessionExpired} />
-        </div>
-        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-          <CommissionRulesSection onSessionExpired={onSessionExpired} />
-          <ReturnWindowSection onSessionExpired={onSessionExpired} />
-          <FreeShippingSection onSessionExpired={onSessionExpired} />
-          <EmailTestSection />
-        </div>
-        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-          <ReceiptFooterSection />
-          <AnnouncementsSection onSessionExpired={onSessionExpired} />
-          <HomePicturesSection onSessionExpired={onSessionExpired} />
-          <HomeTextSection onSessionExpired={onSessionExpired} />
-          <HomeBannerSection onSessionExpired={onSessionExpired} />
-          <FooterTextSection onSessionExpired={onSessionExpired} />
-          <SocialLinksSection onSessionExpired={onSessionExpired} />
-          <LegalPagesSection onSessionExpired={onSessionExpired} />
-        </div>
+      <TopBar title="Settings" subtitle="Team permissions, money rules, storefront content and system checks"
+        tabs={{ label: "Settings sections", tabs: SETTINGS_TABS.map(({ id, label }) => ({ id, label })), activeId: current.id, onSelect: setTab, maxVisible: 7 }} />
+      <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16, maxWidth: 1100 }}>
+        <div key={current.id} style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>{current.render({ currentUser, onSessionExpired })}</div>
       </div>
     </div>
   );
@@ -8541,31 +8586,53 @@ function SettingsPage({ currentUser, onSessionExpired }) {
 
 /* ---------------- shell ---------------- */
 
+// The side menu's order. A group (Products, Suppliers, Support, Financial) sits where its first page is in this list.
 const NAV = [
   { id: "overview", label: "Overview", icon: LayoutGrid },
   { id: "orders", label: "Orders", icon: ShoppingBag },
-  { id: "suppliers", label: "Suppliers", icon: Store },
-  { id: "moderation", label: "Moderation", icon: PackageSearch },
   { id: "allProducts", label: "All Products", icon: Package },
-  { id: "returns", label: "Returns", icon: RotateCcw },
+  { id: "moderation", label: "Moderation", icon: PackageSearch },
   { id: "vehicleData", label: "Vehicle Data", icon: Truck },
-  { id: "deliveryRules", label: "Delivery Rules", icon: Globe },
   { id: "categories", label: "Categories", icon: Layers },
+  { id: "suppliers", label: "Suppliers", icon: Store },
   { id: "supplierMessages", label: "Supplier Messages", icon: MessageSquare },
-  { id: "promoCodes", label: "Promo Codes", icon: Tag },
   { id: "hubs", label: "Hubs", icon: Warehouse },
-  { id: "pricing", label: "Pricing", icon: Calculator },
+  { id: "deliveryRules", label: "Delivery Rules", icon: Globe },
+  { id: "returns", label: "Returns", icon: RotateCcw },
+  { id: "flagged", label: "Flagged Shipments", icon: AlertTriangle },
+  { id: "tickets", label: "Support", icon: LifeBuoy },
+  { id: "reviews", label: "Reviews", icon: Star },
+  { id: "promoCodes", label: "Promo Codes", icon: Tag },
   { id: "paymentMethods", label: "Payment Methods", icon: CreditCard },
   { id: "paymentProviders", label: "Payment Providers", icon: Key },
-  { id: "flagged", label: "Flagged Shipments", icon: AlertTriangle },
   { id: "payouts", label: "Payouts", icon: Wallet },
-  { id: "reviews", label: "Reviews", icon: Star },
-  { id: "tickets", label: "Support", icon: LifeBuoy },
+  { id: "pricing", label: "Pricing", icon: Calculator },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
 // The sidebar entry for each group of pages (adminNav.js decides what is in a group; the pages themselves are unchanged).
 const GROUP_ICONS = { "group:suppliers": Store, "group:products": Package, "group:support": LifeBuoy, "group:financial": Wallet };
+
+// The side menu (design 3, "Gold menu"): the brand gold, the chosen item a tab in the page's color whose curved corners make it flow into the page.
+// Collapsible to icons only (the name shows on hover).
+const MENU = {
+  bg: C.signal, text: "#3D2C06", strong: C.onSignal, soft: "#5C4407", line: "#D9940F", badge: C.ink,
+  activeBg: "#E9ECF0", activeText: C.ink, activeIcon: "#8A5A00", expanded: 240, collapsed: 76,
+};
+// The page: a light panel filling the space beside the menu (the chosen item flows into it), and everything in the page, the title too,
+// in one rounded container inside the panel, with space around it.
+const PANEL = { bg: MENU.activeBg, inset: 16, boxRadius: 16 };
+const MENU_CSS = `
+.leap-menu-item:hover:not([aria-current="page"]) { background: rgba(255, 255, 255, 0.22) !important; }
+.leap-menu-item:focus-visible { outline: 2px solid ${C.ink}; outline-offset: -2px; }
+.leap-menu-curve { position: absolute; right: 0; width: 20px; height: 20px; pointer-events: none; clip-path: inset(0); }
+.leap-menu-curve.top { bottom: 100%; border-bottom-right-radius: 20px; box-shadow: 10px 10px 0 10px ${MENU.activeBg}; }
+.leap-menu-curve.bottom { top: 100%; border-top-right-radius: 20px; box-shadow: 10px -10px 0 10px ${MENU.activeBg}; }
+.leap-menu-tip { display: none; position: absolute; left: calc(100% + 6px); top: 50%; transform: translateY(-50%); height: 30px; padding: 0 10px; border-radius: 8px;
+  background: ${C.ink}; color: #fff; font-size: 12px; font-weight: 700; align-items: center; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.18); z-index: 50; }
+.leap-menu-item:hover .leap-menu-tip, .leap-menu-item:focus-visible .leap-menu-tip { display: flex; }
+`;
+const menuInitials = (user) => (user.name || user.email || "A").split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("") || "A";
 
 function AdminDashboardShell({ currentUser, onLogout }) {
   const hasAccess = (id) => currentUser.isOwner || currentUser.allowedPages === 'all' || (currentUser.allowedPages || []).includes(id);
@@ -8587,6 +8654,10 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   const [flaggedCount, setFlaggedCount] = useState(0);
   // The tab each group was last on (clicking the group in the sidebar returns to it). Kept up to date by ANY navigation: the sidebar, a tab, the bell, search, a link.
   const [lastTabByGroup, setLastTabByGroup] = useState({});
+  const [productsView, setProductsView] = useState("all");
+  // The side menu can be collapsed to icons only; the choice is remembered in this browser.
+  const [menuCollapsed, setMenuCollapsed] = useState(() => { try { return localStorage.getItem("leap_admin_menu_collapsed") === "1"; } catch { return false; } });
+  const toggleMenu = () => setMenuCollapsed((v) => { const next = !v; try { localStorage.setItem("leap_admin_menu_collapsed", next ? "1" : "0"); } catch { /* not kept: fine */ } return next; });      // Products > All products | Live products | Hidden products | Product requirements (one page, four tabs)
   useEffect(() => {
     const group = groupOfPage(page);
     if (group) setLastTabByGroup((previous) => (previous[group.id] === page ? previous : { ...previous, [group.id]: page }));
@@ -8629,7 +8700,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   else if (page === "orders") content = <OrdersPage onOpenOrder={setOpenOrder} onSessionExpired={onLogout} />;
   else if (page === "suppliers") content = <SuppliersPage onOpenSupplier={setOpenSupplier} onSessionExpired={onLogout} />;
   else if (page === "moderation") content = <ModerationPage onSessionExpired={onLogout} />;
-  else if (page === "allProducts") content = <AllProductsPage onSessionExpired={onLogout} />;
+  else if (page === "allProducts") content = <AllProductsPage view={productsView} onSessionExpired={onLogout} />;
   else if (page === "returns") content = <ReturnsPage onOpenCase={setOpenCase} onSessionExpired={onLogout} />;
   else if (page === "vehicleData") content = <VehicleDataPage onSessionExpired={onLogout} />;
   else if (page === "deliveryRules") content = <DeliveryRulesPage onSessionExpired={onLogout} />;
@@ -8649,6 +8720,38 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   // The sub-tabs of the current page's group, only the pages this admin may open, and not while an order / ticket / case / supplier detail is showing.
   const tabGroup = !openOrder && !openTicket && !openCase && !openSupplier ? groupOfPage(page) : null;
   const tabIds = tabGroup ? accessibleChildren(tabGroup, hasAccess) : [];
+  // The tabs under every page's header: its group's pages; Products: All products, Moderation, Live products, Hidden products, Product requirements
+  // (the "All products" page shows four of them); a page outside any group: one tab, its own name (a page with tabs of its own shows those instead).
+  const detailOpen = Boolean(openOrder || openTicket || openCase || openSupplier);
+  let pageTabs = null;
+  if (!detailOpen && tabGroup && tabGroup.id === "group:products") {
+    const canAll = hasAccess("allProducts");
+    const list = [];
+    if (canAll) list.push({ id: "allProducts", label: "All products" });
+    if (hasAccess("moderation")) list.push({ id: "moderation", label: "Moderation" });
+    if (canAll) list.push({ id: "allProducts:live", label: "Live products" }, { id: "allProducts:hidden", label: "Hidden products" }, { id: "allProducts:requirements", label: "Product requirements" });
+    pageTabs = { label: tabGroup.label, tabs: list, activeId: page === "allProducts" && productsView !== "all" ? `allProducts:${productsView}` : page,
+      onSelect: (id) => { const [p, v] = id.split(":"); setPage(p); if (p === "allProducts") setProductsView(v || "all"); setMessageSupplier(null); } };
+  } else if (!detailOpen && tabGroup) {
+    pageTabs = { label: tabGroup.label, tabs: tabIds.map((id) => ({ id, label: TAB_LABELS[id] })), activeId: page, onSelect: (id) => { setPage(id); setMessageSupplier(null); } };
+  } else if (!detailOpen) {
+    const own = NAV.find((n) => n.id === page);
+    if (own) pageTabs = { label: own.label, tabs: [{ id: page, label: own.label }], activeId: page, onSelect: () => {}, single: true };
+  }
+
+  // the side menu's highlight slides to the item clicked, and the new page fades in
+  const menuBoxRef = useRef(null);
+  const pageBoxRef = useRef(null);
+  const menuMark = useSlidingMark(menuBoxRef, '.leap-menu-item[aria-current="page"]', [page, Boolean(openOrder), Boolean(openTicket), Boolean(openCase), menuCollapsed]);
+  const menuSlides = Boolean(menuMark && menuMark.h);
+  const shownPage = useRef(null);
+  const pageKey = `${page}|${Boolean(openOrder)}|${Boolean(openTicket)}|${Boolean(openCase)}|${Boolean(openSupplier)}`;
+  useLayoutEffect(() => {
+    const was = shownPage.current;
+    shownPage.current = pageKey;
+    if (was === null || was === pageKey || lessMotion() || !pageBoxRef.current || typeof pageBoxRef.current.animate !== "function") return;
+    pageBoxRef.current.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 240, easing: "ease-out" });
+  }, [pageKey]);
 
   return (
     <CurrentUserContext.Provider value={currentUser}>
@@ -8661,15 +8764,39 @@ function AdminDashboardShell({ currentUser, onLogout }) {
       pendingCounts,
       flaggedCount,
     }}>
-    <div style={{ display: "flex", height: "100%", minHeight: 700, background: C.canvas, ...body }}>
+    <div style={{ display: "flex", height: "100%", minHeight: 700, background: MENU.bg, ...body }}>
       <style>{FONT_IMPORT}</style>
       <style>{`tbody tr:hover { background: ${C.canvas}; }`}</style>
-      <div style={{ width: 224, background: C.ink, display: "flex", flexDirection: "column", flexShrink: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "20px 20px 18px" }}>
-          <div style={{ ...disp, fontSize: 22, fontWeight: 700, color: "#fff", letterSpacing: "0.02em" }}>LEAP</div>
-          <span style={{ ...mono, fontSize: 9, color: "#9AA1AC", border: "1px solid #3A3F48", borderRadius: 4, padding: "2px 5px" }}>OPS</span>
+      <style>{MENU_CSS}</style>
+      {/* the menu stays in view while a long page scrolls, so the name and Log out at its bottom are always there */}
+      <nav aria-label="Main menu" style={{ width: menuCollapsed ? MENU.collapsed : MENU.expanded, transition: "width 160ms ease", background: MENU.bg, display: "flex", flexDirection: "column", flexShrink: 0, position: "sticky", top: 0, height: "100vh", minHeight: 600, alignSelf: "flex-start", zIndex: 5 }}>
+        <div style={menuCollapsed ? { display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "16px 0 10px" } : { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "16px 12px 10px 18px" }}>
+          {/* the company: logo, name, and which portal this is */}
+          {menuCollapsed
+            ? <BrandLogo size={36} label={"Leap Auto Parts"} />
+            : <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+                <BrandLogo size={36} />
+                <div style={{ minWidth: 0, lineHeight: 1.15 }}>
+                  <div style={{ ...body, fontSize: 14.5, fontWeight: 800, color: MENU.strong, whiteSpace: "nowrap" }}>Leap Auto Parts</div>
+                  <div style={{ ...body, fontSize: 11, fontWeight: 600, color: MENU.soft, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{"Admin portal"}</div>
+                </div>
+              </div>}
+          <button type="button" onClick={toggleMenu} aria-label={menuCollapsed ? "Expand the menu" : "Collapse the menu"} aria-expanded={!menuCollapsed} title={menuCollapsed ? "Expand the menu" : "Collapse the menu"}
+            style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${MENU.line}`, background: "transparent", color: MENU.text, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+            {menuCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
         </div>
-        <div style={{ flex: 1, padding: "0 12px" }}>
+        <div ref={menuBoxRef} style={{ flex: 1, padding: "6px 0 6px 12px", position: "relative" }}>
+          {/* the chosen item's background (with its curved corners): one shape that slides to the item clicked (drawn first, so the items sit on it) */}
+          {menuMark && (
+            <span aria-hidden="true" data-testid="menu-highlight" style={{
+              position: "absolute", left: menuMark.x, right: 0, top: 0, height: menuMark.h, transform: `translateY(${menuMark.y}px)`, pointerEvents: "none",
+              background: MENU.activeBg, borderRadius: "20px 0 0 20px", transition: menuMark.anim ? `transform ${SLIDE_MS}ms ${SLIDE_EASE}` : "none",
+            }}>
+              <span className="leap-menu-curve top" />
+              <span className="leap-menu-curve bottom" />
+            </span>
+          )}
           {sidebarEntries(NAV, hasAccess).map((entry) => {
             // A group (Suppliers, Products, Support, Financial) is ONE sidebar entry; everything else is a page, as before.
             const isGroup = entry.type === "group";
@@ -8680,45 +8807,61 @@ function AdminDashboardShell({ currentUser, onLogout }) {
               setPage(isGroup ? landingPage(entry.group, hasAccess, lastTabByGroup[entry.group.id]) : n.id);
               setOpenOrder(null); setOpenTicket(null); setOpenCase(null); setOpenSupplier(null); setMessageSupplier(null);
             };
+            const count = n.id === "flagged" ? flaggedCount : 0;
             return (
-              <button key={n.id} onClick={open} style={{
-                width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", marginBottom: 2, borderRadius: 8,
-                border: "none", cursor: "pointer", textAlign: "left",
-                background: active ? C.signal : "transparent", color: active ? C.onSignal : "#B8BEC9",
+              <button key={n.id} onClick={open} className="leap-menu-item" aria-current={active ? "page" : undefined} aria-label={menuCollapsed ? n.label : undefined} style={{
+                position: "relative", width: "100%", display: "flex", alignItems: "center", justifyContent: menuCollapsed ? "center" : "flex-start", gap: 12, height: 40,
+                padding: menuCollapsed ? 0 : "0 14px 0 18px", margin: "1px 0", borderRadius: "20px 0 0 20px", border: "none", cursor: "pointer", textAlign: "left",
+                background: active && !menuSlides ? MENU.activeBg : "transparent", color: active ? MENU.activeText : MENU.text, transition: "color 200ms ease",
               }}>
-                <Icon size={16} />
-                <span style={{ ...body, fontSize: 13, fontWeight: active ? 700 : 500, flex: 1 }}>{n.label}</span>
-                {n.id === "flagged" && flaggedCount > 0 && (
-                  <span style={{ ...body, fontSize: 10.5, fontWeight: 700, color: "#fff", background: active ? "rgba(255,255,255,0.25)" : C.red, borderRadius: 10, padding: "1px 7px", minWidth: 18, textAlign: "center" }}>
-                    {flaggedCount}
+                {/* the curved corners above and below the chosen item: it flows into the page (drawn by the sliding shape once it is in place) */}
+                {active && !menuSlides && <span aria-hidden="true" className="leap-menu-curve top" />}
+                {active && !menuSlides && <span aria-hidden="true" className="leap-menu-curve bottom" />}
+                <span style={{ display: "inline-flex", color: active ? MENU.activeIcon : "inherit", position: "relative" }}>
+                  <Icon size={18} />
+                  {menuCollapsed && count > 0 && <span style={{ position: "absolute", top: -7, right: -10, minWidth: 16, height: 16, borderRadius: 999, background: MENU.badge, color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px", boxSizing: "border-box" }}>{count}</span>}
+                </span>
+                {!menuCollapsed && <span style={{ ...body, fontSize: 13, fontWeight: active ? 700 : 500, flex: 1, whiteSpace: "nowrap" }}>{n.label}</span>}
+                {!menuCollapsed && count > 0 && (
+                  <span style={{ ...body, fontSize: 10.5, fontWeight: 800, color: "#fff", background: MENU.badge, borderRadius: 10, padding: "1px 7px", minWidth: 18, textAlign: "center" }}>
+                    {count}
                   </span>
                 )}
+                {menuCollapsed && <span role="tooltip" className="leap-menu-tip">{n.label}</span>}
               </button>
             );
           })}
         </div>
-        <div style={{ padding: 16, borderTop: "1px solid #2A2F38" }}>
-          <div style={{ ...body, fontSize: 12, color: "#fff", fontWeight: 700, marginBottom: 2 }}>{currentUser.name || currentUser.email}</div>
-          <div style={{ ...body, fontSize: 10.5, color: "#9AA1AC", marginBottom: 10 }}>{currentUser.email}</div>
-          <button onClick={onLogout} style={{
-            width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 10px",
-            borderRadius: 6, border: "1px solid #3A3F48", background: "transparent", color: "#B8BEC9", fontSize: 11.5, fontWeight: 600, cursor: "pointer",
-          }}>
-            <Users size={12} /> Log out
-          </button>
-        </div>
-      </div>
-      <div style={{ flex: 1, overflowY: "auto" }}>
-        {tabIds.length > 1 && (
-          <GroupTabs
-            label={tabGroup.label}
-            tabs={tabIds.map((id) => ({ id, label: TAB_LABELS[id] }))}
-            activeId={page}
-            onSelect={(id) => { setPage(id); setMessageSupplier(null); }}
-          />
+        {menuCollapsed ? (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "14px 0", borderTop: `1px solid ${MENU.line}` }}>
+            <span title={currentUser.name || currentUser.email} style={{ width: 36, height: 36, borderRadius: "50%", background: MENU.activeBg, color: MENU.activeText, display: "flex", alignItems: "center", justifyContent: "center", ...body, fontSize: 12, fontWeight: 800 }}>{menuInitials(currentUser)}</span>
+            <button type="button" onClick={onLogout} aria-label="Log out" title="Log out" style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${MENU.line}`, background: "transparent", color: MENU.text, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+              <LogOut size={16} />
+            </button>
+          </div>
+        ) : (
+          <div style={{ padding: "12px 16px 14px 24px", borderTop: `1px solid ${MENU.line}` }}>
+            <div style={{ ...body, fontSize: 12.5, color: MENU.strong, fontWeight: 700, marginBottom: 2 }}>{currentUser.name || currentUser.email}</div>
+            <div style={{ ...body, fontSize: 11, color: MENU.soft, marginBottom: 10 }}>{currentUser.email}</div>
+            <button onClick={onLogout} style={{
+              width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, height: 36,
+              borderRadius: 10, border: `1px solid ${MENU.line}`, background: "transparent", color: MENU.text, fontSize: 12, fontWeight: 700, cursor: "pointer",
+            }}>
+              <LogOut size={13} /> Log out
+            </button>
+          </div>
         )}
-        {content}
-      </div>
+      </nav>
+      <main style={{ flex: 1, minWidth: 0, display: "flex", background: PANEL.bg }}>
+        <div style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: PANEL.inset }}>
+          <div ref={pageBoxRef} style={{ minHeight: "100%", boxSizing: "border-box", background: C.canvas, border: `1px solid ${C.line}`, borderRadius: PANEL.boxRadius, overflow: "hidden", boxShadow: "0 1px 2px rgba(20, 23, 28, 0.05)" }}>
+            {/* the group's tabs go to the page's header, which shows them UNDER the title (the common page design) */}
+            <PageTabsContext.Provider value={pageTabs}>
+              {content}
+            </PageTabsContext.Provider>
+          </div>
+        </div>
+      </main>
     </div>
     </NavigationContext.Provider>
     </CurrentUserContext.Provider>

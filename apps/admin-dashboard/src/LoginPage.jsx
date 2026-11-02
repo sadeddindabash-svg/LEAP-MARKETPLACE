@@ -32,8 +32,13 @@ export default function LoginPage({ onLoginSuccess }) {
       <style>{FONT_IMPORT}</style>
       <div style={{ ...body, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 700, background: C.canvas }}>
         <form onSubmit={handleSubmit} style={{ width: 360, background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: 32 }}>
+          {/* the logo, drawn like an engraving when the page opens (public/brand/leap-logo-animated.svg); the still logo if that file is missing */}
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+            <img src="/brand/leap-logo-animated.svg" alt="Leap Auto Parts" width={104} height={104} style={{ display: "block" }}
+              onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = "/brand/leap-logo.png"; }} />
+          </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-            <div style={{ ...disp, fontSize: 26, fontWeight: 700, color: C.ink }}>LEAP</div>
+            <div style={{ ...disp, fontSize: 24, fontWeight: 700, color: C.ink }}>Leap Auto Parts</div>
             <span style={{ fontSize: 10, color: C.muted, border: `1px solid ${C.line}`, borderRadius: 4, padding: "2px 6px" }}>OPS</span>
           </div>
           <div style={{ fontSize: 13, color: C.muted, marginBottom: 24 }}>Platform operations login</div>

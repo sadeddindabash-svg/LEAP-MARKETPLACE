@@ -116,6 +116,9 @@ export default function VehicleImportPanel({ onSessionExpired, onGoToBrands }) {
         <div style={box}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
             {tile(s.rows, "rows read")}
+            {tile(s.newBrands || 0, "new brands")}
+            {(s.brandNamesUpdated || s.brandLogosSaved) ? tile((s.brandNamesUpdated || 0) + (s.brandLogosSaved || 0), "brand updates") : null}
+            {s.newBrandsWithoutLogo > 0 && tile(s.newBrandsWithoutLogo, 'brands saved as "No logo yet"', true)}
             {tile(s.newModels, "new models")}
             {tile(s.newYears, "new years")}
             {tile(s.newVersions, "new versions")}
@@ -181,7 +184,7 @@ export default function VehicleImportPanel({ onSessionExpired, onGoToBrands }) {
         <div style={{ ...box, borderColor: "#16794F" }}>
           <div style={{ ...body, fontSize: 14, fontWeight: 700, color: "#16794F", display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}><Check size={16} /> Import finished</div>
           <div style={{ ...body, fontSize: 12.5, color: C.ink, lineHeight: 1.6 }}>
-            {plural(result.summary.newVersions, "version", "versions")} added{result.summary.updatedVersions > 0 ? `, ${plural(result.summary.updatedVersions, "version", "versions")} updated` : ""}; {plural(result.summary.newModels, "model", "models")} and {plural(result.summary.newYears, "year", "years")} created; {plural(result.summary.picturesToSave, "picture", "pictures")} saved; {plural(result.summary.existingVersions, "row", "rows")} already existed.
+            {result.summary.newBrands > 0 ? `${plural(result.summary.newBrands, "brand", "brands")} created; ` : ""}{plural(result.summary.newVersions, "version", "versions")} added{result.summary.updatedVersions > 0 ? `, ${plural(result.summary.updatedVersions, "version", "versions")} updated` : ""}; {plural(result.summary.newModels, "model", "models")} and {plural(result.summary.newYears, "year", "years")} created; {plural(result.summary.picturesToSave, "picture", "pictures")} saved; {plural(result.summary.existingVersions, "row", "rows")} already existed.
             {result.summary.newWithoutPicture > 0 && <div style={{ color: "#8A5A12", display: "flex", gap: 6, alignItems: "center", marginTop: 6 }}><AlertTriangle size={14} /> {plural(result.summary.newWithoutPicture, "version is", "versions are")} marked "No photo yet" (and the new years have no photo): add them in Vehicle Data (brand, model, year, Versions).</div>}
           </div>
           {result.oldPicturesRemoved > 0 && <div style={{ ...body, fontSize: 12.5, color: C.ink, marginTop: 6 }}>{plural(result.oldPicturesRemoved, "old picture was", "old pictures were")} removed from the server.</div>}

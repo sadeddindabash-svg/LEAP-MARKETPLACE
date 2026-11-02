@@ -10,12 +10,13 @@ import { useGarage } from "./GarageProvider";
 import { useLang, useT } from "./LangProvider";
 
 /**
- * The "Shopping for" container, like the mobile app's card: the small label, the buyer's default car in a dark chip ("BYD Seal DM-i · 2024", plus its version when it has one) and the car's picture in an angled panel (its version's
- * photo, else its year's, else its brand's, else a plain car icon). The whole container opens My garage. It is shown to everyone: with no car (or signed out) it says "Add a vehicle". While the sign-in or the garage is still being
+ * The "Shopping for" container, like the mobile app's card: the small label, the buyer's default car in a dark chip ("BYD Seal DM-i · 2024", plus its version when it has one) and the car's picture (its version's
+ * photo, else its year's, else its brand's, else a plain car icon). No border and no background: it is part of the menu row, and the car (68 px tall, with a soft shadow under the wheels) sits exactly in the middle
+ * of the row's height, reaching out the same 10 px above and below it. The whole container opens My garage. It is shown to everyone: with no car (or signed out) it says "Add a vehicle". While the sign-in or the garage is still being
  * read it is an empty box of the same size, so the page never jumps and never shows a wrong word.
  *
- * Two places, one at a time: `where="menu"` is the end of the menu row (computer screens: the row is 48 px high and the container 40 px, so the row does not grow); `where="row"` is its own row under the menu (phones and
- * narrow screens). A car name that is too long for the space is cut with "…" on one line; the full text is in the tooltip and in the accessible name.
+ * Two places, one at a time: `where="menu"` is the end of the menu row (computer screens: the row is 48 px high and so is the container, so the row does not grow; the car reaches out above and below it); `where="row"` is
+ * its own row under the menu (phones and narrow screens), with room above and below for the car. A car name that is too long for the space is cut with "…" on one line; the full text is in the tooltip and in the accessible name.
  */
 function CarIcon({ className = "" }: { className?: string }) {
   return (
@@ -26,7 +27,10 @@ function CarIcon({ className = "" }: { className?: string }) {
   );
 }
 
-const CARD = "group flex h-10 w-full min-w-0 items-center overflow-hidden rounded-[10px] border border-line bg-chalk text-ink hover:border-navy";
+const CARD = "group flex h-12 w-full min-w-0 items-center justify-end gap-3 text-ink";
+const CAR_BOX = "relative h-12 w-40 shrink-0";                                                       // the car's place in the row (48 px high, like the row)
+const CAR_RISE = "pointer-events-none absolute inset-x-0 top-1/2 z-10 h-[68px] -translate-y-1/2";      // the car itself: centred on the row, 10 px out above and below
+const CAR_SHADOW = "absolute inset-x-[14%] -bottom-0.5 h-1.5 rounded-[50%] bg-[radial-gradient(closest-side,rgba(11,49,70,0.28),transparent)]";
 
 export default function VehicleBar({ where }: { where: "menu" | "row" }) {
   const { user, isLoading } = useAuth();
@@ -39,22 +43,22 @@ export default function VehicleBar({ where }: { where: "menu" | "row" }) {
     where === "menu" ? (
       <div data-where="menu" className="ms-auto hidden min-w-[17rem] max-w-[34rem] shrink lg:block">{card}</div>
     ) : (
-      <div data-where="row" className="border-b border-line bg-white lg:hidden"><div className="mx-auto max-w-7xl px-4 py-1.5 sm:px-8">{card}</div></div>
+      <div data-where="row" className="border-b border-line bg-white lg:hidden"><div className="mx-auto max-w-7xl px-4 py-3 sm:px-8">{card}</div></div>
     );
 
-  if (isLoading || (user && loading)) return place(<div aria-hidden="true" data-testid="vehicle-card-loading" className="h-10 w-full rounded-[10px] bg-chalk" />);
+  if (isLoading || (user && loading)) return place(<div aria-hidden="true" data-testid="vehicle-card-loading" className="h-12 w-full rounded-[10px] bg-chalk" />);
 
-  const label = <span className="text-[9.5px] leading-none text-muted">{t("shopping_for")}</span>;
+  const label = <span className="text-[10px] font-semibold uppercase leading-none tracking-[0.02em] text-muted">{t("shopping_for")}</span>;
 
   if (!user || !car) {
     return place(
       <Link href="/garage" data-testid="vehicle-card" data-state="empty" aria-label={`${t("shopping_for")}: ${t("add_a_vehicle")}`} className={CARD}>
-        <CarIcon className="ms-3 shrink-0 text-muted" />
-        <span className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 ps-2 pe-2">
+        <span className="flex min-w-0 flex-col items-end justify-center gap-1">
           {label}
-          <span className="truncate text-[13px] font-semibold leading-4 text-navy">{t("add_a_vehicle")}</span>
+          <span className="max-w-full truncate text-[13px] font-semibold leading-4 text-navy group-hover:underline">{t("add_a_vehicle")}</span>
         </span>
-        <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="me-3 shrink-0 text-muted rtl:rotate-180"><path d="m9 18 6-6-6-6" /></svg>
+        <CarIcon className="size-8 shrink-0 text-navy" />
+        <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted rtl:rotate-180"><path d="m9 18 6-6-6-6" /></svg>
       </Link>,
     );
   }
@@ -64,16 +68,19 @@ export default function VehicleBar({ where }: { where: "menu" | "row" }) {
   const photo = [car.version?.photoUrl, car.generationPhotoUrl, car.brandPhotoUrl].find((u): u is string => !!u && !failedPhotos.includes(u)) ?? null;
   return place(
     <Link href="/garage" data-testid="vehicle-card" data-state="car" aria-label={`${t("shopping_for")}: ${full}`} title={full} className={CARD}>
-      <span className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 ps-3 pe-2">
+      <span className="flex min-w-0 flex-col items-end justify-center gap-1">
         {label}
-        <span className="block w-fit max-w-full truncate rounded-md bg-navy px-2 py-0.5 text-[13px] font-semibold leading-4 text-white">{full}</span>
+        <span className="block w-fit max-w-full truncate rounded-md bg-navy px-2 py-0.5 text-[13px] font-semibold leading-4 text-white group-hover:bg-navy-deep">{full}</span>
       </span>
-      <span data-testid="vehicle-card-picture" className="relative h-full w-24 shrink-0 bg-white [clip-path:polygon(22%_0,100%_0,100%_100%,0_100%)] rtl:[clip-path:polygon(0_0,78%_0,100%_100%,0_100%)]">
-        {photo ? (
-          <Image src={resolveImageUrl(photo)} alt="" fill sizes="96px" unoptimized className="object-contain p-1" onError={() => setFailedPhotos((f) => [...f, photo])} />
-        ) : (
-          <span className="grid h-full w-full place-items-center text-muted"><CarIcon /></span>
-        )}
+      <span data-testid="vehicle-card-picture" className={CAR_BOX}>
+        <span data-testid="vehicle-card-car" className={CAR_RISE}>
+          <span aria-hidden="true" className={CAR_SHADOW} />
+          {photo ? (
+            <Image src={resolveImageUrl(photo)} alt="" fill sizes="160px" unoptimized className="object-contain" onError={() => setFailedPhotos((f) => [...f, photo])} />
+          ) : (
+            <span className="flex h-full w-full items-end justify-center pb-1 text-muted"><CarIcon className="size-12" /></span>
+          )}
+        </span>
       </span>
     </Link>,
   );

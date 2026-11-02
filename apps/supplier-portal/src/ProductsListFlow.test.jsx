@@ -123,8 +123,9 @@ describe('Products page — real bulk price update (mocked fetch, real component
     fireEvent.click(checkboxes[1]); // header checkbox is index 0
     fireEvent.click(checkboxes[2]);
 
+    fireEvent.click(screen.getByRole('tab', { name: /^(批量编辑|Bulk edit)/ }));      // Bulk edit is a tab: the ticked products stay ticked
     await waitFor(() => expect(screen.getByText(/已选择 2|2 selected/)).toBeInTheDocument());
-    fireEvent.click(screen.getByText(/批量调价|Bulk price update/));
+    fireEvent.click(screen.getByRole('button', { name: /调整价格|Change prices/ }));
 
     await waitFor(() => screen.getByText(/批量调整价格|Bulk price adjustment/));
     const input = screen.getByRole('spinbutton');

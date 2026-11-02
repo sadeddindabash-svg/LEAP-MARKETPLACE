@@ -1,7 +1,7 @@
 // Reads the uploaded .xlsx: the rows of text, and each PICTURE with the row it sits on (a picture belongs to the row where its top-left corner is, in the picture column).
 const ExcelJS = require('exceljs');
 const { cleanLine } = require('../fitment/vehicleRules');
-const { FIELDS, PHOTO_HEADER, LANGS, MAX_ROWS } = require('./columns');
+const { FIELDS, PHOTO_HEADER, OLD_PHOTO_HEADER, LOGO_HEADER, LANGS, MAX_ROWS } = require('./columns');
 const { normalizeWorkbookPackage } = require('./normalize');
 
 class ImportError extends Error {
@@ -54,7 +54,7 @@ async function parseWorkbook(buffer) {
   }
   let ws = null, headerRow = null;
   for (const sheet of wb.worksheets) { const r = findHeaderRow(sheet); if (r) { ws = sheet; headerRow = r; break; } }
-  if (!ws) throw new ImportError('No sheet with the expected headers was found. The first row needs the headers of the template (Brand, Model, Year, Version, Engine, Seats, Vehicle Photo, then the Arabic and Chinese columns). Download the template to see them.');
+  if (!ws) throw new ImportError('No sheet with the expected headers was found. The first row needs the headers of the template (Brand, Model, Year, Version, Engine, Seats, Brand Logo, Version Photo, then the Arabic and Chinese columns). Download the template to see them.');
 
   // header name -> column number
   const byHeader = new Map();
@@ -69,7 +69,8 @@ async function parseWorkbook(buffer) {
     }
   }
   if (missing.length) throw new ImportError(`These columns are missing from the first row: ${missing.join(', ')}. Download the template to see the exact headers.`);
-  const photoCol = byHeader.get(PHOTO_HEADER.toLowerCase()) || null;
+  const photoCol = byHeader.get(PHOTO_HEADER.toLowerCase()) || byHeader.get(OLD_PHOTO_HEADER.toLowerCase()) || null;
+  const logoCol = byHeader.get(LOGO_HEADER.toLowerCase()) || null;          // the brand's logo (new): optional column
 
   // pictures: by the row of their top-left corner
   const pictures = new Map();           // row number -> [{ col, buffer, ext }]
@@ -100,10 +101,11 @@ async function parseWorkbook(buffer) {
     }
     const here = pictures.get(r) || [];
     if (!anyText && here.length === 0) continue;                                    // a blank row
-    const inPhotoColumn = here.filter((p) => !photoCol || p.col === photoCol);
-    const stray = here.length - inPhotoColumn.length;
-    if (stray > 0) issues.push({ level: 'warning', row: r, text: `Row ${r}: ${stray} picture(s) are not in the "${PHOTO_HEADER}" column and were ignored.` });
-    rows.push({ rowNumber: r, values, picture: inPhotoColumn[0] || null, pictureCount: inPhotoColumn.length });
+    const inLogoColumn = logoCol ? here.filter((p) => p.col === logoCol) : [];
+    const inPhotoColumn = here.filter((p) => (photoCol ? p.col === photoCol : !logoCol || p.col !== logoCol));
+    const stray = here.length - inPhotoColumn.length - inLogoColumn.length;
+    if (stray > 0) issues.push({ level: 'warning', row: r, text: `Row ${r}: ${stray} picture(s) are not in the "${PHOTO_HEADER}" or "${LOGO_HEADER}" column and were ignored.` });
+    rows.push({ rowNumber: r, values, picture: inPhotoColumn[0] || null, pictureCount: inPhotoColumn.length, logo: inLogoColumn[0] || null, logoCount: inLogoColumn.length });
     if (rows.length > MAX_ROWS) throw new ImportError(`The file has more than ${MAX_ROWS} rows. Split it into smaller files.`);
   }
   if (!photoCol && pictureCount > 0) issues.push({ level: 'warning', text: `There is no "${PHOTO_HEADER}" column, so no pictures are imported.` });

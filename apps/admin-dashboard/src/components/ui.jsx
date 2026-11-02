@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Star, TrendingUp, TrendingDown } from "lucide-react";
 import { C, body, disp, mono } from "../theme";
+import { CountUpText } from "./CountUp";      // the big numbers count up from 0
 
 // Real, second step toward splitting App.jsx (see theme.js's own
 // comment for the first step) -- these are the small, reusable,
@@ -43,7 +44,7 @@ export function KpiCard({ label, value, delta, positive, icon: Icon }) {
         <span style={{ ...body, fontSize: 11.5, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.03em" }}>{label}</span>
         <Icon size={16} color={C.muted} />
       </div>
-      <div style={{ ...disp, fontSize: 28, fontWeight: 700, color: C.ink, marginBottom: 4 }}>{value}</div>
+      <div style={{ ...disp, fontSize: 28, fontWeight: 700, color: C.ink, marginBottom: 4, fontVariantNumeric: "tabular-nums" }}>{typeof value === "string" ? <CountUpText text={value} /> : value}</div>
       {/* Only when a REAL change is given. Nothing used to pass one, so every card showed a red down-arrow and "vs last week" with no number, as if
           every figure had dropped. */}
       {delta !== undefined && delta !== null && delta !== "" && (

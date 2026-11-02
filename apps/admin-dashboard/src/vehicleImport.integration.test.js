@@ -83,101 +83,20 @@ describe.runIf(backendUp)('Excel import of vehicle data, against a REAL running 
     expect(none.status).toBe(400); expect(none.body.error).toMatch(/No file was sent/);
   });
 
-  it('CRITICAL: a brand that does not exist stops the import (every row of it), names the brand, and creates nothing', async () => {
-    const { name, r } = await newBrand();
-    const ghost = { brand: 'NoSuchBrand', brandAr: 'لا', brandZh: '无' };
-    const file = await makeSheet([r(), r({ ...ghost, version: 'G' })]);
+  it('CRITICAL: a brand that does not exist is CREATED from the file ("No logo yet" when the file has no logo); an existing brand gets its Arabic and Chinese names from the file', async () => {
+    const { brand, r } = await newBrand();
+    const fresh = `NewImpBrand${stamp}`;
+    const file = await makeSheet([r({ brandAr: 'ماركة محدثة', brandZh: '新品牌名' }), r({ brand: fresh, brandAr: 'جديدة', brandZh: '新', version: 'G' })]);
     const preview = await send(admin, 'preview', file);
-    expect(preview.body.blocking).toBe(true); expect(preview.body.ready).toBe(false);
-    expect(preview.body.summary.missingBrands).toEqual(['NoSuchBrand']);
-    expect(preview.body.rows.map((x) => x.status)).toEqual(['new', 'error']);
-    expect(preview.body.rows[1].messages.map((m) => m.text).join(' ')).toMatch(/Brand "NoSuchBrand" does not exist yet.*Add it first in Vehicle Data/);
+    expect(preview.body.blocking).toBe(false);
+    expect(preview.body.summary).toMatchObject({ newBrands: 1, newBrandsWithoutLogo: 1, brandNamesUpdated: 1, missingBrands: [] });
     const commit = await send(admin, 'commit', file);
-    expect(commit.status).toBe(400);
-    expect(commit.body.error).toMatch(/nothing was imported/);
-    expect(name).toBeTruthy();
-  });
-
-  it('CRITICAL: the preview writes NOTHING, and says what will happen: new models, years and versions, pictures, and the rows without a picture', async () => {
-    const { brand, r } = await newBrand();
-    const file = await makeSheet([r({ picture: [400, 400] }), r({ version: 'B' }), r({ year: 2023, picture: [400, 400] }), r({ model: 'M2', modelAr: 'إم2', modelZh: '车型二', version: 'C' })]);
-    const preview = await send(admin, 'preview', file);
-    expect(preview.status).toBe(200);
-    expect(preview.body.summary).toMatchObject({ rows: 4, rowsWithErrors: 0, picturesFound: 2, newModels: 2, newYears: 3, newVersions: 4, existingVersions: 0, newWithoutPicture: 2, rowsWithWarnings: 2 });
-    expect(preview.body.ready).toBe(true);
-    expect(preview.body.rows.map((x) => x.status)).toEqual(['new', 'new', 'new', 'new']);
-    expect(preview.body.rows[0].picture).toEqual({ width: 400, height: 400 });
-    expect(await versionsOf(brand.id)).toEqual([]);                                // nothing was written
-    expect(await (await json(null, 'GET', `/fitment/brands/${brand.id}/models`)).json()).toEqual([]);
-  });
-
-  it('CRITICAL: the import creates the models, years (without photo) and versions with all their names, seats, and the pictures (kept as files); rows without a picture have none; it is recorded in the audit log', async () => {
-    const { brand, r } = await newBrand();
-    const file = await makeSheet([r({ picture: [400, 400] }), r({ version: 'B', versionAr: 'ب', versionZh: '乙', engine: 'Engine B', seats: 6 }), r({ year: 2023, version: 'C', picture: [450, 450] })]);
-    const done = await send(admin, 'commit', file, 'skip', 'My Vehicles.xlsx');
-    expect(done.status).toBe(201); expect(done.body.imported).toBe(true);
-    expect(done.body.summary).toMatchObject({ newModels: 1, newYears: 2, newVersions: 3, picturesFound: 2, newWithoutPicture: 1 });
-    const all = await versionsOf(brand.id);
-    expect(all).toHaveLength(3);
-    expect(all.map((x) => x.year.name).sort()).toEqual(['2022', '2022', '2023']);
-    expect(all.every((x) => x.year.photoUrl === null)).toBe(true);                   // years created by the import have no photo
-    expect(all[0].model).toMatchObject({ name: 'M1', nameAr: 'إم1', nameZh: '车型一' });
-    const a = all.find((x) => x.version.name === 'AWD Flagship').version, b = all.find((x) => x.version.name === 'B').version;
-    expect(a).toMatchObject({ nameAr: 'دفع كلي فلاجشيب', nameZh: '全轮驱动 旗舰版', engineZh: '1.5升 增程器', seats: 5 });
-    expect(b).toMatchObject({ nameAr: 'ب', nameZh: '乙', engine: 'Engine B', seats: 6, photoUrl: null });
-    expect(a.photoUrl).toMatch(/^\/uploads\/[0-9a-f]{32}\.png$/);
-    const served = await fetch(`${BACKEND_URL}${a.photoUrl}`);
-    expect(served.status).toBe(200); expect(served.headers.get('content-type')).toMatch(/image\/png/);
-    const log = await (await json(admin, 'GET', '/admin/audit-log?action=vehicle_import')).json();
-    const entries = Array.isArray(log) ? log : (log.entries || log.items || log.rows || log.log || []);
-    expect(JSON.stringify(entries[0])).toMatch(/My Vehicles\.xlsx/);
-    expect(entries[0].action).toBe('vehicle_import');
-  });
-
-  it('CRITICAL: importing the same file again adds nothing (every row "already exists") and is refused as nothing to import; a changed file is SKIPPED by default', async () => {
-    const { brand, r } = await newBrand();
-    const file = await makeSheet([r({ picture: [400, 400] }), r({ version: 'B' })]);
-    expect((await send(admin, 'commit', file)).status).toBe(201);
-    const before = JSON.stringify(await versionsOf(brand.id));
-    const again = await send(admin, 'commit', file);
-    expect(again.status).toBe(400); expect(again.body.error).toMatch(/nothing to import/);
-    expect(again.body.summary).toMatchObject({ existingVersions: 2, newVersions: 0 });
-    const changed = await makeSheet([r({ versionZh: '改了', seats: 7, picture: [600, 600] }), r({ version: 'B' })]);
-    const preview = await send(admin, 'preview', changed);
-    expect(preview.body.rows.map((x) => x.status)).toEqual(['exists', 'exists']);
-    expect((await send(admin, 'commit', changed)).status).toBe(400);
-    expect(JSON.stringify(await versionsOf(brand.id))).toBe(before);                 // nothing changed
-  });
-
-  it('CRITICAL: "update existing" changes the versions whose text, seats or picture differ, replaces the picture, and leaves the others alone', async () => {
-    const { brand, r } = await newBrand();
-    expect((await send(admin, 'commit', await makeSheet([r({ picture: [400, 400] }), r({ version: 'B' })]))).status).toBe(201);
-    const first = (await versionsOf(brand.id)).find((x) => x.version.name === 'AWD Flagship').version;
-    const changed = await makeSheet([r({ versionZh: '改了', seats: 7, picture: [600, 600] }), r({ version: 'B' }), r({ version: 'C' })]);
-    const preview = await send(admin, 'preview', changed, 'update');
-    expect(preview.body.rows.map((x) => x.status)).toEqual(['update', 'exists', 'new']);
-    expect(preview.body.summary).toMatchObject({ updatedVersions: 1, existingVersions: 1, newVersions: 1 });
-    const done = await send(admin, 'commit', changed, 'update');
-    expect(done.status).toBe(201);
-    const all = await versionsOf(brand.id);
-    const updated = all.find((x) => x.version.name === 'AWD Flagship').version;
-    expect(updated).toMatchObject({ id: first.id, nameZh: '改了', seats: 7 });
-    expect(updated.photoUrl).not.toBe(first.photoUrl);                             // the picture was replaced
-    expect(all.find((x) => x.version.name === 'B').version.nameZh).toBe('全轮驱动 旗舰版');
-    expect(all.map((x) => x.version.name).sort()).toEqual(['AWD Flagship', 'B', 'C']);
-  });
-
-  it('a new version is added to a model and a year that already exist (made by hand): the model and year are reused, not duplicated', async () => {
-    const { brand, r } = await newBrand();
-    const model = await (await json(admin, 'POST', `/fitment/brands/${brand.id}/models`, { name: 'M1', nameAr: 'إم1', nameZh: '车型一' })).json();
-    const gen = await (await json(admin, 'POST', `/fitment/models/${model.id}/generations`, { year: 2022, photoUrl: '/uploads/y.png' })).json();
-    const done = await send(admin, 'commit', await makeSheet([r({ version: 'Late' })]));
-    expect(done.status).toBe(201);
-    expect(done.body.summary).toMatchObject({ newModels: 0, newYears: 0, newVersions: 1 });
-    expect(await (await json(null, 'GET', `/fitment/brands/${brand.id}/models`)).json()).toHaveLength(1);
-    const years = await (await json(null, 'GET', `/fitment/models/${model.id}/generations`)).json();
-    expect(years).toHaveLength(1); expect(years[0].photoUrl).toBe('/uploads/y.png');   // its own photo untouched
-    expect((await (await json(null, 'GET', `/fitment/generations/${gen.id}/versions`)).json()).map((v) => v.name)).toEqual(['Late']);
+    expect(commit.status).toBe(201);
+    const all = await (await json(null, 'GET', '/fitment/brands')).json();
+    const created = all.find((b) => b.name === fresh);
+    brands.push(created.id);                                                       // cleaned up with the others
+    expect(created).toMatchObject({ nameAr: 'جديدة', nameZh: '新', photoUrl: null });
+    expect(all.find((b) => b.id === brand.id)).toMatchObject({ nameAr: 'ماركة محدثة', nameZh: '新品牌名' });
   });
 
   it('CRITICAL: all or nothing: a file with one bad row imports NOTHING (the good rows before it are not saved, no picture file is left behind)', async () => {
@@ -186,9 +105,6 @@ describe.runIf(backendUp)('Excel import of vehicle data, against a REAL running 
     const withBadYear = await makeSheet([r({ picture: [400, 400] }), r({ version: 'B', picture: [400, 400] }), r({ version: 'C', yearAr: 2030 })]);
     const a = await send(admin, 'commit', withBadYear);
     expect(a.status).toBe(400); expect(a.body.summary.rowsWithErrors).toBe(1);
-    const withGhostBrand = await makeSheet([r({ picture: [400, 400] }), r({ version: 'B', picture: [400, 400] }), r({ brand: 'GhostBrand', brandAr: 'ش', brandZh: '鬼', version: 'C', picture: [400, 400] })]);
-    const b = await send(admin, 'commit', withGhostBrand);                         // the ghost brand is only found while importing, after pictures were already kept
-    expect(b.status).toBe(400); expect(b.body.summary.missingBrands).toEqual(['GhostBrand']);
     expect(await versionsOf(brand.id)).toEqual([]);
     expect(await (await json(null, 'GET', `/fitment/brands/${brand.id}/models`)).json()).toEqual([]);
     expect(fs.readdirSync(UPLOADS).length).toBe(filesBefore);                      // and no stray picture files

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import LeapAdminApp from './App';
 
 const OWNER_USER = { id: 'admin_dev_seed', email: 'admin@leap.dev', name: 'Dev Admin', role: 'admin', isOwner: true, allowedPages: 'all' };
@@ -79,7 +79,7 @@ describe('Real Team & Permissions UI and nav filtering (mocked fetch, real compo
     expect(screen.queryByRole('button', { name: /^financial$/i })).not.toBeInTheDocument();   // none of its pages is allowed, so the whole group is hidden
     expect(screen.queryByRole('tab', { name: /promo codes/i })).not.toBeInTheDocument();      // and inside Support only the allowed page (tickets) exists...
     expect(screen.queryByRole('tab', { name: /reviews/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();                            // ...so there is nothing to switch between: no tab bar
+    expect(within(screen.getByRole('tablist', { name: 'Support' })).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Tickets']);   // ...so its one tab is Tickets
     expect(screen.queryByRole('button', { name: /settings/i })).not.toBeInTheDocument();
   });
 

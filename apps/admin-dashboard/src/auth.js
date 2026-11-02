@@ -549,6 +549,16 @@ async function categoryCall(method, id, path, token, body) {
 }
 export const fetchCategoryInUse = (token, id) => categoryCall("GET", id, "in-use", token);
 export const removeCategoryWithProducts = (token, id, confirm) => categoryCall("POST", id, "remove", token, { confirm });
+// The same for a sub-category (Categories > a category > its sub-categories).
+async function partCall(method, id, path, token, body) {
+  const response = await fetch(`${API_BASE_URL}/catalog/admin/parts/${encodeURIComponent(id)}/${path}`, { method, headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+export const fetchPartInUse = (token, id) => partCall("GET", id, "in-use", token);
+export const removePartWithProducts = (token, id, confirm) => partCall("POST", id, "remove", token, { confirm });
 export async function fetchProductRequirements() {
   const response = await fetch(`${API_BASE_URL}/catalog/product-requirements`);
   const data = await response.json();
@@ -701,7 +711,7 @@ export async function deletePart(token, id) {
   if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
   if (response.status === 204) return null;
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  if (!response.ok) { const error = new Error(data.error || `Request failed (${response.status})`); error.payload = data; throw error; }          // payload.inUse = products still use it
   return data;
 }
 

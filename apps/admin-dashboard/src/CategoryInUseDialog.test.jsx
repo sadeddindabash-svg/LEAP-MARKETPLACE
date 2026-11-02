@@ -4,9 +4,9 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Categories > delete > "real products still reference it": the window that shows what is in the way and clears it out. The server is replaced by fixed answers shaped like the real ones (checked in services/api/test/categoryRemove.test.js).
-const m = vi.hoisted(() => ({ info: vi.fn(), remove: vi.fn() }));
-vi.mock('./auth', () => { class SessionExpiredError extends Error {} return { SessionExpiredError, getStoredToken: () => 'admin-token', fetchCategoryInUse: (...a) => m.info(...a), removeCategoryWithProducts: (...a) => m.remove(...a) }; });
-import CategoryInUseDialog, { REMOVE_PHRASE } from './CategoryInUseDialog';
+const m = vi.hoisted(() => ({ info: vi.fn(), remove: vi.fn(), partInfo: vi.fn(), partRemove: vi.fn() }));
+vi.mock('./auth', () => { class SessionExpiredError extends Error {} return { SessionExpiredError, getStoredToken: () => 'admin-token', fetchCategoryInUse: (...a) => m.info(...a), removeCategoryWithProducts: (...a) => m.remove(...a), fetchPartInUse: (...a) => m.partInfo(...a), removePartWithProducts: (...a) => m.partRemove(...a) }; });
+import CategoryInUseDialog, { REMOVE_PHRASE, PART_REMOVE_PHRASE } from './CategoryInUseDialog';
 import { SessionExpiredError } from './auth';
 
 const info = (over = {}) => ({ category: { id: 'c1', name: 'Brakes' }, total: 6, byState: { live: 3, hidden: 1, 'waiting for review': 1, 'supplier drafts': 1 }, parts: 2, deletable: 4, sample: [{ id: 'a', name: 'Pad A', status: 'active' }, { id: 'b', name: 'Disc B', status: 'inactive' }, { id: 'c', name: 'Hose C', status: 'draft' }, { id: 'd', name: 'Rotor D', status: 'translating' }],
@@ -21,7 +21,7 @@ describe('what is in the way', () => {
     await show(); expect(m.info).toHaveBeenCalledWith('admin-token', 'c1'); expect(screen.getByText('6 products').tagName).toBe('B'); expect(document.body.textContent).toContain('3 live, 1 hidden, 1 waiting for review, 1 supplier drafts.'); expect(screen.getByText(/do not appear in the product list, but they still count/)).toBeInTheDocument();
   });
   it('lists which products can be deleted and what goes with them, and which cannot, with the reasons', async () => {
-    await show(); expect(screen.getByText('4 products can be deleted:')).toBeInTheDocument(); expect(document.body.textContent).toContain('Pad A, Disc B, Hose C, Rotor D.'); expect(screen.getByText('This also removes: 3 pictures, 1 reviews.')).toBeInTheDocument();
+    await show(); expect(screen.getByText('4 products will be deleted:')).toBeInTheDocument(); expect(document.body.textContent).toContain('Pad A, Disc B, Hose C, Rotor D.'); expect(screen.getByText('This also removes: 3 pictures, 1 reviews.')).toBeInTheDocument();
     expect(screen.getByText('2 products cannot be deleted')).toBeInTheDocument(); expect(screen.getByText(/it is used in a quote request/)).toBeInTheDocument(); expect(screen.getByText(/this category cannot be deleted completely while they exist/)).toBeInTheDocument();
   });
   it('a category with no products but sub-categories says so; with nothing at all that can go, there is nothing to press', async () => {
@@ -31,9 +31,9 @@ describe('what is in the way', () => {
   it('a failed look is shown; an expired sign-in goes to the sign-in page', async () => {
     m.info.mockRejectedValue(new Error('Request failed (500)')); const { unmount } = await show(); expect(screen.getByRole('alert')).toHaveTextContent('Request failed (500)'); unmount(); const onSessionExpired = vi.fn(); m.info.mockRejectedValue(new SessionExpiredError('x')); await show({ onSessionExpired }); expect(onSessionExpired).toHaveBeenCalled();
   });
-  it('one product reads in the singular ("uses", "its history keeps it", "while it exists")', async () => {
+  it('one product reads in the singular ("uses", "waiting for it", "while it exists")', async () => {
     m.info.mockResolvedValue(info({ total: 1, byState: { live: 1, hidden: 0, 'waiting for review': 0, 'supplier drafts': 0 }, deletable: 0, parts: 0, sample: [], alsoRemoved: [], held: [{ id: 'h1', name: 'Old Pad', status: 'active', reason: 'it has been in an order: order history keeps its products' }], heldTotal: 1 })); await show();
-    expect(document.body.textContent).toContain('1 product still uses this category: 1 live.'); expect(document.body.textContent).toContain('1 product cannot be deleted (its history keeps it):'); expect(document.body.textContent).toContain('while it exists.');
+    expect(document.body.textContent).toContain('1 product still uses this category: 1 live.'); expect(document.body.textContent).toContain('1 product cannot be deleted (a buyer is still waiting for it):'); expect(document.body.textContent).toContain('while it exists.');
   });
   it('no raw code leaks into the text (no \\u escapes, no stray dollar signs)', async () => { await show(); expect(document.body.textContent).not.toMatch(/\\u[0-9a-f]{4}|\$/i); });
 });
@@ -43,7 +43,7 @@ describe('clearing it out', () => {
     for (const v of ['delete category', 'DELETE CATEGORIES', 'DELETE PRODUCTS', 'DELETE CATEGORY ']) { typeIt(v); expect(button).toBeDisabled(); } typeIt(); expect(button).not.toBeDisabled();
   });
   it('when nothing has to stay the label says the category goes too', async () => { m.info.mockResolvedValue(info({ held: [], heldTotal: 0, total: 4, byState: { live: 2, hidden: 1, 'waiting for review': 1, 'supplier drafts': 0 } })); await show(); expect(screen.getByRole('button', { name: 'Delete 4 products and the category' })).toBeInTheDocument(); });
-  it('the sentence it asks for is the one the server asks for', () => { const server = readFileSync(join(__dirname, '../../../services/api/src/modules/catalog/categoryRemove.js'), 'utf8'); expect(/const PHRASE = '([^']+)'/.exec(server)[1]).toBe(REMOVE_PHRASE); });
+  it('the sentence it asks for is the one the server asks for', () => { const server = readFileSync(join(__dirname, '../../../services/api/src/modules/catalog/categoryRemove.js'), 'utf8'); expect(/category: '([^']+)'/.exec(server)[1]).toBe(REMOVE_PHRASE); expect(/part: '([^']+)'/.exec(server)[1]).toBe(PART_REMOVE_PHRASE); });
   it('sends the category and the sentence, then says what was deleted and why the category stays, and refreshes the page behind', async () => {
     const onChanged = vi.fn(); await show({ onChanged }); typeIt(); fireEvent.click(screen.getByRole('button', { name: 'Delete the 4 products that can go' })); await waitFor(() => expect(m.remove).toHaveBeenCalledWith('admin-token', 'c1', REMOVE_PHRASE));
     expect(await screen.findByText(/4 products were deleted, 1 sub-category\. 3 pictures removed from the server\. The category stays\./)).toBeInTheDocument(); expect(screen.getByText(/2 products have to stay, so the category stays/)).toBeInTheDocument(); expect(screen.getByText(/Old Pad/)).toBeInTheDocument(); expect(onChanged).toHaveBeenCalledTimes(1);
@@ -58,4 +58,16 @@ describe('clearing it out', () => {
     const onSessionExpired = vi.fn(); await show({ onSessionExpired }); m.remove.mockRejectedValueOnce(new SessionExpiredError('x')); typeIt(); const last = screen.getAllByRole('button', { name: 'Delete the 4 products that can go' }); fireEvent.click(last[last.length - 1]); await waitFor(() => expect(onSessionExpired).toHaveBeenCalled());
   });
   it('Cancel closes without deleting', async () => { const onClose = vi.fn(); await show({ onClose }); fireEvent.click(screen.getByRole('button', { name: 'Cancel' })); expect(onClose).toHaveBeenCalled(); expect(m.remove).not.toHaveBeenCalled(); });
+});
+describe('a sub-category', () => {
+  const partInfo = () => ({ kind: 'part', category: { id: 'p1', name: 'Brake Pads' }, total: 3, byState: { live: 2, hidden: 1, 'waiting for review': 0, 'supplier drafts': 0 }, parts: 0, deletable: 3, keepsHistory: 1, sample: [{ id: 'a', name: 'Pad A' }, { id: 'b', name: 'Pad B' }, { id: 'c', name: 'Pad C' }], held: [], heldTotal: 0, alsoRemoved: [], phrase: PART_REMOVE_PHRASE });
+  it('asks the sub-category questions, says which products are only marked deleted, and needs its own sentence', async () => {
+    m.partInfo.mockResolvedValue(partInfo()); m.partRemove.mockResolvedValue({ kind: 'part', removedProducts: 3, markedDeleted: 1, removedSubCategories: 1, categoryRemoved: true, kept: { products: [], subCategories: [], category: null }, picturesRemoved: 0 });
+    const onChanged = vi.fn(); render(<CategoryInUseDialog kind="part" categoryId="p1" categoryName="Brake Pads" onClose={vi.fn()} onChanged={onChanged} />);
+    await waitFor(() => expect(m.partInfo).toHaveBeenCalledWith('admin-token', 'p1')); expect(m.info).not.toHaveBeenCalled();
+    expect(await screen.findByText('3 products will be deleted:')).toBeInTheDocument(); expect(document.body.textContent).toContain('still use this sub-category: 2 live, 1 hidden.'); expect(document.body.textContent).toContain('1 of them has finished orders or quote requests, so it is marked deleted');
+    const go = screen.getByRole('button', { name: 'Delete 3 products and the sub-category' }); fireEvent.change(screen.getByLabelText('Type to confirm'), { target: { value: REMOVE_PHRASE } }); expect(go).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Type to confirm'), { target: { value: PART_REMOVE_PHRASE } }); fireEvent.click(go);
+    await waitFor(() => expect(m.partRemove).toHaveBeenCalledWith('admin-token', 'p1', PART_REMOVE_PHRASE)); expect(await screen.findByText(/3 products were deleted \(1 marked deleted: its old orders still show it\)\. The sub-category was deleted\./)).toBeInTheDocument(); expect(onChanged).toHaveBeenCalled();
+  });
 });

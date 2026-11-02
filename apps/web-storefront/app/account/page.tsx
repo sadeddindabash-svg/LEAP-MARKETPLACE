@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import SafeImage from "@/components/SafeImage";
 import Link from "@/components/LocLink";
 import LoyaltyCard from "@/components/LoyaltyCard";
+import { CountUp } from "@/components/CountUp";
 import { getAuthToken, useAuth } from "@/components/AuthProvider";
 import { useT } from "@/components/LangProvider";
 import { useLocRouter } from "@/components/useLocRouter";
@@ -12,7 +13,7 @@ import { deleteAccount, fetchMyGarage, fetchMyOrders, fetchUnreadNotificationCou
 const outline = "inline-flex min-h-11 items-center justify-center rounded-[10px] border-[1.5px] border-navy px-4 text-sm font-bold text-navy hover:bg-chalk disabled:opacity-50";
 
 function Stat({ value, label }: { value: number | null; label: string }) {
-  return <li className="rounded-[14px] border border-line bg-white p-4 text-center"><p className="text-3xl font-extrabold text-navy">{value ?? "–"}</p><p className="text-sm font-semibold text-muted">{label}</p></li>;
+  return <li className="rounded-[14px] border border-line bg-white p-4 text-center"><p className="text-3xl font-extrabold tabular-nums text-navy">{value === null ? "–" : <CountUp value={value} />}</p><p className="text-sm font-semibold text-muted">{label}</p></li>;
 }
 
 // The account hub, like the app's account screen: the buyer, their photo, their numbers (vehicles, orders, wishlist), their loyalty card, the way to sign out, and deleting

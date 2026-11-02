@@ -6,6 +6,7 @@ import Link from "@/components/LocLink";
 import { getAuthToken, useAuth } from "@/components/AuthProvider";
 import { useLang, useT } from "@/components/LangProvider";
 import { Price } from "@/components/Price";
+import { CountUp, CountUpPrice } from "@/components/CountUp";
 import { useLocRouter } from "@/components/useLocRouter";
 import { fetchAnnualSpend, fetchMyOrders, type AnnualSpend, type OrderSummary } from "@/lib/api";
 import { supplierLabel } from "@/lib/cart";
@@ -74,8 +75,8 @@ export default function OrdersPage() {
         <>
           {orders && orders.length > 0 && (
             <div className="mb-6 grid gap-4 sm:grid-cols-2">
-              <div className="rounded-[14px] border border-line bg-white p-5"><p className="text-3xl font-extrabold text-navy">{activeShipmentCount(orders)}</p><p className="text-sm font-semibold text-muted">{t("active_shipments")}</p></div>
-              {spend && <div className="rounded-[14px] border border-line bg-white p-5"><p className="text-3xl font-extrabold text-navy"><Price usd={spend.totalSpent} /></p><p className="text-sm font-semibold uppercase text-muted">{lang === "ar" ? `${t("annual_spend_label")} ${spend.year}` : `${spend.year} ${t("annual_spend_label")}`}</p></div>}
+              <div className="rounded-[14px] border border-line bg-white p-5"><p className="text-3xl font-extrabold tabular-nums text-navy"><CountUp value={activeShipmentCount(orders)} /></p><p className="text-sm font-semibold text-muted">{t("active_shipments")}</p></div>
+              {spend && <div className="rounded-[14px] border border-line bg-white p-5"><p className="text-3xl font-extrabold tabular-nums text-navy"><CountUpPrice usd={spend.totalSpent} /></p><p className="text-sm font-semibold uppercase text-muted">{lang === "ar" ? `${t("annual_spend_label")} ${spend.year}` : `${spend.year} ${t("annual_spend_label")}`}</p></div>}
             </div>
           )}
           {error && <p role="alert" className="mb-4 text-sm font-semibold text-[#a12a21]">{t("orders_load_error")} {error}</p>}

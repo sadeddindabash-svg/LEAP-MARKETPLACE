@@ -1,0 +1,151 @@
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
+import { C, useBodyFont } from "../theme";
+
+/**
+ * The common page design of the supplier portal (the same as the admin portal's, in the supplier portal's own color):
+ *   1. the header (TopBar in App.jsx): title, description, search, notifications, the admin's name; then a line across the page;
+ *   2. under it the page's MAIN TABS (every page has at least one: a page outside any group shows its own name) (FolderTabs): folder tabs joined to the page, at most 7 shown, the rest under "More";
+ *   3. inside the page, the BUTTONS that switch what is shown (FilterButtons): one joined strip, every button 40 px high, the number in a square box.
+ *
+ * The page's tab (its own name) is decided by the shell and handed to the header through PageTabsContext; a page with tabs of its own hands
+ * them to its header directly.
+ */
+export const PageTabsContext = createContext(null);
+
+const TAB_HEIGHT = 40;
+export const CONTROL_HEIGHT = 40;           // every button inside a page: the same height
+
+/** One tab: the label is the button's own text (no wrapper), so the tab's name is exactly its label. */
+function FolderTab({ tab, active, onSelect }) {
+  const body = useBodyFont();
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={() => onSelect(tab.id)}
+      style={{
+        ...body, display: "inline-flex", alignItems: "center", gap: 6, height: TAB_HEIGHT, padding: "0 16px", fontSize: 13, fontWeight: active ? 700 : 600, cursor: "pointer", whiteSpace: "nowrap",
+        border: `1px solid ${active ? C.line : "transparent"}`, borderBottom: active ? `1px solid ${C.canvas}` : "1px solid transparent", borderRadius: "10px 10px 0 0", marginBottom: -1,
+        background: active ? C.canvas : "transparent", color: active ? C.ink : C.muted,
+      }}
+    >
+      {tab.label}
+    </button>
+  );
+}
+
+/**
+ * The main tabs under the header. tabs: [{ id, label }]. When there are more than `maxVisible`, the rest go under "More (n)"; the tab that is
+ * chosen is always shown (it takes the last visible place when it is one of the others).
+ */
+export function FolderTabs({ label, tabs, activeId, onSelect, maxVisible = 7 }) {
+  const body = useBodyFont();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const wrapRef = useRef(null);
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const close = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setMenuOpen(false); };
+    const esc = (e) => { if (e.key === "Escape") setMenuOpen(false); };
+    document.addEventListener("mousedown", close); document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", esc); };
+  }, [menuOpen]);
+  if (!tabs || tabs.length === 0) return null;
+  let visible = tabs.slice(0, maxVisible);
+  if (tabs.length > maxVisible && !visible.some((t) => t.id === activeId)) {
+    const chosen = tabs.find((t) => t.id === activeId);
+    if (chosen) visible = [...visible.slice(0, maxVisible - 1), chosen];
+  }
+  const shown = new Set(visible.map((t) => t.id));
+  const rest = tabs.filter((t) => !shown.has(t.id));
+  const pick = (id) => { setMenuOpen(false); onSelect(id); };
+  return (
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 2, padding: "14px 28px 0", background: C.card, borderBottom: `1px solid ${C.line}`, flexWrap: "wrap" }}>
+      <div role="tablist" aria-label={label} style={{ display: "flex", alignItems: "flex-end", gap: 2, flexWrap: "wrap" }}>
+        {visible.map((tab) => <FolderTab key={tab.id} tab={tab} active={tab.id === activeId} onSelect={pick} />)}
+      </div>
+      {rest.length > 0 && (
+        <div ref={wrapRef} style={{ position: "relative" }}>
+          <button
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((v) => !v)}
+            style={{ ...body, display: "inline-flex", alignItems: "center", gap: 4, height: TAB_HEIGHT, padding: "0 14px", border: "none", background: "transparent", color: C.ink, fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+          >
+            More ({rest.length}) <ChevronDown size={14} />
+          </button>
+          {menuOpen && (
+            <div role="menu" aria-label={`More ${label}`} style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, minWidth: 200, background: C.card, border: `1px solid ${C.line}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(20,23,28,0.12)", padding: 6, zIndex: 30 }}>
+              {rest.map((tab) => (
+                <button key={tab.id} type="button" role="menuitem" onClick={() => pick(tab.id)}
+                  style={{ ...body, display: "block", width: "100%", textAlign: "left", height: CONTROL_HEIGHT, padding: "0 12px", border: "none", borderRadius: 8, background: "transparent", color: C.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The main tabs of the page's group (from the shell), for the header to show under itself. */
+export function useGroupTabs() { return useContext(PageTabsContext); }
+
+const TONES = {
+  ink: { color: C.ink, bg: "#EEF0F3" },
+  red: { color: C.red, bg: C.redBg },
+  blue: { color: C.torque, bg: C.torqueBg },
+  green: { color: C.gauge, bg: C.gaugeBg },
+  amber: { color: C.amber, bg: C.amberBg },
+};
+
+/**
+ * The buttons inside a page that switch what is shown (All | Open | In progress | Resolved, ...): one joined strip, every button 40 px high, the
+ * chosen one white with a gold line under it, the number (when there is one) in a square box. items: [{ id, label, count?, tone?, alert?, countTestId? }]
+ * (tone: ink | red | blue | green | amber; alert: the box turns red while something waits). Each is a toggle button (aria-pressed); its name is its label.
+ */
+export function FilterButtons({ label, items, activeId, onSelect }) {
+  const body = useBodyFont();
+  return (
+    <div role="group" aria-label={label} style={{ display: "inline-flex", flexWrap: "wrap", paddingLeft: 1 }}>
+      {items.map((item, i) => {
+        const active = item.id === activeId;
+        const tone = TONES[item.alert ? "red" : item.tone || "ink"];
+        const hasCount = item.count !== undefined && item.count !== null;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            aria-pressed={active}
+            title={hasCount ? `${item.label}: ${item.count}` : undefined}
+            onClick={() => onSelect(item.id)}
+            style={{
+              ...body, display: "inline-flex", alignItems: "center", gap: 8, height: CONTROL_HEIGHT, padding: `0 ${hasCount ? 8 : 16}px 0 16px`, marginLeft: -1, cursor: "pointer",
+              border: `1px solid ${C.line}`, borderRadius: i === 0 ? "10px 0 0 10px" : i === items.length - 1 ? "0 10px 10px 0" : 0,
+              background: active ? C.card : C.canvas, boxShadow: active ? `inset 0 -3px 0 ${C.signal}` : "none",
+              color: active ? C.ink : C.muted, fontSize: 13, fontWeight: 700, position: "relative", zIndex: active ? 1 : 0,
+            }}
+          >
+            {item.label}
+            {hasCount && (
+              <span aria-hidden="true" data-testid={item.countTestId} style={{
+                minWidth: 26, height: 24, padding: "0 6px", boxSizing: "border-box", borderRadius: 6, display: "inline-flex", alignItems: "center", justifyContent: "center",
+                fontSize: 12, fontWeight: 800, background: active || item.alert ? tone.color : tone.bg, color: active || item.alert ? "#fff" : tone.color,
+              }}>{item.count}</span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** A plain button in a page's toolbar (Export, ...): the same 40 px height as everything else. */
+export const toolbarButtonStyle = (disabled = false, body = {}) => ({
+  ...body, display: "inline-flex", alignItems: "center", gap: 6, height: CONTROL_HEIGHT, padding: "0 16px", borderRadius: 10, border: `1px solid ${C.line}`,
+  background: C.card, color: C.ink, fontSize: 13, fontWeight: 700, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1,
+});

@@ -48,7 +48,8 @@ async function loginAndGoToModeration() {
   fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'admin_dev_password_123' } });
   fireEvent.click(screen.getByRole('button', { name: /log in/i }));
   await waitFor(() => expect(screen.getByRole('button', { name: /log out/i })).toBeInTheDocument());
-  fireEvent.click(screen.getByRole('button', { name: /^products$/i }));   // the Products group opens on its first tab, Moderation
+  fireEvent.click(screen.getByRole('button', { name: /^products$/i }));   // the Products group opens on its first tab, All products...
+  fireEvent.click(await screen.findByRole('tab', { name: 'Moderation' }));  // ...Moderation is its second
 }
 
 beforeEach(() => { localStorage.clear(); });

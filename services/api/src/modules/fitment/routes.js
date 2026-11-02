@@ -87,7 +87,10 @@ function toGenerationDto(r) {
 
 router.get('/models/:modelId/generations', async (req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT * FROM vehicle_generations WHERE model_id = $1 ORDER BY year_start DESC, sort_order ASC', [req.params.modelId]);
+    // a year without its own photo shows the photo of its first version that has one (years are added without a photo now)
+    const { rows } = await db.query(
+      `SELECT g.*, COALESCE(g.photo_url, (SELECT v.photo_url FROM vehicle_versions v WHERE v.generation_id = g.id AND v.photo_url IS NOT NULL ORDER BY v.sort_order, v.id LIMIT 1)) AS photo_url
+       FROM vehicle_generations g WHERE g.model_id = $1 ORDER BY g.year_start DESC, g.sort_order ASC`, [req.params.modelId]);
     res.json(rows.map(toGenerationDto));
   } catch (err) {
     next(err);
@@ -323,7 +326,7 @@ router.delete('/models/:id', requireAuth, requireRole('admin'), requirePageAcces
   }
 });
 
-// A vehicle YEAR is added with only the year and its photo, both required:  POST /fitment/models/:modelId/generations  { year, photoUrl }
+// A vehicle YEAR is added with only the year:  POST /fitment/models/:modelId/generations  { year, photoUrl? }  (the photo is optional now: versions carry the photos)
 //   - the year is written in English digits (Arabic-Indic and Persian digits are converted), four digits, from 1950 to next year;
 //   - one entry per year and model (409 if it already exists);
 //   - it is stored as a one-year entry named by the year (name "2021", start and end 2021), so the garage, product fitment and the buyer's picker keep working
@@ -343,7 +346,7 @@ router.post('/models/:modelId/generations', requireAuth, requireRole('admin'), r
     if (!/^\d{4}$/.test(yearText)) return res.status(400).json({ error: 'year must be four digits, written in English digits (for example 2021)' });
     const year = Number(yearText);
     if (year < OLDEST_YEAR || year > newest) return res.status(400).json({ error: `year must be between ${OLDEST_YEAR} and ${newest}` });
-    if (!photoUrl || typeof photoUrl !== 'string' || !photoUrl.trim()) return res.status(400).json({ error: 'photoUrl is required' });
+    const yearPhoto = typeof photoUrl === 'string' && photoUrl.trim() ? photoUrl.trim() : null;
     const modelCheck = await db.query('SELECT id FROM vehicle_models WHERE id = $1', [req.params.modelId]);
     if (modelCheck.rows.length === 0) return res.status(404).json({ error: 'Model not found' });
     // A random part, so two different years created in the same millisecond cannot get the same id.
@@ -362,7 +365,7 @@ router.post('/models/:modelId/generations', requireAuth, requireRole('admin'), r
         `INSERT INTO vehicle_generations (id, model_id, name, year_start, year_end, sort_order, photo_url)
          SELECT $1, $2, $3, $4, $4, $5, $6
          WHERE NOT EXISTS (SELECT 1 FROM vehicle_generations WHERE model_id = $2 AND year_start = $4 AND year_end = $4)`,
-        [id, req.params.modelId, String(year), year, sortOrder, photoUrl.trim()]
+        [id, req.params.modelId, String(year), year, sortOrder, yearPhoto]
       );
       await client.query('COMMIT');
       if (rowCount === 0) return res.status(409).json({ error: `${year} already exists for this model` });
@@ -373,7 +376,7 @@ router.post('/models/:modelId/generations', requireAuth, requireRole('admin'), r
       client.release();
     }
     await logAdminAction(req, 'generation_created', 'generation', id, { name: String(year), modelId: req.params.modelId, yearStart: year, yearEnd: year });
-    res.status(201).json({ id, modelId: req.params.modelId, name: String(year), yearStart: year, yearEnd: year, sortOrder, photoUrl: photoUrl.trim() });
+    res.status(201).json({ id, modelId: req.params.modelId, name: String(year), yearStart: year, yearEnd: year, sortOrder, photoUrl: yearPhoto });
   } catch (err) {
     next(err);
   }

@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "@/components/LocLink";
 import { fetchCategories, fetchHomeText } from "@/lib/api";
 import { pickHomeText } from "@/lib/homeText";
@@ -37,7 +36,9 @@ export default async function SiteHeader({ lang }: { lang: Lang }) {
       <div className="bg-navy text-white">
         <div className="mx-auto grid max-w-7xl items-center gap-x-6 gap-y-3 px-4 py-3 sm:px-8 lg:grid-cols-[auto_minmax(260px,1fr)_auto]">
           <Link href="/" aria-label={t(lang, "logo_home_label")} className={`flex items-center gap-3 text-[22px] font-bold ${lang === "ar" ? "tracking-normal" : "tracking-tight"}`}>
-            <Image src="/leap-logo.png" alt="" width={52} height={52} priority className="rounded-full" />
+            {/* the logo, drawn like an engraving when the site opens (public/brand/leap-logo-animated.svg: the same as the portals and the apps) */}
+            {/* eslint-disable-next-line @next/next/no-img-element -- an animated SVG is shown as it is (next/image would not play it) */}
+            <img src="/brand/leap-logo-animated.svg" alt="" width={52} height={52} className="size-[52px] shrink-0 rounded-full" />
             <span>{t(lang, "brand_lead")}<span className="font-medium"> {t(lang, "brand_rest")}</span></span>
           </Link>
           <HeaderSearch />
@@ -61,7 +62,7 @@ export default async function SiteHeader({ lang }: { lang: Lang }) {
             rootClassName=""
             trigger={<>{t(lang, "nav_sections")}<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-data-[open=true]:rotate-180"><path d="M6 9l6 6 6-6" /></svg></>}
             triggerClassName="flex min-h-12 cursor-pointer items-center gap-1 rounded-lg px-4 text-[15px] font-semibold hover:bg-chalk"
-            panelClassName="absolute inset-x-0 top-full z-30 grid max-h-[70vh] grid-cols-2 gap-1 overflow-auto rounded-xl border border-line bg-white p-3 shadow-lg sm:grid-cols-3 lg:grid-cols-4"
+            panelClassName="absolute inset-x-0 top-full z-30 grid max-h-[70vh] grid-cols-2 gap-1 overflow-auto rounded-xl border border-line bg-white p-3 shadow-lg sm:grid-cols-3 lg:grid-cols-6"
           >
             {categories.map((c) => (
                 <Link key={c.id} href={`/search?category=${encodeURIComponent(c.id)}`} className="flex items-center gap-3 rounded-lg px-2 py-2 text-sm font-medium hover:bg-chalk"><PhotoBox src={c.photoUrl} className="size-10" sizes="40px" /><span className="min-w-0 [overflow-wrap:anywhere]">{pickName(lang, c.nameEn, c.nameAr)}</span></Link>

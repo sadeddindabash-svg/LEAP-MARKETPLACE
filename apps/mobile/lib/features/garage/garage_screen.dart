@@ -350,44 +350,8 @@ class _GarageScreenState extends State<GarageScreen> {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  // Real "set as default" button and the close button
-                  // now sit on the same real row as the model name --
-                  // confirmed against a real rendered mockup before
-                  // moving them up from the bottom row.
-                  Row(
-                    children: [
-                      Expanded(child: Text(v.labelFor(isAr), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: palette.ink))),
-                      const SizedBox(width: 8),
-                      if (v.isDefault)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(color: palette.signal.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.star, size: 13, color: palette.signal),
-                              const SizedBox(width: 5),
-                              Text(tr(context, 'default_vehicle_label'), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: palette.signal)),
-                            ],
-                          ),
-                        )
-                      else
-                        OutlinedButton(
-                          onPressed: () => _setDefault(v),
-                          style: OutlinedButton.styleFrom(side: BorderSide(color: palette.muted), padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6)),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.star_border, size: 13, color: palette.muted),
-                              const SizedBox(width: 5),
-                              Text(tr(context, 'set_as_default_vehicle'), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: palette.muted)),
-                            ],
-                          ),
-                        ),
-                      const SizedBox(width: 8),
-                      IconButton(icon: Icon(Icons.close, size: 18, color: palette.muted), tooltip: tr(context, 'remove_vehicle'), onPressed: () => _confirmRemove(v)),
-                    ],
-                  ),
+                  // The model name has the whole width (the card's buttons sit side by side under the details).
+                  Text(v.labelFor(isAr), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: palette.ink)),
                   const SizedBox(height: 2),
                   Text(v.subLabel, style: TextStyle(fontSize: 12.5, color: palette.muted)),
                   if (v.hasVersion) ...[
@@ -401,13 +365,73 @@ class _GarageScreenState extends State<GarageScreen> {
                     TextButton(onPressed: () => _chooseVersion(v), child: Text(tr(context, 'garage_choose_version'))),
                   ],
                   const SizedBox(height: 14),
-                  // Real, now centered rather than stretched full-width
-                  // -- confirmed against a real rendered mockup, since
-                  // this is now the only real action left on this row.
-                  Center(
+                  // "Set as default" (or the Default badge) and "Remove vehicle" side by side, then "View compatible parts" across the card.
+                  Row(
+                    children: [
+                      Expanded(
+                        child: v.isDefault
+                            ? Container(
+                                height: 42,
+                                alignment: Alignment.center,
+                                padding: const EdgeInsets.symmetric(horizontal: 10),
+                                decoration: BoxDecoration(color: palette.signal.withOpacity(0.14), borderRadius: BorderRadius.circular(22)),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.star, size: 15, color: palette.signal),
+                                    const SizedBox(width: 6),
+                                    Flexible(child: Text(tr(context, 'default_vehicle_label'), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: palette.signal))),
+                                  ],
+                                ),
+                              )
+                            : OutlinedButton(
+                                onPressed: () => _setDefault(v),
+                                style: OutlinedButton.styleFrom(
+                                  minimumSize: const Size.fromHeight(42),
+                                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                                  foregroundColor: palette.ink,
+                                  side: BorderSide(color: palette.line),
+                                  shape: const StadiumBorder(),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.star_border, size: 15),
+                                    const SizedBox(width: 6),
+                                    Flexible(child: Text(tr(context, 'set_as_default_short'), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700))),
+                                  ],
+                                ),
+                              ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => _confirmRemove(v),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(42),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            foregroundColor: Theme.of(context).colorScheme.error,
+                            side: BorderSide(color: Theme.of(context).colorScheme.error.withOpacity(0.35)),
+                            shape: const StadiumBorder(),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.close, size: 15),
+                              const SizedBox(width: 6),
+                              Flexible(child: Text(tr(context, 'remove_vehicle'), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700))),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
                     child: ElevatedButton(
                       onPressed: () => context.push('/vehicle-parts', extra: v),
-                      style: ElevatedButton.styleFrom(backgroundColor: palette.signal, foregroundColor: palette.onSignal, elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)),
+                      style: ElevatedButton.styleFrom(backgroundColor: palette.signal, foregroundColor: palette.onSignal, elevation: 0, minimumSize: const Size.fromHeight(44), shape: const StadiumBorder()),
                       child: Text(tr(context, 'view_compatible_parts'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
                     ),
                   ),

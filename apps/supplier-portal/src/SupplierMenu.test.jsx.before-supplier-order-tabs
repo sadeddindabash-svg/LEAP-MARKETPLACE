@@ -1,0 +1,55 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import LeapSupplierPortalApp from './App';
+
+// The supplier portal's page design (the same as the admin portal's, in the supplier portal's own color): the side menu collapses to icons only and
+// remembers it; every page has a tab (its own name); the Orders buttons carry their numbers.
+const SUPPLIER_USER = { id: 'supplier_dev_seed', email: 'supplier@leap.dev', name: 'Wei Zhang', role: 'supplier', supplierId: 's1' };
+const PROFILE = { id: 's1', name: 'Guangzhou AutoParts Co.', country: 'China', contactEmail: 'wei@gz.cn', verificationStatus: 'verified', listingCount: 2, createdAt: '2026-07-01T00:00:00Z' };
+const ORDERS = [['LP-1', 'pending'], ['LP-2', 'pending'], ['LP-3', 'shipped']].map(([orderId, status], i) => ({ subOrderId: `so${i}`, orderId, status, items: [{ name: 'Brake pad', quantity: 1 }], createdAt: '2026-10-30T10:00:00Z' }));
+const mockBackend = () => vi.fn((url) => {
+  const u = String(url); const ok = (body) => Promise.resolve({ ok: true, json: async () => body });
+  if (u.includes('/auth/login')) return ok({ token: 'fake.jwt.token', user: SUPPLIER_USER });
+  if (u.includes('/auth/me')) return ok(SUPPLIER_USER);
+  if (u.endsWith('/supplier/me')) return ok(PROFILE);
+  if (u.endsWith('/supplier/me/overview')) return ok({ totalOrders: 0, pendingOrders: 0, totalListings: 0, pendingReturns: 0, ordersByDay: [], topProducts: [], recentOrders: [] });
+  if (u.endsWith('/supplier/me/orders')) return ok(ORDERS);
+  return ok({});
+});
+async function signIn() {
+  globalThis.fetch = mockBackend(); render(<LeapSupplierPortalApp />);
+  await waitFor(() => screen.getByLabelText(/邮箱|email/i));
+  fireEvent.change(screen.getByLabelText(/邮箱|email/i), { target: { value: 'supplier@leap.dev' } });
+  fireEvent.change(screen.getByLabelText(/密码|password/i), { target: { value: 'supplier_dev_password_123' } });
+  fireEvent.click(screen.getByRole('button', { name: /登录|log in/i }));
+  await waitFor(() => expect(screen.getAllByText('Guangzhou AutoParts Co.')[0]).toBeInTheDocument());
+}
+beforeEach(() => { localStorage.clear(); });
+afterEach(() => { vi.restoreAllMocks(); });
+
+describe('the supplier portal page design', () => {
+  it('every page has a tab with its own name', async () => {
+    await signIn();
+    expect(within(screen.getByRole('tablist', { name: '概览' })).getAllByRole('tab').map((t) => t.textContent)).toEqual(['概览']);
+    fireEvent.click(screen.getByText(/^(订单管理|Orders)$/));
+    expect(await screen.findByRole('tablist', { name: '订单管理' })).toBeInTheDocument();
+  });
+  it('the Orders buttons carry their numbers and filter the list', async () => {
+    await signIn(); fireEvent.click(screen.getByText(/^(订单管理|Orders)$/)); await screen.findByText('LP-1');
+    const group = screen.getByRole('group', { name: '订单管理' });
+    expect(within(group).getByRole('button', { name: '全部' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(group).getByRole('button', { name: '待确认' })).toHaveAttribute('title', '待确认: 2');
+    fireEvent.click(within(group).getByRole('button', { name: '已发货' }));
+    expect(screen.queryByText('LP-1')).not.toBeInTheDocument(); expect(screen.getByText('LP-3')).toBeInTheDocument();
+  });
+  it('the side menu collapses to icons only and expands again; the choice is remembered', async () => {
+    await signIn();
+    const menu = screen.getByRole('navigation', { name: '主菜单' });
+    expect(menu).toHaveStyle({ width: '240px' });
+    fireEvent.click(screen.getByRole('button', { name: '收起菜单' }));
+    expect(menu).toHaveStyle({ width: '76px' }); expect(localStorage.getItem('leap_supplier_menu_collapsed')).toBe('1');
+    expect(screen.getByRole('button', { name: '订单管理' })).toBeInTheDocument(); expect(screen.getByRole('button', { name: '退出登录' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '展开菜单' }));
+    expect(menu).toHaveStyle({ width: '240px' }); expect(localStorage.getItem('leap_supplier_menu_collapsed')).toBe('0');
+  });
+});

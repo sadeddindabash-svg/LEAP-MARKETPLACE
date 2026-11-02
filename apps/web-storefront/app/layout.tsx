@@ -6,6 +6,7 @@ import { GarageProvider } from "@/components/GarageProvider";
 import { AuthProvider } from "@/components/AuthProvider";
 import { WishlistProvider } from "@/components/WishlistProvider";
 import { LangProvider } from "@/components/LangProvider";
+import AccountShell from "@/components/AccountShell";
 import BackToTop from "@/components/BackToTop";
 import SiteFooter from "@/components/SiteFooter";
 import SiteHeader from "@/components/SiteHeader";
@@ -47,7 +48,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               <CurrencyProvider>
                 <CartProvider>
                   <SiteHeader lang={lang} />
-                  <main id="main" className="flex-1">{children}</main>
+                  {/* the account menu stays on every page it lists (it does nothing on the other pages) */}
+                  <main id="main" className="flex-1"><AccountShell>{children}</AccountShell></main>
                   <SiteFooter lang={lang} />
                   <BackToTop />
                 </CartProvider>

@@ -18,7 +18,7 @@ const restore = async () => {
   await q('DELETE FROM category_parts'); await q('DELETE FROM product_categories'); await q('DELETE FROM products WHERE id NOT IN (SELECT id FROM zz_cr_products)');
   await q('INSERT INTO product_categories SELECT * FROM zz_cr_product_categories'); await q('INSERT INTO category_parts SELECT * FROM zz_cr_category_parts'); await q('INSERT INTO products SELECT * FROM zz_cr_products ON CONFLICT (id) DO NOTHING');
   for (const t of DEPENDENTS) await q(`INSERT INTO ${t} SELECT * FROM zz_cr_${t}`);
-  await q("DELETE FROM admin_audit_log WHERE action = 'category_removed_with_products' AND target_id LIKE 'zz-cr-%'"); for (const f of made.splice(0)) try { fs.unlinkSync(path.join(UPLOADS, f)); } catch { /* gone */ }
+  await q("DELETE FROM admin_audit_log WHERE action IN ('category_removed_with_products', 'subcategory_removed_with_products') AND target_id LIKE 'zz-cr-%'"); for (const f of made.splice(0)) try { fs.unlinkSync(path.join(UPLOADS, f)); } catch { /* gone */ }
 };
 const login = async (email, password) => (await (await fetch(`${base}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) })).json()).token;
 before(async () => {
@@ -42,30 +42,31 @@ async function fixtures() {
   await q('CREATE TABLE zz_cr_quotes (id serial PRIMARY KEY, product_id text NOT NULL REFERENCES products(id))'); await q("INSERT INTO zz_cr_quotes (product_id) VALUES ('zz-cr-quoted')");
 }
 const call = async (method, url, body, token = admin) => { const r = await fetch(`${base}/catalog${url}`, { method, headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined }); return { status: r.status, body: await r.json().catch(() => null) }; };
-const exists = async (table, id) => (await n(`SELECT count(*) AS n FROM ${table} WHERE id = $1`, [id])) === 1; const onDisk = (name) => fs.existsSync(path.join(UPLOADS, name));
+const exists = async (table, id) => (await n(`SELECT count(*) AS n FROM ${table} WHERE id = $1`, [id])) === 1; const markedDeleted = async (id) => (await n('SELECT count(*) AS n FROM products WHERE id = $1 AND deleted_at IS NOT NULL', [id])) === 1; const onDisk = (name) => fs.existsSync(path.join(UPLOADS, name));
 const releaseHolds = async () => { await q("DELETE FROM order_line_items WHERE product_id = 'zz-cr-ordered'"); await q('DROP TABLE zz_cr_quotes'); };
 
 test('the old delete still refuses, with the same words, and now says WHY it refused (inUse), so the screen can show what is in the way', async () => {
   const r = await call('DELETE', '/categories/zz-cr-cat'); assert.equal(r.status, 409); assert.equal(r.body.error, 'Cannot delete this category — real products still reference it'); assert.equal(r.body.inUse, true); assert.ok(await exists('product_categories', 'zz-cr-cat'));
   assert.equal((await call('DELETE', '/categories/zz-cr-other')).status, 409, 'another category with a product');
 });
-test('"in use" shows exactly what is using the category by state (also what no list shows: hidden, waiting for review, drafts), which can go and which cannot; it changes nothing', async () => {
+test('"in use" shows exactly what is using the category by state (also what no list shows: hidden, waiting for review, drafts), which will go (and which only marked deleted) and which cannot (a buyer is waiting); it changes nothing', async () => {
   const r = await call('GET', '/admin/categories/zz-cr-cat/in-use'); assert.equal(r.status, 200, JSON.stringify(r.body).slice(0, 200)); const b = r.body;
-  assert.equal(b.total, 6); assert.deepEqual(b.byState, { live: 3, hidden: 1, 'waiting for review': 1, 'supplier drafts': 1 }); assert.equal(b.parts, 2); assert.equal(b.deletable, 4); assert.equal(b.heldTotal, 2);
-  assert.deepEqual(b.held.map((h) => h.id).sort(), ['zz-cr-ordered', 'zz-cr-quoted']); assert.match(b.held.find((h) => h.id === 'zz-cr-ordered').reason, /order/); assert.match(b.held.find((h) => h.id === 'zz-cr-quoted').reason, /zz_cr_quotes/);
-  assert.deepEqual(b.sample.map((x) => x.id).sort(), ['zz-cr-draft', 'zz-cr-hidden', 'zz-cr-live', 'zz-cr-review']); const goes = Object.fromEntries(b.alsoRemoved.map((x) => [x.what, x.count])); assert.equal(goes.pictures, 1); assert.equal(goes.reviews, 1); assert.equal(b.phrase, PHRASE);
+  assert.equal(b.total, 6); assert.deepEqual(b.byState, { live: 3, hidden: 1, 'waiting for review': 1, 'supplier drafts': 1 }); assert.equal(b.parts, 2); assert.equal(b.deletable, 5); assert.equal(b.keepsHistory, 1); assert.equal(b.heldTotal, 1);
+  assert.deepEqual(b.held.map((h) => h.id), ['zz-cr-ordered']); assert.match(b.held[0].reason, /a buyer is still waiting for it: zz-cr-ord \(to ship\)/);
+  assert.deepEqual(b.sample.map((x) => x.id).sort(), ['zz-cr-draft', 'zz-cr-hidden', 'zz-cr-live', 'zz-cr-quoted', 'zz-cr-review']); assert.equal(b.sample.find((x) => x.id === 'zz-cr-quoted').keepsHistory, true); const goes = Object.fromEntries(b.alsoRemoved.map((x) => [x.what, x.count])); assert.equal(goes.pictures, 1); assert.equal(goes.reviews, 1); assert.equal(b.phrase, PHRASE);
   assert.equal(await n("SELECT count(*) AS n FROM products WHERE category = 'zz-cr-cat'"), 6, 'nothing was changed');
 });
 test('removing needs the typed sentence (exactly); without it nothing at all changes', async () => {
   for (const confirm of [undefined, '', true, 'delete category', 'DELETE CATEGORIES', 'DELETE PRODUCTS']) { const r = await call('POST', '/admin/categories/zz-cr-cat/remove', { confirm }); assert.equal(r.status, 400, `confirm=${confirm}`); assert.match(r.body.error, /DELETE CATEGORY/); }
   assert.equal(await n("SELECT count(*) AS n FROM products WHERE category = 'zz-cr-cat'"), 6);
 });
-test('removing: the products nothing points at are deleted (with pictures, reviews, cart lines), the ones an order or a quote request points at STAY, and so do their sub-category and the category, with the reasons', async () => {
+test('removing: the products nothing points at are deleted (with pictures, reviews, cart lines), one with a quote request is MARKED deleted, the one a buyer is waiting for STAYS, and so do its sub-category and the category, with the reasons', async () => {
   const r = await call('POST', '/admin/categories/zz-cr-cat/remove', { confirm: PHRASE }); assert.equal(r.status, 200, JSON.stringify(r.body).slice(0, 250));
-  assert.equal(r.body.removedProducts, 4); for (const id of ['zz-cr-live', 'zz-cr-hidden', 'zz-cr-draft', 'zz-cr-review']) assert.ok(!(await exists('products', id)), id); for (const id of ['zz-cr-ordered', 'zz-cr-quoted']) assert.ok(await exists('products', id), id);
+  assert.equal(r.body.removedProducts, 5); assert.equal(r.body.markedDeleted, 1); for (const id of ['zz-cr-live', 'zz-cr-hidden', 'zz-cr-draft', 'zz-cr-review']) assert.ok(!(await exists('products', id)), id);
+  assert.ok(await markedDeleted('zz-cr-quoted'), 'the quoted product is marked deleted (its quote request keeps it)'); assert.ok(await exists('products', 'zz-cr-ordered') && !(await markedDeleted('zz-cr-ordered')), 'the product a buyer is waiting for stays as it is');
   assert.equal(await n("SELECT count(*) AS n FROM product_reviews WHERE product_id = 'zz-cr-live'"), 0); assert.equal(await n("SELECT count(*) AS n FROM cart_items WHERE product_id = 'zz-cr-live'"), 0); assert.ok(!onDisk(PIC), 'the picture file is gone'); assert.equal(r.body.picturesRemoved, 1);
   assert.ok(!(await exists('category_parts', 'zz-cr-p1')), 'its sub-category nobody uses any more is gone'); assert.ok(await exists('category_parts', 'zz-cr-p2')); assert.equal(r.body.removedSubCategories, 1); assert.match(r.body.kept.subCategories[0].reason, /a product that has to stay uses it/);
-  assert.equal(r.body.categoryRemoved, false); assert.ok(await exists('product_categories', 'zz-cr-cat')); assert.match(r.body.kept.category, /2 products have to stay/); assert.deepEqual(r.body.kept.products.map((p) => p.id).sort(), ['zz-cr-ordered', 'zz-cr-quoted']); assert.ok(r.body.kept.products.every((p) => p.reason));
+  assert.equal(r.body.categoryRemoved, false); assert.ok(await exists('product_categories', 'zz-cr-cat')); assert.match(r.body.kept.category, /1 product has to stay/); assert.deepEqual(r.body.kept.products.map((p) => p.id), ['zz-cr-ordered']); assert.ok(r.body.kept.products.every((p) => p.reason));
   assert.ok(await exists('products', 'zz-cr-elsewhere') && await exists('category_parts', 'zz-cr-po') && await exists('product_categories', 'zz-cr-other'), 'another category is untouched');
 });
 test('when nothing has to stay, the category goes too (and its sub-categories), in one step; and the plain delete then says it is gone', async () => {
@@ -77,10 +78,10 @@ test('a category with no products at all is removed too (and its empty sub-categ
   await q("INSERT INTO product_categories (id, name_en, name_ar, photo_url, sort_order) VALUES ('zz-cr-empty', 'Zz CR Empty', 'ع', '/uploads/placeholder-category.png', 9002)"); await q("INSERT INTO category_parts (id, category_id, name_en, name_ar, photo_url, sort_order) VALUES ('zz-cr-ep', 'zz-cr-empty', 'Zz CR Empty Part', 'ع', '/uploads/placeholder-part.png', 1)");
   const r = await call('POST', '/admin/categories/zz-cr-empty/remove', { confirm: PHRASE }); assert.equal(r.status, 200); assert.deepEqual([r.body.removedProducts, r.body.removedSubCategories, r.body.categoryRemoved], [0, 1, true]);
 });
-test('a table the removal could not recognise (an unusual name) cannot make it fail: that product stays, the others go, the category stays and says why', async () => {
+test('a table the removal could not recognise (an unusual name) cannot make it fail: that product is marked deleted instead of removed, the others go, and so does the category', async () => {
   await releaseHolds(); await q('CREATE TABLE "Zz Cr Odd" (id serial PRIMARY KEY, product_id text NOT NULL REFERENCES products(id))'); await q('INSERT INTO "Zz Cr Odd" (product_id) VALUES (\'zz-cr-live\')');
-  const r = await call('POST', '/admin/categories/zz-cr-cat/remove', { confirm: PHRASE }); assert.equal(r.status, 200, JSON.stringify(r.body).slice(0, 250)); assert.ok(await exists('products', 'zz-cr-live')); assert.ok(!(await exists('products', 'zz-cr-hidden')));
-  assert.equal(r.body.removedProducts, 5); assert.match(r.body.kept.products[0].reason, /still used by something else/); assert.equal(r.body.categoryRemoved, false); assert.ok(await exists('product_categories', 'zz-cr-cat')); assert.equal(await n("SELECT count(*) AS n FROM cart_items WHERE product_id = 'zz-cr-live'"), 1, 'its cart line was not lost'); assert.ok(onDisk(PIC), 'its picture file stays');
+  const r = await call('POST', '/admin/categories/zz-cr-cat/remove', { confirm: PHRASE }); assert.equal(r.status, 200, JSON.stringify(r.body).slice(0, 250)); assert.ok(await markedDeleted('zz-cr-live'), 'kept for that table, but marked deleted'); assert.ok(!(await exists('products', 'zz-cr-hidden')));
+  assert.equal(r.body.removedProducts, 6); assert.equal(r.body.markedDeleted, 0); assert.deepEqual(r.body.kept.products, []); assert.equal(r.body.categoryRemoved, true); assert.equal(await n("SELECT count(*) AS n FROM cart_items WHERE product_id = 'zz-cr-live'"), 0, 'it left the carts'); assert.ok(!onDisk(PIC), 'its picture went with it');
 });
 test('a sub-category that another table points at stays, and so does the category, without an error', async () => {
   await releaseHolds(); await q('CREATE TABLE zz_cr_partrefs (id serial PRIMARY KEY, part_id text REFERENCES category_parts(id))'); await q("INSERT INTO zz_cr_partrefs (part_id) VALUES ('zz-cr-p1')");
@@ -90,4 +91,15 @@ test('it is in the audit log, and only an admin who may open Categories can use 
   await releaseHolds(); await call('POST', '/admin/categories/zz-cr-cat/remove', { confirm: PHRASE }); assert.equal(await n("SELECT count(*) AS n FROM admin_audit_log WHERE action = 'category_removed_with_products' AND target_id = 'zz-cr-cat'"), 1);
   for (const [method, url, body] of [['GET', '/admin/categories/zz-cr-other/in-use'], ['POST', '/admin/categories/zz-cr-other/remove', { confirm: PHRASE }]]) { assert.equal((await call(method, url, body, null)).status, 401); assert.equal((await call(method, url, body, supplier)).status, 403); }
   assert.ok(await exists('product_categories', 'zz-cr-other'));
+});
+test('a sub-category: what uses it (only in its own category), then it goes with its products in one step; the plain delete says why it refused', async () => {
+  const plain = await call('DELETE', '/parts/zz-cr-p1'); assert.equal(plain.status, 409); assert.equal(plain.body.inUse, true);
+  await q("INSERT INTO category_parts (id, category_id, name_en, name_ar, photo_url, sort_order) VALUES ('zz-cr-same', 'zz-cr-other', 'Zz CR Part 1', 'ع', '/uploads/placeholder-part.png', 1)");
+  assert.equal((await call('DELETE', '/parts/zz-cr-same')).status, 204, 'a product of ANOTHER category with the same sub-category name does not block it');
+  const info = await call('GET', '/admin/parts/zz-cr-p1/in-use'); assert.equal(info.status, 200); assert.equal(info.body.kind, 'part'); assert.equal(info.body.total, 4); assert.equal(info.body.deletable, 4); assert.equal(info.body.phrase, 'DELETE SUB-CATEGORY');
+  assert.equal((await call('POST', '/admin/parts/zz-cr-p1/remove', { confirm: PHRASE })).status, 400, 'the category sentence is not enough');
+  const r = await call('POST', '/admin/parts/zz-cr-p1/remove', { confirm: 'DELETE SUB-CATEGORY' }); assert.equal(r.status, 200, JSON.stringify(r.body).slice(0, 250));
+  assert.equal(r.body.removedProducts, 4); assert.equal(r.body.categoryRemoved, true); assert.ok(!(await exists('category_parts', 'zz-cr-p1'))); assert.ok(await exists('product_categories', 'zz-cr-cat') && await exists('category_parts', 'zz-cr-p2'), 'the category and its other sub-category stay');
+  assert.equal(await n("SELECT count(*) AS n FROM admin_audit_log WHERE action = 'subcategory_removed_with_products' AND target_id = 'zz-cr-p1'"), 1);
+  assert.equal((await call('GET', '/admin/parts/zz-cr-nope/in-use')).status, 404);
 });

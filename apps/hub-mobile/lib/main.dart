@@ -6,6 +6,7 @@ import 'core/theme.dart';
 import 'features/auth/change_password_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/queue/queue_screen.dart';
+import 'widgets/leap_logo_animation.dart';
 
 void main() {
   runApp(const LeapHubApp());
@@ -25,7 +26,39 @@ class LeapHubApp extends StatelessWidget {
         title: 'LEAP Hub',
         debugShowCheckedModeBanner: false,
         theme: buildHubTheme(),
-        home: const _RootScreen(),
+        home: const _OpeningScreen(child: _RootScreen()),
+      ),
+    );
+  }
+}
+
+/// The opening screen: the Leap Auto Parts logo is drawn like an engraving (widgets/leap_logo_animation.dart, the same as the buyer app's and the
+/// websites'), then a short moment to see it finished, then the app (sign-in or the queue). The session is restored meanwhile, underneath.
+class _OpeningScreen extends StatefulWidget {
+  const _OpeningScreen({required this.child});
+  final Widget child;
+
+  @override
+  State<_OpeningScreen> createState() => _OpeningScreenState();
+}
+
+class _OpeningScreenState extends State<_OpeningScreen> {
+  bool _done = false;
+
+  void _finished() {
+    Future.delayed(const Duration(milliseconds: 600), () {
+      if (mounted) setState(() => _done = true);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_done) return widget.child;
+    return Scaffold(
+      body: Center(
+        child: LayoutBuilder(
+          builder: (context, constraints) => LeapLogoAnimation(size: (constraints.maxWidth * 0.7).clamp(160.0, 340.0), onFinished: _finished),
+        ),
       ),
     );
   }

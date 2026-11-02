@@ -27,9 +27,10 @@ async function header() {
 }
 
 describe("the Sections menu", () => {
-  it("has four columns on a wide screen, three on a tablet and two on a phone", async () => {
+  it("has six columns on a wide screen, three on a tablet and two on a phone", async () => {
     const { panel } = await header(); const c = panel.className.split(" ");
-    for (const k of ["grid-cols-2", "sm:grid-cols-3", "lg:grid-cols-4"]) expect(c).toContain(k);
+    for (const k of ["grid-cols-2", "sm:grid-cols-3", "lg:grid-cols-6"]) expect(c).toContain(k);
+    expect(c).not.toContain("lg:grid-cols-4");
   });
   it("is placed against the whole navigation bar, not against its own button (a wide panel would run off the screen)", async () => {
     const { bar, dropdown, panel } = await header();

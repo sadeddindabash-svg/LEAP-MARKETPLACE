@@ -1,0 +1,47 @@
+"use client";
+
+import type { ReactNode } from "react";
+import { usePathname } from "next/navigation";
+import Link from "@/components/LocLink";
+import { useAuth } from "./AuthProvider";
+import { useT } from "./LangProvider";
+import { splitLang, type DictKey } from "@/lib/i18n";
+
+const ITEMS: Array<[string, DictKey]> = [
+  ["/account", "account_hub_title"], ["/account/loyalty", "loyalty_my_tier_title"], ["/orders", "orders_and_returns"], ["/returns", "my_returns"], ["/addresses", "addresses"],
+  ["/garage", "garage_title"], ["/wishlist", "wishlist"], ["/saved-searches", "saved_searches"], ["/referrals", "referrals"], ["/account/change-email", "change_email"],
+  ["/account/two-factor", "two_factor_auth_label"], ["/contact", "contact_us_label"],
+];
+
+/** Whether this address is one of the menu's pages (or a page inside one: an order, a return, a vehicle): the menu stays on all of them. */
+export function inAccountMenu(path: string): boolean {
+  return ITEMS.some(([href]) => path === href || path.startsWith(`${href}/`));
+}
+
+/**
+ * The account menu. It stays on EVERY page it lists (and the pages inside them), at the far start side of the window: the far left in English, the far
+ * right in Arabic. Each page keeps its own layout beside it; on a phone the menu sits above the page. It wraps the whole site (app/layout.tsx) and does
+ * nothing anywhere else. A visitor who is not signed in gets the page alone: it asks them to sign in.
+ */
+export default function AccountShell({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  const t = useT();
+  const here = splitLang(usePathname() || "/").path;
+  if (!user || !inAccountMenu(here)) return <>{children}</>;
+  // the pages under /account were drawn for the space beside the menu and have no frame of their own: they keep the one they had
+  const ownFrame = here === "/account" || here.startsWith("/account/");
+  return (
+    <div className="lg:flex lg:items-start">
+      <nav aria-label={t("account_sidebar")} className="px-4 pt-6 lg:sticky lg:top-4 lg:w-[256px] lg:shrink-0 lg:self-start lg:pe-0 lg:ps-4 lg:pt-10">
+        <ul className="grid gap-1 rounded-[14px] border border-line bg-white p-2">
+          {ITEMS.map(([href, key]) => (
+            <li key={href}>
+              <Link href={href} aria-current={here === href ? "page" : undefined} className={`flex min-h-11 items-center rounded-lg px-3 text-[15px] font-semibold ${here === href ? "bg-navy text-white" : "text-ink hover:bg-chalk"}`}>{t(key)}</Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
+      <div className="min-w-0 flex-1">{ownFrame ? <div className="mx-auto max-w-4xl px-4 py-10 sm:px-8">{children}</div> : children}</div>
+    </div>
+  );
+}

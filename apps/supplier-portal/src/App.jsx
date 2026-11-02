@@ -1,13 +1,15 @@
-import React, { useState, useEffect, useRef, createContext, useContext } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, createContext, useContext } from "react";
 import { FONT_IMPORT, C, disp, mono, useBodyFont } from "./theme";
 import { exportToExcel } from "./exportToExcel";
 import { STATUS_COLOR, PlateChip, Badge, KpiCard, Card, Th, Td } from "./components/ui";
+import { CountUpValue } from "./components/CountUp";      // the payout amounts count up from 0
+import { PageTabsContext, useGroupTabs, FolderTabs, FilterButtons, toolbarButtonStyle, useSlidingMark, lessMotion, SLIDE_MS, SLIDE_EASE, BrandLogo } from "./components/PageChrome";      // the common page design: header, line, tabs, buttons
 import {
   LayoutGrid, PackageSearch, ShoppingBag, RotateCcw, MessageSquare, Wallet, Settings,
   Search, Bell, ChevronRight, ChevronLeft, TrendingUp, Plus, Upload, Download, Check, X,
   Star, MoreHorizontal, FileSpreadsheet, ImagePlus, Truck, Send, AlertTriangle, Store,
   BadgeCheck, Building2, CreditCard, Disc, BatteryMedium, Video,
-  Lightbulb, Wrench, Fan, Cog, Languages, FileQuestion
+  Lightbulb, Wrench, Fan, Cog, Languages, FileQuestion, LogOut
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar,
@@ -56,7 +58,7 @@ import { setApiLanguage, apiMessage, uiLocale } from "./serverMessages";
 
 const STRINGS = {
   zh: {
-    badge: "供应商", role: "店铺运营", searchPlaceholder: "搜索商品、订单编号…",
+    badge: "供应商", portalName: "供应商门户", role: "店铺运营", searchPlaceholder: "搜索商品、订单编号…",
     nav: { overview: "概览", products: "商品管理", partRequests: "求购请求", orders: "订单管理", returns: "退货/售后", messages: "消息中心", finance: "财务结算", settings: "店铺设置" },
     verifiedSince: (d) => `已认证供应商 · 入驻于 ${d}`,
     overview: {
@@ -183,7 +185,7 @@ const STRINGS = {
     statusPayout: { paid: "已结算", pending: "待结算", calculating: "统计中" },
   },
   en: {
-    badge: "Supplier", role: "Store Operator", searchPlaceholder: "Search products, order numbers…",
+    badge: "Supplier", portalName: "Supplier portal", role: "Store Operator", searchPlaceholder: "Search products, order numbers…",
     nav: { overview: "Overview", products: "Products", partRequests: "Part Requests", orders: "Orders", returns: "Returns", messages: "Messages", finance: "Finance", settings: "Settings" },
     verifiedSince: (d) => `Verified supplier · Joined ${d}`,
     overview: {
@@ -339,57 +341,66 @@ const PRODUCTS = [
 
 /* ---------------- Shared UI bits ---------------- */
 
-function LangToggle() {
+function LangToggle({ compact = false }) {
   const { lang, toggle } = useLang();
+  // compact (the menu collapsed): one button that switches to the other language
+  if (compact) return (
+    <button type="button" onClick={toggle} aria-label={lang === "zh" ? "English" : "中文"} title={lang === "zh" ? "English" : "中文"} style={{
+      width: 36, height: 30, borderRadius: 8, border: `1px solid ${MENU.line}`, background: "transparent", color: MENU.text, cursor: "pointer", fontSize: 11, fontWeight: 800,
+      fontFamily: lang === "zh" ? "'Inter', sans-serif" : "'Noto Sans SC', sans-serif",
+    }}>{lang === "zh" ? "EN" : "中"}</button>
+  );
   return (
-    <div style={{ display: "flex", border: "1px solid #3A3F48", borderRadius: 8, overflow: "hidden" }}>
+    <div style={{ display: "flex", border: `1px solid ${MENU.line}`, borderRadius: 8, overflow: "hidden" }}>
       {["zh", "en"].map(l => (
         <button key={l} onClick={() => lang !== l && toggle()} style={{
           border: "none", cursor: "pointer", padding: "5px 10px", fontSize: 11, fontWeight: 700,
           fontFamily: l === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif",
-          background: lang === l ? "#fff" : "transparent", color: lang === l ? C.ink : "#9AA1AC",
+          background: lang === l ? "#fff" : "transparent", color: lang === l ? C.ink : MENU.text,
         }}>{l === "zh" ? "中文" : "EN"}</button>
       ))}
     </div>
   );
 }
 
-function TopBar({ title, subtitle }) {
+// Every page's header (the common page design, the same as the admin portal's): the title and its description on the left; search, notifications and
+// the supplier's name on the right; then a line; then the page's tabs (its own name, or `tabs`: { label, tabs: [{ id, label }], activeId, onSelect }).
+function TopBar({ title, subtitle, tabs }) {
   const { t, lang } = useLang();
   const { profile, unreadNotificationCount, onOpenNotifications } = useSupplier();
   const font = useBodyFont();
+  const pageTab = useGroupTabs();
   const displayName = profile ? profile.name : "";
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
-      <div>
-        <div style={{ ...font, fontSize: 20, fontWeight: 900, color: C.ink }}>{title}</div>
-        {subtitle && <div style={{ ...font, fontSize: 12.5, color: C.muted, marginTop: 3 }}>{subtitle}</div>}
+    <>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 20, padding: "18px 28px", borderBottom: `1px solid ${C.line}`, background: C.card }}>
+      <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+        <div style={{ ...font, fontSize: 22, fontWeight: 700, color: C.ink }}>{title}</div>
+        {subtitle && <div style={{ ...font, fontSize: 12.5, color: C.muted, marginTop: 2 }}>{subtitle}</div>}
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, background: C.canvas, borderRadius: 8, padding: "8px 12px", width: 240 }}>
-          <Search size={14} color={C.muted} />
+      <div style={{ display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, height: 40, boxSizing: "border-box", background: C.canvas, border: `1px solid ${C.line}`, borderRadius: 10, padding: "0 12px", width: 240 }}>
+          <Search size={15} color={C.muted} />
           <span style={{ ...font, fontSize: 12.5, color: C.muted }}>{t.searchPlaceholder}</span>
         </div>
-        <div
-          role="button"
+        <button
+          type="button"
           aria-label={t.notifications.title}
-          tabIndex={0}
-          style={{ position: "relative", cursor: onOpenNotifications ? "pointer" : "default" }}
+          style={{ position: "relative", width: 40, height: 40, boxSizing: "border-box", background: C.card, border: `1px solid ${C.line}`, borderRadius: 10, cursor: onOpenNotifications ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}
           onClick={onOpenNotifications}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onOpenNotifications?.(); }}
         >
-          <Bell size={18} color={C.ink} />
+          <Bell size={17} color={C.ink} />
           {unreadNotificationCount > 0 && (
             <div style={{
-              position: "absolute", top: -4, right: -4, minWidth: 15, height: 15, borderRadius: 8,
-              background: C.signal, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px",
+              position: "absolute", top: -6, right: -6, minWidth: 18, height: 18, borderRadius: 999,
+              background: C.red, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px", boxSizing: "border-box",
             }}>
-              <span style={{ ...font, fontSize: 9, fontWeight: 700, color: "#fff" }}>{unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}</span>
+              <span style={{ ...font, fontSize: 10, fontWeight: 700, color: "#fff" }}>{unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}</span>
             </div>
           )}
-        </div>
+        </button>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.ink, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", ...font, fontWeight: 700, fontSize: 12 }}>{displayName.charAt(0) || "?"}</div>
+          <div style={{ width: 36, height: 36, borderRadius: "50%", background: C.ink, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", ...font, fontWeight: 700, fontSize: 12 }}>{displayName.charAt(0) || "?"}</div>
           <div>
             <div style={{ ...font, fontSize: 12.5, fontWeight: 700, color: C.ink }}>{displayName}</div>
             <div style={{ ...font, fontSize: 10.5, color: C.muted }}>{t.role}</div>
@@ -397,6 +408,10 @@ function TopBar({ title, subtitle }) {
         </div>
       </div>
     </div>
+    {tabs && tabs.tabs.length > 0
+      ? <FolderTabs label={tabs.label} tabs={tabs.tabs} activeId={tabs.activeId} onSelect={tabs.onSelect} maxVisible={tabs.maxVisible || 7} />
+      : pageTab && <FolderTabs label={pageTab.label} tabs={pageTab.tabs} activeId={pageTab.activeId} onSelect={pageTab.onSelect} />}
+    </>
   );
 }
 
@@ -439,11 +454,11 @@ function SupplierAnalyticsSection({ analytics, lang, part = "all" }) {
           <div style={{ padding: "18px 20px", display: "flex", gap: 24 }}>
             <div>
               <div style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>{l.totalPaid}</div>
-              <div style={{ fontSize: 24, fontWeight: 700, color: C.ink, marginTop: 4 }}>{cny(analytics.payoutSummary.totalPaid)}</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: C.ink, marginTop: 4, fontVariantNumeric: "tabular-nums" }}><CountUpValue value={analytics.payoutSummary.totalPaid} format={cny} /></div>
             </div>
             <div>
               <div style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>{l.amountOwed}</div>
-              <div style={{ fontSize: 24, fontWeight: 700, color: analytics.payoutSummary.amountOwed > 0 ? C.gauge : C.ink, marginTop: 4 }}>{cny(analytics.payoutSummary.amountOwed)}</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: analytics.payoutSummary.amountOwed > 0 ? C.gauge : C.ink, marginTop: 4, fontVariantNumeric: "tabular-nums" }}><CountUpValue value={analytics.payoutSummary.amountOwed} format={cny} /></div>
             </div>
           </div>
         </Card>
@@ -1278,7 +1293,7 @@ function AddProductForm({ onCancel, onCreated, prefill, staysOpenAfterSave = fal
       </div>
       <div style={{ padding: "0 20px 20px", display: "flex", gap: 10, justifyContent: "flex-end" }}>
         <button onClick={onCancel} style={{ ...font, padding: "10px 18px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{f.cancel}</button>
-        <button onClick={handleSubmit} disabled={isSubmitting} style={{ ...font, padding: "10px 18px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 13, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
+        <button onClick={handleSubmit} disabled={isSubmitting} style={{ ...font, padding: "10px 18px", borderRadius: 8, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 13, fontWeight: 700, cursor: isSubmitting ? "default" : "pointer" }}>
           {isSubmitting ? (lang === "zh" ? "提交中…" : "Submitting…") : f.submit}
         </button>
       </div>
@@ -1660,7 +1675,7 @@ function BulkUploadPanel({ onCancel, onImported }) {
               ))}
             </tbody>
           </table>
-          <button onClick={onCancel} style={{ ...font, marginTop: 16, padding: '9px 16px', borderRadius: 8, border: 'none', background: C.signal, color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+          <button onClick={onCancel} style={{ ...font, marginTop: 16, padding: '9px 16px', borderRadius: 8, border: 'none', background: C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
             {L('完成', 'Done')}
           </button>
         </div>
@@ -1829,7 +1844,7 @@ function BulkUploadPanel({ onCancel, onImported }) {
               <button onClick={() => setStep('setup')} style={{ ...font, padding: '9px 16px', borderRadius: 8, border: `1px solid ${C.line}`, background: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
                 {L('返回', 'Back')}
               </button>
-              <button disabled={isSubmitting || busyAny} onClick={handleSubmitImport} style={{ ...font, padding: '9px 16px', borderRadius: 8, border: 'none', background: isSubmitting || busyAny ? '#D1D5DB' : C.signal, color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: isSubmitting || busyAny ? 'not-allowed' : 'pointer' }}>
+              <button disabled={isSubmitting || busyAny} onClick={handleSubmitImport} style={{ ...font, padding: '9px 16px', borderRadius: 8, border: 'none', background: isSubmitting || busyAny ? '#D1D5DB' : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSubmitting || busyAny ? 'not-allowed' : 'pointer' }}>
                 {isSubmitting ? L('导入中…', 'Importing…') : busyAny ? L('正在上传…', 'Uploading…') : L(`导入 ${rows.length} 项`, `Import ${rows.length} items`)}
               </button>
             </div>
@@ -2143,7 +2158,7 @@ function DraftsPanel({ onCancel }) {
               )}
               {d.rejected && d.rejectionNote && <div style={{ ...font, fontSize: 12, color: C.muted, marginTop: 3 }}>{cascadeLabel('说明：', 'Note: ')}{d.rejectionNote}</div>}
             </div>
-            <button onClick={() => setEditingId(d.id)} style={{ ...font, padding: '7px 14px', borderRadius: 8, border: 'none', background: C.signal, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            <button onClick={() => setEditingId(d.id)} style={{ ...font, padding: '7px 14px', borderRadius: 8, border: 'none', background: C.signal, color: C.onSignal, fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
               {d.rejected ? cascadeLabel('修改并重新提交', 'Fix and resubmit') : cascadeLabel('完善', 'Complete')}
             </button>
           </div>
@@ -2303,7 +2318,7 @@ function PartRequestDetail({ requestId, onBack, onSessionExpired }) {
                 <p style={{ ...font, fontSize: 11.5, color: C.muted, margin: "2px 0 0" }}>{lang === "zh" ? "数量" : "Qty"}: {item.quantity}</p>
               </div>
               {item.status === "pending" && request.status === "submitted" && (
-                <button onClick={() => setFulfillingItem(item)} style={{ ...font, fontSize: 12.5, fontWeight: 700, color: "#fff", background: C.signal, border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", whiteSpace: "nowrap" }}>
+                <button onClick={() => setFulfillingItem(item)} style={{ ...font, fontSize: 12.5, fontWeight: 700, color: C.onSignal, background: C.signal, border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", whiteSpace: "nowrap" }}>
                   {lang === "zh" ? "创建商品" : "Create listing"}
                 </button>
               )}
@@ -2323,7 +2338,7 @@ function PartRequestDetail({ requestId, onBack, onSessionExpired }) {
           <button
             disabled={isSending}
             onClick={handleSendQuote}
-            style={{ ...font, padding: "10px 20px", borderRadius: 8, border: "none", background: isSending ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 13, fontWeight: 700, cursor: isSending ? "default" : "pointer" }}
+            style={{ ...font, padding: "10px 20px", borderRadius: 8, border: "none", background: isSending ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 13, fontWeight: 700, cursor: isSending ? "default" : "pointer" }}
           >
             {isSending ? (lang === "zh" ? "发送中…" : "Sending…") : (lang === "zh" ? "发送报价给买家" : "Send quote to buyer")}
           </button>
@@ -2333,13 +2348,15 @@ function PartRequestDetail({ requestId, onBack, onSessionExpired }) {
   );
 }
 
+// Products: everything is a tab under the header: All (n), Low stock (n), Add product, Bulk upload, My Drafts, Export, Bulk edit.
 function ProductsPage() {
-  const [mode, setMode] = useState("list");
+  const [tab, setTab] = useState("all");
+  const mode = ["add", "bulk", "drafts"].includes(tab) ? tab : "list";
   const [products, setProducts] = useState([]);
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
   const [editingProduct, setEditingProduct] = useState(null);
-  const [stockFilter, setStockFilter] = useState("all");
+  const stockFilter = tab === "lowStock" ? "lowStock" : "all";
   const [isExporting, setIsExporting] = useState(false);      // the Excel export is being built (photos are fetched)
   // Real bulk price update (new) -- closes a real gap: there was no
   // way to adjust multiple real products' prices at once before this.
@@ -2375,79 +2392,86 @@ function ProductsPage() {
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
   useAutoRefresh(() => fetchMyProducts(getStoredToken()).then(setIfChanged(setProducts)), { enabled: loadState === "ready" && mode === "list" && !editingProduct && !showBulkPriceModal });
 
-  if (mode === "add") return <div style={{ padding: 24 }}><AddProductForm onCancel={() => setMode("list")} onCreated={() => { load(); }} staysOpenAfterSave /></div>;
-  if (mode === "bulk") return <div style={{ padding: 24 }}><BulkUploadPanel onCancel={() => setMode("list")} onImported={load} /></div>;
-  if (mode === "drafts") return <div style={{ padding: 24 }}><DraftsPanel onCancel={() => { setMode("list"); load(); }} /></div>;
-
   const lowStockProducts = products.filter((p) => p.stockQuantity < p.lowStockThreshold);
   const visibleProducts = stockFilter === "lowStock" ? lowStockProducts : products;
+  const ready = loadState === "ready";
+  // the tabs, left to right
+  const productTabs = [
+    { id: "all", label: ready ? `${t.products.filterAll} (${products.length})` : t.products.filterAll },
+    { id: "lowStock", label: ready ? t.products.filterLowStock(lowStockProducts.length) : t.products.filterLowStock("…") },
+    { id: "add", label: t.products.addProduct },
+    { id: "bulk", label: t.products.bulkUpload },
+    { id: "drafts", label: lang === "zh" ? "我的草稿（未发布）" : "My Drafts (Not published)" },
+    { id: "export", label: t.products.export },
+    { id: "bulkEdit", label: selectedIds.size > 0 ? `${t.products.bulkPriceUpdate} (${selectedIds.size})` : t.products.bulkPriceUpdate },
+  ];
+  const header = <TopBar title={t.products.title} subtitle={ready ? t.products.subtitle(products.length) : "…"} tabs={{ label: t.products.title, tabs: productTabs, activeId: tab, onSelect: setTab, maxVisible: 7 }} />;
+  // Export: every field of the products chosen (all, or the low-stock ones): sheet 1 the products with their first photo, sheet 2 the cars they fit.
+  const runExport = async (list) => {
+    setIsExporting(true);
+    try {
+      const fitment = await fetchMyProductsFitmentForExport(getStoredToken());
+      const ids = new Set(list.map((p) => p.id));
+      await exportProductsWorkbook({
+        products: list,
+        fitment: fitment.filter((f) => ids.has(f.productId)),
+        lang,
+        categoryText: (p) => { const c = categoryById[p.category]; return c ? (lang === "zh" ? c.nameZh || c.nameEn : c.nameEn) : p.category || ""; },
+        partText: (p) => (lang === "zh" && partZhByKey[`${p.category}|${p.part}`]) || p.part || "",
+        statusText: (p) => t.statusProduct[p.rejected ? "rejected" : p.status] || p.status,
+      });
+    } catch (err) {
+      if (err instanceof SessionExpiredError) return onSessionExpired();
+      setErrorMessage(err.message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  if (mode === "add") return <div>{header}<div style={{ padding: 24 }}><AddProductForm onCancel={() => setTab("all")} onCreated={() => { load(); }} staysOpenAfterSave /></div></div>;
+  if (mode === "bulk") return <div>{header}<div style={{ padding: 24 }}><BulkUploadPanel onCancel={() => setTab("all")} onImported={load} /></div></div>;
+  if (mode === "drafts") return <div>{header}<div style={{ padding: 24 }}><DraftsPanel onCancel={() => { setTab("all"); load(); }} /></div></div>;
+  if (tab === "export") {
+    const font = { fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" };
+    const exportButton = (list, label, testId) => (
+      <button data-testid={testId} disabled={!ready || list.length === 0 || isExporting} onClick={() => runExport(list)} style={toolbarButtonStyle(!ready || list.length === 0 || isExporting, font)}>
+        <Download size={13} /> {isExporting ? (lang === "zh" ? "导出中…" : "Exporting…") : label}
+      </button>
+    );
+    return (
+      <div>
+        {header}
+        <div style={{ padding: 24 }}>
+          <Card>
+            <div style={{ padding: 20 }}>
+              <div style={{ ...font, fontSize: 15, fontWeight: 700, color: C.ink }}>{lang === "zh" ? "导出商品（Excel）" : "Export products (Excel)"}</div>
+              <div style={{ ...font, fontSize: 12.5, color: C.muted, margin: "4px 0 16px" }}>{lang === "zh" ? "包含每个字段：第 1 张表是商品及其首张照片，第 2 张表是适配车型。" : "Every field: sheet 1 the products with their first photo, sheet 2 the cars they fit."}</div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                {exportButton(products, lang === "zh" ? `导出全部商品 (${products.length})` : `Export all products (${products.length})`, "products-export")}
+                {exportButton(lowStockProducts, lang === "zh" ? `导出库存预警商品 (${lowStockProducts.length})` : `Export low-stock products (${lowStockProducts.length})`, "products-export-low")}
+              </div>
+              {errorMessage && <div role="alert" style={{ ...font, fontSize: 12, color: C.red, marginTop: 12 }}>{errorMessage}</div>}
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
-      <TopBar title={t.products.title} subtitle={loadState === "ready" ? t.products.subtitle(products.length) : "…"} />
-      {/* Row 1, left to right: Add product, Bulk upload, My Drafts, Export, Bulk edit. Row 2: the filters, each with its number of products. */}
-      <div data-testid="products-toolbar" style={{ padding: "16px 24px 0", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <button onClick={() => setMode("add")} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}>
-          <Plus size={13} /> {t.products.addProduct}
-        </button>
-        <button onClick={() => setMode("bulk")} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}>
-          <Upload size={13} /> {t.products.bulkUpload}
-        </button>
-        <button onClick={() => setMode("drafts")} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}>
-          <FileSpreadsheet size={13} /> {lang === "zh" ? "我的草稿（未发布）" : "My Drafts (Not published)"}
-        </button>
-        {/* Export: every field of the products shown now (it follows the filter): sheet 1 the products with their first photo, sheet 2 the cars they fit. */}
-        <button
-          data-testid="products-export"
-          disabled={loadState !== "ready" || visibleProducts.length === 0 || isExporting}
-          onClick={async () => {
-            setIsExporting(true);
-            try {
-              const fitment = await fetchMyProductsFitmentForExport(getStoredToken());
-              const ids = new Set(visibleProducts.map((p) => p.id));
-              await exportProductsWorkbook({
-                products: visibleProducts,
-                fitment: fitment.filter((f) => ids.has(f.productId)),
-                lang,
-                categoryText: (p) => { const c = categoryById[p.category]; return c ? (lang === "zh" ? c.nameZh || c.nameEn : c.nameEn) : p.category || ""; },
-                partText: (p) => (lang === "zh" && partZhByKey[`${p.category}|${p.part}`]) || p.part || "",
-                statusText: (p) => t.statusProduct[p.rejected ? "rejected" : p.status] || p.status,
-              });
-            } catch (err) {
-              if (err instanceof SessionExpiredError) return onSessionExpired();
-              setErrorMessage(err.message);
-            } finally {
-              setIsExporting(false);
-            }
-          }}
-          style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: loadState !== "ready" || visibleProducts.length === 0 || isExporting ? "default" : "pointer", opacity: loadState !== "ready" || visibleProducts.length === 0 || isExporting ? 0.5 : 1, fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}
-        >
-          <Download size={13} /> {isExporting ? (lang === "zh" ? "导出中…" : "Exporting…") : t.products.export}
-        </button>
-        {/* Bulk edit: always here, active once products are ticked (it says how many). */}
-        <button
-          disabled={selectedIds.size === 0}
-          onClick={() => setShowBulkPriceModal(true)}
-          title={selectedIds.size === 0 ? (lang === "zh" ? "请先勾选商品" : "Tick products first") : undefined}
-          style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: selectedIds.size === 0 ? "default" : "pointer", opacity: selectedIds.size === 0 ? 0.5 : 1, fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}
-        >
-          <Settings size={13} /> {selectedIds.size > 0 ? `${t.products.bulkPriceUpdate} (${selectedIds.size})` : t.products.bulkPriceUpdate}
-        </button>
-      </div>
-      {loadState === "ready" && (
-        <div style={{ padding: "12px 24px 0", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          {["all", "lowStock"].map((f) => (
-            <button
-              key={f}
-              onClick={() => setStockFilter(f)}
-              style={{
-                padding: "7px 13px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
-                border: `1px solid ${stockFilter === f ? C.ink : C.line}`, background: stockFilter === f ? C.ink : "#fff",
-                color: stockFilter === f ? "#fff" : (f === "lowStock" && lowStockProducts.length > 0 ? C.amber : C.ink),
-                fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif",
-              }}
-            >{f === "all" ? `${t.products.filterAll} (${products.length})` : t.products.filterLowStock(lowStockProducts.length)}</button>
-          ))}
+      {header}
+      {/* Bulk edit: tick products (here, or under All / Low stock), then change their prices together */}
+      {tab === "bulkEdit" && (
+        <div data-testid="products-bulk-edit" style={{ margin: "16px 24px 0", padding: "12px 16px", borderRadius: 12, border: `1px solid ${C.line}`, background: C.card, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: selectedIds.size === 0 ? C.muted : C.ink }}>{selectedIds.size === 0 ? (lang === "zh" ? "请先勾选要调整价格的商品" : "Tick the products whose prices you want to change") : t.products.bulkPriceSelected(selectedIds.size)}</span>
+          <button
+            disabled={selectedIds.size === 0}
+            onClick={() => setShowBulkPriceModal(true)}
+            style={{ ...toolbarButtonStyle(selectedIds.size === 0, { fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }), background: selectedIds.size === 0 ? C.card : C.signal, color: selectedIds.size === 0 ? C.ink : C.onSignal, border: "none" }}
+          >
+            <Settings size={13} /> {lang === "zh" ? "调整价格" : "Change prices"}
+          </button>
         </div>
       )}
       {successMessage && (
@@ -2656,7 +2680,7 @@ function EditProductModal({ product, onClose, onSaved }) {
 
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
           <button onClick={onClose} disabled={isSaving} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{L("取消", "Cancel")}</button>
-          <button onClick={handleSave} disabled={isSaving} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{isSaving ? "…" : L("保存", "Save")}</button>
+          <button onClick={handleSave} disabled={isSaving} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", background: C.signal, color: C.onSignal, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{isSaving ? "…" : L("保存", "Save")}</button>
         </div>
       </div>
     </div>
@@ -2745,7 +2769,7 @@ function BulkPriceModal({ selectedCount, productIds, onClose, onApplied, onSessi
 
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
           <button onClick={onClose} disabled={isApplying} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{t.products.bulkPriceCancel}</button>
-          <button onClick={handleApply} disabled={isApplying || nothingChosen || (changePrice && !value) || (changeStock && stock === "") || (changeThreshold && threshold === "")} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", background: C.signal, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+          <button onClick={handleApply} disabled={isApplying || nothingChosen || (changePrice && !value) || (changeStock && stock === "") || (changeThreshold && threshold === "")} style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", background: C.signal, color: C.onSignal, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
             {isApplying ? t.products.bulkPriceApplying : t.products.bulkPriceApply}
           </button>
         </div>
@@ -2855,7 +2879,7 @@ function OrderDetailPanel({ order, onBack, onUpdated }) {
                 <button
                 disabled={isSaving}
                 onClick={() => handleUpdate({ status: "shipped", trackingNumber: tracking })}
-                style={{ ...font, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: 11, borderRadius: 8, border: "none", background: isSaving ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 13, fontWeight: 700, cursor: isSaving ? "default" : "pointer" }}
+                style={{ ...font, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: 11, borderRadius: 8, border: "none", background: isSaving ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 13, fontWeight: 700, cursor: isSaving ? "default" : "pointer" }}
               >
                 <Truck size={14} /> {o.markShipped}
               </button>
@@ -2863,7 +2887,7 @@ function OrderDetailPanel({ order, onBack, onUpdated }) {
                 <button
                 disabled={isSaving}
                 onClick={() => handleUpdate({ trackingNumber: tracking })}
-                style={{ ...font, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: 11, borderRadius: 8, border: "none", background: isSaving ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 13, fontWeight: 700, cursor: isSaving ? "default" : "pointer" }}
+                style={{ ...font, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: 11, borderRadius: 8, border: "none", background: isSaving ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 13, fontWeight: 700, cursor: isSaving ? "default" : "pointer" }}
               >
                 <Truck size={14} /> {o.updateTracking}
               </button>
@@ -2957,17 +2981,11 @@ function OrdersPage({ onOpen }) {
 
   return (
     <div>
-      <TopBar title={t.orders.title} subtitle={t.orders.subtitle} />
-      <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", gap: 6 }}>
-          {t.orders.filters.map((f, i) => (
-            <button key={f} onClick={() => setFilterIdx(i)} style={{
-              padding: "7px 13px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
-              fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif",
-              border: `1px solid ${filterIdx === i ? C.ink : C.line}`, background: filterIdx === i ? C.ink : "#fff", color: filterIdx === i ? "#fff" : C.ink,
-            }}>{f}</button>
-          ))}
-        </div>
+      {/* the order states are the page's tabs, each with its number */}
+      <TopBar title={t.orders.title} subtitle={t.orders.subtitle}
+        tabs={{ label: t.orders.title, activeId: filterIdx, onSelect: setFilterIdx,
+          tabs: t.orders.filters.map((f, i) => ({ id: i, label: f, count: loadState === "ready" ? (i === 0 ? orders.length : orders.filter((o) => o.status === keys[i]).length) : undefined, tone: ORDER_FILTER_TONES[keys[i]] || "ink", countTestId: `orders-tab-count-${keys[i]}` })) }} />
+      <div style={{ padding: "16px 24px 0", display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
         {/* Real export (new) -- closes a real gap: this portal had no
             export capability anywhere before this, unlike the admin
             dashboard, which already has it on every list page. */}
@@ -2989,7 +3007,7 @@ function OrdersPage({ onOpen }) {
               status: t.statusOrder[o.status] || o.status,
             })),
           })}
-          style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 13px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: filtered.length === 0 ? "default" : "pointer", opacity: filtered.length === 0 ? 0.5 : 1, fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" }}
+          style={toolbarButtonStyle(filtered.length === 0, { fontFamily: lang === "zh" ? "'Noto Sans SC', sans-serif" : "'Inter', sans-serif" })}
         >
           <Download size={13} /> {t.orders.export}
         </button>
@@ -3319,7 +3337,7 @@ function ReturnsPage() {
                       <textarea value={reply} onChange={e => setReply(e.target.value)} placeholder={t.returns.replyPlaceholder} style={{ ...inputStyle, height: 70, resize: "none", marginBottom: 8 }} />
                       <div style={{ display: "flex", gap: 8 }}>
                         <button onClick={() => setOpenId(null)} style={{ ...font, padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t.returns.cancel}</button>
-                        <button disabled={isSending} onClick={() => submitReply(c.id)} style={{ ...font, padding: "8px 14px", borderRadius: 8, border: "none", background: isSending ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSending ? "default" : "pointer" }}>{t.returns.submitReply}</button>
+                        <button disabled={isSending} onClick={() => submitReply(c.id)} style={{ ...font, padding: "8px 14px", borderRadius: 8, border: "none", background: isSending ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSending ? "default" : "pointer" }}>{t.returns.submitReply}</button>
                       </div>
                     </div>
                   ) : (
@@ -3406,7 +3424,7 @@ function SupplierNotificationsPage({ onRefreshBadge }) {
                   borderBottom: i < notifications.length - 1 ? `1px solid ${C.line}` : "none", cursor: "pointer",
                 }}
               >
-                <Bell size={16} color={n.isRead ? C.muted : C.signal} style={{ marginTop: 2, flexShrink: 0 }} />
+                <Bell size={16} color={n.isRead ? C.muted : C.signalText} style={{ marginTop: 2, flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ ...font, fontSize: 13, fontWeight: n.isRead ? 500 : 700, color: C.ink }}>{n.title}</div>
                   <div style={{ ...font, fontSize: 12, color: C.muted, marginTop: 2 }}>{n.body}</div>
@@ -3497,7 +3515,7 @@ function MessagesPage() {
           const canToggle = !isMe && m.translationStatus === "success";
           return (
             <div key={m.id} style={{ alignSelf: isMe ? "flex-end" : "flex-start", maxWidth: "70%" }}>
-              <div style={{ ...font, fontSize: 13, padding: "10px 14px", borderRadius: 12, lineHeight: 1.5, background: isMe ? C.signal : "#fff", color: isMe ? "#fff" : C.ink, border: isMe ? "none" : `1px solid ${C.line}` }}>
+              <div style={{ ...font, fontSize: 13, padding: "10px 14px", borderRadius: 12, lineHeight: 1.5, background: isMe ? C.signal : "#fff", color: isMe ? C.onSignal : C.ink, border: isMe ? "none" : `1px solid ${C.line}` }}>
                 {displayText}
               </div>
               {!isMe && m.translationStatus === "unavailable" && (
@@ -3519,7 +3537,7 @@ function MessagesPage() {
         <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && send()} placeholder={t.messages.inputPlaceholder}
           style={{ ...font, flex: 1, border: `1px solid ${C.line}`, borderRadius: 20, padding: "10px 16px", fontSize: 13, outline: "none" }} />
         <button onClick={send} disabled={isSending} style={{ width: 40, height: 40, borderRadius: "50%", background: isSending ? "#D1D5DB" : C.signal, border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: isSending ? "default" : "pointer" }}>
-          <Send size={15} color="#fff" />
+          <Send size={15} color={C.onSignal} />
         </button>
       </div>
     </div>
@@ -3719,7 +3737,7 @@ function FinancePage() {
                   <button
                     disabled={isSaving}
                     onClick={handleSave}
-                    style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: isSaving ? "#D1D5DB" : C.signal, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: isSaving ? "default" : "pointer" }}
+                    style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: isSaving ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 12.5, fontWeight: 700, cursor: isSaving ? "default" : "pointer" }}
                   >{isSaving ? "…" : (lang === "zh" ? "保存" : "Save")}</button>
                   {payoutMethod && (
                     <button
@@ -3755,7 +3773,7 @@ const VERIFICATION_BADGE = { verified: "active", pending: "pending", rejected: "
 
 // The supplier's return address (migration 092): where the inspection hub sends a faulty unit back to. One address per
 // supplier; saving replaces it. Admin can also correct it from the supplier's page.
-function ReturnAddressCard() {
+function ReturnAddressCard({ showTitle = true }) { // showTitle=false: inside its own Settings tab, which already names it
   const { t } = useLang();
   const { onSessionExpired } = useSupplier();
   const font = useBodyFont();
@@ -3801,7 +3819,7 @@ function ReturnAddressCard() {
   const label = { ...font, display: "block", fontSize: 11.5, fontWeight: 700, color: C.muted, margin: "12px 0 6px" };
 
   return (
-    <Card title={r.title} style={{ flex: 1 }}>
+    <Card title={showTitle ? r.title : undefined} style={{ flex: 1 }}>
       <div style={{ padding: 18 }}>
         <p style={{ ...font, fontSize: 12.5, color: C.muted, margin: "0 0 4px" }}>{r.help}</p>
         {saved === null && !error && <p style={{ ...font, fontSize: 12.5, fontWeight: 700, color: C.amber, margin: "6px 0 0" }}>{r.notSet}</p>}
@@ -3823,17 +3841,21 @@ function ReturnAddressCard() {
   );
 }
 
+// Settings: each part is a tab under the header (Company information, Return address, Notification settings); the tab names the part, so the
+// boxes carry no title of their own.
 function SettingsPage() {
   const { t, lang } = useLang();
   const { profile } = useSupplier();
   const s = t.settings;
   const [toggles, setToggles] = useState([true, true, true, false]);
+  const [tab, setTab] = useState("company");
   const font = useBodyFont();
+  const settingsTabs = [{ id: "company", label: s.companyTitle }, { id: "returnAddress", label: s.returnAddress.title }, { id: "notifications", label: s.notifTitle }];
   return (
     <div>
-      <TopBar title={s.title} subtitle={s.subtitle} />
-      <div style={{ padding: 24, display: "flex", gap: 16 }}>
-        <Card title={s.companyTitle} style={{ flex: 1 }}>
+      <TopBar title={s.title} subtitle={s.subtitle} tabs={{ label: s.title, tabs: settingsTabs, activeId: tab, onSelect: setTab }} />
+      <div style={{ padding: 24, display: "flex", gap: 16, maxWidth: 820 }}>
+        {tab === "company" && <Card style={{ flex: 1 }}>
           <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
             {/* Real profile data only. A business license number and a "main categories" list used to
                 be typed in here (a placeholder number, and a fixed category list); neither exists in
@@ -3847,9 +3869,9 @@ function SettingsPage() {
             <InfoRow icon={Store} label={s.country} value={profile ? profile.country : ""} />
             <InfoRow icon={Send} label={s.contactEmail} value={profile ? profile.contactEmail : ""} />
           </div>
-        </Card>
-        <ReturnAddressCard />
-        <Card title={s.notifTitle} style={{ flex: 1 }}>
+        </Card>}
+        {tab === "returnAddress" && <ReturnAddressCard showTitle={false} />}
+        {tab === "notifications" && <Card style={{ flex: 1 }}>
           <div style={{ padding: 6 }}>
             {s.toggles.map((label, i) => (
               <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 12px", borderBottom: i < 3 ? `1px solid ${C.line}` : "none" }}>
@@ -3860,7 +3882,7 @@ function SettingsPage() {
               </div>
             ))}
           </div>
-        </Card>
+        </Card>}
       </div>
     </div>
   );
@@ -3871,6 +3893,29 @@ function SettingsPage() {
 const NAV_ICONS = { overview: LayoutGrid, products: PackageSearch, partRequests: FileQuestion, orders: ShoppingBag, returns: RotateCcw, messages: MessageSquare, finance: Wallet, settings: Settings };
 const NAV_ORDER = ["overview", "products", "orders", "returns", "messages", "finance", "settings"];
 
+// The colors of the Orders buttons' numbers, by order status
+const ORDER_FILTER_TONES = { pending: "amber", preparing: "amber", shipped: "blue", in_transit: "blue", delivered: "green", completed: "green", dispute: "red", cancelled: "red", refused: "red", returned: "ink" };
+
+// The side menu (the admin portal's design, in the logo's navy, with the logo's gold for the chosen item and the buttons): the chosen item is a tab in
+// the page's color whose curved corners make it flow into the page; collapsible to icons only (the name shows on hover); it stays in view while a long
+// page scrolls.
+const MENU = {
+  bg: C.navy, text: "#C5D3DC", strong: "#FFFFFF", soft: "#8FA8B6", line: "#1D4A60", badge: C.signal,
+  activeBg: "#E9ECF0", activeText: C.ink, activeIcon: "#A86F00", expanded: 240, collapsed: 76,
+};
+// The page: a light panel beside the menu (the chosen item flows into it), and everything in the page, the title too, in one rounded container inside it.
+const PANEL = { bg: MENU.activeBg, inset: 16, boxRadius: 16 };
+const MENU_CSS = `
+.leap-menu-item:hover:not([aria-current="page"]) { background: rgba(255, 255, 255, 0.09) !important; color: #FFFFFF !important; }
+.leap-menu-item:focus-visible { outline: 2px solid ${C.signal}; outline-offset: -2px; }
+.leap-menu-curve { position: absolute; right: 0; width: 20px; height: 20px; pointer-events: none; clip-path: inset(0); }
+.leap-menu-curve.top { bottom: 100%; border-bottom-right-radius: 20px; box-shadow: 10px 10px 0 10px ${MENU.activeBg}; }
+.leap-menu-curve.bottom { top: 100%; border-top-right-radius: 20px; box-shadow: 10px -10px 0 10px ${MENU.activeBg}; }
+.leap-menu-tip { display: none; position: absolute; left: calc(100% + 6px); top: 50%; transform: translateY(-50%); height: 30px; padding: 0 10px; border-radius: 8px;
+  background: ${C.ink}; color: #fff; font-size: 12px; font-weight: 700; align-items: center; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.18); z-index: 50; }
+.leap-menu-item:hover .leap-menu-tip, .leap-menu-item:focus-visible .leap-menu-tip { display: flex; }
+`;
+
 function PortalShell() {
   const [page, setPage] = useState("overview");
   const [openOrder, setOpenOrder] = useState(null);
@@ -3879,6 +3924,9 @@ function PortalShell() {
   const outerSupplierContext = useSupplier();
   const { profile, currentUser, onLogout } = outerSupplierContext;
   const font = useBodyFont();
+  // The side menu can be collapsed to icons only; the choice is remembered in this browser.
+  const [menuCollapsed, setMenuCollapsed] = useState(() => { try { return localStorage.getItem("leap_supplier_menu_collapsed") === "1"; } catch { return false; } });
+  const toggleMenu = () => setMenuCollapsed((v) => { const next = !v; try { localStorage.setItem("leap_supplier_menu_collapsed", next ? "1" : "0"); } catch { /* not kept: fine */ } return next; });
 
   const isLeapSupplier = currentUser?.supplierId === "supplier_leap";
   const navOrder = isLeapSupplier
@@ -3909,58 +3957,119 @@ function PortalShell() {
   else if (page === "finance") content = <FinancePage />;
   else if (page === "settings") content = <SettingsPage />;
   else if (page === "notifications") content = <SupplierNotificationsPage onRefreshBadge={refreshUnreadCount} />;
+  const tabId = openOrder ? "orders" : page;
+  const tabLabel = tabId === "notifications" ? t.notifications.title : t.nav[tabId];
+  const pageTab = tabLabel ? { label: tabLabel, tabs: [{ id: tabId, label: tabLabel }], activeId: tabId, onSelect: () => {} } : null;
+
+  // the side menu's highlight slides to the item clicked, and the new page fades in
+  const menuBoxRef = useRef(null);
+  const pageBoxRef = useRef(null);
+  const menuMark = useSlidingMark(menuBoxRef, '.leap-menu-item[aria-current="page"]', [page, Boolean(openOrder), menuCollapsed]);
+  const menuSlides = Boolean(menuMark && menuMark.h);
+  const shownPage = useRef(null);
+  const pageKey = `${page}|${Boolean(openOrder)}`;
+  useLayoutEffect(() => {
+    const was = shownPage.current;
+    shownPage.current = pageKey;
+    if (was === null || was === pageKey || lessMotion() || !pageBoxRef.current || typeof pageBoxRef.current.animate !== "function") return;
+    pageBoxRef.current.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 240, easing: "ease-out" });
+  }, [pageKey]);
 
   return (
-    <div style={{ display: "flex", height: "100%", minHeight: 700, background: C.canvas, ...font }}>
+    <div style={{ display: "flex", height: "100%", minHeight: 700, background: MENU.bg, ...font }}>
       <style>{FONT_IMPORT}</style>
       <style>{`tbody tr:hover { background: ${C.canvas}; }`}</style>
-      <div style={{ width: 216, background: C.ink, display: "flex", flexDirection: "column", flexShrink: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 16px 18px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ ...disp, fontSize: 22, fontWeight: 700, color: "#fff", letterSpacing: "0.02em" }}>LEAP</div>
-            <span style={{ ...font, fontSize: 10, color: "#9AA1AC", border: "1px solid #3A3F48", borderRadius: 4, padding: "2px 6px" }}>{t.badge}</span>
-          </div>
+      <style>{MENU_CSS}</style>
+      {/* the menu stays in view while a long page scrolls, so the name and Log out at its bottom are always there */}
+      <nav aria-label={lang === "zh" ? "主菜单" : "Main menu"} style={{ width: menuCollapsed ? MENU.collapsed : MENU.expanded, transition: "width 160ms ease", background: MENU.bg, display: "flex", flexDirection: "column", flexShrink: 0, position: "sticky", top: 0, height: "100vh", minHeight: 600, alignSelf: "flex-start", zIndex: 5 }}>
+        <div style={menuCollapsed ? { display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "16px 0 10px" } : { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "16px 12px 10px 18px" }}>
+          {/* the company: logo, name, and which portal this is (follows the language switch) */}
+          {menuCollapsed
+            ? <BrandLogo size={36} label={"Leap Auto Parts"} />
+            : <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+                <BrandLogo size={36} />
+                <div style={{ minWidth: 0, lineHeight: 1.15 }}>
+                  <div style={{ ...font, fontSize: 14.5, fontWeight: 800, color: MENU.strong, whiteSpace: "nowrap" }}>Leap Auto Parts</div>
+                  <div style={{ ...font, fontSize: 11, fontWeight: 600, color: MENU.soft, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.portalName}</div>
+                </div>
+              </div>}
+          <button type="button" onClick={toggleMenu} aria-expanded={!menuCollapsed}
+            aria-label={menuCollapsed ? (lang === "zh" ? "展开菜单" : "Expand the menu") : (lang === "zh" ? "收起菜单" : "Collapse the menu")}
+            title={menuCollapsed ? (lang === "zh" ? "展开菜单" : "Expand the menu") : (lang === "zh" ? "收起菜单" : "Collapse the menu")}
+            style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${MENU.line}`, background: "transparent", color: MENU.text, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+            {menuCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
         </div>
-        <div style={{ padding: "0 16px 14px" }}>
-          <LangToggle />
+        <div style={menuCollapsed ? { display: "flex", justifyContent: "center", padding: "0 0 8px" } : { padding: "0 16px 10px 24px" }}>
+          <LangToggle compact={menuCollapsed} />
         </div>
-        <div style={{ flex: 1, padding: "0 12px" }}>
+        <div ref={menuBoxRef} style={{ flex: 1, padding: "6px 0 6px 12px", position: "relative" }}>
+          {/* the chosen item's background (with its curved corners): one shape that slides to the item clicked (drawn first, so the items sit on it) */}
+          {menuMark && (
+            <span aria-hidden="true" data-testid="menu-highlight" style={{
+              position: "absolute", left: menuMark.x, right: 0, top: 0, height: menuMark.h, transform: `translateY(${menuMark.y}px)`, pointerEvents: "none",
+              background: MENU.activeBg, borderRadius: "20px 0 0 20px", transition: menuMark.anim ? `transform ${SLIDE_MS}ms ${SLIDE_EASE}` : "none",
+            }}>
+              <span className="leap-menu-curve top" />
+              <span className="leap-menu-curve bottom" />
+            </span>
+          )}
           {navOrder.map(id => {
             const Icon = NAV_ICONS[id];
-            const active = page === id && !openOrder;
+            const active = (page === id && !openOrder) || (id === "orders" && !!openOrder);
             return (
-              <button key={id} onClick={() => { setPage(id); setOpenOrder(null); }} style={{
-                width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", marginBottom: 2, borderRadius: 8,
-                border: "none", cursor: "pointer", textAlign: "left",
-                background: active ? C.signal : "transparent", color: active ? "#fff" : "#B8BEC9",
+              <button key={id} onClick={() => { setPage(id); setOpenOrder(null); }} className="leap-menu-item" aria-current={active ? "page" : undefined} aria-label={menuCollapsed ? t.nav[id] : undefined} style={{
+                position: "relative", width: "100%", display: "flex", alignItems: "center", justifyContent: menuCollapsed ? "center" : "flex-start", gap: 12, height: 40,
+                padding: menuCollapsed ? 0 : "0 14px 0 18px", margin: "1px 0", borderRadius: "20px 0 0 20px", border: "none", cursor: "pointer", textAlign: "left",
+                background: active && !menuSlides ? MENU.activeBg : "transparent", color: active ? MENU.activeText : MENU.text, transition: "color 200ms ease",
               }}>
-                <Icon size={16} />
-                <span style={{ ...font, fontSize: 13, fontWeight: active ? 700 : 500 }}>{t.nav[id]}</span>
+                {/* the curved corners above and below the chosen item: it flows into the page (drawn by the sliding shape once it is in place) */}
+                {active && !menuSlides && <span aria-hidden="true" className="leap-menu-curve top" />}
+                {active && !menuSlides && <span aria-hidden="true" className="leap-menu-curve bottom" />}
+                <span style={{ display: "inline-flex", color: active ? MENU.activeIcon : "inherit" }}><Icon size={18} /></span>
+                {!menuCollapsed && <span style={{ ...font, fontSize: 13, fontWeight: active ? 700 : 500, whiteSpace: "nowrap" }}>{t.nav[id]}</span>}
+                {menuCollapsed && <span role="tooltip" className="leap-menu-tip">{t.nav[id]}</span>}
               </button>
             );
           })}
         </div>
-        <div style={{ padding: 16, borderTop: "1px solid #2A2F38" }}>
-          <div style={{ ...font, fontSize: 11, color: "#9AA1AC", marginBottom: 4 }}>{profile ? profile.name : ""}</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 10 }}>
-            <BadgeCheck size={13} color={C.gauge} />
-            <span style={{ ...font, fontSize: 10.5, color: "#9AA1AC" }}>
-              {profile ? t.verifiedSince(new Date(profile.createdAt).toLocaleDateString(uiLocale())) : ""}
-            </span>
+        {menuCollapsed ? (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "14px 0", borderTop: `1px solid ${MENU.line}` }}>
+            <span title={profile ? profile.name : ""} style={{ width: 36, height: 36, borderRadius: "50%", background: MENU.activeBg, color: MENU.activeText, display: "flex", alignItems: "center", justifyContent: "center", ...font, fontSize: 12, fontWeight: 800 }}>{profile && profile.name ? profile.name.slice(0, 1).toUpperCase() : "S"}</span>
+            <button type="button" onClick={onLogout} aria-label={lang === "zh" ? "退出登录" : "Log out"} title={lang === "zh" ? "退出登录" : "Log out"} style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${MENU.line}`, background: "transparent", color: MENU.text, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+              <LogOut size={16} />
+            </button>
           </div>
-          <button onClick={onLogout} style={{
-            ...font, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 10px",
-            borderRadius: 6, border: "1px solid #3A3F48", background: "transparent", color: "#B8BEC9", fontSize: 11.5, fontWeight: 600, cursor: "pointer",
-          }}>
-            {lang === "zh" ? "退出登录" : "Log out"}
-          </button>
+        ) : (
+          <div style={{ padding: "12px 16px 14px 24px", borderTop: `1px solid ${MENU.line}` }}>
+            <div style={{ ...font, fontSize: 12.5, color: MENU.strong, fontWeight: 700, marginBottom: 3 }}>{profile ? profile.name : ""}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 10 }}>
+              <BadgeCheck size={13} color={MENU.strong} />
+              <span style={{ ...font, fontSize: 11, color: MENU.soft }}>
+                {profile ? t.verifiedSince(new Date(profile.createdAt).toLocaleDateString(uiLocale())) : ""}
+              </span>
+            </div>
+            <button onClick={onLogout} style={{
+              ...font, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, height: 36,
+              borderRadius: 10, border: `1px solid ${MENU.line}`, background: "transparent", color: MENU.text, fontSize: 12, fontWeight: 700, cursor: "pointer",
+            }}>
+              <LogOut size={13} /> {lang === "zh" ? "退出登录" : "Log out"}
+            </button>
+          </div>
+        )}
+      </nav>
+      <main style={{ flex: 1, minWidth: 0, display: "flex", background: PANEL.bg }}>
+        <div style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: PANEL.inset }}>
+          <div ref={pageBoxRef} style={{ minHeight: "100%", boxSizing: "border-box", background: C.canvas, border: `1px solid ${C.line}`, borderRadius: PANEL.boxRadius, overflow: "hidden", boxShadow: "0 1px 2px rgba(20, 23, 28, 0.05)" }}>
+            <SupplierContext.Provider value={{ ...outerSupplierContext, unreadNotificationCount: unreadCount, onOpenNotifications: () => setPage("notifications") }}>
+              {/* every page has a tab: its own name (the common page design) */}
+              <PageTabsContext.Provider value={pageTab}>
+                {content}
+              </PageTabsContext.Provider>
+            </SupplierContext.Provider>
+          </div>
         </div>
-      </div>
-      <div style={{ flex: 1, overflowY: "auto" }}>
-        <SupplierContext.Provider value={{ ...outerSupplierContext, unreadNotificationCount: unreadCount, onOpenNotifications: () => setPage("notifications") }}>
-          {content}
-        </SupplierContext.Provider>
-      </div>
+      </main>
     </div>
   );
 }

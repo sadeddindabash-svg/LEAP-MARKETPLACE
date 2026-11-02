@@ -40,6 +40,7 @@ async function openSettings(options) {
   fireEvent.click(screen.getByRole('button', { name: /登录|log in/i }));
   await waitFor(() => expect(screen.getAllByText('Guangzhou AutoParts Co.')[0]).toBeInTheDocument());
   fireEvent.click(screen.getByText(/^(店铺设置|Settings)$/));
+  fireEvent.click(await screen.findByRole('tab', { name: /^(退货地址|Return address)$/ })); // the return address is its own Settings tab
   await screen.findByText('退货地址');
 }
 

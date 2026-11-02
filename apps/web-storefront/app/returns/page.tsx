@@ -1,130 +1,83 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "@/components/LocLink";
+import { getAuthToken, useAuth } from "@/components/AuthProvider";
+import { useLang, useT } from "@/components/LangProvider";
 import { useAutoRefresh } from "@/components/useAutoRefresh";
 import { useLocRouter } from "@/components/useLocRouter";
-import Link from "@/components/LocLink";
-import { useAuth, getAuthToken } from "@/components/AuthProvider";
-import { ReturnCaseSummary, fetchMyReturnCases } from "@/lib/api";
+import { fetchMyReturnCases, type ReturnCaseSummary } from "@/lib/api";
+import { statusLabel } from "@/lib/orders";
 
-// Real returns page (new) -- the last remaining gap from the original
-// storefront list. Two real modes, not one screen pretending to cover
-// both:
-// - Logged in: a real list, same GET /returns/my-cases the mobile app
-//   already uses.
-// - Not logged in: a real "track your return" lookup (case ID + the
-//   real email it was filed under) -- closes a genuine, separate gap
-//   found this session: a guest who filed a return previously had NO
-//   way to ever check on it again (GET /returns/my-cases/:id was
-//   requireAuth only). Now guest-accessible via a matching email,
-//   mirroring GET /order/:id's own established pattern exactly.
+// My returns, like the app's screen, in the visitor's language: a signed-in buyer sees every return request with its reason, its order and its status; a guest
+// tracks one with its case ID and the email it was filed under (and is told that signing in shows them all).
 export default function ReturnsPage() {
   const { user, isLoading: authLoading } = useAuth();
+  const lang = useLang();
+  const t = useT();
   const router = useLocRouter();
   const [cases, setCases] = useState<ReturnCaseSummary[]>([]);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
-  const [error, setError] = useState<string | null>(null);
-
-  const [lookupCaseId, setLookupCaseId] = useState("");
-  const [lookupEmail, setLookupEmail] = useState("");
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [caseId, setCaseId] = useState("");
+  const [email, setEmail] = useState("");
+  const [trackError, setTrackError] = useState<string | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
-    if (!user) {
-      Promise.resolve().then(() => setLoadState("ready"));
-      return;
-    }
+    if (!user) { Promise.resolve().then(() => setLoadState("ready")); return; }
     const token = getAuthToken();
     if (!token) return;
-    fetchMyReturnCases(token)
-      .then((data) => { setCases(data); setLoadState("ready"); })
-      .catch((err) => { setError(err.message); setLoadState("error"); });
+    fetchMyReturnCases(token).then((data) => { setCases(data); setLoadState("ready"); }).catch((err: Error) => { setLoadError(err.message); setLoadState("error"); });
   }, [authLoading, user]);
   useAutoRefresh(async () => { const token = getAuthToken(); if (!token) return; setCases(await fetchMyReturnCases(token)); }, { enabled: !authLoading && !!user && loadState === "ready" });
 
-  const handleLookup = (e: React.FormEvent) => {
+  function track(e: React.FormEvent) {
     e.preventDefault();
-    if (!lookupCaseId.trim() || !lookupEmail.trim()) return;
-    router.push(`/returns/${encodeURIComponent(lookupCaseId.trim())}?guestEmail=${encodeURIComponent(lookupEmail.trim())}`);
-  };
-
-  if (authLoading || loadState === "loading") {
-    return <div className="mx-auto max-w-2xl px-6 py-16 text-muted">Loading…</div>;
+    if (!caseId.trim() || !email.trim()) { setTrackError(t("ticket_fill_both")); return; }
+    setTrackError(null);
+    router.push(`/returns/${encodeURIComponent(caseId.trim())}?guestEmail=${encodeURIComponent(email.trim())}`);
   }
+
+  if (authLoading || loadState === "loading") return <div className="mx-auto max-w-2xl px-4 py-10 text-muted sm:px-8" aria-busy="true">{t("search_loading")}</div>;
+  const input = "w-full rounded-lg border border-line px-3 py-2 text-[15px]";
 
   if (!user) {
     return (
-      <div className="mx-auto max-w-2xl px-6 py-16">
-        <h1 className="font-display font-bold text-3xl">Track a return</h1>
-        <p className="mt-2 text-muted">
-          Enter your return case ID (from your confirmation) and the email you used to file it.
-        </p>
-        <form onSubmit={handleLookup} className="mt-8 space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Return case ID</label>
-            <input
-              type="text"
-              required
-              value={lookupCaseId}
-              onChange={(e) => setLookupCaseId(e.target.value)}
-              placeholder="e.g. RC-1234"
-              className="w-full rounded-md border border-line px-3 py-2 text-sm font-plate uppercase"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Email</label>
-            <input
-              type="email"
-              required
-              value={lookupEmail}
-              onChange={(e) => setLookupEmail(e.target.value)}
-              className="w-full rounded-md border border-line px-3 py-2 text-sm"
-            />
-          </div>
-          <button
-            type="submit"
-            className="w-full rounded-md bg-signal px-6 py-3 text-on-signal font-semibold hover:bg-signal-dark transition-colors"
-          >
-            Track return
-          </button>
+      <div className="mx-auto max-w-2xl px-4 py-10 sm:px-8">
+        <h1 className="text-3xl font-bold tracking-tight text-navy">{t("track_a_return")}</h1>
+        <p className="mt-2 text-muted">{t("track_return_help")}</p>
+        <form onSubmit={track} noValidate className="mt-6 grid gap-3 rounded-[14px] border border-line bg-white p-5">
+          <label className="grid gap-1 text-sm font-semibold">{t("return_case_id_field")}<input value={caseId} onChange={(e) => setCaseId(e.target.value)} dir="ltr" placeholder="RC-1234" className={`${input} font-plate uppercase`} /></label>
+          <label className="grid gap-1 text-sm font-semibold">{t("email_label")}<input type="email" dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} className={input} /></label>
+          {trackError && <p role="alert" className="text-sm font-semibold text-[#a12a21]">{trackError}</p>}
+          <button type="submit" className="justify-self-start rounded-lg bg-signal px-5 py-2.5 font-semibold text-on-signal">{t("track_button")}</button>
         </form>
-        <p className="mt-6 text-sm text-muted">
-          Have an account?{" "}
-          <Link href="/login" className="text-signal font-medium">
-            Log in
-          </Link>{" "}
-          to see all your returns in one place.
-        </p>
+        <p className="mt-6 text-sm"><Link href="/login" className="font-semibold text-navy underline underline-offset-4">{t("returns_login")}</Link></p>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-16">
-      <h1 className="font-display font-bold text-3xl">My returns</h1>
-
-      {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
-
+    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-8">
+      <h1 className="text-3xl font-bold tracking-tight text-navy">{t("my_returns_title")}</h1>
+      {loadState === "error" && <p role="alert" className="mt-4 text-sm font-semibold text-[#a12a21]">{t("returns_load_error")} {loadError}</p>}
       {loadState === "ready" && cases.length === 0 ? (
-        <p className="mt-8 text-muted">No return requests yet.</p>
+        <p className="mt-6 text-muted">{t("returns_empty")}</p>
       ) : (
-        <div className="mt-8 space-y-3">
+        <ul className="mt-6 grid gap-3">
           {cases.map((c) => (
-            <Link
-              key={c.id}
-              href={`/returns/${c.id}`}
-              className="flex items-center justify-between rounded-lg border border-line bg-white p-4 hover:border-signal transition-colors"
-            >
-              <div>
-                <p className="font-semibold text-sm">{c.id}</p>
-                <p className="text-xs text-muted mt-1">{c.reason} · Order {c.orderId}</p>
-              </div>
-              <span className="text-xs font-semibold uppercase text-signal">
-                {c.status.replace(/_/g, " ")}
-              </span>
-            </Link>
+            <li key={c.id}>
+              <Link href={`/returns/${c.id}`} className="flex items-center justify-between gap-3 rounded-[14px] border border-line bg-white p-4 hover:border-navy">
+                <span className="min-w-0">
+                  <span dir="auto" className="block font-semibold">{c.reason}</span>
+                  <span className="block text-xs text-muted"><span dir="ltr">{c.id}</span> · {t("for_order")} <span className="font-plate" dir="ltr">{c.orderId}</span></span>
+                </span>
+                <span className="shrink-0 rounded-full bg-[#fff4d6] px-3 py-1 text-xs font-bold text-navy">{statusLabel(lang, c.status)}</span>
+              </Link>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </div>
   );

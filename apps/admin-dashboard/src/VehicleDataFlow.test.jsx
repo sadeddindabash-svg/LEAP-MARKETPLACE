@@ -5,7 +5,7 @@ import LeapAdminApp from './App';
 // Vehicle Data adds a vehicle step by step and asks for only this:
 //   Brand : English name + Arabic name + Chinese name + photo (all required)
 //   Model : English name + Arabic name + Chinese name (no photo)
-//   Year  : the year in English digits + photo (both required)
+//   Year  : the year in English digits only (the photos are on its versions)
 //   (and under each year its Versions: see VersionsPanel.test.jsx)
 // Engines and transmissions are not part of it any more. (Mocked fetch, real component tree.)
 const ADMIN_USER = { id: 'admin_dev_seed', email: 'admin@leap.dev', name: 'Dev Admin', role: 'admin', isOwner: true, allowedPages: 'all' };
@@ -140,13 +140,12 @@ describe('Vehicle Data: Brand, then Model, then Year (mocked fetch, real compone
     expect(calls.some((c) => c.url.endsWith('/fitment/catalog-image'))).toBe(false);
   });
 
-  it('CRITICAL: a YEAR asks for the year in English digits and a photo only; a wrong year or no photo is explained and nothing is sent', async () => {
+  it('CRITICAL: a YEAR asks for the year in English digits only; a wrong year is explained and nothing is sent', async () => {
     const { fn, calls } = mockRouter(); globalThis.fetch = fn;
     render(<LeapAdminApp />);
     await loginAndGoToVehicleData();
     await openYears();
     expect(screen.getByPlaceholderText(/year \(english digits/i)).toBeInTheDocument();
-    expect(screen.getByText(/choose photo \(required, at least 400 px\)/i)).toBeInTheDocument();
     expect(screen.queryByPlaceholderText(/start year|end year|new generation/i)).not.toBeInTheDocument();   // no name, no range
     add();
     expect(await screen.findByText(/year is required/i)).toBeInTheDocument();
@@ -154,24 +153,20 @@ describe('Vehicle Data: Brand, then Model, then Year (mocked fetch, real compone
     expect(await screen.findByText(/four digits, for example 2021/i)).toBeInTheDocument();
     type(/year \(english/i, '1900'); add();
     expect(await screen.findByText(/must be between 1950 and/i)).toBeInTheDocument();
-    type(/year \(english/i, '2024'); add();
-    expect(await screen.findByText(/a photo is required/i)).toBeInTheDocument();
     expect(writes(calls)).toEqual([]);
   });
 
-  it('CRITICAL: a year typed in Arabic digits is accepted, the photo is uploaded first, and the new year appears at the TOP (newest first)', async () => {
+  it('CRITICAL: a year typed in Arabic digits is accepted WITHOUT a photo, and the new year appears at the TOP (newest first)', async () => {
     const { fn, calls } = mockRouter(); globalThis.fetch = fn;
     render(<LeapAdminApp />);
     await loginAndGoToVehicleData();
     await openYears();
     type(/year \(english/i, '٢٠٢٤');
-    fireEvent.change(chooseInput(), { target: { files: [photoFile()] } });
     add();
     await waitFor(() => expect(screen.getByText('2024')).toBeInTheDocument());
-    const upload = calls.findIndex((c) => c.url.endsWith('/fitment/catalog-image'));
+    expect(calls.some((c) => c.url.endsWith('/fitment/catalog-image'))).toBe(false);            // nothing uploaded
     const create = calls.findIndex((c) => c.method === 'POST' && c.url.endsWith('/models/model_1/generations'));
-    expect(create).toBeGreaterThan(upload);
-    expect(calls[create].body).toEqual({ year: 2024, photoUrl: '/uploads/uploaded.jpg' });    // converted to 2024; nothing else is sent
+    expect(calls[create].body).toEqual({ year: 2024 });                                        // converted to 2024; nothing else is sent
     const order = screen.getAllByText(/^(2024|2023|2021|F20)$/).map((el) => el.textContent);
     expect(order).toEqual(['2024', '2023', '2021', 'F20']);                                    // newest first, the older entry last
   });
@@ -182,37 +177,24 @@ describe('Vehicle Data: Brand, then Model, then Year (mocked fetch, real compone
     await loginAndGoToVehicleData();
     await openYears();
     type(/year \(english/i, '2023');
-    fireEvent.change(chooseInput(), { target: { files: [photoFile()] } });
     add();
     expect(await screen.findByText('2023 already exists for this model')).toBeInTheDocument();
     expect(screen.getAllByText('2023')).toHaveLength(1);
   });
 
-  it('CRITICAL: the year list says which years have a photo; older entries are marked with their range and can still be edited; one-year entries cannot be edited, only deleted', async () => {
+  it('CRITICAL: years have no photo controls any more; older entries are marked with their range and can still be edited; one-year entries cannot be edited, only deleted', async () => {
     globalThis.fetch = mockRouter().fn;
     render(<LeapAdminApp />);
     await loginAndGoToVehicleData();
     await openYears();
-    expect(screen.getAllByText('Has photo')).toHaveLength(1);                                  // 2023
-    expect(screen.getAllByText('No photo yet')).toHaveLength(2);                               // 2021 and F20
-    expect(screen.getByText('Replace photo')).toBeInTheDocument();
-    expect(screen.getAllByText('Add photo')).toHaveLength(2);
+    expect(screen.queryByText('Has photo')).not.toBeInTheDocument();
+    expect(screen.queryByText('Replace photo')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Click to add or replace this photo')).not.toBeInTheDocument();
     expect(screen.getByText('Older entry')).toBeInTheDocument();
     expect(screen.getByText('2015 to 2019')).toBeInTheDocument();
     expect(screen.getAllByTitle('Edit this older entry')).toHaveLength(1);                     // F20 only
     expect(screen.queryByTitle(/move up|move down/i)).not.toBeInTheDocument();                // years are not reordered by hand
     for (const y of ['2023', '2021', 'F20']) expect(screen.getByLabelText(`Delete ${y}`)).toBeInTheDocument();
-  });
-
-  it('CRITICAL: "Add photo" on an existing year uploads the photo and sets it on that year; the badge changes', async () => {
-    const { fn, calls } = mockRouter(); globalThis.fetch = fn;
-    render(<LeapAdminApp />);
-    await loginAndGoToVehicleData();
-    await openYears();
-    const row2021 = screen.getByText('2021').closest('div[style*="justify-content"]');
-    fireEvent.change(within(row2021).getByText('Add photo').closest('label').querySelector('input'), { target: { files: [photoFile()] } });
-    await waitFor(() => expect(screen.getAllByText('Has photo')).toHaveLength(2));
-    expect(calls.find((c) => c.method === 'PATCH' && c.url.endsWith('/fitment/generations/gen_2021/photo')).body).toEqual({ photoUrl: '/uploads/uploaded.jpg' });
   });
 
   it('deleting a year asks first, then removes it', async () => {

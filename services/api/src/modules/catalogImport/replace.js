@@ -2,7 +2,9 @@
 // function and then removes exactly what it found (applyRemoval), inside the same transaction as the import: all of it or none of it.
 //   * "in the sheet" = every category and part a valid row of the sheet matches (an existing one) or creates (a new one). Anything else is old: made by hand, or by an earlier import.
 //   * a part is removed only when no product uses it; a category only when it has no parts left and no product uses it (a product refers to its category and part by NAME).
-//   * optionally ("alsoProducts") the products that use the old catalog are deleted first, but NEVER a product that other records point at (an order, a quote request, ...): that history keeps its products, and so do its part and category.
+//   * optionally ("alsoProducts") the products that use the old catalog are deleted first, by the rule of Products > Delete: NEVER a product a buyer is still waiting for (an order not finished: to pay, to ship, shipped,
+//     delivered but inside its return period, an open return or dispute), and then its part and category stay too; a product with history (finished orders, quote requests...) is MARKED deleted (its old orders still show it);
+//     one with no history is removed completely. A product already marked deleted no longer uses anything.
 //   * NOTHING is assumed about which tables point at products, categories and parts: they are looked up in the database itself (every foreign key), so a table added later is protected too. And as a last safety net each deletion is tried on its
 //     own: one the database refuses for any reason keeps its item, and the answer says what was REALLY removed.
 //   * what is NOT removed is reported with the reason, so the result is never a surprise.
@@ -41,13 +43,15 @@ async function planRemoval(q, keep, { alsoProducts = false } = {}) {
   const oldCatIds = new Set(oldCats.map((c) => c.id));
   const oldPartKeys = new Set(oldParts.map((p) => `${p.category_id}|${key(p.name_en)}`));
 
-  const products = (await q.query('SELECT pr.id, pr.name, pr.category, pr.part, EXISTS (SELECT 1 FROM order_line_items o WHERE o.product_id = pr.id) AS ordered FROM products pr ORDER BY pr.id')).rows;
+  const products = (await q.query('SELECT pr.id, pr.name, pr.category, pr.part, EXISTS (SELECT 1 FROM order_line_items o WHERE o.product_id = pr.id) AS ordered FROM products pr WHERE pr.deleted_at IS NULL ORDER BY pr.id')).rows;
   const using = products.filter((p) => oldCatIds.has(p.category) || oldPartKeys.has(`${p.category}|${key(p.part)}`));
   const pointedAt = await blockers(q, 'products', using.map((p) => p.id), { ignore: ['cart_items'] });          // orders, quote requests, anything else that points at a product (a shopper's cart lines are simply removed with it)
   const holdTables = (p) => { const t = new Set(pointedAt.get(p.id) || []); if (p.ordered) t.add('order_line_items'); return t; };
-  const isHeld = (p) => holdTables(p).size > 0;
-  const heldBy = (list) => { const t = new Set(); for (const p of list) for (const x of holdTables(p)) t.add(x); return t.size ? history(t) : null; };      // the words for "what keeps it" when some of its products are held by other records
-  const doomed = alsoProducts ? using.filter((p) => !isHeld(p)) : [];
+  const waiting = await require('../catalog/productDelete').waitingOrders(q, using.map((p) => p.id));      // (required here: productDelete.js itself uses this file)
+  const isHeld = (p) => (waiting.get(p.id) || []).length > 0;                                                // a buyer is still waiting for it: it stays
+  const waitText = (p) => { const w = waiting.get(p.id) || []; return `a buyer is still waiting for it: ${w.slice(0, 4).map((x) => `${x.orderId} (${x.stage})`).join(', ')}${w.length > 4 ? ` and ${w.length - 4} more` : ''}`; };
+  const heldBy = (list) => (list.some(isHeld) ? 'an order a buyer is still waiting for' : null);      // the words for "what keeps it" when some of its products have to stay
+  const doomed = alsoProducts ? using.filter((p) => !isHeld(p)).map((p) => ({ ...p, keepsHistory: holdTables(p).size > 0 })) : [];
   const doomedIds = new Set(doomed.map((p) => p.id));
   const staying = using.filter((p) => !doomedIds.has(p.id));
   const usersOfPart = new Map(); const usersOfCategory = new Map();
@@ -74,8 +78,8 @@ async function planRemoval(q, keep, { alsoProducts = false } = {}) {
   const plan = {
     alsoProducts: Boolean(alsoProducts),
     counts: { categories: removedCategories.length, parts: removedParts.length, products: doomed.length },
-    categories: removedCategories.map(({ photoUrl, ...c }) => c), parts: removedParts.map(({ photoUrl, ...p }) => p), products: doomed.map((p) => ({ id: p.id, name: p.name, category: p.category, part: p.part })),
-    kept: { categories: keptCategories, parts: keptParts, products: staying.filter(isHeld).map((p) => ({ id: p.id, name: p.name, category: p.category, part: p.part, reason: holdTables(p).size === 1 && holdTables(p).has('order_line_items') ? 'it has been in an order: order history keeps its products' : `it is used in ${tablesText(holdTables(p))}: that history keeps its products` })) },
+    categories: removedCategories.map(({ photoUrl, ...c }) => c), parts: removedParts.map(({ photoUrl, ...p }) => p), products: doomed.map((p) => ({ id: p.id, name: p.name, category: p.category, part: p.part, markedDeleted: p.keepsHistory })),
+    kept: { categories: keptCategories, parts: keptParts, products: staying.filter(isHeld).map((p) => ({ id: p.id, name: p.name, category: p.category, part: p.part, reason: waitText(p) })) },
   };
   // the pictures of what is removed, kept out of the answer sent to the screen (not enumerable)
   Object.defineProperty(plan, 'photos', { value: { categories: new Map(removedCategories.map((c) => [c.id, real(c.photoUrl)])), parts: new Map(removedParts.map((p) => [p.id, real(p.photoUrl)])) }, enumerable: false });
@@ -94,15 +98,19 @@ async function applyRemoval(client, plan) {
   const removed = { products: [], parts: [], categories: [] }; const refused = { products: [], parts: [], categories: [] }; const imageUrls = [];
   const imagesOf = async (ids) => (await client.query('SELECT product_id, url FROM product_images WHERE product_id = ANY($1)', [ids])).rows;
   const delProducts = (ids) => attempt(client, 'WITH carts AS (DELETE FROM cart_items WHERE product_id = ANY($1)) DELETE FROM products pr WHERE pr.id = ANY($1) AND NOT EXISTS (SELECT 1 FROM order_line_items o WHERE o.product_id = pr.id) RETURNING pr.id', [ids]);
-  const delParts = (ids) => attempt(client, 'DELETE FROM category_parts p WHERE p.id = ANY($1) AND NOT EXISTS (SELECT 1 FROM products pr WHERE pr.category = p.category_id AND lower(btrim(pr.part)) = lower(btrim(p.name_en))) RETURNING p.id', [ids]);
-  const delCats = (ids) => attempt(client, 'DELETE FROM product_categories c WHERE c.id = ANY($1) AND NOT EXISTS (SELECT 1 FROM category_parts p WHERE p.category_id = c.id) AND NOT EXISTS (SELECT 1 FROM products pr WHERE pr.category = c.id) RETURNING c.id', [ids]);
+  const delParts = (ids) => attempt(client, 'DELETE FROM category_parts p WHERE p.id = ANY($1) AND NOT EXISTS (SELECT 1 FROM products pr WHERE pr.category = p.category_id AND lower(btrim(pr.part)) = lower(btrim(p.name_en)) AND pr.deleted_at IS NULL) RETURNING p.id', [ids]);
+  const delCats = (ids) => attempt(client, 'DELETE FROM product_categories c WHERE c.id = ANY($1) AND NOT EXISTS (SELECT 1 FROM category_parts p WHERE p.category_id = c.id) AND NOT EXISTS (SELECT 1 FROM products pr WHERE pr.category = c.id AND pr.deleted_at IS NULL) RETURNING c.id', [ids]);
   const run = async (list, del, into, refusedInto) => {
     if (list.length === 0) return; let out = await del(list.map((x) => x.id));
     if (out === -1) { out = []; for (const x of list) { const one = await del([x.id]); if (one === -1) refusedInto.push(x); else out.push(...one); } }
     into.push(...out);
   };
   const productImages = plan.products.length ? await imagesOf(plan.products.map((p) => p.id)) : [];
-  await run(plan.products, delProducts, removed.products, refused.products);
+  // no history: removed completely; history (or something the check could not see points at it): MARKED deleted, its old orders still show it
+  const refusedHard = [];
+  await run(plan.products.filter((p) => !p.markedDeleted), delProducts, removed.products, refusedHard);
+  const toRetire = [...plan.products.filter((p) => p.markedDeleted), ...refusedHard];
+  if (toRetire.length) removed.products.push(...await require('../catalog/productDelete').retire(client, toRetire.map((p) => p.id)));
   const gone = new Set(removed.products); for (const i of productImages) if (gone.has(i.product_id)) imageUrls.push(i.url);
   await run(plan.parts, delParts, removed.parts, refused.parts);
   await run(plan.categories, delCats, removed.categories, refused.categories);

@@ -1,8 +1,9 @@
 import { resolveImageUrl } from "@/lib/api";
+import { CountUpText } from "./CountUp";
 
 /**
  * One of the four totals at the top of the home page (parts, brands, models, countries): a GOLD tile that is filled edge to edge, a big navy number and its label, and a huge faint icon that is part of the tile. When the admin chose a
- * picture for it, the picture fills the tile under a gold wash (strong on the text side, lighter on the other). 92 px high.
+ * picture for it, the picture fills the tile under a gold wash (strong on the text side, lighter on the other). 92 px high. The number counts up from 0 when the page opens.
  */
 export default function StatTile({ n, label, paths, picture }: { n: string; label: string; paths: string[]; picture?: string | null }) {
   return (
@@ -18,7 +19,7 @@ export default function StatTile({ n, label, paths, picture }: { n: string; labe
           {paths.map((d) => <path key={d} d={d} />)}
         </svg>
       )}
-      <span className="relative min-w-0"><b className="block text-[30px] font-extrabold leading-none text-navy sm:text-[34px]">{n}</b><span className="mt-1 block text-[14px] font-medium text-[#3d3318] sm:text-[15px]">{label}</span></span>
+      <span className="relative min-w-0"><b className="block text-[30px] font-extrabold leading-none text-navy tabular-nums sm:text-[34px]"><CountUpText text={n} /></b><span className="mt-1 block text-[14px] font-medium text-[#3d3318] sm:text-[15px]">{label}</span></span>
     </li>
   );
 }

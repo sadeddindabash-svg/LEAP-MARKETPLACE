@@ -1,0 +1,42 @@
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+
+// The account menu stays on every page it lists (and the pages inside them), at the far start side; the pages keep their own layout beside it.
+const m = vi.hoisted(() => ({ user: { current: { id: "u1", email: "sam@example.com" } as Record<string, unknown> | null }, path: { current: "/orders" } }));
+vi.mock("./AuthProvider", () => ({ useAuth: () => ({ user: m.user.current }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), useSearchParams: () => new URLSearchParams(), usePathname: () => m.path.current }));
+
+import AccountShell, { inAccountMenu } from "./AccountShell";
+import { LangProvider } from "./LangProvider";
+
+const show = (lang: "en" | "ar" = "en") => render(<LangProvider lang={lang}><AccountShell><p>the page</p></AccountShell></LangProvider>);
+beforeEach(() => { m.user.current = { id: "u1", email: "sam@example.com" }; m.path.current = "/orders"; });
+
+describe("the account menu stays on the pages it lists", () => {
+  it("every page in the menu (and the pages inside them) keeps the menu; the other pages of the site do not get it", () => {
+    for (const p of ["/account", "/account/loyalty", "/orders", "/orders/abc", "/orders/abc/tracking", "/returns", "/returns/r1", "/addresses", "/garage", "/wishlist", "/saved-searches", "/referrals", "/account/change-email", "/account/two-factor", "/contact"]) expect(inAccountMenu(p), p).toBe(true);
+    for (const p of ["/", "/products/1", "/search", "/cart", "/checkout", "/accounting", "/ordersx", "/login"]) expect(inAccountMenu(p), p).toBe(false);
+  });
+  it("on Orders & returns the menu is there with that page marked, and the page itself is shown as it is (no frame added)", () => {
+    const v = show();
+    expect(screen.getByRole("navigation")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Orders & returns" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getAllByRole("link")).toHaveLength(12);
+    expect(screen.getByText("the page").parentElement!.className).toContain("flex-1");
+    v.unmount();
+  });
+  it("the menu sits at the start side: first in the row (the far left in English, the far right in Arabic), and stays in view while the page scrolls", () => {
+    m.path.current = "/ar/garage"; show("ar");
+    const nav = screen.getByRole("navigation"); expect(nav.parentElement!.firstElementChild).toBe(nav);
+    for (const c of ["lg:sticky", "lg:ps-4", "lg:shrink-0"]) expect(nav.className.split(" "), c).toContain(c);
+    expect(screen.getByRole("link", { name: "مركبتي" }).getAttribute("aria-current")).toBe("page");
+  });
+  it("the pages under /account keep the frame they had beside the menu", () => {
+    m.path.current = "/account/two-factor"; show();
+    expect(screen.getByText("the page").parentElement!.className).toContain("max-w-4xl");
+  });
+  it("no menu on a page that is not in it, and none without a sign-in", () => {
+    m.path.current = "/products/1"; const v = show(); expect(screen.queryByRole("navigation")).not.toBeInTheDocument(); expect(screen.getByText("the page")).toBeInTheDocument(); v.unmount();
+    m.path.current = "/orders"; m.user.current = null; show(); expect(screen.queryByRole("navigation")).not.toBeInTheDocument(); expect(screen.getByText("the page")).toBeInTheDocument();
+  });
+});

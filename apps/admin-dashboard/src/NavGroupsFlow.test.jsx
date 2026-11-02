@@ -51,18 +51,18 @@ afterEach(() => { vi.restoreAllMocks(); });
 describe('Admin sidebar groups and sub-tabs (real app, mocked server)', () => {
   it('CRITICAL: the sidebar shows Suppliers, Products, Support and Financial as ONE entry each, in the old places, and none of the old separate entries', async () => {
     mockServer(); await signIn();
-    expect(sidebarNames()).toEqual(['Overview', 'Orders', 'Suppliers', 'Products', 'Returns', 'Vehicle Data', 'Delivery Rules', 'Categories', 'Support', 'Hubs', 'Financial', 'Flagged Shipments', 'Settings']);
+    expect(sidebarNames()).toEqual(['Overview', 'Orders', 'Products', 'Vehicle Data', 'Categories', 'Suppliers', 'Hubs', 'Delivery Rules', 'Returns', 'Flagged Shipments', 'Support', 'Financial', 'Settings']);
     for (const gone of ['Supplier Messages', 'Moderation', 'All Products', 'Promo Codes', 'Pricing', 'Payment Methods', 'Payment Providers', 'Payouts', 'Reviews']) {
       expect(screen.queryByRole('button', { name: new RegExp(`^${gone}$`, 'i') }), gone).not.toBeInTheDocument();
     }
-    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();         // Overview has no sub-tabs
+    expect(tabNames('Overview')).toEqual(['Overview']);                    // a page outside any group has one tab: its own name
   });
 
   it('CRITICAL: each group opens on its first tab, lists its tabs in the agreed order, and every tab opens its OWN page', async () => {
     mockServer(); await signIn();
     const groups = [
       ['Suppliers', ['Suppliers', 'Supplier Messages'], ['/supplier', '/supplier-messages/admin']],
-      ['Products', ['Moderation', 'All Products'], ['/catalog/moderation-queue', '/catalog/admin/products']],
+      ['Products', ['All products', 'Moderation', 'Live products', 'Hidden products', 'Product requirements'], ['/catalog/admin/products?', '/catalog/moderation-queue', '/catalog/admin/products?', 'status=hidden', '/catalog/product-requirements']],
       ['Support', ['Tickets', 'Reviews', 'Promo Codes'], ['/support/tickets', '/reviews/pending', '/promo-codes']],
       ['Financial', ['Payment Methods', 'Payment Providers', 'Payouts', 'Pricing'], ['/payment-methods', '/payment-providers', '/payouts/owed', '/pricing/fee-components']],
     ];
@@ -79,19 +79,19 @@ describe('Admin sidebar groups and sub-tabs (real app, mocked server)', () => {
     }
   }, 60000);
 
-  it('clicking a group again returns to the tab you were last on; a page with no group has no tab bar', async () => {
+  it('clicking a group again returns to the tab you were last on; a page with no group has one tab (or its own tabs)', async () => {
     mockServer(); await signIn();
     fireEvent.click(sidebarButton('Financial'));
     fireEvent.click(await screen.findByRole('tab', { name: /^pricing$/i }));
     fireEvent.click(sidebarButton('Orders'));
-    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(tabNames('Orders')).toEqual(['Orders']);
     fireEvent.click(sidebarButton('Financial'));
     expect(selectedTab('Financial')).toEqual(['Pricing']);                  // not the first tab: the one you were on
     fireEvent.click(sidebarButton('Hubs'));
-    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(tabNames('Hubs')).toEqual(['Hub workload & capacity', 'Hub performance — average time per stage', 'Add hub', 'Add hub staff']);   // the page's own tabs
   }, 30000);
 
-  it('CRITICAL: an admin who may open only some pages sees only those tabs; a group with ONE allowed page opens straight on it with no tab bar; a group with none is hidden', async () => {
+  it('CRITICAL: an admin who may open only some pages sees only those tabs; a group with ONE allowed page opens straight on it with that one tab; a group with none is hidden', async () => {
     const limited = { ...OWNER, isOwner: false, allowedPages: ['paymentMethods', 'pricing', 'reviews', 'orders'] };
     mockServer({ user: limited }); await signIn();
     expect(sidebarNames()).toEqual(['Orders', 'Support', 'Financial']);          // no Suppliers, Products, ...: nothing in them is allowed
@@ -99,14 +99,14 @@ describe('Admin sidebar groups and sub-tabs (real app, mocked server)', () => {
     expect(tabNames('Financial')).toEqual(['Payment Methods', 'Pricing']);       // Payment Providers and Payouts are not allowed: no tab for them
     fireEvent.click(sidebarButton('Support'));
     await waitFor(() => expect(calls.some((c) => c.includes('/reviews/pending'))).toBe(true));   // Reviews is the only allowed page of Support: it opens directly
-    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();              // ...and there is nothing to switch between
+    expect(tabNames('Support')).toEqual(['Reviews']);                          // ...its one tab
   }, 30000);
 
-  it('an admin whose only page is inside a group lands on it, with the group highlighted in the sidebar and no tab bar', async () => {
+  it('an admin whose only page is inside a group lands on it, with the group highlighted in the sidebar and that one tab', async () => {
     mockServer({ user: { ...OWNER, isOwner: false, allowedPages: ['payouts'] } }); await signIn();
     expect(sidebarNames('financial')).toEqual(['Financial']);
     await waitFor(() => expect(calls.some((c) => c.includes('/payouts/owed'))).toBe(true));
-    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(tabNames('Financial')).toEqual(['Payouts']);
   }, 30000);
 
   it('CRITICAL: the notification bell still deep-links into a tab: "Products pending moderation" opens Products on its Moderation tab', async () => {

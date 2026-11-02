@@ -16,7 +16,7 @@ function validateRows(rows, { minPx = MIN_CATALOG_DIMENSION_PX } = {}) {
     const messages = [];
     const err = (text) => messages.push({ level: 'error', text });
     const warn = (text) => messages.push({ level: 'warning', text });
-    const data = { brand: {}, model: {}, version: {}, engine: {}, year: null, seats: null, picture: null };
+    const data = { brand: {}, model: {}, version: {}, engine: {}, year: null, seats: null, picture: null, logo: null };
 
     for (const f of TEXT_FIELDS) {
       for (const [lang, langName] of LANGS) {
@@ -57,6 +57,14 @@ function validateRows(rows, { minPx = MIN_CATALOG_DIMENSION_PX } = {}) {
       else data.picture = { buffer: row.picture.buffer, mime: checked.mime, width: checked.width, height: checked.height };
     } else {
       warn('No picture: the version will be saved marked "No photo yet" (add the photo later by hand)');
+    }
+    // the brand's logo (optional on any row of the brand)
+    if (row.logoCount > 1) err(`There are ${row.logoCount} brand logos on this row: use one`);
+    else if (row.logo) {
+      const mime = mimeOf(row.logo.ext);
+      const checked = mime ? inspectImage(row.logo.buffer, minPx) : { ok: false, error: `A ${row.logo.ext} picture is not supported (use PNG, JPEG or WebP)` };
+      if (!checked.ok) err(`Brand logo: ${checked.error}`);
+      else data.logo = { buffer: row.logo.buffer, mime: checked.mime, width: checked.width, height: checked.height };
     }
     return { rowNumber: row.rowNumber, ok: !messages.some((m) => m.level === 'error'), data, messages };
   });

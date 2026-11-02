@@ -31,6 +31,8 @@ async function loginAndGoToSettings() {
   fireEvent.click(screen.getByRole('button', { name: /log in/i }));
   await waitFor(() => expect(screen.getByRole('button', { name: /log out/i })).toBeInTheDocument());
   fireEvent.click(screen.getByRole('button', { name: /settings/i }));
+  fireEvent.click(await screen.findByRole('button', { name: /^More/ }));            // every Settings container is its own tab; "Email test" is under More
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Email test' }));
 }
 
 beforeEach(() => { localStorage.clear(); });
