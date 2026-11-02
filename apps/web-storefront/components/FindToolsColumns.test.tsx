@@ -54,24 +54,24 @@ afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 
 const listAfter = (heading: string | RegExp) => screen.getByRole("heading", { name: heading }).parentElement!.querySelector("ul") as HTMLUListElement;
-const FOUR = ["grid-cols-1", "sm:grid-cols-2", "md:grid-cols-3", "lg:grid-cols-4"];
+const FIVE = ["grid-cols-1", "sm:grid-cols-2", "md:grid-cols-3", "lg:grid-cols-5"];
 
-describe("find the right part: four columns", () => {
-  it("the sections are in four columns on a wide screen (three, two or one on smaller ones), each with a photo tile beside its name", async () => {
+describe("find the right part: five columns", () => {
+  it("the sections are in five columns on a wide screen (three, two or one on smaller ones), each with a photo tile beside its name", async () => {
     signedIn(true, myCar); tool();
     fireEvent.click(screen.getByRole("button", { name: "Use my car: BYD Seal DM-i · 2024" }));
     const list = listAfter("Which section?");
-    for (const c of FOUR) expect(list.className.split(" ")).toContain(c);
+    for (const c of FIVE) expect(list.className.split(" ")).toContain(c);
     const rows = list.querySelectorAll("li > button"); expect(rows).toHaveLength(2);
     for (const row of rows) expect(row.querySelector("svg")).not.toBeNull();            // the placeholder tile: these sections have no photo yet
   });
-  it("the parts are in four columns too, each with a photo tile beside its name", async () => {
+  it("the parts are in five columns too, each with a photo tile beside its name", async () => {
     signedIn(true, myCar); tool();
     fireEvent.click(screen.getByRole("button", { name: "Use my car: BYD Seal DM-i · 2024" }));
     fireEvent.click(screen.getByRole("button", { name: "Brake System" }));
     await screen.findByRole("heading", { name: 'Which specific part in "Brake System"?' });
     const list = listAfter('Which specific part in "Brake System"?');
-    for (const c of FOUR) expect(list.className.split(" ")).toContain(c);
+    for (const c of FIVE) expect(list.className.split(" ")).toContain(c);
     expect(list.querySelectorAll("li > button")).toHaveLength(2);
   });
 });

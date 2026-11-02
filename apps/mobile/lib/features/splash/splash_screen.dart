@@ -9,8 +9,8 @@ import '../../widgets/leap_logo_animation.dart';
 /// unbroken line), "AUTO PARTS" glides up as the "P" is finished, then the (R) (widgets/leap_logo_animation.dart, the same as the website's
 /// animated logo). A short moment to see the finished logo, then Home: about 4 seconds in all.
 ///
-/// It comes after the native splash (flutter_native_splash, in pubspec.yaml), which can only show a still picture: native splash (at once) ->
-/// this screen -> /home. Its background is the native splash's colour, so there is no flash between the two.
+/// It is the app's only opening screen (there is no still start-up picture any more): the app opens -> this screen -> /home. The whole screen is the
+/// logo's gold (in light and dark mode alike), so the logo's circle is the screen itself and the navy letters are drawn on it.
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -33,11 +33,11 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF2CA50),
+      backgroundColor: LeapLogoAnimation.gold,
       body: Center(
         child: LayoutBuilder(
           builder: (context, constraints) => LeapLogoAnimation(
-            size: math.min(constraints.maxWidth * 0.86, 380),
+            size: math.min(constraints.maxWidth * 0.8, 360),
             showCircle: false,
             onFinished: _finished,
           ),

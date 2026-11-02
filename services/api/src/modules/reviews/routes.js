@@ -60,6 +60,7 @@ function toReviewDto(row) {
     updatedAt: row.updated_at,
     photos: row.photos || [],
     isVerifiedPurchase: row.is_verified_purchase,
+    edited: (row.edit_count || 0) > 0,
   };
 }
 
@@ -110,10 +111,16 @@ router.post('/', requireAuth, async (req, res, next) => {
       `INSERT INTO product_reviews (product_id, buyer_id, rating, comment, status, is_verified_purchase, updated_at)
        VALUES ($1, $2, $3, $4, 'pending', $5, now())
        ON CONFLICT (product_id, buyer_id)
-       DO UPDATE SET rating = $3, comment = $4, status = 'pending', is_verified_purchase = $5, updated_at = now()
+       DO UPDATE SET rating = $3, comment = $4, status = 'pending', is_verified_purchase = $5, updated_at = now(), edit_count = product_reviews.edit_count + 1
+       WHERE product_reviews.edit_count < 1
        RETURNING *`,
       [productId, req.user.sub, rating, comment || null, isVerifiedPurchase]
     );
+    // A review can be edited ONCE (migration 121): the row exists and was already edited, so the update above changed nothing.
+    if (rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'This review has already been edited once.', code: 'review_edit_used' });
+    }
     const reviewId = rows[0].id;
 
     // Real photos (migration 031) -- a real edit fully REPLACES the

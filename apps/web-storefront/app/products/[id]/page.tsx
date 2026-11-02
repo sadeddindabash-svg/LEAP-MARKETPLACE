@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { AddToCartButton } from "@/components/AddToCartButton";
-import CustomerPhotos from "@/components/CustomerPhotos";
 import LazyProductRow from "@/components/LazyProductRow";
 import NotifyWhenInStock from "@/components/NotifyWhenInStock";
 import OemComparison from "@/components/OemComparison";
@@ -122,7 +121,6 @@ export default async function ProductPage({ params }: PageProps) {
       {/* The sections under a part, in the mobile app's order. Each one is drawn only when it has something to show. */}
       <OemComparison products={oemMatches} lang={lang} />
       <ReviewsSection productId={product.id} summary={reviews} />
-      <CustomerPhotos reviews={reviews.reviews} lang={lang} />
       {(product.model || (product.fitCarCount ?? 0) > 0) && (
         <LazyProductRow id="model-h" title={t(lang, "more_model_parts", { name: [product.brand, product.model].filter(Boolean).join(" ") })} source={{ kind: "sameModel", productId: product.id }} pageSize={8} maxExtraPages={2} />
       )}

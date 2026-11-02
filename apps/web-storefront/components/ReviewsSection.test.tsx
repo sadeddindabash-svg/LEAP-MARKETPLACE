@@ -180,6 +180,68 @@ describe("editing and the state of my review", () => {
   });
 });
 
+describe("my own review in the list", () => {
+  const listed = () => summary(2, { reviews: [review(1), review(99, { buyerName: "Sara Amin", comment: "Mine" })] });
+
+  it("CRITICAL: my review is marked 'Your review', has a small Edit button and no Report; the others keep Report", async () => {
+    signIn();
+    m.fetchMyReviews.mockResolvedValue([mine({ status: "approved", comment: "Mine" })]);
+    show(listed());
+    const card = (await screen.findByText("Your review")).closest("li") as HTMLElement;
+    expect(card).toHaveAttribute("data-mine", "true");
+    expect(within(card).getByText("Mine")).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Edit your review" })).toHaveTextContent("Edit");
+    expect(within(card).queryByRole("button", { name: "Report" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Report" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Edit your review" })).toHaveLength(1);   // not also in the box below
+  });
+
+  it("CRITICAL: Edit opens the form with my review filled in", async () => {
+    signIn();
+    m.fetchMyReviews.mockResolvedValue([mine({ status: "approved", rating: 3, comment: "Mine" })]);
+    show(listed());
+    fireEvent.click(await screen.findByRole("button", { name: "Edit your review" }));
+    expect(screen.getByRole("heading", { name: "Edit your review" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Add a comment (optional)")).toHaveValue("Mine");
+    expect(screen.getByRole("radio", { name: "Rate 3 out of 5" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("CRITICAL: a review edited once already can't be edited again: no Edit button anywhere", async () => {
+    signIn();
+    m.fetchMyReviews.mockResolvedValue([mine({ status: "approved", edited: true })]);
+    show(listed());
+    expect(await screen.findByText("Your review")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit your review" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Write a review" })).not.toBeInTheDocument();
+  });
+
+  it("an edited review that is not in the list (awaiting review, or not approved) has no Edit button either", async () => {
+    signIn();
+    m.fetchMyReviews.mockResolvedValue([mine({ status: "rejected", edited: true })]);
+    show(summary(1));
+    expect(await screen.findByText("Your review was not approved.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit your review" })).not.toBeInTheDocument();
+  });
+
+  it("the server refusing a second edit is explained in the buyer's language", async () => {
+    signIn();
+    m.fetchMyReviews.mockResolvedValue([mine({ status: "approved" })]);
+    show(listed());
+    fireEvent.click(await screen.findByRole("button", { name: "Edit your review" }));
+    m.submitReview.mockRejectedValueOnce(new ApiError("This review has already been edited once.", "review_edit_used", 409));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Submit" })); });
+    expect(await screen.findByRole("alert")).toHaveTextContent("You have already edited this review once.");
+  });
+
+  it("in Arabic the tag and the button are «تقييمك» and «تعديل»", async () => {
+    signIn();
+    m.fetchMyReviews.mockResolvedValue([mine({ status: "approved" })]);
+    show(listed(), "ar");
+    expect(await screen.findByText("تقييمك")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "تعديل تقييمك" })).toHaveTextContent("تعديل");
+  });
+});
+
 describe("reporting a review", () => {
   it("CRITICAL: a reason is required, then the report goes to the moderators and is confirmed; a failure is a plain message", async () => {
     signIn();

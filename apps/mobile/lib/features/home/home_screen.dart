@@ -19,6 +19,7 @@ import '../../widgets/onboarding_overlay.dart';
 import '../../widgets/brand_logo_marquee.dart';
 import '../../widgets/home_search_bar.dart';
 import '../../widgets/home_banner.dart';
+import '../../widgets/leap_logo_animation.dart';
 
 /// Real, admin-managed icon per known category id — a NEW category an
 /// admin adds via the admin dashboard's Categories page (see
@@ -186,7 +187,8 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Row(
               children: [
-                Image.asset('assets/images/leap_logo.png', height: 32, width: 32),
+                // the logo, drawn like an engraving when Home opens (the same as the opening screen, the portals and the website)
+                const LeapLogoAnimation(size: 32),
                 const SizedBox(width: 8),
                 Text(
                   isAr ? 'ليب لقطع السيارات' : 'LEAP Auto Parts',

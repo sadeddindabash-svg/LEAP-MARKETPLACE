@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import SafeImage from "@/components/SafeImage";
 import Link from "@/components/LocLink";
 import { ApiError, fetchMyReviews, flagReview, resolveImageUrl, submitReview, uploadReviewPhoto, type MyReview, type ReviewsSummary } from "@/lib/api";
-import { MAX_REVIEW_PHOTOS, REVIEW_BATCH, canAddPhoto, maskReviewerName, myReviewOf, reviewErrorKey, reviewState, wholeStars } from "@/lib/review";
+import { MAX_REVIEW_PHOTOS, REVIEW_BATCH, canAddPhoto, canEditReview, maskReviewerName, myReviewOf, reviewErrorKey, reviewState, wholeStars } from "@/lib/review";
 import { getAuthToken, useAuth } from "./AuthProvider";
 import { useT } from "./LangProvider";
 
@@ -23,7 +23,7 @@ function Stars({ value, size = 16 }: { value: number; size?: number }) {
 
 /**
  * The reviews of a part, with the rules of the mobile app and the server: shown three at a time; a signed-in buyer who received the part can write ONE review (writing again edits
- * it, and it goes back to a moderator), with a star rating, an optional comment and up to three photos; anyone signed in can report a review. The list arrives from the server
+ * it ONCE, and it goes back to a moderator), with a star rating, an optional comment and up to three photos; anyone signed in can report a review. The list arrives from the server
  * (so it is in the page's HTML); only the buyer's own review is fetched here.
  */
 export default function ReviewsSection({ productId, summary }: { productId: string; summary: ReviewsSummary }) {
@@ -55,8 +55,13 @@ export default function ReviewsSection({ productId, summary }: { productId: stri
 
   const mine = userId && loaded?.userId === userId ? loaded.review : null;
   const state = reviewState(mine);
+  const canEdit = canEditReview(mine);
+  // The buyer's own review, when it is in the list: it is marked "Your review" and carries the Edit button (shown only while it was never edited).
+  const mineListed = !!mine && summary.reviews.some((r) => r.id === mine.id);
+  const formBox = useRef<HTMLDivElement>(null);
 
   const openForm = () => { setRating(mine?.rating ?? 0); setComment(mine?.comment ?? ""); setPhotos(mine?.photos ?? []); setError(null); setThanks(false); setFormOpen(true); };
+  const editFromList = () => { openForm(); requestAnimationFrame(() => formBox.current?.scrollIntoView?.({ behavior: "smooth", block: "center" })); };
 
   const addPhoto = async (file: File | undefined) => {
     const token = getAuthToken();
@@ -102,12 +107,22 @@ export default function ReviewsSection({ productId, summary }: { productId: stri
         <p className="text-muted">{t("no_reviews_yet")}</p>
       ) : (
         <ul className="grid gap-5 md:grid-cols-2">
-          {shown.map((r) => (
-            <li key={r.id} className="rounded-xl border border-line bg-white p-5">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <Stars value={r.rating} size={15} />
-                <span className="text-sm font-semibold">{maskReviewerName(r.buyerName) || t("buyer")}</span>
-                {r.isVerifiedPurchase && <span className="text-xs font-bold text-[#0f6b49]">{t("verified_purchase")}</span>}
+          {shown.map((r) => {
+            const isMine = !!mine && r.id === mine.id;
+            return (
+            <li key={r.id} data-mine={isMine || undefined} className={`rounded-xl border bg-white p-5 ${isMine ? "border-[1.5px] border-[#f2c14a]" : "border-line"}`}>
+              <div className="flex items-start gap-3">
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+                  <Stars value={r.rating} size={15} />
+                  <span className="text-sm font-semibold">{maskReviewerName(r.buyerName) || t("buyer")}</span>
+                  {r.isVerifiedPurchase && <span className="text-xs font-bold text-[#0f6b49]">{t("verified_purchase")}</span>}
+                  {isMine && <span className="rounded-full bg-[#fff4d6] px-2 py-0.5 text-xs font-bold text-[#8a5a12]">{t("your_review_tag")}</span>}
+                </div>
+                {isMine && canEdit && !formOpen && (
+                  <button type="button" aria-label={t("edit_review")} onClick={editFromList} className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-full border border-[#c5d0d8] px-3 text-xs font-bold text-navy hover:bg-chalk">
+                    <span aria-hidden="true">✎</span>{t("edit_short")}
+                  </button>
+                )}
               </div>
               {r.comment && <p className="mt-2 text-[15px] leading-relaxed">{r.comment}</p>}
               {r.photos.length > 0 && (
@@ -117,7 +132,7 @@ export default function ReviewsSection({ productId, summary }: { productId: stri
                   ))}
                 </ul>
               )}
-              {userId && (
+              {userId && !isMine && (
                 <div className="mt-3">
                   {reporting === r.id ? (
                     <form onSubmit={(e) => { e.preventDefault(); sendReport(r.id); }} className="grid gap-2">
@@ -134,7 +149,8 @@ export default function ReviewsSection({ productId, summary }: { productId: stri
                 </div>
               )}
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
       <p role="status" className="mt-3 text-sm font-semibold text-navy">{reportNote}</p>
@@ -142,7 +158,9 @@ export default function ReviewsSection({ productId, summary }: { productId: stri
         <div className="mt-5"><button type="button" className={button} onClick={() => setVisible((v) => v + REVIEW_BATCH)}>{t("show_more_reviews", { n: Math.min(REVIEW_BATCH, summary.reviews.length - visible) })}</button></div>
       )}
 
-      <div className="mt-10 rounded-[14px] border border-line bg-white p-6">
+      {/* The box below the list: sign in, the form, write a review, or where my review stands. It is left out when it would be empty (my review is approved and in the list). */}
+      {(!userId || formOpen || !mine || state !== "approved" || (canEdit && !mineListed) || !!error) && (
+      <div ref={formBox} className="mt-10 rounded-[14px] border border-line bg-white p-6">
         {!userId ? (
           <Link href="/login" className="font-bold text-navy underline underline-offset-4">{t("login_to_review")}</Link>
         ) : formOpen ? (
@@ -187,11 +205,17 @@ export default function ReviewsSection({ productId, summary }: { productId: stri
             {state === "pending" && <p className="font-semibold text-navy">{t("review_pending")}</p>}
             {state === "rejected" && <p className="font-semibold text-[#a12a21]">{t("review_rejected")}</p>}
             {thanks && state === "none" && <p role="status" className="font-semibold text-[#0f6b49]">{t("review_thanks")}</p>}
-            <button type="button" className={button} onClick={openForm}>{mine ? t("edit_review") : t("write_review")}</button>
+            {/* No review yet: write one. A review not in the list (awaiting review, or not approved) is edited from here, once; one in the list, from its own card. */}
+            {!mine ? (
+              <button type="button" className={button} onClick={openForm}>{t("write_review")}</button>
+            ) : canEdit && !mineListed ? (
+              <button type="button" className={button} onClick={openForm}>{t("edit_review")}</button>
+            ) : null}
             {error && <p role="alert" className="w-full text-sm font-semibold text-[#a12a21]">{error}</p>}
           </div>
         )}
       </div>
+      )}
     </section>
   );
 }

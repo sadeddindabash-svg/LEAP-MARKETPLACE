@@ -1241,6 +1241,8 @@ export interface MyReview {
   isVerifiedPurchase: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Edited once already: a review can be edited only once, so the Edit button is gone. */
+  edited?: boolean;
 }
 export async function fetchMyReviews(token: string): Promise<MyReview[]> {
   const res = await netFetch(`${API_BASE_URL}/reviews/me`, { headers: { Authorization: `Bearer ${token}` } });

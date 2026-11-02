@@ -1,0 +1,46 @@
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../widgets/leap_logo_animation.dart';
+
+/// The animated opening screen: the Leap Auto Parts logo is drawn like an engraving (one steady pen draws "L", then "E", "A" and "P" as one
+/// unbroken line), "AUTO PARTS" glides up as the "P" is finished, then the (R) (widgets/leap_logo_animation.dart, the same as the website's
+/// animated logo). A short moment to see the finished logo, then Home: about 4 seconds in all.
+///
+/// It is the app's only opening screen (there is no still start-up picture any more): the app opens -> this screen -> /home. It uses the app's own
+/// background (light or dark) with the round gold logo.
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  static const _holdFinished = Duration(milliseconds: 600);      // the finished logo stays this long before Home
+  bool _leaving = false;
+
+  void _finished() {
+    Future.delayed(_holdFinished, () {
+      if (!mounted || _leaving) return;
+      _leaving = true;
+      context.go('/home');
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: LayoutBuilder(
+          builder: (context, constraints) => LeapLogoAnimation(
+            size: math.min(constraints.maxWidth * 0.7, 320),
+            onFinished: _finished,
+          ),
+        ),
+      ),
+    );
+  }
+}

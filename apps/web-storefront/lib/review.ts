@@ -13,10 +13,13 @@ export function myReviewOf(productId: string, mine: MyReview[]): MyReview | null
   return mine.find((r) => r.productId === productId) ?? null;
 }
 export const reviewState = (review: MyReview | null): ReviewState => (review ? review.status : "none");
+/** A review can be edited once: true while it never was. */
+export const canEditReview = (review: MyReview | null): boolean => !!review && !review.edited;
 
 /** The text for a review the server refused: its code first (so it is in the buyer's language), then a generic message. Never the server's English sentence. */
 export function reviewErrorKey(code: string | undefined): DictKey {
   if (code === "review_requires_purchase") return "review_requires_purchase";
+  if (code === "review_edit_used") return "review_edit_used";
   return "generic_error";
 }
 

@@ -18,6 +18,9 @@ class LeapLogoAnimation extends StatefulWidget {
   /// Called once the logo is complete.
   final VoidCallback? onFinished;
 
+  /// The logo's gold (an opening screen in this colour makes the logo's circle the whole screen).
+  static const gold = Color(0xFFF9B317);
+
   @override
   State<LeapLogoAnimation> createState() => _LeapLogoAnimationState();
 }

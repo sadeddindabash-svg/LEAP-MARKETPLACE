@@ -18,9 +18,11 @@ const TAB_HEIGHT = 40;
 // ---- The company logo: one image file, /brand/leap-logo.png in the portal's public folder (the same file in every portal and the apps).
 // Until that file is there (or if it cannot load), a simple "L" mark in the portal's color stands in, so nothing ever shows a broken image.
 export const LOGO_URL = "/brand/leap-logo.png";
+// The logo drawn like an engraving when the portal opens (the same as the sign-in page, the website and the apps); the still logo if it is missing.
+const LOGO_ANIMATED_URL = "/brand/leap-logo-animated.svg";
 export function BrandLogo({ size = 36, tint = C.signal, label = "" }) {
-  const [failed, setFailed] = useState(false);
-  if (failed) {
+  const [tried, setTried] = useState(0);      // 0: the animated logo, 1: the still logo, 2: neither could be loaded (the stand-in mark)
+  if (tried >= 2) {
     return (
       <svg width={size} height={size} viewBox="0 0 40 40" role={label ? "img" : undefined} aria-label={label || undefined} aria-hidden={label ? undefined : true} style={{ flexShrink: 0, display: "block" }}>
         <rect width="40" height="40" rx="11" fill={C.ink} />
@@ -29,7 +31,7 @@ export function BrandLogo({ size = 36, tint = C.signal, label = "" }) {
       </svg>
     );
   }
-  return <img src={LOGO_URL} alt={label} width={size} height={size} onError={() => setFailed(true)} style={{ width: size, height: size, objectFit: "contain", borderRadius: "50%", flexShrink: 0, display: "block", boxShadow: "0 0 0 2px rgba(255, 255, 255, 0.85)" }} />;      // a thin white ring: the round gold logo stays clear on the gold menu
+  return <img src={tried === 0 ? LOGO_ANIMATED_URL : LOGO_URL} alt={label} width={size} height={size} onError={() => setTried((n) => n + 1)} style={{ width: size, height: size, objectFit: "contain", borderRadius: "50%", flexShrink: 0, display: "block", boxShadow: "0 0 0 2px rgba(255, 255, 255, 0.85)" }} />;      // a thin white ring: the round gold logo stays clear on the gold menu
 }
 
 // ---- Motion: when a tab is clicked, its highlight SLIDES from the tab before to the new one (the side menu and the tabs in the pages), and

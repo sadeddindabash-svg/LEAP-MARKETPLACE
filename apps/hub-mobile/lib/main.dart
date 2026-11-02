@@ -32,8 +32,9 @@ class LeapHubApp extends StatelessWidget {
   }
 }
 
-/// The opening screen: the Leap Auto Parts logo is drawn like an engraving (widgets/leap_logo_animation.dart, the same as the buyer app's and the
-/// websites'), then a short moment to see it finished, then the app (sign-in or the queue). The session is restored meanwhile, underneath.
+/// The opening screen: the whole screen in the logo's gold, the Leap Auto Parts logo drawn like an engraving on it (widgets/leap_logo_animation.dart,
+/// the same as the buyer app's and the websites'), then "质检中心 · INSPECTION HUB" under it, a short moment to see it finished, then the app (sign-in
+/// or the queue). The session is restored meanwhile, underneath.
 class _OpeningScreen extends StatefulWidget {
   const _OpeningScreen({required this.child});
   final Widget child;
@@ -44,6 +45,16 @@ class _OpeningScreen extends StatefulWidget {
 
 class _OpeningScreenState extends State<_OpeningScreen> {
   bool _done = false;
+  bool _nameShown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // the hub's name fades in as the logo is being finished
+    Future.delayed(const Duration(milliseconds: 2900), () {
+      if (mounted) setState(() => _nameShown = true);
+    });
+  }
 
   void _finished() {
     Future.delayed(const Duration(milliseconds: 600), () {
@@ -54,10 +65,30 @@ class _OpeningScreenState extends State<_OpeningScreen> {
   @override
   Widget build(BuildContext context) {
     if (_done) return widget.child;
+    final instant = MediaQuery.of(context).disableAnimations;
     return Scaffold(
+      backgroundColor: LeapLogoAnimation.gold,
       body: Center(
         child: LayoutBuilder(
-          builder: (context, constraints) => LeapLogoAnimation(size: (constraints.maxWidth * 0.7).clamp(160.0, 340.0), onFinished: _finished),
+          builder: (context, constraints) {
+            final size = (constraints.maxWidth * 0.8).clamp(180.0, 360.0);
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                LeapLogoAnimation(size: size, showCircle: false, onFinished: _finished),
+                // just under "AUTO PARTS" (the logo's frame has room below it)
+                Transform.translate(
+                  offset: Offset(0, -size * 0.2),
+                  child: AnimatedOpacity(
+                    opacity: _nameShown || instant ? 1 : 0,
+                    duration: instant ? Duration.zero : const Duration(milliseconds: 600),
+                    curve: Curves.easeOut,
+                    child: const Text('质检中心 · INSPECTION HUB', style: TextStyle(color: Color(0xCC0A3144), fontSize: 14, fontWeight: FontWeight.w700, letterSpacing: 0.6)),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );

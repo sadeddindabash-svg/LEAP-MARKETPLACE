@@ -25,7 +25,6 @@ vi.mock("@/lib/api", () => ({
 
 import OemComparison from "@/components/OemComparison";
 import ReviewsSection from "@/components/ReviewsSection";
-import CustomerPhotos from "@/components/CustomerPhotos";
 import LazyProductRow from "@/components/LazyProductRow";
 import ProductDetails from "@/components/ProductDetails";
 import ProductGallery from "@/components/ProductGallery";
@@ -40,7 +39,7 @@ async function render(lang: "en" | "ar" = "en") {
   m.lang.current = lang;
   const { default: ProductPage } = await import("./products/[id]/page");
   const found: El[] = [];
-  const watched = [OemComparison, ReviewsSection, CustomerPhotos, LazyProductRow, ProductGallery, ProductDetails, NotifyWhenInStock, ShareButton];
+  const watched = [OemComparison, ReviewsSection, LazyProductRow, ProductGallery, ProductDetails, NotifyWhenInStock, ShareButton];
   const walk = (node: unknown): void => {
     if (!node || typeof node !== "object") return;
     if (Array.isArray(node)) return node.forEach(walk);
@@ -63,10 +62,10 @@ beforeEach(() => {
 });
 
 describe("the full product page", () => {
-  const ROW = ["ProductDetails", "OemComparison", "ReviewsSection", "CustomerPhotos", "LazyProductRow", "LazyProductRow", "LazyProductRow"];
+  const ROW = ["ProductDetails", "OemComparison", "ReviewsSection", "LazyProductRow", "LazyProductRow", "LazyProductRow"];
   const content = (els: El[]) => els.filter((e) => !["ProductGallery", "NotifyWhenInStock", "ShareButton"].includes((e.type as { name: string }).name));
 
-  it("CRITICAL: the sections come in this order: the details under the photos, other listings, reviews, customer photos, more parts of the same model, of the same brand, the newest", async () => {
+  it("CRITICAL: the sections come in this order: the details under the photos, other listings, reviews (their photos are inside each review; no separate "Customer photos" section), more parts of the same model, of the same brand, the newest", async () => {
     expect(names(content(await render()))).toEqual(ROW);
   });
 
@@ -109,7 +108,7 @@ describe("the full product page", () => {
 
   it("a part that fits any car (no brand, no model) has no model row and no brand row, but still has the newest row", async () => {
     m.product.current = detail({ brand: null, model: null, year: null });
-    expect(names(content(await render()))).toEqual(["ProductDetails", "OemComparison", "ReviewsSection", "CustomerPhotos", "LazyProductRow"]);
+    expect(names(content(await render()))).toEqual(["ProductDetails", "OemComparison", "ReviewsSection", "LazyProductRow"]);
   });
 
   it("CRITICAL: in Arabic the row titles are the app's Arabic", async () => {

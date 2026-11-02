@@ -7,6 +7,7 @@ import '../../core/hub_strings.dart';
 import '../../core/theme.dart';
 import '../../models/shipment.dart';
 import '../../services/api_client.dart';
+import '../../widgets/leap_logo_animation.dart';
 import '../../widgets/status_badge.dart';
 import '../shipment/shipment_detail_screen.dart';
 import 'scan_screen.dart';
@@ -109,7 +110,8 @@ class _QueueScreenState extends State<QueueScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(t.appName),
+        // the logo, drawn like an engraving when the queue opens (the same as the opening screen, the portals and the website), then the app's name
+        title: Row(mainAxisSize: MainAxisSize.min, children: [const LeapLogoAnimation(size: 30), const SizedBox(width: 10), Flexible(child: Text(t.appName, overflow: TextOverflow.ellipsis))]),
         actions: [
           TextButton(
             onPressed: () => lang.toggle(),
