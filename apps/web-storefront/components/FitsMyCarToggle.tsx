@@ -17,6 +17,7 @@ export default function FitsMyCarToggle() {
   const active = params.get("generationId") === car.generationId && params.get("year") === String(car.year);
   const toggle = () => {
     const next = new URLSearchParams(params.toString());
+    next.delete("brandId"); next.delete("modelId");          // the car chosen step by step gives way to the garage car (and goes with it)
     if (active) { next.delete("generationId"); next.delete("year"); next.delete("versionId"); } else { next.set("generationId", car.generationId); next.set("year", String(car.year)); if (car.versionId) next.set("versionId", car.versionId); else next.delete("versionId"); }
     next.delete("page");
     router.push(`/search?${next.toString()}`);

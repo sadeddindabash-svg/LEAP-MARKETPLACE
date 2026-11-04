@@ -37,10 +37,10 @@ describe("the shop's API is asked with the version", () => {
 const file = (f: string) => readFileSync(join(__dirname, "..", f), "utf8");
 describe("the version is passed along, and dropped when the car is changed by hand", () => {
   it("the website's own products route passes the version of a lazy-loaded list to the shop's API", () => {
-    const s = file("app/api/products/route.ts"); expect(s).toContain("const { q, category, part, generationId, year, versionId } = source.params;"); expect(s).toContain("generationId, year, versionId, page, limit, lang, more: true");
+    const s = file("app/api/products/route.ts"); expect(s).toContain("const { q, ...rest } = source.params;"); expect(s).toContain("search: q, ...rest, page, limit, lang, more: true");          // rest: everything the checked source holds, the version included
   });
   it("the search page reads the version from the address and passes it to the first page AND the lazy-loaded pages", () => {
-    const s = file("app/search/page.tsx"); expect(s).toContain("generationId, year, versionId, page } = await searchParams;"); expect(s).toContain("year: year ? Number(year) : undefined, versionId, page: pageNum,"); expect(s).toContain("year: year ? Number(year) : undefined, versionId } }}");
+    const s = file("app/search/page.tsx"); expect(s).toContain("generationId, year, versionId, page } = sp;"); expect(s).toContain("year: year ? Number(year) : undefined, versionId, ...extra, page: pageNum,"); expect(s).toContain("year: year ? Number(year) : undefined, versionId, ...extra } }}");
   });
   it("choosing another car by hand (or clearing it) drops the switch's version, which no longer belongs to the car", () => {
     const s = file("components/VehicleFilter.tsx"); expect(s.split('params.delete("versionId")').length - 1).toBe(2);

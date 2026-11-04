@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:share_plus/share_plus.dart';
@@ -12,6 +14,10 @@ import '../../models/shipment.dart';
 import '../../services/api_client.dart';
 import '../../widgets/status_badge.dart';
 import '../../widgets/evidence_photo_picker.dart';
+import 'shipping_cost_card.dart';
+import 'delivery_status.dart';      // after shipping: on its way, then Delivered (confirmed only with the buyer's code)
+import 'inspection_text.dart';      // the inspection list's words (migration 129)
+import 'step_flow.dart';      // design C: one step per screen
 
 /// Simple, self-contained "yyyy-MM-dd HH:mm" formatting -- no intl
 /// dependency, no locale initialization needed at all. Same real
@@ -84,6 +90,10 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
   bool _isUploadingPhoto = false;
   bool _isSubmitting = false;
   bool _showFlagForm = false;
+  // The parcel's shipping cost is recorded (and, if it was dearer than planned, approved): "Shipped to buyer" may be pressed (migration 127).
+  bool _mayShip = false;
+  // at "Packed": the supplier's striped "hub use only" label is removed or covered
+  bool _labelCovered = false;
   // Confirmed with the person: one controller per item, initialized
   // lazily as each item's card builds, for the interactive
   // received-quantity input.
@@ -92,19 +102,94 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
   // clarification: which spec labels have been actively confirmed
   // against the physical part, per item.
   final Map<String, Set<String>> _checkedSpecs = {};
+  // what still stops "Confirm Inspected" (worked out on each build; the server checks the same)
+  List<String> _inspectionMissingNow = const [];
   // Confirmed with the person via mockup: loading state for the
   // delivery-address share action, so the button shows real progress
   // while the PDF is being downloaded and prepared.
   bool _isSharingAddress = false;
+  // design C: the page within a step (Inspect: the list, then the photos; Packed: the shipping cost, then Ship), and the status they belong to
+  int _inspectPage = 0;
+  bool _shipPage = false;
+  String? _pageStatus;
+
+  // Everything on this screen is read again every 5 seconds, quietly, so a change made on the hub portal or by Leap appears here by itself.
+  Timer? _refreshTimer;
+  // what the server had at the last read: a tick or quantity still equal to it has no change of this screen's own, so a newer value may replace it
+  final Map<String, Set<String>> _serverChecks = {};
+  final Map<String, String> _serverQty = {};
 
   @override
   void initState() {
     super.initState();
     _load();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) => _refreshQuietly());
+  }
+
+  /// Reads the shipment again without the loading screen; a failed read keeps what is shown. Skipped while a step is being saved.
+  Future<void> _refreshQuietly() async {
+    if (!mounted || _isSubmitting || _loadState != _LoadState.ready) return;
+    final auth = context.read<AuthState>();
+    try {
+      final data = await ApiClient().fetchMyShipmentById(auth.token!, widget.shipmentId);
+      if (!mounted || _isSubmitting) return;
+      setState(() {
+        _shipment = data;
+        _syncFromServer(data);
+      });
+    } on SessionExpiredError {
+      auth.handleSessionExpired();
+    } on ApiException {
+      // quiet: the screen keeps what it has
+    }
+  }
+
+  /// Takes the inspection list's ticks and quantities from the server, except where this screen has a change of its own not saved yet.
+  void _syncFromServer(ShipmentDetail data) {
+    bool same(Set<String> a, Set<String> b) => a.length == b.length && a.containsAll(b);
+    for (final item in data.items) {
+      final checksNow = item.checkedKeys.toSet();
+      final local = _checkedSpecs[item.productId];
+      final last = _serverChecks[item.productId];
+      if (local == null || last == null || same(local, last)) _checkedSpecs[item.productId] = checksNow;
+      _serverChecks[item.productId] = checksNow;
+      final qtyNow = item.receivedQuantity?.toString() ?? '';
+      final controller = _receivedControllers[item.productId];
+      final lastQty = _serverQty[item.productId];
+      if (controller != null && lastQty != null && controller.text.trim() == lastQty && controller.text.trim() != qtyNow) controller.text = qtyNow;
+      _serverQty[item.productId] = qtyNow;
+    }
+    // the evidence photos being added (migration 130): the server's list, unless a photo is on its way from this screen
+    final drafts = data.draftPhotos?[_draftPurpose(data)];
+    if (drafts != null && !_isUploadingPhoto && _draftBusy == 0 && drafts.join('|') != _photos.join('|')) _photos = [...drafts];
+  }
+
+  // The photos of the form being filled in are shared with the hub portal (migration 130). Which form: a fault return (flagged), a flag, or the next step.
+  int _draftBusy = 0;
+  String _draftPurpose(ShipmentDetail s) => s.status == 'flagged' ? 'fault_return' : (_showFlagForm ? 'flag' : 'step');
+
+  Future<void> _shareDraftPhoto(String action, String url) async {
+    final shipment = _shipment;
+    if (shipment == null) return;
+    final purpose = _draftPurpose(shipment);
+    final auth = context.read<AuthState>();
+    _draftBusy++;
+    try {
+      final drafts = await ApiClient().saveDraftPhoto(auth.token!, widget.shipmentId, action, purpose, url);
+      final mine = drafts[purpose];
+      if (mounted && mine != null && !_isUploadingPhoto && _draftBusy == 1) setState(() => _photos = [...mine]);
+    } on SessionExpiredError {
+      auth.handleSessionExpired();
+    } on ApiException {
+      // not shared (an older server): the photo still counts on this screen
+    } finally {
+      _draftBusy--;
+    }
   }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _notesController.dispose();
     _trackingController.dispose();
     _deliveryNoteController.dispose();
@@ -125,7 +210,7 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
     final auth = context.read<AuthState>();
     try {
       await ApiClient().recordReceivedQuantity(auth.token!, widget.shipmentId, productId, parsed);
-      await _load();
+      await _refreshQuietly();      // no loading screen: the rest of the screen stays as it is
     } on SessionExpiredError {
       auth.handleSessionExpired();
     } on ApiException catch (e) {
@@ -195,6 +280,7 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
       setState(() {
         _shipment = data;
         _loadState = _LoadState.ready;
+        _syncFromServer(data);
       });
     } on SessionExpiredError {
       auth.handleSessionExpired();
@@ -231,12 +317,14 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
         notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
         photos: _photos,
         trackingNumber: step == 'shipped_to_buyer' ? _trackingController.text.trim() : null,
+        supplierLabelCovered: step == 'packed' ? _labelCovered : null,
       );
       if (!mounted) return;
       _notesController.clear();
       _trackingController.clear();
       setState(() {
         _photos = [];
+        _labelCovered = false;
         _showFlagForm = false;
       });
       await _load();
@@ -347,8 +435,10 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
     // against the physical part -- only relevant for this specific
     // real status transition (receiving and opening the package stay
     // ungated; the detailed real verification belongs at inspection).
-    final allChecksConfirmed = nextStatus != 'inspected' ||
-        shipment.items.every((item) => (_checkedSpecs[item.productId]?.length ?? 0) >= _specLabelsFor(item).length);
+    // The inspection list (migration 129): every line ticked and every item's received quantity entered, and equal to the order (a different
+    // quantity is flagged; it goes on only after Leap chose to continue). The same as the hub portal; the server refuses it otherwise.
+    _inspectionMissingNow = nextStatus == 'inspected' ? _inspectionMissing(shipment, _ix) : const <String>[];
+    final allChecksConfirmed = _inspectionMissingNow.isEmpty;
     // Confirmed with the person through several rounds of
     // clarification: the items section is hidden before inspection
     // (nothing to verify yet), fully interactive (checklist + real
@@ -368,93 +458,390 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
     // that status instead.
     final showMainStepForm = !isTerminal && !_showFlagForm && nextStatus != null;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
+    // ---- Design C (confirmed with the person via mockup): one step per screen ----
+    final lang = context.watch<LanguageState>().language;
+    final f = kStepFlowText[lang] ?? kStepFlowText['en']!;
+    if (_pageStatus != shipment.status) {      // the parcel moved on (here, or on the hub portal): its new step starts at its first page
+      _pageStatus = shipment.status;
+      _inspectPage = 0;
+      _shipPage = false;
+    }
+    final flagged = kFlaggedStatuses.contains(shipment.status);
+    final step = stepIndexFor(shipment.status, shipPage: _shipPage);
+    final onPhotosPage = shipment.status == 'opened' && _inspectPage == 1 && !_showFlagForm;
+    final onShipPage = shipment.status == 'packed' && _shipPage && !_showFlagForm;
+    final String title;
+    final String hint;
+    if (_showFlagForm && !isTerminal) {
+      title = t.detail.flagTitle;
+      hint = '${f.titles[step]} · ${shipment.supplierName}';
+    } else if (flagged) {
+      title = t.steps[shipment.displayStatus]?.label ?? f.flaggedTitle;
+      hint = shipment.supplierName;
+    } else if (onPhotosPage) {
+      title = f.photosTitle;
+      hint = f.photosHint;
+    } else {
+      title = f.titles[step];
+      hint = f.hints[step];
+    }
+    final goBack = (_showFlagForm && !isTerminal) || onPhotosPage || onShipPage;
+
+    final body = <Widget>[
+      if (shipment.replacementFor != null) ...[
+        _buildReplacementBanner(t, shipment.replacementFor!),
+        const SizedBox(height: 10),
+      ],
+      if (_errorMessage != null)
+        Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(color: HubColors.redBg, borderRadius: BorderRadius.circular(12)),
+          child: Text(_errorMessage!, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: HubColors.red)),
+        ),
+      ..._stepBody(t, f, shipment, flagged, needsFaultReturn, isTerminal, needsDeliveryConfirmation),
+    ];
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,      // white status-bar icons on the dark header
+      child: Scaffold(
+        backgroundColor: HubColors.canvas,
+        body: Column(
           children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(shipment.orderId, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                // Confirmed with the person: shown only when this
-                // real order genuinely has more than one shipment --
-                // a single-supplier order (the common case) shows
-                // nothing extra here.
-                if (shipment.totalShipments > 1) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(color: HubColors.card, borderRadius: BorderRadius.circular(999), border: Border.all(color: HubColors.line)),
-                    child: Text(
-                      '${shipment.shipmentIndex} / ${shipment.totalShipments}',
-                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: HubColors.ink),
-                    ),
-                  ),
-                ],
-              ],
+            StepHeader(
+              orderId: shipment.orderId,
+              subtitle: shipment.supplierName,
+              badge: shipment.totalShipments > 1 ? '${shipment.shipmentIndex} / ${shipment.totalShipments}' : null,
+              step: step,
+              allDone: shipment.status == 'delivered',
+              red: flagged || (_showFlagForm && !isTerminal),
+              title: title,
+              hint: hint,
+              stepOf: f.stepOf.replaceAll('{n}', '${step + 1}'),
+              back: goBack,
+              onLeading: () {
+                if (!goBack) {
+                  Navigator.of(context).maybePop();
+                  return;
+                }
+                setState(() {
+                  if (_showFlagForm) {
+                    _showFlagForm = false;
+                  } else if (onPhotosPage) {
+                    _inspectPage = 0;
+                  } else {
+                    _shipPage = false;
+                  }
+                  _errorMessage = null;
+                });
+              },
+              onDetails: () => _showDetailsSheet(t, f, shipment, itemsCardMode),
             ),
-            Text(shipment.supplierName, style: const TextStyle(fontSize: 11.5, color: HubColors.muted)),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
+                children: body,
+              ),
+            ),
+            if (showMainStepForm || needsDeliveryConfirmation || shipment.status == 'delivered')
+              _stepBottomBar(t, f, shipment, stepText, nextStatus, allChecksConfirmed, onPhotosPage, onShipPage),
           ],
         ),
-        actions: [Padding(padding: const EdgeInsets.only(right: 16), child: StatusBadge(status: shipment.displayStatus))],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          if (shipment.replacementFor != null) ...[
-            _buildReplacementBanner(t, shipment.replacementFor!),
-            const SizedBox(height: 12),
-          ],
-          if (itemsCardMode != _ItemsCardMode.hidden) _buildItemsCard(t, shipment, itemsCardMode),
-          if (_deliveryAddressVisibleFor(shipment.status) && shipment.deliveryAddress != null) ...[
-            const SizedBox(height: 12),
-            _buildDeliveryAddressCard(shipment.deliveryAddress!),
-          ],
-          if (shipment.otherShipments.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            ...shipment.otherShipments.map((s) => Padding(
-                  padding: const EdgeInsets.only(left: 4),
-                  child: Text(
-                    'Other shipment: ${s.supplierName} — ${s.status.replaceAll('_', ' ')}',
-                    style: const TextStyle(fontSize: 11.5, color: HubColors.muted),
-                  ),
-                )),
-          ],
-          if (_errorMessage != null) ...[
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: HubColors.redBg, borderRadius: BorderRadius.circular(8)),
-              child: Text(_errorMessage!, style: const TextStyle(fontSize: 12.5, color: HubColors.red)),
+    );
+  }
+
+  /// What this step's screen shows (only what the step needs).
+  List<Widget> _stepBody(HubText t, StepFlowText f, ShipmentDetail shipment, bool flagged, bool needsFaultReturn, bool isTerminal, bool onItsWay) {
+    if (flagged) {
+      return [
+        if (needsFaultReturn) _buildFaultPanel(t, shipment) else _buildTerminalBanner(t, shipment),
+        const SizedBox(height: 16),
+        _buildHistory(t, shipment),
+      ];
+    }
+    if (onItsWay || shipment.status == 'delivered') {
+      return [
+        DeliveryStatusCard(shipment: shipment, language: Provider.of<LanguageState>(context, listen: false).language),
+        const SizedBox(height: 16),
+        _buildHistory(t, shipment),
+      ];
+    }
+    if (_showFlagForm) return [_buildFlagForm(t)];
+    switch (shipment.status) {
+      case 'awaiting_receipt':
+        return [
+          StepCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                stepSection(f.from),
+                Text(shipment.supplierName, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: HubColors.ink)),
+                const SizedBox(height: 2),
+                Text(shipment.items.map((i) => '${i.name} × ${i.quantity}').join(' · '), style: const TextStyle(fontSize: 12.5, color: HubColors.muted)),
+              ],
             ),
+          ),
+          _stepPhotos(t),
+          _stepNotes(t),
+        ];
+      case 'received':
+        return [
+          _stepPhotos(t),
+          StepCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                stepSection(f.expectedInside),
+                ...shipment.items.map((i) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Text('${i.name} × ${i.quantity}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: HubColors.ink)),
+                    )),
+              ],
+            ),
+          ),
+          _stepNotes(t),
+        ];
+      case 'opened':
+        if (_inspectPage == 1) return [_stepPhotos(t), _stepNotes(t)];
+        return [
+          _buildItemsCard(t, shipment, _ItemsCardMode.interactive),
+          const SizedBox(height: 4),
+          _buildInspectionStatus(),
+        ];
+      case 'inspected':
+        return [
+          _buildLabelTick(),
+          if (shipment.deliveryAddress != null) ...[
+            _buildDeliveryAddressCard(shipment.deliveryAddress!),
+            const SizedBox(height: 10),
           ],
-          if (needsFaultReturn) ...[
-            const SizedBox(height: 16),
-            _buildFaultPanel(t, shipment),
-          ],
-          if (showMainStepForm) ...[
-            const SizedBox(height: 16),
-            _buildMainStepForm(t, stepText!, nextStatus!, allChecksConfirmed),
-          ],
-          if (!isTerminal && _showFlagForm) ...[
-            const SizedBox(height: 16),
-            _buildFlagForm(t),
-          ],
-          if (needsDeliveryConfirmation) ...[
-            const SizedBox(height: 16),
-            _buildConfirmDeliveryCard(t),
-          ],
-          if (isTerminal && !needsFaultReturn) ...[
-            const SizedBox(height: 16),
-            _buildTerminalBanner(t, shipment),
-          ],
-          const SizedBox(height: 16),
-          _buildHistory(t, shipment),
+          _stepPhotos(t),
+          _stepNotes(t),
+        ];
+      case 'packed':
+        if (!_shipPage) {
+          return [
+            ShippingCostCard(shipmentId: widget.shipmentId, token: context.read<AuthState>().token!, onChange: (v) => setState(() => _mayShip = v)),
+          ];
+        }
+        return [
+          StepCard(
+            color: HubColors.gaugeBg,
+            border: const Color(0xFFBFE6D2),
+            child: Text('✓ ${f.costApproved}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: HubColors.gauge)),
+          ),
+          StepCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                stepSection(t.detail.trackingNumber),
+                TextField(
+                  key: const Key('tracking-to-buyer'),
+                  controller: _trackingController,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  onChanged: (_) => setState(() {}),      // the button follows what is typed
+                ),
+              ],
+            ),
+          ),
+          _stepPhotos(t),
+          _stepNotes(t),
+        ];
+      default:
+        return [_buildHistory(t, shipment)];
+    }
+  }
+
+  /// The one big button at the bottom. Grey, and saying what is missing, while it cannot be pressed.
+  Widget _stepBottomBar(HubText t, StepFlowText f, ShipmentDetail shipment, StepText? stepText, String? nextStatus, bool allChecksConfirmed,
+      bool onPhotosPage, bool onShipPage) {
+    void openFlag() => setState(() {
+          _showFlagForm = true;
+          _photos = [];
+          _notesController.clear();
+          _errorMessage = null;
+        });
+    if (shipment.status == 'shipped_to_buyer' || shipment.status == 'delivered') {
+      return StepBottomBar(label: f.backToList, color: HubColors.ink, onPressed: () => Navigator.of(context).maybePop());
+    }
+    if (shipment.status == 'opened' && !onPhotosPage) {
+      final left = _inspectionMissingNow.length;
+      return StepBottomBar(
+        label: left == 0 ? f.nextPhotos : '${f.nextPhotos} (${f.checksLeft(left)})',
+        onPressed: allChecksConfirmed ? () => setState(() { _inspectPage = 1; _errorMessage = null; }) : null,
+        flagLabel: f.flag,
+        onFlag: openFlag,
+      );
+    }
+    if (shipment.status == 'packed' && !onShipPage) {
+      return StepBottomBar(
+        label: _mayShip ? f.nextShip : f.needCost,
+        onPressed: _mayShip ? () => setState(() { _shipPage = true; _errorMessage = null; }) : null,
+        flagLabel: f.flag,
+        onFlag: openFlag,
+      );
+    }
+    String? missing;
+    if (_photos.isEmpty) missing = f.needPhoto;
+    if (nextStatus == 'packed' && !_labelCovered) missing = f.needLabel;
+    if (nextStatus == 'shipped_to_buyer' && _trackingController.text.trim().isEmpty) missing = f.needTracking;
+    if (nextStatus == 'shipped_to_buyer' && !_mayShip) missing = f.needCost;
+    if (nextStatus == 'inspected' && !allChecksConfirmed) missing = f.checksLeft(_inspectionMissingNow.length);      // changed meanwhile on the hub portal
+    final canGo = missing == null && allChecksConfirmed && nextStatus != null && !_isSubmitting && !_isUploadingPhoto;
+    return StepBottomBar(
+      label: _isSubmitting ? t.detail.saving : (missing ?? '${stepText?.actionLabel ?? ''} ✓'),
+      onPressed: canGo ? () => _submitStep(nextStatus!) : null,
+      flagLabel: onPhotosPage ? null : f.flag,
+      onFlag: openFlag,
+    );
+  }
+
+  /// The evidence photos of this step (shared with the hub portal), in a card.
+  Widget _stepPhotos(HubText t) {
+    final auth = context.read<AuthState>();
+    return StepCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          stepSection(t.detail.evidencePhotos),
+          EvidencePhotoPicker(
+            photoUrls: _photos,
+            onAdd: (url) {
+              setState(() => _photos = [..._photos, url]);
+              _shareDraftPhoto('add', url);      // kept on the server for this step, so the hub portal shows it too
+            },
+            onRemove: (url) {
+              setState(() => _photos = _photos.where((p) => p != url).toList());
+              _shareDraftPhoto('remove', url);
+            },
+            isUploading: _isUploadingPhoto,
+            onUploadingChanged: (v) => setState(() => _isUploadingPhoto = v),
+            onError: (msg) => setState(() => _errorMessage = msg),
+            token: auth.token!,
+          ),
         ],
       ),
     );
+  }
+
+  Widget _stepNotes(HubText t) => StepCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            stepSection(t.detail.notes),
+            TextField(controller: _notesController, maxLines: 2),
+          ],
+        ),
+      );
+
+  /// Pack: the supplier's striped "hub use only" label must be removed or covered (the server checks it too).
+  Widget _buildLabelTick() {
+    final zh = Provider.of<LanguageState>(context, listen: false).language == 'zh';
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(color: HubColors.amberBg, border: Border.all(color: const Color(0xFFF5D9A8)), borderRadius: BorderRadius.circular(14)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(zh ? '⚠ 供应商→质检中心标签：仅限质检中心' : '⚠ Supplier→hub label: HUB USE ONLY', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: HubColors.ink)),
+              const SizedBox(height: 2),
+              Text(zh ? '换新箱，或用派送标签完全覆盖它' : 'Use a new box, or stick the buyer label fully over it', style: const TextStyle(fontSize: 12, color: HubColors.muted)),
+            ],
+          ),
+        ),
+        InkWell(
+          key: const Key('supplier-label-tick'),
+          onTap: () => setState(() => _labelCovered = !_labelCovered),
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: _labelCovered ? HubColors.gaugeBg : HubColors.card, border: Border.all(color: _labelCovered ? HubColors.gauge : HubColors.line, width: 1.5), borderRadius: BorderRadius.circular(14)),
+            child: Row(
+              children: [
+                Icon(_labelCovered ? Icons.check_box : Icons.check_box_outline_blank, size: 26, color: _labelCovered ? HubColors.gauge : HubColors.muted),
+                const SizedBox(width: 10),
+                Expanded(child: Text(zh ? '供应商标签已撕除或已完全覆盖' : "The supplier's label is removed or fully covered", style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: HubColors.ink))),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// The ⟲ button in the header: the items, the order's other parcels and the full history, in a sheet.
+  void _showDetailsSheet(HubText t, StepFlowText f, ShipmentDetail shipment, _ItemsCardMode itemsMode) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: HubColors.canvas,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
+      builder: (_) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.7,
+        maxChildSize: 0.95,
+        builder: (context, controller) => ListView(
+          controller: controller,
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+          children: [
+            Text(f.details, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: HubColors.ink)),
+            const SizedBox(height: 12),
+            if (itemsMode != _ItemsCardMode.hidden) ...[
+              _buildItemsCard(t, shipment, _ItemsCardMode.readOnly),
+              const SizedBox(height: 10),
+            ] else
+              StepCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    stepSection(f.items),
+                    ...shipment.items.map((i) => Text('${i.name} × ${i.quantity}', style: const TextStyle(fontSize: 13.5, color: HubColors.ink))),
+                  ],
+                ),
+              ),
+            if (_deliveryAddressVisibleFor(shipment.status) && shipment.deliveryAddress != null) ...[
+              _buildDeliveryAddressCard(shipment.deliveryAddress!),
+              const SizedBox(height: 10),
+            ],
+            ...shipment.otherShipments.map((s) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text('Other shipment: ${s.supplierName} — ${s.status.replaceAll('_', ' ')}', style: const TextStyle(fontSize: 11.5, color: HubColors.muted)),
+                )),
+            const SizedBox(height: 6),
+            _buildHistory(t, shipment),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// − and + beside the received quantity (bigger targets than typing).
+  Widget _qtyButton(IconData icon, VoidCallback onTap) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          width: 40,
+          height: 40,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(border: Border.all(color: HubColors.line), borderRadius: BorderRadius.circular(8)),
+          child: Icon(icon, size: 20, color: HubColors.ink),
+        ),
+      );
+
+  void _stepQuantity(ShipmentItem item, TextEditingController c, int by) {
+    final now = int.tryParse(c.text.trim());
+    final next = now == null ? (by > 0 ? 1 : 0) : (now + by < 0 ? 0 : now + by);
+    c.text = '$next';
+    setState(() {});
+    _saveReceivedQuantity(item.productId, c.text);
   }
 
   /// Confirmed with the person via mockup: the real delivery address
@@ -472,7 +859,7 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('DELIVERY ADDRESS', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: HubColors.muted)),
+          Text(Provider.of<LanguageState>(context, listen: false).language == 'zh' ? '收货地址' : 'DELIVERY ADDRESS', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: HubColors.muted)),
           const SizedBox(height: 10),
           Text(address.recipientName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: HubColors.ink)),
           const SizedBox(height: 4),
@@ -489,7 +876,9 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
               icon: _isSharingAddress
                   ? const SizedBox(height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.share_outlined, size: 16),
-              label: Text(_isSharingAddress ? 'Preparing…' : 'Share / print address'),
+              label: Text(Provider.of<LanguageState>(context, listen: false).language == 'zh'
+                  ? (_isSharingAddress ? '准备中…' : '分享 / 打印地址')
+                  : (_isSharingAddress ? 'Preparing…' : 'Share / print address')),
               style: OutlinedButton.styleFrom(side: const BorderSide(color: HubColors.signal), foregroundColor: HubColors.signal),
             ),
           ),
@@ -505,7 +894,7 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(t.detail.items.toUpperCase(), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: HubColors.muted)),
+          Text((mode == _ItemsCardMode.interactive ? _ix.title : t.detail.items).toUpperCase(), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: HubColors.muted)),
           const SizedBox(height: 8),
           ...shipment.items.map((item) => _buildItemVerificationRow(item, mode)),
         ],
@@ -513,29 +902,73 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
     );
   }
 
-  /// Confirmed with the person: the same spec set already shown, now
-  /// as individually-labeled entries rather than one joined string,
-  /// since each one needs its own real, tappable checkbox.
-  List<String> _specLabelsFor(ShipmentItem item) => [
-        if (item.part != null) 'Part: ${item.part}',
-        if (item.oemNumber != null) 'OEM: ${item.oemNumber}',
-        ...item.attributes.map((a) => '${a.name}: ${a.value}'),
-      ];
+  /// The inspection list (migration 129): the server builds it, so the hub portal shows exactly the same lines (part, OEM, position, specs, and
+  /// the condition line). The ticks are saved on the server as they are made, so work started here can be finished on the portal.
+  InspectionText get _ix => kInspectionText[Provider.of<LanguageState>(context, listen: false).language] ?? kInspectionText['en']!;
+
+  /// The received quantity as typed (or as saved), or null when it is empty or not a whole number.
+  int? _receivedNow(ShipmentItem item) {
+    final c = _receivedControllers[item.productId];
+    if (c == null) return item.receivedQuantity;
+    final v = int.tryParse(c.text.trim());
+    return (v == null || v < 0) ? null : v;
+  }
+
+  /// What still stops "Confirm Inspected", one line per problem (empty: it may go on). The server checks the same.
+  List<String> _inspectionMissing(ShipmentDetail shipment, InspectionText x) {
+    final out = <String>[];
+    for (final item in shipment.items) {
+      final checked = _checkedSpecs[item.productId] ?? item.checkedKeys.toSet();
+      final left = item.checklist.where((c) => !checked.contains(c.key)).length;
+      if (left > 0) out.add(x.needChecks(item.name, left));
+      final received = _receivedNow(item);
+      if (received == null) {
+        out.add(x.needQuantity(item.name));
+      } else if (received != item.quantity && shipment.resolution != 'continue_processing') {
+        out.add(x.needFlag(item.name, received, item.quantity));
+      }
+    }
+    return out;
+  }
+
+  Future<void> _saveChecks(String productId, Set<String> before) async {
+    final auth = context.read<AuthState>();
+    try {
+      final saved = {...(_checkedSpecs[productId] ?? <String>{})};
+      await ApiClient().saveInspectionChecks(auth.token!, widget.shipmentId, productId, saved.toList());
+      _serverChecks[productId] = saved;
+    } on SessionExpiredError {
+      auth.handleSessionExpired();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _checkedSpecs[productId] = before;      // not saved: the tick goes back, so what is shown is what the server has
+        _errorMessage = e.isNetworkError ? _ix.saveFailed : e.message;
+      });
+    }
+  }
+
+  void _setChecks(ShipmentItem item, Set<String> next) {
+    final before = {...(_checkedSpecs[item.productId] ?? <String>{})};
+    setState(() => _checkedSpecs[item.productId] = next);
+    _saveChecks(item.productId, before);
+  }
 
   Widget _buildItemVerificationRow(ShipmentItem item, _ItemsCardMode mode) {
-    // Confirmed with the person: a genuine mismatch is a visual
-    // warning only -- never auto-flags the shipment.
-    final hasMismatch = item.receivedQuantity != null && item.receivedQuantity != item.quantity;
-    final specs = _specLabelsFor(item);
-    final checked = _checkedSpecs.putIfAbsent(item.productId, () => <String>{});
+    final x = _ix;
+    final lang = Provider.of<LanguageState>(context, listen: false).language;      // build already watches the language
     final controller = _receivedControllers.putIfAbsent(
       item.productId,
       () => TextEditingController(text: item.receivedQuantity?.toString() ?? ''),
     );
-    // Confirmed with the person: the real checklist only shows during
-    // the real interactive (inspection) mode -- not visible hidden or
-    // read-only.
+    final received = mode == _ItemsCardMode.interactive ? _receivedNow(item) : item.receivedQuantity;
+    final hasMismatch = received != null && received != item.quantity;
+    final missingQuantity = mode == _ItemsCardMode.interactive && received == null;
+    final specs = item.checklist;
+    final checked = _checkedSpecs.putIfAbsent(item.productId, () => item.checkedKeys.toSet());
+    // the list itself shows only while inspecting; before it is hidden, after it the quantity is shown read-only
     final showChecklist = mode == _ItemsCardMode.interactive;
+    final quantityColor = hasMismatch || missingQuantity ? HubColors.red : HubColors.gauge;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(10),
@@ -547,91 +980,121 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(item.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: HubColors.ink)),
+          Text('${item.name} × ${item.quantity}', style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: HubColors.ink)),
           if (showChecklist && specs.isNotEmpty) ...[
             const SizedBox(height: 6),
-            ...specs.map((label) {
-              final isChecked = checked.contains(label);
+            ...specs.map((c) {
+              final isChecked = checked.contains(c.key);
               return InkWell(
-                onTap: () => setState(() {
-                  if (isChecked) {
-                    checked.remove(label);
-                  } else {
-                    checked.add(label);
-                  }
-                }),
+                key: Key('check-${item.productId}-${c.key}'),
+                onTap: () => _setChecks(item, isChecked ? ({...checked}..remove(c.key)) : ({...checked}..add(c.key))),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Row(
                     children: [
-                      Icon(
-                        isChecked ? Icons.check_box : Icons.check_box_outline_blank,
-                        size: 18,
-                        color: isChecked ? HubColors.gauge : HubColors.muted,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(label, style: TextStyle(fontSize: 12.5, color: isChecked ? HubColors.ink : HubColors.muted)),
+                      Icon(isChecked ? Icons.check_box : Icons.check_box_outline_blank, size: 26, color: isChecked ? HubColors.gauge : HubColors.muted),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(c.label(lang), style: TextStyle(fontSize: 14, color: isChecked ? HubColors.ink : HubColors.muted))),
                     ],
                   ),
                 ),
               );
             }),
-            if (checked.length < specs.length) ...[
-              const SizedBox(height: 2),
-              InkWell(
-                onTap: () => setState(() => checked.addAll(specs)),
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 3),
-                  child: Text('Check all', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: HubColors.torque)),
-                ),
-              ),
-            ],
             const SizedBox(height: 2),
-            Text('${checked.length} of ${specs.length} checks confirmed', style: const TextStyle(fontSize: 10.5, color: HubColors.muted)),
+            Row(
+              children: [
+                Text(x.checksDone(specs.where((c) => checked.contains(c.key)).length, specs.length), style: const TextStyle(fontSize: 10.5, color: HubColors.muted)),
+                const Spacer(),
+                if (specs.any((c) => !checked.contains(c.key)))
+                  InkWell(
+                    onTap: () => _setChecks(item, specs.map((c) => c.key).toSet()),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 3),
+                      child: Text(x.checkAll, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: HubColors.torque)),
+                    ),
+                  ),
+              ],
+            ),
           ],
           const SizedBox(height: 6),
           Row(
             children: [
-              Text('Ordered: ${item.quantity}', style: const TextStyle(fontSize: 12, color: HubColors.muted)),
+              Text('${x.ordered}: ${item.quantity}', style: const TextStyle(fontSize: 12, color: HubColors.muted)),
               const Spacer(),
               Text(
-                'Received:',
+                '${x.received}:',
                 style: TextStyle(fontSize: 12, fontWeight: hasMismatch ? FontWeight.w700 : FontWeight.w400, color: hasMismatch ? HubColors.red : HubColors.muted),
               ),
               const SizedBox(width: 6),
               if (mode == _ItemsCardMode.readOnly)
-                // Confirmed with the person: already-confirmed data,
-                // shown as plain text here -- a shipping worker can
-                // see what's actually being shipped without being
-                // able to re-edit it at this later stage.
                 Text(
                   item.receivedQuantity?.toString() ?? '—',
                   style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: hasMismatch ? HubColors.red : HubColors.ink),
                 )
-              else
+              else ...[
+                _qtyButton(Icons.remove, () => _stepQuantity(item, controller, -1)),
+                const SizedBox(width: 6),
                 SizedBox(
-                  width: 44,
-                  height: 30,
+                  width: 52,
+                  height: 40,
                   child: TextField(
+                    key: Key('received-${item.productId}'),
                     controller: controller,
                     keyboardType: TextInputType.number,
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: hasMismatch ? HubColors.red : HubColors.ink),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: hasMismatch ? HubColors.red : HubColors.ink),
                     decoration: InputDecoration(
                       isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 4),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: hasMismatch ? HubColors.red : HubColors.line)),
+                      filled: missingQuantity,
+                      fillColor: HubColors.redBg,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 6),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: quantityColor, width: 1.5)),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: quantityColor, width: 2)),
                     ),
+                    onChanged: (_) => setState(() {}),      // the "still needed" list follows what is typed
                     onSubmitted: (value) => _saveReceivedQuantity(item.productId, value),
                     onEditingComplete: () => _saveReceivedQuantity(item.productId, controller.text),
                   ),
                 ),
+                const SizedBox(width: 6),
+                _qtyButton(Icons.add, () => _stepQuantity(item, controller, 1)),
+              ],
             ],
           ),
-          if (hasMismatch) ...[
+          if (missingQuantity) ...[
             const SizedBox(height: 6),
-            const Text('Quantity mismatch — decide whether to flag this shipment below.', style: TextStyle(fontSize: 10.5, color: HubColors.red)),
+            Text(x.enterQuantity, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: HubColors.red)),
+          ] else if (hasMismatch && mode == _ItemsCardMode.interactive && _shipment?.resolution != 'continue_processing') ...[
+            const SizedBox(height: 6),
+            Text(x.mismatchHint, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: HubColors.red)),
           ],
+        ],
+      ),
+    );
+  }
+
+  /// Under the inspecting step's button: what is still missing (red), or that everything is confirmed (green).
+  Widget _buildInspectionStatus() {
+    final x = _ix;
+    if (_inspectionMissingNow.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(color: HubColors.gaugeBg, borderRadius: BorderRadius.circular(10)),
+        child: Text('✓ ${x.allDone}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: HubColors.gauge)),
+      );
+    }
+    return Container(
+      key: const Key('inspection-missing'),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(color: HubColors.redBg, borderRadius: BorderRadius.circular(10)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(x.stillNeeded, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: HubColors.red)),
+          const SizedBox(height: 4),
+          ..._inspectionMissingNow.map((line) => Text('• $line', style: const TextStyle(fontSize: 12, color: HubColors.red))),
         ],
       ),
     );
@@ -653,8 +1116,14 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
           const SizedBox(height: 8),
           EvidencePhotoPicker(
             photoUrls: _photos,
-            onAdd: (url) => setState(() => _photos = [..._photos, url]),
-            onRemove: (url) => setState(() => _photos = _photos.where((p) => p != url).toList()),
+            onAdd: (url) {
+              setState(() => _photos = [..._photos, url]);
+              _shareDraftPhoto('add', url);      // kept on the server for this step, so the hub portal shows it too
+            },
+            onRemove: (url) {
+              setState(() => _photos = _photos.where((p) => p != url).toList());
+              _shareDraftPhoto('remove', url);
+            },
             isUploading: _isUploadingPhoto,
             onUploadingChanged: (v) => setState(() => _isUploadingPhoto = v),
             onError: (msg) => setState(() => _errorMessage = msg),
@@ -670,16 +1139,45 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
             const SizedBox(height: 8),
             TextField(controller: _trackingController),
           ],
-          if (!allChecksConfirmed) ...[
-            const SizedBox(height: 8),
-            const Text('Confirm every checklist item above before marking as inspected.', style: TextStyle(fontSize: 11.5, color: HubColors.red)),
+          if (nextStatus == 'packed') ...[
+            // the supplier's striped "hub use only" label must be removed or covered before "Confirm Packed" (the server checks it too)
+            const SizedBox(height: 16),
+            InkWell(
+              key: const Key('supplier-label-tick'),
+              onTap: () => setState(() => _labelCovered = !_labelCovered),
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: _labelCovered ? HubColors.gaugeBg : HubColors.redBg, border: Border.all(color: _labelCovered ? HubColors.gauge : HubColors.red, width: 1.5), borderRadius: BorderRadius.circular(10)),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(_labelCovered ? Icons.check_box : Icons.check_box_outline_blank, size: 20, color: _labelCovered ? HubColors.gauge : HubColors.red),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(Provider.of<LanguageState>(context, listen: false).language == 'zh' ? '供应商标签已撕除或已完全覆盖' : "The supplier's label is removed or fully covered", style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: HubColors.ink)),
+                          const SizedBox(height: 2),
+                          Text(Provider.of<LanguageState>(context, listen: false).language == 'zh' ? '条纹“仅限质检中心”标签——换新箱，或用派送标签覆盖' : 'The striped "hub use only" label: a new box, or the delivery label stuck over it', style: const TextStyle(fontSize: 11.5, color: HubColors.muted)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          if (nextStatus == 'inspected') ...[
+            const SizedBox(height: 12),
+            _buildInspectionStatus(),
           ],
           const SizedBox(height: 18),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: (_isSubmitting || !allChecksConfirmed) ? null : () => _submitStep(nextStatus),
-              style: ElevatedButton.styleFrom(backgroundColor: (_isSubmitting || !allChecksConfirmed) ? const Color(0xFFD1D5DB) : HubColors.signal),
+              onPressed: (_isSubmitting || !allChecksConfirmed || (nextStatus == 'shipped_to_buyer' && !_mayShip) || (nextStatus == 'packed' && !_labelCovered)) ? null : () => _submitStep(nextStatus),
+              style: ElevatedButton.styleFrom(backgroundColor: (_isSubmitting || !allChecksConfirmed || (nextStatus == 'shipped_to_buyer' && !_mayShip) || (nextStatus == 'packed' && !_labelCovered)) ? const Color(0xFFD1D5DB) : HubColors.signal),
               child: Text(_isSubmitting ? t.detail.saving : (stepText.actionLabel ?? '')),
             ),
           ),
@@ -724,8 +1222,14 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
           const SizedBox(height: 8),
           EvidencePhotoPicker(
             photoUrls: _photos,
-            onAdd: (url) => setState(() => _photos = [..._photos, url]),
-            onRemove: (url) => setState(() => _photos = _photos.where((p) => p != url).toList()),
+            onAdd: (url) {
+              setState(() => _photos = [..._photos, url]);
+              _shareDraftPhoto('add', url);      // kept on the server for this step, so the hub portal shows it too
+            },
+            onRemove: (url) {
+              setState(() => _photos = _photos.where((p) => p != url).toList());
+              _shareDraftPhoto('remove', url);
+            },
             isUploading: _isUploadingPhoto,
             onUploadingChanged: (v) => setState(() => _isUploadingPhoto = v),
             onError: (msg) => setState(() => _errorMessage = msg),
@@ -900,8 +1404,14 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
           const SizedBox(height: 8),
           EvidencePhotoPicker(
             photoUrls: _photos,
-            onAdd: (url) => setState(() => _photos = [..._photos, url]),
-            onRemove: (url) => setState(() => _photos = _photos.where((p) => p != url).toList()),
+            onAdd: (url) {
+              setState(() => _photos = [..._photos, url]);
+              _shareDraftPhoto('add', url);      // kept on the server for this step, so the hub portal shows it too
+            },
+            onRemove: (url) {
+              setState(() => _photos = _photos.where((p) => p != url).toList());
+              _shareDraftPhoto('remove', url);
+            },
             isUploading: _isUploadingPhoto,
             onUploadingChanged: (v) => setState(() => _isUploadingPhoto = v),
             onError: (msg) => setState(() => _errorMessage = msg),
@@ -1002,7 +1512,7 @@ class _ShipmentDetailScreenState extends State<ShipmentDetailScreen> {
                       ),
                     ],
                     const SizedBox(height: 6),
-                    Text(t.detail.by(e.performedBy ?? ''), style: const TextStyle(fontSize: 10.5, color: HubColors.muted)),
+                    if (e.performedBy != null && e.performedBy!.isNotEmpty) Text(t.detail.by(e.performedBy!), style: const TextStyle(fontSize: 10.5, color: HubColors.muted)),
                   ],
                 ),
               ),

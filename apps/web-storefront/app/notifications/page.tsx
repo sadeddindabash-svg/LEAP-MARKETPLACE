@@ -39,15 +39,16 @@ export default function NotificationsPage() {
     if (href) router.push(href);
   }, [router]);
 
-  if (isLoading) return <div className="mx-auto max-w-2xl px-4 py-10 sm:px-8" aria-busy="true">{t("search_loading")}</div>;
+  if (isLoading) return <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8" aria-busy="true">{t("search_loading")}</div>;
   if (!user) return <SignInPrompt messageKey="login_for_notifications" next="/notifications" />;
   const unread = items?.filter((n) => !n.isRead).length ?? 0;
+  // 1024 px wide like the account pages; on a wide screen the time sits at the end of the title's line (on a phone it stays under the text)
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-8">
+    <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-3xl font-bold tracking-tight text-navy">{t("notifications")}</h1>
         {unread > 0 && (
-          <button type="button" className="inline-flex min-h-11 items-center rounded-[10px] border-[1.5px] border-navy px-4 text-sm font-bold text-navy hover:bg-chalk"
+          <button type="button" className="ms-auto inline-flex min-h-11 items-center rounded-[10px] border-[1.5px] border-navy px-4 text-sm font-bold text-navy hover:bg-chalk"
             onClick={() => { const token = getAuthToken(); if (!token) return; setItems((cur) => cur && cur.map((x) => ({ ...x, isRead: true }))); markAllNotificationsRead(token).catch(() => {}); }}>{t("mark_all_read")}</button>
         )}
       </div>
@@ -60,10 +61,10 @@ export default function NotificationsPage() {
             <li key={n.id}>
               <button type="button" onClick={() => open(n)} className={`flex w-full items-start gap-3 rounded-[14px] border p-4 text-start transition-colors hover:border-navy ${n.isRead ? "border-line bg-white" : "border-[#f0d9a0] bg-[#fff8e5]"}`}>
                 <span aria-hidden="true" className={`mt-1.5 size-2.5 flex-none rounded-full ${n.isRead ? "bg-transparent" : "bg-signal"}`} />
-                <span className="min-w-0 flex-1">
+                <span className="grid min-w-0 flex-1 sm:grid-cols-[1fr_auto] sm:gap-x-4">
                   <span className={`block ${n.isRead ? "font-semibold" : "font-extrabold"}`}>{n.title}</span>
-                  <span className="block text-sm text-muted">{n.body}</span>
-                  <span className="mt-1 block text-xs text-muted">{timeAgo(lang, n.createdAt)}</span>
+                  <span className="block text-sm text-muted sm:col-start-1">{n.body}</span>
+                  <span className="mt-1 block text-xs text-muted sm:col-start-2 sm:row-start-1 sm:mt-0.5 sm:whitespace-nowrap">{timeAgo(lang, n.createdAt)}</span>
                 </span>
                 {!n.isRead && <span className="sr-only">{t("notifications")}</span>}
               </button>

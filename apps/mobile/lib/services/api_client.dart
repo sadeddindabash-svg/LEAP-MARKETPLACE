@@ -879,36 +879,52 @@ class ApiClient {
     }
   }
 
-  /// Real reverse geocoding via OpenStreetMap's free Nominatim service
-  /// (migration 030) -- confirmed choice: genuinely free, no API key,
-  /// matching the same reasoning as the Frankfurter FX rate provider.
-  /// HONEST LIMITATION: Nominatim's real usage policy requires a real,
-  /// identifying User-Agent and asks that high-volume use go through
-  /// their own paid/self-hosted options instead -- fine for this app's
-  /// real, human-triggered, one-off usage per guest order, not meant
-  /// for bulk lookups. Returns null on any real failure -- the caller
-  /// falls back to a real, empty, manually-fillable form rather than
-  /// blocking the person on a geocoding hiccup.
-  Future<Map<String, dynamic>?> reverseGeocode(double latitude, double longitude) async {
+  /// Reverse geocoding via OpenStreetMap's free Nominatim service (no API key; a real, identifying User-Agent, one human-triggered lookup at a time).
+  /// Each piece in its own field, the same rules as the website (lib/nominatim.ts): the street is house number and road, then the district
+  /// (neighbourhood, suburb, quarter...); with no road and no district it is what is left of the full name once the city, region, postcode and
+  /// country are taken out (never the whole line again). Names come in [lang]; the country stays English (from its code) so the rest of the app
+  /// still recognises it. Asks at building level (zoom 18). Returns null on any failure: it is only an aid.
+  Future<Map<String, dynamic>?> reverseGeocode(double latitude, double longitude, {String lang = 'en'}) async {
     try {
-      final uri = Uri.parse('https://nominatim.openstreetmap.org/reverse?format=json&lat=$latitude&lon=$longitude&addressdetails=1');
+      final uri = Uri.parse('https://nominatim.openstreetmap.org/reverse?format=json&lat=$latitude&lon=$longitude&addressdetails=1&zoom=18&accept-language=$lang');
       final response = await _client.get(uri, headers: {'User-Agent': 'LeapAutoPartsMarketplace/1.0'});
       if (response.statusCode != 200) return null;
       final body = jsonDecode(response.body) as Map<String, dynamic>;
-      final addr = body['address'] as Map<String, dynamic>?;
+      final addr = (body['address'] as Map?)?.cast<String, dynamic>();
       if (addr == null) return null;
-      final street = [addr['house_number'], addr['road']].where((v) => v != null && (v as String).isNotEmpty).join(' ');
-      final city = (addr['city'] ?? addr['town'] ?? addr['village'] ?? addr['county']) as String?;
-      final country = addr['country'] as String?;
-      return {
-        'streetAddress': street.isNotEmpty ? street : (body['display_name'] as String? ?? ''),
-        'city': city ?? '',
-        'country': country ?? '',
-      };
+      String first(List<String> keys) {
+        for (final k in keys) {
+          final v = addr[k];
+          if (v is String && v.trim().isNotEmpty) return v.trim();
+        }
+        return '';
+      }
+      final sep = lang == 'ar' ? '، ' : ', ';
+      final city = first(['city', 'town', 'village', 'municipality', 'county']);
+      final state = first(['state', 'region', 'province', 'state_district']);
+      final postalCode = first(['postcode']);
+      final code = first(['country_code']).toUpperCase();
+      final country = _kCountryEnglishByCode[code] ?? first(['country']);
+      final road = [addr['house_number'], addr['road']].whereType<String>().where((v) => v.trim().isNotEmpty).join(' ');
+      final district = first(['neighbourhood', 'suburb', 'quarter', 'city_district', 'residential', 'hamlet']);
+      var street = [road, if (district != city) district].where((v) => v.isNotEmpty).join(sep);
+      if (street.isEmpty && body['display_name'] is String) {
+        final taken = {city, state, postalCode, first(['country']), first(['county']), first(['municipality']), first(['state_district'])}.where((v) => v.isNotEmpty).map((v) => v.toLowerCase()).toSet();
+        street = (body['display_name'] as String).split(RegExp(r'[,،]\s*')).map((p) => p.trim()).where((p) => p.isNotEmpty && !taken.contains(p.toLowerCase())).take(2).join(sep);
+      }
+      return {'streetAddress': street, 'city': city, 'state': state, 'postalCode': postalCode, 'country': country, 'countryCode': code};
     } catch (_) {
       return null;
     }
   }
+
+  /// The English names of the countries the shop serves, by their two-letter code (Nominatim names them in the asked language).
+  static const Map<String, String> _kCountryEnglishByCode = {
+    'SA': 'Saudi Arabia', 'AE': 'United Arab Emirates', 'OM': 'Oman', 'KW': 'Kuwait', 'BH': 'Bahrain', 'QA': 'Qatar', 'JO': 'Jordan', 'BE': 'Belgium',
+    'BG': 'Bulgaria', 'HR': 'Croatia', 'CZ': 'Czech Republic', 'DK': 'Denmark', 'FI': 'Finland', 'DE': 'Germany', 'HU': 'Hungary', 'IE': 'Ireland',
+    'IT': 'Italy', 'LV': 'Latvia', 'LT': 'Lithuania', 'NL': 'Netherlands', 'PL': 'Poland', 'PT': 'Portugal', 'RO': 'Romania', 'SK': 'Slovakia',
+    'SI': 'Slovenia', 'ES': 'Spain', 'SE': 'Sweden', 'GB': 'United Kingdom', 'US': 'United States', 'MX': 'Mexico', 'PA': 'Panama', 'DO': 'Dominican Republic',
+  };
 
   // ---------------- Support tickets (BUY-060/061) ----------------
 

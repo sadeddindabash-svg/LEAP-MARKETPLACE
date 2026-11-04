@@ -275,7 +275,7 @@ function toLoyaltyTierDto(row) {
   return {
     id: row.id, name: row.name, nameAr: row.name_ar,
     spendThreshold: Number(row.spend_threshold), discountPercentage: Number(row.discount_percentage),
-    icon: row.icon, color: row.color, sortOrder: row.sort_order,
+    icon: row.icon, color: row.color, sortOrder: row.sort_order, photoUrl: row.photo_url || null,
   };
 }
 

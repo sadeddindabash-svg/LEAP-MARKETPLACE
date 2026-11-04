@@ -10,6 +10,14 @@ const SOURCES: GridSource[] = [
 ];
 
 describe("how a lazily loaded list is asked for, and checked", () => {
+  it("CRITICAL: a part name with spaces, the sort, the price range and the delivery time go to the next pages too", () => {
+    const source: GridSource = { kind: "search", params: { category: "brake", part: "Front Brake Disc", sort: "price_asc", minPrice: 26.67, maxPrice: 80, maxDeliveryDays: 7 } };
+    expect(parse(gridQuery(source, 2, 24, "en"))).toEqual({ source, page: 2, limit: 24, lang: "en" });
+    const car: GridSource = { kind: "search", params: { brandId: "changan", modelId: "cs75", year: 2022 } };
+    expect(parse(gridQuery(car, 1, 24, "en"))).toEqual({ source: car, page: 1, limit: 24, lang: "en" });
+    expect(parse("kind=search&brandId=a%2Fb")).toEqual({ error: "brandId is not valid" });
+    expect(parse("kind=search&sort=evil&minPrice=-1")).toEqual({ source: { kind: "search", params: {} }, page: 1, limit: 24, lang: "en" });
+  });
   it("CRITICAL: what the browser asks is exactly what the website's door reads back (every kind of list, both languages)", () => {
     for (const source of SOURCES) for (const lang of ["en", "ar"] as const) {
       const back = parse(gridQuery(source, 3, 24, lang));

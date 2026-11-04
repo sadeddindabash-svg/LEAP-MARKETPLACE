@@ -266,16 +266,20 @@ describe("loyalty page", () => {
     expect(screen.getByText(/Lifetime spend:/)).toBeInTheDocument();
     const items = screen.getAllByRole("listitem");
     expect(items).toHaveLength(3);
-    expect(within(items[1]).getByText("Silver — 5% off")).toBeInTheDocument();
+    // design A: each tier a step with its name, its discount and what unlocks it ("5% · $…+"), the current one marked "You are here", the next ones locked
+    expect(within(items[1]).getByText("Silver")).toBeInTheDocument();
+    expect(within(items[1]).getByText((_, el) => el?.tagName === "P" && /^5% · .+\+$/.test(el.textContent ?? ""))).toBeInTheDocument();
     expect(items[1].getAttribute("aria-current")).toBe("true");
+    expect(within(items[1]).getByText("You are here")).toBeInTheDocument();
     expect(items[0].getAttribute("aria-current")).toBeNull();
-    expect(within(items[2]).getByText(/Unlocked at/)).toBeInTheDocument();
+    expect(items[0].getAttribute("data-state")).toBe("reached");
+    expect(items[2].getAttribute("data-state")).toBe("locked");
   });
   it("in Arabic the tier names are Arabic where the server has them, and a status that cannot be loaded says so", async () => {
     const first = show(<LoyaltyPage />, "ar");
     expect(await screen.findByText("العضوية / فضي")).toBeInTheDocument();
     expect(screen.getByText("برونزي")).toBeInTheDocument();
-    expect(screen.getByText("Gold — 10% خصم")).toBeInTheDocument();                                       // no Arabic name: the English one
+    expect(screen.getByText("Gold")).toBeInTheDocument();                                                    // no Arabic name: the English one
     first.unmount();
     m.api.fetchLoyaltyStatus.mockRejectedValue(new Error("down"));
     show(<LoyaltyPage />);

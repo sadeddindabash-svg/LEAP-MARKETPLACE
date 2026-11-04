@@ -93,13 +93,11 @@ describe("cart page", () => {
     expect(screen.getByText("Price updated since you added this.")).toBeInTheDocument();
   });
 
-  it("CRITICAL: removing a part says so and Undo puts the same quantity back", async () => {
+  it("CRITICAL: removing a part removes it (it flies into the trash can; here, without motion, at once), and no message with Undo is shown any more", async () => {
     show(<CartPage />);
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
     await waitFor(() => expect(ctx().removeItem).toHaveBeenCalledWith("p1"));
-    expect(await screen.findByText(/Front Brake Disc removed from cart/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
-    await waitFor(() => expect(ctx().addItem).toHaveBeenCalledWith("p1", 2));
+    expect(screen.queryByText(/removed from cart/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
   });
 

@@ -10,6 +10,7 @@ import { Price } from "@/components/Price";
 import { COMPARE_MAX, COMPARE_MIN, compareHref } from "@/lib/compare";
 import useCompareMax from "@/components/useCompareMax";
 import { fetchWishlist, removeFromWishlist, resolveImageUrl, type ProductSummary } from "@/lib/api";
+import { WishlistTabs } from "@/components/WishlistTabs";
 
 // The wishlist: the parts a buyer saved for later. Out-of-stock ones say that the buyer will be told when they are back (a real back-in-stock notice exists), and 2 to 4 saved
 // parts can be compared side by side (like the app).
@@ -45,14 +46,10 @@ export default function WishlistPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-3xl font-bold tracking-tight text-navy">{t("wishlist")}</h1>
-        {list.length >= COMPARE_MIN && (
-          <button type="button" aria-pressed={compareMode} onClick={() => { setCompareMode((on) => !on); setSelected([]); }} className="inline-flex min-h-11 items-center rounded-[10px] border-[1.5px] border-navy px-4 text-sm font-bold text-navy hover:bg-chalk">
-            {compareMode ? t("compare_cancel") : t("compare_mode")}
-          </button>
-        )}
-      </div>
+      <h1 className="text-3xl font-bold tracking-tight text-navy">{t("wishlist")}</h1>
+      {/* Two tabs (design A): the saved parts, and Compare: tick 2 to 4 of them, then open the comparison (it is a tab of Wishlist too) */}
+      <WishlistTabs active={compareMode ? "compare" : "saved"} savedCount={list.length} compareCount={selected.length} canCompare={list.length >= COMPARE_MIN}
+        onSaved={() => { setCompareMode(false); setSelected([]); }} onCompare={() => { if (!compareMode) { setCompareMode(true); setSelected([]); } }} />
       {compareMode && <p className="mt-3 text-sm text-muted">{t(max < COMPARE_MAX ? "compare_pick_hint_phone" : "compare_pick_hint")}</p>}
       {error && <p role="alert" className="mt-4 text-sm font-semibold text-[#a12a21]">{error}</p>}
 
@@ -62,9 +59,9 @@ export default function WishlistPage() {
           <Link href="/search" className="inline-flex min-h-12 items-center rounded-[10px] bg-signal px-6 font-bold text-on-signal hover:bg-signal-dark">{t("browse_products")}</Link>
         </div>
       ) : (
-        <ul className="mt-6 grid grid-cols-[minmax(0,1fr)] gap-3">          {/* minmax(0,…): a row can shrink below its longest unbroken word instead of pushing the page sideways */}
+        <ul className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-3">          {/* minmax(0,…): a row can shrink below its longest unbroken word instead of pushing the page sideways */}
           {list.map((p) => (
-            <li key={p.id} className="flex items-center gap-4 rounded-[14px] border border-line bg-white p-4">
+            <li key={p.id} className={`flex items-center gap-4 rounded-[14px] border bg-white p-4 ${compareMode && selected.includes(p.id) ? "border-navy" : "border-line"}`}>
               {compareMode && (
                 <input type="checkbox" className="size-5 flex-none accent-[#0b3146]" aria-label={p.name} checked={selected.includes(p.id)}
                   disabled={!selected.includes(p.id) && selected.length >= max}
@@ -82,12 +79,14 @@ export default function WishlistPage() {
         </ul>
       )}
       {compareMode && (
-        <div className="mt-6">
-          {selected.length >= COMPARE_MIN ? (
-            <Link href={compareHref(selected, max)} className="inline-flex min-h-12 items-center rounded-[10px] bg-signal px-6 font-bold text-on-signal hover:bg-signal-dark">{t("compare_selected", { n: selected.length })}</Link>
-          ) : (
-            <p className="text-sm font-semibold text-navy">{t("compare_need_two")}</p>
-          )}
+        <div data-testid="compare-bar" className="sticky bottom-3 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[14px] bg-gradient-to-br from-navy to-[#173f57] px-4 py-3 text-white shadow-lg">
+          <p className="text-sm font-bold">{selected.length >= COMPARE_MIN ? t("compare_ticked", { n: selected.length }) : t("compare_need_two")}</p>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => { setCompareMode(false); setSelected([]); }} className="inline-flex min-h-10 items-center rounded-[10px] border-[1.5px] border-white/50 px-4 text-sm font-bold text-white hover:bg-white/10">{t("compare_cancel")}</button>
+            {selected.length >= COMPARE_MIN && (
+              <Link href={compareHref(selected, max)} className="inline-flex min-h-10 items-center rounded-[10px] bg-signal px-5 text-sm font-bold text-on-signal hover:bg-signal-dark">{t("compare_selected", { n: selected.length })}</Link>
+            )}
+          </div>
         </div>
       )}
     </div>

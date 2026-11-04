@@ -5,6 +5,7 @@ import 'core/theme.dart';
 import 'core/auth_state.dart';
 import 'core/currency_state.dart';
 import 'core/cart_state.dart';
+import 'core/fly_to_cart.dart';
 import 'core/language_state.dart';
 import 'core/app_lock_state.dart';
 import 'core/theme_state.dart';
@@ -22,6 +23,7 @@ import 'features/catalog/which_part_wizard_screen.dart';
 import 'features/catalog/product_comparison_screen.dart';
 import 'features/support/report_bug_screen.dart';
 import 'features/account/legal_document_screen.dart';
+import 'features/account/site_pages.dart';      // the website footer's six pages, from admin Settings
 import 'features/support/contact_us_screen.dart';
 import 'models/product.dart';
 import 'models/vehicle.dart';
@@ -58,6 +60,7 @@ import 'features/auth/login_two_factor_screen.dart';
 import 'features/auth/signup_screen.dart';
 import 'features/auth/forgot_password_screen.dart';
 import 'features/auth/reset_password_screen.dart';
+import 'features/quotations/quotations_screens.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/splash',
@@ -95,13 +98,17 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => ProductComparisonScreen(products: state.extra as List<Product>),
     ),
     GoRoute(path: '/report-bug', builder: (context, state) => const ReportBugScreen()),
-    GoRoute(path: '/terms', builder: (context, state) => const LegalDocumentScreen(type: LegalDocumentType.terms)),
+    GoRoute(path: '/terms', builder: (context, state) => const SitePageScreen(pageKey: 'terms')),
+    GoRoute(path: '/page/:key', builder: (context, state) => SitePageScreen(pageKey: state.pathParameters['key'] ?? 'about')),
     GoRoute(path: '/contact-us', builder: (context, state) => const ContactUsScreen()),
-    GoRoute(path: '/privacy', builder: (context, state) => const LegalDocumentScreen(type: LegalDocumentType.privacy)),
+    GoRoute(path: '/privacy', builder: (context, state) => const SitePageScreen(pageKey: 'privacy')),
     GoRoute(path: '/addresses', builder: (context, state) => const AddressesScreen()),
     GoRoute(path: '/wishlist', builder: (context, state) => const WishlistScreen()),
     GoRoute(path: '/saved-searches', builder: (context, state) => const SavedSearchesScreen()),
     GoRoute(path: '/notifications', builder: (context, state) => const NotificationsScreen()),
+    GoRoute(path: '/quotations', builder: (context, state) => const MyQuotationsScreen()),
+    GoRoute(path: '/quotations/new', builder: (context, state) => const NewQuotationScreen()),
+    GoRoute(path: '/quotations/:id', builder: (context, state) => QuotationDetailScreen(quotationId: state.pathParameters['id']!)),
     GoRoute(path: '/referrals', builder: (context, state) => const ReferralsScreen()),
     GoRoute(path: '/addresses/add', builder: (context, state) => const AddressFormScreen()),
     GoRoute(path: '/account/change-email', builder: (context, state) => const ChangeEmailScreen()),
@@ -229,12 +236,18 @@ class RootShell extends StatelessWidget {
           BottomNavigationBarItem(icon: const Icon(Icons.home_outlined), label: tr(context, 'nav_home')),
           BottomNavigationBarItem(icon: const Icon(Icons.grid_view_outlined), label: tr(context, 'nav_shop')),
           BottomNavigationBarItem(
-            icon: cartItemCount > 0
-                ? Badge(
-                    label: Text(cartItemCount > 99 ? '99+' : '$cartItemCount'),
-                    child: const Icon(Icons.shopping_cart_outlined),
-                  )
-                : const Icon(Icons.shopping_cart_outlined),
+            // "Fly to cart" (core/fly_to_cart.dart): an added part lands here; its number waits while the part is in the air, then the tab bounces.
+            icon: FlyCartTarget(
+              child: FlyCartCount(
+                itemCount: cartItemCount,
+                builder: (context, count) => count > 0
+                    ? Badge(
+                        label: Text(count > 99 ? '99+' : '$count'),
+                        child: const Icon(Icons.shopping_cart_outlined),
+                      )
+                    : const Icon(Icons.shopping_cart_outlined),
+              ),
+            ),
             label: tr(context, 'nav_cart'),
           ),
           BottomNavigationBarItem(icon: const Icon(Icons.inventory_2_outlined), label: tr(context, 'nav_orders')),

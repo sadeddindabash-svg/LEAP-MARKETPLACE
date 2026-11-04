@@ -43,7 +43,7 @@ class _QueueScreenState extends State<QueueScreen> {
   void initState() {
     super.initState();
     _load(showSpinner: true);
-    _pollTimer = Timer.periodic(const Duration(seconds: 20), (_) => _load(showSpinner: false));
+    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _load(showSpinner: false));      // every 5 seconds, the same as the hub portal
     _searchController.addListener(() => setState(() {}));
   }
 
@@ -77,6 +77,36 @@ class _QueueScreenState extends State<QueueScreen> {
         });
       }
     }
+  }
+
+  // the number on each filter chip: every shipment in it, whatever is typed in the search box
+  bool _inFilter(ShipmentSummary s, String id) {
+    if (id == 'all') return true;
+    if (id == 'in_progress') return _inProgressStatuses.contains(s.status);
+    if (id == 'flagged') return kFlaggedStatuses.contains(s.status) && s.resolvedAt == null;
+    return s.status == id;
+  }
+
+  int _countOf(String id) => _shipments.where((s) => _inFilter(s, id)).length;
+
+  // gold for work coming or at the hub, red for open flags, grey otherwise
+  Widget _filterCount(String id, bool active) {
+    final n = _countOf(id);
+    if (_loadState != _LoadState.ready || n == 0) return const SizedBox.shrink();
+    final Color bg; final Color fg;
+    if (id == 'flagged') { bg = HubColors.red; fg = Colors.white; }
+    else if (id == 'awaiting_receipt' || id == 'in_progress') { bg = const Color(0xFFF2A71B); fg = const Color(0xFF241A05); }
+    else if (active) { bg = Colors.white; fg = HubColors.ink; }
+    else { bg = const Color(0xFFEEF0F3); fg = HubColors.ink; }
+    return Container(
+      margin: const EdgeInsets.only(left: 6),
+      constraints: const BoxConstraints(minWidth: 19),
+      height: 19,
+      padding: const EdgeInsets.symmetric(horizontal: 5),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
+      child: Text('$n', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: fg)),
+    );
   }
 
   List<ShipmentSummary> get _filtered {
@@ -169,7 +199,7 @@ class _QueueScreenState extends State<QueueScreen> {
                   final id = _filterIds[i];
                   final isActive = _filter == id;
                   return ChoiceChip(
-                    label: Text(t.filters[id] ?? id),
+                    label: Row(mainAxisSize: MainAxisSize.min, children: [Text(t.filters[id] ?? id), _filterCount(id, isActive)]),
                     selected: isActive,
                     onSelected: (_) => setState(() => _filter = id),
                     selectedColor: HubColors.ink,

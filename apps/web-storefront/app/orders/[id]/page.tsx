@@ -21,6 +21,10 @@ import { formatDate, isOrderCancellable, isPartiallyCancellable, isOrderFullyCan
 const outline = "inline-flex min-h-11 items-center justify-center rounded-[10px] border-[1.5px] border-navy px-4 text-sm font-bold text-navy hover:bg-chalk disabled:opacity-50";
 const danger = "inline-flex min-h-11 items-center justify-center rounded-[10px] border-[1.5px] border-[#a12a21] px-4 text-sm font-bold text-[#a12a21] hover:bg-[#fdf2f1] disabled:opacity-50";
 
+// "Tue 3 Nov 2026" and "14:32" in the buyer's time, Latin digits (like the rest of the site)
+const deliveryDate = (lang: "en" | "ar", iso: string) => new Intl.DateTimeFormat(lang === "ar" ? "ar-u-nu-latn" : "en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" }).format(new Date(iso));
+const deliveryTime = (iso: string) => new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
+
 function Part({ order, so, who, canCancelPart, onCancel, busy }: { order: OrderDetail; so: SupplierSubOrder; who: OrderWho; canCancelPart: boolean; onCancel: () => void; busy: boolean }) {
   const t = useT();
   const lang = useLang();
@@ -44,20 +48,35 @@ function Part({ order, so, who, canCancelPart, onCancel, busy }: { order: OrderD
       setReport({ state: "error" });
     }
   };
+  // when the driver delivered it (migration 120): the moment the delivery was confirmed, else the first delivery photo
+  const deliveredAt = proofInfo?.deliveredAt ?? proof[0]?.submittedAt ?? null;
+  const delivered = subOrderStage(so) === "delivered";
+  const showReport = proof.length > 0;
   return (
-    <li className="rounded-[14px] border border-line bg-white p-5">
-      <p className="mb-3 font-bold">{supplierLabel(so.supplierName, t("supplier_word"))}</p>
+    <li className="rounded-[16px] border border-line bg-white p-5">
+      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <p className="font-extrabold text-navy">{supplierLabel(so.supplierName, t("supplier_word"))}</p>
+        {so.trackingNumber && <p className="text-sm text-muted">{t("tracking_label")} <span className="font-plate font-bold text-navy" dir="ltr">{so.trackingNumber}</span></p>}
+      </div>
       <StatusTimeline status={subOrderStage(so)} lang={lang} />
-      {so.trackingNumber && <p className="mt-3 text-sm text-muted">{t("tracking_label")} <span className="font-plate font-semibold text-ink" dir="ltr">{so.trackingNumber}</span></p>}
-      <ul className="mt-4 grid gap-3">
+      <ul className="mt-4 grid gap-3 border-t border-[#eef0f3] pt-4">
         {so.items.map((i) => (
           <li key={`${i.productId}`} className="flex items-center gap-3">
-            <span className="relative size-14 flex-none overflow-hidden rounded-lg bg-[#e6edf2]">{i.imageUrl && <SafeImage src={resolveImageUrl(i.imageUrl)} alt="" fill sizes="56px" className="object-cover" unoptimized />}</span>
-            <Link href={`/products/${i.productId}`} className="min-w-0 flex-1 font-semibold hover:underline">{i.name} <span className="font-normal text-muted">× {i.quantity}</span></Link>
-            <Price usd={i.unitPrice * i.quantity} className="font-bold" />
+            <span className="relative size-14 flex-none overflow-hidden rounded-[10px] bg-[#e6edf2]">{i.imageUrl && <SafeImage src={resolveImageUrl(i.imageUrl)} alt="" fill sizes="56px" className="object-cover" unoptimized />}</span>
+            <Link href={`/products/${i.productId}`} className="min-w-0 flex-1 font-bold text-navy [overflow-wrap:anywhere] hover:underline">{i.name} <span className="font-normal text-muted">× {i.quantity}</span></Link>
+            <Price usd={i.unitPrice * i.quantity} className="font-extrabold text-navy" />
           </li>
         ))}
       </ul>
+      {delivered && deliveredAt && (
+        <div data-testid="delivered-at" className="mt-4 flex items-center gap-3 rounded-[12px] border border-[#b9e4cc] bg-[#e8f7ef] p-3.5">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#0f6b49" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="flex-none"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /><path d="m9 15 2 2 4-4" /></svg>
+          <div className="min-w-0">
+            <p className="font-extrabold text-[#0f6b49]">{t("delivered_on_at", { date: deliveryDate(lang, deliveredAt), time: deliveryTime(deliveredAt) })}</p>
+            {proofInfo?.receivedBy && <p className="text-sm text-muted">{t("received_by_line", { who: t(`received_by_${proofInfo.receivedBy}` as "received_by_buyer") })}{proofInfo.verified ? ` · ${t("received_with_code")}` : ""}</p>}
+          </div>
+        </div>
+      )}
       {deliveryCode && (
         <div data-testid="delivery-code" className="mt-4 rounded-[12px] border-[1.5px] border-navy p-4">
           <p className="font-bold">{t("delivery_code_title")}</p>
@@ -68,22 +87,26 @@ function Part({ order, so, who, canCancelPart, onCancel, busy }: { order: OrderD
       )}
       {deliveryCode && attempt && <p data-testid="delivery-attempt" className="mt-3 rounded-[10px] bg-[#fff4e5] p-3 text-sm text-[#7a4e00]">{t(`delivery_attempt_${attempt.reason}` as "delivery_attempt_other")}</p>}
       {proof.length > 0 && (
-        <div className="mt-4">
-          <p className="mb-2 text-sm font-bold">{t("delivery_proof_title")}</p>
-          <div className="flex flex-wrap gap-2">
-            {proof.map((p) => <a key={p.url} href={resolveImageUrl(p.url)} target="_blank" rel="noreferrer" className="relative block size-20 overflow-hidden rounded-lg bg-[#e6edf2]"><SafeImage src={resolveImageUrl(p.url)} alt={t("delivery_proof_title")} fill sizes="80px" className="object-cover" unoptimized /></a>)}
-          </div>
-          {proofInfo?.receivedBy && <p className="mt-2 text-sm">{t("received_by_line", { who: t(`received_by_${proofInfo.receivedBy}` as "received_by_buyer") })}{proofInfo.verified ? ` · ${t("received_with_code")}` : ""}</p>}
-          {report.state === "sent"
-            ? <p className="mt-2 text-sm font-semibold text-[#1e6b34]">{t("not_my_parcel_sent")}{report.ticketId && who.token ? <> <Link href={`/support/${report.ticketId}`} className="underline">{t("not_my_parcel_open")}</Link></> : null}</p>
-            : <button type="button" data-testid="not-my-parcel" className="mt-2 text-sm font-bold text-[#a12a21] hover:underline disabled:opacity-50" disabled={report.state === "sending"} onClick={reportParcel}>{t("not_my_parcel")}</button>}
-          {report.state === "error" && <p className="mt-1 text-sm text-[#a12a21]">{t("not_my_parcel_failed")}</p>}
+        <div className="mt-3 flex flex-wrap items-center gap-2.5">
+          <p className="text-sm font-bold text-muted">{t("delivery_proof_title")}</p>
+          {proof.map((p) => <a key={p.url} href={resolveImageUrl(p.url)} target="_blank" rel="noreferrer" className="relative block size-14 overflow-hidden rounded-[10px] bg-[#e6edf2] ring-1 ring-line hover:ring-navy"><SafeImage src={resolveImageUrl(p.url)} alt={t("delivery_proof_title")} fill sizes="56px" className="object-cover" unoptimized /></a>)}
+          {!(delivered && deliveredAt) && proofInfo?.receivedBy && <p className="w-full text-sm">{t("received_by_line", { who: t(`received_by_${proofInfo.receivedBy}` as "received_by_buyer") })}{proofInfo.verified ? ` · ${t("received_with_code")}` : ""}</p>}
         </div>
       )}
-      <div className="mt-4 flex flex-wrap gap-2">
-        {canCancelPart && <button type="button" className={danger} disabled={busy} onClick={onCancel}>{t("cancel_this_part")}</button>}
-        {isPartReturnable(order, so) && <button type="button" className={outline} aria-expanded={returning} onClick={() => setReturning((v) => !v)}>{t("request_a_return")}</button>}
-      </div>
+      {(showReport || canCancelPart || isPartReturnable(order, so)) && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            {showReport && (report.state === "sent"
+              ? <p className="text-sm font-semibold text-[#1e6b34]">{t("not_my_parcel_sent")}{report.ticketId && who.token ? <> <Link href={`/support/${report.ticketId}`} className="underline">{t("not_my_parcel_open")}</Link></> : null}</p>
+              : <button type="button" data-testid="not-my-parcel" className="text-sm font-bold text-[#a12a21] hover:underline disabled:opacity-50" disabled={report.state === "sending"} onClick={reportParcel}>{t("not_my_parcel")}</button>)}
+            {showReport && report.state === "error" && <p className="mt-1 text-sm text-[#a12a21]">{t("not_my_parcel_failed")}</p>}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {canCancelPart && <button type="button" className={danger} disabled={busy} onClick={onCancel}>{t("cancel_this_part")}</button>}
+            {isPartReturnable(order, so) && <button type="button" className={outline} aria-expanded={returning} onClick={() => setReturning((v) => !v)}>{t("request_a_return")}</button>}
+          </div>
+        </div>
+      )}
       {returning && isPartReturnable(order, so) && <ReturnRequestForm subOrderId={so.subOrderId} who={who} onClose={() => setReturning(false)} />}
     </li>
   );
@@ -171,13 +194,13 @@ function OrderView({ orderId }: { orderId: string }) {
   const cancelled = isOrderFullyCancelled(order);
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 sm:px-8">
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-navy">{t("order_word")} <span className="font-plate" dir="ltr">{order.id}</span></h1>
-          <p className="mt-1 text-muted">{t("order_placed_on", { date: formatDate(lang, order.placedAt) })}</p>
-          {order.isGuestOrder && <p className="text-sm text-muted">{t("guest_order_note")}</p>}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-[16px] bg-gradient-to-br from-navy to-[#173f57] px-6 py-5 text-white">
+        <div className="min-w-0">
+          <h1 className="tracking-tight"><span className="block text-xs font-semibold text-[#c7d4de]">{t("order_word")}</span> <span className="font-plate text-[26px] font-extrabold leading-tight" dir="ltr">{order.id}</span></h1>
+          <p className="mt-0.5 text-[13px] text-[#c7d4de]">{t("order_placed_on", { date: formatDate(lang, order.placedAt) })}</p>
+          {order.isGuestOrder && <p className="text-sm text-[#c7d4de]">{t("guest_order_note")}</p>}
         </div>
-        <span className={`rounded-full px-3 py-1 text-xs font-extrabold uppercase tracking-wide ${cancelled ? "bg-[#fdf2f1] text-[#a12a21]" : order.displayStatus === "delivered" ? "bg-[#e3f2ea] text-[#0f6b49]" : "bg-[#fdf1d6] text-[#7a4e00]"}`}>{statusLabel(lang, cancelled ? "cancelled" : order.displayStatus || order.status)}</span>
+        <span className={`rounded-full px-3 py-1 text-xs font-extrabold uppercase tracking-wide ${cancelled ? "bg-white text-[#a12a21]" : order.displayStatus === "delivered" ? "bg-signal text-navy" : "bg-white/15 text-white"}`}>{order.displayStatus === "delivered" && !cancelled ? "✓ " : ""}{statusLabel(lang, cancelled ? "cancelled" : order.displayStatus || order.status)}</span>
       </div>
 
       <p aria-live="polite" role={notice?.kind === "error" ? "alert" : "status"} className={`mb-4 text-sm font-semibold ${notice?.kind === "error" ? "text-[#a12a21]" : "text-[#0f6b49]"}`}>{notice?.text}</p>
@@ -193,7 +216,7 @@ function OrderView({ orderId }: { orderId: string }) {
 
       <div className="mb-6 grid gap-5 sm:grid-cols-2">
         {order.address && (
-          <section className="rounded-[14px] border border-line bg-white p-5" aria-labelledby="ship-to">
+          <section className="rounded-[16px] border border-line bg-white p-5" aria-labelledby="ship-to">
             <h2 id="ship-to" className="mb-2 text-lg font-bold">{t("shipping_to")}</h2>
             <p>{order.address.recipientName}</p>
             <p className="text-muted"><bdi>{order.address.streetAddress}, {order.address.city}</bdi>, {countryName(lang, order.address.country)}</p>
@@ -201,7 +224,7 @@ function OrderView({ orderId }: { orderId: string }) {
             {order.waitForAllShipments && <p className="mt-2 text-sm font-semibold text-navy">{t("wait_ship_together_note")}</p>}
           </section>
         )}
-        <section className="rounded-[14px] border border-line bg-white p-5" aria-labelledby="order-sum">
+        <section className="rounded-[16px] border border-line bg-white p-5" aria-labelledby="order-sum">
           <h2 id="order-sum" className="mb-2 text-lg font-bold">{t("order_summary")}</h2>
           {order.discountAmount > 0 && <p className="flex justify-between font-semibold text-[#0f6b49]"><span>{t("discount")}{order.promoCode ? ` (${order.promoCode})` : ""}</span><span>−{format(order.discountAmount)}</span></p>}
           {order.shippingFee ? <p className="flex justify-between"><span>{t("shipping_fees")}</span><span>+<Price usd={order.shippingFee} /></span></p> : null}

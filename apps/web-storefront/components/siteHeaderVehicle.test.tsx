@@ -22,9 +22,9 @@ async function header(lang: "en" | "ar" = "en") {
   return { view, nav, row: nav.firstElementChild as HTMLElement };
 }
 describe("the Shopping for container in the header", () => {
-  it("is the LAST thing of the menu row (after Home, Products, Find a part and Sections), so it sits beside the menus", async () => {
+  it("is the LAST thing of the menu row (after Home, Products and Sections), so it sits beside the menus", async () => {
     const { row } = await header(); const last = row.lastElementChild as HTMLElement; expect(last.getAttribute("data-testid")).toBe("vehicle-menu");
-    const names = [...row.children].map((c) => c.getAttribute("data-testid") ?? c.textContent!.trim()); expect(names.slice(0, 3)).toEqual(["Home", "Products", "Find a part"]); expect(names[names.length - 2]).toMatch(/Sections/); expect(names[names.length - 1]).toBe("vehicle-menu");
+    const names = [...row.children].map((c) => c.getAttribute("data-testid") ?? c.textContent!.trim()); expect(names.slice(0, 2)).toEqual(["Home", "Products"]); expect(names).not.toContain("Find a part"); expect(names[names.length - 2]).toMatch(/Sections/); expect(names[names.length - 1]).toBe("vehicle-menu");
   });
   it("the menu row stays on ONE line from the large breakpoint up (so the container cannot drop under the menus), and may wrap below it", async () => { const { row } = await header(); const c = row.className.split(" "); expect(c).toContain("flex-wrap"); expect(c).toContain("lg:flex-nowrap"); });
   it("a second place, for phones, is its own row right under the menu (not inside it)", async () => {

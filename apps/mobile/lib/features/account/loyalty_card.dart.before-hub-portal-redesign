@@ -1,0 +1,276 @@
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import '../../core/theme.dart';
+import '../../core/auth_state.dart';
+import '../../core/language_state.dart';
+import '../../core/app_strings.dart';
+import '../../core/currency_state.dart';
+import '../../services/api_client.dart';
+
+/// Real loyalty tier card (new) -- confirmed with the person through
+/// several rounds of design (Design 1 of 6 real mockups reviewed
+/// directly): the buyer's current real tier, a progress bar toward
+/// the next real tier, and a tap-through to the full real tier list.
+/// Every threshold, discount, name, icon, and color is admin-set
+/// server-side (see the Pricing page's Loyalty tiers section) --
+/// nothing here is hardcoded.
+class LoyaltyCard extends StatefulWidget {
+  const LoyaltyCard({super.key});
+
+  @override
+  State<LoyaltyCard> createState() => _LoyaltyCardState();
+}
+
+class _LoyaltyCardState extends State<LoyaltyCard> {
+  Map<String, dynamic>? _status;
+  bool _isLoading = true;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final auth = context.read<AuthState>();
+    if (auth.token == null) return;
+    try {
+      final status = await ApiClient().fetchLoyaltyStatus(auth.token!);
+      if (mounted) setState(() { _status = status; _isLoading = false; });
+    } catch (_) {
+      // Real, deliberate no-op: a real buyer's account page shouldn't
+      // show an error banner over something this non-critical -- the
+      // card simply doesn't render at all if the real status can't
+      // be loaded, same as the existing stats bento's own real
+      // "only show once genuinely loaded" behavior right above it.
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading || _status == null || _status!['currentTier'] == null) return const SizedBox.shrink();
+    final palette = LeapPalette.of(context);
+    final isAr = context.watch<LanguageState>().isArabic;
+    final currentTier = _status!['currentTier'] as Map<String, dynamic>;
+    final nextTier = _status!['nextTier'] as Map<String, dynamic>?;
+    final progressPercent = (_status!['progressPercent'] as num).toDouble() / 100;
+    final lifetimeSpend = (_status!['lifetimeSpend'] as num).toDouble();
+    final amountToNextTier = _status!['amountToNextTier'] as num?;
+    final tierColor = resolveLoyaltyColor(currentTier['color'] as String, palette);
+    final tierName = resolveLoyaltyName(currentTier, isAr);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => context.push('/account/loyalty', extra: _status),
+          child: Container(
+            decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: palette.line)),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 44, height: 44,
+                        decoration: BoxDecoration(color: tierColor.withValues(alpha: 0.15), shape: BoxShape.circle),
+                        child: Center(child: LoyaltyTierIcon(name: currentTier['icon'] as String, color: tierColor, size: 22)),      // the storefront's icon
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(buildMemberLabel(context, tierName, isAr), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: palette.ink)),
+                            const SizedBox(height: 2),
+                            Text(
+                              (currentTier['discountPercentage'] as num) > 0
+                                  ? '${currentTier['discountPercentage']}% ${tr(context, 'loyalty_off_every_order')}'
+                                  : tr(context, 'loyalty_keep_spending'),
+                              style: TextStyle(fontSize: 12.5, color: palette.muted),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.chevron_right, size: 18, color: palette.muted),
+                    ],
+                  ),
+                ),
+                if (nextTier != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('${formatPrice(context, lifetimeSpend)} ${tr(context, 'loyalty_spent')}', style: TextStyle(fontSize: 11.5, color: palette.muted)),
+                            Text('${formatPrice(context, amountToNextTier!.toDouble())} ${tr(context, 'loyalty_to_next_tier')} ${resolveLoyaltyName(nextTier, isAr)}', style: TextStyle(fontSize: 11.5, color: palette.muted)),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: progressPercent.clamp(0, 1),
+                            minHeight: 6,
+                            backgroundColor: palette.line,
+                            valueColor: AlwaysStoppedAnimation(palette.signal),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Confirmed with the person: resolves the admin-set tier name in the
+/// current app language -- falls back to the English name if no
+/// Arabic name was set, matching the same nameAr-fallback pattern
+/// already established elsewhere in the app for admin-set bilingual
+/// content (brands, categories, etc.). Public since both this file
+/// and loyalty_detail_screen.dart share it.
+String resolveLoyaltyName(Map<String, dynamic> tier, bool isAr) {
+  if (isAr) {
+    final nameAr = tier['nameAr'] as String?;
+    if (nameAr != null && nameAr.trim().isNotEmpty) return nameAr;
+  }
+  return tier['name'] as String;
+}
+
+/// Confirmed with the person's exact specification: Arabic reads
+/// "العضوية / برونزي" (membership word first, then the tier name,
+/// joined with a slash) -- the reverse order from English's
+/// "Bronze Member". Built here rather than as a single tr() key
+/// since the word order itself differs by language, not just the
+/// words.
+String buildMemberLabel(BuildContext context, String tierName, bool isAr) {
+  final membershipWord = tr(context, 'loyalty_membership_word');
+  return isAr ? '$membershipWord / $tierName' : '$tierName $membershipWord';
+}
+
+/// Confirmed with the person: maps the admin-set color name (see the
+/// Pricing page's Loyalty tiers section) to a real Flutter color --
+/// a small, fixed palette rather than a free-form hex field, so
+/// every tier always renders using a color that's already been
+/// checked to read well in both light and dark mode. Public (not
+/// underscore-prefixed) since loyalty_detail_screen.dart shares this
+/// exact same real mapping.
+Color resolveLoyaltyColor(String name, LeapPalette palette) {
+  switch (name) {
+    case 'amber':
+      return palette.amber;
+    case 'blue':
+      return palette.torque;
+    case 'purple':
+      return const Color(0xFF8B5CF6);
+    case 'teal':
+      return palette.gauge;
+    default:
+      return palette.muted;
+  }
+}
+
+/// The tier icons, drawn exactly as the storefront draws them (apps/web-storefront/components/LoyaltyCard.tsx, TierBadge): the same five
+/// outline shapes on a 24 x 24 grid, a 1.8 line with round ends, so the app and the website show the same tier icon.
+class LoyaltyTierIcon extends StatelessWidget {
+  final String name;      // award, diamond, crown, star; anything else is the medal (as on the website)
+  final Color color;
+  final double size;
+  const LoyaltyTierIcon({super.key, required this.name, required this.color, this.size = 22});
+
+  @override
+  Widget build(BuildContext context) => SizedBox(width: size, height: size, child: CustomPaint(painter: _TierIconPainter(name, color)));
+}
+
+/// The round badge the storefront shows in the tier list: the icon on a 15% tint of the tier's colour.
+class LoyaltyTierBadge extends StatelessWidget {
+  final String name;
+  final Color color;
+  final double size;
+  const LoyaltyTierBadge({super.key, required this.name, required this.color, this.size = 36});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: size,
+        height: size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.15), shape: BoxShape.circle),
+        child: LoyaltyTierIcon(name: name, color: color, size: size * 0.5),
+      );
+}
+
+class _TierIconPainter extends CustomPainter {
+  final String name;
+  final Color color;
+  _TierIconPainter(this.name, this.color);
+
+  Path _poly(List<double> xy, {bool close = false}) {
+    final p = Path()..moveTo(xy[0], xy[1]);
+    for (var i = 2; i < xy.length; i += 2) {
+      p.lineTo(xy[i], xy[i + 1]);
+    }
+    if (close) p.close();
+    return p;
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.scale(size.width / 24, size.height / 24);
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    switch (name) {
+      case 'award':
+        canvas.drawCircle(const Offset(12, 9), 5, paint);
+        canvas.drawPath(_poly([8.5, 13.5, 7, 21, 12, 18, 17, 21, 15.5, 13.5]), paint);
+        break;
+      case 'diamond':
+        canvas.drawPath(_poly([6, 4, 18, 4, 22, 10, 12, 21, 2, 10], close: true), paint);
+        canvas.drawPath(_poly([2, 10, 22, 10]), paint);
+        break;
+      case 'crown':
+        canvas.drawPath(_poly([3, 8, 7, 12, 12, 5, 17, 12, 21, 8, 19, 19, 5, 19], close: true), paint);
+        break;
+      case 'star':
+        canvas.drawPath(_poly([12, 3, 14.7, 8.6, 20.8, 9.5, 16.4, 13.8, 17.4, 19.9, 12, 17, 6.6, 19.9, 7.6, 13.8, 3.2, 9.5, 9.3, 8.6], close: true), paint);
+        break;
+      default:      // medal
+        canvas.drawCircle(const Offset(12, 9), 6, paint);
+        canvas.drawPath(_poly([8.5, 14.5, 7, 21, 12, 18.5, 17, 21, 15.5, 14.5]), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_TierIconPainter old) => old.name != name || old.color != color;
+}
+
+IconData resolveLoyaltyIcon(String name) {
+  switch (name) {
+    case 'award':
+      return Icons.workspace_premium_outlined;
+    case 'diamond':
+      return Icons.diamond_outlined;
+    case 'crown':
+      return Icons.emoji_events_outlined;
+    case 'star':
+      return Icons.star_outline;
+    default:
+      return Icons.military_tech_outlined;
+  }
+}

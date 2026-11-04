@@ -17,7 +17,7 @@ describe('the admin sidebar groups (pure logic)', () => {
       ['Suppliers', ['suppliers', 'supplierMessages']],
       ['Products', ['allProducts', 'moderation']],
       ['Support', ['tickets', 'reviews', 'promoCodes']],
-      ['Financial', ['paymentMethods', 'paymentProviders', 'payouts', 'pricing']],
+      ['Financial', ['paymentMethods', 'paymentProviders', 'payouts', 'pricing', 'profits', 'shippingCosts']],
     ]);
   });
 

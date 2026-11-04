@@ -13,23 +13,32 @@ type Located = "idle" | "finding" | "found" | "failed";
 
 /**
  * The address form, with the mobile app's rules: a country from the countries we serve, the Saudi address code (four letters and four numbers) only for Saudi Arabia, and "Use my
- * location" to fill the street, city and country in (the same lookup the app uses; if it cannot, the buyer just types).
+ * location" to fill the street (with the district), the city, the region, the postal code and the country in, each in its own field and in the page's language, lightly
+ * green until the buyer edits them (the same lookup the app uses; if it cannot, the buyer just types).
  */
 export default function AddressForm({ value, onChange, withLabel = false, idPrefix, disabled = false }: { value: AddressFields; onChange: (next: AddressFields) => void; withLabel?: boolean; idPrefix: string; disabled?: boolean }) {
   const lang = useLang();
   const t = useT();
   const [located, setLocated] = useState<Located>("idle");
   const [foreign, setForeign] = useState(false);          // the lookup found a country we do not serve
-  const set = (patch: Partial<AddressFields>) => onChange({ ...value, ...patch });
+  // The fields "Use my location" filled, lightly green so the buyer checks them; a field the buyer then edits is theirs again.
+  const [filled, setFilled] = useState<ReadonlySet<keyof AddressFields>>(new Set());
+  const set = (patch: Partial<AddressFields>) => {
+    if (Object.keys(patch).some((k) => filled.has(k as keyof AddressFields))) setFilled((cur) => { const n = new Set(cur); for (const k of Object.keys(patch)) n.delete(k as keyof AddressFields); return n; });
+    onChange({ ...value, ...patch });
+  };
 
   const locate = async () => {
     setLocated("finding"); setForeign(false);
     const position = await currentPosition();
-    const found = position ? await reverseGeocode(position.latitude, position.longitude) : null;
+    const found = position ? await reverseGeocode(position.latitude, position.longitude, fetch, lang === "ar" ? "ar" : "en") : null;
     if (!found) return setLocated("failed");
-    const country = findCountry(found.country);
-    setForeign(!country && !!found.country);
-    onChange({ ...value, streetAddress: found.streetAddress, city: found.city, country: country?.en ?? "" });
+    const country = findCountry(found.countryCode) ?? findCountry(found.country);
+    setForeign(!country && !!(found.country || found.countryCode));
+    // Each piece in its own field; a piece the map does not have leaves what the buyer typed.
+    const next: AddressFields = { ...value, streetAddress: found.streetAddress || value.streetAddress, city: found.city || value.city, state: found.state || value.state, postalCode: found.postalCode || value.postalCode, country: country?.en ?? "" };
+    onChange(next);
+    setFilled(new Set((["streetAddress", "city", "state", "postalCode", "country"] as const).filter((k) => k === "country" ? !!country : !!found[k])));
     setLocated("found");
   };
 
@@ -37,7 +46,7 @@ export default function AddressForm({ value, onChange, withLabel = false, idPref
   const field = (name: keyof AddressFields, label: string, extra: { type?: string; maxLength?: number; dir?: "ltr" } = {}) => (
     <div>
       <label htmlFor={`${idPrefix}-${name}`} className={labelClass}>{label}</label>
-      <input id={`${idPrefix}-${name}`} className={input} value={value[name]} disabled={disabled} type={extra.type ?? "text"} maxLength={extra.maxLength} dir={extra.dir}
+      <input id={`${idPrefix}-${name}`} className={`${input} ${filled.has(name) ? "border-[#1e9d6b] bg-[#f0faf5]" : ""}`} data-filled={filled.has(name) || undefined} value={value[name]} disabled={disabled} type={extra.type ?? "text"} maxLength={extra.maxLength} dir={extra.dir}
         onChange={(e) => set({ [name]: e.target.value } as Partial<AddressFields>)} />
     </div>
   );
@@ -58,7 +67,7 @@ export default function AddressForm({ value, onChange, withLabel = false, idPref
       {field("phone", t("phone_field"), { type: "tel", dir: "ltr" })}
       <div>
         <label htmlFor={`${idPrefix}-country`} className={labelClass}>{t("country_field")}</label>
-        <select id={`${idPrefix}-country`} className={input} value={value.country} disabled={disabled} onChange={(e) => { setForeign(false); set({ country: e.target.value }); }}>
+        <select id={`${idPrefix}-country`} className={`${input} ${filled.has("country") ? "border-[#1e9d6b] bg-[#f0faf5]" : ""}`} data-filled={filled.has("country") || undefined} value={value.country} disabled={disabled} onChange={(e) => { setForeign(false); set({ country: e.target.value }); }}>
           <option value="">{t("choose_country")}</option>
           {COUNTRIES.map((c) => <option key={c.code} value={c.en}>{countryName(lang, c.en)}</option>)}
         </select>

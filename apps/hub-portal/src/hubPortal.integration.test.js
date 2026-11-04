@@ -122,8 +122,16 @@ describe.runIf(backendUp)('Hub Portal against a REAL running backend — genuine
 
     const steps = ['received', 'opened', 'inspected', 'packed'];
     for (const step of steps) {
+      if (step === 'inspected') {      // the inspection list (migration 129): every line ticked, every item's received quantity entered
+        const detail = await fetchMyShipmentById(hubToken, shipment.id);
+        const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${hubToken}` };
+        for (const item of detail.items) {
+          await fetch(`${BACKEND_URL}/hub/me/shipments/${shipment.id}/items/${encodeURIComponent(item.productId)}/checks`, { method: 'PUT', headers, body: JSON.stringify({ checked: item.checklist.map((c) => c.key) }) });
+          await fetch(`${BACKEND_URL}/hub/me/shipments/${shipment.id}/items/${encodeURIComponent(item.productId)}/received`, { method: 'PATCH', headers, body: JSON.stringify({ receivedQuantity: item.quantity }) });
+        }
+      }
       const photo = await uploadRealPhoto(hubToken);
-      const result = await recordShipmentEvent(hubToken, shipment.id, { step, notes: `${step} — real note`, photos: [photo.url] });
+      const result = await recordShipmentEvent(hubToken, shipment.id, { step, notes: `${step} — real note`, photos: [photo.url], supplierLabelCovered: step === 'packed' ? true : undefined });
       expect(result.status).toBe(step);
     }
 

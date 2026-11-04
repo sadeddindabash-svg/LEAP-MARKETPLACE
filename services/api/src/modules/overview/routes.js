@@ -76,6 +76,7 @@ router.get('/', requireAuth, requireRole('admin'), requirePageAccess('overview')
       openDisputes: Number(openDisputes.rows[0].n),
       pendingModeration: Number(pendingModeration.rows[0].n),
       openTickets: Number(openTickets.rows[0].n),
+      shippingCostsWaiting: await require('../parcelCosts/service').waitingCount(db),      // parcels waiting for approval (migration 127)
       ordersByDay: ordersByDay.rows.map((r) => ({ day: r.day, count: Number(r.n) })),
       unitsByCategory: unitsByCategory.rows.map((r) => ({ category: r.category, units: Number(r.units) })),
       topSuppliers: topSuppliers.rows.map((r) => ({ id: r.id, name: r.name, orderCount: Number(r.order_count) })),

@@ -1,0 +1,139 @@
+import React, { useEffect, useState } from "react";
+import { Camera, X } from "lucide-react";
+import { API_BASE_URL, SessionExpiredError, uploadEvidencePhoto } from "./auth";
+import { useLang } from "./langContext";
+
+// The "Shipping cost" step (migration 127): once the parcel is packed, before it is shipped to the buyer, the hub enters what it paid the
+// carrier, in its own currency. The hub never sees the planned cost, nor an amount after saving: only whether it may ship. A parcel dearer
+// than planned needs a photo of it with its size and weight written on it, then waits for Leap's approval. Same as the hub app's
+// lib/features/shipment/shipping_cost_card.dart.
+const C = { ink: "#14171C", line: "#E4E6EA", card: "#FFFFFF", muted: "#6B7280", signal: "#E8622C", gauge: "#1E9D6B", gaugeBg: "#E4F5EC", amber: "#B9791F", amberBg: "#FCEFD8", red: "#C0362C", redBg: "#FBE7E5" };
+const body = { fontFamily: "'Inter', sans-serif" };
+const disp = { fontFamily: "'Barlow Condensed', sans-serif" };
+
+const TEXT = {
+  zh: {
+    title: "运费", hint: "请填写您实际支付给承运商的运费。保存后才能发货给买家。",
+    amount: "实际支付的运费", currency: "币种", carrier: "承运商", carrierPlaceholder: "例如 Aramex", receipt: "收据照片（可选）",
+    save: "保存运费", saving: "保存中…",
+    cleared: "运费已记录。可以发货。", waiting: "等待 Leap 审批。请先不要发货：审批后即可发货。",
+    needsPhoto: "此包裹需要 Leap 审核。请拍摄包裹照片，并在包裹上写明尺寸和重量。", parcelPhoto: "包裹照片（写明尺寸和重量）", sendPhoto: "发送照片",
+    sentBack: "Leap 要求您重新填写运费。", note: "说明：",
+    errAmount: "请填写大于 0 的运费。", errCarrier: "请填写承运商。", errPhoto: "请先拍摄包裹照片。", addPhoto: "添加照片", only: "金额仅 Leap 管理员可见。",
+  },
+  en: {
+    title: "Shipping cost", hint: "Enter what you paid the carrier for this parcel. It can be shipped to the buyer once it is saved.",
+    amount: "What you paid the carrier", currency: "Currency", carrier: "Carrier", carrierPlaceholder: "for example Aramex", receipt: "Receipt photo (optional)",
+    save: "Save cost", saving: "Saving…",
+    cleared: "Cost recorded. You can ship this parcel.", waiting: "Waiting for Leap's approval. Do not ship this parcel yet: you can ship it once it is approved.",
+    needsPhoto: "Leap needs to check this parcel. Take a photo of it with its size and weight written on it.", parcelPhoto: "Parcel photo (size and weight written on it)", sendPhoto: "Send the photo",
+    sentBack: "Leap asked you to enter the shipping cost again.", note: "Note:",
+    errAmount: "Enter what you paid, a number above 0.", errCarrier: "Enter the carrier.", errPhoto: "Take the parcel photo first.", addPhoto: "Add photo", only: "Only Leap's admins see the amounts.",
+  },
+};
+
+async function call(token, shipmentId, body) {
+  const response = await fetch(`${API_BASE_URL}/parcel-costs/hub/${encodeURIComponent(shipmentId)}`, body
+    ? { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(body) }
+    : { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
+function OnePhoto({ photo, onPick, onRemove, busy, label }) {
+  if (photo) {
+    return (
+      <div style={{ position: "relative", width: 80, height: 80 }}>
+        <img src={`${API_BASE_URL}${photo}`} alt="" style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.line}` }} />
+        <button type="button" onClick={onRemove} style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", border: "none", background: C.red, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><X size={12} /></button>
+      </div>
+    );
+  }
+  return (
+    <label style={{ width: 80, height: 80, borderRadius: 8, border: `1.5px dashed ${C.line}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, cursor: "pointer", color: C.muted }}>
+      {busy ? <span style={{ fontSize: 11 }}>…</span> : <Camera size={20} />}
+      <span style={{ fontSize: 10, ...body }}>{label}</span>
+      <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" style={{ display: "none" }} disabled={busy} onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) onPick(f); }} />
+    </label>
+  );
+}
+
+/** `onChange(mayShip)` tells the page whether "Shipped to buyer" may be pressed. */
+export default function ShippingCostCard({ shipmentId, token, onChange, onSessionExpired }) {
+  const { lang } = useLang();
+  const x = TEXT[lang] || TEXT.en;
+  const [status, setStatus] = useState(null);
+  const [amount, setAmount] = useState("");
+  const [currency, setCurrency] = useState("");
+  const [carrier, setCarrier] = useState("");
+  const [receipt, setReceipt] = useState(null);
+  const [parcelPhoto, setParcelPhoto] = useState(null);
+  const [busyPhoto, setBusyPhoto] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const take = (s) => { setStatus(s); onChange?.(!!s.mayShip); if (!currency) setCurrency(s.lastCurrency || "USD"); };
+  const fail = (err) => { if (err instanceof SessionExpiredError) return onSessionExpired?.(); setError(err.message); };
+  useEffect(() => { call(token, shipmentId).then(take).catch(fail); }, [shipmentId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const upload = async (which, file) => {
+    setBusyPhoto(which); setError(null);
+    try { const r = await uploadEvidencePhoto(token, file); (which === "receipt" ? setReceipt : setParcelPhoto)(r.url); } catch (err) { fail(err); } finally { setBusyPhoto(null); }
+  };
+  const save = async () => {
+    const value = Number(String(amount).replace(",", "."));
+    if (!(value > 0)) return setError(x.errAmount);
+    if (!carrier.trim()) return setError(x.errCarrier);
+    setSaving(true); setError(null);
+    try { take(await call(token, shipmentId, { amount: value, currency, carrier: carrier.trim(), receiptPhoto: receipt || undefined })); } catch (err) { fail(err); } finally { setSaving(false); }
+  };
+  const sendPhoto = async () => {
+    if (!parcelPhoto) return setError(x.errPhoto);
+    setSaving(true); setError(null);
+    try { take(await call(token, shipmentId, { parcelPhoto })); } catch (err) { fail(err); } finally { setSaving(false); }
+  };
+
+  if (!status) return null;
+  const label = { ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, margin: "14px 0 6px", display: "block" };
+  const input = { ...body, width: "100%", boxSizing: "border-box", borderRadius: 8, border: `1px solid ${C.line}`, padding: "10px 12px", fontSize: 13, background: "#fff" };
+  const banner = (bg, color, text) => <div data-testid="shipping-cost-state" style={{ ...body, fontSize: 13, fontWeight: 600, color, background: bg, borderRadius: 8, padding: "11px 12px" }}>{text}</div>;
+  const editing = status.state === "missing" || status.state === "sent_back";
+
+  return (
+    <div data-testid="shipping-cost-card" style={{ background: C.card, border: `1px solid ${status.mayShip ? C.line : C.signal}`, borderRadius: 12, padding: 18 }}>
+      <div style={{ ...disp, fontSize: 17, fontWeight: 700, color: C.ink, marginBottom: 4 }}>{x.title}</div>
+      {status.mayShip && banner(C.gaugeBg, "#14532D", `✓ ${x.cleared}`)}
+      {status.state === "waiting" && banner(C.amberBg, "#5C4306", `⏸ ${x.waiting}`)}
+      {status.state === "sent_back" && <div style={{ marginBottom: 6 }}>{banner(C.redBg, C.red, `${x.sentBack}${status.adminNote ? ` ${x.note} ${status.adminNote}` : ""}`)}</div>}
+
+      {status.state === "needs_photo" && (
+        <>
+          {banner(C.amberBg, "#5C4306", x.needsPhoto)}
+          <span style={label}>{x.parcelPhoto.toUpperCase()}</span>
+          <OnePhoto photo={parcelPhoto} busy={busyPhoto === "parcel"} label={x.addPhoto} onPick={(f) => upload("parcel", f)} onRemove={() => setParcelPhoto(null)} />
+          {error && <div role="alert" style={{ ...body, fontSize: 12.5, color: C.red, marginTop: 10 }}>{error}</div>}
+          <button type="button" onClick={sendPhoto} disabled={saving} style={{ ...body, width: "100%", marginTop: 14, padding: "12px 16px", borderRadius: 9, border: "none", background: saving ? "#D1D5DB" : C.ink, color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>{saving ? x.saving : x.sendPhoto}</button>
+        </>
+      )}
+
+      {editing && (
+        <>
+          <div style={{ ...body, fontSize: 12.5, color: C.muted, margin: "4px 0 2px" }}>{x.hint}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1.3fr 0.8fr 1.3fr", gap: 10 }}>
+            <div><span style={label}>{x.amount.toUpperCase()}</span><input aria-label={x.amount} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} style={input} /></div>
+            <div><span style={label}>{x.currency.toUpperCase()}</span>
+              <select aria-label={x.currency} value={currency} onChange={(e) => setCurrency(e.target.value)} style={input}>{(status.currencies || ["USD"]).map((c) => <option key={c} value={c}>{c}</option>)}</select></div>
+            <div><span style={label}>{x.carrier.toUpperCase()}</span><input aria-label={x.carrier} value={carrier} placeholder={x.carrierPlaceholder} onChange={(e) => setCarrier(e.target.value)} style={input} /></div>
+          </div>
+          <span style={label}>{x.receipt.toUpperCase()}</span>
+          <OnePhoto photo={receipt} busy={busyPhoto === "receipt"} label={x.addPhoto} onPick={(f) => upload("receipt", f)} onRemove={() => setReceipt(null)} />
+          {error && <div role="alert" style={{ ...body, fontSize: 12.5, color: C.red, marginTop: 10 }}>{error}</div>}
+          <button type="button" onClick={save} disabled={saving} style={{ ...body, width: "100%", marginTop: 14, padding: "12px 16px", borderRadius: 9, border: "none", background: saving ? "#D1D5DB" : C.ink, color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>{saving ? x.saving : x.save}</button>
+          <div style={{ ...body, fontSize: 11, color: C.muted, marginTop: 8 }}>{x.only}</div>
+        </>
+      )}
+    </div>
+  );
+}

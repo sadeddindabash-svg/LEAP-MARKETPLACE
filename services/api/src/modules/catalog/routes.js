@@ -307,7 +307,7 @@ async function loadPartPhoto(row) {
 // (lightweight -- sufficient for saved-search diffing, which never
 // needs full DTOs); GET /products still does its own DTO-building
 // with these IDs' underlying rows.
-function buildProductMatchQuery({ category, part, vehicleId, search, generationId, year, versionId }) {
+function buildProductMatchQuery({ category, part, vehicleId, search, generationId, year, versionId, brandId, modelId }) {
   const conditions = [];
   const params = [];
   let sql = `SELECT p.* FROM products p`;
@@ -361,6 +361,22 @@ function buildProductMatchQuery({ category, part, vehicleId, search, generationI
         `EXISTS (SELECT 1 FROM product_fitment_entries pfe2 WHERE pfe2.product_id = p.id AND pfe2.generation_id = $${genIdx}${versionSql})`
       );
     }
+  }
+  // A car chosen step by step on the website (brand, then model, then year): the parts that fit ANY year of that brand, or of that model, or of that model in that year.
+  // Only when no generation is given (a generation is the most precise and is handled above).
+  if (!generationId && (modelId || brandId)) {
+    const idIdx = params.length + 1;
+    params.push(modelId || brandId);
+    const owner = modelId ? `vg3.model_id = $${idIdx}` : `vm3.brand_id = $${idIdx}`;
+    const brandJoin = modelId ? '' : ' JOIN vehicle_models vm3 ON vm3.id = vg3.model_id';
+    let yearSql = '';
+    if (modelId && year) {
+      params.push(Number(year));
+      yearSql = ` AND pfe3.year = $${params.length}`;
+    }
+    conditions.push(
+      `EXISTS (SELECT 1 FROM product_fitment_entries pfe3 JOIN vehicle_generations vg3 ON vg3.id = pfe3.generation_id${brandJoin} WHERE pfe3.product_id = p.id AND ${owner}${yearSql})`
+    );
   }
   if (search && search.trim()) {
     const words = search.trim().split(/\s+/).slice(0, 8);
@@ -429,11 +445,11 @@ async function interleaveNewestByBrand(dtos) {
 
 router.get('/products', async (req, res, next) => {
   try {
-    const { category, part, vehicleId, search, sort, lang, generationId, year, versionId, minPrice, maxPrice, maxDeliveryDays, page, limit, more } = req.query;
+    const { category, part, vehicleId, search, sort, lang, generationId, year, versionId, brandId, modelId, minPrice, maxPrice, maxDeliveryDays, page, limit, more } = req.query;
     // ?more=1 means "this CONTINUES a list the buyer is already scrolling through" (the website's lazy loading): it does not count as a new search, and it may use the
     // short-lived cache of the computed list (see listCache.js). Every other request is exactly as before: computed fresh, and logged.
     const isContinuation = more === '1';
-    const { sql: baseSql, params } = buildProductMatchQuery({ category, part, vehicleId, search, generationId, year, versionId });
+    const { sql: baseSql, params } = buildProductMatchQuery({ category, part, vehicleId, search, generationId, year, versionId, brandId, modelId });
     let sql = baseSql;
 
     // Real search query logging (new) -- the foundation for real, genuinely computed trending searches (see the new GET /trending-searches below), not fabricated
@@ -492,7 +508,7 @@ router.get('/products', async (req, res, next) => {
 
     // The answer depends on everything that shaped it, INCLUDING the destination (delivery estimates differ by country): all of it is in the key.
     let dtos = isContinuation
-      ? await continuationCache.get(JSON.stringify({ category, part, vehicleId, search, sort, lang, generationId, year, versionId, minPrice, maxPrice, maxDeliveryDays, destinationIsoCode }), computeList)
+      ? await continuationCache.get(JSON.stringify({ category, part, vehicleId, search, sort, lang, generationId, year, versionId, brandId, modelId, minPrice, maxPrice, maxDeliveryDays, destinationIsoCode }), computeList)
       : await computeList();
 
     // Real pagination, deliberately opt-in and fully backward compatible: every existing caller (mobile, the website's own non-paginated calls, admin dashboard)

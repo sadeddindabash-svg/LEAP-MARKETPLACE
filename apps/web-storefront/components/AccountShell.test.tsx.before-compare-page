@@ -1,0 +1,109 @@
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+
+// The account menu stays on every page it lists (and the pages inside them), at the far start side; the pages keep their own layout beside it.
+const m = vi.hoisted(() => ({ user: { current: { id: "u1", email: "sam@example.com" } as Record<string, unknown> | null }, path: { current: "/orders" } }));
+vi.mock("./AuthProvider", () => ({ useAuth: () => ({ user: m.user.current }), getAuthToken: () => null }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), useSearchParams: () => new URLSearchParams(), usePathname: () => m.path.current }));
+
+import AccountShell, { inAccountMenu, menuPageOf } from "./AccountShell";
+import { LangProvider } from "./LangProvider";
+
+const show = (lang: "en" | "ar" = "en") => render(<LangProvider lang={lang}><AccountShell><p>the page</p></AccountShell></LangProvider>);
+beforeEach(() => { m.user.current = { id: "u1", email: "sam@example.com" }; m.path.current = "/orders"; });
+
+describe("every page of the menu opens with its header box: the title and a short line about it", () => {
+  it("in English and Arabic; the page's own title is then not shown (the box says it)", () => {
+    const v = show();
+    const head = screen.getByTestId("account-page-header");
+    expect(head.querySelector("h1")!.textContent).toBe("Orders & returns");
+    expect(head.querySelector("p")!.textContent).toBe("Track your orders, see what you spent and start a return.");
+    expect(document.querySelector("style")!.textContent).toContain(".account-body h1, .account-body [data-page-lead] { display: none !important; }");
+    v.unmount();
+    m.path.current = "/ar/account/two-factor"; show("ar");
+    expect(screen.getByTestId("account-page-header").querySelector("h1")!.textContent).toBe("المصادقة الثنائية");
+    expect(screen.getByTestId("account-page-header").querySelector("p")!.textContent).toBe("أضف خطوة ثانية عند تسجيل الدخول لحماية حسابك.");
+  });
+  it("Contact us uses its own line; a page inside one (an order) keeps its own title, with no box", () => {
+    m.path.current = "/contact"; const v = show();
+    expect(screen.getByTestId("account-page-header").querySelector("p")!.textContent).toBe("Choose how you would like to reach us.");
+    v.unmount();
+    m.path.current = "/orders/abc"; show();
+    expect(screen.queryByTestId("account-page-header")).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation")).toBeInTheDocument();
+  });
+});
+
+describe("the menu also stays on the pages reached from it", () => {
+  it("Support, a ticket and Report a bug keep the menu, with Contact us marked; a page inside one marks its page", () => {
+    for (const p of ["/support", "/support/T-1", "/report-bug"]) expect(inAccountMenu(p), p).toBe(true);
+    for (const [p, page] of [["/support", "/contact"], ["/support/T-1", "/contact"], ["/report-bug", "/contact"], ["/orders/abc", "/orders"], ["/account/loyalty", "/account/loyalty"], ["/supportx", null]] as const) expect(menuPageOf(p), p).toBe(page);
+    m.path.current = "/ar/support"; show("ar");
+    expect(screen.getByRole("navigation")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "تواصل معنا" }).getAttribute("aria-current")).toBe("true");
+    expect(screen.queryByTestId("account-page-header")).not.toBeInTheDocument();      // the page keeps its own title
+  });
+});
+
+describe("the account menu stays on the pages it lists", () => {
+  it("every page in the menu (and the pages inside them) keeps the menu; the other pages of the site do not get it", () => {
+    for (const p of ["/account", "/account/loyalty", "/orders", "/orders/abc", "/orders/abc/tracking", "/returns", "/returns/r1", "/addresses", "/garage", "/wishlist", "/saved-searches", "/referrals", "/account/change-email", "/account/two-factor", "/contact", "/quotations", "/notifications"]) expect(inAccountMenu(p), p).toBe(true);
+    for (const p of ["/", "/products/1", "/search", "/cart", "/checkout", "/accounting", "/ordersx", "/login"]) expect(inAccountMenu(p), p).toBe(false);
+  });
+  it("on Orders & returns the menu is there with that page marked, and the page itself is shown as it is (no frame added)", () => {
+    const v = show();
+    expect(screen.getByRole("navigation")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Orders & returns" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getAllByRole("link")).toHaveLength(14);
+    expect(screen.getByText("the page").parentElement!.className).toBe("account-body");
+    // every page beside the menu starts next to it, at one width (the widest page's), so their edges line up
+    expect(screen.getByText("the page").parentElement!.parentElement!.className).toContain("account-page");
+    expect(document.querySelector("style")!.textContent).toMatch(/\.account-page > \*, \.account-body > \*(, \.account-sub > \*)? \{ margin-inline-start: 0 !important;.*max-width: 64rem !important;/);
+    // one spacing on every page of the menu: 16 px between its sections, 12 px between the cards of a list; a block showing nothing takes no space
+    expect(document.querySelector("style")!.textContent).toContain("~ :not(:empty, h1, [data-page-lead]");
+    expect(document.querySelector("style")!.textContent).toContain(".account-body :is(ul, ol).grid { gap: 12px !important; }");
+    v.unmount();
+  });
+  it("the menu sits at the start side: first in the row (the far left in English, the far right in Arabic), and stays in view while the page scrolls", () => {
+    m.path.current = "/ar/garage"; show("ar");
+    const nav = screen.getByRole("navigation"); expect(nav.parentElement!.firstElementChild).toBe(nav);
+    for (const c of ["lg:sticky", "lg:ps-4", "lg:shrink-0"]) expect(nav.className.split(" "), c).toContain(c);
+    expect(screen.getByRole("link", { name: "مركبتي" }).getAttribute("aria-current")).toBe("page");
+  });
+  it("the pages under /account keep the frame they had beside the menu", () => {
+    m.path.current = "/account/two-factor"; show();
+    expect(screen.getByText("the page").parentElement!.className).toContain("max-w-4xl");
+  });
+  it("no menu on a page that is not in it, and none without a sign-in", () => {
+    m.path.current = "/products/1"; const v = show(); expect(screen.queryByRole("navigation")).not.toBeInTheDocument(); expect(screen.getByText("the page")).toBeInTheDocument(); v.unmount();
+    m.path.current = "/orders"; m.user.current = null; show(); expect(screen.queryByRole("navigation")).not.toBeInTheDocument(); expect(screen.getByText("the page")).toBeInTheDocument();
+  });
+});
+
+describe("the look of My tier on every page of the menu (My tier itself as it was)", () => {
+  it("each page opens with the navy box: its icon in a white circle with a gold ring, the title in white and the short line in gold", () => {
+    const v = show();
+    const head = screen.getByTestId("account-page-header");
+    for (const c of ["bg-gradient-to-br", "from-navy", "text-white"]) expect(head.className.split(" "), c).toContain(c);
+    expect(head.querySelector("p")!.className).toContain("text-signal");
+    expect(head.querySelector("span.ring-signal svg")).not.toBeNull();
+    expect(screen.getByText("the page").parentElement!.parentElement!.className).toContain("account-themed");
+    expect(document.querySelector("style")!.textContent).toContain(".account-themed .account-body h2:not(.sr-only)");
+    v.unmount();
+    m.path.current = "/ar/garage"; show("ar");
+    expect(screen.getByTestId("account-page-header").className).toContain("from-navy");
+  });
+  it("My tier keeps its white box and is not restyled", () => {
+    m.path.current = "/account/loyalty"; show();
+    const head = screen.getByTestId("account-page-header");
+    expect(head.className).toContain("bg-white"); expect(head.className).not.toContain("from-navy");
+    expect(screen.getByText("the page").parentElement!.parentElement!.className).not.toContain("account-themed");
+  });
+  it("the menu: an icon beside each name (the names are unchanged), the page it is on navy with a gold icon", () => {
+    show();
+    const here = screen.getByRole("link", { name: "Orders & returns" });
+    expect(here.querySelector("svg")).not.toBeNull(); expect(here.className).toContain("from-navy");
+    expect(here.querySelector(".text-signal svg")).not.toBeNull();
+    expect(screen.getByRole("link", { name: "My account" }).className).not.toContain("from-navy");
+  });
+});

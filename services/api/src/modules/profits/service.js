@@ -1,0 +1,231 @@
+const { ledgerCte } = require('../payouts/terms');
+
+/**
+ * Profits (admin: Financial -> Profits). What Leap keeps after paying the suppliers, for a day, a week (Saturday to Friday), a month, a quarter or a year,
+ * all in Riyadh time.
+ *
+ * WHEN A PART COUNTS: on the day its return window ends (delivered_at + platform_settings.return_window_days), when the money is final. A part still
+ * inside its window is "not final yet" (shown apart, with the profit it is expected to bring). A cancelled part, or one the supplier refused, never counts.
+ *
+ * THE FORMULA, for the parts that became final in the period:
+ *
+ *   Sales            = unit_price x quantity                       (USD, what the buyer was charged for the parts; a replacement order's lines carry the
+ *                                                                    prices the buyer paid on the original order)
+ *   Supplier pay     = supplier_unit_price_cny x quantity x rate   (the order's own CNY -> USD rate, migration 126; today's rate for older orders)
+ *                      0 for a part the supplier is not paid for (returned by the buyer, or a fault the supplier bears) -- the payout ledger's rule
+ *   Shipping planned = the shipping inside those prices (order_line_items.shipping_planned_usd; for a parcel whose cost the hub entered, the planned
+ *                      cost it was compared with -- migration 127)
+ *   Profit on parts  = Sales - Supplier pay - Shipping planned           (the markup)
+ *   +- Shipping result = Shipping planned - what the hub really paid the carrier (hub_parcel_costs: equal, saved = extra profit, approved over =
+ *                      extra cost). A parcel without a recorded cost (shipped before migration 127) counts as paid exactly what was planned.
+ *   + Shipping       = the order's shipping_fee,    shared between its parts by their sales
+ *   - Discounts      = the order's discount_amount (promo code or tier discount), shared the same way
+ *   - Refunds        = the sales of a part the buyer returned (the return was approved)
+ *   - Fault costs    = what Leap released to suppliers for faults Leap bears (payout_adjustments), counted on the day they were released
+ *   = Net profit
+ *   Margin           = Net profit / (Sales + Shipping - Discounts)
+ *
+ * NOT IN IT (not recorded anywhere): what carriers charge Leap for shipping, and what the payment providers keep.
+ */
+
+const TZ = 'Asia/Riyadh';
+const KINDS = ['day', 'week', 'month', 'quarter', 'year'];
+const DAY_MS = 86400000;
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// ---- dates. A "local" date is a JS Date holding Riyadh wall-clock time in its UTC fields (Riyadh has no daylight saving).
+const local = (text) => new Date(`${String(text).slice(0, 19).replace(' ', 'T')}Z`);
+const iso = (d) => d.toISOString().slice(0, 10);
+const addDays = (d, n) => new Date(d.getTime() + n * DAY_MS);
+const addMonths = (d, n) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, 1));
+
+function startOf(kind, d) {
+  const day = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  if (kind === 'day') return day;
+  if (kind === 'week') return addDays(day, -((day.getUTCDay() + 1) % 7));      // back to Saturday
+  if (kind === 'month') return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+  if (kind === 'quarter') return new Date(Date.UTC(d.getUTCFullYear(), Math.floor(d.getUTCMonth() / 3) * 3, 1));
+  return new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+}
+function step(kind, start, n = 1) {
+  if (kind === 'day') return addDays(start, n);
+  if (kind === 'week') return addDays(start, 7 * n);
+  if (kind === 'month') return addMonths(start, n);
+  if (kind === 'quarter') return addMonths(start, 3 * n);
+  return new Date(Date.UTC(start.getUTCFullYear() + n, 0, 1));
+}
+const dayText = (d) => `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+function label(kind, start) {
+  if (kind === 'day') return `${WEEKDAYS[start.getUTCDay()]} ${dayText(start)}`;
+  if (kind === 'week') { const last = addDays(start, 6); return `Sat ${start.getUTCDate()} ${MONTHS[start.getUTCMonth()]} – Fri ${dayText(last)}`; }
+  if (kind === 'month') return `${MONTHS_LONG[start.getUTCMonth()]} ${start.getUTCFullYear()}`;
+  if (kind === 'quarter') return `Q${Math.floor(start.getUTCMonth() / 3) + 1} ${start.getUTCFullYear()}`;
+  return String(start.getUTCFullYear());
+}
+function shortLabel(kind, start) {
+  if (kind === 'day') return `${WEEKDAYS[start.getUTCDay()]} ${start.getUTCDate()}`;
+  if (kind === 'month') return MONTHS[start.getUTCMonth()];
+  return label(kind, start);
+}
+// The bars of the chart: the days of a day's week, a week's or a month's days, a quarter's or a year's months.
+const chartKind = (kind) => ({ day: 'day', week: 'day', month: 'day', quarter: 'month', year: 'month' })[kind];
+
+// ---- money
+const r2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+function emptyTotals() { return { sales: 0, supplierPay: 0, shippingPlanned: 0, partsProfit: 0, shippingResult: 0, shippingSaved: { parcels: 0, usd: 0 }, shippingOver: { parcels: 0, usd: 0 }, parcelsWithoutCost: 0, shipping: 0, discounts: 0, refunds: 0, faultCosts: 0, netProfit: 0, margin: null, orders: 0 }; }
+function totalsOf(parts, faults) {
+  const t = emptyTotals();
+  const orders = new Set();
+  for (const p of parts) {
+    t.sales += p.sales; t.supplierPay += p.supplierPay; t.shipping += p.shipping; t.discounts += p.discount; t.refunds += p.refund;
+    t.shippingPlanned += p.shipPlanned || 0;
+    if (p.shipKnown) {
+      const d = p.shipPlanned - p.shipPaid;
+      t.shippingResult += d;
+      if (p.shipResult === 'saved') { t.shippingSaved.parcels += 1; t.shippingSaved.usd += d; }
+      if (p.shipResult === 'over') { t.shippingOver.parcels += 1; t.shippingOver.usd -= d; }
+    } else if (p.shipped) t.parcelsWithoutCost += 1;
+    orders.add(p.rootOrderId);
+  }
+  for (const f of faults) t.faultCosts += f.cost;
+  t.partsProfit = t.sales - t.supplierPay - t.shippingPlanned;
+  t.netProfit = t.partsProfit + t.shippingResult + t.shipping - t.discounts - t.refunds - t.faultCosts;
+  const base = t.sales + t.shipping - t.discounts;
+  t.margin = base > 0 ? Math.round((t.netProfit / base) * 1000) / 10 : null;
+  for (const k of ['sales', 'supplierPay', 'shippingPlanned', 'partsProfit', 'shippingResult', 'shipping', 'discounts', 'refunds', 'faultCosts', 'netProfit']) t[k] = r2(t[k]);
+  t.shippingSaved.usd = r2(t.shippingSaved.usd); t.shippingOver.usd = r2(t.shippingOver.usd);
+  t.orders = orders.size;
+  return t;
+}
+const pct = (now, before) => (before ? Math.round(((now - before) / Math.abs(before)) * 1000) / 10 : null);
+function change(now, before) {
+  return { netProfit: pct(now.netProfit, before.netProfit), sales: pct(now.sales, before.sales), orders: now.orders - before.orders, margin: now.margin != null && before.margin != null ? Math.round((now.margin - before.margin) * 10) / 10 : null };
+}
+
+// ---- the rows, from the same ledger as admin Payouts (services/api/src/modules/payouts/terms.js)
+const PARTS_SQL = `${ledgerCte()},
+  setting AS (SELECT COALESCE((SELECT value FROM platform_settings WHERE key = 'return_window_days'), '7')::int AS days,
+                     (SELECT rate FROM fx_rates WHERE currency_pair = 'CNY_USD') AS today),
+  goods AS (SELECT sub_order_id, SUM(unit_price * quantity) AS amount, SUM(COALESCE(shipping_planned_usd, 0) * quantity) AS ship_planned FROM order_line_items GROUP BY sub_order_id),
+  live_goods AS (SELECT so.order_id, SUM(COALESCE(g.amount, 0)) AS amount FROM supplier_sub_orders so LEFT JOIN goods g ON g.sub_order_id = so.id
+                 WHERE so.status <> 'cancelled' AND so.refused_at IS NULL GROUP BY so.order_id)
+  SELECT l.sub_order_id, l.order_id, COALESCE(o.replacement_of, o.id) AS root_order_id, l.lost_reason, l.returned,
+         COALESCE(g.amount, 0) AS sales, l.net_amount AS supplier_cny, COALESCE(g.ship_planned, 0) AS ship_planned_lines,
+         pc.amount_usd AS ship_paid, pc.planned_usd AS ship_planned_parcel, pc.state AS ship_state, pc.result AS ship_result, (l.shipment_id IS NOT NULL) AS shipped, COALESCE(o.fx_cny_usd, s.today) AS rate,
+         COALESCE(o.shipping_fee, 0) AS shipping_fee, COALESCE(o.discount_amount, 0) AS discount_amount, COALESCE(lg.amount, 0) AS order_goods,
+         to_char(l.delivered_at AT TIME ZONE '${TZ}', 'YYYY-MM-DD"T"HH24:MI:SS') AS delivered_local,
+         to_char((l.delivered_at + (s.days || ' days')::interval) AT TIME ZONE '${TZ}', 'YYYY-MM-DD"T"HH24:MI:SS') AS final_local
+  FROM ledger l
+  JOIN orders o ON o.id = l.order_id
+  CROSS JOIN setting s
+  LEFT JOIN goods g ON g.sub_order_id = l.sub_order_id
+  LEFT JOIN live_goods lg ON lg.order_id = l.order_id
+  LEFT JOIN hub_parcel_costs pc ON pc.shipment_id = l.shipment_id
+  WHERE l.hub_status = 'delivered' AND l.delivered_at IS NOT NULL
+    AND (l.lost_reason IS NULL OR l.lost_reason IN ('returned by the buyer', 'a fault the supplier bears'))
+    AND (l.delivered_at + (s.days || ' days')::interval) AT TIME ZONE '${TZ}' < $1::timestamp`;
+
+const FAULTS_SQL = `
+  SELECT a.id, a.amount, a.currency_code, COALESCE(o.fx_cny_usd, (SELECT rate FROM fx_rates WHERE currency_pair = 'CNY_USD')) AS rate,
+         to_char(a.created_at AT TIME ZONE '${TZ}', 'YYYY-MM-DD"T"HH24:MI:SS') AS at_local
+  FROM payout_adjustments a
+  JOIN fault_cases fc ON fc.id = a.fault_case_id
+  JOIN supplier_sub_orders so ON so.id = fc.sub_order_id
+  JOIN orders o ON o.id = so.order_id
+  WHERE a.created_at AT TIME ZONE '${TZ}' >= $1::timestamp AND a.created_at AT TIME ZONE '${TZ}' < $2::timestamp`;
+
+// One part as the report counts it (its share of the order's shipping and discount: by its sales among the order's parts that are not cancelled).
+function toPart(row) {
+  const sales = Number(row.sales);
+  const rate = row.rate == null ? null : Number(row.rate);
+  const share = Number(row.order_goods) > 0 ? sales / Number(row.order_goods) : 0;
+  const paid = row.lost_reason ? 0 : Number(row.supplier_cny);
+  // the parcel's real shipping (migration 127): counted once the hub's cost is cleared or approved; otherwise as planned
+  const shipKnown = ['cleared', 'approved'].includes(row.ship_state);
+  const shipPlanned = shipKnown && row.ship_planned_parcel !== null && row.ship_planned_parcel !== undefined ? Number(row.ship_planned_parcel) : Number(row.ship_planned_lines || 0);
+  return {
+    subOrderId: row.sub_order_id, orderId: row.order_id, rootOrderId: row.root_order_id,
+    sales, supplierPay: rate == null ? 0 : paid * rate, missingRate: rate == null && paid > 0,
+    shipping: Number(row.shipping_fee) * share, discount: Number(row.discount_amount) * share,
+    refund: row.returned ? sales : 0,
+    shipPlanned, shipKnown, shipPaid: shipKnown ? Number(row.ship_paid) : shipPlanned, shipResult: shipKnown ? row.ship_result : null, shipped: !!row.shipped,
+    deliveredAt: local(row.delivered_local), finalAt: local(row.final_local),
+  };
+}
+const toFault = (row) => ({ id: row.id, cost: row.currency_code === 'USD' ? Number(row.amount) : Number(row.amount) * Number(row.rate || 0), at: local(row.at_local) });
+
+const within = (from, to) => (x) => x >= from && x < to;
+const ts = (d) => d.toISOString().slice(0, 19).replace('T', ' ');
+
+/**
+ * The report for the period of `kind` that contains `dateText` (YYYY-MM-DD, Riyadh): its totals and their change against the period before (the same
+ * stretch of it, while the period is still running), the chart, the last 12 periods, and the parts not final yet.
+ */
+async function profitReport(db, { kind = 'month', date, now: nowOverride } = {}) {
+  if (!KINDS.includes(kind)) throw Object.assign(new Error(`period must be one of: ${KINDS.join(', ')}`), { status: 400 });
+  const { rows: [clock] } = await db.query(`SELECT to_char(${nowOverride ? '$1::timestamptz' : 'now()'} AT TIME ZONE '${TZ}', 'YYYY-MM-DD"T"HH24:MI:SS') AS now_local`, nowOverride ? [nowOverride] : []);
+  const now = local(clock.now_local);
+  let day = now;
+  if (date) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(local(`${date}T00:00:00`).getTime())) throw Object.assign(new Error('date must be YYYY-MM-DD'), { status: 400 });
+    day = local(`${date}T00:00:00`);
+  }
+  const start = startOf(kind, day);
+  const end = step(kind, start);
+  const running = now >= start && now < end;
+  const previousStart = step(kind, start, -1);
+  const previousEnd = running ? new Date(Math.min(previousStart.getTime() + (now - start), start.getTime())) : start;
+  const sub = chartKind(kind);
+  const chartStart = kind === 'day' ? startOf('week', start) : start;
+  const chartEnd = kind === 'day' ? addDays(chartStart, 7) : end;
+  const tableStart = step(kind, start, -12);                      // 11 before + this one, and one more for the oldest row's change
+  const from = new Date(Math.min(tableStart.getTime(), chartStart.getTime()));
+  const to = new Date(Math.max(end.getTime(), chartEnd.getTime()));
+  const cut = new Date(Math.min(to.getTime(), now.getTime()));    // nothing counts before it is final
+
+  const { rows: partRows } = await db.query(PARTS_SQL, [ts(cut)]);
+  const parts = partRows.map(toPart).filter((p) => p.finalAt >= from);
+  const { rows: faultRows } = await db.query(FAULTS_SQL, [ts(from), ts(cut)]);
+  const faults = faultRows.map(toFault);
+  const pick = (a, b) => ({ parts: parts.filter((p) => within(a, b)(p.finalAt)), faults: faults.filter((f) => within(a, b)(f.at)) });
+  const sum = (a, b) => { const x = pick(a, b); return totalsOf(x.parts, x.faults); };
+
+  const totals = sum(start, end);
+  const previous = sum(previousStart, previousEnd);
+
+  const chart = [];
+  for (let s = chartStart; s < chartEnd; s = step(sub, s)) {
+    const t = sum(s, step(sub, s));
+    chart.push({ start: iso(s), label: shortLabel(sub, s), netProfit: t.netProfit, sales: t.sales, orders: t.orders, current: kind === 'day' ? s.getTime() === start.getTime() : now >= s && now < step(sub, s), future: s > now });
+  }
+
+  const rows = [];
+  for (let i = 0; i < 12; i += 1) {
+    const s = step(kind, start, -i);
+    const t = sum(s, step(kind, s));
+    const before = sum(step(kind, s, -1), s);
+    const isRunning = now >= s && now < step(kind, s);
+    rows.push({ start: iso(s), label: label(kind, s), running: isRunning, ...t, changeNetProfit: isRunning ? null : pct(t.netProfit, before.netProfit) });
+  }
+
+  // delivered, but the return window has not ended yet
+  const { rows: openRows } = await db.query(PARTS_SQL.replace(`< $1::timestamp`, `>= $1::timestamp`), [ts(now)]);
+  const open = openRows.map(toPart);
+  const openTotals = totalsOf(open, []);
+  const nextUp = [...open].sort((a, b) => a.finalAt - b.finalAt).slice(0, 5)
+    .map((p) => ({ orderId: p.orderId, deliveredAt: iso(p.deliveredAt), finalAt: iso(p.finalAt) }));
+
+  return {
+    kind, start: iso(start), end: iso(addDays(end, -1)), label: label(kind, start), running, now: clock.now_local,
+    previous: { start: iso(previousStart), label: label(kind, previousStart), partial: running, upTo: running ? ts(previousEnd) : null },     // while this period runs: the same stretch of the one before
+    totals, previousTotals: previous, change: change(totals, previous),
+    chart, rows,
+    notFinal: { orders: openTotals.orders, parts: open.length, sales: openTotals.sales, expectedProfit: r2(openTotals.netProfit), next: nextUp },
+    missingRate: parts.some((p) => p.missingRate),
+    weekStartsOn: 'saturday', timeZone: TZ, currency: 'USD',
+  };
+}
+
+module.exports = { profitReport, startOf, step, label, totalsOf, toPart, KINDS };

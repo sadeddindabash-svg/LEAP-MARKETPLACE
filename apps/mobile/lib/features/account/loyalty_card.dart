@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
@@ -76,11 +77,7 @@ class _LoyaltyCardState extends State<LoyaltyCard> {
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
                   child: Row(
                     children: [
-                      Container(
-                        width: 44, height: 44,
-                        decoration: BoxDecoration(color: tierColor.withValues(alpha: 0.15), shape: BoxShape.circle),
-                        child: Icon(resolveLoyaltyIcon(currentTier['icon'] as String), color: tierColor, size: 22),
-                      ),
+                      LoyaltyTierBadge(name: currentTier['icon'] as String, color: tierColor, photoUrl: currentTier['photoUrl'] as String?, size: 55),      // the admin's photo, else the icon (as on the storefront)
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
@@ -181,6 +178,100 @@ Color resolveLoyaltyColor(String name, LeapPalette palette) {
     default:
       return palette.muted;
   }
+}
+
+/// The tier icons, drawn exactly as the storefront draws them (apps/web-storefront/components/LoyaltyCard.tsx, TierBadge): the same five
+/// outline shapes on a 24 x 24 grid, a 1.8 line with round ends, so the app and the website show the same tier icon.
+class LoyaltyTierIcon extends StatelessWidget {
+  final String name;      // award, diamond, crown, star; anything else is the medal (as on the website)
+  final Color color;
+  final double size;
+  const LoyaltyTierIcon({super.key, required this.name, required this.color, this.size = 22});
+
+  @override
+  Widget build(BuildContext context) => SizedBox(width: size, height: size, child: CustomPaint(painter: _TierIconPainter(name, color)));
+}
+
+/// A tier's picture, as the storefront shows it (TierBadge): the photo the admin set (Settings -> Tiers Photos) in a circle, else the tier's icon
+/// on a 15% tint of its colour. A photo that cannot be loaded shows the icon.
+class LoyaltyTierBadge extends StatelessWidget {
+  final String name;
+  final Color color;
+  final double size;
+  final String? photoUrl;
+  const LoyaltyTierBadge({super.key, required this.name, required this.color, this.size = 36, this.photoUrl});
+
+  Widget _icon() => Container(
+        width: size,
+        height: size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.15), shape: BoxShape.circle),
+        child: LoyaltyTierIcon(name: name, color: color, size: size * 0.5),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final url = photoUrl?.trim();
+    if (url == null || url.isEmpty) return _icon();
+    return ClipOval(
+      child: CachedNetworkImage(
+        imageUrl: ApiClient.resolveMediaUrl(url),
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        placeholder: (_, __) => _icon(),
+        errorWidget: (_, __, ___) => _icon(),
+      ),
+    );
+  }
+}
+
+class _TierIconPainter extends CustomPainter {
+  final String name;
+  final Color color;
+  _TierIconPainter(this.name, this.color);
+
+  Path _poly(List<double> xy, {bool close = false}) {
+    final p = Path()..moveTo(xy[0], xy[1]);
+    for (var i = 2; i < xy.length; i += 2) {
+      p.lineTo(xy[i], xy[i + 1]);
+    }
+    if (close) p.close();
+    return p;
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.scale(size.width / 24, size.height / 24);
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    switch (name) {
+      case 'award':
+        canvas.drawCircle(const Offset(12, 9), 5, paint);
+        canvas.drawPath(_poly([8.5, 13.5, 7, 21, 12, 18, 17, 21, 15.5, 13.5]), paint);
+        break;
+      case 'diamond':
+        canvas.drawPath(_poly([6, 4, 18, 4, 22, 10, 12, 21, 2, 10], close: true), paint);
+        canvas.drawPath(_poly([2, 10, 22, 10]), paint);
+        break;
+      case 'crown':
+        canvas.drawPath(_poly([3, 8, 7, 12, 12, 5, 17, 12, 21, 8, 19, 19, 5, 19], close: true), paint);
+        break;
+      case 'star':
+        canvas.drawPath(_poly([12, 3, 14.7, 8.6, 20.8, 9.5, 16.4, 13.8, 17.4, 19.9, 12, 17, 6.6, 19.9, 7.6, 13.8, 3.2, 9.5, 9.3, 8.6], close: true), paint);
+        break;
+      default:      // medal
+        canvas.drawCircle(const Offset(12, 9), 6, paint);
+        canvas.drawPath(_poly([8.5, 14.5, 7, 21, 12, 18.5, 17, 21, 15.5, 14.5]), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_TierIconPainter old) => old.name != name || old.color != color;
 }
 
 IconData resolveLoyaltyIcon(String name) {

@@ -1,0 +1,185 @@
+import React, { useEffect, useRef, useState } from "react";
+import { API_BASE_URL, SessionExpiredError } from "./auth";
+import { useLang } from "./langContext";
+
+// The inspection list (migration 129), while a shipment is being inspected (opened). The server builds the list, so the hub app shows exactly
+// the same lines (lib/features/shipment/shipment_detail_screen.dart). Each tick and each received quantity is saved as it is made, so work started
+// on the app can be finished here. "Confirm Inspected" stays off until every line is ticked and every item's received quantity is entered and
+// equal to the order (a different quantity is flagged; Leap decides) -- the server refuses it too.
+// The page reads the shipment again every 5 seconds: ticks and quantities entered on the hub app appear here by themselves, except where this
+// screen has a change of its own not saved yet (that one is kept).
+const C = { ink: "#14171C", line: "#E4E6EA", card: "#FFFFFF", muted: "#6B7280", torque: "#2A5FD9", gauge: "#1E9D6B", gaugeBg: "#E4F5EC", red: "#C0362C", redBg: "#FBE7E5" };
+const body = { fontFamily: "'Inter', sans-serif" };
+
+export const INSPECTION_TEXT = {
+  zh: {
+    title: "质检清单", checkAll: "全部勾选", enterQuantity: "请填写实收数量", stillNeeded: "确认已质检前还需完成：", allDone: "清单与实收数量已全部确认",
+    ordered: "订购", received: "实收", mismatchHint: "实收数量与订单不符：请标记此包裹，由 Leap 决定。", saveFailed: "未能保存，请重试。",
+    checksDone: (d, t) => `已确认 ${d} / ${t} 项`,
+    needChecks: (name, n) => `${name}：还有 ${n} 项未勾选`, needQuantity: (name) => `${name}：实收数量`, needFlag: (name, r, o) => `${name}：实收 ${r} / 订购 ${o}，请标记此包裹`,
+  },
+  en: {
+    title: "Inspection list", checkAll: "Check all", enterQuantity: "Enter the quantity received", stillNeeded: 'Still needed before "Confirm Inspected":',
+    allDone: "List and quantities all confirmed", ordered: "Ordered", received: "Received",
+    mismatchHint: "The quantity received does not match the order: flag this shipment so Leap can decide.", saveFailed: "Could not save. Try again.",
+    checksDone: (d, t) => `${d} of ${t} checks confirmed`,
+    needChecks: (name, n) => `${name}: ${n} ${n === 1 ? "check" : "checks"}`, needQuantity: (name) => `${name}: quantity received`, needFlag: (name, r, o) => `${name}: received ${r} of ${o}, flag this shipment`,
+  },
+};
+
+async function send(token, path, method, payload) {
+  const response = await fetch(`${API_BASE_URL}${path}`, { method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+}
+
+const asCount = (text) => (/^\s*\d+\s*$/.test(String(text)) ? Number(text) : null);
+
+/** What still stops "Confirm Inspected" (one line each); empty when it may go on. */
+export function inspectionMissing(shipment, checks, quantities, x) {
+  const out = [];
+  for (const item of shipment.items) {
+    const checked = checks[item.productId] || [];
+    const left = (item.checklist || []).filter((c) => !checked.includes(c.key)).length;
+    if (left > 0) out.push(x.needChecks(item.name, left));
+    const received = asCount(quantities[item.productId] ?? "");
+    if (received === null) out.push(x.needQuantity(item.name));
+    else if (received !== item.quantity && shipment.resolution !== "continue_processing") out.push(x.needFlag(item.name, received, item.quantity));
+  }
+  return out;
+}
+
+/** The box under the step's button: what is still missing, or that everything is confirmed. */
+export function InspectionMissing({ state }) {
+  const { lang } = useLang();
+  const x = INSPECTION_TEXT[lang] || INSPECTION_TEXT.en;
+  if (state.missing.length === 0) {
+    return <div style={{ ...body, marginTop: 16, background: C.gaugeBg, color: C.gauge, borderRadius: 10, padding: "10px 12px", fontSize: 12.5, fontWeight: 700 }}>✓ {x.allDone}</div>;
+  }
+  return (
+    <div data-testid="inspection-missing" style={{ ...body, marginTop: 16, background: C.redBg, color: C.red, borderRadius: 10, padding: "10px 12px", fontSize: 12.5 }}>
+      <div style={{ fontWeight: 700, marginBottom: 4 }}>{x.stillNeeded}</div>
+      {state.missing.map((line) => <div key={line}>• {line}</div>)}
+    </div>
+  );
+}
+
+export default function InspectionList({ shipmentId, shipment, token, onChange, onSessionExpired }) {
+  const { lang } = useLang();
+  const x = INSPECTION_TEXT[lang] || INSPECTION_TEXT.en;
+  const [checks, setChecks] = useState(() => Object.fromEntries(shipment.items.map((i) => [i.productId, i.checkedKeys || []])));
+  const [quantities, setQuantities] = useState(() => Object.fromEntries(shipment.items.map((i) => [i.productId, i.receivedQuantity === null || i.receivedQuantity === undefined ? "" : String(i.receivedQuantity)])));
+  const [pending, setPending] = useState(0);      // saves on their way: the step waits for them
+  const [error, setError] = useState(null);
+  const latestQuantity = useRef({});
+  // what the server had at the last read: a line still equal to it has no change of this screen's own, so a newer server value may replace it
+  const serverChecks = useRef(Object.fromEntries(shipment.items.map((i) => [i.productId, i.checkedKeys || []])));
+  const serverQuantities = useRef(Object.fromEntries(shipment.items.map((i) => [i.productId, i.receivedQuantity === null || i.receivedQuantity === undefined ? "" : String(i.receivedQuantity)])));
+  const serverKey = JSON.stringify(shipment.items.map((i) => [i.productId, i.checkedKeys || [], i.receivedQuantity]));
+  useEffect(() => {
+    const same = (a, b) => JSON.stringify([...(a || [])].sort()) === JSON.stringify([...(b || [])].sort());
+    const takeChecks = {}; const takeQuantities = {};
+    for (const i of shipment.items) {
+      const checksNow = i.checkedKeys || [];
+      const qtyNow = i.receivedQuantity === null || i.receivedQuantity === undefined ? "" : String(i.receivedQuantity);
+      takeChecks[i.productId] = { server: checksNow, last: serverChecks.current[i.productId] };
+      takeQuantities[i.productId] = { server: qtyNow, last: serverQuantities.current[i.productId] };
+      serverChecks.current[i.productId] = checksNow;
+      serverQuantities.current[i.productId] = qtyNow;
+    }
+    setChecks((cur) => {
+      let changed = false; const next = { ...cur };
+      for (const [id, { server, last }] of Object.entries(takeChecks)) if (same(cur[id], last) && !same(cur[id], server)) { next[id] = server; changed = true; }
+      return changed ? next : cur;
+    });
+    setQuantities((cur) => {
+      let changed = false; const next = { ...cur };
+      for (const [id, { server, last }] of Object.entries(takeQuantities)) if (String(cur[id] ?? "").trim() === (last ?? "") && (cur[id] ?? "") !== server) { next[id] = server; changed = true; }
+      return changed ? next : cur;
+    });
+  }, [serverKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const missing = inspectionMissing(shipment, checks, quantities, x);
+  const ready = missing.length === 0 && pending === 0;
+  useEffect(() => { onChange({ ready, missing }); }, [ready, missing.join("|")]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const failed = (err) => {
+    if (err instanceof SessionExpiredError) return onSessionExpired && onSessionExpired();
+    setError(err.message || x.saveFailed);
+  };
+  const run = async (job) => {
+    setPending((n) => n + 1); setError(null);
+    try { await job(); } catch (err) { failed(err); return false; } finally { setPending((n) => n - 1); }
+    return true;
+  };
+
+  const setItemChecks = async (productId, next) => {
+    const before = checks[productId] || [];
+    setChecks((c) => ({ ...c, [productId]: next }));
+    const ok = await run(() => send(token, `/hub/me/shipments/${encodeURIComponent(shipmentId)}/items/${encodeURIComponent(productId)}/checks`, "PUT", { checked: next }));
+    if (!ok) setChecks((c) => ({ ...c, [productId]: before }));      // not saved: the tick goes back
+    else serverChecks.current[productId] = next;
+  };
+
+  const setQuantity = (productId, text) => {
+    setQuantities((q) => ({ ...q, [productId]: text }));
+    const n = asCount(text);
+    if (n === null) return;
+    latestQuantity.current[productId] = n;
+    run(async () => {
+      if (latestQuantity.current[productId] !== n) return;      // a newer number was typed: that one is saved instead
+      await send(token, `/hub/me/shipments/${encodeURIComponent(shipmentId)}/items/${encodeURIComponent(productId)}/received`, "PATCH", { receivedQuantity: n });
+      serverQuantities.current[productId] = String(n);
+    });
+  };
+
+  return (
+    <div data-testid="inspection-list" style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 10, padding: 14 }}>
+      <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, letterSpacing: "0.04em", marginBottom: 4 }}>{x.title.toUpperCase()}</div>
+      {shipment.items.map((item, index) => {
+        const list = item.checklist || [];
+        const checked = checks[item.productId] || [];
+        const done = list.filter((c) => checked.includes(c.key)).length;
+        const typed = quantities[item.productId] ?? "";
+        const received = asCount(typed);
+        const mismatch = received !== null && received !== item.quantity;
+        const empty = received === null;
+        const boxColor = empty || mismatch ? C.red : C.gauge;
+        return (
+          <div key={item.productId} style={{ borderTop: index ? `1px solid ${C.line}` : "none", padding: "12px 0 4px" }}>
+            <div style={{ ...body, fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 6 }}>{item.name} × {item.quantity}</div>
+            {list.map((c) => {
+              const on = checked.includes(c.key);
+              return (
+                <label key={c.key} style={{ ...body, display: "flex", alignItems: "center", gap: 8, padding: "3px 0", fontSize: 12.5, color: on ? C.ink : C.muted, cursor: "pointer" }}>
+                  <input type="checkbox" checked={on} aria-label={c[lang] || c.en}
+                    onChange={() => setItemChecks(item.productId, on ? checked.filter((k) => k !== c.key) : [...checked, c.key])}
+                    style={{ width: 16, height: 16, accentColor: C.gauge, margin: 0, cursor: "pointer" }} />
+                  {c[lang] || c.en}
+                </label>
+              );
+            })}
+            <div style={{ ...body, display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: C.muted, margin: "6px 0 10px" }}>
+              <span>{x.checksDone(done, list.length)}</span>
+              {done < list.length && (
+                <button type="button" onClick={() => setItemChecks(item.productId, list.map((c) => c.key))}
+                  style={{ ...body, border: "none", background: "none", padding: 0, color: C.torque, fontWeight: 700, fontSize: 11.5, cursor: "pointer" }}>{x.checkAll}</button>
+              )}
+            </div>
+            <div style={{ ...body, display: "flex", alignItems: "center", gap: 10, fontSize: 12.5, color: C.muted }}>
+              <span>{x.ordered}: {item.quantity}</span>
+              <span>{x.received}</span>
+              <input inputMode="numeric" aria-label={`${x.received}: ${item.name}`} value={typed} onChange={(e) => setQuantity(item.productId, e.target.value)}
+                style={{ ...body, width: 64, height: 34, boxSizing: "border-box", borderRadius: 8, border: `1.5px solid ${boxColor}`, background: empty ? C.redBg : "#fff", textAlign: "center", fontSize: 14, fontWeight: 700, color: mismatch ? C.red : C.ink }} />
+            </div>
+            {empty && <div style={{ ...body, fontSize: 11.5, fontWeight: 600, color: C.red, marginTop: 6 }}>{x.enterQuantity}</div>}
+            {!empty && mismatch && shipment.resolution !== "continue_processing" && <div style={{ ...body, fontSize: 11.5, fontWeight: 600, color: C.red, marginTop: 6 }}>{x.mismatchHint}</div>}
+          </div>
+        );
+      })}
+      {error && <div style={{ ...body, fontSize: 12, color: C.red, background: C.redBg, borderRadius: 8, padding: 8, marginTop: 8 }}>{error}</div>}
+    </div>
+  );
+}

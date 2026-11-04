@@ -1,56 +1,51 @@
 #!/usr/bin/env node
 /**
- * Home page spacing: the space above "Shop by section", "Shop by brand" and "Newest parts" (that is, between the four totals and Shop by section, between Shop by section and Shop by brand, and between
- * Shop by brand and Newest parts) is halved, from 64 px to 32 px. Run it AFTER scripts/patch-product-page.js. It changes one file: apps/web-storefront/app/page.tsx
+ * Home page: the announcement line, the banner, the totals (parts, brands, models, countries), Shop by section, Shop by brand and Newest parts are each 20 px apart,
+ * the same space as between the product cards (it was 48, 56 and 32 px). The banner and the finder box beside it are 20 px apart too (was 24).
  *
  *   node scripts/patch-home-spacing.js            dry run: says what it would change, writes nothing
- *   node scripts/patch-home-spacing.js --write    applies it (the file is saved as <file>.before-home-spacing first)
+ *   node scripts/patch-home-spacing.js --write    applies it (each changed file is saved as <file>.before-home-spacing first)
  *
- * A file that is not exactly what the patch expects is NOT changed. Running it twice is harmless ("already").
+ * A file that is not exactly what the patch expects is NOT changed (the whole patch stops, so nothing is half applied).
+ * Windows (CRLF) line endings are handled. Running it twice is harmless ("already").
  */
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 const root = path.join(__dirname, '..');
 const write = process.argv.includes('--write');
-const DATA = {"anchored": [{"file": "apps/web-storefront/app/page.tsx", "what": "half the space above Shop by section, Shop by brand and Newest parts (64 px to 32 px)", "done": "px-4 pt-8 sm:px-8\" aria-labelledby=\"home-sections\"", "pairs": [["<section className=\"mx-auto max-w-7xl px-4 pt-16 sm:px-8\" aria-labelledby=\"home-sections\">", "<section className=\"mx-auto max-w-7xl px-4 pt-8 sm:px-8\" aria-labelledby=\"home-sections\">"], ["<section className=\"mx-auto max-w-7xl px-4 pt-16 sm:px-8\" aria-labelledby=\"home-brands\">", "<section className=\"mx-auto max-w-7xl px-4 pt-8 sm:px-8\" aria-labelledby=\"home-brands\">"], ["<section className=\"mx-auto max-w-7xl px-4 pb-4 pt-16 sm:px-8\" aria-labelledby=\"home-newest\">", "<section className=\"mx-auto max-w-7xl px-4 pb-4 pt-8 sm:px-8\" aria-labelledby=\"home-newest\">"]]}], "whole": [], "tests": []};
-const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
+const DATA = {"anchored": [{"file": "apps/web-storefront/app/page.tsx", "what": "home page: every block 20 px apart (the same as between the product cards)", "done": "px-4 pt-5 sm:px-8\" aria-label=\"Leap Auto Parts\">", "pairs": [["      {/* The left side of the hero is EITHER the headline and sub-headline OR the banner (one switch in the admin portal), never both. The banner is as big as the finder box beside it. The page keeps its h1 for search engines either way. */}\n      <section className={`mx-auto grid max-w-7xl px-4 pb-4 pt-12 sm:px-8 ${showBanner ? \"gap-6 lg:grid-cols-2 lg:items-stretch\" : \"items-center gap-12 lg:grid-cols-[1.1fr_1fr]\"}`} aria-labelledby=\"home-h1\">\n        {showBanner ? (\n", "      {/* The left side of the hero is EITHER the headline and sub-headline OR the banner (one switch in the admin portal), never both. The banner is as big as the finder box beside it. The page keeps its h1 for search engines either way. */}\n      {/* Every block of the page is 20 px (pt-5) below the one above it: the same space as between the product cards (gap-5). */}\n      <section className={`mx-auto grid max-w-7xl px-4 pt-5 sm:px-8 ${showBanner ? \"gap-5 lg:grid-cols-2 lg:items-stretch\" : \"items-center gap-12 lg:grid-cols-[1.1fr_1fr]\"}`} aria-labelledby=\"home-h1\">\n        {showBanner ? (\n"], ["      {stats.length > 0 && (\n        <section className=\"mx-auto max-w-7xl px-4 pt-10 sm:px-8\" aria-label=\"Leap Auto Parts\">\n          <ul className=\"grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4\">\n", "      {stats.length > 0 && (\n        <section className=\"mx-auto max-w-7xl px-4 pt-5 sm:px-8\" aria-label=\"Leap Auto Parts\">\n          <ul className=\"grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4\">\n"], ["      {categories.length > 0 && (\n        <section className=\"mx-auto max-w-7xl px-4 pt-8 sm:px-8\" aria-labelledby=\"home-sections\">\n          <h2 id=\"home-sections\" className=\"mb-6 text-3xl font-bold tracking-tight\">{t(lang, \"shop_by_section\")}</h2>\n", "      {categories.length > 0 && (\n        <section className=\"mx-auto max-w-7xl px-4 pt-5 sm:px-8\" aria-labelledby=\"home-sections\">\n          <h2 id=\"home-sections\" className=\"mb-6 text-3xl font-bold tracking-tight\">{t(lang, \"shop_by_section\")}</h2>\n"], ["      {brands.length > 0 && (\n        <section className=\"mx-auto max-w-7xl px-4 pt-8 sm:px-8\" aria-labelledby=\"home-brands\">\n          <h2 id=\"home-brands\" className=\"mb-6 text-3xl font-bold tracking-tight\">{t(lang, \"shop_by_brand\")}</h2>\n", "      {brands.length > 0 && (\n        <section className=\"mx-auto max-w-7xl px-4 pt-5 sm:px-8\" aria-labelledby=\"home-brands\">\n          <h2 id=\"home-brands\" className=\"mb-6 text-3xl font-bold tracking-tight\">{t(lang, \"shop_by_brand\")}</h2>\n"], ["      {newest.length > 0 && (\n        <section className=\"mx-auto max-w-7xl px-4 pb-4 pt-8 sm:px-8\" aria-labelledby=\"home-newest\">\n          <h2 id=\"home-newest\" className=\"mb-6 text-3xl font-bold tracking-tight\">{t(lang, \"newest_parts\")}</h2>\n", "      {newest.length > 0 && (\n        <section className=\"mx-auto max-w-7xl px-4 pb-4 pt-5 sm:px-8\" aria-labelledby=\"home-newest\">\n          <h2 id=\"home-newest\" className=\"mb-6 text-3xl font-bold tracking-tight\">{t(lang, \"newest_parts\")}</h2>\n"]]}, {"file": "apps/web-storefront/app/homeSpacing.test.tsx", "what": "the home page spacing tests", "done": "every block starts 20 px (pt-5)", "pairs": [["\n// The space between the blocks of the home page: the four totals, Shop by section, Shop by brand and Newest parts. Each block starts 32 px (pt-8) below the one before it (it was 64 px).\nvi.mock(\"@/lib/lang\", () => ({ getLang: vi.fn(async () => \"en\") }));\n", "\n// The space between the blocks of the home page: the hero (banner or headline), the four totals, Shop by section, Shop by brand and Newest parts. Each block starts 20 px\n// (pt-5) below the one before it: the same space as between the product cards (gap-5).\nvi.mock(\"@/lib/lang\", () => ({ getLang: vi.fn(async () => \"en\") }));\n"], ["  const by = (sel: string) => container.querySelector(sel) as HTMLElement;\n  return { totals: by('section[aria-label=\"Leap Auto Parts\"]'), sections: by(\"section[aria-labelledby=home-sections]\"), brands: by(\"section[aria-labelledby=home-brands]\"), newest: by(\"section[aria-labelledby=home-newest]\") };\n}\n", "  const by = (sel: string) => container.querySelector(sel) as HTMLElement;\n  return { hero: by(\"section[aria-labelledby=home-h1]\"), totals: by('section[aria-label=\"Leap Auto Parts\"]'), sections: by(\"section[aria-labelledby=home-sections]\"), brands: by(\"section[aria-labelledby=home-brands]\"), newest: by(\"section[aria-labelledby=home-newest]\") };\n}\n"], ["describe(\"the space between the blocks of the home page\", () => {\n  it(\"Shop by section, Shop by brand and Newest parts each start 32 px (pt-8) below the block above them, not 64 px\", async () => {\n    const b = await blocks();\n", "describe(\"the space between the blocks of the home page\", () => {\n  it(\"CRITICAL: every block starts 20 px (pt-5) below the one above it, the same as the gap between the product cards\", async () => {\n    const b = await blocks();\n"], ["    const b = await blocks();\n    for (const [name, el] of Object.entries({ sections: b.sections, brands: b.brands, newest: b.newest })) { expect(cls(el), name).toContain(\"pt-8\"); expect(cls(el), name).not.toContain(\"pt-16\"); }\n  });\n", "    const b = await blocks();\n    for (const [name, el] of Object.entries({ hero: b.hero, totals: b.totals, sections: b.sections, brands: b.brands, newest: b.newest })) {\n      expect(cls(el), name).toContain(\"pt-5\");\n      expect(cls(el).some((c) => /^pt-(?!5$)/.test(c)), name).toBe(false);\n    }\n  });\n"], ["  });\n  it(\"the totals keep their own space above (it is the space under the hero, which was not changed)\", async () => {\n    expect(cls((await blocks()).totals)).toContain(\"pt-10\");\n  });\n  it(\"nothing else adds space between the blocks (no margin below or above any of them)\", async () => {\n    const b = await blocks(); for (const el of [b.totals, b.sections, b.brands, b.newest]) expect(cls(el).some((c) => /^(mt|mb|my|pb-(?!4$))/.test(c)), el.className).toBe(false);\n  });\n", "  });\n  it(\"nothing else adds space between the blocks (no margin, and no space below any block but the last)\", async () => {\n    const b = await blocks();\n    for (const el of [b.hero, b.totals, b.sections, b.brands]) expect(cls(el).some((c) => /^(mt|mb|my|pb)-/.test(c)), el.className).toBe(false);\n    expect(cls(b.newest).some((c) => /^(mt|mb|my)-/.test(c))).toBe(false);\n  });\n"]]}, {"file": "apps/web-storefront/app/homeBanner.test.tsx", "what": "the banner test: 20 px between the banner and the finder box", "done": "expect(hero.className).toContain(\"gap-5\");", "pairs": [["  it(\"two equal columns on a computer, stretched to the height of the finder box, with a smaller gap; the section is still named by the h1\", async () => {\n    m.banner.current = banner(); const { hero } = await show(); expect(hero.className).toContain(\"lg:grid-cols-2\"); expect(hero.className).toContain(\"lg:items-stretch\"); expect(hero.className).toContain(\"gap-6\"); expect(hero.className).not.toContain(\"1.1fr\"); expect(hero.getAttribute(\"aria-labelledby\")).toBe(\"home-h1\");\n  });\n", "  it(\"two equal columns on a computer, stretched to the height of the finder box, with a smaller gap; the section is still named by the h1\", async () => {\n    m.banner.current = banner(); const { hero } = await show(); expect(hero.className).toContain(\"lg:grid-cols-2\"); expect(hero.className).toContain(\"lg:items-stretch\"); expect(hero.className).toContain(\"gap-5\"); expect(hero.className).not.toContain(\"1.1fr\"); expect(hero.getAttribute(\"aria-labelledby\")).toBe(\"home-h1\");\n  });\n"]]}], "created": []};
 const once = (s, a) => s.split(a).length === 2;
-
 const plan = [];
 let problems = 0;
-const refuse = (file, why) => { console.log(`REFUSED   ${file}: ${why}`); problems++; };
 for (const e of DATA.anchored) {
   const p = path.join(root, e.file);
-  if (!fs.existsSync(p)) { console.log(`MISSING   ${e.file}: not found. Run this from the project root.`); problems++; continue; }
+  if (!fs.existsSync(p)) { console.log(`MISSING   ${e.file}: not found. Run this from D:\\LEAP-MARKETPLACE.`); problems++; continue; }
   const s = fs.readFileSync(p, 'utf8');
-  if (s.includes(e.done)) { console.log(`already   ${e.file}: ${e.what}`); continue; }
+  const c = (x) => (s.includes('\r\n') ? x.replace(/\r?\n/g, '\r\n') : x);
+  if (s.includes(c(e.done))) { console.log(`already   ${e.file}: ${e.what}`); continue; }
   let out = s;
-  for (const [a, b] of e.pairs) { if (!once(out, a)) { out = null; break; } out = out.replace(a, () => b); }
-  if (out === null) { refuse(e.file, 'its text is not what this patch expects, so nothing was changed. Send this file to the Leap team.'); continue; }
+  for (const [a0, b0] of e.pairs) { const a = c(a0), b = c(b0); if (!once(out, a)) { out = null; break; } out = out.replace(a, () => b); }
+  if (out === null) { console.log(`REFUSED   ${e.file}: its text is not what this patch expects, so nothing was changed. Send this file.`); problems++; continue; }
   plan.push({ file: e.file, what: e.what, before: s, after: out });
 }
-for (const e of DATA.whole) {
+for (const e of DATA.created) {
   const p = path.join(root, e.file);
-  if (!fs.existsSync(p)) { console.log(`MISSING   ${e.file}: not found. Run this from the project root.`); problems++; continue; }
-  const s = fs.readFileSync(p, 'utf8');
-  const fresh = fs.readFileSync(path.join(__dirname, 'product-page-files', e.file), 'utf8');
-  if (s === fresh) { console.log(`already   ${e.file}: ${e.what}`); continue; }
-  if (sha(s) !== e.sha) { refuse(e.file, 'this file is not the one the new version was made from (it was changed on your side), so nothing was changed. Send this file to the Leap team.'); continue; }
-  plan.push({ file: e.file, what: e.what, before: s, after: fresh });
-}
-for (const t of (DATA.tests || [])) {
-  const p = path.join(root, t.file);
-  if (!fs.existsSync(p)) { console.log(`MISSING   ${t.file}: not found. Run this from the project root.`); problems++; continue; }
-  const s = fs.readFileSync(p, 'utf8');
-  const fresh = fs.readFileSync(path.join(__dirname, 'product-page-files', t.file), 'utf8');
-  if (s === fresh) { console.log(`already   ${t.file}: ${t.what}`); continue; }
-  if (sha(s) !== t.sha) { refuse(t.file, 'this test file is not the one the new version was made from, so nothing was changed. Send this file to the Leap team.'); continue; }
-  plan.push({ file: t.file, what: t.what, before: s, after: fresh });
+  if (!fs.existsSync(path.dirname(p))) { console.log(`MISSING   ${path.dirname(e.file)}: folder not found. Run this from D:\\LEAP-MARKETPLACE.`); problems++; continue; }
+  if (fs.existsSync(p)) {
+    const s = fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
+    if (s === e.text) { console.log(`already   ${e.file}: ${e.what}`); continue; }
+    console.log(`REFUSED   ${e.file}: a different file with this name is already there, so nothing was changed. Send this file.`); problems++; continue;
+  }
+  plan.push({ file: e.file, what: e.what, before: null, after: e.text });
 }
 if (problems > 0) { console.log('\nNothing was changed, because of the problem(s) above.'); process.exit(1); }
 for (const c of plan) {
-  if (write) { const p = path.join(root, c.file); fs.writeFileSync(`${p}.before-home-spacing`, c.before); fs.writeFileSync(p, c.after); console.log(`patched   ${c.file}: ${c.what}`); }
-  else console.log(`would     ${c.file}: ${c.what}`);
+  if (write) {
+    const p = path.join(root, c.file);
+    if (c.before !== null) fs.writeFileSync(`${p}.before-home-spacing`, c.before);
+    fs.writeFileSync(p, c.after);
+    console.log(`${c.before === null ? 'created ' : 'patched '}  ${c.file}: ${c.what}`);
+  } else console.log(`would     ${c.file}: ${c.what}`);
 }
 if (!write && plan.length) console.log('\nDry run only. Add --write to apply.');
+if (write && plan.length) console.log('\nDone. Ctrl+F5 on the website.');

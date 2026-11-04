@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import SafeImage from "@/components/SafeImage";
 import Link from "@/components/LocLink";
 import LoyaltyCard from "@/components/LoyaltyCard";
@@ -22,6 +22,7 @@ export default function AccountPage() {
   const { user, isLoading, logout, refreshUser } = useAuth();
   const t = useT();
   const router = useLocRouter();
+  const photoInput = useRef<HTMLInputElement>(null);
   const [counts, setCounts] = useState<{ vehicles: number; orders: number; wishlist: number; unread: number } | null>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
@@ -70,19 +71,28 @@ export default function AccountPage() {
 
   return (
     <div className="grid gap-6">
-      <section className="flex flex-wrap items-center gap-5 rounded-[14px] border border-line bg-white p-5" aria-labelledby="acc-h">
-        <span className="relative grid size-20 flex-none place-items-center overflow-hidden rounded-full bg-navy text-3xl font-bold text-white">
-          {user.avatarUrl ? <SafeImage src={resolveImageUrl(user.avatarUrl)} alt="" fill sizes="80px" className="object-cover" unoptimized /> : <span aria-hidden="true">{(user.name || user.email).charAt(0).toUpperCase()}</span>}
-        </span>
+      {/* the profile (design B): the photo with its camera badge (click either to change it), "Welcome back", the name and email, and a bell with the
+          unread count. The name is not an <h1> tag: the menu's title box hides the pages' own h1 titles, and this one must stay. */}
+      <section className="flex flex-wrap items-center gap-5 rounded-[14px] border border-line bg-white p-5 sm:p-6" aria-labelledby="acc-h">
+        <label className={`relative block size-[84px] flex-none ${photoBusy ? "cursor-wait opacity-70" : "cursor-pointer"}`}>
+          <span className="relative grid size-[84px] place-items-center overflow-hidden rounded-full bg-navy text-[34px] font-extrabold text-white">
+            {user.avatarUrl ? <SafeImage src={resolveImageUrl(user.avatarUrl)} alt="" fill sizes="84px" className="object-cover" unoptimized /> : <span aria-hidden="true">{(user.name || user.email).charAt(0).toUpperCase()}</span>}
+          </span>
+          <span aria-hidden="true" className="absolute -bottom-0.5 -end-0.5 grid size-8 place-items-center rounded-full border-[3px] border-white bg-signal text-navy">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>
+          </span>
+          <input ref={photoInput} type="file" accept="image/*" className="sr-only" aria-label={t("change_photo")} disabled={photoBusy} onChange={(e) => { changePhoto(e.target.files?.[0]); e.target.value = ""; }} />
+        </label>
         <div className="min-w-0 flex-1">
-          <h1 id="acc-h" className="truncate text-2xl font-bold text-navy">{user.name || user.email}</h1>
+          <p className="text-sm text-muted">{t("welcome_back")}</p>
+          <p id="acc-h" role="heading" aria-level={1} className="text-[17px] font-extrabold leading-tight text-navy [overflow-wrap:anywhere] sm:truncate sm:text-2xl"><bdi>{user.name || user.email}</bdi></p>
           {user.name && <p className="truncate text-muted" dir="ltr">{user.email}</p>}
-          <label className={`${outline} mt-2 cursor-pointer`}>
-            {photoBusy ? t("saving") : t("change_photo")}
-            <input type="file" accept="image/*" className="sr-only" aria-label={t("change_photo")} disabled={photoBusy} onChange={(e) => { changePhoto(e.target.files?.[0]); e.target.value = ""; }} />
-          </label>
+          <button type="button" disabled={photoBusy} onClick={() => photoInput.current?.click()} className="mt-1 text-sm font-bold text-navy underline underline-offset-4 disabled:opacity-50">{photoBusy ? t("saving") : t("change_photo")}</button>
         </div>
-        <Link href="/notifications" className={outline}>{t("notifications")}{counts && counts.unread > 0 ? ` (${counts.unread})` : ""}</Link>
+        <Link href="/notifications" aria-label={`${t("notifications")}${counts && counts.unread > 0 ? ` (${counts.unread})` : ""}`} className="relative grid size-12 flex-none place-items-center rounded-xl border-[1.5px] border-line text-navy transition-colors hover:border-navy">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z" /><path d="M10 20a2 2 0 0 0 4 0" /></svg>
+          {counts && counts.unread > 0 && <span aria-hidden="true" className="absolute -top-2 -end-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#d93025] px-1.5 text-[11px] font-extrabold text-white">{counts.unread > 99 ? "99+" : counts.unread}</span>}
+        </Link>
       </section>
 
       <ul className="grid gap-4 sm:grid-cols-3" aria-label={t("account_settings_header")}>

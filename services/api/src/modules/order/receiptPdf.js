@@ -13,6 +13,7 @@
  *    (`bidi` is the bidi-js instance, `reshaper` arabic-reshaper: see forPdf below for why both.)
  */
 const fs = require('fs');
+const { arabicWidth, drawArabic } = require('../shared/arabicPdf');      // Arabic joined and right to left, on any PDFKit version
 
 const ARABIC = /[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]/;
 const AR_SYMBOL = { SAR: 'ر.س', AED: 'د.إ', KWD: 'د.ك', QAR: 'ر.ق', BHD: 'د.ب', OMR: 'ر.ع', EGP: 'ج.م', JOD: 'د.أ', USD: '$' };
@@ -101,7 +102,7 @@ function drawReceipt(doc, data, bidi, reshaper) {
     let cur = '';
     for (const word of words) {
       const next = cur ? `${cur} ${word}` : word;
-      if (cur && doc.widthOfString(forPdf(next)) > w) { lines.push(cur); cur = word; } else cur = next;
+      if (cur && arabicWidth(doc, next) > w) { lines.push(cur); cur = word; } else cur = next;
     }
     if (cur) lines.push(cur);
     return lines.length ? lines : [''];
@@ -114,7 +115,7 @@ function drawReceipt(doc, data, bidi, reshaper) {
       doc.font(bold ? 'Ar-Bold' : 'Ar').fontSize(size);
       const lh = doc.currentLineHeight(true);
       const lines = arabicLines(raw, w);
-      if (!measureOnly) lines.forEach((line, i) => doc.fillColor(color).text(forPdf(line), x, y + i * lh, { width: w, align, lineBreak: false }));
+      if (!measureOnly) lines.forEach((line, i) => { doc.fillColor(color); drawArabic(doc, line, x, y + i * lh, { width: w, align }); });
       return lines.length * lh;
     }
     doc.font(bold ? latin.bold : latin.regular).fontSize(size);

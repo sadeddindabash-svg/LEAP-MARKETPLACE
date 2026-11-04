@@ -197,6 +197,13 @@ export async function fetchProductsPaginated(params: {
   limit?: number;
   lang?: Lang;
   part?: string;
+  /** A car chosen step by step: its brand, then its model (with year, the model in that year). A generation (above) is more precise and wins. */
+  brandId?: string;
+  modelId?: string;
+  /** Prices in US dollars (the server compares the buyer's price), and the most days the delivery may take. */
+  minPrice?: number;
+  maxPrice?: number;
+  maxDeliveryDays?: number;
   /** This CONTINUES a list the buyer is already scrolling through (lazy loading): the server may answer from its short-lived cache of the computed list and does not count it as a new search. */
   more?: boolean;
 } = {}): Promise<{ items: ProductSummary[]; total: number; unreachable?: boolean }> {
@@ -208,6 +215,11 @@ export async function fetchProductsPaginated(params: {
   if (params.generationId) query.set("generationId", params.generationId);
   if (params.year) query.set("year", String(params.year));
   if (params.versionId) query.set("versionId", params.versionId);
+  if (params.brandId) query.set("brandId", params.brandId);
+  if (params.modelId) query.set("modelId", params.modelId);
+  if (params.minPrice) query.set("minPrice", String(params.minPrice));
+  if (params.maxPrice) query.set("maxPrice", String(params.maxPrice));
+  if (params.maxDeliveryDays) query.set("maxDeliveryDays", String(params.maxDeliveryDays));
   if (params.lang === "ar") query.set("lang", "ar");
   if (params.more) query.set("more", "1");
   query.set("page", String(params.page || 1));
@@ -1027,6 +1039,11 @@ export async function fetchGenerationsForModel(modelId: string): Promise<Vehicle
   return data ?? [];
 }
 
+/** One vehicle year (generation) with the brand it belongs to, or null: the car filter shows the brand and model of a car that arrives as a year only (the garage car). */
+export async function fetchGeneration(generationId: string): Promise<(VehicleGeneration & { brandId: string }) | null> {
+  return apiGet<VehicleGeneration & { brandId: string }>(`/fitment/generations/${encodeURIComponent(generationId)}`);
+}
+
 // ---------------- Real support tickets (client-side calls, new) ----------------
 // Reuses the SAME real GET/POST /support/my-tickets* endpoints the
 // mobile app already uses -- now genuinely guest-accessible too (a
@@ -1337,7 +1354,7 @@ export async function submitBugReport(input: { description: string; screenshotUr
 // ---------------------------------------------------------------- Stage 4a: account and sign-in security
 
 /** One loyalty tier. `color` and `icon` are names the server sends ("amber", "award"); lib/loyalty.ts turns them into what the page shows. */
-export interface LoyaltyTier { id: number | string; name: string; nameAr?: string | null; color: string; icon: string; discountPercentage: number; spendThreshold: number }
+export interface LoyaltyTier { id: number | string; name: string; nameAr?: string | null; color: string; icon: string; discountPercentage: number; spendThreshold: number; photoUrl?: string | null }
 export interface LoyaltyStatus { currentTier: LoyaltyTier | null; nextTier: LoyaltyTier | null; progressPercent: number; lifetimeSpend: number; amountToNextTier: number | null; allTiers: LoyaltyTier[] }
 export const fetchLoyaltyStatus = (token: string) => authedJson<LoyaltyStatus>(token, "/loyalty/me", "GET", "Failed to load your loyalty status");
 

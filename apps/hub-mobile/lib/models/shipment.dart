@@ -50,11 +50,14 @@ class ShipmentItem {
   // Confirmed with the person: a fully flexible attribute list,
   // since different real part types need different real specs.
   final List<ProductAttribute> attributes;
+  // The inspection list (migration 129): built by the server, the same on the hub portal; and the lines already ticked.
+  final List<InspectionCheck> checklist;
+  final List<String> checkedKeys;
 
   ShipmentItem({
     required this.productId, required this.name, required this.quantity,
     this.receivedQuantity, this.part, this.position, this.oemNumber,
-    this.attributes = const [],
+    this.attributes = const [], this.checklist = const [], this.checkedKeys = const [],
   });
 
   factory ShipmentItem.fromJson(Map<String, dynamic> json) => ShipmentItem(
@@ -68,6 +71,10 @@ class ShipmentItem {
         attributes: (json['attributes'] as List<dynamic>? ?? [])
             .map((a) => ProductAttribute.fromJson(a as Map<String, dynamic>))
             .toList(),
+        checklist: (json['checklist'] as List<dynamic>? ?? [])
+            .map((c) => InspectionCheck.fromJson(c as Map<String, dynamic>))
+            .toList(),
+        checkedKeys: (json['checkedKeys'] as List<dynamic>? ?? []).map((k) => k as String).toList(),
       );
 }
 
@@ -79,6 +86,20 @@ class ProductAttribute {
 
   factory ProductAttribute.fromJson(Map<String, dynamic> json) =>
       ProductAttribute(name: json['name'] as String, value: json['value'] as String);
+}
+
+/// One line of the inspection list (migration 129): its key (what is saved when it is ticked) and its words in English and Chinese.
+class InspectionCheck {
+  final String key;
+  final String en;
+  final String zh;
+
+  InspectionCheck({required this.key, required this.en, required this.zh});
+
+  String label(String language) => language == 'zh' ? zh : en;
+
+  factory InspectionCheck.fromJson(Map<String, dynamic> json) =>
+      InspectionCheck(key: json['key'] as String, en: json['en'] as String, zh: (json['zh'] ?? json['en']) as String);
 }
 
 /// Matches attachEventsAndPhotos's real, confirmed shape exactly
@@ -137,13 +158,18 @@ class ShipmentDetail {
   final String? resolution;
   final DateTime? resolvedAt;
   final FaultCaseInfo? faultCase;
+  // Delivered: when, and how it was confirmed (the courier link with the buyer's code). Null until delivered.
+  final DateTime? deliveredAt;
+  final DeliverySummary? delivery;
+  // The evidence photos being added for a step, shared with the hub portal (migration 130): { step, flag, fault_return }. Null from an older server.
+  final Map<String, List<String>>? draftPhotos;
 
   ShipmentDetail({
     required this.id, required this.status, required this.createdAt, required this.updatedAt,
     required this.orderId, required this.supplierName,
     this.shipmentIndex = 1, this.totalShipments = 1, this.otherShipments = const [],
     required this.items, required this.events, this.deliveryAddress,
-    this.replacementFor, this.resolution, this.resolvedAt, this.faultCase,
+    this.replacementFor, this.resolution, this.resolvedAt, this.faultCase, this.deliveredAt, this.delivery, this.draftPhotos,
   });
 
   factory ShipmentDetail.fromJson(Map<String, dynamic> json) => ShipmentDetail(
@@ -165,6 +191,11 @@ class ShipmentDetail {
         resolution: json['resolution'] as String?,
         resolvedAt: json['resolvedAt'] == null ? null : DateTime.parse(json['resolvedAt'] as String),
         faultCase: json['faultCase'] == null ? null : FaultCaseInfo.fromJson(json['faultCase'] as Map<String, dynamic>),
+        deliveredAt: json['deliveredAt'] == null ? null : DateTime.parse(json['deliveredAt'] as String),
+        delivery: json['deliveryProof'] is Map ? DeliverySummary.fromJson(json['deliveryProof'] as Map<String, dynamic>) : null,
+        draftPhotos: json['draftPhotos'] is Map
+            ? (json['draftPhotos'] as Map).map((k, v) => MapEntry(k as String, (v as List<dynamic>).map((u) => u as String).toList()))
+            : null,
       );
 
   /// A flag the platform has CLOSED keeps its "flagged" status but is no longer an open problem: it reads "closed".
@@ -172,6 +203,27 @@ class ShipmentDetail {
 
   /// A real fault was confirmed and the faulty unit is still at this hub: it must be sent back or discarded.
   bool get needsFaultReturn => status == 'flagged' && (faultCase?.needsReturn ?? false);
+}
+
+/// How a delivery was confirmed (GET /hub/me/shipments/:id's deliveryProof): with the buyer's code or not, who received it, the driver.
+class DeliverySummary {
+  final bool verified;
+  final String? receivedBy;
+  final String? driverName;
+  final DateTime? deliveredAt;
+
+  DeliverySummary({required this.verified, this.receivedBy, this.driverName, this.deliveredAt});
+
+  factory DeliverySummary.fromJson(Map<String, dynamic> json) {
+    final driver = json['driver'] is Map ? json['driver'] as Map : null;
+    final names = [driver?['name'], driver?['company']].whereType<String>().where((s) => s.isNotEmpty).toList();
+    return DeliverySummary(
+      verified: json['verified'] == true,
+      receivedBy: json['receivedBy'] as String?,
+      driverName: names.isEmpty ? null : names.join(' · '),
+      deliveredAt: json['deliveredAt'] == null ? null : DateTime.tryParse(json['deliveredAt'].toString()),
+    );
+  }
 }
 
 class DeliveryAddress {

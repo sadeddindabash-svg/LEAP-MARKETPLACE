@@ -18,6 +18,8 @@ import '../../widgets/theme_reveal.dart';
 import '../../services/api_client.dart';
 import 'loyalty_card.dart';
 import '../../core/api_error_text.dart';
+import '../quotations/quotations_screens.dart';
+import 'site_pages.dart';
 
 class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key});
@@ -93,9 +95,9 @@ class _AccountScreenState extends State<AccountScreen> {
       (icon: Icons.bookmark_outlined, label: tr(context, 'saved_searches'), route: '/saved-searches'),
       (icon: Icons.card_giftcard_outlined, label: tr(context, 'referrals'), route: '/referrals'),
       (icon: Icons.inventory_2_outlined, label: tr(context, 'orders_and_returns'), route: '/orders'),
+      (icon: Icons.description_outlined, label: qtr(context, 'my_quotations'), route: '/quotations'),
       (icon: Icons.request_quote_outlined, label: tr(context, 'my_part_requests'), route: '/part-requests'),
       (icon: Icons.assignment_return_outlined, label: tr(context, 'my_returns'), route: '/returns'),
-      (icon: Icons.chat_bubble_outline, label: tr(context, 'contact_us_label'), route: '/contact-us'),
       (icon: Icons.alternate_email, label: tr(context, 'change_email'), route: '/account/change-email'),
       (icon: Icons.shield_outlined, label: tr(context, 'two_factor_auth_label'), route: '/account/two-factor'),
     ];
@@ -281,6 +283,7 @@ class _AccountScreenState extends State<AccountScreen> {
               title: Text(tr(context, 'delete_account_label'), style: const TextStyle(color: Colors.red)),
               onTap: () => _confirmDeleteAccount(context),
             ),
+          const SiteFooterSection(),      // the website footer: Help, Useful links, social media, copyright (admin Settings)
         ],
       ),
     );

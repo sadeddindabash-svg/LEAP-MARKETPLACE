@@ -1,0 +1,234 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../core/language_state.dart';
+import '../../core/theme.dart';
+import '../../services/api_client.dart';
+import '../../widgets/evidence_photo_picker.dart';
+
+/// The "Shipping cost" step (migration 127), exactly as the web hub portal's ShippingCostCard.jsx: once the parcel is packed, before it is
+/// shipped to the buyer, the hub enters what it paid the carrier, in its own currency. The hub never sees the planned cost, nor an amount
+/// after saving: only whether it may ship. A parcel dearer than planned needs a photo of it with its size and weight written on it, then
+/// waits for Leap's approval. [onChange] tells the screen whether "Shipped to buyer" may be pressed.
+class ShippingCostCard extends StatefulWidget {
+  final String shipmentId;
+  final String token;
+  final void Function(bool mayShip) onChange;
+  const ShippingCostCard({super.key, required this.shipmentId, required this.token, required this.onChange});
+
+  @override
+  State<ShippingCostCard> createState() => _ShippingCostCardState();
+}
+
+class _CostText {
+  final String title, hint, amount, currency, carrier, carrierPlaceholder, receipt, save, saving, cleared, waiting, needsPhoto, parcelPhoto, sendPhoto,
+      sentBack, note, errAmount, errCarrier, errPhoto, only;
+  const _CostText({
+    required this.title, required this.hint, required this.amount, required this.currency, required this.carrier, required this.carrierPlaceholder,
+    required this.receipt, required this.save, required this.saving, required this.cleared, required this.waiting, required this.needsPhoto,
+    required this.parcelPhoto, required this.sendPhoto, required this.sentBack, required this.note, required this.errAmount, required this.errCarrier,
+    required this.errPhoto, required this.only,
+  });
+}
+
+const _text = {
+  'zh': _CostText(
+    title: '运费', hint: '请填写您实际支付给承运商的运费。保存后才能发货给买家。',
+    amount: '实际支付的运费', currency: '币种', carrier: '承运商', carrierPlaceholder: '例如 Aramex', receipt: '收据照片（可选）',
+    save: '保存运费', saving: '保存中…',
+    cleared: '运费已记录。可以发货。', waiting: '等待 Leap 审批。请先不要发货：审批后即可发货。',
+    needsPhoto: '此包裹需要 Leap 审核。请拍摄包裹照片，并在包裹上写明尺寸和重量。', parcelPhoto: '包裹照片（写明尺寸和重量）', sendPhoto: '发送照片',
+    sentBack: 'Leap 要求您重新填写运费。', note: '说明：',
+    errAmount: '请填写大于 0 的运费。', errCarrier: '请填写承运商。', errPhoto: '请先拍摄包裹照片。', only: '金额仅 Leap 管理员可见。',
+  ),
+  'en': _CostText(
+    title: 'Shipping cost', hint: 'Enter what you paid the carrier for this parcel. It can be shipped to the buyer once it is saved.',
+    amount: 'What you paid the carrier', currency: 'Currency', carrier: 'Carrier', carrierPlaceholder: 'for example Aramex', receipt: 'Receipt photo (optional)',
+    save: 'Save cost', saving: 'Saving…',
+    cleared: 'Cost recorded. You can ship this parcel.', waiting: "Waiting for Leap's approval. Do not ship this parcel yet: you can ship it once it is approved.",
+    needsPhoto: 'Leap needs to check this parcel. Take a photo of it with its size and weight written on it.', parcelPhoto: 'Parcel photo (size and weight written on it)', sendPhoto: 'Send the photo',
+    sentBack: 'Leap asked you to enter the shipping cost again.', note: 'Note:',
+    errAmount: 'Enter what you paid, a number above 0.', errCarrier: 'Enter the carrier.', errPhoto: 'Take the parcel photo first.', only: "Only Leap's admins see the amounts.",
+  ),
+};
+
+class _ShippingCostCardState extends State<ShippingCostCard> {
+  Map<String, dynamic>? _status;
+  final _amountController = TextEditingController();
+  final _carrierController = TextEditingController();
+  String _currency = '';
+  List<String> _receipt = [];
+  List<String> _parcelPhoto = [];
+  bool _uploadingReceipt = false;
+  bool _uploadingParcel = false;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    _carrierController.dispose();
+    super.dispose();
+  }
+
+  void _take(Map<String, dynamic> status) {
+    setState(() {
+      _status = status;
+      if (_currency.isEmpty) _currency = (status['lastCurrency'] as String?) ?? 'USD';
+    });
+    widget.onChange(status['mayShip'] == true);
+  }
+
+  Future<void> _load() async {
+    try {
+      _take(await ApiClient().fetchParcelCost(widget.token, widget.shipmentId));
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    }
+  }
+
+  Future<void> _save(_CostText x) async {
+    final amount = double.tryParse(_amountController.text.trim().replaceAll(',', '.'));
+    if (amount == null || amount <= 0) { setState(() => _error = x.errAmount); return; }
+    if (_carrierController.text.trim().isEmpty) { setState(() => _error = x.errCarrier); return; }
+    setState(() { _saving = true; _error = null; });
+    try {
+      _take(await ApiClient().saveParcelCost(widget.token, widget.shipmentId, {
+        'amount': amount, 'currency': _currency, 'carrier': _carrierController.text.trim(),
+        if (_receipt.isNotEmpty) 'receiptPhoto': _receipt.first,
+      }));
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _sendPhoto(_CostText x) async {
+    if (_parcelPhoto.isEmpty) { setState(() => _error = x.errPhoto); return; }
+    setState(() { _saving = true; _error = null; });
+    try {
+      _take(await ApiClient().saveParcelCost(widget.token, widget.shipmentId, {'parcelPhoto': _parcelPhoto.first}));
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Widget _banner(Color bg, Color fg, String text) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
+        child: Text(text, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: fg)),
+      );
+
+  Widget _label(String text) => Padding(
+        padding: const EdgeInsets.only(top: 14, bottom: 6),
+        child: Text(text.toUpperCase(), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: HubColors.muted)),
+      );
+
+  Widget _button(String text, VoidCallback? onPressed) => SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: onPressed,
+          style: ElevatedButton.styleFrom(backgroundColor: onPressed == null ? const Color(0xFFD1D5DB) : HubColors.ink),
+          child: Text(text),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final x = _text[context.watch<LanguageState>().language] ?? _text['en']!;
+    final status = _status;
+    if (status == null) {
+      return _error == null ? const SizedBox.shrink() : Text(_error!, style: const TextStyle(fontSize: 12.5, color: HubColors.red));
+    }
+    final state = status['state'] as String? ?? 'missing';
+    final mayShip = status['mayShip'] == true;
+    final editing = state == 'missing' || state == 'sent_back';
+    final currencies = ((status['currencies'] as List?) ?? const ['USD']).map((c) => c.toString()).toList();
+    final note = status['adminNote'] as String?;
+    return Container(
+      key: const Key('shipping-cost-card'),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(color: HubColors.card, border: Border.all(color: mayShip ? HubColors.line : HubColors.signal), borderRadius: BorderRadius.circular(12)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(x.title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: HubColors.ink)),
+          const SizedBox(height: 6),
+          if (mayShip) _banner(HubColors.gaugeBg, const Color(0xFF14532D), '✓ ${x.cleared}'),
+          if (state == 'waiting') _banner(HubColors.amberBg, const Color(0xFF5C4306), '⏸ ${x.waiting}'),
+          if (state == 'sent_back') _banner(HubColors.redBg, HubColors.red, note == null ? x.sentBack : '${x.sentBack} ${x.note} $note'),
+          if (state == 'needs_photo') ...[
+            _banner(HubColors.amberBg, const Color(0xFF5C4306), x.needsPhoto),
+            _label(x.parcelPhoto),
+            EvidencePhotoPicker(
+              photoUrls: _parcelPhoto,
+              onAdd: (url) => setState(() => _parcelPhoto = [url]),
+              onRemove: (url) => setState(() => _parcelPhoto = []),
+              isUploading: _uploadingParcel,
+              onUploadingChanged: (v) => setState(() => _uploadingParcel = v),
+              onError: (msg) => setState(() => _error = msg),
+              token: widget.token,
+            ),
+            if (_error != null) ...[const SizedBox(height: 10), Text(_error!, style: const TextStyle(fontSize: 12.5, color: HubColors.red))],
+            const SizedBox(height: 14),
+            _button(_saving ? x.saving : x.sendPhoto, _saving ? null : () => _sendPhoto(x)),
+          ],
+          if (editing) ...[
+            const SizedBox(height: 4),
+            Text(x.hint, style: const TextStyle(fontSize: 12.5, color: HubColors.muted)),
+            _label(x.amount),
+            TextField(controller: _amountController, keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    _label(x.currency),
+                    DropdownButtonFormField<String>(
+                      value: currencies.contains(_currency) ? _currency : currencies.first,
+                      items: currencies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                      onChanged: (v) => setState(() => _currency = v ?? _currency),
+                    ),
+                  ]),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 3,
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    _label(x.carrier),
+                    TextField(controller: _carrierController, decoration: InputDecoration(hintText: x.carrierPlaceholder)),
+                  ]),
+                ),
+              ],
+            ),
+            _label(x.receipt),
+            EvidencePhotoPicker(
+              photoUrls: _receipt,
+              onAdd: (url) => setState(() => _receipt = [url]),
+              onRemove: (url) => setState(() => _receipt = []),
+              isUploading: _uploadingReceipt,
+              onUploadingChanged: (v) => setState(() => _uploadingReceipt = v),
+              onError: (msg) => setState(() => _error = msg),
+              token: widget.token,
+            ),
+            if (_error != null) ...[const SizedBox(height: 10), Text(_error!, style: const TextStyle(fontSize: 12.5, color: HubColors.red))],
+            const SizedBox(height: 14),
+            _button(_saving ? x.saving : x.save, _saving ? null : () => _save(x)),
+            const SizedBox(height: 8),
+            Text(x.only, style: const TextStyle(fontSize: 11, color: HubColors.muted)),
+          ],
+        ],
+      ),
+    );
+  }
+}

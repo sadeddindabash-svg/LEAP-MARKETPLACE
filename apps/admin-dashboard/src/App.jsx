@@ -7,6 +7,10 @@ import { PageTabsContext, useGroupTabs, FolderTabs, FilterButtons, toolbarButton
 import { FONT_IMPORT, C, disp, body, mono } from "./theme";
 import { useAutoRefresh, setIfChanged, sameData } from "./autoRefresh";
 import HomePicturesSection from "./HomePicturesSection";
+import ProfitsPanel from "./ProfitsPanel";      // Financial -> Profits
+import ShippingCostsPanel from "./ShippingCostsPanel";
+import { fetchAdminCounts, menuBadge, tabBadge } from "./adminCounts";      // the numbers in the side menu and on the group tabs      // Financial -> Shipping costs (migration 127)
+import TierPhotosSection from "./TierPhotosSection";
 import HomeTextSection from "./HomeTextSection";
 import HomeBannerSection from "./HomeBannerSection";
 import FooterTextSection from "./FooterTextSection";
@@ -154,7 +158,7 @@ const NavigationContext = createContext(null);
 // Every page's header (the common page design): the title and its description on the left; search, notifications and the admin's name on the right.
 // Under it, the page's main tabs: those of its group (handed down by the shell), and/or the page's own (`tabs`: { label, tabs: [{ id, label }], activeId, onSelect }).
 // The header's colors: golden yellow, with dark text that reads well on it.
-const HEADER = { bg: C.card, line: C.line, text: C.ink, soft: C.muted };      // white: the side menu carries the gold
+const HEADER = { bg: C.signal, line: "#D9940F", text: C.onSignal, soft: "#5C4407" };      // golden yellow, the same as the side menu, with dark text
 function TopBar({ title, subtitle, tabs }) {
   const groupTabs = useGroupTabs();
   const currentUser = useContext(CurrentUserContext);
@@ -181,7 +185,7 @@ function TopBar({ title, subtitle, tabs }) {
         <GlobalSearch nav={nav} />
         <NotificationBell nav={nav} />
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 36, height: 36, borderRadius: "50%", background: C.ink, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", ...body, fontWeight: 700, fontSize: 12.5 }}>{initials}</div>
+          <div style={{ width: 36, height: 36, borderRadius: "50%", background: C.ink, color: C.signal, display: "flex", alignItems: "center", justifyContent: "center", ...body, fontWeight: 700, fontSize: 12.5 }}>{initials}</div>
           <div>
             <div style={{ ...body, fontSize: 12.5, fontWeight: 700, color: HEADER.text }}>{displayName}</div>
             <div style={{ ...body, fontSize: 10.5, color: HEADER.soft }}>{roleLabel}</div>
@@ -292,9 +296,9 @@ function GlobalSearch({ nav }) {
 // surfaced anywhere an admin would actually notice it.
 function NotificationBell({ nav }) {
   const [isOpen, setIsOpen] = useState(false);
-  const counts = nav?.pendingCounts || { pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, openTickets: 0 };
+  const counts = nav?.pendingCounts || { pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, openTickets: 0, shippingCostsWaiting: 0 };
   const flaggedCount = nav?.flaggedCount || 0;
-  const total = counts.pendingSuppliers + counts.openDisputes + counts.pendingModeration + counts.openTickets + flaggedCount;
+  const total = counts.pendingSuppliers + counts.openDisputes + counts.pendingModeration + counts.openTickets + flaggedCount + (counts.shippingCostsWaiting || 0);
 
   const items = [
     { count: counts.pendingSuppliers, label: "Suppliers pending review", page: "suppliers" },
@@ -302,6 +306,7 @@ function NotificationBell({ nav }) {
     { count: counts.pendingModeration, label: "Products pending moderation", page: "moderation" },
     { count: counts.openTickets, label: "Open support tickets", page: "tickets" },
     { count: flaggedCount, label: "Flagged shipments", page: "flagged" },
+    { count: counts.shippingCostsWaiting || 0, label: "Shipping costs to approve", page: "shippingCosts" },
   ].filter((i) => i.count > 0);
 
   return (
@@ -8562,6 +8567,7 @@ const SETTINGS_TABS = [
   { id: "receiptFooter", label: "Receipt footer", render: () => <ReceiptFooterSection /> },
   { id: "announcements", label: "Announcements", render: (p) => <AnnouncementsSection onSessionExpired={p.onSessionExpired} /> },
   { id: "homePictures", label: "Home pictures", render: (p) => <HomePicturesSection onSessionExpired={p.onSessionExpired} /> },
+  { id: "tierPhotos", label: "Tiers Photos", render: (p) => <TierPhotosSection onSessionExpired={p.onSessionExpired} /> },
   { id: "homeText", label: "Home text", render: (p) => <HomeTextSection onSessionExpired={p.onSessionExpired} /> },
   { id: "homeBanner", label: "Home banner", render: (p) => <HomeBannerSection onSessionExpired={p.onSessionExpired} /> },
   { id: "footerText", label: "Footer text", render: (p) => <FooterTextSection onSessionExpired={p.onSessionExpired} /> },
@@ -8606,6 +8612,8 @@ const NAV = [
   { id: "paymentMethods", label: "Payment Methods", icon: CreditCard },
   { id: "paymentProviders", label: "Payment Providers", icon: Key },
   { id: "payouts", label: "Payouts", icon: Wallet },
+  { id: "profits", label: "Profits", icon: TrendingUp },
+  { id: "shippingCosts", label: "Shipping costs", icon: Truck },
   { id: "pricing", label: "Pricing", icon: Calculator },
   { id: "settings", label: "Settings", icon: Settings },
 ];
@@ -8652,6 +8660,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   // whole Suppliers list page.
   const [openSupplier, setOpenSupplier] = useState(null);
   const [flaggedCount, setFlaggedCount] = useState(0);
+  const [navCounts, setNavCounts] = useState(null);      // what is waiting, per page (GET /admin-counts)
   // The tab each group was last on (clicking the group in the sidebar returns to it). Kept up to date by ANY navigation: the sidebar, a tab, the bell, search, a link.
   const [lastTabByGroup, setLastTabByGroup] = useState({});
   const [productsView, setProductsView] = useState("all");
@@ -8669,23 +8678,26 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   // endpoint needed, since pendingSuppliers/openDisputes/
   // pendingModeration/openTickets were already real and already
   // correct, just never surfaced anywhere except that one page.
-  const [pendingCounts, setPendingCounts] = useState({ pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, openTickets: 0 });
+  const [pendingCounts, setPendingCounts] = useState({ pendingSuppliers: 0, openDisputes: 0, pendingModeration: 0, openTickets: 0, shippingCostsWaiting: 0 });
 
   useEffect(() => {
     fetchFlaggedShipments(getStoredToken())
       .then((data) => setFlaggedCount(data.length))
       .catch(() => {}); // non-critical -- the sidebar badge just stays at 0 rather than breaking the shell
+    fetchAdminCounts(getStoredToken()).then((c) => setNavCounts((cur) => (sameData(cur, c) ? cur : c))).catch(() => {});      // the side menu's numbers
     fetchOverview(getStoredToken())
       .then((data) => setPendingCounts({
         pendingSuppliers: data.pendingSuppliers, openDisputes: data.openDisputes,
-        pendingModeration: data.pendingModeration, openTickets: data.openTickets,
+        pendingModeration: data.pendingModeration, openTickets: data.openTickets, shippingCostsWaiting: data.shippingCostsWaiting || 0,
       }))
       .catch(() => {}); // non-critical -- the bell badge just stays at 0 rather than breaking the shell
   }, [page]); // refetch whenever navigating, so acting on something reflects in the badge soon after
+  // the side menu's numbers (and the group tabs'), every few seconds
+  useAutoRefresh(() => fetchAdminCounts(getStoredToken()).then((c) => setNavCounts((cur) => (sameData(cur, c) ? cur : c))));
   // The sidebar badges (flagged shipments, pending suppliers, disputes, moderation, tickets) follow the platform by themselves.
   useAutoRefresh(() => Promise.all([
     fetchFlaggedShipments(getStoredToken()).then((data) => setFlaggedCount(data.length)),
-    fetchOverview(getStoredToken()).then((data) => setPendingCounts({ pendingSuppliers: data.pendingSuppliers, openDisputes: data.openDisputes, pendingModeration: data.pendingModeration, openTickets: data.openTickets })),
+    fetchOverview(getStoredToken()).then((data) => setPendingCounts({ pendingSuppliers: data.pendingSuppliers, openDisputes: data.openDisputes, pendingModeration: data.pendingModeration, openTickets: data.openTickets, shippingCostsWaiting: data.shippingCostsWaiting || 0 })),
   ]));
 
   let content;
@@ -8713,6 +8725,8 @@ function AdminDashboardShell({ currentUser, onLogout }) {
   else if (page === "paymentProviders") content = <PaymentProvidersPage onSessionExpired={onLogout} />;
   else if (page === "flagged") content = <FlaggedShipmentsPage onOpenOrder={setOpenOrder} onSessionExpired={onLogout} onCountChange={setFlaggedCount} />;
   else if (page === "payouts") content = <PayoutsPage onSessionExpired={onLogout} />;
+  else if (page === "profits") content = <div><TopBar title="Profits" subtitle="What Leap keeps after paying the suppliers. A part of an order counts once its return window ends, when the money is final." /><ProfitsPanel onSessionExpired={onLogout} /></div>;
+  else if (page === "shippingCosts") content = <div><TopBar title="Shipping costs" subtitle="What every parcel really cost to ship, as the hubs entered it, against the shipping inside its prices. Only admins see these amounts." /><ShippingCostsPanel onSessionExpired={onLogout} /></div>;
   else if (page === "reviews") content = <ReviewsPage onSessionExpired={onLogout} />;
   else if (page === "tickets") content = <TicketsPage onOpenTicket={setOpenTicket} onSessionExpired={onLogout} />;
   else if (page === "settings") content = <SettingsPage currentUser={currentUser} onSessionExpired={onLogout} />;
@@ -8733,7 +8747,7 @@ function AdminDashboardShell({ currentUser, onLogout }) {
     pageTabs = { label: tabGroup.label, tabs: list, activeId: page === "allProducts" && productsView !== "all" ? `allProducts:${productsView}` : page,
       onSelect: (id) => { const [p, v] = id.split(":"); setPage(p); if (p === "allProducts") setProductsView(v || "all"); setMessageSupplier(null); } };
   } else if (!detailOpen && tabGroup) {
-    pageTabs = { label: tabGroup.label, tabs: tabIds.map((id) => ({ id, label: TAB_LABELS[id] })), activeId: page, onSelect: (id) => { setPage(id); setMessageSupplier(null); } };
+    pageTabs = { label: tabGroup.label, tabs: tabIds.map((id) => ({ id, label: TAB_LABELS[id], ...tabBadge(navCounts, id, { flaggedCount }) })), activeId: page, onSelect: (id) => { setPage(id); setMessageSupplier(null); } };
   } else if (!detailOpen) {
     const own = NAV.find((n) => n.id === page);
     if (own) pageTabs = { label: own.label, tabs: [{ id: page, label: own.label }], activeId: page, onSelect: () => {}, single: true };
@@ -8807,7 +8821,9 @@ function AdminDashboardShell({ currentUser, onLogout }) {
               setPage(isGroup ? landingPage(entry.group, hasAccess, lastTabByGroup[entry.group.id]) : n.id);
               setOpenOrder(null); setOpenTicket(null); setOpenCase(null); setOpenSupplier(null); setMessageSupplier(null);
             };
-            const count = n.id === "flagged" ? flaggedCount : 0;
+            // the number: what is waiting on this page, or (a group) on its pages this admin may open; red when it holds something up
+            const badge = menuBadge(navCounts, isGroup ? accessibleChildren(entry.group, hasAccess) : [n.id], { flaggedCount });
+            const count = badge.count;
             return (
               <button key={n.id} onClick={open} className="leap-menu-item" aria-current={active ? "page" : undefined} aria-label={menuCollapsed ? n.label : undefined} style={{
                 position: "relative", width: "100%", display: "flex", alignItems: "center", justifyContent: menuCollapsed ? "center" : "flex-start", gap: 12, height: 40,
@@ -8819,15 +8835,15 @@ function AdminDashboardShell({ currentUser, onLogout }) {
                 {active && !menuSlides && <span aria-hidden="true" className="leap-menu-curve bottom" />}
                 <span style={{ display: "inline-flex", color: active ? MENU.activeIcon : "inherit", position: "relative" }}>
                   <Icon size={18} />
-                  {menuCollapsed && count > 0 && <span style={{ position: "absolute", top: -7, right: -10, minWidth: 16, height: 16, borderRadius: 999, background: MENU.badge, color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px", boxSizing: "border-box" }}>{count}</span>}
+                  {menuCollapsed && count > 0 && <span style={{ position: "absolute", top: -7, right: -10, minWidth: 16, height: 16, borderRadius: 999, background: badge.red ? C.red : MENU.badge, color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px", boxSizing: "border-box" }}>{count}</span>}
                 </span>
                 {!menuCollapsed && <span style={{ ...body, fontSize: 13, fontWeight: active ? 700 : 500, flex: 1, whiteSpace: "nowrap" }}>{n.label}</span>}
                 {!menuCollapsed && count > 0 && (
-                  <span style={{ ...body, fontSize: 10.5, fontWeight: 800, color: "#fff", background: MENU.badge, borderRadius: 10, padding: "1px 7px", minWidth: 18, textAlign: "center" }}>
+                  <span title={badge.tip} aria-label={badge.tip} style={{ ...body, fontSize: 10.5, fontWeight: 800, color: "#fff", background: badge.red ? C.red : MENU.badge, borderRadius: 10, padding: "1px 7px", minWidth: 18, textAlign: "center" }}>
                     {count}
                   </span>
                 )}
-                {menuCollapsed && <span role="tooltip" className="leap-menu-tip">{n.label}</span>}
+                {menuCollapsed && <span role="tooltip" className="leap-menu-tip">{badge.tip ? `${n.label} · ${badge.tip}` : n.label}</span>}
               </button>
             );
           })}

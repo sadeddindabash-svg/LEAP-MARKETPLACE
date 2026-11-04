@@ -1216,7 +1216,7 @@ router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), asy
 
     // The rules (./orderRules.js): forward only, and nothing at all once the hub has received the parcel or the buyer cancelled it. The row is locked
     // first, so a click cannot slip in between the hub receiving the parcel and this check.
-    const current = await client.query('SELECT status, hub_id FROM supplier_sub_orders WHERE id = $1 AND supplier_id = $2 FOR UPDATE', [req.params.subOrderId, req.user.supplierId]);
+    const current = await client.query('SELECT status, hub_id, tracking_number FROM supplier_sub_orders WHERE id = $1 AND supplier_id = $2 FOR UPDATE', [req.params.subOrderId, req.user.supplierId]);
     if (current.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Sub-order not found' });
@@ -1229,6 +1229,12 @@ router.patch('/me/orders/:subOrderId', requireAuth, requireRole('supplier'), asy
     }
 
     if (status === 'shipped') {
+      // "Shipped" needs the courier's tracking number (typed now, or saved before). ALLOW_TEST_SHORTCUTS=true in services/api/.env (automated tests only) skips it.
+      const tracking = String(trackingNumber ?? current.rows[0].tracking_number ?? '').replace(/\s/g, '');
+      if (tracking.length < 4 && process.env.ALLOW_TEST_SHORTCUTS !== 'true') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: "Enter the courier's tracking number first (at least 4 letters or digits), then mark the parcel shipped.", code: 'tracking_number_required' });
+      }
       const ownCheck = { rows: [{ hub_id: current.rows[0].hub_id }] };
       if (!ownCheck.rows[0].hub_id) {
         await client.query('ROLLBACK');

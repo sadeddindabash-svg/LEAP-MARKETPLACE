@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:uuid/uuid.dart';
@@ -18,6 +19,9 @@ import '../services/api_client.dart';
 /// an account; see BUY-034 and the Charter's guest-checkout decision).
 class CartState extends ChangeNotifier {
   static const _cartIdKey = 'leap_cart_id';
+  // Choosing what to order: the lines NOT ticked, kept on this phone (every line is ticked to start with, and a part added again is ticked again).
+  static const _unselectedKey = 'leap_cart_unselected';
+  final Set<String> _unselected = {};
   final _secureStorage = const FlutterSecureStorage();
   final ApiClient _apiClient;
 
@@ -207,9 +211,39 @@ class CartState extends ChangeNotifier {
       await _secureStorage.write(key: _cartIdKey, value: cartId);
     }
     _cartId = cartId;
+    try {
+      final saved = await _secureStorage.read(key: _unselectedKey);
+      if (saved != null) _unselected.addAll((jsonDecode(saved) as List).whereType<String>());
+    } catch (_) {
+      // a damaged value: every line is ticked
+    }
     _refresher.start();
     await refresh();
   }
+
+  // ---- Choosing what to order. Only lines still in the basket count (a line removed, or ordered, is forgotten).
+  bool isSelected(String productId) => !_unselected.contains(productId);
+  int get unselectedCount => _items.where((i) => _unselected.contains(i.productId)).length;
+  void toggleSelected(String productId) {
+    if (!_unselected.remove(productId)) _unselected.add(productId);
+    _saveUnselected();
+    notifyListeners();
+  }
+
+  void setAllSelected(bool on) {
+    _unselected.clear();
+    if (!on) _unselected.addAll(_items.map((i) => i.productId));
+    _saveUnselected();
+    notifyListeners();
+  }
+
+  void _saveUnselected() {
+    _unselected.removeWhere((id) => !_items.any((i) => i.productId == id));
+    _secureStorage.write(key: _unselectedKey, value: jsonEncode(_unselected.toList()));
+  }
+
+  /// The basket as the checkout sees it: only the ticked lines, with their own discount and shipping fee (exactly the server's basket when all are ticked).
+  CheckoutCart get forCheckout => CheckoutCart(this);
 
   /// [silent]: the 5-second refresh: no spinner, an error keeps what is on screen, and an answer that was overtaken by another one (the buyer's own change) is dropped.
   Future<void> refresh({bool silent = false}) async {
@@ -235,6 +269,7 @@ class CartState extends ChangeNotifier {
 
   Future<void> addItem(String productId, int quantity) async {
     if (_cartId == null) return;
+    if (_unselected.remove(productId)) _saveUnselected();          // added again: ticked again
     _applyCart(await _apiClient.addCartItem(_cartId!, productId, quantity, token: _token, lang: _language));
     _errorMessage = null;
     notifyListeners();
@@ -293,8 +328,30 @@ class CartState extends ChangeNotifier {
   /// Confirmed with the person: a placed order also ends the real
   /// promo code's own applied lifetime, same as items -- cleared here
   /// too, matching the real "until he place the order" boundary.
-  Future<void> clearAfterOrder() async {
+  ///
+  /// [only]: the lines that were ordered (the ticked ones). The other lines stay in the basket, still not ticked.
+  Future<void> clearAfterOrder({List<String>? only}) async {
     if (_cartId == null) return;
+    final ordered = only == null ? null : only.toSet();
+    final kept = ordered == null ? <CartItem>[] : _items.where((i) => !ordered.contains(i.productId)).toList();
+    if (ordered != null && kept.isNotEmpty) {
+      for (final id in ordered) {
+        try {
+          await _apiClient.removeCartItem(_cartId!, id, token: _token, lang: _language);
+        } catch (_) {
+          // the refresh below shows the server's basket
+        }
+      }
+      if (_appliedPromoCode != null) {
+        try {
+          await _apiClient.applyPromoCode(_cartId!, null, token: _token, lang: _language);
+        } catch (_) {}
+      }
+      await refresh(silent: true);
+      return;
+    }
+    _unselected.clear();
+    _saveUnselected();
     for (final item in List<CartItem>.from(_items)) {
       await _apiClient.removeCartItem(_cartId!, item.productId, token: _token, lang: _language);
     }
@@ -314,4 +371,74 @@ class CartState extends ChangeNotifier {
     _lockExpiresAt = null;
     notifyListeners();
   }
+}
+
+/// The basket as the checkout sees it: only the lines ticked in the basket. Everything is read from [CartState] when asked (so it always follows it). When every
+/// line is ticked it is exactly the server's basket; otherwise the discount and the shipping fee are worked out for the ticked lines with the SAME rules as the server
+/// (the bigger of the loyalty and the promo discount; shipping measured on the goods after the discount, waived by a free-shipping code). The order itself is priced
+/// by the server again, from the lines sent.
+class CheckoutCart {
+  final CartState _c;
+  CheckoutCart(this._c);
+
+  List<CartItem> get items => _c._items.where((i) => !_c._unselected.contains(i.productId)).toList();
+  bool get _all => items.length == _c._items.length;
+  double get total => items.fold(0.0, (sum, i) => sum + i.lineTotal);
+  double get totalBeforeDiscount => items.fold(0.0, (sum, i) => sum + i.lineOriginalTotal);
+  double get totalSaved => totalBeforeDiscount - total;
+  int get itemCount => items.fold(0, (sum, i) => sum + i.quantity);
+  bool get isEmpty => items.isEmpty;
+  double get loyaltyDiscountPercentage => _c.loyaltyDiscountPercentage;
+  String? get appliedPromoCode => _c.appliedPromoCode;
+  PromoDetails? get appliedPromoDetails => _c.appliedPromoDetails;
+  bool get lockActive => _c.lockActive;
+  DateTime? get lockExpiresAt => _c.lockExpiresAt;
+
+  static double _round2(double n) => (n * 100).roundToDouble() / 100;
+
+  (double, String) get _discount {
+    if (_all) return (_c.appliedDiscountUsd, _c.appliedDiscountSource);
+    final sub = total;
+    final loyalty = _round2(sub * (_c.loyaltyDiscountPercentage / 100));
+    final p = _c.appliedPromoDetails;
+    final promo = p == null
+        ? 0.0
+        : p.type == 'percentage'
+            ? _round2(sub * ((p.value ?? 0) / 100))
+            : p.type == 'flat'
+                ? ((p.value ?? 0) < sub ? (p.value ?? 0) : sub)
+                : 0.0;
+    if (loyalty > promo) return (loyalty, 'loyalty');
+    if (promo > 0) return (promo, 'promo');
+    return (0.0, 'none');
+  }
+
+  double get appliedDiscountUsd => _discount.$1;
+  String get appliedDiscountSource => _discount.$2;
+
+  CartShipping get shipping {
+    final s = _c.shipping;
+    if (_all || !s.enabled) return s;
+    final goods = (total - appliedDiscountUsd).clamp(0, double.infinity).toDouble();
+    final qualifies = goods >= s.thresholdUsd;
+    return CartShipping(
+      enabled: true,
+      thresholdUsd: s.thresholdUsd,
+      feeUsd: s.feeUsd,
+      chargedUsd: items.isNotEmpty && !qualifies && !s.waivedByPromo ? s.feeUsd : 0,
+      remainingUsd: qualifies ? 0 : _round2(s.thresholdUsd - goods),
+      qualifies: qualifies,
+      waivedByPromo: s.waivedByPromo,
+    );
+  }
+
+  double get shippingSaved => shipping.savedUsd;
+  double get totalWithShipping => shipping.totalWith(total);
+
+  Future<void> refresh({bool silent = false}) => _c.refresh(silent: silent);
+  Future<void> lockPrices() => _c.lockPrices();
+  Future<void> applyPromoCode(String code) => _c.applyPromoCode(code);
+  Future<void> removePromoCode() => _c.removePromoCode();
+  /// After the order: only the lines that were ordered leave the basket.
+  Future<void> clearAfterOrder() => _c.clearAfterOrder(only: items.map((i) => i.productId).toList());
 }

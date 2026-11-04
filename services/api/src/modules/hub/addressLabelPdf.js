@@ -1,0 +1,112 @@
+/**
+ * The delivery address label (design C, confirmed with the person via mockup): 4×6 in (288×432 pt), black and white for a thermal printer.
+ *   black band   the Leap circle (white circle, black letters) · "CONFIDENTIAL · FOR DELIVERY ONLY"
+ *   DELIVER TO   name · phone, then the address (English) and the Saudi address code
+ *   the QR       big, in the middle: the driver scans it, takes a photo and asks the buyer for the 4-digit code (English and Arabic)
+ *   black band   the order number · PARCEL 1/2
+ *   footer       "Contains personal data. Use only to deliver this parcel. Destroy after delivery."
+ * Only what the driver needs: no e-mail, no prices, and the driver's link is not printed as text (the QR only).
+ */
+const { ARABIC, arabicWidth, drawArabic } = require('../shared/arabicPdf');      // Arabic joined and right to left, on any PDFKit version
+const SIZE = [288, 432];
+
+/**
+ * Draws the label into a PDFKit document created with { size: SIZE, margin: 0 } (it does not end it).
+ * data: { orderId, parcel: [i, n], name, phone, addressLines: [string], addressCode, qr: { modules } | null, logoPath | null,
+ *         fonts: { arabicRegular, arabicBold } }
+ */
+function drawAddressLabel(doc, data) {
+  const W = SIZE[0];
+  const H = SIZE[1];
+  const side = 14;
+  doc.registerFont('Ar', data.fonts.arabicRegular);
+  doc.registerFont('Ar-Bold', data.fonts.arabicBold);
+  // one piece of text: Helvetica, or the Arabic font (joined, right to left) when it contains Arabic. Returns its height.
+  function put(text, x, y, { w, size = 10, bold = false, color = '#000', align = 'left' } = {}) {
+    const raw = text === null || text === undefined ? '' : String(text);
+    if (ARABIC.test(raw)) {
+      doc.font(bold ? 'Ar-Bold' : 'Ar').fontSize(size).fillColor(color);
+      drawArabic(doc, raw, x, y, { width: w, align });
+      return doc.currentLineHeight(true);
+    }
+    doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size).fillColor(color);
+    const h = doc.heightOfString(raw || ' ', { width: w });
+    doc.text(raw, x, y, { width: w, align });
+    return h;
+  }
+
+  // ---- top band: the Leap circle, and "confidential"
+  const topH = 58;
+  doc.rect(0, 0, W, topH).fill('#000');
+  const circle = 44;
+  const cx = side + circle / 2;
+  const cy = topH / 2;
+  if (data.logoPath) {
+    doc.image(data.logoPath, side, cy - circle / 2, { width: circle, height: circle });
+  } else {
+    doc.circle(cx, cy, circle / 2).fill('#fff');
+    doc.font('Helvetica-Bold').fontSize(11).fillColor('#000').text('LEAP', side, cy - 6, { width: circle, align: 'center' });
+  }
+  doc.font('Helvetica-Bold').fontSize(7.2).fillColor('#fff').text('CONFIDENTIAL · FOR DELIVERY ONLY', side + circle + 8, cy - 4, { width: W - side * 2 - circle - 8, align: 'right' });
+
+  // ---- deliver to
+  let y = topH + 9;
+  doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#555').text('DELIVER TO', side, y, { characterSpacing: 0.6 });
+  y += 10;
+  const w = W - side * 2;
+  // the name and the phone on their own lines (an Arabic name is written right to left; the phone stays left to right)
+  y += put(data.name, side, y, { w, size: 13, bold: true });
+  if (data.phone) y += put(data.phone, side, y + 1, { w, size: 11.5, bold: true }) + 1;
+  y += 3;
+  const lines = [...(data.addressLines || [])];
+  if (data.addressCode) lines.push(`Address code: ${data.addressCode}`);
+  for (const line of lines) y += put(line, side, y, { w, size: 9, bold: true });
+  y += 7;
+  doc.moveTo(0, y).lineTo(W, y).lineWidth(1.6).strokeColor('#000').stroke();
+
+  // ---- bottom band and footer (drawn first, so the QR fills what is left between)
+  const footH = 18;
+  const bandH = 30;
+  const bandTop = H - footH - bandH;
+  doc.rect(0, bandTop, W, bandH).fill('#000');
+  doc.font('Helvetica-Bold').fontSize(12).fillColor('#fff').text(data.orderId || '', side, bandTop + 9, { width: w / 2, lineBreak: false });
+  doc.font('Helvetica-Bold').fontSize(12).fillColor('#fff').text(`PARCEL ${data.parcel[0]}/${data.parcel[1]}`, side + w / 2, bandTop + 9, { width: w / 2, align: 'right', lineBreak: false });
+  doc.font('Helvetica').fontSize(5.6).fillColor('#333').text('Contains personal data. Use only to deliver this parcel. Destroy after delivery.', side, bandTop + bandH + 6, { width: w, align: 'center', lineBreak: false });
+
+  // ---- the QR: as big as the space allows, with the driver's instruction under it in English and Arabic
+  const textH = 44;      // "SCAN TO DELIVER" and the two instruction lines
+  const room = bandTop - y - 12 - textH;
+  const qrSize = Math.max(90, Math.min(190, room));
+  const qrTop = y + 8 + Math.max(0, (room - qrSize) / 2);
+  const qrLeft = (W - qrSize) / 2;
+  if (data.qr && data.qr.modules) {
+    const cells = data.qr.modules.size;
+    const cell = qrSize / cells;
+    doc.rect(qrLeft - 4, qrTop - 4, qrSize + 8, qrSize + 8).fill('#fff');
+    for (let r = 0; r < cells; r += 1) {
+      for (let c = 0; c < cells; c += 1) {
+        if (data.qr.modules.get(r, c)) doc.rect(qrLeft + c * cell, qrTop + r * cell, cell + 0.05, cell + 0.05).fill('#000');
+      }
+    }
+  } else {
+    doc.rect(qrLeft, qrTop, qrSize, qrSize).lineWidth(1).dash(4, { space: 3 }).strokeColor('#999').stroke().undash();
+    doc.font('Helvetica').fontSize(8).fillColor('#666').text('QR not available', qrLeft, qrTop + qrSize / 2 - 4, { width: qrSize, align: 'center' });
+  }
+  const ty = qrTop + qrSize + 7;
+  // "SCAN TO DELIVER" and its Arabic side by side, centred together
+  doc.font('Helvetica-Bold').fontSize(12.5);
+  const enW = doc.widthOfString('SCAN TO DELIVER');
+  doc.font('Ar-Bold').fontSize(12);
+  const arText = 'امسح للتسليم';
+  const arW = arabicWidth(doc, arText);
+  const gap = 10;
+  const startX = (W - enW - gap - arW) / 2;
+  doc.font('Helvetica-Bold').fontSize(12.5).fillColor('#000').text('SCAN TO DELIVER', startX, ty + 1, { lineBreak: false });
+  doc.font('Ar-Bold').fontSize(12).fillColor('#000');
+  drawArabic(doc, arText, startX + enW + gap, ty - 2, { width: arW, align: 'left' });
+  doc.font('Helvetica').fontSize(7).fillColor('#000').text("Photo + the buyer's 4-digit code, face to face", side, ty + 17, { width: w, align: 'center', lineBreak: false });
+  doc.font('Ar').fontSize(7).fillColor('#000');
+  drawArabic(doc, 'صورة + رمز المشتري المكوّن من 4 أرقام، وجهًا لوجه', side, ty + 26, { width: w, align: 'center' });
+}
+
+module.exports = { SIZE, drawAddressLabel };

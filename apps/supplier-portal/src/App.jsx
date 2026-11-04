@@ -41,6 +41,8 @@ import PartShippingBlock from "./PartShippingBlock";
 import { partShippingOf } from "./partShipping";
 import { useVehicleCascade } from "./vehicleCascade";
 import { setApiLanguage, apiMessage, uiLocale } from "./serverMessages";
+import HubInboundLabel from "./HubInboundLabel";      // the striped 4×4 in supplier -> hub label
+import { fetchMenuCounts, markMenuMessagesRead, menuBadge } from "./menuCounts";      // the numbers beside Orders, Returns and Messages in the side menu
 
 /* ============================================================
    LEAP 供应商门户 / Supplier Portal — bilingual (中文 / English)
@@ -2848,6 +2850,8 @@ function OrderDetailPanel({ order, onBack, onUpdated }) {
   const allowedStatuses = Array.isArray(order.allowedStatuses) ? order.allowedStatuses : ORDER_STAGES.filter((_, i) => i > stagePosition);
   const locked = Boolean(order.locked);
   const canEditTracking = order.canEditTracking !== undefined ? Boolean(order.canEditTracking) : !locked;
+  // "Shipped" needs the courier's tracking number (the server refuses it otherwise too)
+  const trackingOk = String(tracking || "").replace(/\s/g, "").length >= 4;
 
   return (
     <div>
@@ -2864,7 +2868,11 @@ function OrderDetailPanel({ order, onBack, onUpdated }) {
               {order.items.map((it, i) => (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "12px 12px", borderBottom: i < order.items.length - 1 ? `1px solid ${C.line}` : "none" }}>
                   <div style={{ minWidth: 0 }}><span style={{ ...font, fontSize: 13, fontWeight: 600 }}>{it.name}</span><OrderVehicle vehicle={it.vehicle} /></div>
-                  <span style={{ ...font, fontSize: 12.5, color: C.muted }}>{o.qty} × {it.quantity} · {it.unitPriceCny == null ? "—" : cny(it.unitPriceCny)}</span>
+                  {/* quantity, price each and the line total in a light gold box (design C) */}
+                  <div data-testid="item-amount" style={{ flexShrink: 0, marginLeft: 12, textAlign: "right", minWidth: 150, background: "#FDF3DC", border: "1.5px solid #F2A71B", borderRadius: 10, padding: "6px 12px" }}>
+                    <div style={{ ...font, fontSize: 11, fontWeight: 600, color: "#7A5300", whiteSpace: "nowrap" }}>{o.qty} × {it.quantity}{it.unitPriceCny == null ? "" : ` · ${lang === "zh" ? `每件 ${cny(it.unitPriceCny)}` : `${cny(it.unitPriceCny)} each`}`}</div>
+                    <div style={{ ...font, fontSize: 14, fontWeight: 900, color: "#241A05", whiteSpace: "nowrap" }}>{it.unitPriceCny == null ? "—" : cny(Number(it.unitPriceCny) * Number(it.quantity || 0))}</div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -2874,12 +2882,15 @@ function OrderDetailPanel({ order, onBack, onUpdated }) {
               <Field label={o.trackingLabel}>
                 <input style={inputStyle} value={tracking} onChange={e => setTracking(e.target.value)} placeholder={o.trackingPlaceholder} disabled={!canEditTracking || Boolean(order.canAccept)} />
               </Field>
+              {!order.canAccept && allowedStatuses.includes("shipped") && !trackingOk && (
+                <div data-testid="tracking-needed" style={{ ...font, fontSize: 12, fontWeight: 600, color: C.red }}>{lang === "zh" ? "请先填写快递运单号，才能标记已发货。" : "Enter the courier's tracking number first, then mark it shipped."}</div>
+              )}
               {error && <div style={{ ...font, fontSize: 12, color: C.red }}>{error}</div>}
               {order.canAccept ? null : allowedStatuses.includes("shipped") ? (
                 <button
-                disabled={isSaving}
+                disabled={isSaving || !trackingOk}
                 onClick={() => handleUpdate({ status: "shipped", trackingNumber: tracking })}
-                style={{ ...font, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: 11, borderRadius: 8, border: "none", background: isSaving ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 13, fontWeight: 700, cursor: isSaving ? "default" : "pointer" }}
+                style={{ ...font, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: 11, borderRadius: 8, border: "none", background: isSaving || !trackingOk ? "#D1D5DB" : C.signal, color: C.onSignal, fontSize: 13, fontWeight: 700, cursor: isSaving || !trackingOk ? "default" : "pointer" }}
               >
                 <Truck size={14} /> {o.markShipped}
               </button>
@@ -2896,29 +2907,7 @@ function OrderDetailPanel({ order, onBack, onUpdated }) {
           </Card>
           {order.hubShipmentId && (
             <Card title={o.labelTitle}>
-              <div style={{ padding: 16 }}>
-                <div style={{ ...font, fontSize: 12, color: C.muted, marginBottom: 14 }}>{o.labelHint}</div>
-                <div ref={labelRef}>
-                  <div className="label-row" style={{ marginBottom: 14 }}>
-                    <div className="label-caps" style={{ ...font, fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.03em", marginBottom: 4 }}>{o.labelRecipient}</div>
-                    <div className="label-value" style={{ ...font, fontSize: 15, fontWeight: 700, color: C.ink }}>{order.hubName}</div>
-                    <div style={{ ...font, fontSize: 13, color: C.ink }}>{order.hubAddress}</div>
-                  </div>
-                  <div className="label-row" style={{ marginBottom: 14 }}>
-                    <div className="label-caps" style={{ ...font, fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.03em", marginBottom: 4 }}>{o.labelOrder}</div>
-                    <div className="label-value" style={{ ...font, fontSize: 15, fontWeight: 700, color: C.ink }}>{order.orderId}</div>
-                  </div>
-                  <div className="qr-wrap" style={{ display: "flex", justifyContent: "center", margin: "20px 0" }}>
-                    <QRCodeSVG value={String(order.hubShipmentId)} size={160} level="M" />
-                  </div>
-                </div>
-                <button
-                  onClick={handlePrintLabel}
-                  style={{ ...font, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: 11, borderRadius: 8, border: `1px solid ${C.line}`, background: "#fff", color: C.ink, fontSize: 13, fontWeight: 700, cursor: "pointer" }}
-                >
-                  {o.printLabel}
-                </button>
-              </div>
+              <HubInboundLabel order={order} />
             </Card>
           )}
         </div>
@@ -2937,13 +2926,14 @@ function OrderDetailPanel({ order, onBack, onUpdated }) {
                   return (
                     <button
                       key={s}
-                      disabled={isSaving || !isAllowed}
-                      onClick={() => handleUpdate({ status: s })}
+                      disabled={isSaving || !isAllowed || (s === "shipped" && !trackingOk)}
+                      title={s === "shipped" && !trackingOk ? (lang === "zh" ? "请先填写运单号" : "Enter the tracking number first") : undefined}
+                      onClick={() => handleUpdate(s === "shipped" ? { status: s, trackingNumber: tracking } : { status: s })}
                       style={{
                         ...font, padding: 10, borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: isAllowed && !isSaving ? "pointer" : "default", textAlign: "left",
                         border: isCurrent ? `2px solid ${C.signal}` : `1px solid ${C.line}`,
                         background: isCurrent ? "#FDF1EB" : "#fff",
-                        opacity: isAllowed || isCurrent ? 1 : 0.45,
+                        opacity: (isAllowed && !(s === "shipped" && !trackingOk)) || isCurrent ? 1 : 0.45,
                       }}
                     >{t.statusOrder[s] || s}</button>
                   );
@@ -3920,6 +3910,7 @@ function PortalShell() {
   const [page, setPage] = useState("overview");
   const [openOrder, setOpenOrder] = useState(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [menuCounts, setMenuCounts] = useState(null);      // what is waiting: orders to accept or ship (and how many are late), open returns, new messages
   const { t, lang } = useLang();
   const outerSupplierContext = useSupplier();
   const { profile, currentUser, onLogout } = outerSupplierContext;
@@ -3938,6 +3929,13 @@ function PortalShell() {
   };
   useEffect(refreshUnreadCount, []);
   useAutoRefresh(refreshUnreadCount);      // the sidebar's unread badge
+  // the side menu's numbers: reloaded with the page and every few seconds; while Messages is open, Leap's messages count as read
+  const refreshMenuCounts = () => {
+    const token = getStoredToken();
+    return (page === "messages" ? markMenuMessagesRead(token) : fetchMenuCounts(token)).then((c) => setMenuCounts((cur) => (sameData(cur, c) ? cur : c))).catch(() => {});      // non-critical: the numbers stay as they are
+  };
+  useEffect(() => { refreshMenuCounts(); }, [page, Boolean(openOrder)]);
+  useAutoRefresh(refreshMenuCounts);
   // The order that is open (a copy of its row) follows the supplier's orders: a change made elsewhere (the buyer cancelled it, the hub received it) appears in the open order by itself.
   useAutoRefresh(async () => {
     if (!openOrder) return;
@@ -4017,8 +4015,9 @@ function PortalShell() {
           {navOrder.map(id => {
             const Icon = NAV_ICONS[id];
             const active = (page === id && !openOrder) || (id === "orders" && !!openOrder);
+            const badge = menuBadge(menuCounts, id, lang);      // gold: waiting; red: an order is late
             return (
-              <button key={id} onClick={() => { setPage(id); setOpenOrder(null); }} className="leap-menu-item" aria-current={active ? "page" : undefined} aria-label={menuCollapsed ? t.nav[id] : undefined} style={{
+              <button key={id} onClick={() => { setPage(id); setOpenOrder(null); }} className="leap-menu-item" aria-current={active ? "page" : undefined} aria-label={menuCollapsed ? (badge ? `${t.nav[id]} · ${badge.tip}` : t.nav[id]) : undefined} style={{
                 position: "relative", width: "100%", display: "flex", alignItems: "center", justifyContent: menuCollapsed ? "center" : "flex-start", gap: 12, height: 40,
                 padding: menuCollapsed ? 0 : "0 14px 0 18px", margin: "1px 0", borderRadius: "20px 0 0 20px", border: "none", cursor: "pointer", textAlign: "left",
                 background: active && !menuSlides ? MENU.activeBg : "transparent", color: active ? MENU.activeText : MENU.text, transition: "color 200ms ease",
@@ -4028,7 +4027,12 @@ function PortalShell() {
                 {active && !menuSlides && <span aria-hidden="true" className="leap-menu-curve bottom" />}
                 <span style={{ display: "inline-flex", color: active ? MENU.activeIcon : "inherit" }}><Icon size={18} /></span>
                 {!menuCollapsed && <span style={{ ...font, fontSize: 13, fontWeight: active ? 700 : 500, whiteSpace: "nowrap" }}>{t.nav[id]}</span>}
-                {menuCollapsed && <span role="tooltip" className="leap-menu-tip">{t.nav[id]}</span>}
+                {badge && <span data-testid={`menu-count-${id}`} title={badge.tip} aria-label={menuCollapsed ? undefined : badge.tip} style={{
+                  ...font, ...(menuCollapsed ? { position: "absolute", top: 3, left: "calc(50% + 3px)", minWidth: 16, height: 16, padding: "0 4px", fontSize: 10, boxShadow: `0 0 0 2px ${active ? MENU.activeBg : MENU.bg}` } : { marginLeft: "auto", minWidth: 20, height: 20, padding: "0 6px", fontSize: 11 }),
+                  boxSizing: "border-box", borderRadius: 10, display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 800, lineHeight: 1,
+                  background: badge.late ? "#C0362C" : "#F2A71B", color: badge.late ? "#FFFFFF" : "#241A05",      // gold, or red when an order is late
+                }}>{badge.text}</span>}
+                {menuCollapsed && <span role="tooltip" className="leap-menu-tip">{badge ? `${t.nav[id]} · ${badge.tip}` : t.nav[id]}</span>}
               </button>
             );
           })}

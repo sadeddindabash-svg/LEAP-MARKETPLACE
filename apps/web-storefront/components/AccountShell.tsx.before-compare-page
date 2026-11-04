@@ -1,0 +1,171 @@
+"use client";
+
+import type { ReactNode } from "react";
+import { usePathname } from "next/navigation";
+import Link from "@/components/LocLink";
+import { useEffect, useState } from "react";
+import { useAuth, getAuthToken } from "./AuthProvider";
+import { fetchUnreadNotificationCount } from "@/lib/api";
+import { useT } from "./LangProvider";
+import GarageMeter from "./GarageMeter";
+import { splitLang, type DictKey } from "@/lib/i18n";
+
+// Each page of the menu: its address, its name (the menu and the page's title) and the short line under the title.
+const ITEMS: Array<[string, DictKey, DictKey]> = [
+  ["/account", "account_hub_title", "acct_desc_account"], ["/notifications", "notifications", "acct_desc_notifications"], ["/account/loyalty", "loyalty_my_tier_title", "acct_desc_tier"], ["/orders", "orders_and_returns", "acct_desc_orders"],["/quotations", "my_quotations", "acct_desc_quotations"], 
+  ["/returns", "my_returns", "acct_desc_returns"], ["/addresses", "addresses", "acct_desc_addresses"], ["/garage", "garage_title", "acct_desc_garage"], ["/wishlist", "wishlist", "acct_desc_wishlist"],
+  ["/saved-searches", "saved_searches", "acct_desc_saved"], ["/referrals", "referrals", "acct_desc_referrals"], ["/account/change-email", "change_email", "acct_desc_email"],
+  ["/account/two-factor", "two_factor_auth_label", "acct_desc_two_factor"], ["/contact", "contact_us_label", "contact_page_lead"],
+];
+
+// Beside the menu every page starts 32 px from it (its own side padding) and has the same width (the widest of them, My garage: 1024 px, so no page gets narrower), so their edges line up
+// as the buyer moves through the menu. The pages themselves are not changed: this only places them. On a phone the pages are as they are.
+// Every page of the menu opens with the same header box: its title and a short line about it. The page's own title is then not shown (the box says it), and the
+// page starts just under the box.
+// One spacing on every page of the menu, whatever the page itself says: 12 px everywhere (under the title box, between the page's sections, between
+// the cards of a list. A block that shows nothing (an empty message line, a title row the title box replaces) takes no space, and a page's own gaps (My account,
+// My tier) are replaced by this spacing. Inside a card nothing changes.
+const SPACING_CSS = `:is(.account-body > :not(.account-frame), .account-frame > *) { row-gap: 0 !important; }
+:is(.account-body > :not(.account-frame), .account-frame > *) > * { margin-block: 0 !important; }
+:is(.account-body > :not(.account-frame), .account-frame > *) > :not(:empty, h1, [data-page-lead], :has(> h1):not(:has(> :not(h1, [data-page-lead])))) ~ :not(:empty, h1, [data-page-lead], :has(> h1):not(:has(> :not(h1, [data-page-lead])))) { margin-top: 12px !important; }
+:is(.account-body > :not(.account-frame), .account-frame > *) > :has(> h1):not(:has(> :not(h1, [data-page-lead]))) { display: none !important; }
+.account-body :is(ul, ol).grid { gap: 12px !important; }
+.account-body :is(ul, ol)[class*="space-y-"] > * { margin-block: 0 !important; }
+.account-body :is(ul, ol)[class*="space-y-"] > * + * { margin-top: 12px !important; }`;
+
+const PAGE_PLACE_CSS = `@media (min-width: 1024px) { .account-page > *, .account-body > *, .account-sub > * { margin-inline-start: 0 !important; margin-inline-end: auto !important; max-width: 64rem !important; } }
+.account-body h1, .account-body [data-page-lead] { display: none !important; }
+.account-body > * { padding-top: 12px !important; }
+${SPACING_CSS}`;
+
+// The look of My tier on every page of the menu (My tier itself is left as it is): each page opens with a navy box, its icon in a white circle with a gold ring,
+// the title in white and the short line in gold; the menu has an icon beside each name, and the page it is on is navy with a gold icon and a gold edge.
+const ICONS: Record<string, string> = {
+  "/account": "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c1.5-4 4.5-6 8-6s6.5 2 8 6",
+  "/notifications": "M6 16v-5a6 6 0 0 1 12 0v5l2 2H4zM10 21h4",
+  "/account/loyalty": "M8 3l2 5M16 3l-2 5M12 20a6 6 0 1 0 0-12 6 6 0 0 0 0 12z",
+  "/orders": "M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10",
+  "/quotations": "M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h5",
+  "/returns": "M9 14L4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3",
+  "/addresses": "M12 21s-7-6.5-7-12a7 7 0 0 1 14 0c0 5.5-7 12-7 12zM12 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z",
+  "/garage": "M5 16l1.5-5h11l1.5 5M4 16h16v3H4zM7.5 19v1.5M16.5 19v1.5",
+  "/wishlist": "M12 20s-8-5-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 9c0 6-8 11-8 11z",
+  "/saved-searches": "M11 17a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM20 20l-4.5-4.5",
+  "/referrals": "M3 9h18v4H3zM5 13h14v8H5zM12 9v12M12 9c-2-4-6-4-6-1.5S9 9 12 9zM12 9c2-4 6-4 6-1.5S15 9 12 9z",
+  "/account/change-email": "M3 5h18v14H3zM3 7l9 6 9-6",
+  "/account/two-factor": "M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM8.5 12l2.5 2.5 4.5-5",
+  "/contact": "M4 5h16v11H8l-4 4zM8 9h8M8 12h5",
+};
+const Icon = ({ href, size }: { href: string; size: number }) => (
+  <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={ICONS[href] ?? ICONS["/account"]} /></svg>
+);
+const TIER = "/account/loyalty";
+// Inside the pages (not My tier): the cards a little rounder, a section title a small gold capital label as on My tier, a delivered / done status gold and
+// one still on its way light blue, and the My garage ring readable on the navy box.
+const THEME_CSS = `.account-themed .account-body .rounded-\\[14px\\] { border-radius: 16px !important; }
+.account-themed .account-body h2:not(.sr-only) { font-size: 12px !important; line-height: 1.5 !important; font-weight: 800 !important; letter-spacing: .14em; text-transform: uppercase; color: #8a6100 !important; }
+[dir="rtl"] .account-themed .account-body h2 { letter-spacing: 0; }
+.account-themed .account-body .rounded-full.bg-\\[\\#e3f2ea\\] { background: #f3c03b !important; color: #0b2a3c !important; }
+.account-themed .account-body .rounded-full.bg-\\[\\#fdf1d6\\] { background: #e6eef4 !important; color: #0b2a3c !important; }
+[data-testid="account-page-header"].bg-gradient-to-br [data-testid="garage-meter"] .text-navy { color: #fff !important; }
+[data-testid="account-page-header"].bg-gradient-to-br [data-testid="garage-meter"] .text-muted { color: #c7d4de !important; }
+[data-testid="account-page-header"].bg-gradient-to-br [data-testid="garage-meter"] circle[stroke="#e8ecf0"] { stroke: rgba(255,255,255,.18); }
+[data-testid="account-page-header"].bg-gradient-to-br [data-testid="garage-meter-fill"][stroke="#0b2a3c"] { stroke: #fff; }`;
+
+/** How many notifications are not read yet, for the gold number beside Notifications in the menu (checked again every 30 seconds and on each page). */
+function useUnread(on: boolean, here: string): number {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    if (!on) return;
+    const token = getAuthToken();
+    if (!token) return;
+    let live = true;
+    const load = () => fetchUnreadNotificationCount(token).then((c) => { if (live) setN(c); }).catch(() => {});
+    load();
+    const timer = setInterval(load, 30_000);
+    return () => { live = false; clearInterval(timer); };
+  }, [on, here]);
+  return n;
+}
+
+// Pages reached from one of the menu's pages: the menu stays on them too, with that page marked (Contact us leads to Support and to Report a bug).
+const REACHED_FROM: Array<[string, string]> = [["/support", "/contact"], ["/report-bug", "/contact"]];
+const under = (path: string, href: string) => path === href || path.startsWith(`${href}/`);
+
+/** The menu's page this address belongs to: the page itself, the page it is inside (an order, a return), or the page it is reached from; null elsewhere. */
+export function menuPageOf(path: string): string | null {
+  const own = ITEMS.filter(([href]) => under(path, href)).sort((a, b) => b[0].length - a[0].length)[0];
+  if (own) return own[0];
+  const from = REACHED_FROM.find(([prefix]) => under(path, prefix));
+  return from ? from[1] : null;
+}
+
+/** Whether the menu stays on this address: every page it lists, the pages inside them, and the pages reached from them. */
+export function inAccountMenu(path: string): boolean {
+  return menuPageOf(path) !== null;
+}
+
+/**
+ * The account menu. It stays on EVERY page it lists (and the pages inside them), at the far start side of the window: the far left in English, the far
+ * right in Arabic. Each page keeps its own layout beside it; on a phone the menu sits above the page. It wraps the whole site (app/layout.tsx) and does
+ * nothing anywhere else. A visitor who is not signed in gets the page alone: it asks them to sign in.
+ */
+export default function AccountShell({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  const t = useT();
+  const here = splitLang(usePathname() || "/").path;
+  const unread = useUnread(!!user && inAccountMenu(here), here);
+  if (!user || !inAccountMenu(here)) return <>{children}</>;
+  // the pages under /account were drawn for the space beside the menu and have no frame of their own: they keep the one they had
+  const ownFrame = here === "/account" || here.startsWith("/account/");
+  const item = ITEMS.find(([href]) => href === here);
+  const marked = menuPageOf(here);      // the menu's page to mark: this page, or the one it belongs to      // the header box: on the menu's own pages (an order or a return keeps its own title)
+  return (
+    <div className="lg:flex lg:items-start">
+      <style>{`${PAGE_PLACE_CSS}\n${THEME_CSS}`}</style>
+      <nav aria-label={t("account_sidebar")} className="px-4 pt-6 lg:sticky lg:top-[calc(var(--header-h,0px)+1rem)] lg:w-[256px] lg:shrink-0 lg:self-start lg:pe-0 lg:ps-4 lg:pt-10">
+        <ul className="grid gap-1 rounded-[14px] border border-line bg-white p-2">
+          {ITEMS.map(([href, key]) => (
+            <li key={href}>
+              <Link href={href} aria-current={here === href ? "page" : marked === href ? "true" : undefined} className={`relative flex min-h-11 items-center gap-2.5 rounded-[10px] px-3 text-[15px] font-semibold ${marked === href ? "bg-gradient-to-br from-navy to-[#173f57] text-white" : "text-ink hover:bg-chalk"}`}>
+                {marked === href && <span aria-hidden="true" className="absolute inset-y-2.5 start-0 w-[3px] rounded-full bg-signal" />}
+                <span className={`flex-none ${marked === href ? "text-signal" : "text-[#8a97a3]"}`}><Icon href={href} size={18} /></span>
+                <span className="min-w-0 flex-1">{t(key)}</span>
+                {href === "/notifications" && unread > 0 && <span aria-hidden="true" data-testid="menu-unread" className="flex h-5 min-w-5 flex-none items-center justify-center rounded-full bg-signal px-1.5 text-xs font-extrabold text-navy">{unread > 99 ? "99+" : unread}</span>}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
+      <div className={`account-page min-w-0 flex-1${item && item[0] === TIER ? "" : " account-themed"}`}>
+        {item && item[0] !== TIER && (
+          <div className="px-4 pt-6 sm:px-8 lg:pt-10">
+            <header data-testid="account-page-header" className="relative flex flex-wrap items-center gap-x-5 gap-y-3 overflow-hidden rounded-[16px] bg-gradient-to-br from-navy to-[#173f57] px-6 py-5 text-white sm:px-7">
+              <span aria-hidden="true" className="grid size-14 flex-none place-items-center rounded-full bg-white text-navy ring-4 ring-signal"><Icon href={item[0]} size={26} /></span>
+              <div className="min-w-0 flex-1">
+                <h1 className="text-[26px] font-extrabold leading-tight tracking-tight text-white">{t(item[1])}</h1>
+                <p className="mt-1 text-[15px] font-semibold text-signal">{t(item[2])}</p>
+              </div>
+              {/* My garage: how many of its places are used, at the end of the title box */}
+              {item[0] === "/garage" && <GarageMeter />}
+            </header>
+          </div>
+        )}
+        {item && item[0] === TIER && (
+          <div className="px-4 pt-6 sm:px-8 lg:pt-10">
+            <header data-testid="account-page-header" className="relative flex flex-wrap items-center gap-x-6 gap-y-3 overflow-hidden rounded-[16px] border border-line bg-white px-6 py-5 sm:px-7">
+              <span aria-hidden="true" className="absolute inset-y-4 start-0 w-1 rounded-full bg-signal" />
+              <div className="min-w-0 flex-1">
+                <h1 className="text-3xl font-bold tracking-tight text-navy">{t(item[1])}</h1>
+                <p className="mt-1.5 text-[15px] text-muted">{t(item[2])}</p>
+              </div>
+              {/* My garage: how many of its places are used, at the end of the title box */}
+              {item[0] === "/garage" && <GarageMeter />}
+            </header>
+          </div>
+        )}
+        <div className={item ? "account-body" : "account-sub"}>{ownFrame ? <div className="account-frame mx-auto max-w-4xl px-4 py-10 sm:px-8">{children}</div> : children}</div>
+      </div>
+    </div>
+  );
+}

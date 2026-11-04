@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   PackageCheck, LogOut, ChevronLeft, Camera, X, AlertTriangle,
   PackageOpen, Search as SearchIcon, ClipboardCheck, PackagePlus, Truck, Inbox,
@@ -8,9 +8,15 @@ import {
   fetchMyShipments, fetchMyShipmentById, recordShipmentEvent, uploadEvidencePhoto, confirmDelivery,
 } from "./auth";
 import LoginPage from "./LoginPage";
+import { HubMenu, HubBoard, HubStepBar, HubEmptyPane, useHubShipments, menuCounts, shipmentIdFromScan } from "./HubWorkspace";      // the new frame: side menu, Board, Shipments workbench
 import ChangePasswordPage from "./ChangePasswordPage";
 import { HubContext, useHub } from "./hubContext";
 import { LangContext, useLang } from "./langContext";
+import InspectionList, { InspectionMissing } from "./InspectionList";      // the inspection list while inspecting (migration 129)
+import AddressLabelButtons from "./AddressLabelButtons";      // print / download the delivery address label (the same PDF as the hub app)
+import DeliveryStatusCard from "./DeliveryStatusCard";      // after shipping: on its way, then Delivered (confirmed only with the buyer's code)
+import SupplierLabelTick from "./SupplierLabelTick";      // at "Packed": the supplier's label is removed or covered
+import ShippingCostCard from "./ShippingCostCard";      // the Shipping cost step before "Shipped to buyer" (migration 127)
 
 const C = {
   ink: "#14171C", canvas: "#F5F6F8", card: "#FFFFFF", line: "#E4E6EA",
@@ -282,19 +288,30 @@ const IN_PROGRESS_STATUSES = ["received", "opened", "inspected", "packed"];
 // A confirmed fault whose unit has already left the hub still belongs under "Flagged" until the platform closes it.
 const FLAGGED_STATUSES = ["flagged", "returned_to_supplier", "discarded_at_hub"];
 
-function QueueScreen({ onOpenShipment }) {
+// The number on a queue filter (how many shipments are in it): gold for work coming or at the hub, red for open flags, grey otherwise.
+const FILTER_TONE = { awaiting_receipt: "gold", in_progress: "gold", flagged: "red" };
+function FilterCount({ n, tone, active }) {
+  if (!n) return null;
+  const colors = tone === "red" ? [C.red, "#fff"] : tone === "gold" ? ["#F2A71B", "#241A05"] : active ? ["#fff", C.ink] : ["#EEF0F3", C.ink];
+  return <span data-testid="filter-count" style={{ ...body, minWidth: 19, height: 19, padding: "0 5px", boxSizing: "border-box", borderRadius: 10, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 800, background: colors[0], color: colors[1] }}>{n}</span>;
+}
+
+function QueueScreen({ onOpenShipment, presetFilter = "all", selectedId = null, focusSearch = 0 }) {
   const { onSessionExpired } = useHub();
   const { t } = useLang();
   const [shipments, setShipments] = useState([]);
   const [loadState, setLoadState] = useState("loading");
   const [errorMessage, setErrorMessage] = useState(null);
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useState(presetFilter);
   // Real search (new) -- closes a real gap: with no way to look up a
   // specific shipment, a hub worker had to scroll a filtered list to
   // find one. Client-side over the already-fetched list -- a real
   // hub's own real queue is naturally bounded (their own assigned
   // shipments), so no new backend endpoint is needed for this.
   const [searchQuery, setSearchQuery] = useState("");
+  // "Scan parcel": the search box gets the focus, ready for a barcode scanner (it types the code and Enter)
+  const searchRef = useRef(null);
+  useEffect(() => { if (focusSearch && searchRef.current) searchRef.current.focus(); }, [focusSearch]);
 
   // Real, silent load -- used by both the very first load and every
   // background poll below. showSpinner is false for a background
@@ -325,6 +342,10 @@ function QueueScreen({ onOpenShipment }) {
     return () => clearInterval(interval);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // the number on each filter: every shipment in it, whatever is typed in the search box
+  const inFilter = (s, id) => (id === "all" ? true : id === "in_progress" ? IN_PROGRESS_STATUSES.includes(s.status) : id === "flagged" ? FLAGGED_STATUSES.includes(s.status) && !s.resolvedAt : s.status === id);
+  const countOf = (id) => shipments.filter((s) => inFilter(s, id)).length;
+
   const filtered = shipments.filter((s) => {
     if (filter === "all") { /* no status filter */ }
     else if (filter === "in_progress") { if (!IN_PROGRESS_STATUSES.includes(s.status)) return false; }
@@ -352,7 +373,14 @@ function QueueScreen({ onOpenShipment }) {
         <input
           type="text"
           value={searchQuery}
+          ref={searchRef}
           onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={(e) => {      // Enter (a scanner ends with it): open the scanned parcel, or the only one found
+            if (e.key !== "Enter") return;
+            const scanned = shipmentIdFromScan(searchQuery);
+            const hit = scanned ? shipments.find((s) => String(s.id) === scanned) : (filtered.length === 1 ? filtered[0] : null);
+            if (hit) { onOpenShipment(hit.id); setSearchQuery(""); }
+          }}
           placeholder={t.queue.searchPlaceholder}
           style={{ ...body, width: "100%", boxSizing: "border-box", padding: "9px 12px", borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13 }}
         />
@@ -363,10 +391,10 @@ function QueueScreen({ onOpenShipment }) {
             key={id}
             onClick={() => setFilter(id)}
             style={{
-              ...body, padding: "7px 13px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
+              ...body, display: "inline-flex", alignItems: "center", gap: 7, padding: "7px 11px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
               border: `1px solid ${filter === id ? C.ink : C.line}`, background: filter === id ? C.ink : "#fff", color: filter === id ? "#fff" : C.ink,
             }}
-          >{t.filters[id]}</button>
+          >{t.filters[id]}{loadState === "ready" && <FilterCount n={countOf(id)} tone={FILTER_TONE[id]} active={filter === id} />}</button>
         ))}
       </div>
 
@@ -380,7 +408,8 @@ function QueueScreen({ onOpenShipment }) {
           <div
             key={s.id}
             onClick={() => onOpenShipment(s.id)}
-            style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 10, padding: 14, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+            aria-current={String(selectedId) === String(s.id) ? "true" : undefined}
+            style={{ background: String(selectedId) === String(s.id) ? "#FDF3DC" : C.card, border: `1px solid ${String(selectedId) === String(s.id) ? "#F2A71B" : C.line}`, borderLeft: `4px solid ${String(selectedId) === String(s.id) ? "#F2A71B" : C.line}`, borderRadius: 10, padding: 14, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
           >
             <div>
               <div style={{ ...body, fontWeight: 700, fontSize: 14, color: C.ink }}>
@@ -494,6 +523,19 @@ function HubDeliveryProof({ proof, attempts }) {
   );
 }
 
+// The evidence photos being added for a step are kept on the server until the step is confirmed (migration 130), so the hub app shows them too.
+// action: "add" or "remove". Answers every form's list: { step, flag, fault_return }.
+async function saveDraftPhoto(token, shipmentId, action, purpose, url) {
+  const base = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+  const response = await fetch(`${base}/hub/me/shipments/${encodeURIComponent(shipmentId)}/draft-photos/${action}`, {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ purpose, url }),
+  });
+  if (response.status === 401) throw new SessionExpiredError("Your session has expired. Please log in again.");
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data.draftPhotos;
+}
+
 function ShipmentDetailScreen({ shipmentId, onBack }) {
   const { onSessionExpired } = useHub();
   const { t } = useLang();
@@ -510,6 +552,9 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
   const [returnMode, setReturnMode] = useState("return"); // "return" (to the supplier) or "discard" (at the hub)
   const [showLabel, setShowLabel] = useState(false);
   const [deliveryNote, setDeliveryNote] = useState("");
+  const [inspection, setInspection] = useState({ ready: false, missing: [] });      // the inspection list: may "Confirm Inspected" go on, and what is missing
+  const [labelCovered, setLabelCovered] = useState(false);      // at "Packed": the supplier's striped label is removed or covered
+  const [mayShip, setMayShip] = useState(false);            // the parcel's shipping cost is recorded (and, if it was dearer than planned, approved)
 
   const load = () => {
     setLoadState("loading");
@@ -522,6 +567,37 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
       });
   };
   useEffect(load, [shipmentId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Everything on this screen is read again every 5 seconds, quietly (nothing blinks; a failed read keeps what is shown), so a change made on the
+  // hub app or by Leap appears here by itself. Skipped while a step is being saved and while the tab is hidden.
+  const busy = useRef(false);
+  busy.current = isSubmitting;
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (busy.current || document.hidden) return;
+      fetchMyShipmentById(getStoredToken(), shipmentId)
+        .then((data) => { if (!busy.current) setShipment((current) => (current && JSON.stringify(current) === JSON.stringify(data) ? current : data)); })
+        .catch((err) => { if (err instanceof SessionExpiredError) onSessionExpired(); });
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [shipmentId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The photos of the form being filled in come from the server (migration 130): a photo added on the hub app appears here within 5 seconds,
+  // and one added here appears there. Which form: a fault return (flagged), a flag, or the next step.
+  const draftPurpose = shipment && shipment.status === "flagged" ? "fault_return" : showFlagForm ? "flag" : "step";
+  const draftBusy = useRef(0);
+  const shareDraftPhoto = (action, url) => {
+    draftBusy.current += 1;
+    saveDraftPhoto(getStoredToken(), shipmentId, action, draftPurpose, url)
+      .then((drafts) => setShipment((s) => (s && drafts ? { ...s, draftPhotos: drafts } : s)))
+      .catch((err) => { if (err instanceof SessionExpiredError) onSessionExpired(); })      // not shared (an older server): it still counts here
+      .finally(() => { draftBusy.current -= 1; });
+  };
+  const draftKey = JSON.stringify(shipment && shipment.draftPhotos ? shipment.draftPhotos[draftPurpose] || [] : null);
+  useEffect(() => {
+    if (draftKey === "null" || isUploadingPhoto || draftBusy.current > 0) return;
+    const urls = JSON.parse(draftKey);
+    setPhotos((prev) => (JSON.stringify(prev.map((p) => p.url)) === draftKey ? prev : urls.map((url) => ({ url }))));
+  }, [draftKey, isUploadingPhoto]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAddPhoto = async (file) => {
     setIsUploadingPhoto(true);
@@ -529,13 +605,14 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
     try {
       const result = await uploadEvidencePhoto(getStoredToken(), file);
       setPhotos((prev) => [...prev, result]);
+      shareDraftPhoto("add", result.url);      // kept on the server for this step, so the hub app shows it too
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
       setIsUploadingPhoto(false);
     }
   };
-  const removePhoto = (url) => setPhotos((prev) => prev.filter((p) => p.url !== url));
+  const removePhoto = (url) => { setPhotos((prev) => prev.filter((p) => p.url !== url)); shareDraftPhoto("remove", url); };
 
   const submitStep = async (step) => {
     if (photos.length < 1) {
@@ -553,8 +630,9 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
         step, notes: notes.trim() || undefined, photos: photos.map((p) => p.url),
         trackingNumber: (step === "shipped_to_buyer" || step === "returned_to_supplier") ? trackingNumber.trim() : undefined,
         damageType: step === "flagged" && damageType ? damageType : undefined,
+        supplierLabelCovered: step === "packed" ? labelCovered : undefined,
       });
-      setNotes(""); setTrackingNumber(""); setPhotos([]); setDamageType(""); setShowFlagForm(false);
+      setNotes(""); setTrackingNumber(""); setPhotos([]); setDamageType(""); setShowFlagForm(false); setLabelCovered(false);
       load();
     } catch (err) {
       if (err instanceof SessionExpiredError) return onSessionExpired();
@@ -611,14 +689,19 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
         </div>
         <div style={{ marginLeft: "auto" }}><Badge status={displayStatusOf(shipment)} /></div>
       </div>
+      <HubStepBar status={shipment.status} />
 
       <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+        {shipment.status === "opened" && !showFlagForm ? (
+          <InspectionList key={shipment.status} shipmentId={shipmentId} shipment={shipment} token={getStoredToken()} onChange={setInspection} onSessionExpired={onSessionExpired} />
+        ) : (
         <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 10, padding: 14 }}>
           <div style={{ ...body, fontSize: 11.5, fontWeight: 700, color: C.muted, marginBottom: 8 }}>{t.detail.items.toUpperCase()}</div>
           {shipment.items.map((item, i) => (
             <div key={i} style={{ ...body, fontSize: 13, color: C.ink, padding: "4px 0" }}>{item.name} × {item.quantity}</div>
           ))}
         </div>
+        )}
 
         {/* A free REPLACEMENT for a faulty unit (migration 095): handled like any other shipment, but staff are told what it is. */}
         {shipment.replacementFor && (
@@ -641,6 +724,7 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
               {shipment.deliveryAddress.englishSource === "auto" && (
                 <div style={{ marginTop: 8, padding: 10, borderRadius: 8, background: C.amberBg, color: C.amber, fontSize: 12, fontWeight: 700 }}>{t.detail.shipToAuto}</div>
               )}
+              <AddressLabelButtons shipmentId={shipmentId} orderId={shipment.orderId} token={getStoredToken()} onError={setErrorMessage} onSessionExpired={onSessionExpired} />
             </div>
           ) : (
             <div style={{ ...body, fontSize: 13, color: C.muted }}>{t.detail.shipToNone}</div>
@@ -651,7 +735,11 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
           <div style={{ ...body, fontSize: 12.5, color: C.red, background: C.redBg, borderRadius: 8, padding: 10 }}>{errorMessage}</div>
         )}
 
-        {!isTerminal && !showFlagForm && (
+        {shipment.status === "packed" && !showFlagForm && (
+          <ShippingCostCard shipmentId={shipmentId} token={getStoredToken()} onChange={setMayShip} onSessionExpired={onSessionExpired} />
+        )}
+
+        {!isTerminal && !showFlagForm && info.next && (
           <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: 18 }}>
             <div style={{ ...disp, fontSize: 17, fontWeight: 700, color: C.ink, marginBottom: 4 }}>{stepText.promptTitle}</div>
             <div style={{ ...body, fontSize: 12.5, color: C.muted, marginBottom: 16 }}>{stepText.promptHint}</div>
@@ -677,10 +765,14 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
               </>
             )}
 
+            {info.next === "inspected" && <InspectionMissing state={inspection} />}
+
+            {info.next === "packed" && <SupplierLabelTick checked={labelCovered} onChange={setLabelCovered} />}
+
             <button
               onClick={() => submitStep(info.next)}
-              disabled={isSubmitting}
-              style={{ ...body, width: "100%", marginTop: 18, padding: "13px 16px", borderRadius: 9, border: "none", background: isSubmitting ? "#D1D5DB" : C.signal, color: "#fff", fontWeight: 700, fontSize: 14.5, cursor: isSubmitting ? "default" : "pointer" }}
+              disabled={isSubmitting || (info.next === "shipped_to_buyer" && !mayShip) || (info.next === "packed" && !labelCovered) || (info.next === "inspected" && !inspection.ready)}
+              style={{ ...body, width: "100%", marginTop: 18, padding: "13px 16px", borderRadius: 9, border: "none", background: isSubmitting || (info.next === "shipped_to_buyer" && !mayShip) || (info.next === "packed" && !labelCovered) || (info.next === "inspected" && !inspection.ready) ? "#D1D5DB" : C.signal, color: "#fff", fontWeight: 700, fontSize: 14.5, cursor: isSubmitting ? "default" : "pointer" }}
             >
               {isSubmitting ? t.detail.saving : stepText.actionLabel}
             </button>
@@ -737,30 +829,10 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
           </div>
         )}
 
-        {needsDeliveryConfirmation && (
-          <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: 18 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <PackageCheck size={18} color={C.ink} />
-              <div style={{ ...disp, fontSize: 16, fontWeight: 700, color: C.ink }}>{t.detail.confirmDeliveredTitle}</div>
-            </div>
-            <div style={{ ...body, fontSize: 12, color: C.muted, marginBottom: 10 }}>
-              {t.detail.confirmDeliveredHint}
-            </div>
-            <textarea
-              value={deliveryNote}
-              onChange={(e) => setDeliveryNote(e.target.value)}
-              placeholder={t.detail.deliveryNotePlaceholder}
-              style={{ ...body, width: "100%", minHeight: 60, padding: 10, borderRadius: 8, border: `1px solid ${C.line}`, marginBottom: 10, resize: "vertical", boxSizing: "border-box" }}
-            />
-            <button
-              disabled={isSubmitting || !deliveryNote.trim()}
-              onClick={submitConfirmDelivery}
-              style={{ ...body, width: "100%", padding: 12, borderRadius: 8, border: "none", background: (isSubmitting || !deliveryNote.trim()) ? "#D1D5DB" : C.gauge, color: "#fff", fontSize: 13, fontWeight: 700, cursor: (isSubmitting || !deliveryNote.trim()) ? "default" : "pointer" }}
-            >{isSubmitting ? t.detail.confirming : t.detail.confirmDelivered}</button>
-          </div>
-        )}
+        {/* No "Confirm delivered" in the hub: the parcel becomes Delivered only with the buyer's code (the driver's QR scan at the door). */}
+        {(needsDeliveryConfirmation || shipment.status === "delivered") && <DeliveryStatusCard shipment={shipment} />}
 
-        {isTerminal && !needsFaultReturn && (
+        {isTerminal && !needsFaultReturn && shipment.status !== "delivered" && (
           <div style={{ background: shipment.status === "delivered" ? C.gaugeBg : C.redBg, borderRadius: 10, padding: 14, ...body, fontSize: 13, color: shipment.status === "delivered" ? C.gauge : C.red, fontWeight: 700 }}>
             {shipment.status === "delivered" ? t.detail.completedBanner
               : shipment.status === "returned_to_supplier" ? t.detail.returnedBanner
@@ -871,7 +943,7 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
                       <img key={i} src={`${import.meta.env.VITE_API_BASE_URL || "http://localhost:4000"}${url}`} alt="" style={{ width: 52, height: 52, objectFit: "cover", borderRadius: 6, border: `1px solid ${C.line}` }} />
                     ))}
                   </div>
-                  <div style={{ ...body, fontSize: 10.5, color: C.muted, marginTop: 6 }}>{t.detail.by(e.performedBy)}</div>
+                  {e.performedBy && <div style={{ ...body, fontSize: 10.5, color: C.muted, marginTop: 6 }}>{t.detail.by(e.performedBy)}</div>}
                 </div>
               );
             })}
@@ -882,16 +954,44 @@ function ShipmentDetailScreen({ shipmentId, onBack }) {
   );
 }
 
+// The frame (design A + B + C, confirmed with the person via mockup): the side menu; the Board (every parcel by step); the Shipments workbench
+// (the list beside the open parcel, no page changes); Shipping costs, Flagged and Delivered are the workbench with that filter; Settings.
+const WORKBENCH_FILTER = { shipments: "all", shippingCosts: "packed", flagged: "flagged", delivered: "delivered" };
+
 function HubShell() {
+  const { onLogout } = useHub();
+  const [view, setView] = useState("board");
   const [openShipmentId, setOpenShipmentId] = useState(null);
-  return (
-    <div style={{ minHeight: "100vh", background: C.canvas }}>
-      <TopBar />
-      <div style={{ maxWidth: 640, margin: "0 auto" }}>
-        {openShipmentId
-          ? <ShipmentDetailScreen shipmentId={openShipmentId} onBack={() => setOpenShipmentId(null)} />
-          : <QueueScreen onOpenShipment={setOpenShipmentId} />}
+  const [focusSearch, setFocusSearch] = useState(0);      // "Scan parcel": the search box is ready for the scanner
+  const shipments = useHubShipments();
+  const counts = menuCounts(shipments);
+  const select = (id) => { setView(id); setOpenShipmentId(null); };
+  const scan = () => { setView("shipments"); setOpenShipmentId(null); setFocusSearch((n) => n + 1); };
+  const pane = { overflowY: "auto", maxHeight: "calc(100vh - 34px)" };
+
+  let content;
+  if (view === "board") {
+    content = <HubBoard shipments={shipments} onOpen={(id) => { setView("shipments"); setOpenShipmentId(id); }} onScan={scan} />;
+  } else if (view === "settings") {
+    content = <ChangePasswordPage onDone={() => setView("board")} onLogout={onLogout} />;
+  } else {
+    content = (
+      <div style={{ display: "flex", minHeight: "calc(100vh - 34px)" }}>
+        <div data-testid="workbench-list" style={{ ...pane, width: 380, flexShrink: 0, borderRight: `1px solid ${C.line}`, background: C.card }}>
+          <QueueScreen key={view} presetFilter={WORKBENCH_FILTER[view] || "all"} onOpenShipment={setOpenShipmentId} selectedId={openShipmentId} focusSearch={focusSearch} />
+        </div>
+        <div data-testid="workbench-parcel" style={{ ...pane, flex: 1, minWidth: 0 }}>
+          {openShipmentId ? <ShipmentDetailScreen key={openShipmentId} shipmentId={openShipmentId} onBack={() => setOpenShipmentId(null)} /> : <HubEmptyPane />}
+        </div>
       </div>
+    );
+  }
+  return (
+    <div style={{ display: "flex", minHeight: "100vh", background: "#0F3B52" }}>
+      <HubMenu view={view} onSelect={select} counts={counts} langToggle={<LangToggle />} />
+      <main style={{ flex: 1, minWidth: 0, background: "#E9ECF0", padding: 16, boxSizing: "border-box" }}>
+        <div style={{ background: C.canvas, border: `1px solid ${C.line}`, borderRadius: 16, overflow: "hidden", minHeight: "calc(100vh - 34px)" }}>{content}</div>
+      </main>
     </div>
   );
 }

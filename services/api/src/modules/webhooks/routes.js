@@ -84,6 +84,12 @@ router.post('/17track', async (req, res, next) => {
         continue;
       }
 
+      // Delivery is confirmed only with the buyer's code (the courier link): a carrier's "delivered" no longer marks the parcel delivered.
+      // ALLOW_TEST_MANUAL_DELIVERY=true in services/api/.env keeps the old way, for automated tests only.
+      if (process.env.ALLOW_TEST_MANUAL_DELIVERY !== 'true') {
+        results.push({ trackingNumber, success: true, skipped: true, reason: "delivery is confirmed only with the buyer's code" });
+        continue;
+      }
       const deliveredAt = eventTimeIso ? new Date(eventTimeIso) : new Date();
       try {
         // Matches the real HUB's own tracking number (the actual final

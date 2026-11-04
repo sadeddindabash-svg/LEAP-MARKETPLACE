@@ -134,88 +134,45 @@ describe('Hub Portal — real login and step workflow (mocked fetch, real compon
   });
 });
 
-describe('Hub Portal — real Confirm Delivered UI (new, migration 027)', () => {
-  const SHIPPED_TO_BUYER_DETAIL = {
+describe('Hub Portal — delivery is confirmed only with the buyer\'s code (no "Confirm delivered" in the hub)', () => {
+  const SHIPPED = {
     ...SHIPMENT_DETAIL, status: 'shipped_to_buyer',
     events: [{ id: 1, step: 'shipped_to_buyer', notes: null, trackingNumber: 'INTL-TEST-001', photos: [], performedBy: 'Mei Lin', createdAt: '2026-07-14T00:00:00.000Z' }],
   };
-
-  function mockFetchRouterShippedToBuyer({ confirmStatus = 200 } = {}) {
-    let currentDetail = { ...SHIPPED_TO_BUYER_DETAIL };
-    return vi.fn((url, options) => {
+  const DELIVERED = {
+    ...SHIPPED, status: 'delivered', deliveredAt: '2026-07-16T08:05:00.000Z', deliveryConfirmedBy: 'courier_link',
+    deliveryProof: { verified: true, receivedBy: 'buyer', deliveredAt: '2026-07-16T08:05:00.000Z', photos: [], driver: { name: 'Khalid', company: 'Aramex' } },
+    events: [...SHIPPED.events, { id: 'delivered-42', step: 'delivered', notes: null, trackingNumber: null, photos: [], performedBy: 'Khalid', createdAt: '2026-07-16T08:05:00.000Z' }],
+  };
+  function router(detail) {
+    return vi.fn((url) => {
       const u = String(url);
-      const method = options?.method || 'GET';
       if (u.includes('/auth/login')) return Promise.resolve({ ok: true, json: async () => ({ token: 'fake.jwt.token', user: HUB_USER }) });
       if (u.includes('/auth/me')) return Promise.resolve({ ok: true, json: async () => HUB_USER });
-      if (u.endsWith('/hub/me/shipments')) return Promise.resolve({ ok: true, json: async () => [{ ...SHIPMENT_SUMMARY, status: 'shipped_to_buyer' }] });
-      if (u.endsWith('/hub/me/shipments/42') && method === 'GET') return Promise.resolve({ ok: true, json: async () => currentDetail });
-      if (method === 'PATCH' && u.endsWith('/hub/me/shipments/42/confirm-delivery')) {
-        const body = JSON.parse(options.body);
-        if (!body.deliveryNote || !body.deliveryNote.trim()) {
-          return Promise.resolve({ ok: false, status: 400, json: async () => ({ error: 'A short note is required when manually confirming delivery yourself.' }) });
-        }
-        // Real backend error messages are never localized by this
-        // portal -- they're shown exactly as the backend sends them,
-        // in whatever language the backend itself replies in
-        // (English, in this real API). Only this app's OWN UI copy
-        // (labels, buttons, section titles) is translated client-side.
-        if (confirmStatus !== 200) return Promise.resolve({ ok: false, status: confirmStatus, json: async () => ({ error: 'This order was already confirmed delivered by real carrier tracking.' }) });
-        currentDetail = { ...currentDetail, status: 'delivered' };
-        return Promise.resolve({ ok: true, json: async () => ({ id: 42, status: 'delivered', deliveredAt: new Date().toISOString(), deliveryConfirmedBy: 'hub_manual' }) });
-      }
+      if (u.endsWith('/hub/me/shipments')) return Promise.resolve({ ok: true, json: async () => [{ ...SHIPMENT_SUMMARY, status: detail.status }] });
+      if (u.endsWith('/hub/me/shipments/42')) return Promise.resolve({ ok: true, json: async () => detail });
       return Promise.resolve({ ok: true, json: async () => ({}) });
     });
   }
 
-  it('CRITICAL: shows the real Confirm Delivered action once a shipment reaches shipped_to_buyer, not before', async () => {
-    globalThis.fetch = mockFetchRouterShippedToBuyer();
+  it('CRITICAL: shipped to the buyer: "on its way, waiting for the buyer\'s code", and no way to confirm delivery here', async () => {
+    globalThis.fetch = router(SHIPPED);
     render(<LeapHubPortalApp />);
     await login();
-
-    await waitFor(() => expect(screen.getByText('LP-200999')).toBeInTheDocument());
     fireEvent.click(screen.getByText('LP-200999'));
-    // t.detail.confirmDeliveredTitle AND t.detail.confirmDelivered both
-    // say the same Chinese phrase "确认已送达" (title + button), same
-    // real reason the original English version used getAllByText too.
-    await waitFor(() => expect(screen.getAllByText('确认已送达').length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getByTestId('on-its-way-card')).toBeInTheDocument());
+    expect(screen.getByText('等待买家验证码')).toBeInTheDocument();
+    expect(screen.queryByText('确认已送达')).not.toBeInTheDocument();
   });
 
-  it('CRITICAL: confirming delivery without a real note is rejected; with one, it succeeds and the shipment moves to delivered', async () => {
-    globalThis.fetch = mockFetchRouterShippedToBuyer();
+  it('CRITICAL: delivered with the buyer\'s code: "Delivered" is shown as the last step, with how it was confirmed', async () => {
+    globalThis.fetch = router(DELIVERED);
     render(<LeapHubPortalApp />);
     await login();
-    await waitFor(() => expect(screen.getByText('LP-200999')).toBeInTheDocument());
     fireEvent.click(screen.getByText('LP-200999'));
-    await waitFor(() => expect(screen.getAllByText('确认已送达').length).toBeGreaterThan(0));
-
-    const confirmButtons = screen.getAllByText('确认已送达');
-    const confirmButton = confirmButtons.find((el) => el.tagName === 'BUTTON');
-    expect(confirmButton.disabled).toBe(true); // real: disabled with no note typed yet
-
-    // t.detail.deliveryNotePlaceholder's Chinese text, "物流轨迹未更新" substring
-    const textarea = screen.getByPlaceholderText(/物流轨迹未更新/);
-    fireEvent.change(textarea, { target: { value: 'Buyer confirmed receipt via chat' } });
-    fireEvent.click(confirmButton);
-
-    // t.detail.completedBanner, Chinese: "此包裹已完成送达买家的全部流程。"
-    await waitFor(() => expect(screen.getByText(/完成送达买家的全部流程/)).toBeInTheDocument());
-  });
-
-  it('shows the real backend rejection message if already carrier-confirmed', async () => {
-    globalThis.fetch = mockFetchRouterShippedToBuyer({ confirmStatus: 400 });
-    render(<LeapHubPortalApp />);
-    await login();
-    await waitFor(() => expect(screen.getByText('LP-200999')).toBeInTheDocument());
-    fireEvent.click(screen.getByText('LP-200999'));
-    await waitFor(() => expect(screen.getAllByText('确认已送达').length).toBeGreaterThan(0));
-
-    const textarea = screen.getByPlaceholderText(/物流轨迹未更新/);
-    fireEvent.change(textarea, { target: { value: 'trying anyway' } });
-    const confirmButtons = screen.getAllByText('确认已送达');
-    fireEvent.click(confirmButtons.find((el) => el.tagName === 'BUTTON'));
-
-    // Real, un-localized backend error message -- unchanged from before.
-    await waitFor(() => expect(screen.getByText(/already confirmed delivered by real carrier tracking/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('delivered-card')).toBeInTheDocument());
+    expect(screen.getAllByText(/司机已凭买家验证码确认/).length).toBeGreaterThan(0);
+    expect(screen.queryByText('确认已送达')).not.toBeInTheDocument();
   });
 });
 

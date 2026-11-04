@@ -9,6 +9,7 @@ import '../../core/api_error_text.dart';
 import '../../core/currency_state.dart';
 import '../../core/auth_state.dart';
 import '../../core/cart_state.dart';
+import '../../core/fly_to_cart.dart';
 import '../../core/discount_display.dart';
 import '../../core/config/app_config.dart';
 import '../../widgets/fits_spec_row.dart';
@@ -115,20 +116,17 @@ class _ProductScreenState extends State<ProductScreen> {
     }
   }
 
+  // The product's photo, where "fly to cart" takes off from.
+  final GlobalKey _photoKey = GlobalKey();
+
   Future<void> _addToCart(Product product) async {
+    final cart = context.read<CartState>();
+    // "Fly to cart": the photo flies to the cart button at the top of this screen while the cart is updated.
+    FlyToCart.fly(context, source: _photoKey, imageUrl: product.images.isNotEmpty ? ApiClient.resolveMediaUrl(product.images.first) : null, itemCountBefore: cart.itemCount);
     setState(() => _isAdding = true);
     try {
-      await context.read<CartState>().addItem(product.id, _qty);
-      if (mounted) {
-        final isAr = context.read<LanguageState>().isArabic;
-        final qtyPrefix = _qty > 1 ? '${_qty} × ' : '';
-        final message = isAr
-            ? 'تمت إضافة $qtyPrefix${product.name} إلى السلة'
-            : 'Added $qtyPrefix${product.name} to your basket';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message)),
-        );
-      }
+      await cart.addItem(product.id, _qty);
+      // No "Added to cart" message: the photo flying to the cart, and its number going up, already say so. A failure is still said (below).
     } on ApiException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorText(context, e))));
@@ -147,6 +145,19 @@ class _ProductScreenState extends State<ProductScreen> {
       appBar: AppBar(
         title: Text(language == 'ar' ? 'تفاصيل المنتج' : 'Item details'),
         actions: [
+          // The cart, with its number: where an added part lands ("fly to cart"), and a way to the cart from here.
+          FlyCartTarget(
+            child: IconButton(
+              tooltip: tr(context, 'nav_cart'),
+              onPressed: () => context.go('/cart'),
+              icon: FlyCartCount(
+                itemCount: context.watch<CartState>().itemCount,
+                builder: (context, count) => count > 0
+                    ? Badge(label: Text(count > 99 ? '99+' : '$count'), child: const Icon(Icons.shopping_cart_outlined))
+                    : const Icon(Icons.shopping_cart_outlined),
+              ),
+            ),
+          ),
           IconButton(icon: const Icon(Icons.share_outlined), onPressed: _shareProduct, tooltip: language == 'ar' ? 'مشاركة' : 'Share'),
         ],
       ),
@@ -177,6 +188,7 @@ class _ProductScreenState extends State<ProductScreen> {
             defaultVehicle: _defaultVehicle,
             onQtyChanged: (q) => setState(() => _qty = q),
             onAddToCart: () => _addToCart(product),
+            photoKey: _photoKey,
           );
         },
       ),
@@ -192,6 +204,7 @@ class _ProductDetailBody extends StatelessWidget {
   final Vehicle? defaultVehicle;
   final ValueChanged<int> onQtyChanged;
   final VoidCallback onAddToCart;
+  final GlobalKey photoKey;
 
   const _ProductDetailBody({
     required this.product,
@@ -201,6 +214,7 @@ class _ProductDetailBody extends StatelessWidget {
     required this.defaultVehicle,
     required this.onQtyChanged,
     required this.onAddToCart,
+    required this.photoKey,
   });
 
   bool get _isAr => language == 'ar';
@@ -257,7 +271,7 @@ class _ProductDetailBody extends StatelessWidget {
           children: [
             Stack(
               children: [
-                _PhotoGallery(images: product.images),
+                KeyedSubtree(key: photoKey, child: _PhotoGallery(images: product.images)),
                 if (isConfirmedFit)
                   Positioned(
                     top: 10,

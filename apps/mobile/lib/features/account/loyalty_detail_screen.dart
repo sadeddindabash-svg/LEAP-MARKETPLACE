@@ -35,10 +35,10 @@ class LoyaltyDetailScreen extends StatelessWidget {
               decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: palette.line)),
               child: Column(
                 children: [
-                  Container(
-                    width: 56, height: 56,
-                    decoration: BoxDecoration(color: resolveLoyaltyColor(currentTier['color'] as String, palette).withValues(alpha: 0.15), shape: BoxShape.circle),
-                    child: Icon(resolveLoyaltyIcon(currentTier['icon'] as String), color: resolveLoyaltyColor(currentTier['color'] as String, palette), size: 28),
+                  Container(      // the current tier in a gold ring, as on the storefront's My tier
+                    padding: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: const Color(0xFFF2A71B), width: 4)),
+                    child: LoyaltyTierBadge(name: currentTier['icon'] as String, color: resolveLoyaltyColor(currentTier['color'] as String, palette), photoUrl: currentTier['photoUrl'] as String?, size: 70),
                   ),
                   const SizedBox(height: 10),
                   Text(buildMemberLabel(context, resolveLoyaltyName(currentTier, isAr), isAr), style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: palette.ink)),
@@ -71,7 +71,7 @@ class LoyaltyDetailScreen extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  Icon(resolveLoyaltyIcon(tier['icon'] as String), color: isCurrent ? tierColor : palette.muted, size: 20),
+                  LoyaltyTierBadge(name: tier['icon'] as String, color: isCurrent ? tierColor : palette.muted, photoUrl: tier['photoUrl'] as String?, size: 45),      // as on the storefront
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(

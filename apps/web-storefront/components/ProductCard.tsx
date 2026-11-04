@@ -24,7 +24,7 @@ export default function ProductCard({ product: p, lang }: { product: ProductSumm
     <li className="group relative flex flex-col overflow-hidden rounded-[14px] border border-line bg-white transition-colors [contain-intrinsic-size:auto_440px] [content-visibility:auto] hover:border-navy">          {/* a long list: the browser draws a card only when it is near the screen */}
       <Link href={`/products/${p.id}`} className="flex flex-1 flex-col">
         {/* A true SQUARE. A real photo is drawn WHOLE (object-contain) inside a small margin, so a long part (a wiper blade) is never cut off; no photo shows the icon on grey. */}
-        <div className={`relative aspect-square ${p.images[0] ? "border-b border-line bg-white" : "bg-[#e6edf2]"}`}>
+        <div data-fly-photo="" className={`relative aspect-square ${p.images[0] ? "border-b border-line bg-white" : "bg-[#e6edf2]"}`}>
           {p.images[0] ? (
             <CardPhotos images={p.images.map(resolveImageUrl)} alt={p.name} />
           ) : (

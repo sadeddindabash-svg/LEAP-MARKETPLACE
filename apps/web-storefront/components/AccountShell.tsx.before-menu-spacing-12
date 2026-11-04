@@ -1,0 +1,93 @@
+"use client";
+
+import type { ReactNode } from "react";
+import { usePathname } from "next/navigation";
+import Link from "@/components/LocLink";
+import { useAuth } from "./AuthProvider";
+import { useT } from "./LangProvider";
+import { splitLang, type DictKey } from "@/lib/i18n";
+
+// Each page of the menu: its address, its name (the menu and the page's title) and the short line under the title.
+const ITEMS: Array<[string, DictKey, DictKey]> = [
+  ["/account", "account_hub_title", "acct_desc_account"], ["/notifications", "notifications", "acct_desc_notifications"], ["/account/loyalty", "loyalty_my_tier_title", "acct_desc_tier"], ["/orders", "orders_and_returns", "acct_desc_orders"],["/quotations", "my_quotations", "acct_desc_quotations"], 
+  ["/returns", "my_returns", "acct_desc_returns"], ["/addresses", "addresses", "acct_desc_addresses"], ["/garage", "garage_title", "acct_desc_garage"], ["/wishlist", "wishlist", "acct_desc_wishlist"],
+  ["/saved-searches", "saved_searches", "acct_desc_saved"], ["/referrals", "referrals", "acct_desc_referrals"], ["/account/change-email", "change_email", "acct_desc_email"],
+  ["/account/two-factor", "two_factor_auth_label", "acct_desc_two_factor"], ["/contact", "contact_us_label", "contact_page_lead"],
+];
+
+// Beside the menu every page starts 32 px from it (its own side padding) and has the same width (the widest of them, My garage: 1024 px, so no page gets narrower), so their edges line up
+// as the buyer moves through the menu. The pages themselves are not changed: this only places them. On a phone the pages are as they are.
+// Every page of the menu opens with the same header box: its title and a short line about it. The page's own title is then not shown (the box says it), and the
+// page starts just under the box.
+// One spacing on every page of the menu, whatever the page itself says: 20 px under the title box (above), 16 px between the page's sections, 12 px between
+// the cards of a list. A block that shows nothing (an empty message line, a title row the title box replaces) takes no space. Inside a card nothing changes.
+const SPACING_CSS = `:is(.account-body > :not(.account-frame), .account-frame > *) > * { margin-block: 0 !important; }
+:is(.account-body > :not(.account-frame), .account-frame > *) > :not(:empty, h1, [data-page-lead], :has(> h1):not(:has(> :not(h1, [data-page-lead])))) ~ :not(:empty, h1, [data-page-lead], :has(> h1):not(:has(> :not(h1, [data-page-lead])))) { margin-top: 16px !important; }
+:is(.account-body > :not(.account-frame), .account-frame > *) > :has(> h1):not(:has(> :not(h1, [data-page-lead]))) { display: none !important; }
+.account-body :is(ul, ol).grid { gap: 12px !important; }
+.account-body :is(ul, ol)[class*="space-y-"] > * { margin-block: 0 !important; }
+.account-body :is(ul, ol)[class*="space-y-"] > * + * { margin-top: 12px !important; }`;
+
+const PAGE_PLACE_CSS = `@media (min-width: 1024px) { .account-page > *, .account-body > *, .account-sub > * { margin-inline-start: 0 !important; margin-inline-end: auto !important; max-width: 64rem !important; } }
+.account-body h1, .account-body [data-page-lead] { display: none !important; }
+.account-body > * { padding-top: 20px !important; }
+${SPACING_CSS}`;
+
+// Pages reached from one of the menu's pages: the menu stays on them too, with that page marked (Contact us leads to Support and to Report a bug).
+const REACHED_FROM: Array<[string, string]> = [["/support", "/contact"], ["/report-bug", "/contact"]];
+const under = (path: string, href: string) => path === href || path.startsWith(`${href}/`);
+
+/** The menu's page this address belongs to: the page itself, the page it is inside (an order, a return), or the page it is reached from; null elsewhere. */
+export function menuPageOf(path: string): string | null {
+  const own = ITEMS.filter(([href]) => under(path, href)).sort((a, b) => b[0].length - a[0].length)[0];
+  if (own) return own[0];
+  const from = REACHED_FROM.find(([prefix]) => under(path, prefix));
+  return from ? from[1] : null;
+}
+
+/** Whether the menu stays on this address: every page it lists, the pages inside them, and the pages reached from them. */
+export function inAccountMenu(path: string): boolean {
+  return menuPageOf(path) !== null;
+}
+
+/**
+ * The account menu. It stays on EVERY page it lists (and the pages inside them), at the far start side of the window: the far left in English, the far
+ * right in Arabic. Each page keeps its own layout beside it; on a phone the menu sits above the page. It wraps the whole site (app/layout.tsx) and does
+ * nothing anywhere else. A visitor who is not signed in gets the page alone: it asks them to sign in.
+ */
+export default function AccountShell({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  const t = useT();
+  const here = splitLang(usePathname() || "/").path;
+  if (!user || !inAccountMenu(here)) return <>{children}</>;
+  // the pages under /account were drawn for the space beside the menu and have no frame of their own: they keep the one they had
+  const ownFrame = here === "/account" || here.startsWith("/account/");
+  const item = ITEMS.find(([href]) => href === here);
+  const marked = menuPageOf(here);      // the menu's page to mark: this page, or the one it belongs to      // the header box: on the menu's own pages (an order or a return keeps its own title)
+  return (
+    <div className="lg:flex lg:items-start">
+      <style>{PAGE_PLACE_CSS}</style>
+      <nav aria-label={t("account_sidebar")} className="px-4 pt-6 lg:sticky lg:top-[calc(var(--header-h,0px)+1rem)] lg:w-[256px] lg:shrink-0 lg:self-start lg:pe-0 lg:ps-4 lg:pt-10">
+        <ul className="grid gap-1 rounded-[14px] border border-line bg-white p-2">
+          {ITEMS.map(([href, key]) => (
+            <li key={href}>
+              <Link href={href} aria-current={here === href ? "page" : marked === href ? "true" : undefined} className={`flex min-h-11 items-center rounded-lg px-3 text-[15px] font-semibold ${marked === href ? "bg-navy text-white" : "text-ink hover:bg-chalk"}`}>{t(key)}</Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
+      <div className="account-page min-w-0 flex-1">
+        {item && (
+          <div className="px-4 pt-6 sm:px-8 lg:pt-10">
+            <header data-testid="account-page-header" className="relative overflow-hidden rounded-[16px] border border-line bg-white px-6 py-5 sm:px-7">
+              <span aria-hidden="true" className="absolute inset-y-4 start-0 w-1 rounded-full bg-signal" />
+              <h1 className="text-3xl font-bold tracking-tight text-navy">{t(item[1])}</h1>
+              <p className="mt-1.5 text-[15px] text-muted">{t(item[2])}</p>
+            </header>
+          </div>
+        )}
+        <div className={item ? "account-body" : "account-sub"}>{ownFrame ? <div className="account-frame mx-auto max-w-4xl px-4 py-10 sm:px-8">{children}</div> : children}</div>
+      </div>
+    </div>
+  );
+}

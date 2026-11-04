@@ -6,9 +6,9 @@ import '../core/app_strings.dart';
 import '../core/currency_state.dart';
 import '../core/auth_state.dart';
 import '../core/cart_state.dart';
+import '../core/fly_to_cart.dart';
 import '../core/discount_display.dart';
 import '../core/language_state.dart';
-import '../models/cart_item.dart';
 import '../models/product.dart';
 import '../services/api_client.dart';
 
@@ -141,33 +141,20 @@ class _ProductCardState extends State<ProductCard> {
     }
   }
 
+  // The card's photo, where "fly to cart" takes off from.
+  final GlobalKey _photoKey = GlobalKey();
+
   Future<void> _addToCart() async {
+    // "Fly to cart": the photo flies to the Cart tab (or the cart button of the screen) while the cart is updated.
+    FlyToCart.fly(context,
+        source: _photoKey,
+        imageUrl: widget.product.images.isNotEmpty ? ApiClient.resolveMediaUrl(widget.product.images.first) : null,
+        itemCountBefore: context.read<CartState>().itemCount);
     setState(() => _isAdding = true);
     try {
-      // Real "already in cart" check (#18) -- the real backend
-      // already correctly merges a repeat add into the existing real
-      // line item (confirmed directly: ON CONFLICT ... quantity =
-      // quantity + EXCLUDED.quantity), so there's no real duplicate
-      // to warn about -- this is an honest, informational notice
-      // instead, checked against the real, already-loaded cart
-      // before the add, not a fabricated one.
-      final cart = context.read<CartState>();
-      CartItem? existing;
-      for (final i in cart.items) {
-        if (i.productId == widget.product.id) {
-          existing = i;
-          break;
-        }
-      }
-      await cart.addItem(widget.product.id, 1);
-      if (mounted) {
-        final message = existing != null
-            ? '${trRead(context, 'added_to_cart')}: ${widget.product.name} (${existing.quantity + 1} in cart)'
-            : '${trRead(context, 'added_to_cart')}: ${widget.product.name}';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message), duration: const Duration(seconds: 1)),
-        );
-      }
+      // A repeat add simply adds one more to the same line (the server merges it). No "Added to cart" message: the photo flying to the cart, and its
+      // number going up, already say so. A failure is still said (below).
+      await context.read<CartState>().addItem(widget.product.id, 1);
     } on ApiException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     } finally {
@@ -211,6 +198,7 @@ class _ProductCardState extends State<ProductCard> {
               Stack(
                 children: [
                   AspectRatio(
+                    key: _photoKey,
                     aspectRatio: 1,
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(8),

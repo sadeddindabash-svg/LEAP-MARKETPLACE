@@ -25,8 +25,11 @@ describe("a page with text", () => {
   it("in Arabic: the Arabic title and text, and the date with Western digits", async () => {
     await show("terms", "ar"); expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("شروط الاستخدام"); expect(screen.getByText(/آخر تحديث: 21/)).toBeInTheDocument(); expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("القواعد");
   });
-  it("a page written in only one language shows that text in the other language too (better than nothing)", async () => {
-    m.page.current = page({ body: { en: "Only English text.", ar: null }, title: { en: "Terms", ar: null } }); await show("terms", "ar"); expect(screen.getByText("Only English text.")).toBeInTheDocument(); expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Terms");
+  it("a page written in only one language never shows it in the other: the other has its own name and \"being prepared\"", async () => {
+    m.page.current = page({ body: { en: "Only English text.", ar: null }, title: { en: "Terms", ar: null } }); await show("terms", "ar"); expect(screen.queryByText("Only English text.")).not.toBeInTheDocument(); expect(screen.getByRole("heading", { level: 1 }).textContent).not.toBe("Terms"); expect(screen.getByText(/قيد الإعداد/)).toBeInTheDocument();
+  });
+  it("English never borrows the Arabic title (About us, not من نحن)", async () => {
+    m.page.current = page({ title: { en: null, ar: "من نحن" } }); await show("about"); expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("About us");
   });
   it("a page without a title shows the footer's own name for it", async () => { m.page.current = page({ title: { en: null, ar: null } }); await show("refund"); expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Refund"); });
   it("no date line when the page has no date", async () => { m.page.current = page({ updatedAt: null }); await show(); expect(screen.queryByText(/Last updated/)).not.toBeInTheDocument(); });

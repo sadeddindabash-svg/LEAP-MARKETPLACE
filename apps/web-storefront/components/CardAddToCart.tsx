@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useOptionalCart } from "@/components/CartProvider";
 import { useT } from "@/components/LangProvider";
+import { flyToCart } from "@/lib/flyToCart";
 
 const CART = <><circle cx="8" cy="21" r="1" /><circle cx="19" cy="21" r="1" /><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" /></>;
 const Svg = ({ children }: { children: React.ReactNode }) => <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{children}</svg>;
@@ -16,12 +17,15 @@ export default function CardAddToCart({ productId, name, inStock }: { productId:
   const t = useT();
   const [status, setStatus] = useState<"idle" | "adding" | "added" | "error">("idle");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const button = useRef<HTMLButtonElement>(null);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
   if (!inStock || !cart) {
     return <button type="button" disabled aria-label={inStock ? `${t("add_to_cart")}: ${name}` : `${t("out_of_stock")}: ${name}`} className="grid size-11 cursor-not-allowed place-items-center rounded-[11px] bg-[#e6edf2] text-[#8696a2]"><Svg>{CART}</Svg></button>;
   }
   const press = async () => {
     if (status === "adding") return;
+    // "Fly to cart": this card's photo (data-fly-photo) flies to the cart in the header while the cart is updated; with no photo, a chip from this button.
+    flyToCart(button.current?.closest("li")?.querySelector("[data-fly-photo]") ?? button.current);
     setStatus("adding");
     try { await cart.addItem(productId, 1); setStatus("added"); } catch { setStatus("error"); }
     if (timer.current) clearTimeout(timer.current);
@@ -29,7 +33,7 @@ export default function CardAddToCart({ productId, name, inStock }: { productId:
   };
   return (
     <>
-      <button type="button" onClick={press} disabled={status === "adding"} aria-label={`${t("add_to_cart")}: ${name}`} title={status === "error" ? t("add_failed") : undefined} data-status={status}
+      <button ref={button} type="button" onClick={press} disabled={status === "adding"} aria-label={`${t("add_to_cart")}: ${name}`} title={status === "error" ? t("add_failed") : undefined} data-status={status}
         className="grid size-11 place-items-center rounded-[11px] bg-signal text-on-signal shadow-[0_2px_6px_rgba(250,178,25,0.4)] transition-colors hover:bg-signal-dark disabled:opacity-60">
         {status === "added" ? <Svg><path d="m5 12 5 5 9-10" /></Svg> : status === "error" ? <Svg><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" /></Svg> : <Svg>{CART}</Svg>}
       </button>

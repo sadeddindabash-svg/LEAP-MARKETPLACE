@@ -2,9 +2,12 @@
 // API for this itself: the website's server does, exactly as it does for the first page, so every page of one list is made the same way (same cache, same delivery
 // estimates, nothing else exposed). This file is used by BOTH sides so the asking and the checking cannot drift apart.
 import type { Lang } from "./i18n";
+import { readExtraFilters, type ExtraFilters } from "./searchFilters";
+
+type SearchParams = { q?: string; category?: string; part?: string; generationId?: string; year?: number; versionId?: string; brandId?: string; modelId?: string } & ExtraFilters;
 
 export type GridSource =
-  | { kind: "search"; params: { q?: string; category?: string; part?: string; generationId?: string; year?: number; versionId?: string } }
+  | { kind: "search"; params: SearchParams }
   | { kind: "sameBrand"; productId: string }
   | { kind: "sameModel"; productId: string }
   | { kind: "newest" };
@@ -26,6 +29,13 @@ export function gridQuery(source: GridSource, page: number, pageSize: number, la
     if (generationId) q.set("generationId", generationId);
     if (year) q.set("year", String(year));
     if (versionId) q.set("versionId", versionId);
+    const { brandId, modelId, sort, minPrice, maxPrice, maxDeliveryDays } = source.params;
+    if (brandId) q.set("brandId", brandId);
+    if (modelId) q.set("modelId", modelId);
+    if (sort) q.set("sort", sort);
+    if (minPrice) q.set("minPrice", String(minPrice));
+    if (maxPrice) q.set("maxPrice", String(maxPrice));
+    if (maxDeliveryDays) q.set("maxDeliveryDays", String(maxDeliveryDays));
   }
   return q.toString();
 }
@@ -53,14 +63,18 @@ export function parseGridQuery(sp: URLSearchParams): ParsedGrid | { error: strin
     return ID.test(productId) ? { source: { kind, productId }, page, limit, lang } : { error: "productId is missing or not valid" };
   }
   if (kind !== "search") return { error: "kind must be search, sameBrand, sameModel or newest" };
-  const params: { q?: string; category?: string; part?: string; generationId?: string; year?: number; versionId?: string } = {};
+  const params: SearchParams = {};
   const text = sp.get("q");
   if (text) { if (text.length > 200) return { error: "q is too long" }; params.q = text; }
-  for (const name of ["category", "part", "generationId", "versionId"] as const) {
+  // A part is chosen by its English NAME ("Front Brake Disc"), so it may have spaces: plain text, not an id.
+  const partName = sp.get("part");
+  if (partName) { if (partName.length > 120 || /[<>]/.test(partName)) return { error: "part is not valid" }; params.part = partName; }
+  for (const name of ["category", "generationId", "versionId", "brandId", "modelId"] as const) {
     const value = sp.get(name);
     if (value) { if (!ID.test(value)) return { error: `${name} is not valid` }; params[name] = value; }
   }
   const year = sp.get("year");
   if (year) { const y = whole(year, 0, 1900, 2100); if (!y) return { error: "year is not valid" }; params.year = y; }
+  Object.assign(params, readExtraFilters((n) => sp.get(n)));          // sort, price range, delivery time: checked the same way the page checks them
   return { source: { kind: "search", params }, page, limit, lang };
 }

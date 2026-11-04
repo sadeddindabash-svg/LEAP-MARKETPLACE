@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render } from "@testing-library/react";
 
-// The space between the blocks of the home page: the four totals, Shop by section, Shop by brand and Newest parts. Each block starts 32 px (pt-8) below the one before it (it was 64 px).
+// The space between the blocks of the home page: the hero (banner or headline), the four totals, Shop by section, Shop by brand and Newest parts. Each block starts 20 px
+// (pt-5) below the one before it: the same space as between the product cards (gap-5).
 vi.mock("@/lib/lang", () => ({ getLang: vi.fn(async () => "en") }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/", useSearchParams: () => new URLSearchParams() }));
 vi.mock("@/lib/homeFonts", () => ({ homeFontStyle: () => undefined }));
@@ -20,19 +21,21 @@ async function blocks() {
   const { default: HomePage } = await import("./page");
   const { container } = render(<LangProvider lang="en">{await HomePage()}</LangProvider>);
   const by = (sel: string) => container.querySelector(sel) as HTMLElement;
-  return { totals: by('section[aria-label="Leap Auto Parts"]'), sections: by("section[aria-labelledby=home-sections]"), brands: by("section[aria-labelledby=home-brands]"), newest: by("section[aria-labelledby=home-newest]") };
+  return { hero: by("section[aria-labelledby=home-h1]"), totals: by('section[aria-label="Leap Auto Parts"]'), sections: by("section[aria-labelledby=home-sections]"), brands: by("section[aria-labelledby=home-brands]"), newest: by("section[aria-labelledby=home-newest]") };
 }
 const cls = (el: HTMLElement) => el.className.split(" ");
 
 describe("the space between the blocks of the home page", () => {
-  it("Shop by section, Shop by brand and Newest parts each start 32 px (pt-8) below the block above them, not 64 px", async () => {
+  it("CRITICAL: every block starts 20 px (pt-5) below the one above it, the same as the gap between the product cards", async () => {
     const b = await blocks();
-    for (const [name, el] of Object.entries({ sections: b.sections, brands: b.brands, newest: b.newest })) { expect(cls(el), name).toContain("pt-8"); expect(cls(el), name).not.toContain("pt-16"); }
+    for (const [name, el] of Object.entries({ hero: b.hero, totals: b.totals, sections: b.sections, brands: b.brands, newest: b.newest })) {
+      expect(cls(el), name).toContain("pt-5");
+      expect(cls(el).some((c) => /^pt-(?!5$)/.test(c)), name).toBe(false);
+    }
   });
-  it("the totals keep their own space above (it is the space under the hero, which was not changed)", async () => {
-    expect(cls((await blocks()).totals)).toContain("pt-10");
-  });
-  it("nothing else adds space between the blocks (no margin below or above any of them)", async () => {
-    const b = await blocks(); for (const el of [b.totals, b.sections, b.brands, b.newest]) expect(cls(el).some((c) => /^(mt|mb|my|pb-(?!4$))/.test(c)), el.className).toBe(false);
+  it("nothing else adds space between the blocks (no margin, and no space below any block but the last)", async () => {
+    const b = await blocks();
+    for (const el of [b.hero, b.totals, b.sections, b.brands]) expect(cls(el).some((c) => /^(mt|mb|my|pb)-/.test(c)), el.className).toBe(false);
+    expect(cls(b.newest).some((c) => /^(mt|mb|my)-/.test(c))).toBe(false);
   });
 });

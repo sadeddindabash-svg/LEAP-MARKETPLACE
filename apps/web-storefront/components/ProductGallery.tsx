@@ -26,7 +26,7 @@ export default function ProductGallery({ images, alt }: { images: string[]; alt:
 
   return (
     <div role="group" aria-roledescription="carousel" aria-label={alt} onKeyDown={onKeyDown}>
-      <div className="relative aspect-square overflow-hidden rounded-lg border border-line bg-white">
+      <div data-fly-source="" className="relative aspect-square overflow-hidden rounded-lg border border-line bg-white">
         <SafeImage src={images[index]} alt={`${alt} (${status})`} fill sizes="(min-width: 768px) 50vw, 100vw" priority={index === 0} className="object-cover" unoptimized />
         {count > 1 && (
           <>

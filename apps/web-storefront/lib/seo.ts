@@ -89,9 +89,10 @@ export function categoryPageDescription(name: string, lang: Lang = "en"): string
  * near-duplicate variations (every typed query, every vehicle filter, page 2, 3...): crawled and followed, but kept out of the index, and pointing at the
  * category page as the one real version.
  */
-export function searchIndexing(params: { q?: string; category?: string; part?: string; generationId?: string; year?: string; page?: string }): { index: boolean; canonicalPath: string } {
+export function searchIndexing(params: { q?: string; category?: string; part?: string; generationId?: string; year?: string; page?: string; sort?: string; minPrice?: string; maxPrice?: string; maxDeliveryDays?: string; brandId?: string; modelId?: string }): { index: boolean; canonicalPath: string } {
   const page = Number(params.page) || 1;
-  const filtered = Boolean(params.q?.trim() || params.generationId || params.year) || page > 1;
+  // a sort, a price range or a delivery time is the same page in another order or narrowed: followed, not indexed
+  const filtered = Boolean(params.q?.trim() || params.generationId || params.year || params.brandId || params.modelId || params.sort || params.minPrice || params.maxPrice || params.maxDeliveryDays) || page > 1;
   // A PART page ("Front Brake Disc" in "Brake System") is a landing page of its own, like a category page: indexed, canonical to itself.
   const category = params.category ? `/search?category=${encodeURIComponent(params.category)}` : "/search";
   const canonicalPath = params.category && params.part ? `${category}&part=${encodeURIComponent(params.part)}` : category;

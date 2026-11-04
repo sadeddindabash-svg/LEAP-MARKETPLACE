@@ -28,7 +28,8 @@ const PROBLEM_TEXT: Record<string, DictKey> = { fill_every_field: "fill_every_fi
 // The same order can never be placed twice (a double click or a retry sends the same key, and the server answers with the first order).
 export default function CheckoutPage() {
   const { user, isLoading: authLoading } = useAuth();
-  const { cart, isLoading, summary, lockPrices, applyPromo, clearAfterOrder } = useCart();
+  // Only the lines ticked in the basket are ordered (with their own discount and shipping fee); the others stay in the basket.
+  const { selected: cart, cart: wholeCart, isLoading, selectedSummary: summary, lockPrices, applyPromo, clearAfterOrder } = useCart();
   const lang = useLang();
   const t = useT();
   const { format, code: currencyCode } = useCurrency();
@@ -87,10 +88,12 @@ export default function CheckoutPage() {
 
   if (isLoading || authLoading) return <div className="mx-auto max-w-3xl px-4 py-12 sm:px-8 text-muted" aria-busy="true">{t("search_loading")}</div>;
   if (!cart || cart.items.length === 0) {
+    const noneTicked = (wholeCart?.items.length ?? 0) > 0;          // the basket has parts, but none is ticked
     return (
       <div className="mx-auto max-w-3xl px-4 py-14 text-center sm:px-8">
         <h1 className="text-3xl font-bold tracking-tight text-navy">{t("checkout")}</h1>
-        <p className="mb-6 mt-3 text-lg text-muted">{t("cart_empty")}</p>
+        <p className="mb-6 mt-3 text-lg text-muted">{noneTicked ? t("cart_none_selected") : t("cart_empty")}</p>
+        {noneTicked && <p className="mb-6"><Link href="/cart" className="font-bold text-navy underline underline-offset-4">{t("cart_back_to_basket")}</Link></p>}
         <Link href="/search" className="inline-flex min-h-12 items-center rounded-[10px] bg-signal px-6 font-bold text-on-signal hover:bg-signal-dark">{t("browse_products")}</Link>
       </div>
     );
@@ -137,7 +140,7 @@ export default function CheckoutPage() {
       // a new address typed by a signed-in buyer is kept for next time (best effort: the order is already placed)
       const token = getAuthToken();
       if (user && showForm && saveNew && token && payload) await createAddress(token, { ...payload, label: payload.label || t("address_fallback_label") }).catch(() => {});
-      clearAfterOrder();
+      clearAfterOrder(items.map((i) => i.productId));
       router.push(`/checkout/confirmation?orderId=${encodeURIComponent(order.id)}${user ? "" : `&guestEmail=${encodeURIComponent(guestEmail.trim())}`}`);
     } catch (err) {
       if (!(err instanceof TypeError)) keyRef.current = null;                    // the server answered (a refusal): a new attempt is a new order. No answer at all: the retry keeps its key.
@@ -148,6 +151,8 @@ export default function CheckoutPage() {
 
   return (
     <form onSubmit={place} noValidate className="mx-auto max-w-6xl px-4 py-10 sm:px-8">
+      {/* Back to the basket (to change what is in it, or what is ticked): above the title, and again under Place order. */}
+      <Link href="/cart" data-testid="back-to-cart-top" className="mb-3 inline-flex min-h-10 items-center gap-1.5 rounded-lg bg-[#e6edf2] pe-3 ps-1.5 text-sm font-bold text-navy hover:bg-[#d8e3ea]"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="rtl:rotate-180"><path d="M15 6l-6 6 6 6" /></svg>{t("back_to_cart")}</Link>
       <h1 className="mb-6 text-3xl font-bold tracking-tight text-navy">{t("checkout")}</h1>
       <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <div className="grid gap-6">
@@ -263,6 +268,7 @@ export default function CheckoutPage() {
           <button type="submit" disabled={placing || overStock.length > 0} className="mt-5 min-h-13 w-full rounded-[10px] bg-signal text-base font-bold text-on-signal hover:bg-signal-dark disabled:cursor-not-allowed disabled:opacity-50">
             {placing ? t("placing_order") : t("place_order")}
           </button>
+          <Link href="/cart" data-testid="back-to-cart-bottom" className="mt-3 flex min-h-12 w-full items-center justify-center gap-1.5 rounded-[10px] border-[1.5px] border-navy text-[15px] font-bold text-navy hover:bg-chalk"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="rtl:rotate-180"><path d="M15 6l-6 6 6 6" /></svg>{t("back_to_cart")}</Link>
         </aside>
       </div>
     </form>

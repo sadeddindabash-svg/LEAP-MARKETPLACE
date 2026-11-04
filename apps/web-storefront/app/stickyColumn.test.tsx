@@ -28,15 +28,15 @@ beforeEach(() => { m.lang.current = "en"; });
 describe("the column beside the photos (computer screens)", () => {
   it("is pinned below the top of the screen, starts at the top of its row, and is the one that holds the title, the price and Add to cart", async () => {
     const g = grid(await page()); expect(g).not.toBeNull(); const [left, right] = kids(g!); const cls = String(right.props.className);
-    for (const c of ["md:sticky", "md:top-4", "md:self-start"]) expect(cls.split(" "), c).toContain(c); expect(contains(right, AddToCartButton)).toBe(true); expect(contains(right.props.children, "h1")).toBe(true);
+    for (const c of ["md:sticky", "md:top-[calc(var(--header-h,0px)+1rem)]", "md:self-start"]) expect(cls.split(" "), c).toContain(c); expect(contains(right, AddToCartButton)).toBe(true); expect(contains(right.props.children, "h1")).toBe(true);
     expect(contains(left, ProductGallery)).toBe(true); expect(contains(left, AddToCartButton)).toBe(false);
   });
   it("the photos side is NOT pinned (it is the one that scrolls past)", async () => { const g = grid(await page()); const [left] = kids(g!); expect(String(left.props.className ?? "")).not.toMatch(/sticky/); });
   it("a very tall column gets its own small scroll instead of hiding the buttons, and keeps a little room for it", async () => {
-    const cls = String(kids(grid(await page())!)[1].props.className).split(" "); expect(cls).toContain("md:max-h-[calc(100vh-2rem)]"); expect(cls).toContain("md:overflow-y-auto"); expect(cls).toContain("md:pe-1");
+    const cls = String(kids(grid(await page())!)[1].props.className).split(" "); expect(cls).toContain("md:max-h-[calc(100vh-var(--header-h,0px)-2rem)]"); expect(cls).toContain("md:overflow-y-auto"); expect(cls).toContain("md:pe-1");
   });
   it("is pinned only from the medium screen up: on a phone (one column) none of it applies", async () => {
-    const cls = String(kids(grid(await page())!)[1].props.className).split(" ").filter((c) => /sticky|top-4|self-start|max-h|overflow/.test(c)); expect(cls.length).toBeGreaterThan(0); for (const c of cls) expect(c.startsWith("md:"), c).toBe(true);
+    const cls = String(kids(grid(await page())!)[1].props.className).split(" ").filter((c) => /sticky|top-|self-start|max-h|overflow/.test(c)); expect(cls.length).toBeGreaterThan(0); for (const c of cls) expect(c.startsWith("md:"), c).toBe(true);
   });
   it("is released where the photos and details end: the sections below (other listings, reviews) are NOT inside the two columns, so they are never covered", async () => {
     const root = await page(); const g = grid(root)!; expect(contains(g, OemComparison)).toBe(false); expect(contains(g, ReviewsSection)).toBe(false); expect(contains(root, ReviewsSection)).toBe(true); expect(contains(root, OemComparison)).toBe(true);

@@ -1,0 +1,71 @@
+// The filters of the results page (/search), kept in its address so every filtered page has its own link: sort, a price range and a delivery time, on top of the
+// search words, the section, the part and the car. The server already filters and sorts by these (GET /catalog/products: sort, minPrice, maxPrice, maxDeliveryDays).
+// Prices in the address are US DOLLARS (every price in the catalog is), while the buyer types and reads them in the currency they chose (lib/currency.ts).
+
+export const SORTS = ["", "newest", "price_asc", "price_desc"] as const;              // "" is the shop's own order ("Best match")
+export type Sort = (typeof SORTS)[number];
+export const DELIVERY_DAYS = [3, 7, 14] as const;
+
+export interface ExtraFilters { sort?: Exclude<Sort, "">; minPrice?: number; maxPrice?: number; maxDeliveryDays?: number }
+
+const positive = (v: string | null | undefined): number | undefined => {
+  if (v == null || !/^\d{1,7}(\.\d{1,2})?$/.test(v)) return undefined;
+  const n = Number(v);
+  return n > 0 ? n : undefined;
+};
+
+/** Reads (and checks) the sort, price and delivery filters from an address. Anything unexpected is simply ignored. */
+export function readExtraFilters(get: (name: string) => string | null | undefined): ExtraFilters {
+  const out: ExtraFilters = {};
+  const sort = get("sort");
+  if (sort && (SORTS as readonly string[]).includes(sort)) out.sort = sort as ExtraFilters["sort"];
+  const min = positive(get("minPrice")); const max = positive(get("maxPrice"));
+  if (min !== undefined) out.minPrice = min;
+  if (max !== undefined && (min === undefined || max >= min)) out.maxPrice = max;
+  const days = positive(get("maxDeliveryDays"));
+  if (days !== undefined && Number.isInteger(days) && days <= 60) out.maxDeliveryDays = days;
+  return out;
+}
+
+/** Every filter the results page keeps in its address, in a fixed order. */
+export const FILTER_KEYS = ["q", "category", "part", "brandId", "modelId", "generationId", "year", "versionId", "sort", "minPrice", "maxPrice", "maxDeliveryDays"] as const;
+
+/** The /search address after a change: null removes a filter. Going to another filter always starts again at page 1; a new section drops the part (it belongs to the old one). */
+export function filterHref(current: URLSearchParams, change: Record<string, string | number | null>): string {
+  const next = new URLSearchParams();
+  for (const key of FILTER_KEYS) {
+    const value = key in change ? change[key] : current.get(key);
+    if (value !== null && value !== undefined && value !== "") next.set(key, String(value));
+  }
+  if ("category" in change && !("part" in change)) next.delete("part");
+  const qs = next.toString();
+  return `/search${qs ? `?${qs}` : ""}`;
+}
+
+/** The car part of the address: everything that says which car (removed together when the car is cleared). */
+export const CAR_KEYS = ["brandId", "modelId", "generationId", "year", "versionId"] as const;
+export const noCar = (): Record<string, null> => Object.fromEntries(CAR_KEYS.map((k) => [k, null]));
+
+/** The years a model was made, newest first, from its generations (a generation still made runs to this year). */
+export function modelYears(generations: Array<{ yearStart: number; yearEnd: number | null }>, thisYear = new Date().getFullYear()): number[] {
+  const years = new Set<number>();
+  for (const g of generations) for (let y = g.yearStart; y <= (g.yearEnd ?? thisYear); y++) years.add(y);
+  return [...years].sort((a, b) => b - a);
+}
+
+/** Dollars, as the address keeps them: 2 decimals at most. */
+export const toUsd = (amount: number, rate: number): number => Math.round((amount / (rate > 0 ? rate : 1)) * 100) / 100;
+
+/** A round number near n (1, 1.5, 2, 2.5, 3, 5 or 7.5 times a power of ten), so the quick price choices read well in any currency. */
+export function roundNice(n: number): number {
+  if (!(n > 0)) return 0;
+  const p = 10 ** Math.floor(Math.log10(n));
+  const steps = [1, 1.5, 2, 2.5, 3, 5, 7.5, 10];
+  return steps.map((s) => s * p).reduce((best, x) => (Math.abs(x - n) < Math.abs(best - n) ? x : best));
+}
+
+/** The three quick price limits, in the buyer's currency: about 25, 75 and 150 dollars (100, 300, 500 in riyals). */
+export function pricePresets(rate: number): [number, number, number] {
+  const r = rate > 0 ? rate : 1;
+  return [roundNice(25 * r), roundNice(75 * r), roundNice(150 * r)];
+}

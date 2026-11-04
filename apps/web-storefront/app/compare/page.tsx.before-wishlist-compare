@@ -1,0 +1,93 @@
+import type { Metadata } from "next";
+import SafeImage from "@/components/SafeImage";
+import Link from "@/components/LocLink";
+import { Price } from "@/components/Price";
+import { fetchProductById, resolveImageUrl, type ProductDetail } from "@/lib/api";
+import { pickName, t, type Lang } from "@/lib/i18n";
+import { COMPARE_MAX_PHONE, compareHref, parseIds } from "@/lib/compare";
+import { CompareAddButton, CompareTopActions } from "@/components/CompareActions";
+import { getLang } from "@/lib/lang";
+import { deliveryDateLabel } from "@/lib/delivery";
+
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: t(await getLang(), "compare_title") };
+}
+
+/** The best in a row: the parts that share the lowest value, or none when every part has the same value (or only one has one). */
+function bestOf(found: ProductDetail[], value: (p: ProductDetail) => number | null | undefined): Set<string> {
+  const known = found.filter((p) => value(p) != null);
+  if (known.length < 2) return new Set();
+  const low = Math.min(...known.map((p) => value(p) as number));
+  const best = known.filter((p) => value(p) === low);
+  return best.length === known.length ? new Set() : new Set(best.map((p) => p.id));
+}
+
+// Each row: its label, what each part shows, and (for price and delivery) which parts are the best in it: a light gold cell with a gold tag.
+function rows(lang: Lang, found: ProductDetail[]): Array<[string, (p: ProductDetail) => React.ReactNode, Set<string>?, string?]> {
+  const dash = "—";
+  return [
+    [t(lang, "row_price"), (p) => <Price usd={p.price} className="text-lg font-extrabold text-navy" />, bestOf(found, (p) => p.price), t(lang, "compare_lowest_price")],
+    [t(lang, "row_rating"), (p) => (p.reviewCount > 0 && p.rating != null ? t(lang, "rating_value", { avg: p.rating.toFixed(1), n: p.reviewCount }) : t(lang, "no_reviews_short"))],
+    [t(lang, "row_stock"), (p) => (p.stockQuantity > 0 ? t(lang, "stock_n", { n: p.stockQuantity }) : t(lang, "out_of_stock"))],
+    [t(lang, "row_delivery"), (p) => deliveryDateLabel(p.estimatedDeliveryDays, lang) ?? dash, bestOf(found, (p) => p.estimatedDeliveryDays), t(lang, "compare_fastest")],
+    [t(lang, "oem_number"), (p) => (p.oemNumber ? <span className="font-plate">{p.oemNumber}</span> : dash)],
+    [t(lang, "row_weight"), (p) => (p.weightKg != null ? `${p.weightKg.toFixed(1)} ${t(lang, "kg")}` : dash)],
+    [t(lang, "row_verified"), (p) => (p.isVerifiedSeller ? t(lang, "yes") : dash)],
+    [t(lang, "row_ships_from"), (p) => (p.shipsFromCountry ? pickName(lang, p.shipsFromCountry, p.shipsFromCountryAr) : dash)],
+  ];
+}
+
+// The page is in the account menu (under Wishlist) and opens with its navy box; the table is a white card with the row names as small gold labels.
+// Compare 2 to 4 parts side by side (the rows of the mobile app's compare screen). The parts are named in the address (?ids=...), so a comparison can be shared. It starts from
+// the wishlist, like in the app.
+export default async function ComparePage({ searchParams }: { searchParams: Promise<{ ids?: string }> }) {
+  const lang = await getLang();
+  const { ids } = await searchParams;
+  const found = (await Promise.all(parseIds(ids).map((id) => fetchProductById(id, lang)))).filter((p): p is ProductDetail => p !== null);
+  const without = (id: string) => compareHref(found.filter((p) => p.id !== id).map((p) => p.id));
+
+  return (
+    <div className="mx-auto max-w-7xl px-4 py-10 sm:px-8">
+      <h1 className="mb-6 text-3xl font-bold tracking-tight text-navy">{t(lang, "compare_title")}</h1>
+      {found.length < 2 ? (
+        <p className="text-lg text-muted">{t(lang, "compare_need_two")} <Link href="/wishlist" className="font-bold text-navy underline underline-offset-4">{t(lang, "wishlist")}</Link></p>
+      ) : (
+        <>
+        <CompareTopActions />
+        {found.length > COMPARE_MAX_PHONE && <p data-testid="compare-phone-note" className="mb-3 text-sm text-muted md:hidden">{t(lang, "compare_phone_note", { total: found.length })}</p>}
+        <div className="overflow-x-auto rounded-[16px] border border-line bg-white">
+          <table className="w-full table-fixed border-collapse text-start">
+            <thead>
+              <tr>
+                <td className="w-28 bg-[#f7f9fb] md:w-40" />
+                {found.map((p, i) => (
+                  <th key={p.id} scope="col" className={`border-s border-line p-3 text-center align-top md:p-4 ${i >= COMPARE_MAX_PHONE ? "max-md:hidden" : ""}`}>
+                    <Link href={`/products/${p.id}`} className="block">
+                      <span className="relative mx-auto mb-3 block aspect-square w-full max-w-36 overflow-hidden rounded-lg border border-line bg-white">
+                        {p.images[0] && <SafeImage src={resolveImageUrl(p.images[0])} alt="" fill sizes="144px" className="object-contain p-1.5" unoptimized />}
+                      </span>
+                      <span className="line-clamp-2 text-sm font-bold leading-snug hover:underline">{p.name}</span>
+                    </Link>
+                    <div className="mt-3 flex flex-col items-center gap-1.5">
+                      <CompareAddButton productId={p.id} inStock={p.stockQuantity > 0} />
+                      <Link href={without(p.id)} className="text-xs font-bold text-[#a12a21] hover:underline">{t(lang, "remove")}</Link>
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows(lang, found).map(([label, cell, best, tag]) => (
+                <tr key={label} className="border-t border-line">
+                  <th scope="row" className="bg-[#f7f9fb] p-3 text-start text-[11.5px] font-extrabold uppercase tracking-[.12em] text-[#8a6100] rtl:tracking-normal md:p-4">{label}</th>
+                  {found.map((p, i) => <td key={p.id} className={`border-s border-line p-3 text-[15px] md:p-4 ${best?.has(p.id) ? "bg-[#fffaeb]" : ""} ${i >= COMPARE_MAX_PHONE ? "max-md:hidden" : ""}`}>{cell(p)}{best?.has(p.id) && <span data-testid="compare-best" className="ms-2 inline-block rounded-full bg-signal px-2 py-0.5 align-middle text-[10.5px] font-extrabold text-navy">{tag}</span>}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        </>
+      )}
+    </div>
+  );
+}

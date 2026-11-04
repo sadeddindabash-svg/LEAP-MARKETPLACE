@@ -7,11 +7,16 @@ import '../../core/app_strings.dart';
 import '../../core/api_error_text.dart';
 import '../../core/currency_state.dart';
 import '../../core/cart_state.dart';
+import '../../core/cart_fit.dart';
+import '../../core/auth_state.dart';
+import '../../core/language_state.dart';
+import '../../core/fly_to_trash.dart';
 import '../../models/cart_item.dart';
 import '../../services/api_client.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/cart_merge_banner.dart';
 import '../../widgets/free_shipping.dart';
+import '../quotations/quotations_screens.dart';
 
 /// BUY-030–031: cart holds items from multiple suppliers but presents one
 /// unified basket and total; splitting into supplier sub-orders happens at
@@ -39,6 +44,9 @@ class CartScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final cart = context.watch<CartState>();
     final palette = LeapPalette.of(context);
+    // Only the ticked lines are ordered: the total, the free shipping and Checkout follow them.
+    final chosen = cart.forCheckout;
+    final some = cart.unselectedCount > 0;
 
     return Scaffold(
       appBar: AppBar(title: Text(tr(context, 'basket'))),
@@ -63,22 +71,34 @@ class CartScreen extends StatelessWidget {
                           child: FittedBox(
                             fit: BoxFit.scaleDown,
                             alignment: Alignment.centerRight,
-                            child: Text(formatPriceWithUsd(context, cart.totalWithShipping), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: palette.signal)),
+                            child: Text(formatPriceWithUsd(context, chosen.totalWithShipping), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: palette.signal)),
                           ),
                         ),
                       ],
                     ),
-                    SizedBox(height: cart.shipping.isFree ? 20 : 12),
+                    SizedBox(height: chosen.shipping.isFree ? 20 : 12),
                     FreeShippingBadgeOver(
-                      shipping: cart.shipping,
+                      shipping: chosen.shipping,
                       child: SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
-                          onPressed: () => context.push('/checkout'),
-                          child: Text(tr(context, 'checkout')),
+                          onPressed: chosen.isEmpty ? null : () => context.push('/checkout'),
+                          child: Text(some
+                              ? tr(context, 'checkout_some').replaceAll('{n}', '${chosen.items.length}').replaceAll('{total}', '${cart.items.length}')
+                              : tr(context, 'checkout')),
                         ),
                       ),
                     ),
+                    if (!chosen.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: SizedBox(width: double.infinity, child: OutlinedButton(onPressed: () => context.push('/quotations/new'), child: Text(qtr(context, 'get_quotation')))),
+                      ),
+                    if (some)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(tr(context, chosen.isEmpty ? 'cart_none_selected' : 'cart_unticked_note'), textAlign: TextAlign.center, style: TextStyle(color: palette.muted, fontSize: 11.5)),
+                      ),
                   ],
                 ),
               ),
@@ -134,10 +154,32 @@ class CartScreen extends StatelessWidget {
     }
 
     final grouped = cart.itemsBySupplier;
+    final chosen = cart.forCheckout;
+    final unselected = cart.unselectedCount;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         const CartMergeBanner(),
+        // Select all: ticks (or unticks) every line; a dash when only some are ticked.
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => cart.setAllSelected(unselected > 0),
+            child: Row(
+              children: [
+                Checkbox(
+                  tristate: true,
+                  value: unselected == 0 ? true : (unselected == cart.items.length ? false : null),
+                  onChanged: (_) => cart.setAllSelected(unselected > 0),
+                  activeColor: const Color(0xFFF9B317), checkColor: const Color(0xFF0B3146),
+                  visualDensity: VisualDensity.compact,
+                ),
+                Text(tr(context, 'cart_select_all').replaceAll('{n}', '${cart.items.length}'), style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: palette.ink)),
+              ],
+            ),
+          ),
+        ),
         for (final entry in grouped.entries) _SupplierGroup(supplierName: entry.key, items: entry.value),
         // Real order summary (new) -- shows only real, currently-known
         // data (subtotal). Deliberately does not show a shipping/tax
@@ -163,8 +205,8 @@ class CartScreen extends StatelessWidget {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(tr(context, 'subtotal'), style: TextStyle(color: palette.muted, fontSize: 13)),
-                    Text(formatPrice(context, cart.total), style: TextStyle(color: palette.ink, fontSize: 13, fontWeight: FontWeight.w600)),
+                    Text(unselected > 0 ? tr(context, 'cart_items_of').replaceAll('{n}', '${chosen.items.length}').replaceAll('{total}', '${cart.items.length}') : tr(context, 'subtotal'), style: TextStyle(color: palette.muted, fontSize: 13)),
+                    Text(formatPrice(context, chosen.total), style: TextStyle(color: palette.ink, fontSize: 13, fontWeight: FontWeight.w600)),
                   ],
                 ),
               ),
@@ -174,7 +216,7 @@ class CartScreen extends StatelessWidget {
               // missing weight data just aren't counted) is still
               // genuinely useful and clearly better than hiding it
               // entirely just because coverage isn't complete.
-              if (cart.items.any((i) => i.weightKg != null))
+              if (chosen.items.any((i) => i.weightKg != null))
                 Padding(
                   padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
                   child: Row(
@@ -182,14 +224,14 @@ class CartScreen extends StatelessWidget {
                     children: [
                       Text(tr(context, 'estimated_weight'), style: TextStyle(color: palette.muted, fontSize: 12.5)),
                       Text(
-                        '${cart.items.fold<double>(0, (sum, i) => sum + (i.weightKg ?? 0) * i.quantity).toStringAsFixed(1)} ${tr(context, 'kg_unit')}',
+                        '${chosen.items.fold<double>(0, (sum, i) => sum + (i.weightKg ?? 0) * i.quantity).toStringAsFixed(1)} ${tr(context, 'kg_unit')}',
                         style: TextStyle(color: palette.muted, fontSize: 12.5),
                       ),
                     ],
                   ),
                 ),
-              ShippingFeeRow(shipping: cart.shipping),
-              FreeShippingHint(shipping: cart.shipping),
+              ShippingFeeRow(shipping: chosen.shipping),
+              FreeShippingHint(shipping: chosen.shipping),
             ],
           ),
         ),
@@ -225,7 +267,30 @@ class _CartItemRow extends StatefulWidget {
   State<_CartItemRow> createState() => _CartItemRowState();
 }
 
-class _CartItemRowState extends State<_CartItemRow> {
+class _CartItemRowState extends State<_CartItemRow> with SingleTickerProviderStateMixin {
+  // The photo, where the flight into the trash can starts; and the fold of the line once the part is in the can.
+  final GlobalKey _photoKey = GlobalKey();
+  late final AnimationController _fold = AnimationController(vsync: this, duration: const Duration(milliseconds: 280), value: 1);
+  // Does this part fit the buyer's car: the ribbon on the photo and the line under the name (read once; nothing when there is no car to compare with).
+  CartFit? _fit;
+  bool _fitAsked = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_fitAsked) return;
+    _fitAsked = true;
+    CartFit.of(widget.item.productId, token: context.read<AuthState>().token, arabic: context.read<LanguageState>().isArabic).then((f) {
+      if (mounted) setState(() => _fit = f);
+    });
+  }
+
+  @override
+  void dispose() {
+    _fold.dispose();
+    super.dispose();
+  }
+
   // REAL FIX: fully local removal state, not tied to CartState's own
   // notifyListeners() at all. Suspected root cause of the message
   // never auto-dismissing: this row previously watched CartState
@@ -296,50 +361,21 @@ class _CartItemRowState extends State<_CartItemRow> {
   // pattern this file's own `_addToCart` above already uses correctly
   // for its own snackbar. This should have been used here from the
   // start.
+  // Removing: the photo flies into the trash can, the line folds away, then the part leaves the basket. If that fails the line unfolds and the reason is said.
   Future<void> _removeItem(BuildContext context, CartState cart) async {
-    final removedQuantity = item.quantity;
-    final removedName = item.name;
     final messenger = ScaffoldMessenger.of(context);
-    final removedLabel = trRead(context, 'cart_removed_from_cart');
-    final undoLabel = trRead(context, 'undo');
+    final noMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     setState(() => _isRemoving = true);
+    await FlyToTrash.fly(context, source: _photoKey, imageUrl: item.imageUrl != null ? ApiClient.resolveMediaUrl(item.imageUrl!) : null);
+    if (mounted && !noMotion) await _fold.reverse();
     try {
       await cart.removeItem(item.productId);
     } on ApiException catch (e) {
+      if (mounted) _fold.value = 1;
       messenger.showSnackBar(SnackBar(content: Text(mounted ? apiErrorText(context, e) : e.message)));
-      return;
     } finally {
       if (mounted) setState(() => _isRemoving = false);
     }
-    // REAL BUG FOUND AND FIXED HERE: removeCurrentSnackBar()
-    // immediately followed by showSnackBar() in the same synchronous
-    // call is a known, documented Flutter interaction issue in some
-    // versions -- the new SnackBar's own timer can behave
-    // unpredictably right after a forced removal like this. Removed
-    // entirely; the explicit duration below already handles the
-    // real underlying concern (a message that could otherwise
-    // linger) more directly and safely.
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text('$removedName $removedLabel'),
-        // Real, explicit, guaranteed-finite duration (fix) --
-        // confirmed directly that no duration was ever set anywhere
-        // on this SnackBar before, relying entirely on Flutter's own
-        // default. This removes that dependency and directly
-        // guarantees the message can't stay up indefinitely.
-        duration: const Duration(seconds: 4),
-        action: SnackBarAction(
-          label: undoLabel,
-          onPressed: () async {
-            try {
-              await cart.addItem(item.productId, removedQuantity);
-            } on ApiException catch (e) {
-              messenger.showSnackBar(SnackBar(content: Text(mounted ? apiErrorText(context, e) : e.message)));
-            }
-          },
-        ),
-      ),
-    );
   }
 
   @override
@@ -355,8 +391,16 @@ class _CartItemRowState extends State<_CartItemRow> {
     // correctly there, not pretended away here.
     final atStockLimit = item.quantity >= item.stockQuantity;
     final remainingAfterThis = item.stockQuantity - item.quantity;
+    final selected = context.select<CartState, bool>((c) => c.isSelected(item.productId));
 
-    return Container(
+    return SizeTransition(
+      sizeFactor: CurvedAnimation(parent: _fold, curve: Curves.easeIn),
+      child: FadeTransition(
+      opacity: _fold,
+      child: AnimatedOpacity(
+      duration: const Duration(milliseconds: 150),
+      opacity: selected ? 1 : 0.55,
+      child: Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -376,13 +420,32 @@ class _CartItemRowState extends State<_CartItemRow> {
           child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // The tick box: only ticked lines are ordered.
+          Padding(
+            padding: const EdgeInsets.only(top: 22, right: 4),
+            child: SizedBox(
+              width: 28,
+              height: 28,
+              child: Checkbox(
+                value: selected,
+                onChanged: (_) => cart.toggleSelected(item.productId),
+                activeColor: const Color(0xFFF9B317), checkColor: const Color(0xFF0B3146),
+                visualDensity: VisualDensity.compact,
+                semanticLabel: '${tr(context, 'cart_select_item')}: ${item.name}',
+              ),
+            ),
+          ),
           // Real product thumbnail (new), sized up to match the real
           // Stitch reference's own larger, more prominent product
           // photography (scaled down from its 96-128px desktop size to
           // fit a real phone screen's own row height reasonably).
           ClipRRect(
+            key: _photoKey,
             borderRadius: BorderRadius.circular(10),
-            child: item.imageUrl != null
+            child: FitRibbon(
+              fit: _fit,
+              arabic: context.watch<LanguageState>().isArabic,
+              child: item.imageUrl != null
                 ? CachedNetworkImage(
                     fadeInDuration: const Duration(milliseconds: 300),
                     imageUrl: ApiClient.resolveMediaUrl(item.imageUrl!),
@@ -403,6 +466,7 @@ class _CartItemRowState extends State<_CartItemRow> {
                     color: Colors.white,
                     child: Icon(Icons.album_outlined, color: palette.ink),
                   ),
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -417,9 +481,7 @@ class _CartItemRowState extends State<_CartItemRow> {
                     ),
                     IconButton(
                       onPressed: _isRemoving ? null : () => _removeItem(context, cart),
-                      icon: _isRemoving
-                          ? SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: palette.muted))
-                          : Icon(Icons.delete_outline, size: 18, color: palette.muted),
+                      icon: Icon(Icons.delete_outline, size: 20, color: _isRemoving ? palette.muted : const Color(0xFFA12A21)),
                       tooltip: tr(context, 'remove_item'),
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
@@ -427,6 +489,25 @@ class _CartItemRowState extends State<_CartItemRow> {
                     ),
                   ],
                 ),
+                if (_fit != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: _fit!.fits
+                        ? Text(tr(context, 'cart_fit_ok').replaceAll('{car}', _fit!.car), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF0F6B49)))
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(tr(context, 'cart_fit_for').replaceAll('{for}', _fit!.forText).replaceAll('{car}', _fit!.car), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFFA12A21))),
+                              InkWell(
+                                onTap: () => context.push('/search', extra: {'initialQuery': _fit!.searchText}),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 3),
+                                  child: Text(tr(context, 'cart_fit_find'), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF0B3146), decoration: TextDecoration.underline)),
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
                 if (remainingAfterThis <= 5)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
@@ -493,6 +574,9 @@ class _CartItemRowState extends State<_CartItemRow> {
           ),
         ),
       ),
+    ),
+      ),
+    ),
     );
   }
 }

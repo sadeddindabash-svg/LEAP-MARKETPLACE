@@ -3,7 +3,7 @@ import { render, screen, within } from "@testing-library/react";
 import type { Cart, CartItem } from "@/lib/api";
 import { totals } from "@/lib/cart";
 
-// The real cart page with the "does this part fit YOUR car?" message under each item: the cart, the sign-in state, the garage and the product fetch are replaced by fixed values.
+// The real cart page with the "does this part fit YOUR car?" ribbon on each photo and the line under each item: the cart, the sign-in state, the garage and the product fetch are replaced by fixed values.
 const m = vi.hoisted(() => ({
   cart: { current: null as unknown },
   car: { current: null as unknown },
@@ -35,7 +35,7 @@ const show = () => render(<LangProvider lang="en"><CartPage /></LangProvider>);
 const rowOf = (name: string) => screen.getByText(name).closest("li") as HTMLElement;
 
 describe("the cart: does each part fit the buyer's car?", () => {
-  it("a part that does not fit shows what it fits and the buyer's car; a part that fits shows the green confirmation; a part that fits any car shows nothing", async () => {
+  it("CRITICAL: a part that does not fit: a red NOT FIT ribbon, what it is for and the buyer's car, and a search for it for the buyer's car; a part that fits: a green FIT ribbon and line; a part that fits any car: nothing", async () => {
     m.fetchProduct.mockImplementation(async (id: string) => ({
       cart1: { fitCars: [{ generationId: "g22", year: 2022, brand: "BAIC", brandAr: null, model: "BJ60", modelAr: null }], fitCarCount: 1, fitKeys: ["g22|2022"], fitsVehicleIds: [] },
       cart2: { fitCars: [{ generationId: "g18", year: 2018, brand: "Toyota", brandAr: null, model: "Corolla", modelAr: null }], fitCarCount: 1, fitKeys: ["g18|2018"], fitsVehicleIds: [] },
@@ -44,9 +44,22 @@ describe("the cart: does each part fit the buyer's car?", () => {
     setCart(cartOf([line({ productId: "cart1", name: "Brake Pad Set" }), line({ productId: "cart2", name: "Oil Filter" }), line({ productId: "cart3", name: "Wiper Blade Set" })]));
     show();
     const first = within(rowOf("Brake Pad Set"));
-    expect(await first.findByText("This part fits:")).toBeInTheDocument(); expect(first.getByText(/BAIC BJ60 · 2022/)).toBeInTheDocument(); expect(first.getByText(/Toyota Corolla · 2018/)).toBeInTheDocument();
-    expect(await within(rowOf("Oil Filter")).findByText(/Confirmed fit: Toyota Corolla · 2018/)).toBeInTheDocument();
-    expect(within(rowOf("Wiper Blade Set")).queryByRole("status")).not.toBeInTheDocument();
+    expect(await first.findByText("For BAIC BJ60 · 2022 — your car is Toyota Corolla · 2018")).toBeInTheDocument();
+    expect(first.getByTestId("fit-ribbon")).toHaveAttribute("data-fit", "not_fit"); expect(first.getByTestId("fit-ribbon")).toHaveTextContent("✕ Not fit");
+    expect(first.getByRole("link", { name: "Find it for my car" }).getAttribute("href")).toContain("generationId=g18");
+    const second = within(rowOf("Oil Filter"));
+    expect(await second.findByText("✓ Compatible with your Toyota Corolla · 2018")).toBeInTheDocument();
+    expect(second.getByTestId("fit-ribbon")).toHaveAttribute("data-fit", "fit"); expect(second.getByTestId("fit-ribbon")).toHaveTextContent("✓ Fit");
+    expect(within(rowOf("Wiper Blade Set")).queryByRole("status")).not.toBeInTheDocument(); expect(within(rowOf("Wiper Blade Set")).queryByTestId("fit-ribbon")).not.toBeInTheDocument();
+  });
+
+  it("in Arabic the ribbons and the line are Arabic", async () => {
+    m.fetchProduct.mockImplementation(async (id: string) => (id === "a1" ? { fitCars: [{ generationId: "g22", year: 2022, brand: "BAIC", brandAr: null, model: "BJ60", modelAr: null }], fitCarCount: 1, fitKeys: ["g22|2022"], fitsVehicleIds: [] } : { fitCars: [{ generationId: "g18", year: 2018, brand: "Toyota", brandAr: null, model: "Corolla", modelAr: null }], fitCarCount: 1, fitKeys: ["g18|2018"], fitsVehicleIds: [] }));
+    setCart(cartOf([line({ productId: "a1", name: "Brake Pad Set" }), line({ productId: "a2", name: "Oil Filter" })]));
+    render(<LangProvider lang="ar"><CartPage /></LangProvider>);
+    expect(await within(rowOf("Brake Pad Set")).findByText("✕ غير متوافقة")).toBeInTheDocument();
+    expect(await within(rowOf("Oil Filter")).findByText("✓ متوافقة")).toBeInTheDocument();
+    expect(within(rowOf("Brake Pad Set")).getByRole("link", { name: "ابحث عنها لسيارتي" })).toBeInTheDocument();
   });
 
   it("a buyer with no car in My Garage sees no fit messages and nothing is read", () => {

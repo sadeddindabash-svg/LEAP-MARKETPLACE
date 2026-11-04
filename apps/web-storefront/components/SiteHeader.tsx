@@ -13,6 +13,7 @@ import HeaderSearch from "./HeaderSearch";
 import LanguageSwitcher from "./LanguageSwitcher";
 import NotificationBell from "./NotificationBell";
 import VehicleBar from "./VehicleBar";
+import HeaderPin from "./HeaderPin";
 
 const actionClass = "relative flex min-h-11 min-w-11 flex-col items-center justify-center gap-0.5 rounded-lg px-2 text-xs font-semibold text-white hover:bg-white/10";
 
@@ -21,9 +22,11 @@ const actionClass = "relative flex min-h-11 min-w-11 flex-col items-center justi
 export default async function SiteHeader({ lang }: { lang: Lang }) {
   const [categories, reachable, homeText] = await Promise.all([fetchCategories(), isShopReachable(process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000"), fetchHomeText()]);
   return (
-    <header>
+    // It stays on top while the page scrolls (from the large screen up): its top is minus the thin line's height, so that line scrolls away and the rest stays (HeaderPin).
+    <header data-pin="" className="group z-40 lg:sticky lg:top-[calc(-1*var(--topbar-h,36px))] lg:transition-shadow lg:data-[scrolled=true]:shadow-[0_6px_18px_rgba(11,49,70,0.22)]">
+      <HeaderPin />
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:start-2 focus:top-2 focus:z-50 focus:rounded-lg focus:bg-signal focus:px-4 focus:py-2 focus:font-bold focus:text-on-signal">{t(lang, "skip_to_content")}</a>
-      <div className="bg-navy-deep text-[13px] text-[#c9d6de]">
+      <div data-topbar="" className="bg-navy-deep text-[13px] text-[#c9d6de]">
         <div className="mx-auto flex min-h-9 max-w-7xl flex-wrap items-center justify-between gap-x-6 px-4 sm:px-8">
           <span>{pickHomeText(homeText?.topBar, lang, t(lang, "util_tagline"))}</span>
           <span className="flex items-center gap-5">
@@ -34,7 +37,7 @@ export default async function SiteHeader({ lang }: { lang: Lang }) {
         </div>
       </div>
       <div className="bg-navy text-white">
-        <div className="mx-auto grid max-w-7xl items-center gap-x-6 gap-y-3 px-4 py-3 sm:px-8 lg:grid-cols-[auto_minmax(260px,1fr)_auto]">
+        <div className="mx-auto grid max-w-7xl items-center gap-x-6 gap-y-3 px-4 py-3 sm:px-8 lg:grid-cols-[auto_minmax(260px,1fr)_auto] lg:transition-[padding] lg:group-data-[scrolled=true]:py-1.5">
           <Link href="/" aria-label={t(lang, "logo_home_label")} className={`flex items-center gap-3 text-[22px] font-bold ${lang === "ar" ? "tracking-normal" : "tracking-tight"}`}>
             {/* the logo, drawn like an engraving when the site opens (public/brand/leap-logo-animated.svg: the same as the portals and the apps) */}
             {/* eslint-disable-next-line @next/next/no-img-element -- an animated SVG is shown as it is (next/image would not play it) */}
@@ -57,7 +60,6 @@ export default async function SiteHeader({ lang }: { lang: Lang }) {
         <div className="relative mx-auto flex max-w-7xl flex-wrap items-center gap-1 px-4 sm:px-8 lg:flex-nowrap">
           <Link href="/" className="flex min-h-12 items-center rounded-lg px-4 text-[15px] font-semibold hover:bg-chalk">{t(lang, "nav_home")}</Link>
           <Link href="/search" className="flex min-h-12 items-center rounded-lg px-4 text-[15px] font-semibold hover:bg-chalk">{t(lang, "nav_products")}</Link>
-          <Link href="/find" className="flex min-h-12 items-center rounded-lg px-4 text-[15px] font-semibold hover:bg-chalk">{t(lang, "find_a_part")}</Link>
           <NavDropdown
             rootClassName=""
             trigger={<>{t(lang, "nav_sections")}<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-data-[open=true]:rotate-180"><path d="M6 9l6 6 6-6" /></svg></>}

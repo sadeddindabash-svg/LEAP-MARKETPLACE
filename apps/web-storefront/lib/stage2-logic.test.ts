@@ -114,17 +114,25 @@ describe("cart rules (the mobile app's cart)", () => {
 });
 
 describe("finding an address from the buyer's location (the app's rules)", () => {
-  it("CRITICAL: the street is house number and road (else the whole name), the city is the first of city, town, village, county", () => {
-    expect(suggestionFrom({ address: { house_number: "12", road: "Al Noor St", city: "Muscat", country: "Oman" } })).toEqual({ streetAddress: "12 Al Noor St", city: "Muscat", country: "Oman" });
-    expect(suggestionFrom({ address: { road: "Al Noor St", town: "Sohar", country: "Oman" } })).toEqual({ streetAddress: "Al Noor St", city: "Sohar", country: "Oman" });
-    expect(suggestionFrom({ address: { village: "V", county: "C", country: "Oman" }, display_name: "A place, V, Oman" })).toEqual({ streetAddress: "A place, V, Oman", city: "V", country: "Oman" });
-    expect(suggestionFrom({ address: { county: "C" } })).toEqual({ streetAddress: "", city: "C", country: "" });
+  it("CRITICAL: each piece in its own field: house number and road with the district as the street, the city, the region, the postcode, the country and its code", () => {
+    expect(suggestionFrom({ address: { house_number: "12", road: "Al Noor St", neighbourhood: "Al Khuwair", city: "Muscat", state: "Muscat Governorate", postcode: "133", country: "Oman", country_code: "om" } }))
+      .toEqual({ streetAddress: "12 Al Noor St, Al Khuwair", city: "Muscat", state: "Muscat Governorate", postalCode: "133", country: "Oman", countryCode: "OM" });
+    expect(suggestionFrom({ address: { road: "Al Noor St", town: "Sohar", country: "Oman" } })).toMatchObject({ streetAddress: "Al Noor St", city: "Sohar", state: "", postalCode: "" });
+    expect(suggestionFrom({ address: { road: "طريق الملك فهد", suburb: "العليا", city: "الرياض" } }, "ar")).toMatchObject({ streetAddress: "طريق الملك فهد، العليا", city: "الرياض" });
+  });
+  it("CRITICAL: with no road, the street is never the whole line again: only what is left once the city, region, postcode and country are taken out", () => {
+    expect(suggestionFrom({ address: { village: "V", county: "C", state: "S", postcode: "99", country: "Oman" }, display_name: "A place, Near the mosque, V, C, S, 99, Oman" }))
+      .toMatchObject({ streetAddress: "A place, Near the mosque", city: "V", state: "S", postalCode: "99" });
+    expect(suggestionFrom({ address: { suburb: "Al Masif", city: "Riyadh" } })).toMatchObject({ streetAddress: "Al Masif", city: "Riyadh" });
+    expect(suggestionFrom({ address: { county: "C" } })).toMatchObject({ streetAddress: "", city: "C", country: "" });
     expect(suggestionFrom({})).toBeNull();
     expect(suggestionFrom(null)).toBeNull();
   });
-  it("it is an AID: any failure (a refusal, no network, nothing found) is null, never an error", async () => {
-    const ok = (body: unknown) => (async () => ({ ok: true, json: async () => body }) as Response) as unknown as typeof fetch;
-    expect(await reverseGeocode(1, 2, ok({ address: { road: "R", city: "C", country: "Oman" } }))).toEqual({ streetAddress: "R", city: "C", country: "Oman" });
+  it("it is an AID: any failure (a refusal, no network, nothing found) is null, never an error; it asks in the page's language, at building level", async () => {
+    let asked = "";
+    const ok = (body: unknown) => (async (u: string) => { asked = u; return { ok: true, json: async () => body } as Response; }) as unknown as typeof fetch;
+    expect(await reverseGeocode(1, 2, ok({ address: { road: "R", city: "C", country: "Oman" } }), "ar")).toMatchObject({ streetAddress: "R", city: "C", country: "Oman" });
+    expect(asked).toContain("accept-language=ar"); expect(asked).toContain("zoom=18");
     expect(await reverseGeocode(1, 2, (async () => ({ ok: false }) as Response) as unknown as typeof fetch)).toBeNull();
     expect(await reverseGeocode(1, 2, (async () => { throw new Error("offline"); }) as unknown as typeof fetch)).toBeNull();
     expect(await reverseGeocode(1, 2, ok({}))).toBeNull();

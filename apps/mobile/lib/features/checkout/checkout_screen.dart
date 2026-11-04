@@ -133,10 +133,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadSavedAddresses());
     // Confirmed with the person: starts (or continues) the real
     // 60-minute checkout price lock the moment this screen loads.
-    WidgetsBinding.instance.addPostFrameCallback((_) => context.read<CartState>().lockPrices());
+    WidgetsBinding.instance.addPostFrameCallback((_) => context.read<CartState>().forCheckout.lockPrices());
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      final cart = context.read<CartState>();
+      final cart = context.read<CartState>().forCheckout;
       final expiresAt = cart.lockExpiresAt;
       if (expiresAt != null && DateTime.now().isAfter(expiresAt) && !_hasHandledExpiry) {
         _hasHandledExpiry = true;
@@ -173,7 +173,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   List<String> _stockChangedItemNames = [];
 
   Future<void> _recheckStock() async {
-    final cart = context.read<CartState>();
+    final cart = context.read<CartState>().forCheckout;
     final beforeQuantities = {for (final i in cart.items) i.productId: i.quantity};
     await cart.refresh();
     if (!mounted) return;
@@ -256,7 +256,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     super.dispose();
   }
 
-  Widget _buildLockCountdown(CartState cart) {
+  Widget _buildLockCountdown(CheckoutCart cart) {
     final expiresAt = cart.lockExpiresAt;
     if (!cart.lockActive || expiresAt == null) return const SizedBox.shrink();
     final remaining = expiresAt.difference(DateTime.now());
@@ -295,7 +295,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (code.isEmpty) return;
     setState(() { _isValidatingPromo = true; _promoMessage = null; });
     try {
-      final cart = context.read<CartState>();
+      final cart = context.read<CartState>().forCheckout;
       await cart.applyPromoCode(code);
       // Real, specific "you saved $X" confirmation -- closes a real
       // gap: only a generic "Promo applied" message existed before,
@@ -320,7 +320,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _removePromoCode() async {
-    await context.read<CartState>().removePromoCode();
+    await context.read<CartState>().forCheckout.removePromoCode();
     if (mounted) {
       setState(() {
         _promoMessage = null;
@@ -331,7 +331,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Future<void> _placeOrder() async {
     final auth = context.read<AuthState>();
-    final cart = context.read<CartState>();
+    final cart = context.read<CartState>().forCheckout;
 
     if (!auth.isLoggedIn && _guestEmailController.text.trim().isEmpty) {
       setState(() => _errorMessage = trRead(context, 'please_enter_email_order'));
@@ -507,7 +507,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           final position = await Geolocator.getCurrentPosition(
             locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium, timeLimit: Duration(seconds: 8)),
           );
-          suggested = await ApiClient().reverseGeocode(position.latitude, position.longitude);
+          suggested = await ApiClient().reverseGeocode(position.latitude, position.longitude, lang: context.read<LanguageState>().isArabic ? 'ar' : 'en');
         }
       }
     } catch (_) {
@@ -632,7 +632,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
-    final cart = context.watch<CartState>();
+    final cart = context.watch<CartState>().forCheckout;
     final isAr = context.watch<LanguageState>().isArabic;
 
     return Scaffold(

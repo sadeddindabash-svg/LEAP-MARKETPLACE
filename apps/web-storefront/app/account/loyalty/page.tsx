@@ -7,13 +7,16 @@ import { getAuthToken, useAuth } from "@/components/AuthProvider";
 import { useLang, useT } from "@/components/LangProvider";
 import { Price } from "@/components/Price";
 import { fetchLoyaltyStatus, type LoyaltyStatus } from "@/lib/api";
-import { memberLabel, tierColor, tierIcon, tierName } from "@/lib/loyalty";
+import { useCurrency } from "@/components/CurrencyProvider";
+import { memberLabel, progressFraction, tierColor, tierIcon, tierName } from "@/lib/loyalty";
 
-// My tier: where the buyer stands, what they have spent, and every tier with what unlocks it (the app's loyalty detail screen).
+// My tier (design A): the current tier on navy, its photo in a gold ring, the discount and the way to the next tier; below, every tier as a step on a gold
+// line up to where the buyer is. A tier's photo is the one the admin set (Settings -> Tiers Photos), else its icon.
 export default function LoyaltyPage() {
   const { user, isLoading } = useAuth();
   const lang = useLang();
   const t = useT();
+  const { format } = useCurrency();
   const [status, setStatus] = useState<LoyaltyStatus | null | undefined>(undefined);
   useEffect(() => {
     if (!user) return;
@@ -29,37 +32,65 @@ export default function LoyaltyPage() {
   if (!status) return <p role="alert" className="font-semibold text-[#a12a21]">{t("loyalty_not_available")}</p>;
 
   const current = status.currentTier;
+  const next = status.nextTier;
+  const tiers = status.allTiers;
+  const n = tiers.length;
+  const currentIndex = current ? tiers.findIndex((x) => String(x.id) === String(current.id)) : -1;
+  // the gold line of the steps: from the first tier's photo to the current one, plus the way already made towards the next
+  const reached = n > 1 && currentIndex >= 0 ? Math.min((currentIndex + (next ? progressFraction(status) : 0)) / (n - 1), 1) : 0;
+  const lineInset = n > 0 ? `${50 / n}%` : "0";
   return (
     <div className="grid gap-6">
       <h1 className="text-3xl font-bold tracking-tight text-navy">{t("loyalty_my_tier_title")}</h1>
       {current && (
-        <section className="flex items-center gap-4 rounded-[14px] border border-line bg-white p-5" aria-label={t("loyalty_my_tier_title")}>
-          <TierBadge icon={tierIcon(current.icon)} color={tierColor(current.color)} size={56} />
-          <div>
-            <p className="text-xl font-bold">{memberLabel(lang, tierName(lang, current), t("loyalty_membership_word"))}</p>
-            <p className="text-muted">{current.discountPercentage > 0 ? `${current.discountPercentage}% ${t("loyalty_off_every_order")}` : t("loyalty_spend_more")}</p>
-            <p className="mt-1 text-sm font-semibold text-muted">{t("loyalty_lifetime_spend")}: <Price usd={status.lifetimeSpend} /></p>
+        <section className="flex flex-wrap items-center gap-5 rounded-[16px] bg-gradient-to-br from-navy to-[#173f57] p-6 text-white" aria-label={t("loyalty_my_tier_title")}>
+          <span className="grid flex-none place-items-center rounded-full bg-white p-1.5 ring-4 ring-signal">
+            <TierBadge icon={tierIcon(current.icon)} color={tierColor(current.color)} photoUrl={current.photoUrl} size={70} />
+          </span>
+          <div className="min-w-[220px] flex-1">
+            <p className="text-[22px] font-extrabold leading-tight">{memberLabel(lang, tierName(lang, current), t("loyalty_membership_word"))}</p>
+            <p className="font-bold text-signal">{current.discountPercentage > 0 ? `${current.discountPercentage}% ${t("loyalty_off_every_order")}` : t("loyalty_spend_more")}</p>
+            {next ? (
+              <>
+                <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-white/15" role="progressbar" aria-label={t("loyalty_more_to_reach", { amount: format(status.amountToNextTier ?? 0), tier: tierName(lang, next) })} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progressFraction(status) * 100)}>
+                  <div className="h-full rounded-full bg-signal" style={{ width: `${progressFraction(status) * 100}%` }} />
+                </div>
+                <p className="mt-1.5 flex flex-wrap justify-between gap-x-4 gap-y-1 text-[13px] text-[#c7d4de]">
+                  <span>{t("loyalty_lifetime_spend")}: <Price usd={status.lifetimeSpend} /></span>
+                  <span>{t("loyalty_more_to_reach", { amount: format(status.amountToNextTier ?? 0), tier: tierName(lang, next) })}</span>
+                </p>
+              </>
+            ) : (
+              <p className="mt-2 text-[13px] text-[#c7d4de]">{t("loyalty_lifetime_spend")}: <Price usd={status.lifetimeSpend} /> · {t("loyalty_top_tier")}</p>
+            )}
           </div>
         </section>
       )}
-      <section aria-labelledby="all-tiers">
-        <h2 id="all-tiers" className="mb-3 text-xs font-extrabold uppercase tracking-widest text-[#8a6100]">{t("loyalty_all_tiers")}</h2>
-        <ul className="grid gap-2.5">
-          {status.allTiers.map((tier) => {
-            const isCurrent = current?.id === tier.id;
-            const color = tierColor(tier.color);
-            return (
-              <li key={tier.id} aria-current={isCurrent ? "true" : undefined} className="flex items-center gap-3 rounded-xl border-[1.5px] bg-white p-4" style={{ borderColor: isCurrent ? color : undefined, backgroundColor: isCurrent ? `${color}1a` : undefined }}>
-                <TierBadge icon={tierIcon(tier.icon)} color={isCurrent ? color : "#53636f"} size={36} />
-                <div className="min-w-0 flex-1">
-                  <p className={isCurrent ? "font-bold" : "font-medium"}>{tierName(lang, tier)}{tier.discountPercentage > 0 ? ` — ${tier.discountPercentage}% ${t("loyalty_off_suffix")}` : ""}</p>
-                  <p className="text-xs text-muted">{t("loyalty_unlocked_at")} <Price usd={tier.spendThreshold} />+</p>
-                </div>
-                {isCurrent && <span aria-hidden="true" style={{ color }}>✓</span>}
-              </li>
-            );
-          })}
-        </ul>
+      <section aria-labelledby="all-tiers" className="rounded-[16px] border border-line bg-white p-5">
+        <h2 id="all-tiers" className="mb-4 text-xs font-extrabold uppercase tracking-widest text-[#8a6100]">{t("loyalty_all_tiers")}</h2>
+        <div className="overflow-x-auto">
+          <div className="relative" style={{ minWidth: n * 104 }}>
+            {n > 1 && <span aria-hidden="true" className="absolute top-[23px] h-[3px] rounded-full bg-[#e3e9ee]" style={{ insetInlineStart: lineInset, insetInlineEnd: lineInset }} />}
+            {n > 1 && <span aria-hidden="true" data-testid="tier-line-reached" className="absolute top-[23px] h-[3px] rounded-full bg-signal" style={{ insetInlineStart: lineInset, width: `calc((100% - ${100 / n}%) * ${reached})` }} />}
+          <ol className="relative grid" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
+            {tiers.map((tier, i) => {
+              const isCurrent = i === currentIndex;
+              const locked = currentIndex >= 0 && i > currentIndex;
+              return (
+                <li key={tier.id} aria-current={isCurrent ? "true" : undefined} data-state={isCurrent ? "current" : locked ? "locked" : "reached"} className="relative flex flex-col items-center px-1 text-center">
+                  {/* a tier still ahead keeps its own colours (its photo as the admin set it), only a little faded */}
+                  <span className={`rounded-full bg-white p-0.5 ${locked ? "opacity-60" : ""}`}>
+                    <TierBadge icon={tierIcon(tier.icon)} color={tierColor(tier.color)} photoUrl={tier.photoUrl} size={45} />
+                  </span>
+                  <p className={`mt-1.5 font-extrabold ${isCurrent ? "text-navy" : locked ? "text-muted" : "text-ink"}`}>{tierName(lang, tier)}</p>
+                  <p className="text-xs text-muted">{tier.discountPercentage > 0 ? `${tier.discountPercentage}% · ` : ""}<Price usd={tier.spendThreshold} />+</p>
+                  {isCurrent && <span className="mt-1.5 rounded-full bg-signal px-2.5 py-0.5 text-[11.5px] font-extrabold text-navy">{t("loyalty_you_are_here")}</span>}
+                </li>
+              );
+            })}
+          </ol>
+          </div>
+        </div>
       </section>
     </div>
   );

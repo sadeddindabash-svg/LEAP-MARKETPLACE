@@ -1107,4 +1107,19 @@ router.get('/export', requireAuth, requireRole('admin'), requirePageAccess('vehi
   }
 });
 
+// One vehicle YEAR with the model and brand it belongs to: the website's car filter shows "Changan / CS75 / 2022" for a car that arrives as a year only (the garage car).
+router.get('/generations/:generationId', async (req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      'SELECT g.id, g.model_id, g.name, g.year_start, g.year_end, m.brand_id FROM vehicle_generations g JOIN vehicle_models m ON m.id = g.model_id WHERE g.id = $1',
+      [req.params.generationId]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Vehicle year not found' });
+    const r = rows[0];
+    res.json({ id: r.id, modelId: r.model_id, brandId: r.brand_id, name: r.name, yearStart: r.year_start, yearEnd: r.year_end });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

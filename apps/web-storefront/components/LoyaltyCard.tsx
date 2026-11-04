@@ -2,13 +2,18 @@
 
 import { useEffect, useState } from "react";
 import Link from "@/components/LocLink";
-import { fetchLoyaltyStatus, type LoyaltyStatus } from "@/lib/api";
+import { fetchLoyaltyStatus, resolveImageUrl, type LoyaltyStatus } from "@/lib/api";
 import { memberLabel, progressFraction, tierColor, tierIcon, tierName, type TierIcon } from "@/lib/loyalty";
 import { getAuthToken } from "./AuthProvider";
 import { useLang, useT } from "./LangProvider";
 import { Price } from "./Price";
 
-export function TierBadge({ icon, color, size = 44 }: { icon: TierIcon; color: string; size?: number }) {
+/** A tier's picture: the photo the admin set (Settings -> Tiers Photos), else its icon on a circle of its colour. */
+export function TierBadge({ icon, color, size = 44, photoUrl }: { icon: TierIcon; color: string; size?: number; photoUrl?: string | null }) {
+  if (photoUrl) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={resolveImageUrl(photoUrl)} alt="" aria-hidden="true" width={size} height={size} className="flex-none rounded-full object-cover" style={{ width: size, height: size }} />;
+  }
   const paths: Record<TierIcon, string> = {
     award: "M12 14a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM8.5 13.5L7 21l5-3 5 3-1.5-7.5",
     diamond: "M6 4h12l4 6-10 11L2 10l4-6zM2 10h20",
@@ -41,7 +46,7 @@ export default function LoyaltyCard() {
   return (
     <section className="rounded-[14px] border border-line bg-white p-5" aria-labelledby="loy-h">
       <div className="flex items-center gap-4">
-        <TierBadge icon={tierIcon(tier.icon)} color={color} />
+        <TierBadge icon={tierIcon(tier.icon)} color={color} photoUrl={tier.photoUrl} size={55} />
         <div className="min-w-0 flex-1">
           <h2 id="loy-h" className="text-lg font-bold">{memberLabel(lang, tierName(lang, tier), t("loyalty_membership_word"))}</h2>
           <p className="text-sm text-muted">{tier.discountPercentage > 0 ? `${tier.discountPercentage}% ${t("loyalty_off_every_order")}` : t("loyalty_keep_spending")}</p>

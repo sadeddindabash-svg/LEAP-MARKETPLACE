@@ -31,7 +31,7 @@ describe("the switch is on Banner", () => {
     const kids = [...hero.children]; expect(kids.indexOf(screen.getByTestId("home-banner"))).toBeLessThan(kids.indexOf(screen.getByTestId("finder")));
   });
   it("two equal columns on a computer, stretched to the height of the finder box, with a smaller gap; the section is still named by the h1", async () => {
-    m.banner.current = banner(); const { hero } = await show(); expect(hero.className).toContain("lg:grid-cols-2"); expect(hero.className).toContain("lg:items-stretch"); expect(hero.className).toContain("gap-6"); expect(hero.className).not.toContain("1.1fr"); expect(hero.getAttribute("aria-labelledby")).toBe("home-h1");
+    m.banner.current = banner(); const { hero } = await show(); expect(hero.className).toContain("lg:grid-cols-2"); expect(hero.className).toContain("lg:items-stretch"); expect(hero.className).toContain("gap-5"); expect(hero.className).not.toContain("1.1fr"); expect(hero.getAttribute("aria-labelledby")).toBe("home-h1");
   });
   it("the photos are the English ones on the English site, with their photo addresses made absolute", async () => { m.banner.current = banner(); await show(); const srcs = [...screen.getByTestId("home-banner-strip").querySelectorAll("img")].map((i) => decodeURIComponent(i.getAttribute("src") || "")); expect(srcs.some((s) => s.includes("https://api.example.com/uploads/a-en.png"))).toBe(true); expect(srcs.some((s) => s.includes("-ar.png"))).toBe(false); });
   it("on the Arabic site the Arabic photos are used, and a slide with only an English photo still shows (its English photo)", async () => {

@@ -1,17 +1,17 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { availableCurrencies, detectCurrency, formatPrice, type Rates } from "@/lib/currency";
+import { availableCurrencies, convertUsd, detectCurrency, formatPrice, type Rates } from "@/lib/currency";
 import { fetchDisplayRates } from "@/lib/api";
 import { useLang } from "./LangProvider";
 
 const KEY = "leap_currency";
 const EVENT = "leap-currency";
 
-interface CurrencyValue { code: string; available: string[]; setCurrency: (code: string) => void; format: (usd: number) => string }
+interface CurrencyValue { code: string; available: string[]; setCurrency: (code: string) => void; format: (usd: number) => string; /** How many of the shown currency one dollar is (1 for dollars): to turn an amount the buyer typed back into dollars. */ rate: number }
 
 // Without a provider (a test, an isolated component) prices simply show in US dollars.
-const CurrencyContext = createContext<CurrencyValue>({ code: "USD", available: ["USD"], setCurrency: () => {}, format: (usd) => formatPrice(usd, "USD", {}, "en") });
+const CurrencyContext = createContext<CurrencyValue>({ code: "USD", available: ["USD"], setCurrency: () => {}, format: (usd) => formatPrice(usd, "USD", {}, "en"), rate: 1 });
 
 function subscribe(onChange: () => void) {
   window.addEventListener("storage", onChange);
@@ -44,6 +44,7 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
       available,
       setCurrency: (next) => { try { localStorage.setItem(KEY, next); } catch { /* private mode: the choice just is not remembered */ } window.dispatchEvent(new Event(EVENT)); },
       format: (usd) => formatPrice(usd, code, rates, lang),
+      rate: convertUsd(1, code, rates) ?? 1,
     };
   }, [rates, choice, locale, lang]);
 

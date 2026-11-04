@@ -10,6 +10,9 @@ const messages = require('../notifications/messages');
 const { getReturnAddress } = require('../supplierReturnAddress/helpers');
 const { getHubAddressRow } = require('../addressEnglish/helpers');
 const deliveryProof = require('../deliveryProof/helpers');
+const inspection = require('../inspection/service');
+const draftPhotos = require('../draftPhotos/service');      // the photos being added for a step, shared by the portal and the app (migration 130)      // the inspection list (migration 129)
+const parcelCosts = require('../parcelCosts/service');      // the Shipping cost step (migration 127)
 
 const DAMAGE_TYPES = ['physical_damage', 'water_damage', 'missing_parts', 'wrong_item', 'other'];
 const { deliveryNotificationEmail, shippingNotificationEmail } = require('../email/templates');
@@ -459,6 +462,15 @@ router.get('/me/shipments', requireAuth, requireRole('hub_staff'), async (req, r
   }
 });
 
+// The last step of a delivered parcel, "Delivered", for the hub's history: when and how it was confirmed (the courier link with the buyer's code).
+function deliveredStep(row, proof) {
+  return {
+    id: `delivered-${row.id}`, step: 'delivered', notes: null, trackingNumber: null, damageType: null,
+    performedBy: proof && proof.driver && proof.driver.name ? proof.driver.name : null, createdAt: row.delivered_at,
+    photos: proof ? proof.photos.map((p) => p.url) : [],
+  };
+}
+
 router.get('/me/shipments/:id', requireAuth, requireRole('hub_staff'), async (req, res, next) => {
   try {
     const { rows } = await db.query(
@@ -472,7 +484,7 @@ router.get('/me/shipments/:id', requireAuth, requireRole('hub_staff'), async (re
     if (rows.length === 0) return res.status(404).json({ error: 'Shipment not found' });
 
     const { rows: items } = await db.query(
-      `SELECT oli.product_id, oli.quantity, oli.received_quantity, p.name, p.part, p.position, p.oem_number
+      `SELECT oli.product_id, oli.quantity, oli.received_quantity, oli.inspection_checks, p.name, p.part, p.position, p.oem_number
        FROM order_line_items oli JOIN products p ON p.id = oli.product_id
        WHERE oli.sub_order_id = $1`,
       [rows[0].sub_order_id]
@@ -494,6 +506,8 @@ router.get('/me/shipments/:id', requireAuth, requireRole('hub_staff'), async (re
         position: i.position,
         oemNumber: i.oem_number,
         attributes: attrRows.map((a) => ({ name: a.attribute_name, value: a.attribute_value })),
+        // the inspection list (migration 129): the same lines on the hub portal and the hub app, and the ones already ticked
+        ...inspection.inspectionFields(i, attrRows),
       };
     }));
 
@@ -542,6 +556,7 @@ router.get('/me/shipments/:id', requireAuth, requireRole('hub_staff'), async (re
       : null;
 
     const events = await attachEventsAndPhotos(rows[0]);
+    const proof = await deliveryProof.loadProofForShipment(rows[0].id, { forAdmin: true });
 
     res.json({
       id: rows[0].id, status: rows[0].status, createdAt: rows[0].created_at, updatedAt: rows[0].updated_at,
@@ -549,6 +564,7 @@ router.get('/me/shipments/:id', requireAuth, requireRole('hub_staff'), async (re
       // Outcome of a flag once an admin has resolved it (migration 090); null until then. The admin's
       // internal note (resolution_notes) is deliberately NOT included: hub staff need the outcome, not
       // the platform's private remarks.
+      draftPhotos: await draftPhotos.listFor(db, rows[0].id),      // the photos being added for the next step, a flag, or a fault return (migration 130)
       resolution: rows[0].resolution, resolvedAt: rows[0].resolved_at,
       faultCase: await (async () => {
         const { rows: fc } = await db.query('SELECT * FROM fault_cases WHERE shipment_id = $1', [rows[0].id]);
@@ -558,9 +574,11 @@ router.get('/me/shipments/:id', requireAuth, requireRole('hub_staff'), async (re
       items: itemsWithAttributes,
       deliveryAddress,
       replacementFor: replacementRows[0] ? replacementRows[0].replacement_of : null, // the order the buyer paid for, or null for a normal shipment
-      events,
+      // ending with "Delivered" once the delivery is confirmed with the buyer's code (the hub no longer confirms it itself)
+      events: rows[0].status === 'delivered' && rows[0].delivered_at ? [...events, deliveredStep(rows[0], proof)] : events,
+      deliveredAt: rows[0].delivered_at || null, deliveryConfirmedBy: rows[0].delivery_confirmed_by || null,
       // proof of delivery from the partner driver and every "couldn't deliver" (migration 120); the buyer's code is never shown to the hub
-      deliveryProof: await deliveryProof.loadProofForShipment(rows[0].id, { forAdmin: true }),
+      deliveryProof: proof,
       deliveryAttempts: await deliveryProof.loadAttemptsForShipment(rows[0].id),
     });
   } catch (err) {
@@ -630,101 +648,24 @@ router.get('/me/shipments/:id/address-label', requireAuth, requireRole('hub_staf
     let proofLink = null;
     try { proofLink = await deliveryProof.ensureProofLink(rows[0].id); } catch (linkErr) { console.error('Could not create the courier link for the label (non-fatal):', linkErr.message); }
 
-    const doc = new PDFDocument({ margin: 40, size: 'A5' });
+    // The label (design C, see ./addressLabelPdf.js): 4×6 in, black and white, only what the driver needs; the driver's link as a big QR only
+    // (it is no longer printed as text).
+    const { SIZE, drawAddressLabel } = require('./addressLabelPdf');
+    const labelLogoPath = path.join(__dirname, '../../../assets/leap-logo-label.png');      // the Leap circle in black and white
+    let qr = null;
+    if (proofLink) {
+      try { qr = require('qrcode').create(proofLink.url, { errorCorrectionLevel: 'M' }); } catch (qrErr) { console.error('Could not make the courier QR for the label (non-fatal):', qrErr.message); }
+    }
+    const doc = new PDFDocument({ margin: 0, size: SIZE });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="LEAP-address-${rows[0].order_id}.pdf"`);
     doc.pipe(res);
-
-    doc.registerFont('ArabicCapable', regularFontPath);
-    doc.registerFont('ArabicCapable-Bold', boldFontPath);
-
-    const pageLeft = doc.page.margins.left;
-    const pageRight = doc.page.width - doc.page.margins.right;
-    const pageWidth = pageRight - pageLeft;
-
-    // Confirmed with the person, design #3: logo + brand name header,
-    // same real positioning pattern already established in
-    // order/routes.js's own receipt (doc.image() doesn't advance
-    // doc.y the way doc.text() does, so the brand name is positioned
-    // relative to a captured real headerTop, not doc.y afterward).
-    const headerTop = doc.y;
-    doc.image(logoPath, pageLeft, headerTop, { width: 32, height: 32 });
-    doc.font('ArabicCapable-Bold').fontSize(16).fillColor('#000').text('Leap Auto Parts', pageLeft + 40, headerTop + 6, { width: pageWidth - 40 });
-    doc.y = headerTop + 32 + 14;
-
-    // Confirmed with the person, design #3: the whole card in a
-    // bordered box -- height reserved up front since pdfkit can't
-    // stroke a rect sized to content added after it.
-    const cardTop = doc.y;
-    const rowHeight = 28;
-    const col1Rows = 4;
-    const col2Rows = addr.country === 'Saudi Arabia' && addr.national_address ? 6 : 5;
-    const cardHeight = 20 + Math.max(col1Rows, col2Rows) * rowHeight;
-    doc.rect(pageLeft, cardTop, pageWidth, cardHeight).lineWidth(1.5).strokeColor('#000').stroke();
-
-    const colPad = 14;
-    const col1X = pageLeft + colPad;
-    const dividerX = pageLeft + pageWidth / 2;
-    const col2X = dividerX + colPad;
-    const colWidth = pageWidth / 2 - colPad * 1.5;
-    doc.moveTo(dividerX, cardTop + 10).lineTo(dividerX, cardTop + cardHeight - 10).strokeColor('#E4E6EA').lineWidth(1).stroke();
-
-    // Confirmed with the person, design #3: label above value, same
-    // real column pair repeated per field -- keeps every row's real
-    // baseline aligned across both columns regardless of value length.
-    function fieldRow(x, y, label, value) {
-      doc.font('ArabicCapable').fontSize(8).fillColor('#888').text(label, x, y, { width: colWidth });
-      doc.font('ArabicCapable-Bold').fontSize(10).fillColor('#000').text(value || '—', x, y + 10, { width: colWidth });
-    }
-
-    let y = cardTop + 12;
-    fieldRow(col1X, y, 'ORDER', rows[0].order_id);
-    fieldRow(col2X, y, 'COUNTRY', addr.country);
-    y += rowHeight;
-    fieldRow(col1X, y, 'SHIPMENT', `${shipmentIndex} of ${totalShipments}`);
-    fieldRow(col2X, y, 'STATE', addr.state);
-    y += rowHeight;
-    fieldRow(col1X, y, 'CONSIGNEE', addr.recipient_name);
-    fieldRow(col2X, y, 'CITY', addr.city);
-    y += rowHeight;
-    fieldRow(col1X, y, 'PHONE', addr.phone);
-    fieldRow(col2X, y, 'STREET', addr.street_address);
-    y += rowHeight;
-    fieldRow(col2X, y, 'POSTAL CODE', addr.postal_code);
-    // Confirmed with the person: Address Code (Saudi National
-    // Address) only ever shown for a genuine Saudi Arabia address --
-    // never a fabricated row for anywhere else.
-    if (addr.country === 'Saudi Arabia' && addr.national_address) {
-      y += rowHeight;
-      fieldRow(col2X, y, 'ADDRESS CODE', addr.national_address);
-    }
-
-    // The COURIER's QR (migration 096): scanned at the door, it opens a page to send a delivery photo, which confirms delivery. It is only a
-    // convenience: if anything about it fails the label is still produced without it.
-    try {
-      if (!proofLink) throw new Error('no courier link');
-      const link = proofLink;
-      const QRCode = require('qrcode');
-      const qr = QRCode.create(link.url, { errorCorrectionLevel: 'M' });
-      const cells = qr.modules.size;
-      const cell = 2.6;
-      const qrSize = cells * cell;
-      const qrTop = cardTop + cardHeight + 16;
-      const qrLeft = pageLeft;
-      doc.rect(qrLeft - 4, qrTop - 4, qrSize + 8, qrSize + 8).fillColor('#fff').fill();
-      for (let r = 0; r < cells; r += 1) {
-        for (let c = 0; c < cells; c += 1) {
-          if (qr.modules.get(r, c)) doc.rect(qrLeft + c * cell, qrTop + r * cell, cell, cell).fillColor('#000').fill();
-        }
-      }
-      const textLeft = qrLeft + qrSize + 16;
-      doc.font('ArabicCapable-Bold').fontSize(10).fillColor('#000').text('FOR THE DELIVERY DRIVER', textLeft, qrTop, { width: pageRight - textLeft });
-      doc.font('ArabicCapable').fontSize(8.5).fillColor('#333').text("Scan, take a photo and ask the buyer for their 4-digit code, face to face. This confirms the parcel was delivered.", textLeft, doc.y + 2, { width: pageRight - textLeft });
-      doc.font('ArabicCapable').fontSize(6.5).fillColor('#888').text(link.url, textLeft, doc.y + 4, { width: pageRight - textLeft });
-    } catch (qrErr) {
-      console.error('Could not add the courier QR to the label (non-fatal):', qrErr.message);
-    }
-
+    drawAddressLabel(doc, {
+      orderId: rows[0].order_id, parcel: [shipmentIndex, totalShipments], name: addr.recipient_name, phone: addr.phone,
+      addressLines: [addr.street_address, [addr.city, addr.state, addr.postal_code].filter(Boolean).join(', '), addr.country].filter(Boolean),
+      addressCode: addr.country === 'Saudi Arabia' ? addr.national_address : null, qr,
+      logoPath: fs.existsSync(labelLogoPath) ? labelLogoPath : null, fonts: { arabicRegular: regularFontPath, arabicBold: boldFontPath },
+    }, require('bidi-js')());
     doc.end();
   } catch (err) {
     next(err);
@@ -753,6 +694,33 @@ router.patch('/me/shipments/:id/items/:productId/received', requireAuth, require
     if (updated.length === 0) return res.status(404).json({ error: 'Item not found on this shipment' });
     res.json({ productId: req.params.productId, receivedQuantity });
   } catch (err) {
+    next(err);
+  }
+});
+
+// POST /hub/me/shipments/:id/draft-photos/add | remove  { purpose: 'step' | 'flag' | 'fault_return', url } -- an evidence photo added to (or taken
+// off) the form being filled in, kept until the step is confirmed, so the hub portal and the hub app show the same photos (migration 130).
+// Answers { draftPhotos: { step, flag, fault_return } }.
+for (const action of ['add', 'remove']) {
+  router.post(`/me/shipments/:id/draft-photos/${action}`, requireAuth, requireRole('hub_staff'), async (req, res, next) => {
+    try {
+      const { purpose, url } = req.body || {};
+      const list = await draftPhotos[action](db, { shipmentId: req.params.id, hubId: req.user.hubId, userId: req.user.sub, purpose, url });
+      res.json({ draftPhotos: list });
+    } catch (err) {
+      if (err instanceof draftPhotos.DraftPhotoError) return res.status(err.status).json({ error: err.message });
+      next(err);
+    }
+  });
+}
+
+// PUT /hub/me/shipments/:id/items/:productId/checks  { checked: [key, ...] } -- the inspection list's ticks for one item (migration 129), while
+// the shipment is being inspected (opened). Answers { productId, checkedKeys }.
+router.put('/me/shipments/:id/items/:productId/checks', requireAuth, requireRole('hub_staff'), async (req, res, next) => {
+  try {
+    res.json(await inspection.saveChecks(db, { shipmentId: req.params.id, hubId: req.user.hubId, productId: req.params.productId, checked: (req.body || {}).checked }));
+  } catch (err) {
+    if (err instanceof inspection.InspectionError) return res.status(err.status).json({ error: err.message, code: err.code });
     next(err);
   }
 });
@@ -787,6 +755,32 @@ router.post('/me/shipments/:id/events', requireAuth, requireRole('hub_staff'), a
       return res.status(404).json({ error: 'Shipment not found' });
     }
     const shipment = shipCheck.rows[0];
+
+    // The parcel's real shipping cost (migration 127) must be recorded -- and, when it is dearer than planned, approved by an admin -- before it ships.
+    if (step === 'shipped_to_buyer') {
+      const cost = await parcelCosts.shipCheck(client, shipment.id);
+      if (!cost.allowed) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: cost.error, code: cost.code });
+      }
+    }
+
+    // The inspection list (migration 129): every line ticked and every item's received quantity entered, and equal to the order -- a different
+    // quantity is flagged, and goes on only after Leap reviewed the flag and chose to continue.
+    if (step === 'inspected') {
+      const ok = await inspection.inspectCheck(client, shipment);
+      if (!ok.allowed) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: ok.error, code: ok.code, gaps: ok.gaps });
+      }
+    }
+
+    // The supplier's striped "hub use only" label must be removed or fully covered before the parcel is packed for the buyer, so a delivery driver
+    // never scans the wrong code. ALLOW_TEST_SHORTCUTS=true in services/api/.env (automated tests only) skips it.
+    if (step === 'packed' && (req.body || {}).supplierLabelCovered !== true && process.env.ALLOW_TEST_SHORTCUTS !== 'true') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: "Remove the supplier's striped \"hub use only\" label, or cover it fully with the delivery label, and tick it before \"Confirm Packed\".", code: 'supplier_label_not_covered' });
+    }
 
     let returnNotifications = [];
     if (step === 'flagged') {
@@ -830,6 +824,7 @@ router.post('/me/shipments/:id/events', requireAuth, requireRole('hub_staff'), a
     for (let i = 0; i < photos.length; i++) {
       await client.query('INSERT INTO hub_shipment_photos (event_id, url, sort_order) VALUES ($1, $2, $3)', [eventId, photos[i], i]);
     }
+    await draftPhotos.clearFor(client, shipment.id);      // the photos now belong to this step's event (migration 130)
     await client.query('UPDATE hub_shipments SET status = $1, updated_at = now() WHERE id = $2', [step, shipment.id]);
 
     // Real, automatic return-case creation on a real flag (new) --
@@ -924,6 +919,11 @@ router.post('/me/shipments/:id/events', requireAuth, requireRole('hub_staff'), a
 // 'shipped_to_buyer' -- there's no real "delivered" without a real
 // completed final leg first.
 router.patch('/me/shipments/:id/confirm-delivery', requireAuth, requireRole('hub_staff'), async (req, res, next) => {
+  // Delivery is confirmed only with the buyer's code (the courier link): the hub can no longer mark a parcel delivered.
+  // ALLOW_TEST_MANUAL_DELIVERY=true in services/api/.env keeps the old way, for automated tests only.
+  if (process.env.ALLOW_TEST_MANUAL_DELIVERY !== 'true') {
+    return res.status(403).json({ error: "Delivery is confirmed only with the buyer's code: the driver scans the parcel's QR code and enters the code the buyer gives him. The hub cannot mark a parcel delivered.", code: 'delivery_by_buyer_code_only' });
+  }
   const { deliveryNote } = req.body || {};
   if (!deliveryNote || !deliveryNote.trim()) {
     return res.status(400).json({ error: 'A short note is required when manually confirming delivery yourself (e.g. why real carrier tracking didn\'t confirm it).' });

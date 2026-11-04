@@ -19,12 +19,12 @@ const useful = () => within(screen.getByRole("navigation", { name: /Useful links
 beforeEach(() => { m.footer.current = null; });
 
 describe("the website's own footer (nothing set, or the shop cannot be reached)", () => {
-  it("shows its own tagline, the year in the copyright, and the six links to the existing website (the privacy page at its real, old address)", async () => {
+  it("shows its own tagline, the year in the copyright, and the six links to the pages inside this website", async () => {
     await show(); const year = new Date().getFullYear();
     expect(screen.getByText("Real parts, direct from verified suppliers.")).toBeInTheDocument(); expect(screen.getByText(`Copyright © Leap Auto Parts ${year}`)).toBeInTheDocument(); expect(screen.queryByRole("list", { name: "Follow us" })).not.toBeInTheDocument();
-    const hrefs = useful().getAllByRole("link").map((a) => a.getAttribute("href")); expect(hrefs).toEqual(["about-us", "terms-conditions", "delivery-shipping-policy", "refund-policy", "privecy-policy", "cancellation-replacement-policy"].map((s) => `https://www.leapautoparts.com/${s}`));
+    const hrefs = useful().getAllByRole("link").map((a) => a.getAttribute("href")); expect(hrefs).toEqual(["/about-us", "/terms-conditions", "/delivery-shipping-policy", "/refund-policy", "/privacy-policy", "/cancellation-replacement-policy"]);
   });
-  it("Arabic: the Arabic website's addresses", async () => { await show("ar"); expect(useful().getAllByRole("link")[0].getAttribute("href")).toBe("https://www.leapautoparts.com/ar/about-us"); });
+  it("Arabic: the pages keep the /ar language prefix", async () => { await show("ar"); expect(useful().getAllByRole("link")[0].getAttribute("href")).toBe("/ar/about-us"); });
 });
 describe("the admin's wording", () => {
   it("tagline, copyright (with the year filled in), the four column titles and the link wording, per language", async () => {
@@ -47,9 +47,9 @@ describe("the admin's wording", () => {
   });
 });
 describe("the six links", () => {
-  it("a page that has text opens INSIDE the storefront (same tab); a page without text still goes to the old website", async () => {
+  it("every page opens INSIDE the storefront (same tab), with text or not yet", async () => {
     m.footer.current = footer({ pages: { about: true, privacy: true } }); await show(); const a = useful().getAllByRole("link");
-    expect(a[0].getAttribute("href")).toBe("/about-us"); expect(a[4].getAttribute("href")).toBe("/privacy-policy"); expect(a[1].getAttribute("href")).toBe("https://www.leapautoparts.com/terms-conditions"); expect(a[0].getAttribute("target")).toBeNull();
+    expect(a[0].getAttribute("href")).toBe("/about-us"); expect(a[4].getAttribute("href")).toBe("/privacy-policy"); expect(a[1].getAttribute("href")).toBe("/terms-conditions"); expect(a[0].getAttribute("target")).toBeNull();
   });
   it("in Arabic the page links keep the /ar language prefix", async () => { m.footer.current = footer({ pages: { terms: true } }); await show("ar"); expect(useful().getAllByRole("link")[1].getAttribute("href")).toBe("/ar/terms-conditions"); });
   it("when all six have text, none points to the old website", async () => {

@@ -48,3 +48,16 @@ describe("equal columns, centered, and the phone", () => {
   });
   it("the table scrolls only if it must, and the whole thing is still inside its rounded frame", async () => { const { container } = await show("a,b,c,d"); expect(container.querySelector("div.overflow-x-auto")!.contains(container.querySelector("table"))).toBe(true); });
 });
+
+describe("the new look: gold labels, the best in a row, add and remove", () => {
+  it("the row names are small gold labels; the cheapest part has the gold Lowest price tag (none when all cost the same)", async () => {
+    let v = await show("a,b"); for (const th of v.container.querySelectorAll("tbody th")) expect(th.className).toContain("text-[#8a6100]");
+    expect(v.container.querySelector('[data-testid="compare-best"]')).toBeNull(); v.unmount();
+  });
+  it("each part has Add to cart and a Remove link to the same comparison without it", async () => {
+    const { container } = await show("a,b,c");
+    const heads = [...container.querySelectorAll("thead th")];
+    expect(heads[0].querySelector("button")!.textContent).toBe("Add to cart");
+    expect([...heads[1].querySelectorAll("a")].find((a) => a.textContent === "Remove")!.getAttribute("href")).toBe("/compare?ids=a,c");
+  });
+});

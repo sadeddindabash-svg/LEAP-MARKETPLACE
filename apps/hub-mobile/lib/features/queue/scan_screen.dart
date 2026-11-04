@@ -38,6 +38,13 @@ class _ScanScreenState extends State<ScanScreen> {
     super.dispose();
   }
 
+  /// The supplier's label QR is a link ending in /h/<shipment> (so a driver who scans it gets "not the delivery label"); older labels hold just
+  /// the number. Both open the shipment.
+  static String _shipmentIdFrom(String raw) {
+    final m = RegExp(r'/h/([A-Za-z0-9_-]+)/?$').firstMatch(raw);
+    return m != null ? m.group(1)! : raw;
+  }
+
   void _handleDetection(BarcodeCapture capture) {
     if (_hasHandledScan) return; // real, deliberate debounce -- a single
     // camera frame can report the same real code multiple times in a
@@ -50,7 +57,7 @@ class _ScanScreenState extends State<ScanScreen> {
 
     _hasHandledScan = true;
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => ShipmentDetailScreen(shipmentId: rawValue.trim())),
+      MaterialPageRoute(builder: (_) => ShipmentDetailScreen(shipmentId: _shipmentIdFrom(rawValue.trim()))),
     );
   }
 

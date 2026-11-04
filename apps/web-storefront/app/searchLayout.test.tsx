@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 
-// The products page: no left column, the vehicle in a strip ABOVE the results, four columns, and the chosen section as a chip that clears it.
+// The products page: no left column; the title, the car and ONE bar of filters above the results; four columns; the sort, price and delivery filters reach the server.
 const m = vi.hoisted(() => ({ lang: { current: "en" as "en" | "ar" } }));
 vi.mock("@/lib/lang", () => ({ getLang: vi.fn(async () => m.lang.current) }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), useSearchParams: () => new URLSearchParams(), usePathname: () => "/search" }));
@@ -9,8 +9,9 @@ vi.mock("@/components/AuthProvider", () => ({ useAuth: () => ({ user: null, isLo
 vi.mock("@/lib/api", () => ({
   fetchCategories: vi.fn(async () => [{ id: "brake", nameEn: "Brake System", nameAr: "نظام الفرامل", photoUrl: null, sortOrder: 1, commissionPercent: 10 }]),
   fetchProductsPaginated: vi.fn(async () => ({ items: [{ id: "p1", name: "Front Brake Disc" }], total: 1 })),
+  fetchVehicleBrands: vi.fn(async () => []), fetchModelsForBrand: vi.fn(async () => []), fetchGenerationsForModel: vi.fn(async () => []), fetchGeneration: vi.fn(async () => null),
+  fetchPartsForCategory: vi.fn(async () => [{ id: "pt1", categoryId: "brake", nameEn: "Front Brake Disc", nameAr: "قرص فرامل أمامي", sortOrder: 1 }]),
 }));
-vi.mock("@/components/VehicleFilter", () => ({ VehicleFilter: () => <div data-testid="vehicle-filter" /> }));
 vi.mock("@/components/FitsMyCarToggle", () => ({ default: () => <div data-testid="fits-toggle" /> }));
 vi.mock("@/components/InfiniteProductGrid", () => ({ default: ({ gridClassName }: { gridClassName: string }) => <div data-testid="results" className={gridClassName} /> }));
 
@@ -29,16 +30,16 @@ describe("the products page layout", () => {
     expect(container.querySelector("aside")).toBeNull();
     expect(screen.queryByRole("heading", { name: "Category" })).not.toBeInTheDocument(); expect(screen.queryByRole("link", { name: "Brake System" })).not.toBeInTheDocument();
   });
-  it("the vehicle (the switch and the filter) sits in a strip BEFORE the results", async () => {
+  it("the car (the switch, and the brand / model / year line) sits BEFORE the results", async () => {
     await show();
     const results = screen.getByTestId("results");
-    expect(before(screen.getByTestId("fits-toggle"), results)).toBe(true); expect(before(screen.getByTestId("vehicle-filter"), results)).toBe(true);
+    expect(before(screen.getByTestId("fits-toggle"), results)).toBe(true); expect(before(screen.getByRole("group", { name: "Your car" }), results)).toBe(true);
   });
-  it("on a wide screen the switch and the vehicle card sit side by side and stretch to the SAME height", async () => {
+  it("the filters are ONE bar, before the results, with the sort at its end", async () => {
     await show();
-    const row = screen.getByTestId("fits-toggle").parentElement!.parentElement!;
-    expect(row.className.split(" ")).toContain("lg:flex-row"); expect(row.className.split(" ")).toContain("lg:items-stretch");
-    expect(row.contains(screen.getByTestId("vehicle-filter"))).toBe(true);
+    const bar = screen.getByRole("group", { name: "Filters" });
+    expect(before(bar, screen.getByTestId("results"))).toBe(true);
+    expect(within(bar).getAllByRole("button").at(-1)).toHaveTextContent(/^Sort:/);
   });
   it("the parts are in four columns on a wide screen (three on a tablet, two on a phone)", async () => {
     await show();
@@ -47,20 +48,34 @@ describe("the products page layout", () => {
   });
 });
 
-describe("the section chip", () => {
-  it("shows the chosen section, and clearing it keeps the search words and the vehicle but drops the section", async () => {
-    await show({ category: "brake", q: "disc", generationId: "g1", year: "2022", part: "Front Brake Disc" });
-    const chip = screen.getByRole("link", { name: /Section: Brake System/ });
-    const url = new URL(chip.getAttribute("href") as string, "http://x");
-    expect(url.pathname).toBe("/search"); expect(url.searchParams.get("q")).toBe("disc"); expect(url.searchParams.get("generationId")).toBe("g1"); expect(url.searchParams.get("year")).toBe("2022");
-    expect(url.searchParams.has("category")).toBe(false); expect(url.searchParams.has("part")).toBe(false);
+describe("the title", () => {
+  it("CRITICAL: a part page is titled by the part, with its section and the number of parts under it", async () => {
+    await show({ category: "brake", part: "Front Brake Disc" });
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Front Brake Disc");
+    expect(screen.getByText("in Brake System · 1 part found")).toBeInTheDocument();
   });
-  it("is in Arabic on the Arabic site, with the Arabic section name", async () => {
-    await show({ category: "brake" }, "ar");
-    expect(screen.getByRole("link", { name: /القسم: نظام الفرامل/ })).toBeInTheDocument();
+  it("in Arabic a part page has the part's Arabic name", async () => {
+    await show({ category: "brake", part: "Front Brake Disc" }, "ar");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("قرص فرامل أمامي");
   });
-  it("is not there when no section is chosen", async () => {
-    await show();
-    expect(screen.queryByRole("link", { name: /Section:/ })).not.toBeInTheDocument();
+  it("a section page is titled by the section (in Arabic, its Arabic name); with a car it says the parts fit it", async () => {
+    await show({ category: "brake", generationId: "g1", year: "2022" }, "ar");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("نظام الفرامل");
+    expect(screen.getByText("قطعة واحدة تناسب سيارتك")).toBeInTheDocument();
+  });
+  it("without a section it is the search words, or 'Browse all parts'", async () => {
+    await show({ q: "disc" });
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent('Search results for "disc"');
+  });
+});
+
+describe("sort, price and delivery", () => {
+  it("CRITICAL: are read from the address and sent to the shop; anything odd is ignored", async () => {
+    const api = await import("@/lib/api");
+    await show({ category: "brake", sort: "price_asc", minPrice: "26.67", maxPrice: "80", maxDeliveryDays: "7" });
+    expect(vi.mocked(api.fetchProductsPaginated)).toHaveBeenLastCalledWith(expect.objectContaining({ category: "brake", sort: "price_asc", minPrice: 26.67, maxPrice: 80, maxDeliveryDays: 7 }));
+    await show({ sort: "evil", minPrice: "-3" });
+    const last = vi.mocked(api.fetchProductsPaginated).mock.lastCall![0]!;
+    expect(last.sort).toBeUndefined(); expect(last.minPrice).toBeUndefined();
   });
 });

@@ -105,11 +105,11 @@ describe("compare page", () => {
 });
 
 describe("find page", () => {
-  it("CRITICAL: is public and indexable, with its own title and language alternates, and opens the tab it is told to", async () => {
+  it("CRITICAL: is put aside (still opens, but is not indexed), with its own title and language alternates, and opens the tab it is told to", async () => {
     const { default: FindPage, generateMetadata } = await import("./find/page");
     const meta = await generateMetadata();
     expect(meta.title).toBe("Find the right part");
-    expect(meta.robots).toBeUndefined();
+    expect(meta.robots).toEqual({ index: false, follow: true });
     expect(meta.alternates?.languages).toMatchObject({ en: expect.stringMatching(/\/find$/), ar: expect.stringMatching(/\/ar\/find$/) });
     render(wrap("en", await FindPage({ searchParams: Promise.resolve({ tab: "vin" }) })));
     expect(screen.getByTestId("tools").dataset.tab).toBe("vin");

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useCart } from "@/components/CartProvider";
 import { useCurrency } from "@/components/CurrencyProvider";
 import { useT } from "@/components/LangProvider";
+import { flyToCart } from "@/lib/flyToCart";
 
 interface Props {
   productId: string;
@@ -22,8 +23,11 @@ export function AddToCartButton({ productId, inStock, unitPrice, maxQuantity }: 
   const [quantity, setQuantity] = useState(1);
   const [status, setStatus] = useState<"idle" | "adding" | "added" | "error">("idle");
   const max = maxQuantity != null && maxQuantity > 0 ? maxQuantity : Infinity;
+  const button = useRef<HTMLButtonElement>(null);
 
+  // "Fly to cart": the part's photo on the page (data-fly-source, the gallery) flies to the cart while the cart is updated; with no photo, a chip from the button.
   const handleAdd = async () => {
+    flyToCart(document.querySelector("[data-fly-source]") ?? button.current);
     setStatus("adding");
     try {
       await addItem(productId, quantity);
@@ -70,6 +74,7 @@ export function AddToCartButton({ productId, inStock, unitPrice, maxQuantity }: 
         </button>
       </div>
       <button
+        ref={button}
         onClick={handleAdd}
         disabled={status === "adding"}
         className="flex-1 rounded-md bg-signal px-6 py-3 text-on-signal font-semibold hover:bg-signal-dark transition-colors disabled:opacity-60"

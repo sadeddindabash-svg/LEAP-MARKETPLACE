@@ -6,10 +6,7 @@ import { PAGE_KEYS, PAGE_SLUGS, formatCopyright, type TitleKey } from "@/lib/foo
 import { pickHomeText } from "@/lib/homeText";
 import { t, type DictKey, type Lang } from "@/lib/i18n";
 
-// The six pages (About us, Terms, ...) are written in the admin portal and live INSIDE the storefront. Until a page has text, its link keeps going to the same page on the existing Leap website, in the visitor's language,
-// so no link is ever empty while the pages are being filled in.
-// Set NEXT_PUBLIC_LEGAL_BASE_URL if they move. (Odoo serves Arabic under /ar, and the privacy page's real address is spelled "privecy-policy".)
-const LEGAL_BASE = (process.env.NEXT_PUBLIC_LEGAL_BASE_URL || "https://www.leapautoparts.com").replace(/\/+$/, "");
+// The six pages (About us, Terms, ...) are written in the admin portal and ALWAYS open inside this website (never the old one). A page with no text yet says "This page is being prepared".
 const LEGAL: Array<[DictKey, string]> = [["about_us", "about-us"], ["terms", "terms-conditions"], ["delivery_shipping", "delivery-shipping-policy"], ["refund_policy", "refund-policy"], ["privacy_policy", "privecy-policy"], ["cancellation_policy", "cancellation-replacement-policy"]];
 const ACCOUNT: Array<[DictKey, string]> = [["account_hub_title", "/account"], ["my_orders", "/orders"], ["returns", "/returns"], ["wishlist", "/wishlist"], ["saved_searches", "/saved-searches"], ["garage_title", "/garage"], ["addresses", "/addresses"], ["referrals", "/referrals"]];
 
@@ -20,7 +17,6 @@ export default async function SiteFooter({ lang }: { lang: Lang }) {
   const footer = await fetchFooterContent();      // what the admin set (texts, social media icons, which pages have text); null = the website's own footer
   const title = (k: TitleKey, key: DictKey) => pickHomeText(footer?.text.titles[k], lang, t(lang, key));
   const year = new Date().getFullYear();
-  const legalPrefix = lang === "ar" ? `${LEGAL_BASE}/ar` : LEGAL_BASE;
   return (
     <footer id="site-footer" className="mt-16 bg-navy-deep text-[#e6edf2]">
       <div className="mx-auto grid max-w-7xl gap-8 px-4 pb-10 pt-14 sm:px-8 md:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr]">
@@ -45,14 +41,12 @@ export default async function SiteFooter({ lang }: { lang: Lang }) {
         </nav>
         <nav aria-label={title("useful", "footer_useful_links")}>
           <h3 className={head}>{title("useful", "footer_useful_links")}</h3>
-          {LEGAL.map(([label, oldSlug], i) => {
+          {LEGAL.map(([label], i) => {
             const key = PAGE_KEYS[i];
             const setting = footer?.text.links[key];
             if (setting && setting.shown === false) return null;                       // the admin hid this link
             const text = pickHomeText(setting, lang, t(lang, label));
-            return footer?.pages[key]
-              ? <Link key={key} href={`/${PAGE_SLUGS[key]}`} className={link}>{text}</Link>
-              : <a key={key} href={`${legalPrefix}/${oldSlug}`} className={link}>{text}</a>;
+            return <Link key={key} href={`/${PAGE_SLUGS[key]}`} className={link}>{text}</Link>;      // inside this website, in the visitor's language
           })}
         </nav>
       </div>

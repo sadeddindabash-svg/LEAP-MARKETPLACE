@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 
 // The account menu stays on every page it lists (and the pages inside them), at the far start side; the pages keep their own layout beside it.
 const m = vi.hoisted(() => ({ user: { current: { id: "u1", email: "sam@example.com" } as Record<string, unknown> | null }, path: { current: "/orders" } }));
-vi.mock("./AuthProvider", () => ({ useAuth: () => ({ user: m.user.current }) }));
+vi.mock("./AuthProvider", () => ({ useAuth: () => ({ user: m.user.current }), getAuthToken: () => null }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), useSearchParams: () => new URLSearchParams(), usePathname: () => m.path.current }));
 
 import AccountShell, { inAccountMenu, menuPageOf } from "./AccountShell";
@@ -41,24 +41,27 @@ describe("the menu also stays on the pages reached from it", () => {
     m.path.current = "/ar/support"; show("ar");
     expect(screen.getByRole("navigation")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "تواصل معنا" }).getAttribute("aria-current")).toBe("true");
-    expect(screen.queryByTestId("account-page-header")).not.toBeInTheDocument();      // the page keeps its own title
+    expect(screen.getByTestId("account-page-header").querySelector("h1")!.textContent).toBe("الدعم");      // the navy box, like the menu's pages
   });
 });
 
 describe("the account menu stays on the pages it lists", () => {
   it("every page in the menu (and the pages inside them) keeps the menu; the other pages of the site do not get it", () => {
-    for (const p of ["/account", "/account/loyalty", "/orders", "/orders/abc", "/orders/abc/tracking", "/returns", "/returns/r1", "/addresses", "/garage", "/wishlist", "/saved-searches", "/referrals", "/account/change-email", "/account/two-factor", "/contact"]) expect(inAccountMenu(p), p).toBe(true);
+    for (const p of ["/account", "/account/loyalty", "/orders", "/orders/abc", "/orders/abc/tracking", "/returns", "/returns/r1", "/addresses", "/garage", "/wishlist", "/saved-searches", "/referrals", "/account/change-email", "/account/two-factor", "/contact", "/quotations", "/notifications", "/compare"]) expect(inAccountMenu(p), p).toBe(true);
     for (const p of ["/", "/products/1", "/search", "/cart", "/checkout", "/accounting", "/ordersx", "/login"]) expect(inAccountMenu(p), p).toBe(false);
   });
   it("on Orders & returns the menu is there with that page marked, and the page itself is shown as it is (no frame added)", () => {
     const v = show();
     expect(screen.getByRole("navigation")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Orders & returns" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.getAllByRole("link")).toHaveLength(12);
+    expect(screen.getAllByRole("link")).toHaveLength(14);
     expect(screen.getByText("the page").parentElement!.className).toBe("account-body");
     // every page beside the menu starts next to it, at one width (the widest page's), so their edges line up
     expect(screen.getByText("the page").parentElement!.parentElement!.className).toContain("account-page");
-    expect(document.querySelector("style")!.textContent).toMatch(/\.account-page > \*, \.account-body > \* \{ margin-inline-start: 0 !important;.*max-width: 64rem !important;/);
+    expect(document.querySelector("style")!.textContent).toMatch(/\.account-page > \*, \.account-body > \*(, \.account-sub > \*)? \{ margin-inline-start: 0 !important;.*max-width: 64rem !important;/);
+    // one spacing on every page of the menu: 16 px between its sections, 12 px between the cards of a list; a block showing nothing takes no space
+    expect(document.querySelector("style")!.textContent).toContain("~ :not(:empty, h1, [data-page-lead]");
+    expect(document.querySelector("style")!.textContent).toContain(".account-body :is(ul, ol).grid { gap: 12px !important; }");
     v.unmount();
   });
   it("the menu sits at the start side: first in the row (the far left in English, the far right in Arabic), and stays in view while the page scrolls", () => {
@@ -74,5 +77,53 @@ describe("the account menu stays on the pages it lists", () => {
   it("no menu on a page that is not in it, and none without a sign-in", () => {
     m.path.current = "/products/1"; const v = show(); expect(screen.queryByRole("navigation")).not.toBeInTheDocument(); expect(screen.getByText("the page")).toBeInTheDocument(); v.unmount();
     m.path.current = "/orders"; m.user.current = null; show(); expect(screen.queryByRole("navigation")).not.toBeInTheDocument(); expect(screen.getByText("the page")).toBeInTheDocument();
+  });
+});
+
+describe("the look of My tier on every page of the menu (My tier itself as it was)", () => {
+  it("each page opens with the navy box: its icon in a white circle with a gold ring, the title in white and the short line in gold", () => {
+    const v = show();
+    const head = screen.getByTestId("account-page-header");
+    for (const c of ["bg-gradient-to-br", "from-navy", "text-white"]) expect(head.className.split(" "), c).toContain(c);
+    expect(head.querySelector("p")!.className).toContain("text-signal");
+    expect(head.querySelector("span.ring-signal svg")).not.toBeNull();
+    expect(screen.getByText("the page").parentElement!.parentElement!.className).toContain("account-themed");
+    expect(document.querySelector("style")!.textContent).toContain(".account-themed .account-body h2:not(.sr-only)");
+    v.unmount();
+    m.path.current = "/ar/garage"; show("ar");
+    expect(screen.getByTestId("account-page-header").className).toContain("from-navy");
+  });
+  it("Compare parts is a tab of Wishlist, not in the menu: Wishlist is marked and the navy box is Wishlist's, with a place for the page's buttons", () => {
+    m.path.current = "/compare"; show();
+    expect(screen.queryByRole("link", { name: "Compare parts" })).not.toBeInTheDocument();
+    expect(menuPageOf("/compare")).toBe("/wishlist");
+    expect(screen.getByRole("link", { name: "Wishlist" }).getAttribute("aria-current")).toBe("true");
+    expect(screen.getByTestId("account-page-header").querySelector("h1")!.textContent).toBe("Wishlist");
+    expect(screen.getByTestId("account-page-header").querySelector("#account-header-actions")).not.toBeNull();
+  });
+  it("Support and Report a bug open with the navy box and their own line; a ticket keeps its own title", () => {
+    for (const [p, title, line] of [["/support", "Support", "Talk to the Leap team about an order or an issue."], ["/report-bug", "Report a bug", "Tell us what went wrong. A screenshot helps us fix it faster."]]) {
+      m.path.current = p; const v = show();
+      const head = screen.getByTestId("account-page-header");
+      expect(head.querySelector("h1")!.textContent).toBe(title); expect(head.querySelector("p")!.textContent).toBe(line); expect(head.className).toContain("from-navy");
+      expect(screen.getByRole("link", { name: "Contact us" }).getAttribute("aria-current")).toBe("true");
+      expect(screen.getByText("the page").parentElement!.className).toBe("account-body");
+      v.unmount();
+    }
+    m.path.current = "/support/T-1"; show();
+    expect(screen.queryByTestId("account-page-header")).not.toBeInTheDocument();
+  });
+  it("My tier keeps its white box and is not restyled", () => {
+    m.path.current = "/account/loyalty"; show();
+    const head = screen.getByTestId("account-page-header");
+    expect(head.className).toContain("bg-white"); expect(head.className).not.toContain("from-navy");
+    expect(screen.getByText("the page").parentElement!.parentElement!.className).not.toContain("account-themed");
+  });
+  it("the menu: an icon beside each name (the names are unchanged), the page it is on navy with a gold icon", () => {
+    show();
+    const here = screen.getByRole("link", { name: "Orders & returns" });
+    expect(here.querySelector("svg")).not.toBeNull(); expect(here.className).toContain("from-navy");
+    expect(here.querySelector(".text-signal svg")).not.toBeNull();
+    expect(screen.getByRole("link", { name: "My account" }).className).not.toContain("from-navy");
   });
 });

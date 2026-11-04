@@ -152,11 +152,14 @@ app.get('/health', async (req, res) => {
 // The courier link (migration 096): public on purpose, no login; the token in the address is the credential.
 app.use('/proof', deliveryProofApi);
 app.use('/p', deliveryProofPage);
+app.use('/h', require('./modules/hubCode/page')); // the supplier label's QR, scanned by anyone but the hub: "not the delivery label"
 app.use('/reset-password', resetPageRoutes); // the page the password reset email's button opens
 
 app.use('/catalog', catalogRoutes);
 app.use('/fitment', fitmentRoutes);
 app.use('/cart', cartRoutes);
+app.use('/loyalty-tier-photos', require('./modules/loyalty/tierPhotos')); // tier photos (migration 125)
+app.use('/quotations', require('./modules/quotations/routes')); // Get a quotation (migration 124)
 app.use('/order', orderRoutes);
 app.use('/user', userRoutes);
 app.use('/payment', paymentRoutes);
@@ -197,6 +200,10 @@ app.use('/platform-settings', platformSettingsRoutes);
 app.use('/quote-requests', quoteRequestsRoutes);
 app.use('/delivery-rules', deliveryRulesRoutes);
 app.use('/payouts', payoutsRoutes);
+app.use('/admin-counts', require('./modules/adminCounts/routes')); // the admin portal's side-menu numbers
+app.use('/supplier-counts', require('./modules/supplierCounts/routes')); // the supplier portal side-menu numbers
+app.use('/parcel-costs', require('./modules/parcelCosts/routes')); // parcel shipping costs (migration 127)
+app.use('/profits', require('./modules/profits/routes')); // Financial -> Profits (admin)
 app.use('/reviews', reviewsRoutes);
 app.use('/webhooks', webhooksRoutes);
 app.use('/pricing', pricingRoutes);

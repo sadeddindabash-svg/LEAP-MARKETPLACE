@@ -105,6 +105,8 @@ router.get('/admin/:supplierId', requireAuth, requireRole('admin'), requirePageA
       'SELECT * FROM supplier_messages WHERE supplier_id = $1 ORDER BY created_at ASC',
       [req.params.supplierId]
     );
+    // an admin opened this thread: its messages are read (the number beside "Supplier Messages" in the menu, migration 131)
+    await require('../adminCounts/service').markSupplierMessagesRead(db, req.params.supplierId);
     res.json(rows.map(toMessageDto));
   } catch (err) {
     next(err);

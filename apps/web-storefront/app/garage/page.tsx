@@ -108,7 +108,7 @@ export default function GaragePage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
-      <div className="flex flex-wrap items-baseline gap-x-3"><h1 className="text-3xl font-bold tracking-tight text-navy">{t("garage_title")}</h1>{garage.vehicles.length > 0 && <span className="text-xl font-normal text-muted">· {t("garage_your_cars")} {t("garage_count_of", { n: garage.vehicles.length, max: MAX_GARAGE_VEHICLES })}</span>}</div>
+      <div className="flex flex-wrap items-baseline gap-x-3"><h1 className="text-3xl font-bold tracking-tight text-navy">{t("garage_title")}</h1></div>
       <p className="mb-8 mt-2 text-muted">{t("garage_intro")}</p>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">          {/* the cars take the width (a 250 px photo needs room beside its details); the form is a slim column */}
         <section aria-labelledby="g-cars">

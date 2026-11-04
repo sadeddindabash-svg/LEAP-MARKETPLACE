@@ -166,6 +166,19 @@ class ApiClient {
     });
   }
 
+  /// The inspection list's ticks for one item (migration 129): the keys of the lines confirmed against the real part.
+  Future<void> saveInspectionChecks(String token, String shipmentId, String productId, List<String> checked) async {
+    await _authedMutate('PUT', '/hub/me/shipments/$shipmentId/items/$productId/checks', token, {'checked': checked});
+  }
+
+  /// An evidence photo added to (or taken off) the form being filled in, shared with the hub portal until the step is confirmed (migration 130).
+  /// [action]: 'add' or 'remove'; [purpose]: 'step', 'flag' or 'fault_return'. Answers every form's list.
+  Future<Map<String, List<String>>> saveDraftPhoto(String token, String shipmentId, String action, String purpose, String url) async {
+    final data = await _authedMutate('POST', '/hub/me/shipments/$shipmentId/draft-photos/$action', token, {'purpose': purpose, 'url': url});
+    final drafts = (data as Map)['draftPhotos'] as Map;
+    return drafts.map((k, v) => MapEntry(k as String, (v as List<dynamic>).map((u) => u as String).toList()));
+  }
+
   /// Confirmed with the person via mockup: fetches the real, raw PDF
   /// bytes for the delivery address label -- a separate method from
   /// _authedGet, since that helper always JSON-decodes the response,
@@ -198,12 +211,14 @@ class ApiClient {
     String? notes,
     required List<String> photos,
     String? trackingNumber,
+    bool? supplierLabelCovered,
   }) async {
     await _authedMutate('POST', '/hub/me/shipments/$shipmentId/events', token, {
       'step': step,
       if (notes != null) 'notes': notes,
       'photos': photos,
       if (trackingNumber != null) 'trackingNumber': trackingNumber,
+      if (supplierLabelCovered != null) 'supplierLabelCovered': supplierLabelCovered,      // at "Packed" (the supplier's label removed or covered)
     });
   }
 
@@ -231,6 +246,15 @@ class ApiClient {
     }
     return body['url'] as String;
   }
+
+  // ---------------- Shipping cost (migration 127) ----------------
+  // Whether the parcel may ship, never an amount (see lib/features/shipment/shipping_cost_card.dart).
+  Future<Map<String, dynamic>> fetchParcelCost(String token, String shipmentId) async =>
+      Map<String, dynamic>.from(await _authedGet('/parcel-costs/hub/$shipmentId', token) as Map);
+
+  /// { amount, currency, carrier, receiptPhoto? } -- or, for a parcel dearer than planned, { parcelPhoto }.
+  Future<Map<String, dynamic>> saveParcelCost(String token, String shipmentId, Map<String, dynamic> body) async =>
+      Map<String, dynamic>.from(await _authedMutate('POST', '/parcel-costs/hub/$shipmentId', token, body) as Map);
 
   /// Turns a relative media path (e.g. "/uploads/abc123.jpg") into a
   /// real, fully-qualified URL -- same real reasoning as apps/mobile's

@@ -130,6 +130,10 @@ function FolderTab({ tab, active, onSelect, marked }) {
       }}
     >
       {tab.label}
+      {/* a number on the tab (what is waiting there), when the page gives one */}
+      {tab.count > 0 && (
+        <span title={tab.tip} aria-label={tab.tip} style={{ ...body, minWidth: 18, height: 18, padding: "0 6px", boxSizing: "border-box", borderRadius: 9, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 800, color: "#fff", background: tab.tone === "red" ? C.red : C.ink }}>{tab.count}</span>
+      )}
     </button>
   );
 }

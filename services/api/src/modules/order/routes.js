@@ -183,6 +183,7 @@ router.post('/', async (req, res, next) => {
     // browsing/cart show a LIVE price that can change; a placed order's
     // price does not, the same way any real checkout works.
     const buyerUnitPrices = {};
+    const shippingPlannedUnitUsd = {};   // the shipping inside ONE unit's price (migration 127): compared later with what the hub really pays
     let totalShippingPortionUsd = 0; // real, summed from the pricing engine's own breakdown -- see promotions/helpers.js's calculateDiscountUsd for why free_shipping refunds exactly this, not an estimate
     for (const productId of Object.keys(productById)) {
       const product = productById[productId];
@@ -206,6 +207,7 @@ router.post('/', async (req, res, next) => {
           .filter((b) => b.type === 'shipping_volumetric')
           .reduce((sum, b) => sum + b.amountCny, 0);
         totalShippingPortionUsd += shippingCny * result.fxRate * quantity;
+        shippingPlannedUnitUsd[productId] = shippingCny * result.fxRate;
       }
     }
 
@@ -313,8 +315,8 @@ router.post('/', async (req, res, next) => {
       const lineItems = [];
       for (const item of supplierItems) {
         await client.query(
-          `INSERT INTO order_line_items (sub_order_id, product_id, quantity, unit_price, supplier_unit_price_cny) VALUES ($1, $2, $3, $4, $5)`,
-          [subOrderId, item.productId, item.quantity, buyerUnitPrices[item.productId], supplierUnitPriceCny(productById[item.productId])]
+          `INSERT INTO order_line_items (sub_order_id, product_id, quantity, unit_price, supplier_unit_price_cny, shipping_planned_usd) VALUES ($1, $2, $3, $4, $5, $6)`,
+          [subOrderId, item.productId, item.quantity, buyerUnitPrices[item.productId], supplierUnitPriceCny(productById[item.productId]), shippingPlannedUnitUsd[item.productId] ?? null]
         );
         lineItems.push({ productId: item.productId, quantity: item.quantity });
       }

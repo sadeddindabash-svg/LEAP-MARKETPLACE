@@ -9,7 +9,8 @@ const TABS: readonly FindTab[] = ["vehicle", "vin", "part", "symptom"];
 
 export async function generateMetadata(): Promise<Metadata> {
   const lang = await getLang();
-  return { title: t(lang, "find_title"), description: t(lang, "find_lead"), alternates: alternatesFor(lang, "/find") };
+  // Put aside (no longer in the menu or the sitemap; the products page does its job): it still opens from an old link, and the garage's "Add by VIN" uses it.
+  return { title: t(lang, "find_title"), description: t(lang, "find_lead"), alternates: alternatesFor(lang, "/find"), robots: { index: false, follow: true } };
 }
 
 // "Find the right part": four ways in (the car, the VIN, a part number, what is wrong), the same four the mobile app has. The sections come from the server, in the page's language.

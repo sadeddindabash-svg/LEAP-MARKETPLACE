@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import Link from "@/components/LocLink";
 import AddressForm from "@/components/AddressFields";
 import { getAuthToken, useAuth } from "@/components/AuthProvider";
@@ -12,6 +12,29 @@ import type { DictKey } from "@/lib/i18n";
 
 const button = "inline-flex min-h-11 items-center justify-center rounded-[10px] border-[1.5px] border-navy px-4 text-sm font-bold text-navy hover:bg-chalk disabled:opacity-50";
 const PROBLEM_TEXT: Record<string, DictKey> = { fill_every_field: "fill_every_field", country_not_served: "country_not_served", national_address_format: "national_address_format_error" };
+
+// Each saved address shows every piece it has, each under its own name, in three columns (two on a tablet, one on a phone): the recipient, phone and
+// country, then the street (two columns wide) and city, then the region, postal code and Address Code. The icon follows the address's name: a house for
+// home, a briefcase for work, a pin for anything else.
+const LABEL_ICONS = {
+  home: ["M3 10.5 12 3l9 7.5", "M5 9.5V21h14V9.5", "M10 21v-6h4v6"],
+  work: ["M4 8h16v12H4z", "M9 8V5h6v3", "M4 13h16"],
+  other: ["M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21Z", "M12 12.2a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"],
+};
+function labelKind(label: string): keyof typeof LABEL_ICONS {
+  const l = label.trim().toLowerCase();
+  if (/home|house|منزل|المنزل|بيت|البيت/.test(l)) return "home";
+  if (/work|office|عمل|العمل|مكتب|المكتب|دوام/.test(l)) return "work";
+  return "other";
+}
+function AddressDetail({ name, value, wide }: { name: string; value: ReactNode; wide?: boolean }) {
+  return (
+    <div className={wide ? "md:col-span-2" : undefined}>
+      <dt className="text-[11px] font-semibold uppercase tracking-[0.03em] text-muted rtl:normal-case rtl:tracking-normal">{name}</dt>
+      <dd className="mt-0.5 break-words text-[15px] font-semibold text-ink">{value}</dd>
+    </div>
+  );
+}
 
 // The address book: up to three saved addresses (the server refuses a fourth), one of them the default, added, edited and deleted here exactly as in the mobile app.
 export default function AddressesPage() {
@@ -91,14 +114,24 @@ export default function AddressesPage() {
       ) : (
         <ul className="grid gap-3">
           {addresses.map((a) => (
-            <li key={a.id} className={`rounded-[14px] border-[1.5px] bg-white p-4 ${a.isDefault ? "border-navy" : "border-line"}`}>
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-56 flex-1">
-                  <p className="flex items-center gap-2 font-bold">{a.label}{a.isDefault && <span className="rounded-full bg-navy px-2.5 py-0.5 text-xs font-bold text-white">{t("default_label")}</span>}</p>
-                  <p className="mt-1">{a.recipientName}</p>
-                  <p className="text-muted"><bdi>{a.streetAddress}, {a.city}</bdi>, {countryName(lang, a.country)}</p>
-                  <p className="text-sm text-muted" dir="ltr">{a.phone}</p>
-                </div>
+            <li key={a.id} data-testid="address-card" className={`overflow-hidden rounded-[14px] border-[1.5px] bg-white ${a.isDefault ? "border-navy" : "border-line"}`}>
+              <div className="flex items-center gap-3 border-b border-[#eef0f3] bg-[#fafbfc] px-4 py-3">
+                <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#fff4d6] text-navy">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{LABEL_ICONS[labelKind(a.label)].map((d) => <path key={d} d={d} />)}</svg>
+                </span>
+                <p className="flex min-w-0 flex-wrap items-center gap-2 text-base font-bold"><bdi>{a.label}</bdi>{a.isDefault && <span className="rounded-full bg-navy px-2.5 py-0.5 text-xs font-bold text-white">{t("default_label")}</span>}</p>
+              </div>
+              <dl className="grid gap-x-5 gap-y-3 px-4 py-4 sm:grid-cols-2 md:grid-cols-3">
+                <AddressDetail name={t("addr_recipient")} value={a.recipientName} />
+                <AddressDetail name={t("phone_field")} value={<bdi dir="ltr">{a.phone}</bdi>} />
+                <AddressDetail name={t("country_field")} value={countryName(lang, a.country)} />
+                <AddressDetail name={t("street_address_field")} value={a.streetAddress} wide />
+                <AddressDetail name={t("city_field")} value={a.city} />
+                <AddressDetail name={t("addr_region")} value={a.state?.trim() || "—"} />
+                <AddressDetail name={t("addr_postal_code")} value={a.postalCode?.trim() || "—"} />
+                {a.nationalAddress?.trim() && <AddressDetail name={t("national_address_field")} value={<span dir="ltr" className="inline-block rounded-md bg-navy px-2 py-px font-mono text-[13px] tracking-[0.08em] text-[#f3c03b]">{a.nationalAddress}</span>} />}
+              </dl>
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[#eef0f3] px-4 py-3">
                 {confirmDelete === a.id ? (
                   <div className="flex flex-wrap items-center gap-2" role="alertdialog" aria-label={t("delete_address_confirm")}>
                     <span className="text-sm font-semibold">{t("delete_address_confirm")}</span>
@@ -106,11 +139,11 @@ export default function AddressesPage() {
                     <button type="button" disabled={busy} className={`${button} !border-[#a12a21] !text-[#a12a21]`} onClick={() => { const token = getAuthToken(); setConfirmDelete(null); if (token) run(() => deleteAddress(token, a.id), t("address_deleted")); }}>{t("delete")}</button>
                   </div>
                 ) : (
-                  <div className="flex flex-wrap gap-2">
+                  <>
                     <button type="button" className={button} disabled={busy} onClick={() => { setFields(fieldsOf(a)); setMessage(null); setEditing(a); }}>{t("edit")}</button>
                     {!a.isDefault && <button type="button" className={button} disabled={busy} onClick={() => { const token = getAuthToken(); if (token) run(async () => { await updateAddress(token, a.id, { isDefault: true }); }, t("address_set_as_default_message")); }}>{t("set_as_default")}</button>}
                     <button type="button" className={`${button} !border-[#a12a21] !text-[#a12a21]`} disabled={busy} onClick={() => setConfirmDelete(a.id)}>{t("delete")}</button>
-                  </div>
+                  </>
                 )}
               </div>
             </li>

@@ -23,6 +23,7 @@ function toTierDto(row) {
     id: row.id, name: row.name, nameAr: row.name_ar,
     spendThreshold: Number(row.spend_threshold), discountPercentage: Number(row.discount_percentage),
     icon: row.icon, color: row.color,
+    photoUrl: row.photo_url || null,
   };
 }
 

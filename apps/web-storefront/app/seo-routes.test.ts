@@ -43,7 +43,7 @@ describe("sitemap.xml", () => {
     const { default: sitemap } = await import("./sitemap");
     const urls = (await sitemap()).map((e) => e.url);
     expect(urls).toEqual([
-      "https://shop.example.com/", "https://shop.example.com/ar", "https://shop.example.com/search", "https://shop.example.com/ar/search", "https://shop.example.com/find", "https://shop.example.com/ar/find", "https://shop.example.com/contact", "https://shop.example.com/ar/contact",
+      "https://shop.example.com/", "https://shop.example.com/ar", "https://shop.example.com/search", "https://shop.example.com/ar/search", "https://shop.example.com/contact", "https://shop.example.com/ar/contact",
       "https://shop.example.com/search?category=brake", "https://shop.example.com/ar/search?category=brake",            // (Filters has no products in this catalog: not listed)
       "https://shop.example.com/products/p1", "https://shop.example.com/ar/products/p1", "https://shop.example.com/products/p2", "https://shop.example.com/ar/products/p2",
     ]);
