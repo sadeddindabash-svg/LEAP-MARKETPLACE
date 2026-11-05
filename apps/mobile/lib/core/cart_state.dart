@@ -277,9 +277,9 @@ class CartState extends ChangeNotifier {
 
   /// Sets the exact quantity for a product already in the cart (used by
   /// the +/- stepper). A quantity of 0 or less removes the item.
-  Future<void> setQuantity(String productId, int quantity) async {
+  Future<void> setQuantity(String productId, int quantity, {String? quotationId}) async {
     if (_cartId == null) return;
-    _applyCart(await _apiClient.setCartItemQuantity(_cartId!, productId, quantity, token: _token, lang: _language));
+    _applyCart(await _apiClient.setCartItemQuantity(_cartId!, productId, quantity, token: _token, lang: _language, quotationId: quotationId));
     notifyListeners();
   }
 

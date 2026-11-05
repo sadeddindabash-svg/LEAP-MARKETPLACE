@@ -13,7 +13,6 @@ import '../../models/category.dart';
 import '../../models/product.dart';
 import '../../models/vehicle.dart';
 import '../../services/api_client.dart';
-import '../../widgets/plate_chip.dart';
 import '../../widgets/product_card.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/onboarding_overlay.dart';
@@ -199,6 +198,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             Row(
               children: [
+                IconButton(icon: Icon(Icons.request_quote_outlined, color: palette.signal), tooltip: isAr ? 'اطلب عرض سعر' : 'Get a quotation', onPressed: () => context.push('/quotations/new')),
                 IconButton(icon: Icon(Icons.chat_bubble_outline, color: palette.signal), tooltip: tr(context, 'support_label'), onPressed: () => context.push('/support')),
               ],
             ),
@@ -249,7 +249,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const HomeBanner(),
             // 2. Shopping for -- real garage data
             _ShoppingForCard(garageFuture: _garageFuture, isLoggedIn: auth.isLoggedIn, onNavigateToGarage: () => _navigateToGarage(context)),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),      // every gap on Home: 10 px, the same as between the product cards
             // 2.5. Brand logo marquee (new) -- confirmed exact position
             // with the person: between "Shopping for" and "Recently
             // viewed". A purely decorative, continuously auto-
@@ -266,7 +266,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const BrandLogoMarquee(),
             // 2.6. Shop by category
             Text(tr(context, 'shop_by_category'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             FutureBuilder<List<ProductCategory>>(
               future: _categoriesFuture,
               builder: (context, snapshot) {
@@ -344,7 +344,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
               },
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 10),
             // 2.7. Recently viewed -- real, synced to the buyer's real
             // account (migration 032) -- logged-in buyers only.
             if (auth.isLoggedIn)
@@ -359,12 +359,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(isAr ? 'شوهدت مؤخرًا' : 'Recently viewed', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 10),
                       SizedBox(
-                        height: productCardHeightFor(140) + 16,
+                        height: productCardHeightFor(140) + 10,
                         child: ListView.separated(
                           clipBehavior: Clip.none,      // the cards' shadows show
-                          padding: const EdgeInsets.only(bottom: 16),
+                          padding: const EdgeInsets.only(bottom: 10),      // the 10 px gap to the buttons below
                           scrollDirection: Axis.horizontal,
                           itemCount: products.length,
                           separatorBuilder: (context, i) => const SizedBox(width: 10),
@@ -374,7 +374,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           },
                         ),
                       ),
-                      const SizedBox(height: 20),
                     ],
                   );
                 },
@@ -387,7 +386,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 _FilterChip(label: tr(context, 'filter_my_car'), selected: _feedFilter == 'my_car', onTap: () => _setFilter('my_car')),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             // 5. The real product feed.
             FutureBuilder<List<Vehicle>>(
               future: _garageFuture,
@@ -622,7 +621,13 @@ class _ShoppingForCard extends StatelessWidget {
                         children: [
                           Text(tr(context, 'shopping_for'), style: TextStyle(fontSize: 11, color: labelColor), textDirection: isAr ? TextDirection.rtl : TextDirection.ltr),
                           const SizedBox(height: 4),
-                          PlateChip(text: '${vehicle.labelFor(isAr)} · ${vehicle.subLabel}', small: true),
+                          // the car's name with no plate frame around it (same font, colour and size as before)
+                          Text(
+                            '${vehicle.labelFor(isAr)} · ${vehicle.subLabel}',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w700, fontSize: 10.5, letterSpacing: 0.6, color: isDark ? palette.signal : LeapColors.ink),
+                          ),
                         ],
                       ),
                     ),

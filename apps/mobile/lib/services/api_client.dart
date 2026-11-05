@@ -771,11 +771,12 @@ class ApiClient {
   /// Sets the EXACT quantity (unlike addCartItem, which adds to the
   /// existing amount) — used by a +/- quantity stepper. quantity <= 0
   /// removes the item entirely.
-  Future<Cart> setCartItemQuantity(String cartId, String productId, int quantity, {String? token, String lang = 'en'}) async {
+  /// [quotationId]: the part comes from that quotation of the buyer's (the basket groups it under the quotation).
+  Future<Cart> setCartItemQuantity(String cartId, String productId, int quantity, {String? token, String lang = 'en', String? quotationId}) async {
     final response = await _client.patch(
       Uri.parse('$baseUrl/cart/$cartId/items/$productId?lang=$lang'),
       headers: _authHeaders(token),
-      body: jsonEncode({'quantity': quantity}),
+      body: jsonEncode({'quantity': quantity, if (quotationId != null) 'quotationId': quotationId}),
     );
     return _decodeCart(response);
   }
@@ -838,7 +839,7 @@ class ApiClient {
       Uri.parse('$baseUrl/order?lang=$lang'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
-        'items': items.map((i) => {'productId': i.productId, 'quantity': i.quantity}).toList(),
+        'items': items.map((i) => {'productId': i.productId, 'quantity': i.quantity, if (i.quotationId != null) 'quotationId': i.quotationId}).toList(),
         if (userId != null) 'userId': userId,
         if (guestEmail != null) 'guestEmail': guestEmail,
         if (promoCode != null && promoCode.isNotEmpty) 'promoCode': promoCode,

@@ -576,55 +576,75 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // Real shipping address picker (migration 030) -- a real logged-in
   // buyer picks a real saved address or fills in a new one right here;
   // required before placing the order.
+  // Short (confirmed with the person via mockup): "+ Add" beside the title, and each saved address one tight row (its name and address on one line).
   Widget _buildAddressPicker() {
     if (_isLoadingAddresses) {
       return const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()));
     }
+    final palette = LeapPalette.of(context);
+    final isAr = context.watch<LanguageState>().isArabic;
+    Future<void> addAddress() async {
+      await context.push('/addresses/add');
+      if (mounted) _loadSavedAddresses();
+    }
+
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
       decoration: Premium.card(context, radius: 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          KeyedSubtree(key: _addressSectionKey, child: Text(tr(context, 'delivery_address'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-          const SizedBox(height: 8),
-          if (_savedAddresses.isNotEmpty) ...[
+          Row(
+            children: [
+              Expanded(child: KeyedSubtree(key: _addressSectionKey, child: Text(tr(context, 'delivery_address'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)))),
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: addAddress,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  child: Text(isAr ? '+ أضف' : '+ Add', style: const TextStyle(color: Color(0xFFC98A00), fontWeight: FontWeight.w800, fontSize: 12)),
+                ),
+              ),
+            ],
+          ),
+          if (_savedAddresses.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2, bottom: 2),
+              child: Text(tr(context, 'no_saved_addresses'), style: TextStyle(fontSize: 12, color: palette.muted)),
+            )
+          else
             for (final a in _savedAddresses)
-              RadioListTile<String>(
-                contentPadding: EdgeInsets.zero,
-                value: a['id'] as String,
-                groupValue: _selectedAddressId,
-                onChanged: (v) {
-                  setState(() => _selectedAddressId = v);
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () {
+                  setState(() => _selectedAddressId = a['id'] as String);
                   _loadPaymentMethods();
                 },
-                title: Text(a['label'] as String? ?? tr(context, 'address_fallback_label'), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                subtitle: Text('${a['streetAddress']}, ${a['city']}, ${a['country']}', style: const TextStyle(fontSize: 12)),
+                child: SizedBox(
+                  height: 34,
+                  child: Row(
+                    children: [
+                      Icon(
+                        _selectedAddressId == a['id'] ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                        size: 18,
+                        color: _selectedAddressId == a['id'] ? const Color(0xFFE39F0C) : palette.muted,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text.rich(
+                          TextSpan(children: [
+                            TextSpan(text: a['label'] as String? ?? tr(context, 'address_fallback_label'), style: const TextStyle(fontWeight: FontWeight.w700)),
+                            TextSpan(text: ' · ${a['streetAddress']}, ${a['city']}, ${a['country']}'),
+                          ]),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            TextButton.icon(
-              onPressed: () async {
-                await context.push('/addresses/add');
-                if (mounted) _loadSavedAddresses();
-              },
-              icon: const Icon(Icons.add, size: 16),
-              label: Text(tr(context, 'add_new_address_button')),
-            ),
-          ] else ...[
-            // Real empty state (new) -- previously auto-showed this
-            // screen's own separate inline form instead; now points to
-            // the exact same real add-address screen already used in
-            // the Account tab.
-            Text(tr(context, 'no_saved_addresses'), style: TextStyle(fontSize: 12.5, color: LeapPalette.of(context).muted)),
-            const SizedBox(height: 8),
-            TextButton.icon(
-              onPressed: () async {
-                await context.push('/addresses/add');
-                if (mounted) _loadSavedAddresses();
-              },
-              icon: const Icon(Icons.add, size: 16),
-              label: Text(tr(context, 'add_new_address_button')),
-            ),
-          ],
         ],
       ),
     );
@@ -644,14 +664,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           // doesn't scroll away with the form, so a buyer can always
           // see how far through checkout they are.
           StepProgressIndicator(
-            labels: [tr(context, 'delivery_address'), tr(context, 'payment_method'), tr(context, 'order_summary')],
+            // short labels, so the bar stays one line
+            labels: isAr ? const ['العنوان', 'الدفع', 'الملخص'] : const ['Address', 'Payment', 'Summary'],
             currentStep: _currentStep,
           ),
-          const Divider(height: 1),
           Expanded(
             child: ListView(
               controller: _scrollController,
-              padding: const EdgeInsets.all(16),
+              // every gap between the boxes is 8 (the smallest one), the steps bar included
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
               children: [
           // Real stock-change warning (#17) -- only shown when the
           // real recheck above found a real, genuine problem: a cart
@@ -659,7 +680,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           if (_stockChangedItemNames.isNotEmpty)
             Container(
               width: double.infinity,
-              margin: const EdgeInsets.only(bottom: 16),
+              margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
               child: Row(
@@ -677,14 +698,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
             ),
           if (auth.isLoggedIn)
+            // one slim line (about 28 px)
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(color: LeapPalette.of(context).chalk, borderRadius: BorderRadius.circular(10)),
               child: Row(
                 children: [
-                  Icon(Icons.check_circle, size: 18, color: LeapPalette.of(context).gauge),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text('${tr(context, 'ordering_as')} ${auth.user!['email']}', style: const TextStyle(fontSize: 12.5))),
+                  Icon(Icons.check_circle, size: 14, color: LeapPalette.of(context).gauge),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text.rich(
+                      TextSpan(children: [
+                        TextSpan(text: '${tr(context, 'ordering_as')} '),
+                        TextSpan(text: '${auth.user!['email']}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                      ]),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 11.5),
+                    ),
+                  ),
                 ],
               ),
             )
@@ -697,7 +729,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 style: TextStyle(fontSize: 12.5, color: LeapPalette.of(context).muted),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             TextField(
               controller: _guestEmailController,
               keyboardType: TextInputType.emailAddress,
@@ -710,10 +742,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
           ],
           if (auth.isLoggedIn) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
             _buildAddressPicker(),
           ],
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           KeyedSubtree(key: _paymentSectionKey, child: Text(tr(context, 'payment_method'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
           const SizedBox(height: 8),
           if (_isLoadingPaymentMethods)
@@ -757,8 +789,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           // supplierName). A single-supplier order has nothing real
           // to consolidate or wait for.
           if (cart.items.map((i) => i.supplierName).toSet().length > 1) ...[
-            const SizedBox(height: 12),
+            // the payment methods above already end with an 8 gap
             Container(
+              margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.all(12),
               decoration: Premium.card(context, radius: 10),
               child: SwitchListTile(
@@ -770,7 +803,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
             ),
           ],
-          const SizedBox(height: 12),
+          // (the box above ends with an 8 gap)
           KeyedSubtree(key: _summarySectionKey, child: Text(tr(context, 'order_summary'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
           const SizedBox(height: 8),
           // Real itemized breakdown (new) -- closes a real gap: before
@@ -826,11 +859,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             ),
                             const SizedBox(width: 10),
                             Expanded(
-                              child: Text(
-                                '${item.quantity} × ${item.name}',
-                                style: const TextStyle(fontSize: 12.5),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${item.quantity} × ${item.name}',
+                                    style: const TextStyle(fontSize: 12.5),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  // a part from a quotation (migration 141): its number
+                                  if (item.quotationId != null)
+                                    Text('📄 ${item.quotationId}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFFC98A00))),
+                                ],
                               ),
                             ),
                             const SizedBox(width: 8),
@@ -895,7 +936,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               style: TextStyle(fontSize: 12, color: cart.appliedPromoCode != null ? LeapPalette.of(context).gauge : Colors.red),
             ),
           ],
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.all(12),
             decoration: Premium.card(context, radius: 10),
@@ -985,7 +1026,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
           ),
           if (_errorMessage != null) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 12.5)),
           ],
               ],

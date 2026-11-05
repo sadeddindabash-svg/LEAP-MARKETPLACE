@@ -96,10 +96,59 @@ async function addressFor(q, buyerId, addressId) {
   return { recipientName: a.recipient_name, phone: a.phone, country: a.country, state: a.state || null, city: a.city, streetAddress: a.street_address, postalCode: a.postal_code || null, nationalAddress: a.national_address || null };
 }
 
-function readVehicle(v) {
-  const vehicle = { make: clean(v && v.make, 60), model: clean(v && v.model, 80), year: Number(v && v.year) || null, vin: clean(v && v.vin, 17).toUpperCase() || null, plate: clean(v && v.plate, 20) || null };
-  if (!vehicle.make || !vehicle.model || !vehicle.year || vehicle.year < 1950 || vehicle.year > new Date().getFullYear() + 2) throw fail(400, 'Choose the car (make, model and year).', 'quote_vehicle');
+/**
+ * The car. For a new quotation it is a car of the catalogue: { generationId, year, versionId? } (the year of the generation, and the version when that year has
+ * versions), and its make, model and version are read from the catalogue, never taken from what the app or website sends, so every quotation is for a car that
+ * really exists. A car typed by hand is refused. A garage car saved before versions existed has no version: it is taken without one.
+ * A renewal keeps the car of the quotation it renews (that car may be from before the catalogue, or its year may have been removed since).
+ */
+async function readVehicle(q, v, renewal = false) {
+  const extra = { vin: clean(v && v.vin, 17).toUpperCase() || null, plate: clean(v && v.plate, 20) || null };
+  const generationId = v && typeof v.generationId === 'string' && v.generationId ? v.generationId : null;
+  if (generationId) {
+    const year = Math.floor(Number(v.year));
+    const { rows } = await q.query(
+      `SELECT vg.year_start, vg.year_end, vm.name AS model, vm.name_ar AS model_ar, vb.name AS make, vb.name_ar AS make_ar
+       FROM vehicle_generations vg JOIN vehicle_models vm ON vm.id = vg.model_id JOIN vehicle_brands vb ON vb.id = vm.brand_id WHERE vg.id = $1`, [generationId]);
+    const g = rows[0];
+    if (g && year >= Number(g.year_start) && (g.year_end === null || year <= Number(g.year_end))) {
+      const versionId = typeof v.versionId === 'string' && v.versionId ? v.versionId : null;
+      let version = null;
+      if (versionId) {
+        const { rows: vr } = await q.query('SELECT id, name, name_ar FROM vehicle_versions WHERE id = $1 AND generation_id = $2', [versionId, generationId]);
+        if (vr.length > 0) version = vr[0];
+        else if (!renewal) throw fail(400, 'That version is not one of this car\'s versions. Choose the car again.', 'quote_vehicle');
+      }
+      return { make: g.make, model: g.model, year, ...extra, makeAr: g.make_ar || null, modelAr: g.model_ar || null, generationId, versionId: version ? version.id : null,
+        version: version ? version.name : null, versionAr: version ? version.name_ar || null : null };
+    }
+    if (!renewal) throw fail(400, 'That car is not in the catalogue any more. Choose the car again.', 'quote_vehicle');
+  }
+  if (!renewal) throw fail(400, 'Choose the car.', 'quote_vehicle');
+  const vehicle = { make: clean(v && v.make, 60), model: clean(v && v.model, 80), year: Number(v && v.year) || null, ...extra };
+  if (!vehicle.make || !vehicle.model || !vehicle.year) throw fail(400, 'Choose the car.', 'quote_vehicle');
+  for (const k of ['makeAr', 'modelAr', 'generationId', 'versionId', 'version', 'versionAr']) if (v && v[k]) vehicle[k] = clean(v[k], 80);
   return vehicle;
+}
+
+/**
+ * Which of these parts fit the car (a car of the catalogue: generationId, year and its versionId when it has one), by the sellers' own fitment: the same rule
+ * as the shop's car filter (catalog/routes.js buildProductMatchQuery). A part narrowed to some versions fits only those; a part not narrowed fits every version.
+ * Returns a Set of the product ids that fit.
+ */
+async function fittingProductIds(q, vehicle, productIds) {
+  const ids = Array.isArray(productIds) ? productIds.filter((x) => typeof x === 'string').slice(0, 200) : [];
+  if (!vehicle || !vehicle.generationId || ids.length === 0) return new Set();
+  const params = [ids, vehicle.generationId, Math.floor(Number(vehicle.year))];
+  let versionSql = '';
+  if (vehicle.versionId) {
+    params.push(vehicle.versionId);
+    versionSql = ` AND (NOT EXISTS (SELECT 1 FROM product_fitment_entry_versions pfev WHERE pfev.entry_id = pfe.id)
+      OR EXISTS (SELECT 1 FROM product_fitment_entry_versions pfev WHERE pfev.entry_id = pfe.id AND pfev.version_id = $4))`;
+  }
+  const { rows } = await q.query(
+    `SELECT DISTINCT pfe.product_id FROM product_fitment_entries pfe WHERE pfe.product_id = ANY($1::text[]) AND pfe.generation_id = $2 AND pfe.year = $3${versionSql}`, params);
+  return new Set(rows.map((r) => r.product_id));
 }
 
 /**
@@ -120,7 +169,7 @@ async function createQuotation(q, buyerId, input, now = new Date()) {
   if (!partyType) throw fail(400, 'Choose who the quotation is for.', 'quote_party');
   const partyName = clean(input.partyName, 120);
   if (!partyName) throw fail(400, 'Enter the name of who it is for.', 'quote_party');
-  const vehicle = readVehicle(input.vehicle);
+  const vehicle = await readVehicle(q, input.vehicle, Boolean(input.renewedFrom));
   const address = input.addressCopy || (await addressFor(q, buyerId, input.addressId));      // a renewal keeps the address of the quotation it renews
 
   const ids = [...qty.keys()];
@@ -131,6 +180,12 @@ async function createQuotation(q, buyerId, input, now = new Date()) {
     [ids]
   );
   const byId = new Map(products.map((p) => [p.id, p]));
+  // Every part must fit the car (by the sellers' fitment), so the quotation is for parts that really fit it. A renewal keeps what it was made for.
+  if (!input.renewedFrom && vehicle.generationId) {
+    const fits = await fittingProductIds(q, vehicle, products.map((p) => p.id));
+    const notFit = products.filter((p) => !fits.has(p.id));
+    if (notFit.length > 0) throw fail(400, `${notFit.map((p) => p.name).join(', ')}: not listed as fitting this car. Remove it, or choose a part that fits.`, 'quote_not_fit');
+  }
   const lines = [];
   for (const id of ids) {
     const p = byId.get(id);
@@ -315,5 +370,5 @@ async function confirmShare(q, rawCode, shareId, payer, now = new Date()) {
 }
 
 module.exports = {
-  DEFAULT_VALIDITY_DAYS, PARTY_TYPES, splitShares, createQuotation, confirmShare, createOrderFromQuotation, loadFull, toDto, stateOf, showCode, readCode, round2,
+  DEFAULT_VALIDITY_DAYS, PARTY_TYPES, splitShares, readVehicle, fittingProductIds, createQuotation, confirmShare, createOrderFromQuotation, loadFull, toDto, stateOf, showCode, readCode, round2,
 };

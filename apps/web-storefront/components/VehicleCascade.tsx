@@ -19,7 +19,8 @@ const select = "min-h-12 w-full rounded-[10px] border-[1.5px] border-[#c5d0d8] b
  * chosen, and the version (with its engine, seats and photo) comes with it. A year without versions completes at the year, exactly as before. Everywhere else (the home page
  * picker, the search filter, a part request) the cascade stops at the year: parts are matched by year.
  */
-export default function VehicleCascade({ idPrefix, onChange, withVersions = false }: { idPrefix: string; onChange: (choice: VehicleChoice | null) => void; withVersions?: boolean }) {
+// progressive (the home page's finder): on a phone only Brand shows at first; Model appears once a brand is chosen, Year once a model is (to save space).
+export default function VehicleCascade({ idPrefix, onChange, withVersions = false, progressive = false }: { idPrefix: string; onChange: (choice: VehicleChoice | null) => void; withVersions?: boolean; progressive?: boolean }) {
   const lang = useLang();
   const t = useT();
   const [brands, setBrands] = useState<VehicleBrand[]>([]);
@@ -88,7 +89,7 @@ export default function VehicleCascade({ idPrefix, onChange, withVersions = fals
   const chosen = versions.find((v) => v.id === versionId) || null;
   const chosenPhoto = chosen?.photoUrl || null;
   return (
-    <div className="grid gap-3 sm:grid-cols-3">
+    <div className={`grid gap-3 sm:grid-cols-3 ${progressive ? "max-md:gap-2" : ""}`}>
       <div>
         <label htmlFor={`${idPrefix}-brand`} className="mb-1.5 block text-[13px] font-bold text-navy">{t("picker_brand")}</label>
         <select id={`${idPrefix}-brand`} className={select} value={brandId} onChange={(e) => chooseBrand(e.target.value)}>
@@ -96,14 +97,14 @@ export default function VehicleCascade({ idPrefix, onChange, withVersions = fals
           {brands.map((b) => <option key={b.id} value={b.id}>{pickName(lang, b.name, b.nameAr)}</option>)}
         </select>
       </div>
-      <div>
+      <div className={progressive && !brandId ? "max-md:hidden" : undefined}>
         <label htmlFor={`${idPrefix}-model`} className="mb-1.5 block text-[13px] font-bold text-navy">{t("picker_model")}</label>
         <select id={`${idPrefix}-model`} className={select} value={modelId} disabled={!brandId} onChange={(e) => chooseModel(e.target.value)}>
           <option value="">{t("picker_choose_model")}</option>
           {models.map((m) => <option key={m.id} value={m.id}>{pickName(lang, m.name, m.nameAr)}</option>)}
         </select>
       </div>
-      <div>
+      <div className={progressive && !modelId ? "max-md:hidden" : undefined}>
         <label htmlFor={`${idPrefix}-year`} className="mb-1.5 block text-[13px] font-bold text-navy">{t("picker_year")}</label>
         <select id={`${idPrefix}-year`} className={select} value={choice} disabled={!modelId} onChange={(e) => chooseYear(e.target.value)}>
           <option value="">{t("picker_choose_year")}</option>

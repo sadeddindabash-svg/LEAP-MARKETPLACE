@@ -9,6 +9,8 @@ import { useGarage } from "@/components/GarageProvider";
 import { useCurrency } from "@/components/CurrencyProvider";
 import { useLang, useT } from "@/components/LangProvider";
 import { useLocRouter } from "@/components/useLocRouter";
+import VehicleCascade, { type VehicleChoice } from "@/components/VehicleCascade";
+import { MAX_GARAGE_VEHICLES } from "@/lib/garage";
 import { fetchMyAddresses, type SavedAddress } from "@/lib/api";
 import { countryName } from "@/lib/countries";
 import { pickName } from "@/lib/i18n";
@@ -20,12 +22,12 @@ const chip = (on: boolean) => `inline-flex min-h-10 items-center rounded-full bo
 const NAME_KEY = { insurance: "quote_name_insurance", repair_shop: "quote_name_repair_shop", other_party: "quote_name_other_party", employer: "quote_name_employer", other: "quote_name_other" } as const;
 const OTHER_CAR = "__other__";
 
-// Get a quotation, from the parts ticked in the cart: the car (from My garage, or typed), who it is for (insurance first), their reference numbers, who
+// Get a quotation, from the parts ticked in the cart: the car (from My garage, or chosen from the catalogue, never typed), who it is for (insurance first), their reference numbers, who
 // pays (them, me, or split as an accident share), and where the parts go once ordered. The prices are the server's: nothing typed here changes them.
 export default function NewQuotationPage() {
   const { user, isLoading: authLoading } = useAuth();
   const ctx = useCart();
-  const { vehicles } = useGarage();
+  const { vehicles, add: addToGarage } = useGarage();
   const { code: currencyCode, format } = useCurrency();
   const lang = useLang();
   const t = useT();
@@ -34,9 +36,8 @@ export default function NewQuotationPage() {
   const items = chosen?.items ?? [];
 
   const [carPick, setCarPick] = useState<string | null>(null);
-  const [make, setMake] = useState("");
-  const [model, setModel] = useState("");
-  const [year, setYear] = useState("");
+  const [otherCar, setOtherCar] = useState<VehicleChoice | null>(null);   // "Another car": Brand, Model, Year and Version from the catalogue
+  const [saveCar, setSaveCar] = useState(true);                             // and saved to My garage with the quotation
   const [vin, setVin] = useState("");
   const [plate, setPlate] = useState("");
   const [partyType, setPartyType] = useState<PartyType>("insurance");
@@ -81,10 +82,11 @@ export default function NewQuotationPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    const vehicle = garageCar
-      ? { make: garageCar.brand, model: garageCar.model, year: garageCar.year, vin: vin.trim() || null, plate: plate.trim() || null }
-      : { make: make.trim(), model: model.trim(), year: Number(year), vin: vin.trim() || null, plate: plate.trim() || null };
-    if (!vehicle.make || !vehicle.model || !vehicle.year) return setError(t("err_quote_vehicle"));
+    // The car of the catalogue (the server reads its make, model and version from the catalogue): a garage car, or the one chosen under "Another car".
+    const car = garageCar ? { generationId: garageCar.generationId, year: garageCar.year, versionId: garageCar.versionId ?? null }
+      : otherCar ? { generationId: otherCar.generationId, year: otherCar.year, versionId: otherCar.versionId ?? null } : null;
+    if (!car) return setError(t("err_quote_vehicle"));
+    const vehicle = { ...car, vin: vin.trim() || null, plate: plate.trim() || null };
     if (!partyName.trim()) return setError(t("err_quote_party"));
     if (!address) return setError(t("err_quote_address"));
     const token = getAuthToken();
@@ -95,6 +97,8 @@ export default function NewQuotationPage() {
         items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })), vehicle, partyType, partyName: partyName.trim(),
         policyNumber: policy.trim() || undefined, reportNumber: report.trim() || undefined, shares: sharesFor(payMode, pct), addressId: address.id, lang, displayCurrency: currencyCode,
       });
+      // "Save it to My garage" (ticked): the car chosen under "Another car" joins My garage. The quotation is made either way.
+      if (!garageCar && otherCar && saveCar && vehicles.length < MAX_GARAGE_VEHICLES) await addToGarage(otherCar.generationId, otherCar.year, otherCar.versionId).catch(() => {});
       router.push(`/quotations/${encodeURIComponent(q.id)}`);
     } catch (err) {
       setError(quoteErrorText(err, t));
@@ -128,16 +132,20 @@ export default function NewQuotationPage() {
           ))}
           {vehicles.length > 0 && (
             <label className={`flex cursor-pointer items-center gap-3 rounded-xl border-[1.5px] p-3 ${pick === OTHER_CAR ? "border-navy bg-[#f4f8fb]" : "border-line"}`}>
-              <input type="radio" name="qn-car" className="size-5 accent-[#0b3146]" checked={pick === OTHER_CAR} onChange={() => setCarPick(OTHER_CAR)} />
+              <input type="radio" name="qn-car" className="size-5 accent-[#0b3146]" checked={pick === OTHER_CAR} onChange={() => { setCarPick(OTHER_CAR); setOtherCar(null); }} />
               <span className="font-semibold">{t("quote_car_other")}</span>
             </label>
           )}
         </div>
         {pick === OTHER_CAR && (
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            <label className="grid gap-1 text-sm font-semibold">{t("quote_make")}<input className={input} value={make} onChange={(e) => setMake(e.target.value)} /></label>
-            <label className="grid gap-1 text-sm font-semibold">{t("quote_model")}<input className={input} value={model} onChange={(e) => setModel(e.target.value)} /></label>
-            <label className="grid gap-1 text-sm font-semibold">{t("quote_year")}<input className={input} inputMode="numeric" dir="ltr" value={year} onChange={(e) => setYear(e.target.value.replace(/\D/g, "").slice(0, 4))} /></label>
+          <div className="mt-3">
+            <VehicleCascade idPrefix="qn-car" onChange={setOtherCar} withVersions progressive />
+            {vehicles.length < MAX_GARAGE_VEHICLES && (
+              <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm font-semibold">
+                <input type="checkbox" className="size-5 accent-[#0b3146]" checked={saveCar} onChange={(e) => setSaveCar(e.target.checked)} />
+                {t("quote_save_garage")}
+              </label>
+            )}
           </div>
         )}
         <div className="mt-3 grid gap-3 sm:grid-cols-2">

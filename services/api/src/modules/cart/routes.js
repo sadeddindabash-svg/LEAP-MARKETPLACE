@@ -59,6 +59,24 @@ async function computeLivePrice(r) {
   return { price, originalPrice, currencyCode: 'USD' };
 }
 
+// The car of a quotation, for the basket: "GAC GS8 2024 320T Luxury" (Arabic names when asked and known).
+function quotationCarLine(raw, lang) {
+  let v = raw;
+  if (typeof v === 'string') { try { v = JSON.parse(v); } catch { v = null; } }
+  if (!v || typeof v !== 'object') return null;
+  const ar = lang === 'ar';
+  return [ar && v.makeAr ? v.makeAr : v.make, ar && v.modelAr ? v.modelAr : v.model, v.year, ar && v.versionAr ? v.versionAr : v.version].filter(Boolean).join(' ') || null;
+}
+
+// A part put in the basket from a quotation ("Order these parts", migration 141): kept only when the signed-in buyer's OWN quotation holds that part.
+async function quotationFor(req, productId) {
+  const id = req.body && typeof req.body.quotationId === 'string' ? req.body.quotationId : null;
+  if (!id || !req.user || !req.user.sub) return null;
+  const { rows } = await db.query(
+    'SELECT 1 FROM quotations q JOIN quotation_items qi ON qi.quotation_id = q.id WHERE q.id = $1 AND q.buyer_id = $2 AND qi.product_id = $3', [id, req.user.sub, productId]);
+  return rows.length > 0 ? id : null;
+}
+
 const CHECKOUT_LOCK_DURATION_MS = 60 * 60 * 1000; // confirmed with the person: 60 real minutes
 
 // `lang` ('ar' | anything else) picks which approved product name to return --
@@ -90,10 +108,14 @@ async function getFullCart(cartId, tokenBuyerId, lang) {
   const lockExpiresAt = lockActive ? new Date(new Date(checkoutLockedAt).getTime() + CHECKOUT_LOCK_DURATION_MS).toISOString() : null;
 
   const { rows } = await db.query(
-    `SELECT ci.product_id, ci.quantity, ci.locked_price, p.name, p.name_ar, p.price, p.currency_code, p.category, p.part, p.weight_kg, p.length_cm, p.width_cm, p.height_cm, p.stock_quantity, p.supplier_id
+    `SELECT ci.product_id, ci.quantity, ci.locked_price, ci.quotation_id, qt.party_name AS quotation_party, qt.vehicle AS quotation_vehicle, p.name, p.name_ar, p.price, p.currency_code, p.category, p.part, p.weight_kg, p.length_cm, p.width_cm, p.height_cm, p.stock_quantity, p.supplier_id
      FROM cart_items ci
      JOIN products p ON p.id = ci.product_id
-     WHERE ci.cart_id = $1`,
+     -- a part put in the basket from one of the buyer's quotations (migration 141): the basket groups it under that quotation
+     LEFT JOIN quotations qt ON qt.id = ci.quotation_id
+     WHERE ci.cart_id = $1
+     -- the order the products were put in the basket (migration 140): a changed quantity never moves a card
+     ORDER BY ci.added_at ASC, ci.product_id ASC`,
     [cartId]
   );
   // Real supplier anonymization (new, business decision confirmed
@@ -172,6 +194,8 @@ async function getFullCart(cartId, tokenBuyerId, lang) {
       // previously exposed to the client. Null when a real product
       // has no real weight on file rather than a fabricated default.
       weightKg: effectiveWeightKg,
+      // From a quotation (migration 141): its number, who it is for and its car; null for a part from the catalogue.
+      quotation: r.quotation_id ? { id: r.quotation_id, partyName: r.quotation_party, car: quotationCarLine(r.quotation_vehicle, lang) } : null,
     };
   }))).filter(Boolean);
   // Confirmed with the person: an applied promo code persists on the
@@ -380,10 +404,12 @@ router.patch('/:cartId/items/:productId', optionalAuth, async (req, res, next) =
       if (!stockCheck.ok) return res.status(400).json(stockErrorBody(stockCheck));
 
       await ensureCartExists(req.params.cartId);
+      // { quotationId } (optional): the part comes from that quotation of the buyer's; a later change of quantity keeps the mark.
+      const quotationId = await quotationFor(req, req.params.productId);
       await db.query(
-        `INSERT INTO cart_items (cart_id, product_id, quantity) VALUES ($1, $2, $3)
-         ON CONFLICT (cart_id, product_id) DO UPDATE SET quantity = EXCLUDED.quantity`,
-        [req.params.cartId, req.params.productId, quantity]
+        `INSERT INTO cart_items (cart_id, product_id, quantity, quotation_id) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (cart_id, product_id) DO UPDATE SET quantity = EXCLUDED.quantity, quotation_id = COALESCE(EXCLUDED.quotation_id, cart_items.quotation_id)`,
+        [req.params.cartId, req.params.productId, quantity, quotationId]
       );
     }
     res.json(await getFullCart(req.params.cartId, req.user?.sub, req.query.lang));

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/theme.dart';
 import '../../widgets/order_status_timeline.dart';
 import '../../core/app_strings.dart';
@@ -9,7 +10,6 @@ import '../../core/auto_refresher.dart';
 import '../../core/language_state.dart';
 import '../../core/currency_state.dart';
 import '../../services/api_client.dart';
-import '../../widgets/plate_chip.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/slide_in.dart';
 import '../../widgets/premium.dart';
@@ -182,11 +182,12 @@ class _OrdersScreenState extends State<OrdersScreen> {
       appBar: AppBar(title: Text(tr(context, 'my_orders'))),
       body: SlideInScope(child: Column(
         children: [
+          // the tabs: 8 above them, and 8 down to the first box (no line under them)
           SizedBox(
-            height: 56,
+            height: 52,
             child: ListView(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
               children: kOrderTabs.map((t) {
                 final selected = _selectedTab == t.key;
                 final label = tr(context, t.labelKey);
@@ -209,7 +210,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
               }).toList(),
             ),
           ),
-          Divider(height: 1, color: LeapPalette.of(context).line),
           Expanded(
             child: RefreshIndicator(
               onRefresh: _handleRefresh,
@@ -271,80 +271,55 @@ class _OrdersScreenState extends State<OrdersScreen> {
                   // the summary and the orders slide in again on every tab (All, To ship, Shipped, Delivered, Returns)
                   return SlideInScope(key: ValueKey(_selectedTab), child: ListView.separated(
                     physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                     itemCount: orders.length + (_selectedTab == 'all' ? 1 : 0),
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),       // every gap on this page is 8
                     itemBuilder: (context, i) => SlideIn(index: i, child: PressDown(child: Builder(builder: (context) {
                       if (_selectedTab == 'all' && i == 0) {
-                        return Row(
-                          children: [
-                            Expanded(
-                              child: Container(
-                                height: 100,
-                                padding: const EdgeInsets.all(16),
-                                margin: const EdgeInsets.only(bottom: 4),
-                                decoration: Premium.card(context, radius: 12),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(tr(context, 'active_shipments').toUpperCase(), textAlign: TextAlign.center, maxLines: 2, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: palette.signalDark, letterSpacing: 0.5)),
-                                    const SizedBox(height: 4),
-                                    FittedBox(fit: BoxFit.scaleDown, child: _AnimatedCountText(target: activeShipments, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: palette.ink))),
-                                  ],
+                        // the two summary tiles: the same size, as short as their content, 8 apart (the same gap as every box on this page)
+                        Widget tile(String label, Widget value) => Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              decoration: Premium.card(context, radius: 12),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(label, textAlign: TextAlign.center, maxLines: 2, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: palette.signalDark, letterSpacing: 0.5)),
+                                  const SizedBox(height: 2),
+                                  FittedBox(fit: BoxFit.scaleDown, child: value),
+                                ],
+                              ),
+                            );
+                        final valueStyle = TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: palette.ink);
+                        return IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(child: tile(tr(context, 'active_shipments').toUpperCase(), _AnimatedCountText(target: activeShipments, style: valueStyle))),
+                              if (_spendSummaryFuture != null) ...[
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: FutureBuilder<Map<String, dynamic>>(
+                                    future: _spendSummaryFuture,
+                                    builder: (context, snapshot) {
+                                      final summary = snapshot.data;
+                                      final year = summary?['year'] ?? DateTime.now().year;
+                                      final label = isAr ? '${tr(context, 'annual_spend_label')} $year' : '$year ${tr(context, 'annual_spend_label')}';
+                                      // while it loads (or if it cannot): the same tile with a dash, so both tiles keep the same size
+                                      if (summary == null) return tile(label, Text('—', style: valueStyle));
+                                      final usdTotal = (summary['totalSpent'] as num).toDouble();
+                                      final currency = context.watch<CurrencyState>();
+                                      final converted = currency.convert(usdTotal);
+                                      final displayCurrencyCode = converted != null ? currency.currencyCode : 'USD';
+                                      return tile(
+                                        label,
+                                        _AnimatedCountText(target: (converted ?? usdTotal).round(), formatter: (v) => formatAmount(context, v.toDouble(), displayCurrencyCode), style: valueStyle),
+                                      );
+                                    },
+                                  ),
                                 ),
-                              ),
-                            ),
-                            // Real annual spend summary tile (#30) --
-                            // loads independently; simply shows
-                            // nothing extra while loading or on a
-                            // real failure, never blocking the
-                            // existing Active Shipments tile beside
-                            // it.
-                            if (_spendSummaryFuture != null)
-                              FutureBuilder<Map<String, dynamic>>(
-                                future: _spendSummaryFuture,
-                                builder: (context, snapshot) {
-                                  if (!snapshot.hasData) return const SizedBox(width: 8, height: 100);
-                                  final summary = snapshot.data!;
-                                  return Expanded(
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(left: 10),
-                                      child: Container(
-                                        height: 100,
-                                        padding: const EdgeInsets.all(16),
-                                        margin: const EdgeInsets.only(bottom: 4),
-                                        decoration: Premium.card(context, radius: 12),
-                                        child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.center,
-                                                mainAxisAlignment: MainAxisAlignment.center,
-                                                children: [
-                                                  Text(
-                                                    isAr ? '${tr(context, 'annual_spend_label')} ${summary['year']}' : '${summary['year']} ${tr(context, 'annual_spend_label')}',
-                                                    textAlign: TextAlign.center,
-                                                    maxLines: 2,
-                                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: palette.signalDark, letterSpacing: 0.5),
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  FittedBox(fit: BoxFit.scaleDown, child: Builder(builder: (context) {
-                                                    final usdTotal = (summary['totalSpent'] as num).toDouble();
-                                                    final currency = context.watch<CurrencyState>();
-                                                    final converted = currency.convert(usdTotal);
-                                                    final displayCurrencyCode = converted != null ? currency.currencyCode : 'USD';
-                                                    return _AnimatedCountText(
-                                                      target: (converted ?? usdTotal).round(),
-                                                      formatter: (v) => formatAmount(context, v.toDouble(), displayCurrencyCode),
-                                                      style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: palette.ink),
-                                                    );
-                                                  })),
-                                                ],
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                          ],
+                              ],
+                            ],
+                          ),
                         );
                       }
                       final o = orders[i - (_selectedTab == 'all' ? 1 : 0)] as Map<String, dynamic>;
@@ -354,55 +329,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
                       // actual real progress, so it is deliberately NOT
                       // used for display here.
                       final displayStatus = buyerFacingStatus((o['displayStatus'] as String?) ?? (o['status'] as String));
-                      // Real supplier names (new) -- closes a real gap:
-                      // no supplier info was shown at all on this list
-                      // before, only after opening an order's own
-                      // detail page. Joined with commas since a single
-                      // real order can be fulfilled by more than one
-                      // real supplier.
-                      final supplierNames = (o['supplierNames'] as List?)?.cast<String>() ?? [];
-                      // Real color-coded status badge (new), matching
-                      // the real Stitch reference's own color language
-                      // (delivered = green, everything else = the
-                      // brand accent) -- reuses the exact same real
-                      // displayStatus values already computed above,
-                      // not a new or guessed status set.
-                      final badgeColor = displayStatus == 'delivered' ? palette.gauge : palette.signal;
-                      return Card(
-                        child: InkWell(
-                          onTap: () => context.push('/orders/${o['id']}'),
-                          child: Padding(
-                          padding: const EdgeInsets.all(14),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  PlateChip(text: o['id'] as String, small: true),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                    decoration: BoxDecoration(color: badgeColor.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(20)),
-                                    child: Text(trStatus(context, displayStatus).toUpperCase(), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: badgeColor)),
-                                  ),
-                                ],
-                              ),
-                              if (supplierNames.isNotEmpty) ...[
-                                const SizedBox(height: 8),
-                                Text(
-                                  '${tr(context, 'supplier_label')}: ${supplierNames.join(', ')}',
-                                  style: TextStyle(fontSize: 11.5, color: palette.muted),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                              const SizedBox(height: 10),
-                              Text(formatPrice(context, (o['total'] as num).toDouble()), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: palette.signal)),
-                            ],
-                          ),
-                        ),
-                        ),
-                      );
+                      // the premium card (A + C): navy header, the parts' photos, the total and the progress; no seller names
+                      return _OrderCard(order: o, status: displayStatus);
                     }))),
                   ));
                 },
@@ -411,6 +339,157 @@ class _OrdersScreenState extends State<OrdersScreen> {
           ),
         ],
       )),
+    );
+  }
+}
+
+/// A premium order card (confirmed with the person via mockup, A + C, kept as short as it can be): a navy header with the order number, the date and the
+/// status; under it up to 3 photos of the parts ("+2 more"), the total in gold with the number of parts, and a 4-step progress bar (gold; green once
+/// delivered). The whole card opens the order. No seller names.
+class _OrderCard extends StatelessWidget {
+  final Map<String, dynamic> order;
+  final String status;
+  const _OrderCard({required this.order, required this.status});
+
+  static const _stages = ['pending', 'preparing', 'shipped', 'delivered'];
+  static const _monthsEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  static const _monthsAr = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+
+  Widget _thumb(String? url, LeapPalette p) => Container(
+        width: 34,
+        height: 34,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: p.chalk,
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(color: p.card, width: 2),
+          boxShadow: const [BoxShadow(color: Color(0x260B3146), blurRadius: 6, offset: Offset(0, 2))],
+        ),
+        child: url == null || url.isEmpty
+            ? Icon(Icons.settings_outlined, size: 16, color: p.muted)
+            : CachedNetworkImage(imageUrl: ApiClient.resolveMediaUrl(url), fit: BoxFit.cover, errorWidget: (context, u, e) => Icon(Icons.settings_outlined, size: 16, color: p.muted)),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = LeapPalette.of(context);
+    final isAr = context.watch<LanguageState>().isArabic;
+    final o = order;
+    final delivered = status == 'delivered';
+    final cancelled = status == 'cancelled';
+    final step = _stages.indexOf(status); // -1: cancelled (no bar)
+    final photos = ((o['photos'] as List?) ?? const []).map((x) => x as String?).toList();
+    final lineCount = (o['lineCount'] as num?)?.toInt() ?? photos.length;
+    final itemCount = (o['itemCount'] as num?)?.toInt() ?? 0;
+    final more = lineCount - photos.length;
+    final placed = DateTime.tryParse('${o['placedAt']}')?.toLocal();
+    final date = placed == null ? null : '${placed.day} ${(isAr ? _monthsAr : _monthsEn)[placed.month - 1]} ${placed.year}';
+    final pill = cancelled
+        ? const [Color(0xFFEF5350), Color(0xFFC62828)]
+        : delivered
+            ? const [Color(0xFF34C785), Color(0xFF0F6B49)]
+            : const [Color(0xFFFFD567), Color(0xFFE39F0C)];
+    final bar = delivered ? const [Color(0xFF34C785), Color(0xFF0F6B49)] : const [Color(0xFFFFD567), Color(0xFFE39F0C)];
+    return Container(
+      // no gap of its own: the list puts 8 between the boxes
+      clipBehavior: Clip.antiAlias,
+      decoration: Premium.card(context, radius: 14),
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: () => context.push('/orders/${o['id']}'),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // the navy header: number, date, status
+              Container(
+                padding: const EdgeInsetsDirectional.fromSTEB(12, 7, 10, 7),
+                decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF0B3146), Color(0xFF215A78)])),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('${o['id']}', textDirection: TextDirection.ltr, style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w800, fontSize: 13, letterSpacing: 0.5, color: Colors.white)),
+                          if (date != null) Text(date, style: const TextStyle(color: Color(0xFFF9D77A), fontSize: 10.5)),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: pill)),
+                      child: Text(
+                        trStatus(context, status).toUpperCase(),
+                        style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w900, letterSpacing: 0.3, color: cancelled || delivered ? Colors.white : const Color(0xFF0B3146)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsetsDirectional.fromSTEB(12, 8, 6, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        for (var k = 0; k < photos.length; k++)
+                          Align(widthFactor: k < photos.length - 1 ? 0.78 : 1, alignment: AlignmentDirectional.centerStart, child: _thumb(photos[k], palette)),
+                        if (more > 0)
+                          Padding(
+                            padding: const EdgeInsetsDirectional.only(start: 6),
+                            child: Text('+$more ${isAr ? 'أخرى' : 'more'}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: palette.muted)),
+                          ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: AlignmentDirectional.centerEnd,
+                                child: Text(formatPrice(context, (o['total'] as num).toDouble()), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFFC98A00))),
+                              ),
+                              if (itemCount > 0)
+                                Text(isAr ? '$itemCount قطع' : '$itemCount ${itemCount == 1 ? 'part' : 'parts'}', style: TextStyle(fontSize: 10.5, color: palette.muted)),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.chevron_right, color: Color(0xFFC98A00)),
+                      ],
+                    ),
+                    // the 4 steps: placed, preparing, shipped, delivered (the status pill above names the current one)
+                    if (!cancelled) ...[
+                      const SizedBox(height: 7),
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(end: 6),
+                        child: Row(
+                          children: [
+                            for (var k = 0; k < 4; k++) ...[
+                              if (k > 0) const SizedBox(width: 4),
+                              Expanded(
+                                child: Container(
+                                  height: 4,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(2),
+                                    color: k <= step ? null : palette.line,
+                                    gradient: k <= step ? LinearGradient(colors: bar) : null,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -9,7 +9,8 @@ import { Children, useEffect, useRef, useState, type ReactNode } from "react";
  * On a phone (under 768 px) the sections are square tiles, 4 per line, and the 4th is the More tile; `phoneCollapsed` shows that many tiles on a phone (7 brands: 4 per line, 2 lines, the 8th is More).
  * `variant` is the look of the "More" tile, to go with the tiles: "classic" (a dashed card with an icon), "wide" (a dashed wide tile, the words only: with the section tiles), "round" (a dashed circle with the words under it: with the round brand photos).
  */
-export default function TileRow({ children, moreLabel, fewerLabel, gridClassName, defaultColumns = 6, variant = "classic", maxCollapsed, phoneCollapsed }: { children: ReactNode; moreLabel: string; fewerLabel: string; gridClassName: string; defaultColumns?: number; maxCollapsed?: number; phoneCollapsed?: number; variant?: "classic" | "wide" | "round" }) {
+// phoneSlide (the home page, confirmed with the person): on a phone (under 768 px) every tile is in ONE line that slides sideways, with no More tile.
+export default function TileRow({ children, moreLabel, fewerLabel, gridClassName, defaultColumns = 6, variant = "classic", maxCollapsed, phoneCollapsed, phoneSlide = false }: { children: ReactNode; moreLabel: string; fewerLabel: string; gridClassName: string; defaultColumns?: number; maxCollapsed?: number; phoneCollapsed?: number; phoneSlide?: boolean; variant?: "classic" | "wide" | "round" }) {
   const tiles = Children.toArray(children);
   const list = useRef<HTMLUListElement>(null);
   const [columns, setColumns] = useState(defaultColumns);
@@ -17,13 +18,13 @@ export default function TileRow({ children, moreLabel, fewerLabel, gridClassName
   const [phone, setPhone] = useState(false);      // under 768 px: phoneCollapsed applies
 
   useEffect(() => {
-    if (phoneCollapsed === undefined || typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    if ((phoneCollapsed === undefined && !phoneSlide) || typeof window === "undefined" || typeof window.matchMedia !== "function") return;
     const query = window.matchMedia("(max-width: 767px)");
     const update = () => setPhone(query.matches);
     update();
     query.addEventListener?.("change", update);
     return () => query.removeEventListener?.("change", update);
-  }, [phoneCollapsed]);
+  }, [phoneCollapsed, phoneSlide]);
 
   useEffect(() => {
     const el = list.current;
@@ -44,12 +45,13 @@ export default function TileRow({ children, moreLabel, fewerLabel, gridClassName
   // maxCollapsed: show exactly that many tiles (e.g. 9 brands) whatever the width of the screen; without it the row shows one row of tiles, the last place being the More tile.
   const limit = phone && phoneCollapsed !== undefined ? phoneCollapsed : maxCollapsed;
   const pillMode = maxCollapsed !== undefined && phoneCollapsed === undefined;      // the older phone look: a wide pill under 3 brands
-  const fits = limit !== undefined ? tiles.length <= limit : tiles.length <= columns;           // everything fits: no "More" tile
+  const sliding = phoneSlide && phone;      // a phone: one sliding line, every tile, no More tile
+  const fits = sliding || (limit !== undefined ? tiles.length <= limit : tiles.length <= columns);           // everything fits: no "More" tile
   const shown = fits || open ? tiles.length : limit ?? columns - 1;
   const label = open ? fewerLabel : moreLabel;
   return (
-    <ul ref={list} className={gridClassName}>
-      {tiles.map((tile, i) => <li key={i} hidden={i >= shown}>{tile}</li>)}
+    <ul ref={list} className={phoneSlide ? `${gridClassName} max-md:-mx-4 max-md:flex! max-md:snap-x max-md:snap-proximity max-md:scroll-px-4 max-md:gap-2! max-md:overflow-x-auto max-md:px-4 max-md:pb-1 max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden` : gridClassName}>
+      {tiles.map((tile, i) => <li key={i} hidden={i >= shown} className={phoneSlide ? "max-md:w-[76px] max-md:flex-none max-md:snap-start" : undefined}>{tile}</li>)}
       {!fits && (
         <li className={pillMode ? "col-span-3 sm:col-span-1" : undefined}>
           {variant === "wide" ? (

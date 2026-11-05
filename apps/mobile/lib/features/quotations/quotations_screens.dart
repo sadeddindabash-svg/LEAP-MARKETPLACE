@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../widgets/premium.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -8,11 +10,15 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/auth_state.dart';
 import '../../core/cart_state.dart';
 import '../../core/currency_state.dart';
+import '../../core/garage_state.dart';
 import '../../core/language_state.dart';
 import '../../core/theme.dart';
+import '../../models/category.dart';
+import '../../models/product.dart';
 import '../../models/vehicle.dart';
 import '../../services/api_client.dart';
 import '../../services/quotations_api.dart';
+import '../garage/garage_screen.dart' show kMaxGarageVehicles;
 
 /// "Get a quotation", like the website: from the parts ticked in the basket, an official quotation from Leap for a named party (insurance first),
 /// with the car, who pays (them, me, or split as an accident share) and where the parts go once ordered. The link it gives opens the website's check
@@ -29,6 +35,45 @@ const _text = <String, Map<String, String>>{
   'make': {'en': 'Make', 'ar': 'الشركة المصنعة'},
   'model': {'en': 'Model', 'ar': 'الطراز'},
   'year': {'en': 'Year', 'ar': 'السنة'},
+  'brand': {'en': 'Brand', 'ar': 'الماركة'},
+  'version': {'en': 'Version', 'ar': 'الفئة'},
+  'choose_brand': {'en': 'Choose the brand', 'ar': 'اختر الماركة'},
+  'choose_model': {'en': 'Choose the model', 'ar': 'اختر الطراز'},
+  'choose_year': {'en': 'Choose the year', 'ar': 'اختر السنة'},
+  'choose_version': {'en': 'Choose the version', 'ar': 'اختر الفئة'},
+  'version_needed': {'en': 'Choose the version: parts differ between versions.', 'ar': 'اختر الفئة: القطع تختلف بين الفئات.'},
+  'save_garage': {'en': 'Save it to My Garage', 'ar': 'احفظها في مركبتي'},
+  'cars_failed': {'en': 'The list of cars did not load.', 'ar': 'لم تُحمَّل قائمة السيارات.'},
+  'none_here': {'en': 'Nothing to choose here yet.', 'ar': 'لا يوجد ما تختاره هنا بعد.'},
+  'step_of': {'en': 'STEP {n} OF 4 · {title}', 'ar': 'الخطوة {n} من 4 · {title}'},
+  'step_0': {'en': 'THE CAR', 'ar': 'السيارة'},
+  'step_1': {'en': 'WHO IT IS FOR', 'ar': 'لمن العرض'},
+  'step_2': {'en': 'THE PARTS THAT FIT', 'ar': 'القطع التي تناسب'},
+  'step_3': {'en': 'WHO PAYS', 'ar': 'من يدفع'},
+  'next': {'en': 'Next', 'ar': 'التالي'},
+  'change': {'en': 'Change', 'ar': 'تغيير'},
+  'party_insurance_sub': {'en': "Your insurer, or the other driver's", 'ar': 'شركة تأمينك أو تأمين السائق الآخر'},
+  'party_repair_shop_sub': {'en': 'The workshop fixing the car', 'ar': 'الورشة التي تصلح السيارة'},
+  'party_other_party_sub': {'en': 'The driver who caused the accident', 'ar': 'السائق المتسبب في الحادث'},
+  'party_employer_sub': {'en': 'Your company or its fleet', 'ar': 'شركتك أو أسطولها'},
+  'party_other_sub': {'en': 'Anyone else', 'ar': 'أي جهة أخرى'},
+  'in_this_quote': {'en': 'In this quotation', 'ar': 'في هذا العرض'},
+  'search_parts': {'en': 'Search parts for this car', 'ar': 'ابحث عن قطع لهذه السيارة'},
+  'all_sections': {'en': 'All', 'ar': 'الكل'},
+  'no_fitting': {'en': 'No part here is listed as fitting this car yet.', 'ar': 'لا توجد هنا بعد قطعة مسجّلة كمناسبة لهذه السيارة.'},
+  'parts_failed': {'en': 'The parts did not load. Try again.', 'ar': 'لم تُحمَّل القطع. حاول مجددًا.'},
+  'ask_sellers': {'en': "Can't find a part? Ask the sellers for it", 'ar': 'لم تجد قطعة؟ اطلبها من البائعين'},
+  'add': {'en': 'Add', 'ar': 'أضف'},
+  'fits': {'en': 'Fits this car', 'ar': 'تناسب هذه السيارة'},
+  'not_fit': {'en': "Doesn't fit this car", 'ar': 'لا تناسب هذه السيارة'},
+  'checking': {'en': 'Checking the fit…', 'ar': 'جارٍ فحص التوافق…'},
+  'remove': {'en': 'Remove', 'ar': 'إزالة'},
+  'in_quote': {'en': '{n} in the quotation · {total}', 'ar': '{n} في العرض · {total}'},
+  'err_quote_not_fit': {'en': 'A part does not fit this car. Remove it, or choose one that fits.', 'ar': 'قطعة لا تناسب هذه السيارة. أزلها أو اختر قطعة تناسب.'},
+  'basket_note': {'en': '{n} parts from your basket come with it; they are checked against the car in step 3.', 'ar': '{n} قطع من سلتك تنتقل معه، وتُفحص على السيارة في الخطوة 3.'},
+  'new_quotation': {'en': 'New quotation', 'ar': 'عرض سعر جديد'},
+  'order_parts': {'en': 'Order these parts', 'ar': 'اطلب هذه القطع'},
+  'order_parts_sub': {'en': "They go to your basket to pay, at today's prices.", 'ar': 'تُنقل إلى سلتك للدفع، بأسعار اليوم.'},
   'vin': {'en': 'VIN (optional)', 'ar': 'رقم الهيكل VIN (اختياري)'},
   'plate': {'en': 'Plate number (optional)', 'ar': 'رقم اللوحة (اختياري)'},
   'for': {'en': 'Who is it for', 'ar': 'لمن العرض'},
@@ -91,14 +136,14 @@ const _text = <String, Map<String, String>>{
   'err_quote_items': {'en': 'Choose at least one part, each with a quantity of 1 or more.', 'ar': 'اختر قطعة واحدة على الأقل، بكمية 1 أو أكثر.'},
   'err_quote_unavailable': {'en': 'One of the parts is no longer sold. Untick it in your basket and try again.', 'ar': 'إحدى القطع لم تعد معروضة للبيع. ألغِ تحديدها في السلة وحاول مجددًا.'},
   'err_quote_party': {'en': 'Enter who the quotation is for.', 'ar': 'أدخل لمن عرض السعر.'},
-  'err_quote_vehicle': {'en': 'Choose the car (make, model and year).', 'ar': 'اختر السيارة (الشركة والطراز والسنة).'},
+  'err_quote_vehicle': {'en': 'Choose the car: brand, model, year and version.', 'ar': 'اختر السيارة: الماركة والطراز والسنة والفئة.'},
   'err_quote_address': {'en': 'Choose the delivery address.', 'ar': 'اختر عنوان التوصيل.'},
   'err_quote_shares': {'en': 'The shares must add up to 100%.', 'ar': 'يجب أن يكون مجموع الحصص 100%.'},
   'err_generic': {'en': 'Something went wrong. Try again.', 'ar': 'حدث خطأ ما. حاول مجددًا.'},
 };
 
 const _errorKey = {
-  'quote_items': 'err_quote_items', 'quote_unavailable': 'err_quote_unavailable', 'quote_party': 'err_quote_party', 'quote_vehicle': 'err_quote_vehicle',
+  'quote_items': 'err_quote_items', 'quote_unavailable': 'err_quote_unavailable', 'quote_party': 'err_quote_party', 'quote_vehicle': 'err_quote_vehicle', 'quote_not_fit': 'err_quote_not_fit',
   'quote_address': 'err_quote_address', 'quote_share_total': 'err_quote_shares', 'quote_share_percent': 'err_quote_shares', 'quote_share_payer': 'err_quote_shares',
 };
 
@@ -137,7 +182,7 @@ String _date(BuildContext context, String iso) {
   return '${d.day} ${(_ar(context) ? ar : en)[d.month - 1]} ${d.year}';
 }
 
-String _vehicleLine(Map<String, dynamic> v) => [v['make'], v['model'], v['year']].where((x) => x != null && '$x'.isNotEmpty).join(' ');
+String _vehicleLine(Map<String, dynamic> v) => [v['make'], v['model'], v['year'], v['version']].where((x) => x != null && '$x'.isNotEmpty).join(' ');
 
 Color _stateColor(String state) => switch (state) { 'open' => const Color(0xFF0F6B49), 'ordered' => const Color(0xFF0B3146), 'expired' => const Color(0xFFA12A21), _ => Colors.grey };
 Color _stateBack(String state) => switch (state) { 'open' => const Color(0xFFE8F7EF), 'ordered' => const Color(0xFFEAF3F9), 'expired' => const Color(0xFFFDF0EF), _ => const Color(0xFFF4F6F8) };
@@ -178,25 +223,64 @@ class _Card extends StatelessWidget {
 // ---------------------------------------------------------------------------------------------------------------- Get a quotation
 
 class NewQuotationScreen extends StatefulWidget {
-  const NewQuotationScreen({super.key});
+  /// Opened from the basket: its ticked parts come into the quotation, and are checked against the car like any other.
+  final bool fromBasket;
+  const NewQuotationScreen({super.key, this.fromBasket = false});
   @override
   State<NewQuotationScreen> createState() => _NewQuotationScreenState();
 }
 
+/// A part of the quotation being made. The price is the shop's, shown as a guide: the server prices the quotation itself.
+class _QItem {
+  final String productId;
+  final String name;
+  final double price;
+  final String? photo;
+  int quantity;
+  bool? fits; // null while it is being checked against the car
+  _QItem({required this.productId, required this.name, required this.price, this.photo, this.quantity = 1, this.fits});
+}
+
+/// Get a quotation, car first, in 4 steps (confirmed with the person via mockup):
+///   1 the car (My Garage, or Brand > Model > Year > Version from the catalogue, never typed);
+///   2 who it is for (a list), its name, the policy number for an insurer, the police / Najm report and the plate;
+///   3 the parts: the shop filtered to that exact car and version, so every part shown fits it (the sellers' fitment); parts brought from the basket are
+///     checked too, and one that does not fit must be removed;
+///   4 who pays and where the parts go. Then the quotation (the server checks the car and the fit again).
 class _NewQuotationScreenState extends State<NewQuotationScreen> {
   static const _otherCar = '__other__';
   static const _parties = ['insurance', 'repair_shop', 'other_party', 'employer', 'other'];
+  static const _partyIcons = {
+    'insurance': Icons.shield_outlined,
+    'repair_shop': Icons.build_outlined,
+    'other_party': Icons.car_crash_outlined,
+    'employer': Icons.business_outlined,
+    'other': Icons.person_outline,
+  };
+  int _step = 0; // 0 the car, 1 who it is for, 2 the parts, 3 who pays
   List<Vehicle>? _garage;
   List<dynamic>? _addresses;
   String? _car;
+  _PickedCar? _other;
+  int _otherKey = 0; // a fresh "Another car" picker each time "Another car" is chosen again
+  bool _saveCar = true;
   String _party = 'insurance';
   String _pay = 'party';
   String? _addressId;
   bool _busy = false;
   String? _error;
-  final _make = TextEditingController(), _model = TextEditingController(), _year = TextEditingController();
+  final _items = <String, _QItem>{};
   final _vin = TextEditingController(), _plate = TextEditingController(), _name = TextEditingController();
   final _policy = TextEditingController(), _report = TextEditingController(), _percent = TextEditingController(text: '75');
+  final _search = TextEditingController();
+  // the parts step
+  List<ProductCategory>? _categories;
+  String? _category;
+  List<Product>? _results;
+  bool _resultsFailed = false;
+  int _searchTicket = 0;
+  Timer? _debounce;
+  String? _checkedFor; // the car the parts were last looked up and checked for
 
   @override
   void initState() {
@@ -205,9 +289,15 @@ class _NewQuotationScreenState extends State<NewQuotationScreen> {
     if (token == null) return;
     _loadGarage(token);
     _loadAddresses(token);
+    _loadCategories();
+    if (widget.fromBasket) {
+      for (final i in context.read<CartState>().forCheckout.items) {
+        _items[i.productId] = _QItem(productId: i.productId, name: i.name, price: i.price, photo: i.imageUrl == null ? null : ApiClient.resolveMediaUrl(i.imageUrl!), quantity: i.quantity);
+      }
+    }
   }
 
-  // Each list on its own: a failure leaves it empty (the car can still be typed; an address can be added).
+  // Each list on its own: a failure leaves it empty (another car can still be chosen; an address can be added).
   Future<void> _loadGarage(String token) async {
     List<Vehicle> list;
     try { list = await ApiClient().fetchMyGarage(token); } catch (_) { list = []; }
@@ -220,31 +310,138 @@ class _NewQuotationScreenState extends State<NewQuotationScreen> {
     if (mounted) setState(() => _addresses = list);
   }
 
+  Future<void> _loadCategories() async {
+    List<ProductCategory> list;
+    try { list = await ApiClient().fetchCategories(); } catch (_) { list = []; }
+    if (mounted) setState(() => _categories = list);
+  }
+
   @override
   void dispose() {
-    for (final c in [_make, _model, _year, _vin, _plate, _name, _policy, _report, _percent]) { c.dispose(); }
+    _debounce?.cancel();
+    for (final c in [_vin, _plate, _name, _policy, _report, _percent, _search]) { c.dispose(); }
     super.dispose();
   }
 
   String _key(Vehicle v) => '${v.generationId}:${v.year}:${v.versionId ?? ''}';
 
-  int get _partyPercent => (int.tryParse(_percent.text.trim()) ?? 75).clamp(1, 99);
+  String get _pick {
+    final g = _garage;
+    return _car ?? (g != null && g.isNotEmpty ? _key(g.firstWhere((v) => v.isDefault, orElse: () => g.first)) : _otherCar);
+  }
 
-  Future<void> _submit(List<Map<String, dynamic>> items) async {
+  Vehicle? get _garageCar {
+    final pick = _pick;
+    for (final v in _garage ?? const <Vehicle>[]) {
+      if (_key(v) == pick) return v;
+    }
+    return null;
+  }
+
+  /// The chosen car as the server takes it (a car of the catalogue), or null while none is complete.
+  Map<String, dynamic>? get _vehicle {
+    final g = _garageCar;
+    if (g != null) return {'generationId': g.generationId, 'year': g.year, 'versionId': g.versionId};
+    final o = _other;
+    if (_pick == _otherCar && o != null) return {'generationId': o.generationId, 'year': o.year, 'versionId': o.versionId};
+    return null;
+  }
+
+  String _garageName(Vehicle v, bool ar) => '${ar && (v.brandAr ?? '').isNotEmpty ? v.brandAr : v.brand} ${ar && (v.modelAr ?? '').isNotEmpty ? v.modelAr : v.model} ${v.year}';
+  String? _garageVersion(Vehicle v, bool ar) => ar && (v.versionNameAr ?? '').isNotEmpty ? v.versionNameAr : v.versionName;
+
+  String get _carLabel {
+    final ar = _ar(context);
+    final g = _garageCar;
+    if (g != null) {
+      final version = _garageVersion(g, ar);
+      return version == null || version.isEmpty ? _garageName(g, ar) : '${_garageName(g, ar)} · $version';
+    }
+    return _other?.label ?? '';
+  }
+
+  int get _partyPercent => (int.tryParse(_percent.text.trim()) ?? 75).clamp(1, 99);
+  int get _count => _items.values.fold<int>(0, (s, i) => s + i.quantity);
+  double get _estimate => _items.values.fold<double>(0, (s, i) => s + i.price * i.quantity);
+
+  // ---- moving between the steps
+
+  void _next() {
     setState(() => _error = null);
-    final garage = _garage ?? const <Vehicle>[];
-    final pick = _car ?? (garage.isNotEmpty ? _key(garage.firstWhere((v) => v.isDefault, orElse: () => garage.first)) : _otherCar);
-    final picked = garage.where((v) => _key(v) == pick).toList();
-    final Map<String, dynamic> vehicle = picked.isNotEmpty
-        ? {'make': picked.first.brand, 'model': picked.first.model, 'year': picked.first.year}
-        : {'make': _make.text.trim(), 'model': _model.text.trim(), 'year': int.tryParse(_year.text.trim()) ?? 0};
+    switch (_step) {
+      case 0:
+        if (_vehicle == null) { setState(() => _error = qtr(context, 'err_quote_vehicle')); return; }
+        setState(() => _step = 1);
+      case 1:
+        if (_name.text.trim().isEmpty) { setState(() => _error = qtr(context, 'err_quote_party')); return; }
+        setState(() => _step = 2);
+        _enterParts();
+      case 2:
+        if (_items.isEmpty) { setState(() => _error = qtr(context, 'err_quote_items')); return; }
+        if (_items.values.any((i) => i.fits == false)) { setState(() => _error = qtr(context, 'err_quote_not_fit')); return; }
+        if (_items.values.any((i) => i.fits == null)) { setState(() => _error = qtr(context, 'checking')); return; }
+        setState(() => _step = 3);
+    }
+  }
+
+  void _back() => setState(() { _step = _step > 0 ? _step - 1 : 0; _error = null; });
+
+  /// The parts step for the chosen car: the fitting parts are looked up, and the parts already in the quotation are checked (again, when the car changed).
+  void _enterParts() {
+    final v = _vehicle;
+    if (v == null) return;
+    final key = '${v['generationId']}:${v['year']}:${v['versionId'] ?? ''}';
+    if (_checkedFor == key) return;
+    _checkedFor = key;
+    _runSearch();
+    _checkFits();
+  }
+
+  Future<void> _checkFits() async {
+    final vehicle = _vehicle;
+    final token = context.read<AuthState>().token;
+    if (vehicle == null || token == null || _items.isEmpty) return;
+    final key = _checkedFor;
+    setState(() { for (final i in _items.values) { i.fits = null; } });
+    Set<String>? answer;
+    try {
+      answer = await QuotationsApi().fitCheck(token, vehicle, _items.keys.toList(), _lang(context));
+    } catch (_) {
+      answer = null; // not checked here: the server checks every part again when the quotation is made
+    }
+    final fits = answer;
+    if (!mounted || key != _checkedFor) return;
+    setState(() { for (final i in _items.values) { i.fits = fits == null ? true : fits.contains(i.productId); } });
+  }
+
+  void _onSearchChanged(String _) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), _runSearch);
+  }
+
+  Future<void> _runSearch() async {
+    final vehicle = _vehicle;
+    if (vehicle == null) return;
+    final t = ++_searchTicket;
+    setState(() { _results = null; _resultsFailed = false; });
+    try {
+      final list = await QuotationsApi().fittingParts(vehicle, search: _search.text.trim(), category: _category, lang: _lang(context));
+      if (mounted && t == _searchTicket) setState(() => _results = list);
+    } catch (_) {
+      if (mounted && t == _searchTicket) setState(() { _results = const []; _resultsFailed = true; });
+    }
+  }
+
+  // ---- making it
+
+  Future<void> _submit() async {
+    setState(() => _error = null);
+    final vehicle = _vehicle;
+    if (vehicle == null) { setState(() { _step = 0; _error = qtr(context, 'err_quote_vehicle'); }); return; }
     vehicle['vin'] = _vin.text.trim().isEmpty ? null : _vin.text.trim();
     vehicle['plate'] = _plate.text.trim().isEmpty ? null : _plate.text.trim();
-    if ('${vehicle['make']}'.isEmpty || '${vehicle['model']}'.isEmpty || vehicle['year'] == 0) { setState(() => _error = qtr(context, 'err_quote_vehicle')); return; }
-    if (_name.text.trim().isEmpty) { setState(() => _error = qtr(context, 'err_quote_party')); return; }
-    final addresses = _addresses ?? const [];
-    final defaultAddress = addresses.cast<Map<String, dynamic>>().where((a) => a['isDefault'] == true).map((a) => a['id'] as String).fold<String?>(null, (found, id) => found ?? id);
-    final addressId = _addressId ?? defaultAddress ?? (addresses.isNotEmpty ? (addresses.first as Map<String, dynamic>)['id'] as String : null);
+    final addresses = (_addresses ?? const []).cast<Map<String, dynamic>>();
+    final addressId = _addressId ?? addresses.where((a) => a['isDefault'] == true).map((a) => a['id'] as String).fold<String?>(null, (found, id) => found ?? id) ?? (addresses.isNotEmpty ? addresses.first['id'] as String : null);
     if (addressId == null) { setState(() => _error = qtr(context, 'err_quote_address')); return; }
     final List<Map<String, dynamic>> shares = switch (_pay) {
       'buyer' => [{'payer': 'buyer', 'percent': 100}],
@@ -255,20 +452,37 @@ class _NewQuotationScreenState extends State<NewQuotationScreen> {
     if (token == null) return;
     final lang = _lang(context);
     final currency = context.read<CurrencyState>().currencyCode;
+    final garage = _garage ?? const <Vehicle>[];
+    final other = _garageCar == null ? _other : null;
     setState(() => _busy = true);
     try {
       final q = await QuotationsApi().create(token, {
-        'items': items, 'vehicle': vehicle, 'partyType': _party, 'partyName': _name.text.trim(),
-        if (_policy.text.trim().isNotEmpty) 'policyNumber': _policy.text.trim(),
+        'items': [for (final i in _items.values) {'productId': i.productId, 'quantity': i.quantity}],
+        'vehicle': vehicle, 'partyType': _party, 'partyName': _name.text.trim(),
+        if (_party == 'insurance' && _policy.text.trim().isNotEmpty) 'policyNumber': _policy.text.trim(),
         if (_report.text.trim().isNotEmpty) 'reportNumber': _report.text.trim(),
         'shares': shares, 'addressId': addressId, 'lang': lang, 'displayCurrency': currency,
       }, lang);
       if (!mounted) return;
+      // "Save it to My Garage" (ticked): the car chosen under "Another car" joins My Garage. The quotation is made either way.
+      if (other != null && _saveCar && garage.length < kMaxGarageVehicles) {
+        final garageState = context.read<GarageState>();
+        try {
+          await ApiClient().addVehicleToGarage(token, other.generationId, other.year, versionId: other.versionId);
+          garageState.notifyGarageChanged();
+        } catch (_) {}
+        if (!mounted) return;
+      }
       context.pushReplacement('/quotations/${Uri.encodeComponent(q['id'] as String)}');
     } catch (e) {
-      if (mounted) setState(() { _error = _errorText(context, e); _busy = false; });
+      if (!mounted) return;
+      final notFit = e is ApiException && e.code == 'quote_not_fit';
+      setState(() { _error = _errorText(context, e); _busy = false; if (notFit) { _step = 2; _checkedFor = null; } });
+      if (notFit) _enterParts();
     }
   }
+
+  // ---- pieces
 
   Widget _radio(String label, bool on, VoidCallback onTap, {String? sub}) {
     final p = LeapPalette.of(context);
@@ -279,13 +493,13 @@ class _NewQuotationScreenState extends State<NewQuotationScreen> {
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.all(12),
-          decoration: Premium.cardFor(p, radius: 12, ring: on ? p.ink : null),
+          decoration: Premium.cardFor(p, radius: 12, ring: on ? Premium.gold : null),
           child: Row(children: [
-            Icon(on ? Icons.radio_button_checked : Icons.radio_button_unchecked, color: on ? p.ink : p.muted, size: 22),
+            Icon(on ? Icons.radio_button_checked : Icons.radio_button_unchecked, color: on ? const Color(0xFFE39F0C) : p.muted, size: 22),
             const SizedBox(width: 10),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
-              if (sub != null) Text(sub, style: TextStyle(color: p.muted, fontSize: 12.5)),
+              if (sub != null && sub.isNotEmpty) Text(sub, style: TextStyle(color: p.muted, fontSize: 12.5)),
             ])),
           ]),
         ),
@@ -299,95 +513,555 @@ class _NewQuotationScreenState extends State<NewQuotationScreen> {
           controller: c,
           keyboardType: type,
           textDirection: ltr ? TextDirection.ltr : null,
-          decoration: InputDecoration(labelText: label, helperText: hint, border: const OutlineInputBorder()),
+          decoration: InputDecoration(labelText: label, helperText: hint),
           onChanged: (_) => setState(() {}),
         ),
       );
+
+  Widget _progress(LeapPalette p) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            for (var i = 0; i < 4; i++) ...[
+              if (i > 0) const SizedBox(width: 4),
+              Expanded(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  height: 5,
+                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(3), color: i <= _step ? Premium.gold : p.line),
+                ),
+              ),
+            ],
+          ]),
+          const SizedBox(height: 6),
+          Text(
+            qtr(context, 'step_of').replaceAll('{n}', '${_step + 1}').replaceAll('{title}', qtr(context, 'step_$_step')),
+            style: const TextStyle(color: Color(0xFFC98A00), fontWeight: FontWeight.w800, fontSize: 12, letterSpacing: .3),
+          ),
+        ]),
+      );
+
+  /// The car the quotation is for, on every step after the first (Change goes back to it).
+  Widget _carBanner() => Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsetsDirectional.fromSTEB(14, 6, 6, 6),
+        decoration: Premium.navyRaised(radius: 14),
+        child: Row(children: [
+          const Icon(Icons.directions_car, color: Color(0xFFF9D77A)),
+          const SizedBox(width: 10),
+          Expanded(child: Text(_carLabel, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800))),
+          TextButton(
+            onPressed: () => setState(() { _step = 0; _error = null; }),
+            style: TextButton.styleFrom(foregroundColor: const Color(0xFFF9D77A)),
+            child: Text(qtr(context, 'change')),
+          ),
+        ]),
+      );
+
+  Widget _photo(String? url, LeapPalette p) => Container(
+        width: 48,
+        height: 48,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(color: p.chalk, borderRadius: BorderRadius.circular(10)),
+        child: url == null
+            ? Icon(Icons.settings_outlined, color: p.muted)
+            : CachedNetworkImage(imageUrl: url, fit: BoxFit.cover, errorWidget: (context, u, e) => Icon(Icons.settings_outlined, color: p.muted)),
+      );
+
+  Widget _fitMark(bool? fits, LeapPalette p) {
+    if (fits == null) return Text(qtr(context, 'checking'), style: TextStyle(color: p.muted, fontSize: 11.5));
+    final ok = fits;
+    return Container(
+      margin: const EdgeInsets.only(top: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: ok ? const [Color(0xFF34C785), Color(0xFF0F6B49)] : const [Color(0xFFEF5350), Color(0xFFC62828)]),
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: Text('${ok ? '✓' : '✗'} ${qtr(context, ok ? 'fits' : 'not_fit')}', style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w900)),
+    );
+  }
+
+  Widget _round(IconData icon, VoidCallback onTap, LeapPalette p) => InkResponse(
+        onTap: onTap,
+        radius: 20,
+        child: Container(
+          width: 30,
+          height: 30,
+          decoration: Premium.cardFor(p, radius: 15),
+          child: Icon(icon, size: 16, color: p.ink),
+        ),
+      );
+
+  Widget _stepper(_QItem i, LeapPalette p) => Row(mainAxisSize: MainAxisSize.min, children: [
+        _round(Icons.remove, () => setState(() { if (i.quantity > 1) { i.quantity--; } else { _items.remove(i.productId); } }), p),
+        SizedBox(width: 28, child: Text('${i.quantity}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w800))),
+        _round(Icons.add, () => setState(() => i.quantity++), p),
+      ]);
+
+  Widget _itemRow(_QItem i, LeapPalette p) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(children: [
+          _photo(i.photo, p),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(i.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+              Text(formatPrice(context, i.price * i.quantity), style: const TextStyle(color: Color(0xFFC98A00), fontWeight: FontWeight.w900, fontSize: 12.5)),
+              _fitMark(i.fits, p),
+            ]),
+          ),
+          const SizedBox(width: 6),
+          if (i.fits == false)
+            TextButton(onPressed: () => setState(() { _items.remove(i.productId); _error = null; }), style: TextButton.styleFrom(foregroundColor: const Color(0xFFC62828)), child: Text(qtr(context, 'remove')))
+          else
+            _stepper(i, p),
+        ]),
+      );
+
+  Widget _resultRow(Product r, LeapPalette p) {
+    final inQuote = _items[r.id];
+    final photo = r.images.isNotEmpty ? ApiClient.resolveMediaUrl(r.images.first) : null;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(10),
+      decoration: Premium.cardFor(p, radius: 12),
+      child: Row(children: [
+        _photo(photo, p),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(r.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+            Text(formatPrice(context, r.price), style: const TextStyle(color: Color(0xFFC98A00), fontWeight: FontWeight.w900, fontSize: 12.5)),
+            _fitMark(true, p),
+          ]),
+        ),
+        const SizedBox(width: 6),
+        if (inQuote != null)
+          _stepper(inQuote, p)
+        else
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(minimumSize: const Size(0, 36), padding: const EdgeInsets.symmetric(horizontal: 14)),
+            onPressed: () => setState(() { _items[r.id] = _QItem(productId: r.id, name: r.name, price: r.price, photo: photo, fits: true); _error = null; }),
+            child: Text('+ ${qtr(context, 'add')}'),
+          ),
+      ]),
+    );
+  }
+
+  // ---- the steps
+
+  Widget _carStep(LeapPalette p) {
+    final garage = _garage;
+    final ar = _ar(context);
+    final pick = _pick;
+    return ListView(padding: const EdgeInsets.all(16), children: [
+      Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(qtr(context, 'lead'), style: TextStyle(color: p.muted))),
+      _Card(title: qtr(context, 'car'), children: [
+        if (garage == null) const LinearProgressIndicator(),
+        for (final v in garage ?? const <Vehicle>[]) _radio(_garageName(v, ar), pick == _key(v), () => setState(() => _car = _key(v)), sub: _garageVersion(v, ar)),
+        if ((garage ?? const []).isNotEmpty)
+          _radio(qtr(context, 'car_other'), pick == _otherCar, () {
+            if (pick != _otherCar) setState(() { _car = _otherCar; _other = null; _otherKey++; });
+          }),
+        if (pick == _otherCar) ...[
+          _CarPicker(key: ValueKey(_otherKey), onChanged: (c) => setState(() => _other = c)),
+          if (garage != null && garage.length < kMaxGarageVehicles)
+            InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () => setState(() => _saveCar = !_saveCar),
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(children: [
+                  Checkbox(value: _saveCar, onChanged: (on) => setState(() => _saveCar = on ?? false)),
+                  Expanded(child: Text(qtr(context, 'save_garage'), style: const TextStyle(fontWeight: FontWeight.w600))),
+                ]),
+              ),
+            ),
+        ],
+        _field(_vin, qtr(context, 'vin'), ltr: true),
+      ]),
+      if (widget.fromBasket && _items.isNotEmpty)
+        Text(qtr(context, 'basket_note').replaceAll('{n}', '${_items.length}'), style: TextStyle(color: p.muted, fontSize: 12.5)),
+    ]);
+  }
+
+  Widget _partyRow(String party, LeapPalette p) {
+    final on = _party == party;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => setState(() => _party = party),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          decoration: Premium.cardFor(p, radius: 12, ring: on ? Premium.gold : null),
+          child: Row(children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: on ? Premium.goldRaised(radius: 10) : BoxDecoration(color: p.chalk, borderRadius: BorderRadius.circular(10)),
+              child: Icon(_partyIcons[party], size: 20, color: on ? const Color(0xFF0B3146) : p.ink),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(qtr(context, 'party_$party'), style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text(qtr(context, 'party_${party}_sub'), style: TextStyle(color: p.muted, fontSize: 11.5)),
+              ]),
+            ),
+            Icon(on ? Icons.radio_button_checked : Icons.radio_button_unchecked, color: on ? const Color(0xFFE39F0C) : p.muted, size: 22),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _forStep(LeapPalette p) => ListView(padding: const EdgeInsets.all(16), children: [
+        _carBanner(),
+        _Card(title: qtr(context, 'for'), children: [
+          for (final party in _parties) _partyRow(party, p),
+          const SizedBox(height: 6),
+          _field(_name, qtr(context, 'name_$_party')),
+          if (_party == 'insurance') _field(_policy, qtr(context, 'policy'), ltr: true),
+          _field(_report, qtr(context, 'report'), hint: qtr(context, 'report_hint'), ltr: true),
+          _field(_plate, qtr(context, 'plate'), ltr: true),
+        ]),
+      ]);
+
+  Widget _partsStep(LeapPalette p) {
+    final ar = _ar(context);
+    final results = _results;
+    final cats = _categories ?? const <ProductCategory>[];
+    return ListView(padding: const EdgeInsets.all(16), children: [
+      _carBanner(),
+      if (_items.isNotEmpty) _Card(title: qtr(context, 'in_this_quote'), children: [for (final i in _items.values.toList()) _itemRow(i, p)]),
+      TextField(
+        controller: _search,
+        onChanged: _onSearchChanged,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(hintText: qtr(context, 'search_parts'), prefixIcon: const Icon(Icons.search)),
+      ),
+      const SizedBox(height: 10),
+      if (cats.isNotEmpty)
+        SizedBox(
+          height: 42,
+          child: ListView(scrollDirection: Axis.horizontal, children: [
+            for (final c in <ProductCategory?>[null, ...cats])
+              Padding(
+                padding: const EdgeInsetsDirectional.only(end: 6),
+                child: ChoiceChip(
+                  label: Text(c == null ? qtr(context, 'all_sections') : c.displayName(ar)),
+                  selected: _category == c?.id,
+                  onSelected: (_) {
+                    setState(() => _category = c?.id);
+                    _runSearch();
+                  },
+                ),
+              ),
+          ]),
+        ),
+      const SizedBox(height: 10),
+      if (results == null)
+        const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))
+      else if (results.isEmpty)
+        Padding(padding: const EdgeInsets.all(16), child: Text(qtr(context, _resultsFailed ? 'parts_failed' : 'no_fitting'), textAlign: TextAlign.center, style: TextStyle(color: p.muted)))
+      else
+        for (final r in results) _resultRow(r, p),
+      Center(
+        child: TextButton.icon(icon: const Icon(Icons.campaign_outlined), label: Text(qtr(context, 'ask_sellers')), onPressed: () => context.push('/request-quote')),
+      ),
+    ]);
+  }
+
+  Widget _payStep(LeapPalette p) {
+    final partyLabel = _name.text.trim().isEmpty ? qtr(context, 'party_$_party') : _name.text.trim();
+    final estimate = _estimate;
+    final addresses = (_addresses ?? const []).cast<Map<String, dynamic>>();
+    final addressPick = _addressId ?? addresses.where((a) => a['isDefault'] == true).map((a) => a['id'] as String).fold<String?>(null, (found, id) => found ?? id) ?? (addresses.isNotEmpty ? addresses.first['id'] as String : null);
+    return ListView(padding: const EdgeInsets.all(16), children: [
+      _carBanner(),
+      _Card(title: qtr(context, 'who_pays'), children: [
+        _radio(qtr(context, 'pays_party').replaceAll('{name}', partyLabel), _pay == 'party', () => setState(() => _pay = 'party')),
+        _radio(qtr(context, 'pays_me'), _pay == 'buyer', () => setState(() => _pay = 'buyer')),
+        _radio(qtr(context, 'pays_split'), _pay == 'split', () => setState(() => _pay = 'split')),
+        if (_pay == 'split')
+          Row(children: [
+            Expanded(child: Text(partyLabel)),
+            SizedBox(width: 90, child: TextField(controller: _percent, keyboardType: TextInputType.number, textAlign: TextAlign.center, decoration: const InputDecoration(suffixText: '%', isDense: true), onChanged: (_) => setState(() {}))),
+            const SizedBox(width: 10),
+            Text(formatPrice(context, estimate * _partyPercent / 100), style: TextStyle(color: p.muted)),
+          ]),
+        if (_pay == 'split')
+          Padding(padding: const EdgeInsets.only(top: 8), child: Row(children: [
+            Expanded(child: Text(qtr(context, 'buyer'))),
+            SizedBox(width: 90, child: Text('${100 - _partyPercent}%', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700))),
+            const SizedBox(width: 10),
+            Text(formatPrice(context, estimate * (100 - _partyPercent) / 100), style: TextStyle(color: p.muted)),
+          ])),
+      ]),
+      _Card(title: qtr(context, 'delivery'), children: [
+        if (_addresses == null) const LinearProgressIndicator(),
+        if (_addresses != null && addresses.isEmpty) ...[
+          Text(qtr(context, 'no_address')),
+          TextButton(onPressed: () => context.push('/addresses/add'), child: Text(qtr(context, 'add_address'))),
+        ],
+        for (final a in addresses)
+          _radio('${a['label']} · ${a['recipientName']}', addressPick == a['id'], () => setState(() => _addressId = a['id'] as String), sub: '${a['streetAddress']}, ${a['city']}, ${a['country']}'),
+      ]),
+      _Card(title: qtr(context, 'parts_chosen').replaceAll('{n}', '${_items.length}'), children: [
+        for (final i in _items.values)
+          Padding(padding: const EdgeInsets.only(bottom: 4), child: Row(children: [
+            Expanded(child: Text('${i.name} × ${i.quantity}')),
+            Text(formatPrice(context, i.price * i.quantity), style: TextStyle(color: p.muted)),
+          ])),
+      ]),
+      Padding(padding: const EdgeInsets.only(top: 4), child: Text(qtr(context, 'prices_note'), textAlign: TextAlign.center, style: TextStyle(color: p.muted, fontSize: 12))),
+    ]);
+  }
+
+  Widget _bottom(LeapPalette p) {
+    final last = _step == 3;
+    final count = _count;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFFC0362C), fontWeight: FontWeight.w700))),
+          if (_step >= 2 && count > 0)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(qtr(context, 'in_quote').replaceAll('{n}', '$count').replaceAll('{total}', formatPrice(context, _estimate)), textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w800, color: p.ink)),
+            ),
+          ElevatedButton(
+            onPressed: _busy ? null : (last ? _submit : _next),
+            child: _busy ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : Text(qtr(context, last ? 'create' : 'next')),
+          ),
+        ]),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final p = LeapPalette.of(context);
     final auth = context.watch<AuthState>();
+    context.watch<LanguageState>();
     if (!auth.isLoggedIn) return _signIn(context, qtr(context, 'get_quotation'));
-    final chosen = context.watch<CartState>().forCheckout.items;
-    final items = chosen.map((i) => {'productId': i.productId, 'quantity': i.quantity}).toList();
-    final ar = context.watch<LanguageState>().isArabic;
-    final garage = _garage;
-    final pick = _car ?? (garage != null && garage.isNotEmpty ? _key(garage.firstWhere((v) => v.isDefault, orElse: () => garage.first)) : _otherCar);
-    final partyLabel = _name.text.trim().isEmpty ? qtr(context, 'party_$_party') : _name.text.trim();
-    final estimate = chosen.fold<double>(0, (s, i) => s + i.lineTotal);
-    final addresses = (_addresses ?? const []).cast<Map<String, dynamic>>();
-    final addressPick = _addressId ?? addresses.where((a) => a['isDefault'] == true).map((a) => a['id'] as String).fold<String?>(null, (found, id) => found ?? id) ?? (addresses.isNotEmpty ? addresses.first['id'] as String : null);
-
-    return Scaffold(
-      appBar: AppBar(title: Text(qtr(context, 'get_quotation'))),
-      body: chosen.isEmpty
-          ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(qtr(context, 'none_chosen'), textAlign: TextAlign.center)))
-          : ListView(padding: const EdgeInsets.all(16), children: [
-              Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(qtr(context, 'lead'), style: TextStyle(color: p.muted))),
-              _Card(title: qtr(context, 'parts_chosen').replaceAll('{n}', '${chosen.length}'), children: [
-                for (final i in chosen)
-                  Padding(padding: const EdgeInsets.only(bottom: 4), child: Row(children: [
-                    Expanded(child: Text('${i.name} × ${i.quantity}')),
-                    Text(formatPrice(context, i.lineTotal), style: TextStyle(color: p.muted)),
-                  ])),
-              ]),
-              _Card(title: qtr(context, 'car'), children: [
-                if (garage == null) const LinearProgressIndicator(),
-                for (final v in garage ?? const <Vehicle>[])
-                  _radio('${ar && (v.brandAr ?? '').isNotEmpty ? v.brandAr : v.brand} ${ar && (v.modelAr ?? '').isNotEmpty ? v.modelAr : v.model} ${v.year}', pick == _key(v), () => setState(() => _car = _key(v))),
-                if ((garage ?? const []).isNotEmpty) _radio(qtr(context, 'car_other'), pick == _otherCar, () => setState(() => _car = _otherCar)),
-                if (pick == _otherCar) ...[
-                  _field(_make, qtr(context, 'make')),
-                  _field(_model, qtr(context, 'model')),
-                  _field(_year, qtr(context, 'year'), type: TextInputType.number, ltr: true),
-                ],
-                _field(_vin, qtr(context, 'vin'), ltr: true),
-                _field(_plate, qtr(context, 'plate'), ltr: true),
-              ]),
-              _Card(title: qtr(context, 'for'), children: [
-                Wrap(spacing: 8, runSpacing: 8, children: [
-                  for (final party in _parties)
-                    ChoiceChip(label: Text(qtr(context, 'party_$party')), selected: _party == party, onSelected: (_) => setState(() => _party = party)),
-                ]),
-                const SizedBox(height: 12),
-                _field(_name, qtr(context, 'name_$_party')),
-                if (_party == 'insurance') _field(_policy, qtr(context, 'policy'), ltr: true),
-                _field(_report, qtr(context, 'report'), hint: qtr(context, 'report_hint'), ltr: true),
-              ]),
-              _Card(title: qtr(context, 'who_pays'), children: [
-                _radio(qtr(context, 'pays_party').replaceAll('{name}', partyLabel), _pay == 'party', () => setState(() => _pay = 'party')),
-                _radio(qtr(context, 'pays_me'), _pay == 'buyer', () => setState(() => _pay = 'buyer')),
-                _radio(qtr(context, 'pays_split'), _pay == 'split', () => setState(() => _pay = 'split')),
-                if (_pay == 'split')
-                  Row(children: [
-                    Expanded(child: Text(partyLabel)),
-                    SizedBox(width: 90, child: TextField(controller: _percent, keyboardType: TextInputType.number, textAlign: TextAlign.center, decoration: const InputDecoration(suffixText: '%', isDense: true, border: OutlineInputBorder()), onChanged: (_) => setState(() {}))),
-                    const SizedBox(width: 10),
-                    Text(formatPrice(context, estimate * _partyPercent / 100), style: TextStyle(color: p.muted)),
-                  ]),
-                if (_pay == 'split')
-                  Padding(padding: const EdgeInsets.only(top: 8), child: Row(children: [
-                    Expanded(child: Text(qtr(context, 'buyer'))),
-                    SizedBox(width: 90, child: Text('${100 - _partyPercent}%', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700))),
-                    const SizedBox(width: 10),
-                    Text(formatPrice(context, estimate * (100 - _partyPercent) / 100), style: TextStyle(color: p.muted)),
-                  ])),
-              ]),
-              _Card(title: qtr(context, 'delivery'), children: [
-                if (_addresses == null) const LinearProgressIndicator(),
-                if (_addresses != null && addresses.isEmpty) ...[
-                  Text(qtr(context, 'no_address')),
-                  TextButton(onPressed: () => context.push('/addresses/add'), child: Text(qtr(context, 'add_address'))),
-                ],
-                for (final a in addresses)
-                  _radio('${a['label']} · ${a['recipientName']}', addressPick == a['id'], () => setState(() => _addressId = a['id'] as String), sub: '${a['streetAddress']}, ${a['city']}, ${a['country']}'),
-              ]),
-              if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(_error!, style: const TextStyle(color: Color(0xFFA12A21), fontWeight: FontWeight.w700))),
-              SizedBox(width: double.infinity, child: ElevatedButton(onPressed: _busy ? null : () => _submit(items), child: _busy ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : Text(qtr(context, 'create')))),
-              Padding(padding: const EdgeInsets.only(top: 8, bottom: 24), child: Text(qtr(context, 'prices_note'), textAlign: TextAlign.center, style: TextStyle(color: p.muted, fontSize: 12))),
-            ]),
+    final body = switch (_step) { 0 => _carStep(p), 1 => _forStep(p), 2 => _partsStep(p), _ => _payStep(p) };
+    return PopScope(
+      canPop: _step == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _back();
+      },
+      child: Scaffold(
+        appBar: AppBar(title: Text(qtr(context, 'get_quotation'))),
+        body: Column(children: [_progress(p), Expanded(child: body)]),
+        bottomNavigationBar: _bottom(p),
+      ),
     );
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------- Another car: from the catalogue
+
+/// A car of the catalogue: the year of a generation, and its version when that year has versions.
+class _PickedCar {
+  final String generationId;
+  final int year;
+  final String? versionId;
+  final String label; // "GAC GS8 2024 · 320T Luxury", in the app's language
+  const _PickedCar(this.generationId, this.year, this.versionId, {this.label = ''});
+}
+
+/// "Another car", chosen from the catalogue and never typed, like adding a car to My garage: Brand, then Model, then Year (each one appears once the one
+/// before it is chosen), then the Version when that year has versions (parts differ between versions). onChanged gets the car once it is complete, and null
+/// while it is not, so a quotation can only be for a car that really exists.
+class _CarPicker extends StatefulWidget {
+  final ValueChanged<_PickedCar?> onChanged;
+  const _CarPicker({super.key, required this.onChanged});
+  @override
+  State<_CarPicker> createState() => _CarPickerState();
+}
+
+class _CarPickerState extends State<_CarPicker> {
+  List<dynamic>? _brands, _models, _generations, _versions;
+  Map<String, dynamic>? _brand, _model, _version;
+  int? _year;
+  String? _generationId;
+  bool _failed = false;
+  int _ticket = 0; // which choice an answer belongs to: a late answer for an older choice is dropped
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBrands();
+  }
+
+  Future<void> _loadBrands() async {
+    setState(() => _failed = false);
+    try {
+      final list = await ApiClient().fetchVehicleBrands();
+      if (mounted) setState(() => _brands = list);
+    } catch (_) {
+      if (mounted) setState(() => _failed = true);
+    }
+  }
+
+  Future<List<dynamic>> _get(Future<List<dynamic>> Function() call) async {
+    try {
+      return await call();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static String _name(Map<String, dynamic>? m, bool ar) {
+    if (m == null) return '';
+    final nameAr = m['nameAr'] as String?;
+    return ar && nameAr != null && nameAr.isNotEmpty ? nameAr : (m['name'] as String? ?? '');
+  }
+
+  static String _engine(Map<String, dynamic> v, bool ar) {
+    final engineAr = v['engineAr'] as String?;
+    final engine = ar && engineAr != null && engineAr.isNotEmpty ? engineAr : (v['engine'] as String? ?? '');
+    final seats = v['seats'];
+    return seats is int ? (engine.isEmpty ? seatsText(ar, seats) : '$engine · ${seatsText(ar, seats)}') : engine;
+  }
+
+  // One entry per year, newest first; a year two generations cover is offered once, for the first one that covers it (as on the website).
+  List<MapEntry<int, String>> get _years {
+    final seen = <int, String>{};
+    for (final raw in _generations ?? const []) {
+      final g = raw as Map<String, dynamic>;
+      final start = (g['yearStart'] as num).toInt();
+      final end = (g['yearEnd'] as num?)?.toInt() ?? DateTime.now().year;
+      for (var y = end; y >= start; y--) {
+        seen.putIfAbsent(y, () => g['id'] as String);
+      }
+    }
+    return seen.entries.toList()..sort((a, b) => b.key.compareTo(a.key));
+  }
+
+  Future<void> _chooseBrand(Map<String, dynamic> b) async {
+    if (_brand?['id'] == b['id']) return;
+    final t = ++_ticket;
+    setState(() { _brand = b; _model = null; _models = null; _generations = null; _year = null; _generationId = null; _versions = null; _version = null; });
+    widget.onChanged(null);
+    final list = await _get(() => ApiClient().fetchModelsForBrand(b['id'] as String));
+    if (mounted && t == _ticket) setState(() => _models = list);
+  }
+
+  Future<void> _chooseModel(Map<String, dynamic> m) async {
+    if (_model?['id'] == m['id']) return;
+    final t = ++_ticket;
+    setState(() { _model = m; _generations = null; _year = null; _generationId = null; _versions = null; _version = null; });
+    widget.onChanged(null);
+    final list = await _get(() => ApiClient().fetchGenerationsForModel(m['id'] as String));
+    if (mounted && t == _ticket) setState(() => _generations = list);
+  }
+
+  Future<void> _chooseYear(MapEntry<int, String> y) async {
+    if (_year == y.key) return;
+    final t = ++_ticket;
+    setState(() { _year = y.key; _generationId = y.value; _versions = null; _version = null; });
+    widget.onChanged(null);
+    final list = await _get(() => ApiClient().fetchVersionsForGeneration(y.value));
+    if (!mounted || t != _ticket) return;
+    setState(() => _versions = list);
+    if (list.isEmpty) widget.onChanged(_PickedCar(y.value, y.key, null, label: _label(null)));      // a year without versions is complete at the year
+  }
+
+  String _label(Map<String, dynamic>? version) {
+    final ar = context.read<LanguageState>().isArabic;
+    final car = [_name(_brand, ar), _name(_model, ar), '${_year ?? ''}'].where((s) => s.isNotEmpty).join(' ');
+    return version == null ? car : '$car · ${_name(version, ar)}';
+  }
+
+  void _chooseVersion(Map<String, dynamic> v) {
+    setState(() => _version = v);
+    widget.onChanged(_PickedCar(_generationId!, _year!, v['id'] as String, label: _label(v)));
+  }
+
+  /// A list to tap one from, in a sheet (Null when it is closed without choosing).
+  Future<T?> _sheet<T>(String title, List<T> options, String Function(T) label, {String Function(T)? sub}) {
+    return showModalBottomSheet<T>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(sheetContext).size.height * 0.7),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Padding(padding: const EdgeInsets.all(16), child: Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+            if (options.isEmpty) Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 24), child: Text(qtr(sheetContext, 'none_here'))),
+            Flexible(
+              child: ListView(shrinkWrap: true, children: [
+                for (final o in options)
+                  ListTile(title: Text(label(o)), subtitle: sub == null ? null : Text(sub(o)), onTap: () => Navigator.of(sheetContext).pop(o)),
+              ]),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _field(String label, String? value, VoidCallback onTap, {bool loading = false}) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(11),
+          onTap: loading ? null : onTap,
+          child: InputDecorator(
+            isEmpty: value == null,
+            decoration: InputDecoration(
+              labelText: label,
+              suffixIcon: loading
+                  ? const Padding(padding: EdgeInsets.all(14), child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)))
+                  : const Icon(Icons.expand_more_rounded),
+            ),
+            child: Text(value ?? '', maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final ar = context.watch<LanguageState>().isArabic;
+    if (_failed) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(children: [
+          Expanded(child: Text(qtr(context, 'cars_failed'))),
+          TextButton(onPressed: _loadBrands, child: Text(qtr(context, 'retry'))),
+        ]),
+      );
+    }
+    final brands = (_brands ?? const []).cast<Map<String, dynamic>>();
+    final models = (_models ?? const []).cast<Map<String, dynamic>>();
+    final versions = (_versions ?? const []).cast<Map<String, dynamic>>();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _field(qtr(context, 'brand'), _brand == null ? null : _name(_brand, ar), () async {
+        final b = await _sheet<Map<String, dynamic>>(qtr(context, 'choose_brand'), brands, (x) => _name(x, ar));
+        if (b != null) _chooseBrand(b);
+      }, loading: _brands == null),
+      if (_brand != null)
+        _field(qtr(context, 'model'), _model == null ? null : _name(_model, ar), () async {
+          final m = await _sheet<Map<String, dynamic>>(qtr(context, 'choose_model'), models, (x) => _name(x, ar));
+          if (m != null) _chooseModel(m);
+        }, loading: _models == null),
+      if (_model != null)
+        _field(qtr(context, 'year'), _year?.toString(), () async {
+          final y = await _sheet<MapEntry<int, String>>(qtr(context, 'choose_year'), _years, (x) => '${x.key}');
+          if (y != null) _chooseYear(y);
+        }, loading: _generations == null),
+      if (_year != null && (_versions == null || versions.isNotEmpty))
+        _field(qtr(context, 'version'), _version == null ? null : _name(_version, ar), () async {
+          final v = await _sheet<Map<String, dynamic>>(qtr(context, 'choose_version'), versions, (x) => _name(x, ar), sub: (x) => _engine(x, ar));
+          if (v != null) _chooseVersion(v);
+        }, loading: _versions == null),
+      if (_version == null && versions.isNotEmpty)
+        Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(qtr(context, 'version_needed'), style: TextStyle(color: LeapPalette.of(context).muted, fontSize: 12.5))),
+    ]);
   }
 }
 
@@ -427,6 +1101,7 @@ class _MyQuotationsScreenState extends State<MyQuotationsScreen> {
     final list = _list;
     return Scaffold(
       appBar: AppBar(title: Text(qtr(context, 'my_quotations'))),
+      floatingActionButton: FloatingActionButton.extended(onPressed: () => context.push('/quotations/new'), icon: const Icon(Icons.add), label: Text(qtr(context, 'new_quotation'))),
       body: _error != null
           ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Text(_error!), TextButton(onPressed: _load, child: Text(qtr(context, 'retry')))]))
           : list == null
@@ -500,6 +1175,34 @@ class _QuotationDetailScreenState extends State<QuotationDetailScreen> {
 
   Future<void> _open(String url) async {
     await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  }
+
+  /// "Order these parts": the quotation's parts go to the basket with its quantities, and only they are ticked for the order (the rest of the basket stays,
+  /// unticked). The basket and checkout then work as for any order, at today's prices.
+  Future<void> _orderParts(String quotationId, List<dynamic> items) async {
+    final cart = context.read<CartState>();
+    setState(() => _busy = true);
+    try {
+      final ids = <String>[];
+      for (final raw in items) {
+        final it = raw as Map<String, dynamic>;
+        final id = it['productId'] as String;
+        final qty = (it['quantity'] as num).toInt();
+        ids.add(id);
+        await cart.setQuantity(id, qty, quotationId: quotationId);      // marked as this quotation's part: the basket groups it under the quotation
+      }
+      cart.setAllSelected(false);
+      for (final id in ids) {
+        if (!cart.isSelected(id)) cart.toggleSelected(id);
+      }
+      if (!mounted) return;
+      setState(() => _busy = false);
+      context.go('/cart');   // the Basket TAB (pushing it would open a second copy of the tab screens over this one)
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_errorText(context, e))));
+    }
   }
 
   Future<void> _renew() async {
@@ -607,6 +1310,15 @@ class _QuotationDetailScreenState extends State<QuotationDetailScreen> {
           TextButton(onPressed: () => _open(link), child: Text(qtr(context, 'confirm_shares'))),
           if (q['openCount'] != null) Text(qtr(context, 'opened').replaceAll('{n}', '${q['openCount']}'), style: TextStyle(color: p.muted, fontSize: 12)),
         ]),
+      // The buyer orders the parts himself: to the basket, to pay as any order (an insurer instead confirms its share on the link).
+      if (state == 'open')
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            ElevatedButton.icon(icon: const Icon(Icons.shopping_cart_outlined, size: 18), label: Text(qtr(context, 'order_parts')), onPressed: _busy ? null : () => _orderParts(q['id'] as String, q['items'] as List<dynamic>)),
+            Padding(padding: const EdgeInsets.only(top: 4), child: Text(qtr(context, 'order_parts_sub'), textAlign: TextAlign.center, style: TextStyle(color: p.muted, fontSize: 12))),
+          ]),
+        ),
       if (state == 'expired')
         Padding(padding: const EdgeInsets.only(bottom: 12), child: ElevatedButton(onPressed: _busy ? null : _renew, child: Text(qtr(context, 'renew')))),
       _Card(children: [

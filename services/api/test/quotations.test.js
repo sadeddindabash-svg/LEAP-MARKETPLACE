@@ -34,6 +34,9 @@ async function wipe() {
   await q("DELETE FROM users WHERE id IN ('zz-qt-buyer', 'zz-qt-other')");
   await q("DELETE FROM payment_methods WHERE id = 'zz-qt-cash'");
   await q("DELETE FROM fx_rates WHERE currency_pair = 'USD_ZZQ'").catch(() => {});
+  await q("DELETE FROM vehicle_generations WHERE id = 'zz-qt-gen'");
+  await q("DELETE FROM vehicle_models WHERE id = 'zz-qt-model'");
+  await q("DELETE FROM vehicle_brands WHERE id = 'zz-qt-brand'");
 }
 
 before(async () => {
@@ -43,6 +46,9 @@ before(async () => {
   await q("INSERT INTO platform_settings (key, value) VALUES ('free_shipping', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [JSON.stringify({ enabled: true, thresholdUsd: 100, feeUsd: 9.9 })]);
   await q("INSERT INTO users (id, email, name, role) VALUES ($1, 'zz-qt-buyer@test.dev', 'Sara Buyer', 'buyer'), ($2, 'zz-qt-other@test.dev', 'Other', 'buyer')", [BUYER, OTHER]);
   await q("INSERT INTO suppliers (id, name) VALUES ($1, 'ZZ Real Name One'), ($2, 'ZZ Real Name Two')", [S1, S2]);
+  await q("INSERT INTO vehicle_brands (id, name, name_ar) VALUES ('zz-qt-brand', 'Volkswagen', 'فولكس فاجن')");
+  await q("INSERT INTO vehicle_models (id, brand_id, name, name_ar) VALUES ('zz-qt-model', 'zz-qt-brand', 'Golf', 'جولف')");
+  await q("INSERT INTO vehicle_generations (id, model_id, name, year_start, year_end) VALUES ('zz-qt-gen', 'zz-qt-model', 'Mk8', 2019, NULL)");
   await q('UPDATE suppliers SET quote_validity_days = 3 WHERE id = $1', [S1]);
   const product = (id, supplier, price, stock, extra = '') => q(`INSERT INTO products (id, supplier_id, name, name_ar, oem_number, category, price, currency_code, stock_quantity, status) VALUES ($1, $2, $3, $4, $5, 'body', $6, 'USD', $7, 'active')${extra}`,
     [id, supplier, `Part ${id}`, `قطعة ${id}`, `OEM-${id}`, price, stock]);
@@ -50,6 +56,8 @@ before(async () => {
   await product('zz-qt-light', S1, 25, 1);
   await product('zz-qt-support', S2, 10, 0);
   await product('zz-qt-gone', S2, 10, 3);
+  // zz-qt-fit: every part fits the quotation's car (a part that does not is refused)
+  await q("INSERT INTO product_fitment_entries (product_id, generation_id, year) SELECT id, 'zz-qt-gen', 2020 FROM products WHERE id LIKE 'zz-qt-%'");
   await q("UPDATE products SET status = 'inactive' WHERE id = 'zz-qt-gone'");
   await q("INSERT INTO payment_methods (id, name_en, name_ar, photo_url) VALUES ($1, 'Cash', 'نقدًا', '/x.png')", [PM]);
   await q("INSERT INTO fx_rates (currency_pair, rate) VALUES ('USD_ZZQ', 3.75)").catch(() => {});
@@ -64,7 +72,7 @@ after(async () => {
   await db.getPool().end();
 });
 
-const VEHICLE = { make: 'Volkswagen', model: 'Golf', year: 2020, vin: 'wvwzzzauzlw003307' };
+const VEHICLE = { generationId: 'zz-qt-gen', year: 2020, vin: 'wvwzzzauzlw003307' };     // a car of the catalogue (a typed car is refused)
 const base = (over = {}) => ({
   items: [{ productId: 'zz-qt-bumper', quantity: 1 }, { productId: 'zz-qt-support', quantity: 2 }], vehicle: VEHICLE, partyType: 'insurance', partyName: 'Example Versicherung AG',
   policyNumber: '55-77821', reportNumber: 'POL-B-2026-118204', addressId, lang: 'en', displayCurrency: 'ZZQ', ...over,
@@ -102,7 +110,7 @@ test('CRITICAL: the prices come from the catalogue (a price sent by the client i
   assert.deepEqual(dto.items.map((i) => [i.productId, i.unitPriceUsd, i.quantity, i.totalUsd]), [['zz-qt-bumper', 40, 1, 40], ['zz-qt-support', 10, 2, 20]]);
   assert.equal(dto.subtotalUsd, 60); assert.equal(dto.shippingUsd, 9.9); assert.equal(dto.totalUsd, 69.9);         // under the 100 limit: the fee is added
   assert.deepEqual(dto.currency, { code: 'ZZQ', rate: 3.75 });
-  assert.deepEqual(dto.vehicle, { make: 'Volkswagen', model: 'Golf', year: 2020, vin: 'WVWZZZAUZLW003307', plate: null });
+  assert.deepEqual(dto.vehicle, { make: 'Volkswagen', model: 'Golf', year: 2020, vin: 'WVWZZZAUZLW003307', plate: null, makeAr: 'فولكس فاجن', modelAr: 'جولف', generationId: 'zz-qt-gen', versionId: null, version: null, versionAr: null });
   assert.deepEqual(dto.party, { type: 'insurance', name: 'Example Versicherung AG', policyNumber: '55-77821', reportNumber: 'POL-B-2026-118204' });
   assert.deepEqual(dto.shares.map((s) => [s.payer, s.percent, s.amountUsd, s.confirmed]), [['party', 100, 69.9, false]]);
   assert.equal(dto.state, 'open');

@@ -136,6 +136,15 @@ router.post('/', async (req, res, next) => {
       [productIds]
     );
     const productById = Object.fromEntries(products.map((p) => [p.id, p]));
+    // Parts from a quotation (items[].quotationId, from the basket, migration 141): the order keeps the link, only for the buyer's own quotation holding that part.
+    const quotationOf = {};
+    const askedQuotations = [...new Set(items.map((i) => i && i.quotationId).filter((x) => typeof x === 'string' && x))];
+    if (askedQuotations.length > 0 && userId) {
+      const { rows: quoted } = await client.query(
+        'SELECT qi.quotation_id, qi.product_id FROM quotation_items qi JOIN quotations q ON q.id = qi.quotation_id WHERE q.buyer_id = $1 AND q.id = ANY($2::text[])', [userId, askedQuotations]);
+      const held = new Set(quoted.map((r) => `${r.quotation_id}|${r.product_id}`));
+      for (const it of items) if (it && it.quotationId && held.has(`${it.quotationId}|${it.productId}`)) quotationOf[it.productId] = it.quotationId;
+    }
 
     for (const item of items) {
       if (!productById[item.productId]) {
@@ -326,8 +335,8 @@ router.post('/', async (req, res, next) => {
       const lineItems = [];
       for (const item of supplierItems) {
         await client.query(
-          `INSERT INTO order_line_items (sub_order_id, product_id, quantity, unit_price, supplier_unit_price_cny, shipping_planned_usd) VALUES ($1, $2, $3, $4, $5, $6)`,
-          [subOrderId, item.productId, item.quantity, buyerUnitPrices[item.productId], supplierUnitPriceCny(productById[item.productId]), shippingPlannedUnitUsd[item.productId] ?? null]
+          `INSERT INTO order_line_items (sub_order_id, product_id, quantity, unit_price, supplier_unit_price_cny, shipping_planned_usd, quotation_id) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [subOrderId, item.productId, item.quantity, buyerUnitPrices[item.productId], supplierUnitPriceCny(productById[item.productId]), shippingPlannedUnitUsd[item.productId] ?? null, quotationOf[item.productId] || null]
         );
         lineItems.push({ productId: item.productId, quantity: item.quantity });
       }
@@ -652,7 +661,13 @@ router.get('/:id', optionalAuth, requirePageAccessIfAdmin('orders'), async (req,
       source: addressRows[0].source,
     } : null;
 
+    // The quotations this order came from (migration 141): parts ordered from a quotation in the basket, or a quotation whose shares were all confirmed.
+    const { rows: fromQuotations } = await db.query(
+      `SELECT id, party_name, party_type FROM quotations WHERE order_id = $1
+          OR id IN (SELECT oli.quotation_id FROM order_line_items oli JOIN supplier_sub_orders so ON so.id = oli.sub_order_id WHERE so.order_id = $1 AND oli.quotation_id IS NOT NULL)
+       ORDER BY id`, [order.id]);
     res.json({
+      quotations: fromQuotations.map((q) => ({ id: q.id, partyName: q.party_name, partyType: q.party_type })),
       id: order.id,
       // A free replacement for a faulty unit (migration 095): numbered from the order the buyer paid for, e.g. LP-200934-R1.
       isReplacement: Boolean(order.replacement_of),
@@ -882,6 +897,24 @@ router.get('/', requireAuth, requirePageAccessIfAdmin('orders'), async (req, res
       }
     }
 
+    // The parts of each order, for the buyer's order cards: how many, and the first 3 photos (each part's first photo). One query for all the orders.
+    const partsByOrder = {};
+    if (orderIds.length > 0) {
+      const { rows: lineRows } = await db.query(
+        `SELECT so.order_id, oli.quantity,
+                (SELECT pi.url FROM product_images pi WHERE pi.product_id = oli.product_id ORDER BY pi.sort_order LIMIT 1) AS photo
+         FROM order_line_items oli JOIN supplier_sub_orders so ON so.id = oli.sub_order_id
+         WHERE so.order_id = ANY($1::text[]) ORDER BY so.order_id, oli.id`,
+        [orderIds]
+      );
+      for (const l of lineRows) {
+        const e = partsByOrder[l.order_id] || (partsByOrder[l.order_id] = { lineCount: 0, itemCount: 0, photos: [] });
+        e.lineCount += 1;
+        e.itemCount += Number(l.quantity) || 0;
+        if (e.photos.length < 3) e.photos.push(l.photo || null);
+      }
+    }
+
     const withDisplayStatus = await Promise.all(rows.map(async (o) => {
       const suppliers = suppliersByOrder[o.id] || [];
       // Real per-order anonymization (new) -- scoped to THIS order's
@@ -899,6 +932,10 @@ router.get('/', requireAuth, requirePageAccessIfAdmin('orders'), async (req, res
         total: Number(o.total),
         currencyCode: o.currency_code,
         placedAt: o.placed_at,
+        // the order card: how many parts (lines and pieces) and up to 3 photos
+        lineCount: (partsByOrder[o.id] || {}).lineCount || 0,
+        itemCount: (partsByOrder[o.id] || {}).itemCount || 0,
+        photos: (partsByOrder[o.id] || {}).photos || [],
         supplierNames: isAdmin ? suppliers.map((s) => s.name) : suppliers.map((s) => labelMap.get(s.supplierId)),
         ...(isAdmin ? adminListExtras(o, progressByOrder[o.id], buyerNames) : {}),
       };

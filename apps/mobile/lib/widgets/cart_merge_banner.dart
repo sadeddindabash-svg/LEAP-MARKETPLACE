@@ -22,7 +22,7 @@ class CartMergeBanner extends StatelessWidget {
     ];
     return Container(
       key: const Key('cart-merge-banner'),
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsetsDirectional.fromSTEB(12, 10, 4, 10),
       decoration: BoxDecoration(
         color: palette.gauge.withValues(alpha: 0.12),

@@ -108,7 +108,7 @@ final GoRouter appRouter = GoRouter(
     GoRoute(path: '/saved-searches', builder: (context, state) => const SavedSearchesScreen()),
     GoRoute(path: '/notifications', builder: (context, state) => const NotificationsScreen()),
     GoRoute(path: '/quotations', builder: (context, state) => const MyQuotationsScreen()),
-    GoRoute(path: '/quotations/new', builder: (context, state) => const NewQuotationScreen()),
+    GoRoute(path: '/quotations/new', builder: (context, state) => NewQuotationScreen(fromBasket: state.uri.queryParameters['from'] == 'basket')),
     GoRoute(path: '/quotations/:id', builder: (context, state) => QuotationDetailScreen(quotationId: state.pathParameters['id']!)),
     GoRoute(path: '/referrals', builder: (context, state) => const ReferralsScreen()),
     GoRoute(path: '/addresses/add', builder: (context, state) => const AddressFormScreen()),

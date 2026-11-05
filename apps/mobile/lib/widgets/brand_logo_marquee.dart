@@ -181,7 +181,7 @@ class _BrandLogoMarqueeState extends State<BrandLogoMarquee> {
         ),
       ),
         )),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),      // Home: 10 px between every box
       ],
     );
   }

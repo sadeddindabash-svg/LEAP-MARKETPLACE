@@ -431,6 +431,30 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
               padding: const EdgeInsets.only(top: 4),
               child: Text('${tr(context, 'shipping_fees')}: +\$${(_order!['shippingFee'] as num).toStringAsFixed(2)}', style: TextStyle(color: LeapPalette.of(context).muted, fontSize: 12.5)),
             ),
+          // The quotations this order came from (migration 141): tap one to open it.
+          for (final quote in ((_order!['quotations'] as List?) ?? const []).cast<Map<String, dynamic>>())
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => context.push('/quotations/${Uri.encodeComponent(quote['id'] as String)}'),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: Premium.navyRaised(radius: 12),
+                  child: Row(children: [
+                    const Icon(Icons.request_quote_outlined, color: Color(0xFFF9D77A), size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '${context.watch<LanguageState>().isArabic ? 'من عرض السعر' : 'From quotation'} ${quote['id']}${(quote['partyName'] as String?)?.isNotEmpty == true ? ' · ${quote['partyName']}' : ''}',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right, color: Color(0xFFF9D77A)),
+                  ]),
+                ),
+              ),
+            ),
           const SizedBox(height: 16),
           if (_order!['address'] == null)
             _buildPendingAddressBanner()

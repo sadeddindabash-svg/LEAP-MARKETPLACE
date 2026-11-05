@@ -47,6 +47,16 @@ async function inTransaction(work) {
 
 const langOf = (req) => (req.query.lang === 'ar' ? 'ar' : 'en');
 
+// Which of these parts fit the car (the quotation's parts step, and the basket's parts brought into a quotation): { vehicle: { generationId, year, versionId? },
+// productIds } -> { fits: [productId] }. Read only.
+router.post('/fit-check', requireAuth, async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const fits = await service.fittingProductIds(db, body.vehicle, body.productIds);
+    res.json({ fits: [...fits] });
+  } catch (err) { sendError(res, next, err); }
+});
+
 router.post('/', requireAuth, async (req, res, next) => {
   try {
     const id = await inTransaction((client) => service.createQuotation(client, req.user.sub, req.body || {}));

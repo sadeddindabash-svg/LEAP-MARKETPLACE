@@ -165,7 +165,7 @@ class _HomeBannerState extends State<HomeBanner> with WidgetsBindingObserver {
     final slides = _data.slides;
     final count = slides.length;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.only(bottom: 10),      // Home: 10 px between every box
       child: AspectRatio(
         aspectRatio: _aspect,
         // Premium 3D: the banner floats on a deep shadow, with a soft shine across its top

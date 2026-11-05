@@ -29,6 +29,10 @@ class CartItem {
   // Real weight (#23) -- null when a real product has no real weight
   // on file, never a fabricated default.
   final double? weightKg;
+  // From a quotation ("Order these parts", migration 141): its number, who it is for and its car. Null: a part from the catalogue.
+  final String? quotationId;
+  final String? quotationParty;
+  final String? quotationCar;
 
   const CartItem({
     required this.productId,
@@ -42,6 +46,9 @@ class CartItem {
     this.supplierName,
     this.imageUrl,
     this.weightKg,
+    this.quotationId,
+    this.quotationParty,
+    this.quotationCar,
   });
 
   double get lineTotal => price * quantity;
@@ -63,5 +70,8 @@ class CartItem {
         supplierName: json['supplierName'] as String?,
         imageUrl: json['imageUrl'] as String?,
         weightKg: (json['weightKg'] as num?)?.toDouble(),
+        quotationId: (json['quotation'] as Map<String, dynamic>?)?['id'] as String?,
+        quotationParty: (json['quotation'] as Map<String, dynamic>?)?['partyName'] as String?,
+        quotationCar: (json['quotation'] as Map<String, dynamic>?)?['car'] as String?,
       );
 }

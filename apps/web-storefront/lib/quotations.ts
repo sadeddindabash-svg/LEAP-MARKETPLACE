@@ -12,7 +12,9 @@ export const PARTY_TYPES: readonly PartyType[] = ["insurance", "repair_shop", "o
 export const PARTY_KEY: Record<PartyType, DictKey> = { insurance: "party_insurance", repair_shop: "party_repair_shop", other_party: "party_other_party", employer: "party_employer", other: "party_other" };
 export type QuoteState = "open" | "expired" | "ordered" | "cancelled";
 
-export interface QuoteVehicle { make: string; model: string; year: number; vin?: string | null; plate?: string | null }
+export interface QuoteVehicle { make: string; model: string; year: number; vin?: string | null; plate?: string | null; makeAr?: string | null; modelAr?: string | null; version?: string | null; versionAr?: string | null }
+/** The car a new quotation is for: a car of the catalogue (the server reads its make, model and version from it). */
+export interface NewQuoteVehicle { generationId: string; year: number; versionId?: string | null; vin?: string | null; plate?: string | null }
 export interface QuoteItem { productId: string; name: string; oemNumber: string | null; seller: string | null; quantity: number; unitPriceUsd: number; totalUsd: number; inStock: boolean; validUntil: string }
 export interface QuoteShare { id: number; payer: "party" | "buyer"; percent: number; amountUsd: number; confirmed: boolean; payerName?: string | null; payerEmail?: string | null; paymentMethod?: string | null; confirmedAt?: string | null }
 export interface QuoteCurrency { code: string; rate: number }
@@ -43,7 +45,7 @@ export interface QuotationSummary { id: string; code: string; state: QuoteState;
 
 export interface NewQuotation {
   items: { productId: string; quantity: number }[];
-  vehicle: QuoteVehicle;
+  vehicle: NewQuoteVehicle;
   partyType: PartyType;
   partyName: string;
   policyNumber?: string;
@@ -107,7 +109,7 @@ export function quoteDate(iso: string, lang: Lang): string {
   return new Intl.DateTimeFormat(lang === "ar" ? "ar-u-nu-latn" : "en-GB", { day: "numeric", month: "short", year: "numeric" }).format(new Date(iso));
 }
 
-export const vehicleLabel = (v: QuoteVehicle): string => [v.make, v.model, v.year].filter(Boolean).join(" ");
+export const vehicleLabel = (v: QuoteVehicle): string => [v.make, v.model, v.year, v.version].filter(Boolean).join(" ");
 
 /** The share amounts typed as one number: the party's percent (the buyer pays the rest). */
 export function sharesFor(mode: "party" | "buyer" | "split", partyPercent: number): NewQuotation["shares"] {

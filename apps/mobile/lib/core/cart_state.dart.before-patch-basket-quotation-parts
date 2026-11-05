@@ -1,0 +1,444 @@
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:uuid/uuid.dart';
+import '../models/cart_item.dart';
+import '../models/cart.dart';
+import '../models/cart_merge.dart';
+import 'auto_refresher.dart';
+import '../models/cart_shipping.dart';
+import '../services/api_client.dart';
+
+/// Holds the buyer's cart and syncs every change to services/api/cart in
+/// real time — there is no local-only cart state that later needs
+/// reconciling with the server; every add/remove/quantity-change is a real
+/// network call, and the UI reflects whatever the server actually has.
+///
+/// The cart ID is a per-device UUID persisted in secure storage (not tied
+/// to login — this is deliberate, since guest checkout must work without
+/// an account; see BUY-034 and the Charter's guest-checkout decision).
+class CartState extends ChangeNotifier {
+  static const _cartIdKey = 'leap_cart_id';
+  // Choosing what to order: the lines NOT ticked, kept on this phone (every line is ticked to start with, and a part added again is ticked again).
+  static const _unselectedKey = 'leap_cart_unselected';
+  final Set<String> _unselected = {};
+  final _secureStorage = const FlutterSecureStorage();
+  final ApiClient _apiClient;
+
+  String? _cartId;
+  List<CartItem> _items = [];
+  // Confirmed with the person: a real, persisted promo code -- lives
+  // on the real backend cart record itself (not just this in-memory
+  // state), so it survives navigating away from checkout entirely,
+  // even closing and reopening the app.
+  String? _appliedPromoCode;
+  PromoDetails? _appliedPromoDetails;
+  double _promoDiscountUsd = 0;
+  // Confirmed with the person: the real loyalty discount only ever
+  // competes with the real promo discount above -- appliedDiscountSource
+  // says which of the two actually won ('loyalty', 'promo', 'none').
+  double _loyaltyDiscountPercentage = 0;
+  double _loyaltyDiscountUsd = 0;
+  String _appliedDiscountSource = 'none';
+  double _appliedDiscountUsd = 0;
+  // Free shipping above a limit: the answer the server sent with the last cart (CartShipping.off when the rule is off).
+  CartShipping _shipping = CartShipping.off;
+  // ONE CART PER ACCOUNT: set when the server combined this device's basket with the account basket; shown on the cart screen until dismissed.
+  CartMerge? _mergeNotice;
+  // The signed-in buyer's cart is the same on every device: it is read again every 5 seconds while the app is open (quietly). _applied counts the answers put on screen: a quiet answer that was overtaken by another one is dropped.
+  int _applied = 0;
+  late final AutoRefresher _refresher = AutoRefresher(_quietRefresh);
+  // Confirmed with the person: whole-basket checkout price lock,
+  // starts when checkout genuinely begins (not when an item is
+  // added).
+  bool _lockActive = false;
+  DateTime? _lockExpiresAt;
+  bool _isLoading = true;
+  String? _errorMessage;
+  // Confirmed with the person through direct diagnosis of a real,
+  // broken loyalty discount: no real cart ever had a real owner
+  // recorded, so the backend had no way to know which real buyer's
+  // tier to check. Kept in sync with the real logged-in buyer's own
+  // token (see app.dart's provider wiring) and sent with every real
+  // cart request, so the backend can resolve and permanently link
+  // the real buyer the first time a real authenticated request for
+  // this cart arrives.
+  String? _token;
+  // 'en' or 'ar' -- sent with every cart request so the backend returns each
+  // item's approved Arabic name when the app is in Arabic mode. Kept in sync
+  // by updateLanguage() (see app.dart's provider wiring).
+  String _language = 'en';
+
+  CartState({ApiClient? apiClient}) : _apiClient = apiClient ?? ApiClient() {
+    _init();
+  }
+
+  /// Confirmed with the person: called whenever the real login state
+  /// changes (see app.dart's ChangeNotifierProxyProvider wiring) --
+  /// refreshes the real cart immediately so the loyalty discount
+  /// reflects the real, current buyer right away, not just whenever
+  /// the next unrelated cart action happens to run.
+  void updateToken(String? token) {
+    if (_token == token) return;
+    final signedOut = _token != null && token == null;
+    _token = token;
+    if (signedOut) {
+      _startFreshGuestCart();
+      return;
+    }
+    refresh();
+  }
+
+  /// Signed out: this device gets a FRESH EMPTY guest cart (a new id), so the next person never sees the account's cart.
+  Future<void> _startFreshGuestCart() async {
+    final id = const Uuid().v4();
+    _cartId = id;
+    _items = [];
+    _appliedPromoCode = null;
+    _appliedPromoDetails = null;
+    _promoDiscountUsd = 0;
+    _loyaltyDiscountPercentage = 0;
+    _loyaltyDiscountUsd = 0;
+    _appliedDiscountSource = 'none';
+    _appliedDiscountUsd = 0;
+    _shipping = CartShipping.off;
+    _lockActive = false;
+    _lockExpiresAt = null;
+    _mergeNotice = null;
+    _errorMessage = null;
+    notifyListeners();
+    await _secureStorage.write(key: _cartIdKey, value: id);
+    await refresh();
+  }
+
+  /// Called whenever the app language changes (see app.dart) -- refetches
+  /// the basket so already-added items switch to their Arabic/English name
+  /// immediately, instead of keeping the old language until the next action.
+  void updateLanguage(String language) {
+    if (_language == language) return;
+    _language = language;
+    refresh();
+  }
+
+  @override
+  void dispose() {
+    _refresher.dispose();
+    super.dispose();
+  }
+
+  Future<void> _quietRefresh() async {
+    if (_token == null) return; // a guest's cart is for this device only: nothing else changes it
+    await refresh(silent: true);
+  }
+
+  bool get isLoading => _isLoading;
+  List<CartItem> get items => List.unmodifiable(_items);
+  String? get errorMessage => _errorMessage;
+  String? get cartId => _cartId;
+  String? get appliedPromoCode => _appliedPromoCode;
+  PromoDetails? get appliedPromoDetails => _appliedPromoDetails;
+  double get promoDiscountUsd => _promoDiscountUsd;
+  double get loyaltyDiscountPercentage => _loyaltyDiscountPercentage;
+  double get loyaltyDiscountUsd => _loyaltyDiscountUsd;
+  String get appliedDiscountSource => _appliedDiscountSource;
+  double get appliedDiscountUsd => _appliedDiscountUsd;
+  bool get lockActive => _lockActive;
+  DateTime? get lockExpiresAt => _lockExpiresAt;
+
+  double get total => _items.fold(0.0, (sum, i) => sum + i.lineTotal);
+  CartShipping get shipping => _shipping;
+  CartMerge? get mergeNotice => _mergeNotice;
+  void dismissMergeNotice() {
+    if (_mergeNotice == null) return;
+    _mergeNotice = null;
+    notifyListeners();
+  }
+  // The shipping fee the buyer does NOT pay because shipping is free: "You saved" counts it.
+  double get shippingSaved => _shipping.savedUsd;
+  // The goods plus the shipping fee of a small order (0 when shipping is free or the rule is off). Any promo or loyalty discount is applied at checkout, as before.
+  double get totalWithShipping => _shipping.totalWith(total);
+  // Confirmed with the person: sum of every real item's own
+  // pre-discount total -- what the cart would cost with no product
+  // discounts applied at all.
+  double get totalBeforeDiscount => _items.fold(0.0, (sum, i) => sum + i.lineOriginalTotal);
+  double get totalSaved => totalBeforeDiscount - total;
+  int get itemCount => _items.fold(0, (sum, i) => sum + i.quantity);
+  bool get isEmpty => _items.isEmpty;
+
+  /// Groups items by supplier for display — mirrors BUY-031: the buyer
+  /// sees one basket, but it's really heading to multiple suppliers.
+  Map<String, List<CartItem>> get itemsBySupplier {
+    final map = <String, List<CartItem>>{};
+    for (final item in _items) {
+      final key = item.supplierName ?? 'Unknown supplier';
+      (map[key] ??= []).add(item);
+    }
+    return map;
+  }
+
+  // Confirmed with the person: single, shared place every real cart
+  // response gets applied from, so every method (refresh, add,
+  // remove, quantity change, promo apply/clear) consistently updates
+  // the real, full state -- items AND the real, persisted promo
+  // fields together, never one without the other.
+  void _applyCart(Cart cart) {
+    _applied += 1;
+    _items = cart.items;
+    _appliedPromoCode = cart.appliedPromoCode;
+    _appliedPromoDetails = cart.appliedPromoDetails;
+    _promoDiscountUsd = cart.promoDiscountUsd;
+    _loyaltyDiscountPercentage = cart.loyaltyDiscountPercentage;
+    _loyaltyDiscountUsd = cart.loyaltyDiscountUsd;
+    _appliedDiscountSource = cart.appliedDiscountSource;
+    _appliedDiscountUsd = cart.appliedDiscountUsd;
+    _shipping = _apiClient.lastCartShipping;
+    // ONE CART PER ACCOUNT: the cart the server answered with is THE cart from now on (this device keeps its id), and what it combined is kept for the notice.
+    final answeredId = _apiClient.lastCartId;
+    if (answeredId != null && answeredId != _cartId) {
+      _cartId = answeredId;
+      _secureStorage.write(key: _cartIdKey, value: answeredId);
+    }
+    final combined = _apiClient.lastCartMerge;
+    if (combined != null) _mergeNotice = combined;
+    _lockActive = cart.lockActive;
+    _lockExpiresAt = cart.lockExpiresAt;
+  }
+
+  Future<void> _init() async {
+    var cartId = await _secureStorage.read(key: _cartIdKey);
+    if (cartId == null) {
+      cartId = const Uuid().v4();
+      await _secureStorage.write(key: _cartIdKey, value: cartId);
+    }
+    _cartId = cartId;
+    try {
+      final saved = await _secureStorage.read(key: _unselectedKey);
+      if (saved != null) _unselected.addAll((jsonDecode(saved) as List).whereType<String>());
+    } catch (_) {
+      // a damaged value: every line is ticked
+    }
+    _refresher.start();
+    await refresh();
+  }
+
+  // ---- Choosing what to order. Only lines still in the basket count (a line removed, or ordered, is forgotten).
+  bool isSelected(String productId) => !_unselected.contains(productId);
+  int get unselectedCount => _items.where((i) => _unselected.contains(i.productId)).length;
+  void toggleSelected(String productId) {
+    if (!_unselected.remove(productId)) _unselected.add(productId);
+    _saveUnselected();
+    notifyListeners();
+  }
+
+  void setAllSelected(bool on) {
+    _unselected.clear();
+    if (!on) _unselected.addAll(_items.map((i) => i.productId));
+    _saveUnselected();
+    notifyListeners();
+  }
+
+  void _saveUnselected() {
+    _unselected.removeWhere((id) => !_items.any((i) => i.productId == id));
+    _secureStorage.write(key: _unselectedKey, value: jsonEncode(_unselected.toList()));
+  }
+
+  /// The basket as the checkout sees it: only the ticked lines, with their own discount and shipping fee (exactly the server's basket when all are ticked).
+  CheckoutCart get forCheckout => CheckoutCart(this);
+
+  /// [silent]: the 5-second refresh: no spinner, an error keeps what is on screen, and an answer that was overtaken by another one (the buyer's own change) is dropped.
+  Future<void> refresh({bool silent = false}) async {
+    if (_cartId == null) return;
+    if (!silent) {
+      _isLoading = true;
+      notifyListeners();
+    }
+    final before = _applied;
+    try {
+      final cart = await _apiClient.fetchCart(_cartId!, token: _token, lang: _language);
+      if (!silent || _applied == before) _applyCart(cart);
+      _errorMessage = null;
+    } catch (e) {
+      // A string-table KEY, not a sentence: CartState has no BuildContext to translate with,
+      // so cart_screen translates it with tr() where it is drawn.
+      if (!silent) _errorMessage = 'cart_load_failed';
+    } finally {
+      if (!silent) _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> addItem(String productId, int quantity) async {
+    if (_cartId == null) return;
+    if (_unselected.remove(productId)) _saveUnselected();          // added again: ticked again
+    _applyCart(await _apiClient.addCartItem(_cartId!, productId, quantity, token: _token, lang: _language));
+    _errorMessage = null;
+    notifyListeners();
+  }
+
+  /// Sets the exact quantity for a product already in the cart (used by
+  /// the +/- stepper). A quantity of 0 or less removes the item.
+  Future<void> setQuantity(String productId, int quantity) async {
+    if (_cartId == null) return;
+    _applyCart(await _apiClient.setCartItemQuantity(_cartId!, productId, quantity, token: _token, lang: _language));
+    notifyListeners();
+  }
+
+  Future<void> removeItem(String productId) async {
+    if (_cartId == null) return;
+    _applyCart(await _apiClient.removeCartItem(_cartId!, productId, token: _token, lang: _language));
+    notifyListeners();
+  }
+
+  /// Confirmed with the person: applies a real promo code, persisted
+  /// on the real backend cart -- throws ApiException with the real
+  /// backend's own reason (e.g. expired, already used) on an invalid
+  /// code, leaving whatever was already applied untouched, matching
+  /// the real, already-confirmed and tested backend behavior.
+  Future<void> applyPromoCode(String code) async {
+    if (_cartId == null) return;
+    _applyCart(await _apiClient.applyPromoCode(_cartId!, code, token: _token, lang: _language));
+    notifyListeners();
+  }
+
+  /// Clears the real, currently-applied promo code.
+  Future<void> removePromoCode() async {
+    if (_cartId == null) return;
+    _applyCart(await _apiClient.applyPromoCode(_cartId!, null, token: _token, lang: _language));
+    notifyListeners();
+  }
+
+  /// Confirmed with the person: called when the buyer genuinely
+  /// enters checkout, not when an item is added to the cart. Starts
+  /// a fresh 60-minute lock, or does nothing (continues the existing
+  /// countdown) if one's already active -- explicitly confirmed:
+  /// leaving checkout and returning before it expires does NOT reset
+  /// it.
+  Future<void> lockPrices() async {
+    if (_cartId == null) return;
+    _applyCart(await _apiClient.lockPrices(_cartId!, token: _token, lang: _language));
+    notifyListeners();
+  }
+
+  /// Called after a successful order placement — clears the local view of
+  /// the cart. Doesn't need to call the backend again per item since
+  /// placing an order doesn't automatically empty the cart server-side
+  /// (carts and orders are intentionally decoupled — see the data model);
+  /// this removes each item explicitly so server state matches.
+  ///
+  /// Confirmed with the person: a placed order also ends the real
+  /// promo code's own applied lifetime, same as items -- cleared here
+  /// too, matching the real "until he place the order" boundary.
+  ///
+  /// [only]: the lines that were ordered (the ticked ones). The other lines stay in the basket, still not ticked.
+  Future<void> clearAfterOrder({List<String>? only}) async {
+    if (_cartId == null) return;
+    final ordered = only == null ? null : only.toSet();
+    final kept = ordered == null ? <CartItem>[] : _items.where((i) => !ordered.contains(i.productId)).toList();
+    if (ordered != null && kept.isNotEmpty) {
+      for (final id in ordered) {
+        try {
+          await _apiClient.removeCartItem(_cartId!, id, token: _token, lang: _language);
+        } catch (_) {
+          // the refresh below shows the server's basket
+        }
+      }
+      if (_appliedPromoCode != null) {
+        try {
+          await _apiClient.applyPromoCode(_cartId!, null, token: _token, lang: _language);
+        } catch (_) {}
+      }
+      await refresh(silent: true);
+      return;
+    }
+    _unselected.clear();
+    _saveUnselected();
+    for (final item in List<CartItem>.from(_items)) {
+      await _apiClient.removeCartItem(_cartId!, item.productId, token: _token, lang: _language);
+    }
+    if (_appliedPromoCode != null) {
+      await _apiClient.applyPromoCode(_cartId!, null, token: _token, lang: _language);
+    }
+    _items = [];
+    _appliedPromoCode = null;
+    _appliedPromoDetails = null;
+    _promoDiscountUsd = 0;
+    _loyaltyDiscountPercentage = 0;
+    _loyaltyDiscountUsd = 0;
+    _appliedDiscountSource = 'none';
+    _appliedDiscountUsd = 0;
+    _shipping = CartShipping.off;
+    _lockActive = false;
+    _lockExpiresAt = null;
+    notifyListeners();
+  }
+}
+
+/// The basket as the checkout sees it: only the lines ticked in the basket. Everything is read from [CartState] when asked (so it always follows it). When every
+/// line is ticked it is exactly the server's basket; otherwise the discount and the shipping fee are worked out for the ticked lines with the SAME rules as the server
+/// (the bigger of the loyalty and the promo discount; shipping measured on the goods after the discount, waived by a free-shipping code). The order itself is priced
+/// by the server again, from the lines sent.
+class CheckoutCart {
+  final CartState _c;
+  CheckoutCart(this._c);
+
+  List<CartItem> get items => _c._items.where((i) => !_c._unselected.contains(i.productId)).toList();
+  bool get _all => items.length == _c._items.length;
+  double get total => items.fold(0.0, (sum, i) => sum + i.lineTotal);
+  double get totalBeforeDiscount => items.fold(0.0, (sum, i) => sum + i.lineOriginalTotal);
+  double get totalSaved => totalBeforeDiscount - total;
+  int get itemCount => items.fold(0, (sum, i) => sum + i.quantity);
+  bool get isEmpty => items.isEmpty;
+  double get loyaltyDiscountPercentage => _c.loyaltyDiscountPercentage;
+  String? get appliedPromoCode => _c.appliedPromoCode;
+  PromoDetails? get appliedPromoDetails => _c.appliedPromoDetails;
+  bool get lockActive => _c.lockActive;
+  DateTime? get lockExpiresAt => _c.lockExpiresAt;
+
+  static double _round2(double n) => (n * 100).roundToDouble() / 100;
+
+  (double, String) get _discount {
+    if (_all) return (_c.appliedDiscountUsd, _c.appliedDiscountSource);
+    final sub = total;
+    final loyalty = _round2(sub * (_c.loyaltyDiscountPercentage / 100));
+    final p = _c.appliedPromoDetails;
+    final promo = p == null
+        ? 0.0
+        : p.type == 'percentage'
+            ? _round2(sub * ((p.value ?? 0) / 100))
+            : p.type == 'flat'
+                ? ((p.value ?? 0) < sub ? (p.value ?? 0) : sub)
+                : 0.0;
+    if (loyalty > promo) return (loyalty, 'loyalty');
+    if (promo > 0) return (promo, 'promo');
+    return (0.0, 'none');
+  }
+
+  double get appliedDiscountUsd => _discount.$1;
+  String get appliedDiscountSource => _discount.$2;
+
+  CartShipping get shipping {
+    final s = _c.shipping;
+    if (_all || !s.enabled) return s;
+    final goods = (total - appliedDiscountUsd).clamp(0, double.infinity).toDouble();
+    final qualifies = goods >= s.thresholdUsd;
+    return CartShipping(
+      enabled: true,
+      thresholdUsd: s.thresholdUsd,
+      feeUsd: s.feeUsd,
+      chargedUsd: items.isNotEmpty && !qualifies && !s.waivedByPromo ? s.feeUsd : 0,
+      remainingUsd: qualifies ? 0 : _round2(s.thresholdUsd - goods),
+      qualifies: qualifies,
+      waivedByPromo: s.waivedByPromo,
+    );
+  }
+
+  double get shippingSaved => shipping.savedUsd;
+  double get totalWithShipping => shipping.totalWith(total);
+
+  Future<void> refresh({bool silent = false}) => _c.refresh(silent: silent);
+  Future<void> lockPrices() => _c.lockPrices();
+  Future<void> applyPromoCode(String code) => _c.applyPromoCode(code);
+  Future<void> removePromoCode() => _c.removePromoCode();
+  /// After the order: only the lines that were ordered leave the basket.
+  Future<void> clearAfterOrder() => _c.clearAfterOrder(only: items.map((i) => i.productId).toList());
+}

@@ -7,7 +7,7 @@ import { CountUpText } from "./CountUp";
  */
 export default function StatTile({ n, label, paths, picture }: { n: string; label: string; paths: string[]; picture?: string | null }) {
   return (
-    <li data-testid="stat-tile" className="relative flex h-[92px] items-center overflow-hidden rounded-[14px] bg-gradient-to-br from-[#ffc83d] to-[#f4a400] px-4 sm:px-5">
+    <li data-testid="stat-tile" className="relative flex h-[92px] items-center overflow-hidden rounded-[14px] bg-gradient-to-br from-[#ffc83d] to-[#f4a400] px-4 max-md:h-[50px] max-md:justify-center max-md:rounded-[12px] max-md:px-1 max-md:text-center sm:px-5">
       {picture ? (
         <>
           {/* eslint-disable-next-line @next/next/no-img-element -- a plain picture under a wash; its size is the tile's */}
@@ -15,11 +15,11 @@ export default function StatTile({ n, label, paths, picture }: { n: string; labe
           <span aria-hidden="true" className="absolute inset-0 bg-gradient-to-r from-[#fab219]/95 from-35% to-[#fab219]/35 rtl:bg-gradient-to-l" />
         </>
       ) : (
-        <svg aria-hidden="true" data-testid="stat-tile-icon" width="108" height="108" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="absolute -bottom-4 -end-2 text-navy opacity-[0.17]">
+        <svg aria-hidden="true" data-testid="stat-tile-icon" width="108" height="108" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="absolute -bottom-4 -end-2 text-navy opacity-[0.17] max-md:hidden">
           {paths.map((d) => <path key={d} d={d} />)}
         </svg>
       )}
-      <span className="relative min-w-0"><b className="block text-[30px] font-extrabold leading-none text-navy tabular-nums sm:text-[34px]"><CountUpText text={n} /></b><span className="mt-1 block text-[14px] font-medium text-[#3d3318] sm:text-[15px]">{label}</span></span>
+      <span className="relative min-w-0"><b className="block text-[30px] font-extrabold leading-none text-navy tabular-nums max-md:text-[16px] sm:text-[34px]"><CountUpText text={n} /></b><span className="mt-1 block text-[14px] font-medium text-[#3d3318] max-md:mt-0.5 max-md:truncate max-md:text-[10px] max-md:font-semibold sm:text-[15px]">{label}</span></span>
     </li>
   );
 }
