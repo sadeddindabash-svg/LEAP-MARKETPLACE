@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../widgets/premium.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
@@ -29,6 +30,7 @@ class _ChatScreenState extends State<ChatScreen> {
   late Future<List<dynamic>> _ticketsFuture;
   final _lookupIdController = TextEditingController();
   final _lookupEmailController = TextEditingController();
+  String _tab = 'all';      // the chosen tab: all, open or resolved
 
   @override
   void initState() {
@@ -146,45 +148,48 @@ class _ChatScreenState extends State<ChatScreen> {
                   // reference's "AVG RESPONSE" stat is deliberately NOT
                   // shown -- no response-time tracking exists anywhere
                   // in the real data without fabricating a number.
-                  final openCount = tickets.where((t) => (t as Map<String, dynamic>)['status'] != 'resolved' && t['status'] != 'closed').length;
+                  bool resolvedOf(dynamic t) => (t as Map<String, dynamic>)['status'] == 'resolved' || t['status'] == 'closed';
+                  final openCount = tickets.where((t) => !resolvedOf(t)).length;
                   final resolvedCount = tickets.length - openCount;
+                  // the three tabs (All · Open · Resolved), each showing only its tickets
+                  final shown = switch (_tab) { 'open' => tickets.where((t) => !resolvedOf(t)).toList(), 'resolved' => tickets.where(resolvedOf).toList(), _ => tickets };
                   return ListView.separated(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.all(16),
-                    itemCount: tickets.length + 1,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemCount: shown.isEmpty ? 2 : shown.length + 1,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
                     itemBuilder: (context, i) {
                       if (i == 0) {
-                        return Row(
-                          children: [
-                            Expanded(child: _StatCard(label: tr(context, 'total_tickets'), value: '${tickets.length}')),
-                            const SizedBox(width: 10),
-                            Expanded(child: _StatCard(label: tr(context, 'open_requests'), value: '$openCount', accent: true)),
-                            const SizedBox(width: 10),
-                            Expanded(child: _StatCard(label: tr(context, 'resolved'), value: '$resolvedCount')),
-                          ],
+                        return _TicketTabs(
+                          tab: _tab,
+                          counts: {'all': tickets.length, 'open': openCount, 'resolved': resolvedCount},
+                          onTab: (t) => setState(() => _tab = t),
                         );
                       }
-                      final t = tickets[i - 1] as Map<String, dynamic>;
+                      if (shown.isEmpty) {
+                        return Padding(padding: const EdgeInsets.symmetric(vertical: 40), child: Center(child: Text(tr(context, 'no_tickets_yet'), style: TextStyle(color: palette.muted))));
+                      }
+                      final t = shown[i - 1] as Map<String, dynamic>;
                       final status = t['status'] as String;
                       final isResolved = status == 'resolved' || status == 'closed';
                       return Container(
-                        decoration: BoxDecoration(
-                          color: palette.card,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border(left: BorderSide(color: isResolved ? palette.gauge : palette.signal, width: 4)),
-                        ),
+                        decoration: Premium.cardFor(palette, radius: 14),
                         clipBehavior: Clip.antiAlias,
                         child: ListTile(
                           leading: Container(
                             width: 44,
                             height: 44,
-                            decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(10)),
+                            decoration: Premium.cardFor(palette, radius: 10),
                             child: Icon(isResolved ? Icons.check_circle_outline : Icons.build_outlined, color: isResolved ? palette.gauge : palette.signal),
                           ),
                           title: Text(t['subject'] as String, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w700, color: palette.ink)),
                           subtitle: Text(trStatus(context, status), style: TextStyle(fontSize: 12, color: palette.muted)),
-                          trailing: Icon(Icons.chevron_right, color: palette.muted),
+                          // the status as a raised pill: open gold, resolved green
+                          trailing: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: isResolved ? Premium.greenRaised() : Premium.goldRaised(radius: 999),
+                            child: Text(isResolved ? tr(context, 'resolved') : _openWord(context), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: isResolved ? Colors.white : const Color(0xFF0B3146))),
+                          ),
                           onTap: () async {
                             await context.push('/support/${t['id']}');
                             _refresh();
@@ -205,6 +210,54 @@ class _ChatScreenState extends State<ChatScreen> {
           _refresh();
         },
         child: const Icon(Icons.add),
+      ),
+    );
+  }
+}
+
+/// The short word for an open ticket (the tab and the label on each ticket).
+String _openWord(BuildContext context) => Directionality.of(context) == TextDirection.rtl ? 'مفتوحة' : 'Open';
+
+/// All · Open · Resolved as one raised switch: the chosen tab is a raised card; Open's number is gold, Resolved's green.
+class _TicketTabs extends StatelessWidget {
+  final String tab;
+  final Map<String, int> counts;
+  final ValueChanged<String> onTab;
+  const _TicketTabs({required this.tab, required this.counts, required this.onTab});
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = LeapPalette.of(context);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    const gold = Color(0xFFC98A00);
+    final green = palette.gauge;
+    final tabs = [('all', tr(context, 'tab_all'), palette.ink), ('open', _openWord(context), gold), ('resolved', tr(context, 'resolved'), green)];
+    return Container(
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(color: dark ? Colors.black.withValues(alpha: 0.25) : const Color(0xFFE4E9EE), borderRadius: BorderRadius.circular(16)),
+      child: Row(
+        children: [
+          for (final (key, label, color) in tabs)
+            Expanded(
+              child: GestureDetector(
+                key: Key('ticket-tab-$key'),
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onTab(key),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                  decoration: tab == key ? Premium.cardFor(palette, radius: 12) : const BoxDecoration(),
+                  child: Column(
+                    children: [
+                      Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: key == 'all' ? palette.muted : color)),
+                      const SizedBox(height: 2),
+                      Text('${counts[key] ?? 0}', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: color)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

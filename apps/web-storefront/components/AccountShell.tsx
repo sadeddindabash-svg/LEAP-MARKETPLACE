@@ -6,7 +6,7 @@ import Link from "@/components/LocLink";
 import { useEffect, useState } from "react";
 import { useAuth, getAuthToken } from "./AuthProvider";
 import { fetchUnreadNotificationCount } from "@/lib/api";
-import { useT } from "./LangProvider";
+import { useLang, useT } from "./LangProvider";
 import GarageMeter from "./GarageMeter";
 import { splitLang, type DictKey } from "@/lib/i18n";
 
@@ -122,16 +122,41 @@ export default function AccountShell({ children }: { children: ReactNode }) {
   const t = useT();
   const here = splitLang(usePathname() || "/").path;
   const unread = useUnread(!!user && inAccountMenu(here), here);
+  const lang = useLang();
+  // a phone or a tablet (under 1024 px): the menu opens OVER the page from "☰ Menu", and closes on a page, ✕, Escape or a tap outside
+  const [open, setOpen] = useState(false);
+  useEffect(() => { setOpen(false); }, [here]);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    const before = document.body.style.overflow;
+    document.body.style.overflow = "hidden";      // the page behind does not scroll while the menu is open
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = before; };
+  }, [open]);
   if (!user || !inAccountMenu(here)) return <>{children}</>;
   // the pages under /account were drawn for the space beside the menu and have no frame of their own: they keep the one they had
   const ownFrame = here === "/account" || here.startsWith("/account/");
   const item = ITEMS.find(([href]) => href === here) ?? REACHED_HEADS.find(([href]) => href === here);
-  const marked = menuPageOf(here);      // the menu's page to mark: this page, or the one it belongs to      // the header box: on the menu's own pages (an order or a return keeps its own title)
+  const markedItem = ITEMS.find(([href]) => href === menuPageOf(here));
+  const marked = menuPageOf(here);
+  // ☰ Menu (a phone or a tablet): at the end of the page's title box; on a page with no title box (an order, a return) in its own slim bar
+  const menuButton = (
+    <button type="button" aria-expanded={open} aria-controls="account-menu" data-testid="account-menu-button" onClick={() => setOpen(true)} className="flex flex-none items-center gap-1.5 rounded-[9px] bg-signal px-2.5 py-1.5 text-[13px] font-extrabold text-navy lg:hidden">
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M4 7h16M4 12h16M4 17h16" /></svg>{lang === "ar" ? "القائمة" : "Menu"}
+      {unread > 0 && <span aria-hidden="true" className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-navy px-1 text-[10.5px] text-white">{unread > 99 ? "99+" : unread}</span>}
+    </button>
+  );      // the menu's page to mark: this page, or the one it belongs to      // the header box: on the menu's own pages (an order or a return keeps its own title)
   return (
     <div className="lg:flex lg:items-start">
       <style>{`${PAGE_PLACE_CSS}\n${THEME_CSS}`}</style>
-      <nav aria-label={t("account_sidebar")} className="px-4 pt-6 lg:sticky lg:top-[calc(var(--header-h,0px)+1rem)] lg:w-[256px] lg:shrink-0 lg:self-start lg:pe-0 lg:ps-4 lg:pt-10">
-        <ul className="grid gap-1 rounded-[14px] border border-line bg-white p-2">
+      {open && <button type="button" aria-label={t("cancel")} data-testid="account-menu-backdrop" onClick={() => setOpen(false)} className="fixed inset-0 z-[55] bg-[#07202f]/45 lg:hidden" />}
+      <nav id="account-menu" aria-label={t("account_sidebar")} className={`max-lg:fixed max-lg:inset-y-0 max-lg:start-0 max-lg:z-[60] max-lg:w-[min(85vw,320px)] max-lg:overflow-y-auto max-lg:bg-white max-lg:px-3 max-lg:pb-6 max-lg:pt-4 max-lg:shadow-[0_0_30px_rgba(7,32,47,0.3)] max-lg:transition-[transform,visibility] max-lg:duration-200 ${open ? "" : "max-lg:invisible max-lg:ltr:-translate-x-full max-lg:rtl:translate-x-full"} lg:sticky lg:top-[calc(var(--header-h,0px)+1rem)] lg:w-[256px] lg:shrink-0 lg:self-start lg:pe-0 lg:ps-4 lg:pt-10`}>
+        <div className="mb-2 flex items-center justify-between px-2 lg:hidden">
+          <span className="text-lg font-extrabold text-ink">{t("account_hub_title")}</span>
+          <button type="button" aria-label={t("cancel")} onClick={() => setOpen(false)} className="grid size-10 place-items-center rounded-full text-[#6b7a86] hover:bg-chalk"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
+        </div>
+        <ul className="grid gap-1 rounded-[14px] border border-line bg-white p-2 max-lg:border-0 max-lg:p-0">
           {ITEMS.map(([href, key]) => (
             <li key={href}>
               <Link href={href} aria-current={here === href ? "page" : marked === href ? "true" : undefined} className={`relative flex min-h-11 items-center gap-2.5 rounded-[10px] px-3 text-[15px] font-semibold ${marked === href ? "bg-gradient-to-br from-navy to-[#173f57] text-white" : "text-ink hover:bg-chalk"}`}>
@@ -145,31 +170,43 @@ export default function AccountShell({ children }: { children: ReactNode }) {
         </ul>
       </nav>
       <div className={`account-page min-w-0 flex-1${item && item[0] === TIER ? "" : " account-themed"}`}>
+        {/* a phone or a tablet, on a page with no title box (an order, a return): one slim bar, the page it belongs to and ☰ Menu */}
+        {!item && (
+          <div className="px-4 pt-3 sm:px-8 lg:hidden">
+            <div className="flex min-h-12 w-full items-center gap-2.5 rounded-[12px] border border-line bg-white px-3">
+              <span aria-hidden="true" className="grid size-7 flex-none place-items-center rounded-[8px] bg-gradient-to-br from-navy to-[#173f57] text-signal"><Icon href={markedItem ? markedItem[0] : "/account"} size={16} /></span>
+              <span className="min-w-0 flex-1 truncate text-[15px] font-extrabold text-ink">{t(markedItem ? markedItem[1] : "account_hub_title")}</span>
+              {menuButton}
+            </div>
+          </div>
+        )}
         {item && item[0] !== TIER && (
-          <div className="px-4 pt-6 sm:px-8 lg:pt-10">
-            <header data-testid="account-page-header" className="relative flex flex-wrap items-center gap-x-5 gap-y-3 overflow-hidden rounded-[16px] bg-gradient-to-br from-navy to-[#173f57] px-6 py-5 text-white sm:px-7">
-              <span aria-hidden="true" className="grid size-14 flex-none place-items-center rounded-full bg-white text-navy ring-4 ring-signal"><Icon href={item[0]} size={26} /></span>
+          <div className="px-4 pt-3 sm:px-8 lg:pt-10">
+            <header data-testid="account-page-header" className={`relative flex flex-wrap items-center gap-x-5 gap-y-3 overflow-hidden rounded-[16px] bg-gradient-to-br from-navy to-[#173f57] px-6 py-5 text-white max-md:flex-nowrap max-md:gap-x-3 max-md:rounded-[14px] max-md:px-3.5 max-md:py-2 sm:px-7${item[0] === "/garage" ? " max-xl:flex-nowrap max-xl:gap-x-3 max-xl:rounded-[14px] max-xl:px-3.5! max-xl:py-2!" : ""}`}>
+              <span aria-hidden="true" className={`grid size-14 flex-none place-items-center rounded-full bg-white text-navy ring-4 ring-signal max-md:size-8 max-md:ring-[3px] [&>svg]:max-md:size-4${item[0] === "/garage" ? " max-xl:size-8 max-xl:ring-[3px] [&>svg]:max-xl:size-4" : ""}`}><Icon href={item[0]} size={26} /></span>
               <div className="min-w-0 flex-1">
-                <h1 className="text-[26px] font-extrabold leading-tight tracking-tight text-white">{t(item[1])}</h1>
-                <p className="mt-1 text-[15px] font-semibold text-signal">{t(item[2])}</p>
+                <h1 className={`text-[26px] font-extrabold leading-tight tracking-tight text-white max-md:text-[18px]${item[0] === "/garage" ? " max-xl:text-[18px]" : ""}`}>{t(item[1])}</h1>
+                <p className={`mt-1 text-[15px] font-semibold text-signal max-md:hidden${item[0] === "/garage" ? " max-xl:hidden" : ""}`}>{t(item[2])}</p>
               </div>
               {/* My garage: how many of its places are used, at the end of the title box */}
               {item[0] === "/garage" && <GarageMeter />}
               {/* a page can put its own buttons here (Compare parts: add from the wishlist, share) */}
               <div id="account-header-actions" className="flex flex-wrap items-center gap-2 empty:hidden" />
+              {menuButton}
             </header>
           </div>
         )}
         {item && item[0] === TIER && (
-          <div className="px-4 pt-6 sm:px-8 lg:pt-10">
-            <header data-testid="account-page-header" className="relative flex flex-wrap items-center gap-x-6 gap-y-3 overflow-hidden rounded-[16px] border border-line bg-white px-6 py-5 sm:px-7">
+          <div className="px-4 pt-3 sm:px-8 lg:pt-10">
+            <header data-testid="account-page-header" className="relative flex flex-wrap items-center gap-x-6 gap-y-3 overflow-hidden rounded-[16px] border border-line bg-white px-6 py-5 max-md:flex-nowrap max-md:rounded-[14px] max-md:px-4 max-md:py-2.5 sm:px-7">
               <span aria-hidden="true" className="absolute inset-y-4 start-0 w-1 rounded-full bg-signal" />
               <div className="min-w-0 flex-1">
-                <h1 className="text-3xl font-bold tracking-tight text-navy">{t(item[1])}</h1>
-                <p className="mt-1.5 text-[15px] text-muted">{t(item[2])}</p>
+                <h1 className="text-3xl font-bold tracking-tight text-navy max-md:text-[18px]">{t(item[1])}</h1>
+                <p className="mt-1.5 text-[15px] text-muted max-md:hidden">{t(item[2])}</p>
               </div>
               {/* My garage: how many of its places are used, at the end of the title box */}
               {item[0] === "/garage" && <GarageMeter />}
+              {menuButton}
             </header>
           </div>
         )}

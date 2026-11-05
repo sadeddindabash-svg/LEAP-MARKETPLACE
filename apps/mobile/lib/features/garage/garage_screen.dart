@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../widgets/premium.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -308,11 +309,7 @@ class _GarageScreenState extends State<GarageScreen> {
               key: ValueKey(v.id),
               margin: const EdgeInsets.only(bottom: 14),
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: palette.card,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: v.isDefault ? palette.signal : palette.line),
-              ),
+              decoration: Premium.cardFor(palette, radius: 14, ring: v.isDefault ? palette.signal : null),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -326,7 +323,7 @@ class _GarageScreenState extends State<GarageScreen> {
                     aspectRatio: 1,
                     child: Container(
                       width: double.infinity,
-                      decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(10)),
+                      // the car photo or brand logo sits straight on the card (a clear background), only the card is raised
                       padding: const EdgeInsets.all(8),
                       child: v.heroPhotoUrl != null
                           ? CachedNetworkImage(

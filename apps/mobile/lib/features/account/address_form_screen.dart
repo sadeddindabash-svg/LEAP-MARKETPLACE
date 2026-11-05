@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../widgets/premium.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:csc_picker_plus/csc_picker_plus.dart';
@@ -212,7 +213,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
             // replacement for them (see _onAddressSearchChanged's own
             // header comment for the real, free API this calls and
             // its real rate-limit consideration).
-            TextField(
+            PremiumWell(child: TextField(
               controller: _addressSearchController,
               onChanged: _onAddressSearchChanged,
               decoration: InputDecoration(
@@ -220,11 +221,11 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: _isSearchingAddress ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))) : null,
               ),
-            ),
+            )),
             if (_suggestions.isNotEmpty)
               Container(
                 margin: const EdgeInsets.only(top: 4),
-                decoration: BoxDecoration(border: Border.all(color: palette.line), borderRadius: BorderRadius.circular(8)),
+                decoration: Premium.cardFor(palette, radius: 8),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: _suggestions.map((s) => ListTile(
@@ -238,9 +239,9 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
             const SizedBox(height: 16),
             const Divider(),
             const SizedBox(height: 4),
-            TextField(controller: _labelController, decoration: InputDecoration(labelText: tr(context, 'label_field'), prefixIcon: const Icon(Icons.label_outline))),
+            PremiumWell(child: TextField(controller: _labelController, decoration: InputDecoration(labelText: tr(context, 'label_field'), prefixIcon: const Icon(Icons.label_outline)))),
             const SizedBox(height: 12),
-            TextField(controller: _recipientController, decoration: InputDecoration(labelText: tr(context, 'recipient_name_field'), prefixIcon: const Icon(Icons.person_outline))),
+            PremiumWell(child: TextField(controller: _recipientController, decoration: InputDecoration(labelText: tr(context, 'recipient_name_field'), prefixIcon: const Icon(Icons.person_outline)))),
             const SizedBox(height: 12),
             // Real cascading country -> city selection (new) --
             // csc_picker_plus's own real, bundled dataset, no network
@@ -284,16 +285,8 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
               // whitespace, giving a genuinely clean country name
               // either way.
               flagState: CountryFlag.SHOW_IN_DROP_DOWN_ONLY,
-              dropdownDecoration: BoxDecoration(
-                color: palette.card,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: palette.line),
-              ),
-              disabledDropdownDecoration: BoxDecoration(
-                color: palette.card,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: palette.line),
-              ),
+              dropdownDecoration: Premium.cardFor(palette, radius: 8),
+              disabledDropdownDecoration: Premium.cardFor(palette, radius: 8),
               currentCountry: _selectedCountry,
               currentCity: _selectedCity,
               onCountryChanged: (value) {
@@ -328,7 +321,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
             // own real short-address standard.
             if (normalizeCountryNameToEnglish(_selectedCountry) == 'Saudi Arabia') ...[
               const SizedBox(height: 12),
-              TextField(
+              PremiumWell(child: TextField(
                 controller: _nationalAddressController,
                 textCapitalization: TextCapitalization.characters,
                 maxLength: 8,
@@ -342,14 +335,14 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                       : null,
                 ),
                 onChanged: (_) => setState(() {}),
-              ),
+              )),
             ],
             const SizedBox(height: 12),
-            TextField(controller: _streetController, decoration: InputDecoration(labelText: tr(context, 'street_address_field'), prefixIcon: const Icon(Icons.home_outlined))),
+            PremiumWell(child: TextField(controller: _streetController, decoration: InputDecoration(labelText: tr(context, 'street_address_field'), prefixIcon: const Icon(Icons.home_outlined)))),
             const SizedBox(height: 12),
-            TextField(controller: _postalController, decoration: InputDecoration(labelText: tr(context, 'postal_code_field'), prefixIcon: const Icon(Icons.markunread_mailbox_outlined))),
+            PremiumWell(child: TextField(controller: _postalController, decoration: InputDecoration(labelText: tr(context, 'postal_code_field'), prefixIcon: const Icon(Icons.markunread_mailbox_outlined)))),
             const SizedBox(height: 12),
-            TextField(
+            PremiumWell(child: TextField(
               controller: _phoneController,
               keyboardType: TextInputType.phone,
               decoration: InputDecoration(
@@ -366,7 +359,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                     ? '${kCountryPhoneCodes[normalizeCountryNameToEnglish(_selectedCountry)]} '
                     : null,
               ),
-            ),
+            )),
             if (_errorMessage != null) ...[
               const SizedBox(height: 12),
               Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 12.5)),

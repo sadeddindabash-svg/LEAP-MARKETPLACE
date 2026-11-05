@@ -44,21 +44,21 @@ export default function LoyaltyCard() {
   const tier = status.currentTier, next = status.nextTier;
   const color = tierColor(tier.color);
   return (
-    <section className="rounded-[14px] border border-line bg-white p-5" aria-labelledby="loy-h">
-      <div className="flex items-center gap-4">
+    <section className="rounded-[14px] border border-line bg-white p-5 max-md:px-3 max-md:py-2.5" aria-labelledby="loy-h">
+      <div className="flex items-center gap-4 max-md:gap-2.5">
         <TierBadge icon={tierIcon(tier.icon)} color={color} photoUrl={tier.photoUrl} size={55} />
         <div className="min-w-0 flex-1">
-          <h2 id="loy-h" className="text-lg font-bold">{memberLabel(lang, tierName(lang, tier), t("loyalty_membership_word"))}</h2>
-          <p className="text-sm text-muted">{tier.discountPercentage > 0 ? `${tier.discountPercentage}% ${t("loyalty_off_every_order")}` : t("loyalty_keep_spending")}</p>
+          <h2 id="loy-h" className="text-lg font-bold max-md:text-[15px] max-md:leading-tight">{memberLabel(lang, tierName(lang, tier), t("loyalty_membership_word"))}</h2>
+          <p className="text-sm text-muted max-md:text-[12.5px] max-md:leading-tight">{tier.discountPercentage > 0 ? `${tier.discountPercentage}% ${t("loyalty_off_every_order")}` : t("loyalty_keep_spending")}</p>
         </div>
         <Link href="/account/loyalty" className="text-sm font-bold text-navy underline underline-offset-4">{t("loyalty_card_link")}</Link>
       </div>
       {next && status.amountToNextTier != null && (
-        <div className="mt-4">
+        <div className="mt-4 max-md:mt-2">
           <div className="h-2 overflow-hidden rounded-full bg-[#dce5eb]" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progressFraction(status) * 100)}>
             <div className="h-full rounded-full" style={{ width: `${progressFraction(status) * 100}%`, backgroundColor: color }} />
           </div>
-          <p className="mt-2 flex flex-wrap justify-between gap-2 text-xs text-muted"><span><Price usd={status.lifetimeSpend} /> {t("loyalty_spent")}</span><span><Price usd={status.amountToNextTier} /> {t("loyalty_to_next_tier")} {tierName(lang, next)}</span></p>
+          <p className="mt-2 flex flex-wrap justify-between gap-2 text-xs text-muted max-md:mt-1 max-md:text-[11px]"><span><Price usd={status.lifetimeSpend} /> {t("loyalty_spent")}</span><span><Price usd={status.amountToNextTier} /> {t("loyalty_to_next_tier")} {tierName(lang, next)}</span></p>
         </div>
       )}
     </section>

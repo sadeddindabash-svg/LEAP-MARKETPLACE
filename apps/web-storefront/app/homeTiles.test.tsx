@@ -30,20 +30,20 @@ describe("the four totals", () => {
 describe("shop by section", () => {
   it("is a grid of wide tiles: 2 per row on a phone, 3 on a tablet, 4 on a computer, each a link to the section with its photo in an angled panel", async () => {
     m.cats.current = Array.from({ length: 6 }, (_, i) => cat(i, `/uploads/s${i}.png`)); await show(); const tiles = screen.getAllByTestId("section-tile"); expect(tiles).toHaveLength(6); expect(tiles[0].getAttribute("href")).toBe("/search?category=c0");
-    const ul = tiles[0].closest("ul")!; for (const c of ["grid-cols-2", "sm:grid-cols-3", "lg:grid-cols-4"]) expect(ul.className.split(" "), c).toContain(c); expect(ul.className).not.toContain("lg:grid-cols-6");
+    const ul = tiles[0].closest("ul")!; for (const c of ["grid-cols-4", "md:grid-cols-3", "lg:grid-cols-4"]) expect(ul.className.split(" "), c).toContain(c); expect(ul.className).not.toContain("lg:grid-cols-6");
   });
-  it("the More tile is the wide dashed one and takes the fourth place (3 sections + More) when there are more sections than a row", async () => { m.cats.current = Array.from({ length: 9 }, (_, i) => cat(i)); const { container } = await show(); const more = container.querySelector('button[data-variant="wide"]'); expect(more).not.toBeNull(); expect(more!.textContent).toBe("More sections"); const shown = [...screen.getAllByTestId("section-tile")].filter((t) => !t.closest("li")!.hasAttribute("hidden")); expect(shown).toHaveLength(3); });
+  it("the More tile is the wide dashed one and takes the fourth place (3 sections + More) when there are more sections than a row", async () => { m.cats.current = Array.from({ length: 9 }, (_, i) => cat(i)); const { container } = await show(); const more = container.querySelector('button[data-variant="wide"]'); expect(more).not.toBeNull(); expect(more!.textContent).toBe("···More sections"); const shown = [...screen.getAllByTestId("section-tile")].filter((t) => !t.closest("li")!.hasAttribute("hidden")); expect(shown).toHaveLength(3); });
   it("in Arabic the names and links are Arabic", async () => { m.cats.current = [cat(1)]; await show("ar"); expect(screen.getByText("قسم 1")).toBeInTheDocument(); expect(screen.getByTestId("section-tile").getAttribute("href")).toBe("/ar/search?category=c1"); });
 });
 describe("shop by brand", () => {
   it("is a grid of round photos: 3 per row on a phone, 5 on a tablet, 10 on a wide screen (9 brands and More), each a link to the brand's parts", async () => {
     m.brands.current = Array.from({ length: 6 }, (_, i) => brand(i, `/uploads/b${i}.png`)); await show(); const tiles = screen.getAllByTestId("brand-tile"); expect(tiles).toHaveLength(6); expect(tiles[0].getAttribute("href")).toBe("/search?q=Brand%200");
-    const ul = tiles[0].closest("ul")!; for (const c of ["grid-cols-3", "sm:grid-cols-5", "xl:grid-cols-10"]) expect(ul.className.split(" "), c).toContain(c);
+    const ul = tiles[0].closest("ul")!; for (const c of ["grid-cols-4", "md:grid-cols-5", "xl:grid-cols-10"]) expect(ul.className.split(" "), c).toContain(c);
   });
   it("the More tile is the dashed circle with the words under it", async () => { m.brands.current = Array.from({ length: 12 }, (_, i) => brand(i)); const { container } = await show(); const more = container.querySelector('button[data-variant="round"]'); expect(more).not.toBeNull(); expect(more!.textContent).toContain("More brands"); const shown = [...screen.getAllByTestId("brand-tile")].filter((t) => !t.closest("li")!.hasAttribute("hidden")); expect(shown).toHaveLength(9); });
   it("9 brands are shown and then More, whatever the screen: 9 or fewer brands have no More tile, 10 have one; on a phone More is a wide button under the 3 x 3 brands", async () => {
     m.brands.current = Array.from({ length: 9 }, (_, i) => brand(i)); let v = await show(); expect(v.container.querySelector('button[data-variant="round"]')).toBeNull(); v.unmount();
-    m.brands.current = Array.from({ length: 10 }, (_, i) => brand(i)); v = await show(); expect(v.container.querySelector('button[data-variant="round"]')).not.toBeNull(); const pill = v.container.querySelector('button[data-variant="pill"]'); expect(pill).not.toBeNull(); expect(pill!.textContent).toContain("More brands"); expect(pill!.closest("li")!.className).toContain("col-span-3");
+    m.brands.current = Array.from({ length: 10 }, (_, i) => brand(i)); v = await show(); expect(v.container.querySelector('button[data-variant="round"]')).not.toBeNull(); expect(v.container.querySelector('button[data-variant="pill"]')).toBeNull();      // a phone now shows the round More tile as the 8th (phoneCollapsed)
   });
   it("in Arabic the Arabic brand name is shown", async () => { m.brands.current = [brand(1)]; await show("ar"); expect(screen.getByText("ماركة 1")).toBeInTheDocument(); });
 });

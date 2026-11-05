@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
+import '../../widgets/premium.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../core/auto_refresher.dart';
@@ -186,16 +187,15 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                 return Align(
                   alignment: isAdmin ? Alignment.centerLeft : Alignment.centerRight,
                   child: Container(
-                    margin: const EdgeInsets.only(bottom: 8),
+                    margin: const EdgeInsets.only(bottom: 12),
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-                    decoration: BoxDecoration(
-                      color: isAdmin ? LeapPalette.of(context).chalk : LeapPalette.of(context).signal,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    // Leap's messages: raised navy; yours: raised gold
+                    decoration: isAdmin ? Premium.navyRaised(radius: 14) : Premium.goldRaised(radius: 14),
+                    foregroundDecoration: isAdmin ? Premium.gloss(radius: 14) : null,
                     child: Text(
                       m['message'] as String,
-                      style: TextStyle(color: isAdmin ? LeapPalette.of(context).ink : LeapPalette.of(context).onSignal, fontSize: 13),
+                      style: TextStyle(color: isAdmin ? Colors.white : const Color(0xFF0B3146), fontSize: 13, fontWeight: isAdmin ? FontWeight.w500 : FontWeight.w600),
                     ),
                   ),
                 );

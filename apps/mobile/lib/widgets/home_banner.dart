@@ -165,9 +165,12 @@ class _HomeBannerState extends State<HomeBanner> with WidgetsBindingObserver {
     final slides = _data.slides;
     final count = slides.length;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.only(bottom: 20),
       child: AspectRatio(
         aspectRatio: _aspect,
+        // Premium 3D: the banner floats on a deep shadow, with a soft shine across its top
+        child: DecoratedBox(
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), boxShadow: const [BoxShadow(color: Color(0x330B3146), blurRadius: 6, offset: Offset(0, 2)), BoxShadow(color: Color(0x590B3146), blurRadius: 26, offset: Offset(0, 12))]),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(14),
           child: Stack(
@@ -194,11 +197,12 @@ class _HomeBannerState extends State<HomeBanner> with WidgetsBindingObserver {
                   itemBuilder: (context, index) => _slide(slides[index % count], arabic),
                 ),
               ),
+              const Positioned.fill(child: IgnorePointer(child: DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.center, colors: [Color(0x38FFFFFF), Color(0x00FFFFFF)]))))),
               if (count > 1) Positioned(left: 0, right: 0, bottom: 8, child: _dots(count)),
             ],
           ),
         ),
-      ),
+      )),
     );
   }
 }

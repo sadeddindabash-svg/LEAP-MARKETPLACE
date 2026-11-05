@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../../widgets/premium.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/auth_state.dart';
@@ -174,7 +175,7 @@ class _TwoFactorSetupScreenState extends State<TwoFactorSetupScreen> {
       const SizedBox(height: 6),
       Container(
         padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(8)),
+        decoration: Premium.cardFor(palette, radius: 8),
         child: SelectableText(secret, style: const TextStyle(fontWeight: FontWeight.w700, letterSpacing: 1)),
       ),
       const SizedBox(height: 24),

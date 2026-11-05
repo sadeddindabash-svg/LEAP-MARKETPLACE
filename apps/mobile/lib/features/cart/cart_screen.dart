@@ -14,6 +14,7 @@ import '../../core/fly_to_trash.dart';
 import '../../models/cart_item.dart';
 import '../../services/api_client.dart';
 import '../../widgets/skeleton.dart';
+import '../../widgets/premium.dart';
 import '../../widgets/cart_merge_banner.dart';
 import '../../widgets/free_shipping.dart';
 import '../quotations/quotations_screens.dart';
@@ -55,9 +56,10 @@ class CartScreen extends StatelessWidget {
           ? null
           : Container(
               padding: const EdgeInsets.all(16),
+              // the checkout bar floats over the list
               decoration: BoxDecoration(
                 color: palette.card,
-                border: Border(top: BorderSide(color: palette.line)),
+                boxShadow: const [BoxShadow(color: Color(0x290B3146), blurRadius: 20, offset: Offset(0, -6))],
               ),
               child: SafeArea(
                 child: Column(
@@ -92,7 +94,24 @@ class CartScreen extends StatelessWidget {
                     if (!chosen.isEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
-                        child: SizedBox(width: double.infinity, child: OutlinedButton(onPressed: () => context.push('/quotations/new'), child: Text(qtr(context, 'get_quotation')))),
+                        child: PressDown(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: palette.card,
+                              borderRadius: BorderRadius.circular(999),
+                              boxShadow: const [BoxShadow(color: Color(0x1F0B3146), blurRadius: 8, offset: Offset(0, 4)), BoxShadow(color: Color(0x290B3146), blurRadius: 20, offset: Offset(0, 10))],
+                            ),
+                            child: SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton(
+                                key: const Key('cart-get-quotation'),
+                                style: OutlinedButton.styleFrom(side: BorderSide(color: palette.ink, width: 1.5), foregroundColor: palette.ink),
+                                onPressed: () => context.push('/quotations/new'),
+                                child: Text(qtr(context, 'get_quotation')),
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     if (some)
                       Padding(
@@ -187,11 +206,7 @@ class CartScreen extends StatelessWidget {
         // "Order Specifications" section structurally -- that real
         // breakdown only exists once real checkout computes it.
         Container(
-          decoration: BoxDecoration(
-            color: palette.card,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: palette.line),
-          ),
+          decoration: Premium.card(context),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -401,13 +416,9 @@ class _CartItemRowState extends State<_CartItemRow> with SingleTickerProviderSta
       duration: const Duration(milliseconds: 150),
       opacity: selected ? 1 : 0.55,
       child: Container(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: palette.card,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: palette.line),
-      ),
+      decoration: Premium.card(context),
       // Real, new -- tapping the row (anywhere not already its own
       // interactive control, like the quantity stepper or remove
       // button, which still receive their own taps first) opens this
@@ -525,34 +536,34 @@ class _CartItemRowState extends State<_CartItemRow> with SingleTickerProviderSta
                     // Real pill-shaped quantity stepper (new), matching
                     // the real Stitch reference exactly.
                     Container(
-                      decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(999), border: Border.all(color: palette.line)),
+                      decoration: Premium.goldRaised(radius: 999),
+                      // a small - 2 + (32 px buttons; IconButton kept a 48 px tap area whatever its icon size); navy on the gold, light and dark mode
                       child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          IconButton(
-                            iconSize: 14,
-                            padding: const EdgeInsets.all(6),
-                            constraints: const BoxConstraints(),
-                            onPressed: () => _changeQuantity(context, cart, item.quantity - 1),
-                            icon: Icon(Icons.remove, color: palette.ink),
+                          _QtyButton(
+                            key: const Key('cart-qty-minus'),
+                            icon: Icons.remove,
                             tooltip: tr(context, 'decrease_quantity'),
+                            onTap: () => _changeQuantity(context, cart, item.quantity - 1),
                           ),
-                          SizedBox(width: 20, child: Text('${item.quantity}', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: palette.ink))),
-                          IconButton(
-                            iconSize: 14,
-                            padding: const EdgeInsets.all(6),
-                            constraints: const BoxConstraints(),
-                            onPressed: atStockLimit ? null : () => _changeQuantity(context, cart, item.quantity + 1),
-                            icon: Icon(Icons.add, color: atStockLimit ? palette.muted : palette.ink),
+                          SizedBox(width: 22, child: Text('${item.quantity}', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0B3146)))),
+                          _QtyButton(
+                            key: const Key('cart-qty-plus'),
+                            icon: Icons.add,
                             tooltip: tr(context, 'increase_quantity'),
+                            onTap: atStockLimit ? null : () => _changeQuantity(context, cart, item.quantity + 1),
                           ),
                         ],
                       ),
                     ),
-                    Column(
+                    const SizedBox(width: 8),
+                    // the price takes the rest of the line; a very long one (big currencies, big quantities) shrinks a little instead of overflowing
+                    Flexible(child: FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerEnd, child: Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(formatPrice(context, item.lineTotal), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: palette.signal)),
+                        Text(formatPrice(context, item.lineTotal), maxLines: 1, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: palette.signal)),
                         // Confirmed with the person: before/after
                         // price only here, deliberately no discount
                         // percentage tag (unlike the product card).
@@ -562,7 +573,7 @@ class _CartItemRowState extends State<_CartItemRow> with SingleTickerProviderSta
                             style: TextStyle(fontSize: 11, color: palette.muted, decoration: TextDecoration.lineThrough),
                           ),
                       ],
-                    ),
+                    ))),
                   ],
                 ),
               ],
@@ -577,6 +588,35 @@ class _CartItemRowState extends State<_CartItemRow> with SingleTickerProviderSta
     ),
       ),
     ),
+    );
+  }
+}
+
+/// One small button of the basket's - 2 +: 32 x 32 px, its sign navy on the gold (faded when it cannot be used).
+class _QtyButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onTap;
+  const _QtyButton({super.key, required this.icon, required this.tooltip, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Semantics(
+        button: true,
+        enabled: onTap != null,
+        label: tooltip,
+        child: InkResponse(
+          onTap: onTap,
+          radius: 20,
+          child: SizedBox(
+            width: 32,
+            height: 32,
+            child: Icon(icon, size: 16, color: onTap == null ? const Color(0x660B3146) : const Color(0xFF0B3146)),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../widgets/premium.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -215,7 +216,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with WidgetsBindi
   Widget _buildConfirmedAddress(Map<String, dynamic> address) {
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(border: Border.all(color: LeapPalette.of(context).line), borderRadius: BorderRadius.circular(10)),
+      decoration: Premium.card(context, radius: 10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1161,7 +1162,7 @@ class _ReturnRequestSheetState extends State<_ReturnRequestSheet> {
                   onTap: _isUploadingPhoto ? null : _pickAndUploadPhoto,
                   child: Container(
                     width: 64, height: 64,
-                    decoration: BoxDecoration(border: Border.all(color: LeapPalette.of(context).line), borderRadius: BorderRadius.circular(8)),
+                    decoration: Premium.card(context, radius: 8),
                     child: Center(
                       child: _isUploadingPhoto
                           ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))

@@ -28,7 +28,7 @@ export default function BackToTop() {
   };
   return (
     <button type="button" onClick={toTop} aria-label={LABEL[lang] ?? LABEL.en}
-      className="fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] end-6 z-40 grid size-12 place-items-center rounded-full bg-navy text-white shadow-lg hover:bg-[#0d3a52] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal">
+      className="fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] max-md:bottom-[calc(4.5rem+env(safe-area-inset-bottom))] end-6 z-40 grid size-12 place-items-center rounded-full bg-navy text-white shadow-lg hover:bg-[#0d3a52] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal">
       <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
     </button>
   );

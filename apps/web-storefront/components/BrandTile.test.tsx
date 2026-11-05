@@ -13,7 +13,7 @@ describe("the brand tile", () => {
   it("is one link to the brand's parts with the name under the photo", () => { show(); const a = screen.getByTestId("brand-tile"); expect(a.getAttribute("href")).toBe("/search?q=BYD"); expect(screen.getByText("BYD")).toBeInTheDocument(); });
   it("in Arabic the link keeps /ar", () => { show({ name: "بي واي دي" }, "ar"); expect(screen.getByTestId("brand-tile").getAttribute("href")).toBe("/ar/search?q=BYD"); });
   it("the photo is a circle (76 px on a phone, 96 px from the small breakpoint up) with a fine ring, cropped to fill; there is NO card border around the tile", () => {
-    show(); const c = screen.getByTestId("brand-tile-photo"); for (const k of ["rounded-full", "size-[76px]", "sm:size-24", "overflow-hidden", "bg-[#e6edf2]"]) expect(c.className.split(" "), k).toContain(k); expect(c.className).toContain("shadow-[0_0_0_3px_#fff,0_0_0_4px_#d3dae0]");
+    show(); const c = screen.getByTestId("brand-tile-photo"); for (const k of ["rounded-full", "size-[60px]", "md:size-24", "overflow-hidden", "bg-[#e6edf2]"]) expect(c.className.split(" "), k).toContain(k); expect(c.className).toContain("shadow-[0_0_0_3px_#fff,0_0_0_4px_#d3dae0]");
     expect(screen.getByTestId("photo").className).toContain("object-cover"); expect(screen.getByTestId("photo").getAttribute("alt")).toBe(""); const tile = screen.getByTestId("brand-tile").className; expect(tile).not.toMatch(/\bborder\b/); expect(tile).not.toContain("bg-white");
   });
   it("the ring turns gold when the tile is hovered", () => { show(); expect(screen.getByTestId("brand-tile-photo").className).toContain("group-hover:shadow-[0_0_0_3px_#fff,0_0_0_4px_#fab219]"); expect(screen.getByTestId("brand-tile").className).toContain("group"); });

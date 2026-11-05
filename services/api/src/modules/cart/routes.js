@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../../../db/pool');
-const { calculateBuyerPriceUsd } = require('../pricing/engine');
+const { calculateBuyerPriceUsd, MissingShippingDataError } = require('../pricing/engine');
 const { withEffectiveShipping } = require('../shared/partShipping');
 const { readFreeShipping, computeShipping } = require('../shared/freeShipping');
 const { findMatchingDiscountRule } = require('../pricing/discountRules');
@@ -118,8 +118,14 @@ async function getFullCart(cartId, tokenBuyerId, lang) {
   // the real, DISPLAYED/CHARGED price is the real locked_price
   // snapshot instead, frozen at whatever it was the moment checkout
   // genuinely began.
-  const items = await Promise.all(rows.map(async (r) => {
-    const live = await computeLivePrice(r);
+  const items = (await Promise.all(rows.map(async (r) => {
+    let live;
+    try {
+      live = await computeLivePrice(r);
+    } catch (err) {      // no weight and size: the line is left out of the cart shown (still saved), instead of the whole cart failing
+      if (err instanceof MissingShippingDataError) { console.error(`[cart] product ${r.product_id} is left out of the cart: ${err.message}`); return null; }
+      throw err;
+    }
     // The weight shown for the line: the product's, else its part's (migration 104); the same one the price was worked out from.
     const shippedRow = await withEffectiveShipping(r);
     const effectiveWeightKg = shippedRow.weight_kg === null ? null : Number(shippedRow.weight_kg);
@@ -167,7 +173,7 @@ async function getFullCart(cartId, tokenBuyerId, lang) {
       // has no real weight on file rather than a fabricated default.
       weightKg: effectiveWeightKg,
     };
-  }));
+  }))).filter(Boolean);
   // Confirmed with the person: an applied promo code persists on the
   // cart itself (not just in-memory app state), but is re-validated
   // fresh on every real read here -- if it's expired or hit its
@@ -289,7 +295,8 @@ router.post('/:cartId/lock-prices', optionalAuth, async (req, res, next) => {
         [req.params.cartId]
       );
       await Promise.all(rows.map(async (r) => {
-        const live = await computeLivePrice(r);
+        const live = await computeLivePrice(r).catch((err) => { if (err instanceof MissingShippingDataError) return null; throw err; });
+        if (!live) return;      // cannot be priced: not locked (it is not shown in the cart either)
         await db.query('UPDATE cart_items SET locked_price = $1 WHERE cart_id = $2 AND product_id = $3', [live.price, req.params.cartId, r.product_id]);
       }));
       await db.query('UPDATE carts SET checkout_locked_at = now() WHERE id = $1', [req.params.cartId]);

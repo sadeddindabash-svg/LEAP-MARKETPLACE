@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/theme.dart';
+import '../../widgets/premium.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../core/config/app_config.dart';
@@ -121,7 +122,7 @@ class _ReferralsScreenState extends State<ReferralsScreen> {
                       const SizedBox(height: 8),
                       Container(
                         padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(10), border: Border.all(color: palette.signal)),
+                        decoration: Premium.cardFor(palette, radius: 14, ring: palette.signal),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
@@ -190,19 +191,15 @@ class _ReferralStat extends StatelessWidget {
     final palette = LeapPalette.of(context);
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: palette.card,
-        borderRadius: BorderRadius.circular(10),
-        border: Border(left: BorderSide(color: palette.signal, width: 4)),
-      ),
+      decoration: Premium.cardFor(palette, radius: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             width: 36,
             height: 36,
-            decoration: BoxDecoration(color: palette.signal.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
-            child: Icon(icon, color: palette.signal, size: 18),
+            decoration: Premium.goldRaised(radius: 9),
+            child: Icon(icon, color: const Color(0xFF0B3146), size: 18),
           ),
           const SizedBox(height: 10),
           Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: palette.ink)),

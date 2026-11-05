@@ -224,7 +224,7 @@ describe("garage page", () => {
     const { container } = await open();
     const frame = container.querySelector("li > div") as HTMLElement;
     expect(frame.className).toContain("size-[130px]");
-    expect(frame.className).toContain("sm:size-[250px]");
+    expect(frame.className).toContain("xl:size-[250px]");
     expect(frame.className).not.toMatch(/\bh-\d|\bw-\d/);                                  // never a rectangle again (the old h-24 w-36)
     expect(screen.getAllByRole("link", { name: "Shop for this car" })).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: /Remove/ })).toHaveLength(1);

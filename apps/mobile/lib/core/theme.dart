@@ -41,17 +41,18 @@ class LeapColors {
 class LeapColorsDark {
   LeapColorsDark._();
 
-  static const background = Color(0xFF131313); // surface / surface-dim
-  static const surface = Color(0xFF1C1B1B); // surface-container-low
-  static const surfaceHigh = Color(0xFF2A2A2A); // surface-container-high
+  // dark mode in the tab bar's navy (confirmed with the person via mockup): a deep navy page, navy cards a shade lighter
+  static const background = Color(0xFF0A2433); // surface / surface-dim
+  static const surface = Color(0xFF113246); // surface-container-low
+  static const surfaceHigh = Color(0xFF1A4560); // surface-container-high
   static const onSurface = Color(0xFFF2CA50); // primary text color in dark mode -- same real gold as LeapColorsDark.signal, per request (was 0xFFE5E2E1, a light gray)
-  static const line = Color(0xFF4D4635); // outline-variant
+  static const line = Color(0xFF2C5873); // outline-variant
   static const signal = Color(0xFFF2CA50); // real primary, per the real spec (D4AF37 is actually primary-container there, not primary)
   static const signalContainer = Color(0xFFD4AF37); // metallic-gold / primary-container, used for secondary gold accents
   static const onSignal = Color(0xFF3C2F00); // on-primary
   static const torque = Color(0xFFCECECE); // tertiary
   static const gauge = Color(0xFF28A745); // success-green
-  static const muted = Color(0xFFD0C5AF); // on-surface-variant
+  static const muted = Color(0xFFA9BAC6); // on-surface-variant
 }
 
 /// Real, unified, context-aware palette (new) -- the real mechanism
@@ -151,9 +152,20 @@ class LeapTheme {
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.white,
         foregroundColor: LeapColors.ink,
-        elevation: 0,
+        elevation: 2,
+        scrolledUnderElevation: 3,
+        shadowColor: const Color(0x2E0B3146),
+        surfaceTintColor: Colors.transparent,
         centerTitle: false,
         titleTextStyle: GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.w700, color: LeapColors.ink),
+      ),
+      // Premium 3D (style B): every Card floats on a soft deep shadow
+      cardTheme: CardThemeData(
+        color: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 4,
+        shadowColor: const Color(0x400B3146),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
@@ -162,6 +174,10 @@ class LeapTheme {
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
           shape: pillShape,
           textStyle: GoogleFonts.manrope(fontWeight: FontWeight.w700, fontSize: 15),
+        ).copyWith(
+          // raised gold: it sinks while pressed
+          elevation: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.pressed) ? 1.0 : 4.0),
+          shadowColor: const WidgetStatePropertyAll(Color(0x99E39F0C)),
         ),
       ),
       // Real, matching pill shape for outlined (secondary) buttons too
@@ -173,10 +189,15 @@ class LeapTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: LeapColors.ink,
-          side: const BorderSide(color: LeapColors.line),
+          side: BorderSide(color: LeapColors.ink, width: 1.5),
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
           shape: pillShape,
           textStyle: GoogleFonts.manrope(fontWeight: FontWeight.w700, fontSize: 15),
+        ).copyWith(
+          // raised white (the second button of a screen): it sinks while pressed
+          backgroundColor: const WidgetStatePropertyAll(Colors.white),
+          elevation: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.pressed) ? 0.0 : 3.0),
+          shadowColor: const WidgetStatePropertyAll(Color(0x400B3146)),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
@@ -185,13 +206,67 @@ class LeapTheme {
           textStyle: GoogleFonts.manrope(fontWeight: FontWeight.w700, fontSize: 14),
         ),
       ),
+      // Premium 3D (style B), for every screen: fields set into the page (a soft grey well, a gold edge while typing), raised chips,
+      // bottom sheets and dialogs floating on a deep shadow, floating navy messages, gold switches, radio buttons and check boxes, raised menus.
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: LeapColors.line),
-        ),
+        fillColor: const Color(0xFFEEF2F5),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(11), borderSide: BorderSide.none),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(11), borderSide: BorderSide.none),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(11), borderSide: const BorderSide(color: LeapColors.signal, width: 1.5)),
+        errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(11), borderSide: const BorderSide(color: Color(0xFFC0362C), width: 1.2)),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: Colors.white,
+        selectedColor: LeapColors.signal,
+        side: BorderSide.none,
+        shape: const StadiumBorder(),
+        elevation: 2,
+        pressElevation: 0,
+        shadowColor: const Color(0x330B3146),
+        selectedShadowColor: const Color(0x73E39F0C),
+        labelStyle: GoogleFonts.manrope(fontWeight: FontWeight.w700, fontSize: 12.5),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 16,
+        modalElevation: 16,
+        shadowColor: const Color(0x660B3146),
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 24,
+        shadowColor: const Color(0x660B3146),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFF0B3146),
+        contentTextStyle: GoogleFonts.manrope(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13.5),
+        actionTextColor: LeapColors.signal,
+        elevation: 8,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 10,
+        shadowColor: const Color(0x660B3146),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: const WidgetStatePropertyAll(Colors.white),
+        trackColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? LeapColors.signal : const Color(0xFFE3E8ED)),
+        trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
+      ),
+      radioTheme: RadioThemeData(fillColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? LeapColors.signal : LeapColors.muted)),
+      checkboxTheme: CheckboxThemeData(
+        fillColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? LeapColors.signal : Colors.transparent),
+        checkColor: WidgetStatePropertyAll(LeapColors.onSignal),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: Colors.white,
@@ -229,9 +304,20 @@ class LeapTheme {
       appBarTheme: AppBarTheme(
         backgroundColor: LeapColorsDark.surface,
         foregroundColor: LeapColorsDark.onSurface,
-        elevation: 0,
+        elevation: 2,
+        scrolledUnderElevation: 3,
+        shadowColor: const Color(0x66000000),
+        surfaceTintColor: Colors.transparent,
         centerTitle: false,
         titleTextStyle: GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.w700, color: LeapColorsDark.onSurface),
+      ),
+      // Premium 3D (style B): every Card floats on a soft deep shadow
+      cardTheme: CardThemeData(
+        color: LeapColorsDark.surface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 4,
+        shadowColor: const Color(0x80000000),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
@@ -240,15 +326,24 @@ class LeapTheme {
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
           shape: pillShape,
           textStyle: GoogleFonts.manrope(fontWeight: FontWeight.w700, fontSize: 15),
+        ).copyWith(
+          // raised gold: it sinks while pressed
+          elevation: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.pressed) ? 1.0 : 4.0),
+          shadowColor: const WidgetStatePropertyAll(Color(0x99E39F0C)),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: LeapColorsDark.onSurface,
-          side: const BorderSide(color: LeapColorsDark.line),
+          side: BorderSide(color: LeapColorsDark.onSurface, width: 1.5),
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
           shape: pillShape,
           textStyle: GoogleFonts.manrope(fontWeight: FontWeight.w700, fontSize: 15),
+        ).copyWith(
+          // raised white (the second button of a screen): it sinks while pressed
+          backgroundColor: const WidgetStatePropertyAll(LeapColorsDark.surface),
+          elevation: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.pressed) ? 0.0 : 3.0),
+          shadowColor: const WidgetStatePropertyAll(Color(0x80000000)),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
@@ -257,13 +352,67 @@ class LeapTheme {
           textStyle: GoogleFonts.manrope(fontWeight: FontWeight.w700, fontSize: 14),
         ),
       ),
+      // Premium 3D (style B), for every screen: fields set into the page (a soft grey well, a gold edge while typing), raised chips,
+      // bottom sheets and dialogs floating on a deep shadow, floating navy messages, gold switches, radio buttons and check boxes, raised menus.
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: LeapColorsDark.surface,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: LeapColorsDark.line),
-        ),
+        fillColor: LeapColorsDark.background,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(11), borderSide: BorderSide.none),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(11), borderSide: BorderSide.none),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(11), borderSide: const BorderSide(color: LeapColorsDark.signal, width: 1.5)),
+        errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(11), borderSide: const BorderSide(color: Color(0xFFC0362C), width: 1.2)),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: LeapColorsDark.surface,
+        selectedColor: LeapColorsDark.signal,
+        side: BorderSide.none,
+        shape: const StadiumBorder(),
+        elevation: 2,
+        pressElevation: 0,
+        shadowColor: const Color(0x330B3146),
+        selectedShadowColor: const Color(0x73E39F0C),
+        labelStyle: GoogleFonts.manrope(fontWeight: FontWeight.w700, fontSize: 12.5),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: LeapColorsDark.surface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 16,
+        modalElevation: 16,
+        shadowColor: const Color(0x99000000),
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: LeapColorsDark.surface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 24,
+        shadowColor: const Color(0x99000000),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFF0B3146),
+        contentTextStyle: GoogleFonts.manrope(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13.5),
+        actionTextColor: LeapColorsDark.signal,
+        elevation: 8,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: LeapColorsDark.surface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 10,
+        shadowColor: const Color(0x99000000),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: const WidgetStatePropertyAll(Colors.white),
+        trackColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? LeapColorsDark.signal : const Color(0xFF3A4A57)),
+        trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
+      ),
+      radioTheme: RadioThemeData(fillColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? LeapColorsDark.signal : LeapColorsDark.muted)),
+      checkboxTheme: CheckboxThemeData(
+        fillColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? LeapColorsDark.signal : Colors.transparent),
+        checkColor: WidgetStatePropertyAll(LeapColorsDark.onSignal),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: LeapColorsDark.surface,

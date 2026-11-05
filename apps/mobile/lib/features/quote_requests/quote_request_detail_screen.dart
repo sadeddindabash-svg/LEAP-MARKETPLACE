@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../widgets/premium.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
@@ -249,7 +250,7 @@ class _ItemRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(border: Border.all(color: palette.line), borderRadius: BorderRadius.circular(10)),
+      decoration: Premium.cardFor(palette, radius: 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

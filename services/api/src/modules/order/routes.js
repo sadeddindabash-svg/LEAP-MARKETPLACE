@@ -5,7 +5,18 @@ const { emailLanguageForAddress, emailSubject } = require('../email/language');
 const { readReturnWindowDays, returnState } = require('../returns/returnRules');
 const db = require('../../../db/pool');
 const { requireAuth, optionalAuth, requirePageAccessIfAdmin, requireRole, requirePageAccess } = require('../auth/middleware');
-const { calculateBuyerPriceUsd } = require('../pricing/engine');
+const { calculateBuyerPriceUsd: engineBuyerPriceUsd, MissingShippingDataError } = require('../pricing/engine');
+// a product with no weight and size cannot be priced: a clear 400 for the buyer instead of a 500
+async function calculateBuyerPriceUsd(input) {
+  try {
+    return await engineBuyerPriceUsd(input);
+  } catch (err) {
+    if (err instanceof MissingShippingDataError) {
+      throw Object.assign(new Error('One of the parts cannot be ordered right now (its shipping size is not set yet). Remove it from the cart and try again.'), { status: 400, apiCode: 'product_unpriceable' });
+    }
+    throw err;
+  }
+}
 const { withEffectiveShipping } = require('../shared/partShipping');
 const { readFreeShipping, computeShipping } = require('../shared/freeShipping');
 const { validatePromoCode, calculateDiscountUsd, recordRedemption, checkAndGrantReferralReward } = require('../promotions/helpers');

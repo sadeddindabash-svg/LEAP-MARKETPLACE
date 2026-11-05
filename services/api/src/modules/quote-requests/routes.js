@@ -54,7 +54,7 @@ async function toItemDto(row) {
       // pricing engine (markup fees + a real FX rate) every other
       // real product already goes through, rather than a duplicated
       // or approximated version of that real conversion.
-      const priced = await attachBuyerPrice({}, rows[0]);
+      const priced = await attachBuyerPrice({}, rows[0]).catch((err) => { if (err && err.code === 'missing_shipping_data') return { price: null }; throw err; });
       dto.price = priced.price;
       dto.currencyCode = 'USD';
       dto.readyToOrder = rows[0].status === 'active';

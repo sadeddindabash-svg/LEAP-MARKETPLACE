@@ -54,24 +54,24 @@ export default function ReferralsPage() {
       {!info && !failed && <p className="text-muted" aria-busy="true">{t("search_loading")}</p>}
       {info && (
         <div className="grid gap-5">
-          <section className="rounded-[14px] border border-line border-t-[6px] border-t-signal bg-white p-6" aria-labelledby="ref-code">
+          <section className="rounded-[14px] border border-line border-t-[6px] border-t-signal bg-white p-6 max-md:border-t-4 max-md:p-3.5" aria-labelledby="ref-code">
             <h2 id="ref-code" className="text-sm font-bold uppercase tracking-wide text-muted">{t("your_referral_code")}</h2>
-            <p className="my-2 font-plate text-3xl font-bold tracking-widest text-navy" dir="ltr">{info.code}</p>
+            <p className="my-2 font-plate text-3xl font-bold tracking-widest text-navy max-md:my-1 max-md:text-2xl" dir="ltr">{info.code}</p>
             <div className="flex flex-wrap gap-3">
               <button type="button" className={outline} onClick={() => copy(info.code, t("code_copied"))}>{t("copy_code")}</button>
               <button type="button" className="inline-flex min-h-11 items-center rounded-[10px] bg-signal px-5 text-sm font-bold text-on-signal hover:bg-signal-dark" onClick={share}>{t("share")}</button>
             </div>
-            <p aria-live="polite" className="mt-3 min-h-5 text-sm font-semibold text-[#0f6b49]">{note}</p>
+            <p aria-live="polite" className="mt-3 min-h-5 text-sm font-semibold text-[#0f6b49] max-md:mt-1 max-md:min-h-0">{note}</p>
             <p className="break-all text-xs text-muted"><span className="font-bold">{t("referral_link_label")}: </span><span dir="ltr">{link}</span></p>
           </section>
-          <ul className="grid gap-4 sm:grid-cols-2">
-            <li className="rounded-[14px] border border-line bg-white p-5"><p className="text-3xl font-extrabold text-navy">{info.totalReferred}</p><p className="text-sm font-semibold text-muted">{t("people_referred")}</p></li>
-            <li className="rounded-[14px] border border-line bg-white p-5"><p className="text-3xl font-extrabold text-navy">{info.rewardsEarned}<span className="text-lg font-semibold text-muted"> / {info.maxRewards}</span></p><p className="text-sm font-semibold text-muted">{t("rewards_earned")}</p></li>
+          <ul className="grid grid-cols-2 gap-4">
+            <li className="rounded-[14px] border border-line bg-white p-5 max-md:p-3"><p className="text-3xl font-extrabold text-navy max-md:text-xl">{info.totalReferred}</p><p className="text-sm font-semibold text-muted">{t("people_referred")}</p></li>
+            <li className="rounded-[14px] border border-line bg-white p-5 max-md:p-3"><p className="text-3xl font-extrabold text-navy max-md:text-xl">{info.rewardsEarned}<span className="text-lg font-semibold text-muted max-md:text-sm"> / {info.maxRewards}</span></p><p className="text-sm font-semibold text-muted">{t("rewards_earned")}</p></li>
           </ul>
           {info.capReached && <p role="status" className="rounded-xl bg-[#fdf1d6] p-4 font-semibold text-[#7a4e00]">{t("referral_cap_reached")}</p>}
           {history.length > 0 && (
-            <section aria-labelledby="ref-history" className="rounded-[14px] border border-line bg-white p-5">
-              <h2 id="ref-history" className="mb-3 text-lg font-bold">{t("referral_history")}</h2>
+            <section aria-labelledby="ref-history" className="rounded-[14px] border border-line bg-white p-5 max-md:p-3.5">
+              <h2 id="ref-history" className="mb-3 text-lg font-bold max-md:mb-2 max-md:text-base">{t("referral_history")}</h2>
               <ul className="grid gap-2.5">
                 {history.map((h, i) => (
                   <li key={`${h.joinedAt}-${i}`} className="flex items-center justify-between gap-3 text-sm">

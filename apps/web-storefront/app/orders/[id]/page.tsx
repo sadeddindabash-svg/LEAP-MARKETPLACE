@@ -7,12 +7,13 @@ import Link from "@/components/LocLink";
 import EnglishAddressCard from "@/components/EnglishAddressCard";
 import ReturnRequestForm from "@/components/ReturnRequestForm";
 import StatusTimeline from "@/components/StatusTimeline";
+import DeliveryCodeBox from "@/components/DeliveryCodeBox";
 import { getAuthToken, useAuth } from "@/components/AuthProvider";
 import { useCart } from "@/components/CartProvider";
 import { useCurrency } from "@/components/CurrencyProvider";
 import { useLang, useT } from "@/components/LangProvider";
 import { Price } from "@/components/Price";
-import { cancelOrder, cancelSubOrder, createSupportTicket, fetchOrderById, fetchOrderReceipt, resolveImageUrl, type OrderDetail, type OrderWho, type SupplierSubOrder } from "@/lib/api";
+import { cancelOrder, cancelSubOrder, fetchOrderById, fetchOrderReceipt, resolveImageUrl, type OrderDetail, type OrderWho, type SupplierSubOrder } from "@/lib/api";
 import { useAutoRefresh } from "@/components/useAutoRefresh";
 import { supplierLabel } from "@/lib/cart";
 import { countryName } from "@/lib/countries";
@@ -34,24 +35,9 @@ function Part({ order, so, who, canCancelPart, onCancel, busy }: { order: OrderD
   const deliveryCode = so.hubShipment?.deliveryCode ?? null;
   const attempt = so.hubShipment?.lastDeliveryAttempt ?? null;
   const proofInfo = so.hubShipment?.deliveryProof ?? null;
-  const [report, setReport] = useState<{ state: "idle" | "sending" | "sent" | "error"; ticketId?: string }>({ state: "idle" });
-  const reportParcel = async () => {
-    if (!window.confirm(t("not_my_parcel_confirm"))) return;
-    setReport({ state: "sending" });
-    try {
-      const ticket = await createSupportTicket(
-        { subject: `I didn't receive my parcel (order ${order.id})`, message: `Order ${order.id} shows as delivered, but I did not receive this parcel (or the delivery photo is not my parcel). Please check with the delivery company.`, orderId: order.id },
-        { token: who.token ?? undefined, guestEmail: who.guestEmail ?? undefined }
-      );
-      setReport({ state: "sent", ticketId: ticket.id });
-    } catch {
-      setReport({ state: "error" });
-    }
-  };
   // when the driver delivered it (migration 120): the moment the delivery was confirmed, else the first delivery photo
   const deliveredAt = proofInfo?.deliveredAt ?? proof[0]?.submittedAt ?? null;
   const delivered = subOrderStage(so) === "delivered";
-  const showReport = proof.length > 0;
   return (
     <li className="rounded-[16px] border border-line bg-white p-5">
       <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
@@ -78,12 +64,7 @@ function Part({ order, so, who, canCancelPart, onCancel, busy }: { order: OrderD
         </div>
       )}
       {deliveryCode && (
-        <div data-testid="delivery-code" className="mt-4 rounded-[12px] border-[1.5px] border-navy p-4">
-          <p className="font-bold">{t("delivery_code_title")}</p>
-          <p className="mt-1 text-sm text-muted">{t("delivery_code_text")}</p>
-          <p dir="ltr" className="mt-3 flex justify-center gap-2">{deliveryCode.split("").map((d, i) => <span key={i} className="flex h-14 w-12 items-center justify-center rounded-[10px] bg-chalk font-plate text-3xl font-extrabold text-navy">{d}</span>)}</p>
-          <p className="mt-2 text-sm font-semibold text-ink">{t("delivery_code_hint")}</p>
-        </div>
+        <div data-testid="delivery-code"><DeliveryCodeBox code={deliveryCode} /></div>
       )}
       {deliveryCode && attempt && <p data-testid="delivery-attempt" className="mt-3 rounded-[10px] bg-[#fff4e5] p-3 text-sm text-[#7a4e00]">{t(`delivery_attempt_${attempt.reason}` as "delivery_attempt_other")}</p>}
       {proof.length > 0 && (
@@ -93,13 +74,9 @@ function Part({ order, so, who, canCancelPart, onCancel, busy }: { order: OrderD
           {!(delivered && deliveredAt) && proofInfo?.receivedBy && <p className="w-full text-sm">{t("received_by_line", { who: t(`received_by_${proofInfo.receivedBy}` as "received_by_buyer") })}{proofInfo.verified ? ` · ${t("received_with_code")}` : ""}</p>}
         </div>
       )}
-      {(showReport || canCancelPart || isPartReturnable(order, so)) && (
+      {(canCancelPart || isPartReturnable(order, so)) && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            {showReport && (report.state === "sent"
-              ? <p className="text-sm font-semibold text-[#1e6b34]">{t("not_my_parcel_sent")}{report.ticketId && who.token ? <> <Link href={`/support/${report.ticketId}`} className="underline">{t("not_my_parcel_open")}</Link></> : null}</p>
-              : <button type="button" data-testid="not-my-parcel" className="text-sm font-bold text-[#a12a21] hover:underline disabled:opacity-50" disabled={report.state === "sending"} onClick={reportParcel}>{t("not_my_parcel")}</button>)}
-            {showReport && report.state === "error" && <p className="mt-1 text-sm text-[#a12a21]">{t("not_my_parcel_failed")}</p>}
           </div>
           <div className="flex flex-wrap gap-2">
             {canCancelPart && <button type="button" className={danger} disabled={busy} onClick={onCancel}>{t("cancel_this_part")}</button>}

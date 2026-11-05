@@ -18,14 +18,14 @@ export default function GarageMeter() {
   const label = t("garage_count_of", { n, max: MAX_GARAGE_VEHICLES });
   return (
     <div data-testid="garage-meter" className="flex flex-none items-center gap-3" role="img" aria-label={`${label} · ${full ? t("garage_meter_full") : t("garage_meter_saved")}`}>
-      <span className="relative block size-16">
-        <svg width="64" height="64" viewBox="0 0 64 64" aria-hidden="true" className="rtl:-scale-x-100">
+      <span className="relative block size-16 max-xl:size-11">
+        <svg width="64" height="64" viewBox="0 0 64 64" aria-hidden="true" className="rtl:-scale-x-100 max-xl:size-11">
           <circle cx="32" cy="32" r={R} fill="none" stroke="#e8ecf0" strokeWidth="8" />
           {n > 0 && <circle data-testid="garage-meter-fill" cx="32" cy="32" r={R} fill="none" stroke={full ? "#0b2a3c" : "#f3c03b"} strokeWidth="8" strokeLinecap="round" strokeDasharray={`${(C * n) / MAX_GARAGE_VEHICLES} ${C}`} transform="rotate(-90 32 32)" />}
         </svg>
-        <span aria-hidden="true" className="absolute inset-0 flex items-center justify-center text-base font-extrabold text-navy" dir="ltr">{n}/{MAX_GARAGE_VEHICLES}</span>
+        <span aria-hidden="true" className="absolute inset-0 flex items-center justify-center text-base font-extrabold max-xl:text-[11.5px] text-navy" dir="ltr">{n}/{MAX_GARAGE_VEHICLES}</span>
       </span>
-      <span aria-hidden="true">
+      <span aria-hidden="true" className="max-xl:hidden">
         <span className="block font-extrabold text-navy">{label}</span>
         <span className="block text-xs font-semibold text-muted">{full ? t("garage_meter_full") : t("garage_meter_saved")}</span>
       </span>

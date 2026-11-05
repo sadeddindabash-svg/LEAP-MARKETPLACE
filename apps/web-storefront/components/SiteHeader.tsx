@@ -14,6 +14,7 @@ import LanguageSwitcher from "./LanguageSwitcher";
 import NotificationBell from "./NotificationBell";
 import VehicleBar from "./VehicleBar";
 import HeaderPin from "./HeaderPin";
+import MobileTabBar from "./MobileTabBar";      // a phone: the bottom menu (Home, Sections, Search, Cart, Account)
 
 const actionClass = "relative flex min-h-11 min-w-11 flex-col items-center justify-center gap-0.5 rounded-lg px-2 text-xs font-semibold text-white hover:bg-white/10";
 
@@ -23,7 +24,7 @@ export default async function SiteHeader({ lang }: { lang: Lang }) {
   const [categories, reachable, homeText] = await Promise.all([fetchCategories(), isShopReachable(process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000"), fetchHomeText()]);
   return (
     // It stays on top while the page scrolls (from the large screen up): its top is minus the thin line's height, so that line scrolls away and the rest stays (HeaderPin).
-    <header data-pin="" className="group z-40 lg:sticky lg:top-[calc(-1*var(--topbar-h,36px))] lg:transition-shadow lg:data-[scrolled=true]:shadow-[0_6px_18px_rgba(11,49,70,0.22)]">
+    <header data-pin="" className="group z-40 max-md:sticky max-md:top-[calc(-1*var(--topbar-h,36px))] lg:sticky lg:top-[calc(-1*var(--topbar-h,36px))] lg:transition-shadow lg:data-[scrolled=true]:shadow-[0_6px_18px_rgba(11,49,70,0.22)]">
       <HeaderPin />
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:start-2 focus:top-2 focus:z-50 focus:rounded-lg focus:bg-signal focus:px-4 focus:py-2 focus:font-bold focus:text-on-signal">{t(lang, "skip_to_content")}</a>
       <div data-topbar="" className="bg-navy-deep text-[13px] text-[#c9d6de]">
@@ -37,26 +38,27 @@ export default async function SiteHeader({ lang }: { lang: Lang }) {
         </div>
       </div>
       <div className="bg-navy text-white">
-        <div className="mx-auto grid max-w-7xl items-center gap-x-6 gap-y-3 px-4 py-3 sm:px-8 lg:grid-cols-[auto_minmax(260px,1fr)_auto] lg:transition-[padding] lg:group-data-[scrolled=true]:py-1.5">
+        <div className="mx-auto grid max-w-7xl items-center gap-x-6 gap-y-3 px-4 py-3 max-md:grid-cols-[auto_minmax(0,1fr)_auto] max-md:gap-x-2 max-md:px-3 max-md:py-2 sm:px-8 lg:grid-cols-[auto_minmax(260px,1fr)_auto] lg:transition-[padding] lg:group-data-[scrolled=true]:py-1.5">
           <Link href="/" aria-label={t(lang, "logo_home_label")} className={`flex items-center gap-3 text-[22px] font-bold ${lang === "ar" ? "tracking-normal" : "tracking-tight"}`}>
             {/* the logo, drawn like an engraving when the site opens (public/brand/leap-logo-animated.svg: the same as the portals and the apps) */}
             {/* eslint-disable-next-line @next/next/no-img-element -- an animated SVG is shown as it is (next/image would not play it) */}
-            <img src="/brand/leap-logo-animated.svg" alt="" width={52} height={52} className="size-[52px] shrink-0 rounded-full" />
-            <span>{t(lang, "brand_lead")}<span className="font-medium"> {t(lang, "brand_rest")}</span></span>
+            <img src="/brand/leap-logo-animated.svg" alt="" width={52} height={52} className="size-[52px] shrink-0 rounded-full max-md:size-9" />
+            <span className="max-md:sr-only">{t(lang, "brand_lead")}<span className="font-medium"> {t(lang, "brand_rest")}</span></span>
           </Link>
           <HeaderSearch />
-          <nav aria-label={t(lang, "account_menu")} className="flex items-center justify-end gap-1">
-            <AccountMenu />
+          {/* a phone: only the wishlist and the cart, as icons (the account and the alerts are in the bottom menu) */}
+          <nav aria-label={t(lang, "account_menu")} className="flex items-center justify-end gap-1 max-md:gap-0 max-md:[&>a>span:not([class])]:sr-only">
+            <span className="contents max-md:hidden"><AccountMenu /></span>
             <Link href="/wishlist" className={actionClass}>
               <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" /></svg>
               <span>{t(lang, "wishlist")}</span>
             </Link>
-            <NotificationBell />
+            <span className="contents max-md:hidden"><NotificationBell /></span>
             <CartIcon />
           </nav>
         </div>
       </div>
-      <nav aria-label="Main" className="border-b border-line bg-white text-ink">
+      <nav aria-label="Main" className="border-b border-line bg-white text-ink max-md:hidden">
         <div className="relative mx-auto flex max-w-7xl flex-wrap items-center gap-1 px-4 sm:px-8 lg:flex-nowrap">
           <Link href="/" className="flex min-h-12 items-center rounded-lg px-4 text-[15px] font-semibold hover:bg-chalk">{t(lang, "nav_home")}</Link>
           <Link href="/search" className="flex min-h-12 items-center rounded-lg px-4 text-[15px] font-semibold hover:bg-chalk">{t(lang, "nav_products")}</Link>
@@ -75,6 +77,7 @@ export default async function SiteHeader({ lang }: { lang: Lang }) {
         </div>
       </nav>
       <VehicleBar where="row" />
+      <MobileTabBar sections={categories.map((c) => ({ id: c.id, name: pickName(lang, c.nameEn, c.nameAr), photoUrl: c.photoUrl }))} />
       {!reachable && <p role="alert" className="bg-[#a12a21] px-4 py-2 text-center text-sm font-semibold text-white">{t(lang, "shop_unreachable")}</p>}
     </header>
   );

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../core/theme.dart';
+import 'premium.dart';
+import 'hold_photos.dart';
 import '../core/app_strings.dart';
 import '../core/currency_state.dart';
 import '../core/auth_state.dart';
@@ -181,11 +183,13 @@ class _ProductCardState extends State<ProductCard> {
     // The card fills its grid cell, so the rows are exactly the grid's spacing apart, the same as the columns (it used to sit at the top of
     // a taller cell with 12 px more below it). Every list that shows a card gives it a fixed height (productCardHeightFor).
     return SizedBox.expand(
-      child: Padding(
-        padding: EdgeInsets.zero,
+      child: Container(
+        decoration: Premium.card(context, radius: 12),
         child: Card(
       margin: EdgeInsets.zero,
-      color: palette.card,
+      color: Colors.transparent,
+      elevation: 0,
+      shadowColor: Colors.transparent,
       child: InkWell(
         onTap: widget.onTap,
         borderRadius: BorderRadius.circular(12),
@@ -210,16 +214,8 @@ class _ProductCardState extends State<ProductCard> {
                       // here, since that would go dark in dark mode.
                       child: Container(
                         color: Colors.white,
-                        child: p.images.isNotEmpty
-                            ? CachedNetworkImage(
-                                imageUrl: ApiClient.resolveMediaUrl(p.images.first),
-                                fit: BoxFit.cover,
-                                width: double.infinity,
-                                fadeInDuration: const Duration(milliseconds: 300),
-                                placeholder: (context, url) => Container(color: const Color(0xFFF5F6F8)),
-                                errorWidget: (context, url, error) => const Icon(Icons.broken_image_outlined, color: LeapColors.muted),
-                              )
-                            : const Icon(Icons.album_outlined, size: 32, color: LeapColors.muted),
+                        // hold the photo for half a second: the product's other photos slide by (widgets/hold_photos.dart)
+                        child: HoldPhotos(images: p.images),
                       ),
                     ),
                   ),

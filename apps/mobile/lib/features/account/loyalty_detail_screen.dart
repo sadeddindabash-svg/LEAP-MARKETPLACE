@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../widgets/premium.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/language_state.dart';
@@ -32,7 +33,7 @@ class LoyaltyDetailScreen extends StatelessWidget {
           if (currentTier != null)
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: palette.line)),
+              decoration: Premium.cardFor(palette, radius: 14),
               child: Column(
                 children: [
                   Container(      // the current tier in a gold ring, as on the storefront's My tier

@@ -1,0 +1,148 @@
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../../core/theme.dart';
+import '../../core/currency_state.dart';
+import '../../core/language_state.dart';
+import '../../models/product.dart';
+import '../../models/compare_limit.dart';
+import '../../services/api_client.dart';
+
+/// Compare parts: the SAME view as the storefront's /compare page (confirmed with the person via mockup), for 2 parts (compareMaxItems).
+/// The page title; each part's photo in a square box and its name (both open the part); then the website's 8 rows with grey labels in
+/// capitals: Price (big), Rating, Stock, Delivery, OEM number, Weight, Verified seller, Ships from. Every row is always shown, with "—" when
+/// a part has no value, as on the website. One rounded white card, the 2 columns filling the screen (no sideways scrolling). English and Arabic.
+class ProductComparisonScreen extends StatelessWidget {
+  final List<Product> products;
+  const ProductComparisonScreen({super.key, required this.products});
+
+  static const _dash = '—';
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = LeapPalette.of(context);
+    final isAr = context.watch<LanguageState>().isArabic;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final navy = isDark ? palette.signal : const Color(0xFF0F2A3A);
+    final labelBg = isDark ? Colors.white.withValues(alpha: 0.06) : const Color(0xFFEEF2F5);
+    final labelInk = isDark ? palette.muted : const Color(0xFF33424D);
+    final list = products.take(compareMaxItems).toList();
+    final title = isAr ? 'مقارنة القطع' : 'Compare parts';
+
+    final rows = <(String, Widget Function(Product))>[
+      (isAr ? 'السعر' : 'Price', (p) => FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart, child: Text(formatPrice(context, p.price), maxLines: 1, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: navy)))),
+      (isAr ? 'التقييم' : 'Rating', (p) => _text(context, p.reviewCount > 0 ? '${p.rating.toStringAsFixed(1)} (${p.reviewCount})' : (isAr ? 'لا يوجد' : 'No reviews yet'))),
+      (isAr ? 'المخزون' : 'Stock', (p) => _text(context, p.stockQuantity > 0 ? (isAr ? '${p.stockQuantity} متوفر' : '${p.stockQuantity} in stock') : (isAr ? 'غير متوفر' : 'Out of stock'))),
+      (isAr ? 'التسليم' : 'Delivery', (p) => _text(context, p.deliveryDateLabel(isAr).trim().isEmpty ? _dash : p.deliveryDateLabel(isAr))),
+      (isAr ? 'رقم OEM' : 'OEM number', (p) => (p.oemNumber ?? '').trim().isEmpty ? _text(context, _dash) : _plate(p.oemNumber!.trim(), isDark)),
+      (isAr ? 'الوزن' : 'Weight', (p) => _text(context, p.weightKg != null ? '${p.weightKg!.toStringAsFixed(1)} ${isAr ? 'كغم' : 'kg'}' : _dash)),
+      (isAr ? 'بائع موثّق' : 'Verified seller', (p) => _text(context, p.isVerifiedSeller ? (isAr ? 'نعم' : 'Yes') : _dash)),
+      (isAr ? 'الشحن من' : 'Ships from', (p) {
+        final c = isAr ? (p.shipsFromCountryAr?.isNotEmpty == true ? p.shipsFromCountryAr : p.shipsFromCountry) : p.shipsFromCountry;
+        return _text(context, (c ?? '').trim().isEmpty ? _dash : c!);
+      }),
+    ];
+
+    Widget cell(Widget child, {Color? color}) => Container(color: color, padding: const EdgeInsets.all(10), child: child);
+    final line = BorderSide(color: palette.line);
+
+    return Scaffold(
+      appBar: AppBar(title: Text(title)),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(12, 14, 12, 28),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsetsDirectional.only(start: 2, bottom: 12),
+              child: Text(title, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: navy)),
+            ),
+            if (list.length < 2)
+              Text(isAr ? 'اختر قطعتين على الأقل للمقارنة.' : 'Pick at least 2 parts to compare.', style: TextStyle(fontSize: 15, color: palette.muted))
+            else
+              Container(
+                key: const Key('compare-table'),
+                decoration: BoxDecoration(color: palette.card, border: Border.all(color: palette.line), borderRadius: BorderRadius.circular(14)),
+                clipBehavior: Clip.antiAlias,
+                child: Table(
+                  columnWidths: const {0: FlexColumnWidth(0.85), 1: FlexColumnWidth(1), 2: FlexColumnWidth(1)},
+                  border: TableBorder(horizontalInside: line, verticalInside: line),
+                  defaultVerticalAlignment: TableCellVerticalAlignment.top,
+                  children: [
+                    TableRow(
+                      children: [
+                        TableCell(verticalAlignment: TableCellVerticalAlignment.fill, child: Container(color: labelBg)),
+                        for (final p in list) _head(context, p),
+                      ],
+                    ),
+                    for (final row in rows)
+                      TableRow(
+                        children: [
+                          TableCell(
+                            verticalAlignment: TableCellVerticalAlignment.fill,
+                            child: cell(Text(row.$1.toUpperCase(), style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 0.4, color: labelInk)), color: labelBg),
+                          ),
+                          for (final p in list) cell(row.$2(p)),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The part's photo in a square box and its name; both open the part.
+  Widget _head(BuildContext context, Product p) {
+    final palette = LeapPalette.of(context);
+    return InkWell(
+      key: Key('compare-open-${p.id}'),
+      onTap: () => context.push('/product/${p.id}'),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          children: [
+            AspectRatio(
+              aspectRatio: 1,
+              child: Container(
+                decoration: BoxDecoration(color: Colors.white, border: Border.all(color: palette.line), borderRadius: BorderRadius.circular(8)),
+                clipBehavior: Clip.antiAlias,
+                padding: const EdgeInsets.all(6),
+                child: p.images.isNotEmpty
+                    ? CachedNetworkImage(imageUrl: ApiClient.resolveMediaUrl(p.images.first), fit: BoxFit.contain, errorWidget: (_, __, ___) => Icon(Icons.image_not_supported_outlined, color: palette.muted))
+                    : Icon(Icons.image_outlined, color: palette.muted),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              p.name,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, height: 1.3, color: palette.ink, decoration: TextDecoration.underline, decorationColor: palette.line),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _text(BuildContext context, String s) => Text(s, style: TextStyle(fontSize: 13.5, color: LeapPalette.of(context).ink));
+
+  /// The OEM number in the plate style, as on the website.
+  Widget _plate(String oem, bool isDark) => Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0x33F2A71B) : const Color(0xFFFDF3DC),
+            border: Border.all(color: const Color(0xFFF2D58E)),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(oem, style: TextStyle(fontFamily: 'monospace', fontSize: 12, fontWeight: FontWeight.w700, color: isDark ? const Color(0xFFF2CA50) : const Color(0xFF14171C))),
+        ),
+      );
+}

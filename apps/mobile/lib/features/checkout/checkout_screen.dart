@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../widgets/premium.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -581,7 +582,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(border: Border.all(color: LeapPalette.of(context).line), borderRadius: BorderRadius.circular(10)),
+      decoration: Premium.card(context, radius: 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -725,10 +726,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           else
             ..._paymentMethods.map((m) => Container(
                   margin: const EdgeInsets.only(bottom: 8),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: _selectedPayment == m['id'] ? LeapPalette.of(context).signal : LeapPalette.of(context).line),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
+                  decoration: Premium.card(context, radius: 10, ring: _selectedPayment == m['id'] ? LeapPalette.of(context).signal : null),
                   child: RadioListTile<String>(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12),
                     value: m['id'] as String,
@@ -762,7 +760,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(border: Border.all(color: LeapPalette.of(context).line), borderRadius: BorderRadius.circular(10)),
+              decoration: Premium.card(context, radius: 10),
               child: SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: _waitForAllShipments,
@@ -782,7 +780,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           // they were actually about to buy.
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(border: Border.all(color: LeapPalette.of(context).line), borderRadius: BorderRadius.circular(10)),
+            decoration: Premium.card(context, radius: 10),
             child: Column(
               children: [
                 for (final item in cart.items)
@@ -863,7 +861,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          Row(
+          // the promo code on a raised card: the field set in, a raised navy Apply
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: Premium.card(context, radius: 14),
+            child: Row(
             children: [
               Expanded(
                 child: TextField(
@@ -876,6 +878,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               const SizedBox(width: 8),
               if (cart.appliedPromoCode == null)
                 ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0B3146), foregroundColor: Colors.white),
                   onPressed: _isValidatingPromo ? null : _applyPromoCode,
                   child: _isValidatingPromo
                       ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
@@ -884,7 +887,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               else
                 OutlinedButton(onPressed: _removePromoCode, child: Text(tr(context, 'remove'))),
             ],
-          ),
+          )),
           if (_promoMessage != null) ...[
             const SizedBox(height: 6),
             Text(
@@ -895,7 +898,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(border: Border.all(color: LeapPalette.of(context).line), borderRadius: BorderRadius.circular(10)),
+            decoration: Premium.card(context, radius: 10),
             child: Column(
               children: [
                 // Confirmed with the person via mockup: shown only

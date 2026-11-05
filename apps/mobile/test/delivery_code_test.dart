@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('the order page and Track your package show the delivery code and the proof', () {
     final widgets = File('lib/widgets/delivery_confirm.dart').readAsStringSync();
-    expect(widgets.contains('class DeliveryCodeCard extends StatelessWidget'), isTrue);
+    expect(widgets.contains('class DeliveryCodeCard extends StatefulWidget'), isTrue);
     expect(widgets.contains('class DeliveryProofSummary extends StatefulWidget'), isTrue);
     expect(widgets.contains("'رمز التسليم'"), isTrue);
     final order = File('lib/features/orders/order_detail_screen.dart').readAsStringSync();

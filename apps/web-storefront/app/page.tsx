@@ -81,7 +81,7 @@ export default async function HomePage() {
       {categories.length > 0 && (
         <section className="mx-auto max-w-7xl px-4 pt-5 sm:px-8" aria-labelledby="home-sections">
           <h2 id="home-sections" className="mb-6 text-3xl font-bold tracking-tight">{t(lang, "shop_by_section")}</h2>
-          <TileRow variant="wide" defaultColumns={4} gridClassName="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4" moreLabel={t(lang, "more_sections")} fewerLabel={t(lang, "show_fewer")}>
+          <TileRow variant="wide" defaultColumns={4} gridClassName="grid grid-cols-4 gap-x-2 gap-y-3 md:grid-cols-3 md:gap-4 lg:grid-cols-4" moreLabel={t(lang, "more_sections")} fewerLabel={t(lang, "show_fewer")}>
             {categories.map((c) => <SectionTile key={c.id} href={`/search?category=${encodeURIComponent(c.id)}`} name={pickName(lang, c.nameEn, c.nameAr)} photo={c.photoUrl} />)}
           </TileRow>
         </section>
@@ -89,7 +89,7 @@ export default async function HomePage() {
       {brands.length > 0 && (
         <section className="mx-auto max-w-7xl px-4 pt-5 sm:px-8" aria-labelledby="home-brands">
           <h2 id="home-brands" className="mb-6 text-3xl font-bold tracking-tight">{t(lang, "shop_by_brand")}</h2>
-          <TileRow variant="round" defaultColumns={6} maxCollapsed={9} gridClassName="grid grid-cols-3 gap-x-2 gap-y-4 sm:grid-cols-5 sm:gap-x-4 xl:grid-cols-10" moreLabel={t(lang, "more_brands")} fewerLabel={t(lang, "show_fewer")}>
+          <TileRow variant="round" defaultColumns={6} maxCollapsed={9} phoneCollapsed={7} gridClassName="grid grid-cols-4 gap-x-1.5 gap-y-3 md:grid-cols-5 md:gap-x-4 md:gap-y-4 xl:grid-cols-10" moreLabel={t(lang, "more_brands")} fewerLabel={t(lang, "show_fewer")}>
             {brands.map((b) => <BrandTile key={b.id} href={`/search?q=${encodeURIComponent(b.name)}`} name={pickName(lang, b.name, b.nameAr)} photo={b.photoUrl} />)}
           </TileRow>
         </section>

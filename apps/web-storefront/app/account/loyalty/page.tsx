@@ -43,19 +43,19 @@ export default function LoyaltyPage() {
     <div className="grid gap-6">
       <h1 className="text-3xl font-bold tracking-tight text-navy">{t("loyalty_my_tier_title")}</h1>
       {current && (
-        <section className="flex flex-wrap items-center gap-5 rounded-[16px] bg-gradient-to-br from-navy to-[#173f57] p-6 text-white" aria-label={t("loyalty_my_tier_title")}>
-          <span className="grid flex-none place-items-center rounded-full bg-white p-1.5 ring-4 ring-signal">
+        <section className="flex flex-wrap items-center gap-5 rounded-[16px] bg-gradient-to-br from-navy to-[#173f57] p-6 text-white max-md:flex-nowrap max-md:gap-3 max-md:p-3.5" aria-label={t("loyalty_my_tier_title")}>
+          <span className="grid flex-none place-items-center rounded-full bg-white p-1.5 ring-4 ring-signal max-md:p-1 max-md:ring-[3px] max-md:[&>*]:size-12!">
             <TierBadge icon={tierIcon(current.icon)} color={tierColor(current.color)} photoUrl={current.photoUrl} size={70} />
           </span>
-          <div className="min-w-[220px] flex-1">
-            <p className="text-[22px] font-extrabold leading-tight">{memberLabel(lang, tierName(lang, current), t("loyalty_membership_word"))}</p>
-            <p className="font-bold text-signal">{current.discountPercentage > 0 ? `${current.discountPercentage}% ${t("loyalty_off_every_order")}` : t("loyalty_spend_more")}</p>
+          <div className="min-w-[220px] flex-1 max-md:min-w-0">
+            <p className="text-[22px] font-extrabold leading-tight max-md:text-[17px]">{memberLabel(lang, tierName(lang, current), t("loyalty_membership_word"))}</p>
+            <p className="font-bold text-signal max-md:text-[13px]">{current.discountPercentage > 0 ? `${current.discountPercentage}% ${t("loyalty_off_every_order")}` : t("loyalty_spend_more")}</p>
             {next ? (
               <>
-                <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-white/15" role="progressbar" aria-label={t("loyalty_more_to_reach", { amount: format(status.amountToNextTier ?? 0), tier: tierName(lang, next) })} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progressFraction(status) * 100)}>
+                <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-white/15 max-md:mt-2 max-md:h-2" role="progressbar" aria-label={t("loyalty_more_to_reach", { amount: format(status.amountToNextTier ?? 0), tier: tierName(lang, next) })} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progressFraction(status) * 100)}>
                   <div className="h-full rounded-full bg-signal" style={{ width: `${progressFraction(status) * 100}%` }} />
                 </div>
-                <p className="mt-1.5 flex flex-wrap justify-between gap-x-4 gap-y-1 text-[13px] text-[#c7d4de]">
+                <p className="mt-1.5 flex flex-wrap justify-between gap-x-4 gap-y-1 text-[13px] text-[#c7d4de] max-md:mt-1 max-md:gap-x-2 max-md:text-[11px]">
                   <span>{t("loyalty_lifetime_spend")}: <Price usd={status.lifetimeSpend} /></span>
                   <span>{t("loyalty_more_to_reach", { amount: format(status.amountToNextTier ?? 0), tier: tierName(lang, next) })}</span>
                 </p>
@@ -66,25 +66,25 @@ export default function LoyaltyPage() {
           </div>
         </section>
       )}
-      <section aria-labelledby="all-tiers" className="rounded-[16px] border border-line bg-white p-5">
-        <h2 id="all-tiers" className="mb-4 text-xs font-extrabold uppercase tracking-widest text-[#8a6100]">{t("loyalty_all_tiers")}</h2>
-        <div className="overflow-x-auto">
-          <div className="relative" style={{ minWidth: n * 104 }}>
-            {n > 1 && <span aria-hidden="true" className="absolute top-[23px] h-[3px] rounded-full bg-[#e3e9ee]" style={{ insetInlineStart: lineInset, insetInlineEnd: lineInset }} />}
-            {n > 1 && <span aria-hidden="true" data-testid="tier-line-reached" className="absolute top-[23px] h-[3px] rounded-full bg-signal" style={{ insetInlineStart: lineInset, width: `calc((100% - ${100 / n}%) * ${reached})` }} />}
+      <section aria-labelledby="all-tiers" className="rounded-[16px] border border-line bg-white p-5 max-md:p-3.5">
+        <h2 id="all-tiers" className="mb-4 max-md:mb-2.5 text-xs font-extrabold uppercase tracking-widest text-[#8a6100]">{t("loyalty_all_tiers")}</h2>
+        <div className="overflow-x-auto max-md:overflow-visible">
+          <div className="relative max-md:min-w-0!" style={{ minWidth: n * 104 }}>
+            {n > 1 && <span aria-hidden="true" className="absolute top-[23px] h-[3px] max-md:top-[19px] rounded-full bg-[#e3e9ee]" style={{ insetInlineStart: lineInset, insetInlineEnd: lineInset }} />}
+            {n > 1 && <span aria-hidden="true" data-testid="tier-line-reached" className="absolute top-[23px] h-[3px] max-md:top-[19px] rounded-full bg-signal" style={{ insetInlineStart: lineInset, width: `calc((100% - ${100 / n}%) * ${reached})` }} />}
           <ol className="relative grid" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
             {tiers.map((tier, i) => {
               const isCurrent = i === currentIndex;
               const locked = currentIndex >= 0 && i > currentIndex;
               return (
-                <li key={tier.id} aria-current={isCurrent ? "true" : undefined} data-state={isCurrent ? "current" : locked ? "locked" : "reached"} className="relative flex flex-col items-center px-1 text-center">
+                <li key={tier.id} aria-current={isCurrent ? "true" : undefined} data-state={isCurrent ? "current" : locked ? "locked" : "reached"} className="relative flex flex-col items-center px-1 text-center max-md:px-0">
                   {/* a tier still ahead keeps its own colours (its photo as the admin set it), only a little faded */}
-                  <span className={`rounded-full bg-white p-0.5 ${locked ? "opacity-60" : ""}`}>
+                  <span className={`rounded-full bg-white p-0.5 max-md:[&>*]:size-9! ${isCurrent ? "max-md:ring-2 max-md:ring-signal " : ""}${locked ? "opacity-60" : ""}`}>
                     <TierBadge icon={tierIcon(tier.icon)} color={tierColor(tier.color)} photoUrl={tier.photoUrl} size={45} />
                   </span>
-                  <p className={`mt-1.5 font-extrabold ${isCurrent ? "text-navy" : locked ? "text-muted" : "text-ink"}`}>{tierName(lang, tier)}</p>
-                  <p className="text-xs text-muted">{tier.discountPercentage > 0 ? `${tier.discountPercentage}% · ` : ""}<Price usd={tier.spendThreshold} />+</p>
-                  {isCurrent && <span className="mt-1.5 rounded-full bg-signal px-2.5 py-0.5 text-[11.5px] font-extrabold text-navy">{t("loyalty_you_are_here")}</span>}
+                  <p className={`mt-1.5 font-extrabold max-md:mt-1 max-md:text-[12px] max-md:leading-tight ${isCurrent ? "text-navy" : locked ? "text-muted" : "text-ink"}`}>{tierName(lang, tier)}</p>
+                  <p className="text-xs text-muted max-md:text-[10px] max-md:leading-tight">{tier.discountPercentage > 0 ? `${tier.discountPercentage}% · ` : ""}<Price usd={tier.spendThreshold} />+</p>
+                  {isCurrent && <span className="mt-1.5 rounded-full bg-signal px-2.5 py-0.5 text-[11.5px] font-extrabold text-navy max-md:hidden">{t("loyalty_you_are_here")}</span>}
                 </li>
               );
             })}

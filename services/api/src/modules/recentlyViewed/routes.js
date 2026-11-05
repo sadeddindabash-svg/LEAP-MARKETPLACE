@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../../../db/pool');
 const { requireAuth } = require('../auth/middleware');
-const { toBuyerProductDto, attachBuyerPrice, attachBuyerImages, attachSupplierSignals, attachDeliveryEstimate, attachPrimaryFitment } = require('../catalog/routes');
+const { toBuyerProductDto, attachBuyerPrice, attachBuyerImages, attachSupplierSignals, attachDeliveryEstimate, attachPrimaryFitment, buildBuyerList } = require('../catalog/routes');
 const { resolveDestinationIsoCode } = require('../deliveryEstimate/engine');
 
 /**
@@ -53,7 +53,8 @@ router.get('/me', requireAuth, async (req, res, next) => {
       [req.user.sub, MAX_RECENTLY_VIEWED]
     );
     const destinationIsoCode = await resolveDestinationIsoCode(req);
-    const dtos = await Promise.all(rows.map(async (r) => {
+    // a product that cannot be priced (no weight and size) is left out, as in the catalog, instead of making the whole list an error
+    const dtos = await buildBuyerList(rows, async (r) => {
       let dto = toBuyerProductDto(r, lang);
       dto = await attachBuyerImages(dto, r.id);
       dto = await attachBuyerPrice(dto, r);
@@ -61,7 +62,7 @@ router.get('/me', requireAuth, async (req, res, next) => {
       dto = await attachDeliveryEstimate(dto, destinationIsoCode);
       dto = await attachPrimaryFitment(dto, r.id, lang);
       return dto;
-    }));
+    });
     res.json(dtos);
   } catch (err) {
     next(err);

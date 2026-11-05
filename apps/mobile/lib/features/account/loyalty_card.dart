@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
+import '../../widgets/premium.dart';
 import '../../core/auth_state.dart';
 import '../../core/language_state.dart';
 import '../../core/app_strings.dart';
@@ -63,14 +64,14 @@ class _LoyaltyCardState extends State<LoyaltyCard> {
     final tierName = resolveLoyaltyName(currentTier, isAr);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: () => context.push('/account/loyalty', extra: _status),
           child: Container(
-            decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: palette.line)),
+            decoration: Premium.card(context),
             child: Column(
               children: [
                 Padding(

@@ -48,31 +48,31 @@ function CarCard({ car, busy, onDefault, onRemove, onChooseVersion }: { car: Gar
   const t = useT();
   const photo = vehiclePhoto(car);
   // Laid out as a grid so the SAME buttons sit in the right place on every screen (they are in the page once):
-  // phones: a 130 x 130 photo with the details beside it, the buttons below both; from 640 px: a 250 x 250 photo with the details AND the buttons beside it (the buttons at the bottom).
+  // phones: a 130 x 130 photo with the details beside it, the buttons below both; from 1280 px: a 250 x 250 photo with the details AND the buttons beside it (the buttons at the bottom).
   return (
-    <li className={`grid grid-cols-[130px_minmax(0,1fr)] gap-3 rounded-[14px] border-[1.5px] bg-white p-3 sm:grid-cols-[250px_minmax(0,1fr)] sm:grid-rows-[1fr_auto] sm:gap-x-5 sm:gap-y-4 sm:p-4 ${car.isDefault ? "border-navy" : "border-line"}`}>
-      <div className="relative grid size-[130px] place-items-center overflow-hidden rounded-xl bg-[#e6edf2] sm:row-span-2 sm:size-[250px]">
+    <li className={`grid grid-cols-[130px_minmax(0,1fr)] gap-3 rounded-[14px] border-[1.5px] bg-white p-3 xl:grid-cols-[250px_minmax(0,1fr)] xl:grid-rows-[1fr_auto] xl:gap-x-5 xl:gap-y-4 xl:p-4 ${car.isDefault ? "border-navy" : "border-line"}`}>
+      <div className="relative grid size-[130px] place-items-center overflow-hidden rounded-xl bg-[#e6edf2] xl:row-span-2 xl:size-[250px]">
         {photo ? (
-          <SafeImage src={resolveImageUrl(photo)} alt="" fill sizes="(min-width: 640px) 250px, 130px" className="object-cover" unoptimized />
+          <SafeImage src={resolveImageUrl(photo)} alt="" fill sizes="(min-width: 1280px) 250px, 130px" className="object-cover" unoptimized />
         ) : (
-          <svg aria-hidden="true" className="size-12 sm:size-20" viewBox="0 0 24 24" fill="none" stroke="#0b3146" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 15v-3l2-5h14l2 5v3" /><circle cx="7.5" cy="16.5" r="1.8" /><circle cx="16.5" cy="16.5" r="1.8" /><path d="M5 12h14" /></svg>
+          <svg aria-hidden="true" className="size-12 xl:size-20" viewBox="0 0 24 24" fill="none" stroke="#0b3146" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 15v-3l2-5h14l2 5v3" /><circle cx="7.5" cy="16.5" r="1.8" /><circle cx="16.5" cy="16.5" r="1.8" /><path d="M5 12h14" /></svg>
         )}
       </div>
       <div className="min-w-0">
-        <strong className="block text-base leading-snug [overflow-wrap:anywhere] sm:text-2xl">{vehicleName(lang, car)}</strong>
-        {car.generation && car.generation !== String(car.year) && <p className="mt-1 text-sm text-muted [overflow-wrap:anywhere] sm:text-base">{car.generation}</p>}
-        <p className="text-sm text-muted sm:text-base">{t("garage_year", { year: car.year })}</p>
+        <strong className="block text-base leading-snug [overflow-wrap:anywhere] xl:text-2xl">{vehicleName(lang, car)}</strong>
+        {car.generation && car.generation !== String(car.year) && <p className="mt-1 text-sm text-muted [overflow-wrap:anywhere] xl:text-base">{car.generation}</p>}
+        <p className="text-sm text-muted xl:text-base">{t("garage_year", { year: car.year })}</p>
         {car.version && (
           <div className="mt-1" data-testid="car-version">
-            <p className="text-sm font-semibold [overflow-wrap:anywhere] sm:text-lg">{pickName(lang, car.version.name, car.version.nameAr)}</p>
-            <p className="text-sm text-muted [overflow-wrap:anywhere] sm:text-base">{pickName(lang, car.version.engine, car.version.engineAr)}</p>
-            <p className="text-sm text-muted sm:text-base">{seatsText(lang, car.version.seats)}</p>
+            <p className="text-sm font-semibold [overflow-wrap:anywhere] xl:text-lg">{pickName(lang, car.version.name, car.version.nameAr)}</p>
+            <p className="text-sm text-muted [overflow-wrap:anywhere] xl:text-base">{pickName(lang, car.version.engine, car.version.engineAr)}</p>
+            <p className="text-sm text-muted xl:text-base">{seatsText(lang, car.version.seats)}</p>
           </div>
         )}
         {!car.version && (car.versionCount ?? 0) > 0 && <ChooseVersion car={car} busy={busy} onSave={onChooseVersion} />}
         {car.isDefault && <span className="mt-2 inline-flex rounded-full bg-navy px-3 py-0.5 text-xs font-bold text-white">{t("shopping_for_this")}</span>}
       </div>
-      <div className="col-span-2 flex flex-col gap-2 sm:col-span-1 sm:self-end">
+      <div className="col-span-2 flex flex-col gap-2 xl:col-span-1 xl:self-end">
         <Link href={searchHrefFor(car)} className={`${button} !bg-signal !border-signal !text-on-signal hover:!bg-signal-dark`}>{t("shop_for_this")}</Link>
         {!car.isDefault && <button type="button" className={button} disabled={busy} onClick={onDefault}>{t("make_default")}</button>}
         <button type="button" className={`${button} !border-[#a12a21] !text-[#a12a21]`} disabled={busy} onClick={onRemove} aria-label={`${t("remove")}: ${vehicleLabel(lang, car)}`}>{t("remove")}</button>
@@ -110,7 +110,7 @@ export default function GaragePage() {
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
       <div className="flex flex-wrap items-baseline gap-x-3"><h1 className="text-3xl font-bold tracking-tight text-navy">{t("garage_title")}</h1></div>
       <p className="mb-8 mt-2 text-muted">{t("garage_intro")}</p>
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">          {/* the cars take the width (a 250 px photo needs room beside its details); the form is a slim column */}
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">          {/* the cars take the width (a 250 px photo needs room beside its details); the form is a slim column */}
         <section aria-labelledby="g-cars">
           <h2 id="g-cars" className="sr-only">{t("garage_your_cars")}{garage.vehicles.length > 0 && <span className="font-normal text-muted"> · {t("garage_count_of", { n: garage.vehicles.length, max: MAX_GARAGE_VEHICLES })}</span>}</h2>
           {garage.loading ? (

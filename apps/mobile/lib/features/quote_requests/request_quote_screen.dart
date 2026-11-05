@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../widgets/premium.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
@@ -165,7 +166,7 @@ class _RequestQuoteScreenState extends State<RequestQuoteScreen> {
                         final item = request.items[i];
                         return Container(
                           padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(border: Border.all(color: palette.line), borderRadius: BorderRadius.circular(10)),
+                          decoration: Premium.cardFor(palette, radius: 10),
                           child: Row(
                             children: [
                               if (item.referencePhotoUrl != null)
@@ -280,7 +281,7 @@ class _AddItemSheetState extends State<_AddItemSheet> {
             child: Container(
               width: 64,
               height: 64,
-              decoration: BoxDecoration(border: Border.all(color: palette.line, style: BorderStyle.solid), borderRadius: BorderRadius.circular(8)),
+              decoration: Premium.cardFor(palette, radius: 8),
               child: _isUploadingPhoto
                   ? const Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)))
                   : _photoUrl != null

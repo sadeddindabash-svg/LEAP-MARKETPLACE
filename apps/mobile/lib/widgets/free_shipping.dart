@@ -118,11 +118,16 @@ class _FreeShippingHintState extends State<FreeShippingHint> with SingleTickerPr
         final card = Container(
           margin: widget.margin,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          // raised: lit from above, a soft deep shadow
           decoration: BoxDecoration(
-            color: done ? const Color(0xFFE3F4EC) : const Color(0xFFFFF4E5),
-            border: Border.all(color: done ? const Color(0xFFB7E0CD) : const Color(0xFFF3D3A4)),
-            borderRadius: BorderRadius.circular(10),
-            boxShadow: glow > 0 ? [BoxShadow(color: _green.withValues(alpha: 0.55 * glow), blurRadius: 18 * glow + 2)] : null,
+            gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: done ? const [Color(0xFFF0FAF5), Color(0xFFDDF1E7)] : const [Color(0xFFFFF9EE), Color(0xFFFFEDD3)]),
+            border: Border.all(color: Colors.white),
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              const BoxShadow(color: Color(0x140B3146), blurRadius: 4, offset: Offset(0, 2)),
+              const BoxShadow(color: Color(0x290B3146), blurRadius: 20, spreadRadius: -4, offset: Offset(0, 10)),
+              if (glow > 0) BoxShadow(color: _green.withValues(alpha: 0.55 * glow), blurRadius: 18 * glow + 2),
+            ],
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -280,11 +285,12 @@ class _FreeShippingBadgeOverState extends State<FreeShippingBadgeOver> with Tick
                   return Transform.scale(
                     scale: scale,
                     child: Container(
+                      // raised green
                       decoration: BoxDecoration(
-                        color: _green,
+                        gradient: const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF34C785), _green]),
                         border: Border.all(color: Colors.white, width: 2),
                         borderRadius: BorderRadius.circular(999),
-                        boxShadow: const [BoxShadow(color: Color(0x2E000000), blurRadius: 6, offset: Offset(0, 2))],
+                        boxShadow: const [BoxShadow(color: Color(0x660F6B49), blurRadius: 10, offset: Offset(0, 4))],
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(999),

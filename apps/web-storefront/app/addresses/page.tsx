@@ -29,7 +29,7 @@ function labelKind(label: string): keyof typeof LABEL_ICONS {
 }
 function AddressDetail({ name, value, wide }: { name: string; value: ReactNode; wide?: boolean }) {
   return (
-    <div className={wide ? "md:col-span-2" : undefined}>
+    <div className={wide ? "col-span-2" : undefined}>
       <dt className="text-[11px] font-semibold uppercase tracking-[0.03em] text-muted rtl:normal-case rtl:tracking-normal">{name}</dt>
       <dd className="mt-0.5 break-words text-[15px] font-semibold text-ink">{value}</dd>
     </div>
@@ -121,7 +121,7 @@ export default function AddressesPage() {
                 </span>
                 <p className="flex min-w-0 flex-wrap items-center gap-2 text-base font-bold"><bdi>{a.label}</bdi>{a.isDefault && <span className="rounded-full bg-navy px-2.5 py-0.5 text-xs font-bold text-white">{t("default_label")}</span>}</p>
               </div>
-              <dl className="grid gap-x-5 gap-y-3 px-4 py-4 sm:grid-cols-2 md:grid-cols-3">
+              <dl className="grid grid-cols-2 gap-x-5 gap-y-3 px-4 py-4 max-md:gap-x-3 md:grid-cols-3">
                 <AddressDetail name={t("addr_recipient")} value={a.recipientName} />
                 <AddressDetail name={t("phone_field")} value={<bdi dir="ltr">{a.phone}</bdi>} />
                 <AddressDetail name={t("country_field")} value={countryName(lang, a.country)} />

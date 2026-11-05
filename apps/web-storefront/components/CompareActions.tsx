@@ -26,12 +26,13 @@ export function CompareAddButton({ productId, inStock }: { productId: string; in
   );
 }
 
-/** "Share comparison": in the navy box at the top of the page when the account menu is there, otherwise above the table (the Wishlist tabs lead back to the saved parts). */
+/** "Share comparison": beside the Compare tab on every screen (phone, tablet, computer), never in the navy title box. */
 export function CompareTopActions() {
   const t = useT();
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   const [copied, setCopied] = useState(false);
-  useEffect(() => { setSlot(document.getElementById("account-header-actions")); }, []);
+  // on every screen: beside the Compare tab (never in the navy title box at the top)
+  useEffect(() => { setSlot(document.getElementById("compare-tab-actions")); }, []);
   const share = async () => {
     const url = window.location.href;
     try {
@@ -42,7 +43,7 @@ export function CompareTopActions() {
   const onNavy = !!slot;
   const actions = (
     <div data-testid="compare-actions" className="flex flex-wrap items-center gap-2">
-      <button type="button" onClick={share} className="inline-flex min-h-10 items-center rounded-[10px] bg-signal px-4 text-sm font-bold text-on-signal hover:bg-signal-dark">{copied ? `✓ ${t("link_copied")}` : t("compare_share")}</button>
+      <button type="button" onClick={share} aria-label={t("compare_share")} className="inline-flex min-h-10 items-center gap-1.5 rounded-[10px] bg-signal px-4 text-sm font-bold text-on-signal hover:bg-signal-dark max-md:px-3">{copied ? `✓ ${t("link_copied")}` : <><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v13" /></svg><span className="max-md:hidden">{t("compare_share")}</span><span className="md:hidden">{t("share")}</span></>}</button>
     </div>
   );
   return slot ? createPortal(actions, slot) : <div className="mb-3">{actions}</div>;

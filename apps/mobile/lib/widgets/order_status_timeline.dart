@@ -46,6 +46,7 @@ class OrderStatusTimeline extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: i <= currentIndex ? LeapColors.signal : LeapColors.line,
+                  boxShadow: i <= currentIndex ? const [BoxShadow(color: Color(0x73E39F0C), blurRadius: 7, offset: Offset(0, 3))] : null,
                 ),
                 child: i < currentIndex
                     ? const Icon(Icons.check, size: 10, color: LeapColors.onSignal)

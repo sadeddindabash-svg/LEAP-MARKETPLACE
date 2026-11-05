@@ -2032,3 +2032,4 @@ module.exports.attachSupplierSignals = attachSupplierSignals;
 module.exports.attachDeliveryEstimate = attachDeliveryEstimate;
 module.exports.attachPrimaryFitment = attachPrimaryFitment;
 module.exports.buildProductMatchQuery = buildProductMatchQuery;
+module.exports.buildBuyerList = buildBuyerList;      // wishlist, recently viewed: leave out a product that cannot be priced

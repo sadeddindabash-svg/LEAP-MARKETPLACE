@@ -11,6 +11,8 @@ import '../../core/currency_state.dart';
 import '../../services/api_client.dart';
 import '../../widgets/plate_chip.dart';
 import '../../widgets/skeleton.dart';
+import '../../widgets/slide_in.dart';
+import '../../widgets/premium.dart';
 
 /// BUY-050–052: order history. Requires login (GET /order is auth-scoped
 /// server-side — see services/api/src/modules/order/routes.js) since guest
@@ -178,36 +180,32 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
     return Scaffold(
       appBar: AppBar(title: Text(tr(context, 'my_orders'))),
-      body: Column(
+      body: SlideInScope(child: Column(
         children: [
           SizedBox(
             height: 56,
             child: ListView(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               children: kOrderTabs.map((t) {
                 final selected = _selectedTab == t.key;
                 final label = tr(context, t.labelKey);
                 final palette = LeapPalette.of(context);
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
+                return SlideIn(index: kOrderTabs.indexOf(t), child: Padding(
+                  padding: const EdgeInsetsDirectional.only(end: 6),
                   child: InkWell(
                     onTap: () => _selectTab(t.key),
                     borderRadius: BorderRadius.circular(20),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: selected ? palette.signal : palette.card,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: selected ? palette.signal : palette.line),
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),      // hugs its words, so all the tabs fit
+                      decoration: selected ? Premium.goldRaised(radius: 20) : Premium.pill(context),
                       child: Text(
                         label,
                         style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: selected ? palette.onSignal : palette.ink),
                       ),
                     ),
                   ),
-                );
+                ));
               }).toList(),
             ),
           ),
@@ -270,12 +268,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     final status = ((o as Map<String, dynamic>)['displayStatus'] as String?) ?? (o['status'] as String);
                     return status == 'shipped' || status == 'to_ship' || status == 'processing';
                   }).length;
-                  return ListView.separated(
+                  // the summary and the orders slide in again on every tab (All, To ship, Shipped, Delivered, Returns)
+                  return SlideInScope(key: ValueKey(_selectedTab), child: ListView.separated(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.all(16),
                     itemCount: orders.length + (_selectedTab == 'all' ? 1 : 0),
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (context, i) {
+                    itemBuilder: (context, i) => SlideIn(index: i, child: PressDown(child: Builder(builder: (context) {
                       if (_selectedTab == 'all' && i == 0) {
                         return Row(
                           children: [
@@ -284,22 +283,14 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                 height: 100,
                                 padding: const EdgeInsets.all(16),
                                 margin: const EdgeInsets.only(bottom: 4),
-                                decoration: BoxDecoration(color: palette.card, border: Border.all(color: palette.line), borderRadius: BorderRadius.circular(12)),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                decoration: Premium.card(context, radius: 12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          Text(tr(context, 'active_shipments').toUpperCase(), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: palette.signalDark, letterSpacing: 0.5)),
-                                          const SizedBox(height: 4),
-                                          _AnimatedCountText(target: activeShipments, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: palette.ink)),
-                                        ],
-                                      ),
-                                    ),
-                                    Icon(Icons.local_shipping_outlined, color: palette.signal, size: 28),
+                                    Text(tr(context, 'active_shipments').toUpperCase(), textAlign: TextAlign.center, maxLines: 2, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: palette.signalDark, letterSpacing: 0.5)),
+                                    const SizedBox(height: 4),
+                                    FittedBox(fit: BoxFit.scaleDown, child: _AnimatedCountText(target: activeShipments, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: palette.ink))),
                                   ],
                                 ),
                               ),
@@ -323,21 +314,19 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                         height: 100,
                                         padding: const EdgeInsets.all(16),
                                         margin: const EdgeInsets.only(bottom: 4),
-                                        decoration: BoxDecoration(color: palette.card, border: Border.all(color: palette.line), borderRadius: BorderRadius.circular(12)),
-                                        child: Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                        decoration: Premium.card(context, radius: 12),
+                                        child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.center,
                                                 mainAxisAlignment: MainAxisAlignment.center,
                                                 children: [
                                                   Text(
                                                     isAr ? '${tr(context, 'annual_spend_label')} ${summary['year']}' : '${summary['year']} ${tr(context, 'annual_spend_label')}',
+                                                    textAlign: TextAlign.center,
+                                                    maxLines: 2,
                                                     style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: palette.signalDark, letterSpacing: 0.5),
                                                   ),
                                                   const SizedBox(height: 4),
-                                                  Builder(builder: (context) {
+                                                  FittedBox(fit: BoxFit.scaleDown, child: Builder(builder: (context) {
                                                     final usdTotal = (summary['totalSpent'] as num).toDouble();
                                                     final currency = context.watch<CurrencyState>();
                                                     final converted = currency.convert(usdTotal);
@@ -347,12 +336,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                                       formatter: (v) => formatAmount(context, v.toDouble(), displayCurrencyCode),
                                                       style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: palette.ink),
                                                     );
-                                                  }),
+                                                  })),
                                                 ],
-                                              ),
-                                            ),
-                                            Icon(Icons.receipt_long_outlined, color: palette.signal, size: 28),
-                                          ],
                                         ),
                                       ),
                                     ),
@@ -418,14 +403,14 @@ class _OrdersScreenState extends State<OrdersScreen> {
                         ),
                         ),
                       );
-                    },
-                  );
+                    }))),
+                  ));
                 },
               ),
             ),
           ),
         ],
-      ),
+      )),
     );
   }
 }

@@ -13,6 +13,7 @@ import 'core/garage_state.dart';
 import 'widgets/app_lock_gate.dart';
 import 'widgets/force_update_gate.dart';
 import 'widgets/theme_reveal.dart';
+import 'widgets/liquid_nav_bar.dart';
 import 'core/app_strings.dart';
 import 'services/api_client.dart';
 import 'features/splash/splash_screen.dart';
@@ -218,7 +219,7 @@ class RootShell extends StatelessWidget {
     final auth = context.watch<AuthState>();
     return Scaffold(
       body: child,
-      bottomNavigationBar: BottomNavigationBar(
+      bottomNavigationBar: LiquidNavBar(
         currentIndex: _indexForLocation(location),
         onTap: (i) {
           // Real fix: dismiss any currently-showing SnackBar the
@@ -233,9 +234,9 @@ class RootShell extends StatelessWidget {
           context.go(_tabs[i]);
         },
         items: [
-          BottomNavigationBarItem(icon: const Icon(Icons.home_outlined), label: tr(context, 'nav_home')),
-          BottomNavigationBarItem(icon: const Icon(Icons.grid_view_outlined), label: tr(context, 'nav_shop')),
-          BottomNavigationBarItem(
+          LiquidNavItem(icon: const Icon(Icons.home_outlined), label: tr(context, 'nav_home')),
+          LiquidNavItem(icon: const Icon(Icons.grid_view_outlined), label: tr(context, 'nav_shop')),
+          LiquidNavItem(
             // "Fly to cart" (core/fly_to_cart.dart): an added part lands here; its number waits while the part is in the air, then the tab bounces.
             icon: FlyCartTarget(
               child: FlyCartCount(
@@ -250,8 +251,8 @@ class RootShell extends StatelessWidget {
             ),
             label: tr(context, 'nav_cart'),
           ),
-          BottomNavigationBarItem(icon: const Icon(Icons.inventory_2_outlined), label: tr(context, 'nav_orders')),
-          BottomNavigationBarItem(
+          LiquidNavItem(icon: const Icon(Icons.inventory_2_outlined), label: tr(context, 'nav_orders')),
+          LiquidNavItem(
             // Real unread-notification badge (new) -- deliberately a
             // simple FutureBuilder, refetched on each real navigation
             // (this whole build() reruns then), rather than converting

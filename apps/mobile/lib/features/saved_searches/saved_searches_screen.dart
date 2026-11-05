@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../widgets/premium.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/language_state.dart';
@@ -133,13 +134,13 @@ class _SavedSearchesScreenState extends State<SavedSearchesScreen> {
         final s = searches[i];
         return Container(
           padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(12), border: Border.all(color: palette.line)),
+          decoration: Premium.cardFor(palette, radius: 12),
           child: Row(
             children: [
               Container(
                 width: 48,
                 height: 48,
-                decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(10)),
+                decoration: Premium.cardFor(palette, radius: 10),
                 child: Icon(Icons.bookmark_outlined, color: palette.signal),
               ),
               const SizedBox(width: 12),

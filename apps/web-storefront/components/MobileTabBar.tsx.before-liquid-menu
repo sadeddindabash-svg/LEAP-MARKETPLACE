@@ -1,0 +1,85 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import Link from "@/components/LocLink";
+import PhotoBox from "@/components/PhotoBox";
+import { useAuth } from "@/components/AuthProvider";
+import { useCart } from "@/components/CartProvider";
+import { useT } from "@/components/LangProvider";
+import { splitLang } from "@/lib/i18n";
+
+/**
+ * The bottom menu on a phone (under 768 px; confirmed with the person via mockup, design B "like the app"): Home · Sections · Search · Cart · Account, always on screen.
+ * "Sections" opens a panel above the menu with every section (4 per line, with its photo) and "All sections"; it closes when a section is chosen, on the dimmed
+ * background, with Escape, or when the page changes. The cart shows its number. Account opens the account (or Sign in when signed out).
+ * Not shown from 768 px up (the header's own menu is there). Right to left in Arabic by itself.
+ */
+type Section = { id: string; name: string; photoUrl?: string | null };
+
+const icon = (d: React.ReactNode) => (
+  <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{d}</svg>
+);
+const ICONS = {
+  home: icon(<><path d="M3 11l9-7 9 7" /><path d="M5 10v10h5v-6h4v6h5V10" /></>),
+  sections: icon(<><rect x="3" y="3" width="7.5" height="7.5" rx="1.5" /><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" /><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" /><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" /></>),
+  search: icon(<><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></>),
+  cart: icon(<><path d="M4 5h2l2 10h9l2-7H7" /><circle cx="9" cy="19" r="1.4" /><circle cx="17" cy="19" r="1.4" /></>),
+  account: icon(<><circle cx="12" cy="8" r="4" /><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6" /></>),
+};
+
+const tab = "relative flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-bold";
+
+export default function MobileTabBar({ sections }: { sections: Section[] }) {
+  const t = useT();
+  const { user } = useAuth();
+  const { itemCount } = useCart();
+  const here = splitLang(usePathname() || "/").path;
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => { setOpen(false); }, [here]);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  const color = (on: boolean) => (on ? "text-navy" : "text-[#6b7a86]");
+  const is = (p: string) => (p === "/" ? here === "/" : here === p || here.startsWith(`${p}/`));
+  const accountHref = user ? "/account" : "/login";
+
+  return (
+    <div data-testid="mobile-tab-bar" className="md:hidden">
+      {open && (
+        <>
+          <button type="button" aria-label={t("cancel")} onClick={() => setOpen(false)} className="fixed inset-0 z-40 bg-[#07202f]/40" />
+          <div id="mobile-sections" role="dialog" aria-label={t("nav_sections")} className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-50 max-h-[65vh] overflow-auto rounded-t-2xl border-t border-line bg-white p-4 shadow-[0_-8px_24px_rgba(7,32,47,0.18)]">
+            <p className="mb-3 text-base font-extrabold text-ink">{t("nav_sections")}</p>
+            <ul className="grid grid-cols-4 gap-x-2 gap-y-3">
+              {sections.map((s) => (
+                <li key={s.id}>
+                  <Link href={`/search?category=${encodeURIComponent(s.id)}`} onClick={() => setOpen(false)} className="flex flex-col items-center gap-1.5 text-center">
+                    <PhotoBox src={s.photoUrl} className="aspect-square w-full" sizes="90px" />
+                    <span className="line-clamp-2 w-full text-[11.5px] font-bold leading-tight [overflow-wrap:anywhere]">{s.name}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            <Link href="/search" onClick={() => setOpen(false)} className="mt-4 flex h-11 items-center justify-center rounded-xl border border-line text-sm font-bold text-navy">{t("all_sections")}</Link>
+          </div>
+        </>
+      )}
+      <nav aria-label={t("nav_sections") + " · " + t("account")} className="fixed inset-x-0 bottom-0 z-50 flex border-t border-line bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-2px_10px_rgba(7,32,47,0.08)]">
+        <Link href="/" aria-current={is("/") ? "page" : undefined} className={`${tab} ${color(is("/") && !open)}`}>{ICONS.home}<span>{t("nav_home")}</span></Link>
+        <button type="button" aria-expanded={open} aria-controls="mobile-sections" onClick={() => setOpen(!open)} className={`${tab} ${color(open)}`}>{ICONS.sections}<span>{t("nav_sections")}</span></button>
+        <Link href="/search" aria-current={is("/search") ? "page" : undefined} className={`${tab} ${color(is("/search") && !open)}`}>{ICONS.search}<span>{t("search_button")}</span></Link>
+        <Link href="/cart" aria-current={is("/cart") ? "page" : undefined} className={`${tab} ${color(is("/cart") && !open)}`}>
+          {ICONS.cart}<span>{t("cart")}</span>
+          {itemCount > 0 && <span className="absolute top-1.5 start-[calc(50%+4px)] flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-signal px-1 text-[10.5px] font-extrabold text-on-signal">{itemCount}</span>}
+        </Link>
+        <Link href={accountHref} aria-current={is("/account") ? "page" : undefined} className={`${tab} ${color(is("/account") && !open)}`}>{ICONS.account}<span>{t("account")}</span></Link>
+      </nav>
+    </div>
+  );
+}

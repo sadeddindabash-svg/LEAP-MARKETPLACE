@@ -3,6 +3,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
+import '../../widgets/slide_in.dart';
+import '../../widgets/premium.dart';
 import '../../core/app_strings.dart';
 import '../../core/language_state.dart';
 import '../../models/category.dart';
@@ -82,7 +84,7 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
           ? (_error != null
               ? Center(child: Text(_error!, style: TextStyle(color: LeapPalette.of(context).muted)))
               : const ListSkeleton())
-          : Row(
+          : SlideInScope(child: Row(
               children: [
                 // Real sidebar -- every major category, tappable.
                 SizedBox(
@@ -95,14 +97,13 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
                         final c = _categories![i];
                         final selected = c.id == _selectedCategoryId;
                         final palette = LeapPalette.of(context);
-                        return InkWell(
+                        return SlideIn(index: i, child: InkWell(
                           onTap: () => _selectCategory(c.id),
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-                            decoration: BoxDecoration(
-                              color: selected ? palette.card : Colors.transparent,
-                              border: Border(left: BorderSide(color: selected ? palette.signal : Colors.transparent, width: 3)),
-                            ),
+                            // the chosen section rises out of the side column as a raised card
+                            margin: selected ? const EdgeInsets.symmetric(horizontal: 4, vertical: 3) : EdgeInsets.zero,
+                            decoration: selected ? Premium.card(context, radius: 12) : const BoxDecoration(),
                             child: Column(
                               children: [
                                 // Real category photo (new) -- closes a
@@ -137,7 +138,7 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
                               ],
                             ),
                           ),
-                        );
+                        ));
                       },
                     ),
                   ),
@@ -169,16 +170,17 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
                           ),
                         );
                       }
-                      return ListView.separated(
+                      // the parts slide in again every time a section is chosen
+                      return SlideInScope(key: ValueKey(_selectedCategoryId), child: ListView.separated(
                         padding: const EdgeInsets.all(12),
                         itemCount: parts.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
                         itemBuilder: (context, i) {
                           final part = parts[i];
                           final partLabel = part.displayName(isAr);
                           final categoryLabel = (selectedCategory != null && selectedCategory.id.isNotEmpty) ? selectedCategory.displayName(isAr) : '';
-                          return Container(
-                            decoration: BoxDecoration(color: palette.chalk, borderRadius: BorderRadius.circular(10), border: Border.all(color: palette.line)),
+                          return SlideIn(index: i, child: PressDown(child: Container(
+                            decoration: Premium.card(context),
                             child: ListTile(
                               leading: ClipOval(
                                 child: part.photoUrl != null
@@ -198,14 +200,14 @@ class _CategoryBrowseScreenState extends State<CategoryBrowseScreen> {
                                 extra: {'categoryName': categoryLabel, 'part': part.nameEn, 'partLabel': partLabel},
                               ),
                             ),
-                          );
+                          )));
                         },
-                      );
+                      ));
                     },
                   ),
                 ),
               ],
-            ),
+            )),
     );
   }
 }

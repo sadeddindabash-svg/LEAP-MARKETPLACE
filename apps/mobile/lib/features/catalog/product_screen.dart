@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../widgets/premium.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
@@ -385,11 +386,7 @@ class _ProductDetailBody extends StatelessWidget {
             ),
             const SizedBox(height: 24),
             Container(
-              decoration: BoxDecoration(
-                color: palette.card,
-                border: Border.all(color: palette.line),
-                borderRadius: BorderRadius.circular(12),
-              ),
+              decoration: Premium.cardFor(palette, radius: 12),
               clipBehavior: Clip.antiAlias,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -471,7 +468,7 @@ class _ProductDetailBody extends StatelessWidget {
                   // Real pill-shaped quantity stepper (new), matching
                   // the same style already used on Cart.
                   Container(
-                    decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(999), border: Border.all(color: palette.line)),
+                    decoration: Premium.cardFor(palette, radius: 999),
                     child: Row(
                       children: [
                         IconButton(onPressed: () => onQtyChanged(qty > 1 ? qty - 1 : 1), icon: Icon(Icons.remove, size: 16, color: palette.ink), tooltip: tr(context, 'decrease_quantity')),

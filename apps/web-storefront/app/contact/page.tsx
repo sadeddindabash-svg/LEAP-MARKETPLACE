@@ -28,13 +28,13 @@ export default async function ContactPage() {
       <ul className="mt-6 grid gap-3 sm:grid-cols-2">
         {ways.map((w) => (
           <li key={w.href} className="flex">
-            <Link href={w.href} className="group flex w-full flex-col items-start gap-2 rounded-[16px] border border-line bg-white p-5 transition-colors hover:border-navy">
-              <span aria-hidden="true" className="mb-1 mt-0.5 grid size-12 place-items-center rounded-full bg-white text-navy ring-[3px] ring-signal">
+            <Link href={w.href} className="group flex w-full flex-col items-start gap-2 rounded-[16px] border border-line bg-white p-5 transition-colors hover:border-navy max-md:flex-row max-md:items-center max-md:gap-3 max-md:p-4">
+              <span aria-hidden="true" className="mb-1 mt-0.5 grid size-12 flex-none place-items-center rounded-full bg-white text-navy ring-[3px] ring-signal max-md:m-0 max-md:size-11">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{w.paths.map((d) => <path key={d} d={d} />)}</svg>
               </span>
-              <span className="block text-[17px] font-bold text-navy">{w.title}</span>
-              <span className="block text-sm text-muted">{w.sub}</span>
-              <span className="mt-auto pt-1 text-sm font-extrabold text-[#8a6100] group-hover:underline">{w.go} <span aria-hidden="true" className="inline-block rtl:rotate-180">→</span></span>
+              <span className="flex w-full min-w-0 flex-1 flex-col items-start gap-2 max-md:gap-0.5"><span className="block text-[17px] font-bold text-navy max-md:text-[15.5px]">{w.title}</span>
+              <span className="block text-sm text-muted max-md:text-[13px] max-md:leading-snug">{w.sub}</span>
+              <span className="mt-auto pt-1 text-sm font-extrabold text-[#8a6100] group-hover:underline max-md:pt-0.5">{w.go} <span aria-hidden="true" className="inline-block rtl:rotate-180">→</span></span></span>
             </Link>
           </li>
         ))}

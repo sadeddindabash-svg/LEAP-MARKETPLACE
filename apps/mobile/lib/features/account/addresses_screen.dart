@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../widgets/premium.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
@@ -143,11 +144,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
                             },
                             child: Container(
                           padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: palette.card,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: isDefault ? palette.signal : palette.line),
-                          ),
+                          decoration: Premium.cardFor(palette, radius: 12, ring: isDefault ? palette.signal : null),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [

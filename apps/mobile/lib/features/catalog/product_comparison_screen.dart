@@ -1,85 +1,179 @@
 import 'package:flutter/material.dart';
+import '../../widgets/premium.dart';
 import 'package:go_router/go_router.dart';
-import '../../core/theme.dart';
-import '../../core/currency_state.dart';
-import '../../models/product.dart';
 import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:share_plus/share_plus.dart';
+import '../../core/theme.dart';
+import '../../core/config/app_config.dart';
+import '../../core/currency_state.dart';
 import '../../core/language_state.dart';
+import '../../models/product.dart';
+import '../../models/compare_limit.dart';
+import '../../services/api_client.dart';
 
-/// Real side-by-side product comparison (#101) -- 2 to 4 real
-/// products, real specs aligned in real columns. Every row uses a
-/// real field already on the Product model; a row is only shown when
-/// at least one selected product actually has that real data,
-/// avoiding a fabricated placeholder for specs that simply don't
-/// exist on any of the compared items.
+/// Compare parts: the SAME view as the storefront's /compare page (confirmed with the person via mockup), for 2 parts (compareMaxItems).
+/// The page title; each part's photo in a square box and its name (both open the part); then the website's 8 rows with grey labels in
+/// capitals: Price (big), Rating, Stock, Delivery, OEM number, Weight, Verified seller, Ships from. Every row is always shown, with "—" when
+/// a part has no value, as on the website. One rounded white card, the 2 columns filling the screen (no sideways scrolling). English and Arabic.
 class ProductComparisonScreen extends StatelessWidget {
   final List<Product> products;
   const ProductComparisonScreen({super.key, required this.products});
+
+  static const _dash = '—';
+  static const _gold = Color(0xFFF9B317);
+
+  /// Shares the website link of this comparison (/compare?ids=a,b), so whoever opens it sees the same parts; the phone's share sheet opens.
+  static Future<void> _share(List<Product> list, String title) async {
+    final ids = list.map((p) => Uri.encodeComponent(p.id)).join(',');
+    try {
+      await Share.share('$title — ${AppConfig.storefrontUrl}/compare?ids=$ids');
+    } catch (_) {
+      // the buyer closed the share sheet
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final palette = LeapPalette.of(context);
     final isAr = context.watch<LanguageState>().isArabic;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final navy = isDark ? palette.signal : const Color(0xFF0F2A3A);
+    final labelBg = isDark ? Colors.white.withValues(alpha: 0.06) : const Color(0xFFEEF2F5);
+    final labelInk = isDark ? palette.muted : const Color(0xFF33424D);
+    final list = products.take(compareMaxItems).toList();
+    final title = isAr ? 'مقارنة القطع' : 'Compare parts';
 
-    final rows = <(String, String Function(Product))>[
-      (isAr ? 'السعر' : 'Price', (p) => formatPrice(context, p.price.toDouble())),
-      (isAr ? 'التقييم' : 'Rating', (p) => p.reviewCount > 0 ? '${p.rating.toStringAsFixed(1)} (${p.reviewCount})' : (isAr ? 'لا يوجد' : 'No reviews yet')),
-      (isAr ? 'المخزون' : 'Stock', (p) => p.stockQuantity > 0 ? (isAr ? '${p.stockQuantity} متوفر' : '${p.stockQuantity} in stock') : (isAr ? 'غير متوفر' : 'Out of stock')),
-      (isAr ? 'التسليم' : 'Delivery', (p) => p.deliveryDateLabel(isAr)),
-      (isAr ? 'رقم OEM' : 'OEM number', (p) => p.oemNumber ?? ''),
-      (isAr ? 'الوزن' : 'Weight', (p) => p.weightKg != null ? '${p.weightKg!.toStringAsFixed(1)} ${isAr ? "كغم" : "kg"}' : ''),
-      (isAr ? 'بائع موثّق' : 'Verified seller', (p) => p.isVerifiedSeller ? (isAr ? 'نعم' : 'Yes') : ''),
-      (isAr ? 'الشحن من' : 'Ships from', (p) => (isAr ? (p.shipsFromCountryAr?.isNotEmpty == true ? p.shipsFromCountryAr : p.shipsFromCountry) : p.shipsFromCountry) ?? ''),
+    final rows = <(String, Widget Function(Product))>[
+      (isAr ? 'السعر' : 'Price', (p) => FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart, child: Text(formatPrice(context, p.price), maxLines: 1, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: navy)))),
+      (isAr ? 'التقييم' : 'Rating', (p) => _text(context, p.reviewCount > 0 ? '${p.rating.toStringAsFixed(1)} (${p.reviewCount})' : (isAr ? 'لا يوجد' : 'No reviews yet'))),
+      (isAr ? 'المخزون' : 'Stock', (p) => _text(context, p.stockQuantity > 0 ? (isAr ? '${p.stockQuantity} متوفر' : '${p.stockQuantity} in stock') : (isAr ? 'غير متوفر' : 'Out of stock'))),
+      (isAr ? 'التسليم' : 'Delivery', (p) => _text(context, p.deliveryDateLabel(isAr).trim().isEmpty ? _dash : p.deliveryDateLabel(isAr))),
+      (isAr ? 'رقم OEM' : 'OEM number', (p) => (p.oemNumber ?? '').trim().isEmpty ? _text(context, _dash) : _plate(p.oemNumber!.trim(), isDark)),
+      (isAr ? 'الوزن' : 'Weight', (p) => _text(context, p.weightKg != null ? '${p.weightKg!.toStringAsFixed(1)} ${isAr ? 'كغم' : 'kg'}' : _dash)),
+      (isAr ? 'بائع موثّق' : 'Verified seller', (p) => _text(context, p.isVerifiedSeller ? (isAr ? 'نعم' : 'Yes') : _dash)),
+      (isAr ? 'الشحن من' : 'Ships from', (p) {
+        final c = isAr ? (p.shipsFromCountryAr?.isNotEmpty == true ? p.shipsFromCountryAr : p.shipsFromCountry) : p.shipsFromCountry;
+        return _text(context, (c ?? '').trim().isEmpty ? _dash : c!);
+      }),
     ];
 
+    Widget cell(Widget child, {Color? color}) => Container(color: color, padding: const EdgeInsets.all(10), child: child);
+    final line = BorderSide(color: palette.line);
+
     return Scaffold(
-      appBar: AppBar(title: Text(isAr ? 'مقارنة المنتجات' : 'Compare products')),
+      appBar: AppBar(
+        title: Text(title),
+        actions: [
+          if (list.length >= 2) IconButton(key: const Key('compare-share-icon'), icon: const Icon(Icons.share_outlined), tooltip: isAr ? 'مشاركة' : 'Share', onPressed: () => _share(list, title)),
+        ],
+      ),
       body: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: SingleChildScrollView(
-          child: Table(
-            defaultColumnWidth: const FixedColumnWidth(140),
-            border: TableBorder.symmetric(inside: BorderSide(color: palette.line)),
-            children: [
-              TableRow(
+        padding: const EdgeInsets.fromLTRB(12, 14, 12, 28),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsetsDirectional.only(start: 2, bottom: 12),
+              child: Row(
                 children: [
-                  const SizedBox(width: 110),
-                  for (final p in products)
-                    Padding(
-                      padding: const EdgeInsets.all(10),
-                      child: Column(
-                        children: [
-                          Text(p.name, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: palette.ink), maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
-                          const SizedBox(height: 6),
-                          TextButton(onPressed: () => context.push('/product/${p.id}'), child: Text(isAr ? 'عرض' : 'View', style: const TextStyle(fontSize: 11.5))),
-                        ],
-                      ),
+                  Expanded(child: Text(title, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: navy))),
+                  if (list.length >= 2)
+                    FilledButton.icon(
+                      key: const Key('compare-share'),
+                      onPressed: () => _share(list, title),
+                      style: FilledButton.styleFrom(backgroundColor: _gold, foregroundColor: const Color(0xFF1C1300), minimumSize: const Size(0, 40), padding: const EdgeInsets.symmetric(horizontal: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+                      icon: const Icon(Icons.share, size: 16),
+                      label: Text(isAr ? 'مشاركة' : 'Share'),
                     ),
                 ],
               ),
-              // Real, deliberate omission: a row only appears when at
-              // least one real selected product actually has that
-              // real data -- never a fabricated blank row for a spec
-              // that simply doesn't exist on any of these real items.
-              for (final row in rows)
-                if (products.any((p) => row.$2(p).isNotEmpty))
-                  TableRow(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.all(10),
-                        child: Text(row.$1, style: TextStyle(fontSize: 12, color: palette.muted, fontWeight: FontWeight.w600)),
+            ),
+            if (list.length < 2)
+              Text(isAr ? 'اختر قطعتين على الأقل للمقارنة.' : 'Pick at least 2 parts to compare.', style: TextStyle(fontSize: 15, color: palette.muted))
+            else
+              Container(
+                key: const Key('compare-table'),
+                decoration: Premium.cardFor(palette, radius: 14),
+                clipBehavior: Clip.antiAlias,
+                child: Table(
+                  columnWidths: const {0: FlexColumnWidth(0.85), 1: FlexColumnWidth(1), 2: FlexColumnWidth(1)},
+                  border: TableBorder(horizontalInside: line, verticalInside: line),
+                  defaultVerticalAlignment: TableCellVerticalAlignment.top,
+                  children: [
+                    TableRow(
+                      children: [
+                        TableCell(verticalAlignment: TableCellVerticalAlignment.fill, child: Container(color: labelBg)),
+                        for (final p in list) _head(context, p),
+                      ],
+                    ),
+                    for (final row in rows)
+                      TableRow(
+                        children: [
+                          TableCell(
+                            verticalAlignment: TableCellVerticalAlignment.fill,
+                            child: cell(Text(row.$1.toUpperCase(), style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 0.4, color: labelInk)), color: labelBg),
+                          ),
+                          for (final p in list) cell(row.$2(p)),
+                        ],
                       ),
-                      for (final p in products)
-                        Padding(
-                          padding: const EdgeInsets.all(10),
-                          child: Text(row.$2(p), textAlign: TextAlign.center, style: TextStyle(fontSize: 12.5, color: palette.ink)),
-                        ),
-                    ],
-                  ),
-            ],
-          ),
+                  ],
+                ),
+              ),
+          ],
         ),
       ),
     );
   }
+
+  /// The part's photo in a square box and its name; both open the part.
+  Widget _head(BuildContext context, Product p) {
+    final palette = LeapPalette.of(context);
+    return InkWell(
+      key: Key('compare-open-${p.id}'),
+      onTap: () => context.push('/product/${p.id}'),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          children: [
+            AspectRatio(
+              aspectRatio: 1,
+              child: Container(
+                decoration: Premium.cardFor(palette, radius: 8),
+                clipBehavior: Clip.antiAlias,
+                padding: const EdgeInsets.all(6),
+                child: p.images.isNotEmpty
+                    ? CachedNetworkImage(imageUrl: ApiClient.resolveMediaUrl(p.images.first), fit: BoxFit.contain, errorWidget: (_, __, ___) => Icon(Icons.image_not_supported_outlined, color: palette.muted))
+                    : Icon(Icons.image_outlined, color: palette.muted),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              p.name,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, height: 1.3, color: palette.ink, decoration: TextDecoration.underline, decorationColor: palette.line),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _text(BuildContext context, String s) => Text(s, style: TextStyle(fontSize: 13.5, color: LeapPalette.of(context).ink));
+
+  /// The OEM number in the plate style, as on the website.
+  Widget _plate(String oem, bool isDark) => Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0x33F2A71B) : const Color(0xFFFDF3DC),
+            border: Border.all(color: const Color(0xFFF2D58E)),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(oem, style: TextStyle(fontFamily: 'monospace', fontSize: 12, fontWeight: FontWeight.w700, color: isDark ? const Color(0xFFF2CA50) : const Color(0xFF14171C))),
+        ),
+      );
 }

@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/theme.dart';
+import '../../widgets/premium.dart';
 import '../../core/language_state.dart';
 import '../../services/api_client.dart';
 
@@ -116,8 +117,8 @@ class _SiteFooterSectionState extends State<SiteFooterSection> {
     final copyright = (_own(text['copyright'], ar) ?? _word(ar, 'copyright')).replaceAll('{year}', year);
 
     Widget heading(String s) => Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
-          child: Text(s.toUpperCase(), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.5, color: palette.muted)),
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+          child: Text(s.toUpperCase(), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: palette.signalDark)),
         );
 
     final pageRows = <Widget>[];
@@ -144,9 +145,9 @@ class _SiteFooterSectionState extends State<SiteFooterSection> {
         ],
         Container(
           key: const Key('site-footer-card'),
-          margin: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: const Color(0xFF0F2A3A), borderRadius: BorderRadius.circular(16)),
+          decoration: BoxDecoration(gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF0F2A3A), Color(0xFF1D4F6B)]), borderRadius: BorderRadius.circular(16), boxShadow: const [BoxShadow(color: Color(0x590B3146), blurRadius: 26, offset: Offset(0, 12))]),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -207,22 +208,22 @@ class _FooterRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = LeapPalette.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+    return PressDown(child: Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: onTap,
           child: Container(
-            decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(14)),
+            decoration: Premium.card(context),
             padding: const EdgeInsets.all(14),
             child: Row(
               children: [
                 Container(
                   width: 32,
                   height: 32,
-                  decoration: BoxDecoration(color: isDark ? palette.signal.withValues(alpha: 0.12) : palette.signal, borderRadius: BorderRadius.circular(8)),
+                  decoration: isDark ? BoxDecoration(color: palette.signal.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)) : Premium.goldRaised(radius: 8),
                   child: Icon(icon, size: 16, color: isDark ? palette.signal : palette.onSignal),
                 ),
                 const SizedBox(width: 10),
@@ -233,7 +234,7 @@ class _FooterRow extends StatelessWidget {
           ),
         ),
       ),
-    );
+    ));
   }
 }
 

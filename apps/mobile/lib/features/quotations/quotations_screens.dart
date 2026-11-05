@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../widgets/premium.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -55,6 +56,7 @@ const _text = <String, Map<String, String>>{
   'create': {'en': 'Create quotation', 'ar': 'إنشاء عرض السعر'},
   'prices_note': {'en': 'The prices are the ones shown in your basket now. Each seller sets how long its prices hold.', 'ar': 'الأسعار هي المعروضة في سلتك الآن. يحدد كل بائع مدة صلاحية أسعاره.'},
   'state_open': {'en': 'Genuine quotation · valid until {date}', 'ar': 'عرض سعر موثّق · صالح حتى {date}'},
+  'state_open_title': {'en': 'Genuine quotation', 'ar': 'عرض سعر موثّق'},
   'state_expired': {'en': 'This quotation expired on {date}', 'ar': 'انتهت صلاحية هذا العرض في {date}'},
   'state_ordered': {'en': 'Ordered · order {order}', 'ar': 'تم الطلب · الطلب {order}'},
   'state_cancelled': {'en': 'This quotation was cancelled', 'ar': 'أُلغي هذا العرض'},
@@ -164,7 +166,7 @@ class _Card extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: p.line)),
+      decoration: Premium.cardFor(p, radius: 14),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         if (title != null) Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(title!, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: p.ink))),
         ...children,
@@ -277,7 +279,7 @@ class _NewQuotationScreenState extends State<NewQuotationScreen> {
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: on ? p.ink : p.line, width: 1.5)),
+          decoration: Premium.cardFor(p, radius: 12, ring: on ? p.ink : null),
           child: Row(children: [
             Icon(on ? Icons.radio_button_checked : Icons.radio_button_unchecked, color: on ? p.ink : p.muted, size: 22),
             const SizedBox(width: 10),
@@ -541,15 +543,34 @@ class _QuotationDetailScreenState extends State<QuotationDetailScreen> {
       _ => qtr(context, 'state_cancelled'),
     };
     return [
+      // the status in raised navy: "Genuine quotation" on the first line, "Valid until ..." on the second; a big badge centred on the box's height
       Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
         margin: const EdgeInsets.only(bottom: 12),
-        decoration: BoxDecoration(color: _stateBack(state), borderRadius: BorderRadius.circular(12)),
-        child: Row(children: [
-          Icon(state == 'open' || state == 'ordered' ? Icons.verified_outlined : Icons.error_outline, color: _stateColor(state)),
-          const SizedBox(width: 8),
-          Expanded(child: Text(stateText, style: TextStyle(color: _stateColor(state), fontWeight: FontWeight.w800))),
-          if (state == 'ordered' && q['orderId'] != null) TextButton(onPressed: () => context.push('/orders/${q['orderId']}'), child: Text(qtr(context, 'view_order'))),
+        decoration: Premium.navyRaised(radius: 16),
+        foregroundDecoration: Premium.gloss(radius: 16),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: state == 'open'
+                  ? [
+                      Text(qtr(context, 'state_open_title'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16)),
+                      const SizedBox(height: 3),
+                      Text('${qtr(context, 'valid_until')} ${_date(context, q['expiresAt'] as String)}', style: const TextStyle(color: Color(0xFFF9D77A), fontWeight: FontWeight.w700, fontSize: 13)),
+                    ]
+                  : [Text(stateText, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14))],
+            ),
+          ),
+          if (state == 'ordered' && q['orderId'] != null)
+            TextButton(onPressed: () => context.push('/orders/${q['orderId']}'), style: TextButton.styleFrom(foregroundColor: const Color(0xFFF9D77A)), child: Text(qtr(context, 'view_order'))),
+          const SizedBox(width: 10),
+          Container(
+            width: 50,
+            height: 50,
+            decoration: state == 'open' || state == 'ordered' ? Premium.goldRaised(radius: 25) : BoxDecoration(color: _stateColor(state), shape: BoxShape.circle),
+            child: Icon(state == 'open' || state == 'ordered' ? Icons.verified : Icons.error_outline, size: 30, color: state == 'open' || state == 'ordered' ? const Color(0xFF0B3146) : Colors.white),
+          ),
         ]),
       ),
       if (state == 'open')
@@ -562,18 +583,26 @@ class _QuotationDetailScreenState extends State<QuotationDetailScreen> {
             child: Text(link, textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 13)),
           ),
           const SizedBox(height: 10),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            OutlinedButton.icon(
-              icon: const Icon(Icons.copy, size: 18),
-              label: Text(qtr(context, 'copy')),
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: link));
-                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(qtr(context, 'copied'))));
-              },
+          // Copy link + Share on the first line, Download PDF on the second: both lines the same width
+          Row(children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.copy, size: 18),
+                label: FittedBox(fit: BoxFit.scaleDown, child: Text(qtr(context, 'copy'))),
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: link));
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(qtr(context, 'copied'))));
+                },
+              ),
             ),
-            OutlinedButton.icon(icon: const Icon(Icons.share, size: 18), label: Text(qtr(context, 'share')), onPressed: () => Share.share('${q['id']} — $link')),
-            OutlinedButton.icon(icon: const Icon(Icons.picture_as_pdf_outlined, size: 18), label: Text(qtr(context, 'pdf')), onPressed: () => _open('$link/print')),
+            const SizedBox(width: 8),
+            Expanded(child: OutlinedButton.icon(icon: const Icon(Icons.share, size: 18), label: FittedBox(fit: BoxFit.scaleDown, child: Text(qtr(context, 'share'))), onPressed: () => Share.share('${q['id']} — $link'))),
           ]),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(icon: const Icon(Icons.picture_as_pdf_outlined, size: 18), label: Text(qtr(context, 'pdf')), onPressed: () => _open('$link/print')),
+          ),
           const SizedBox(height: 6),
           TextButton(onPressed: () => _open(link), child: Text(qtr(context, 'confirm_shares'))),
           if (q['openCount'] != null) Text(qtr(context, 'opened').replaceAll('{n}', '${q['openCount']}'), style: TextStyle(color: p.muted, fontSize: 12)),

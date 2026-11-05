@@ -279,11 +279,11 @@ class _StepsList extends StatelessWidget {
                     if (i < current || (i == current && current == 6))
                       Container(
                         width: 20, height: 20,
-                        decoration: BoxDecoration(color: palette.gauge, shape: BoxShape.circle),
+                        decoration: BoxDecoration(color: palette.gauge, shape: BoxShape.circle, boxShadow: const [BoxShadow(color: Color(0x660F6B49), blurRadius: 7, offset: Offset(0, 3))]),
                         child: const Icon(Icons.check, size: 13, color: Colors.white),
                       )
                     else if (i == current)
-                      Container(width: 20, height: 20, decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: palette.torque, width: 3)))
+                      Container(width: 20, height: 20, decoration: BoxDecoration(shape: BoxShape.circle, color: palette.card, border: Border.all(color: palette.torque, width: 3), boxShadow: const [BoxShadow(color: Color(0x4D0B3146), blurRadius: 7, offset: Offset(0, 3))]))
                     else
                       Container(width: 20, height: 20, decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: palette.line, width: 2))),
                     if (i < 6) Expanded(child: Container(width: 2, margin: const EdgeInsets.symmetric(vertical: 2), color: i < current ? palette.gauge : palette.line)),

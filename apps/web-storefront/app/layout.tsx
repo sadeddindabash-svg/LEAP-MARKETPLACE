@@ -40,7 +40,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="stylesheet" href={SITE_FONTS_HREF} />
       </head>
-      <body className="flex min-h-full flex-col bg-chalk text-ink">
+      <body className="flex min-h-full flex-col bg-chalk text-ink max-md:pb-[calc(3.5rem+env(safe-area-inset-bottom))]">
         <LangProvider lang={lang}>
           <AuthProvider>
             <WishlistProvider>

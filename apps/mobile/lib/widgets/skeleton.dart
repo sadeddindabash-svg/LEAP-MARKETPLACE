@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/theme.dart';
+import 'premium.dart';
 import 'product_card.dart';
 
 /// Real skeleton loading placeholders (new) -- closes a real gap: this
@@ -70,7 +71,10 @@ class ProductCardSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: Premium.card(context, radius: 12),
+      child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         AspectRatio(aspectRatio: 1, child: SkeletonBox(width: double.infinity, height: double.infinity, borderRadius: BorderRadius.circular(10))),
@@ -81,7 +85,7 @@ class ProductCardSkeleton extends StatelessWidget {
         const SizedBox(height: 8),
         const SkeletonBox(width: 60, height: 14),
       ],
-    );
+    ));
   }
 }
 

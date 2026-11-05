@@ -15,6 +15,8 @@ import '../../core/push_state.dart';
 import '../../core/theme_state.dart';
 import '../../widgets/sun_moon_switch.dart';
 import '../../widgets/theme_reveal.dart';
+import '../../widgets/slide_in.dart';
+import '../../widgets/premium.dart';
 import '../../services/api_client.dart';
 import 'loyalty_card.dart';
 import '../../core/api_error_text.dart';
@@ -87,6 +89,9 @@ class _AccountScreenState extends State<AccountScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
+    // every part of the screen slides in, one after another from the top (idea B)
+    var seq = 0;
+    Widget slide(String key, Widget child) => SlideIn(key: ValueKey('account-$key'), index: seq++, child: child);
 
     final rows = [
       (icon: Icons.directions_car_outlined, label: tr(context, 'my_garage'), route: '/garage'),
@@ -186,7 +191,7 @@ class _AccountScreenState extends State<AccountScreen> {
             ),
         ],
       ),
-      body: ListView(
+      body: SlideInScope(child: ListView(
         children: [
           if (auth.isLoading)
             const Padding(
@@ -194,15 +199,15 @@ class _AccountScreenState extends State<AccountScreen> {
               child: Center(child: CircularProgressIndicator()),
             )
           else if (auth.isLoggedIn)
-            _LoggedInHeader(user: auth.user!)
+            slide('header', Padding(padding: const EdgeInsets.fromLTRB(16, 6, 16, 6), child: _LoggedInHeader(user: auth.user!)))
           else
-            _LoggedOutHeader(),
+            slide('header', PremiumBox(radius: 18, child: _LoggedOutHeader())),
           // Real stats bento grid (new) -- only shown once real counts
           // have genuinely loaded, never a placeholder/fake number in
           // the meantime.
           if (auth.isLoggedIn && _vehicleCount != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+            slide('numbers', Padding(
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
               child: Row(
                 children: [
                   Expanded(child: _ProfileStat(value: _vehicleCount!, label: tr(context, 'vehicles_stat'), index: 0)),
@@ -212,16 +217,15 @@ class _AccountScreenState extends State<AccountScreen> {
                   Expanded(child: _ProfileStat(value: _wishlistCount!, label: tr(context, 'wishlist_stat'), index: 2)),
                 ],
               ),
-            ),
-          if (auth.isLoggedIn) const LoyaltyCard(),
-          const Divider(height: 24),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            )),
+          if (auth.isLoggedIn) slide('tier', const LoyaltyCard()),
+          slide('heading', Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
             child: Text(
               tr(context, 'account_settings_header').toUpperCase(),
               style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: LeapPalette.of(context).signalDark, letterSpacing: 1),
             ),
-          ),
+          )),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Column(
@@ -235,25 +239,24 @@ class _AccountScreenState extends State<AccountScreen> {
                 // confirmed directly via real rendered mockups (option
                 // "L2"/"W1") before writing this.
                 final isDark = Theme.of(context).brightness == Brightness.dark;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
+                return _SlideInRow(
+                  index: seq++,
+                  child: Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
                   child: Material(
                     color: Colors.transparent,
                     child: InkWell(
                       borderRadius: BorderRadius.circular(14),
                       onTap: r.route == null ? null : () => context.push(r.route!),
                       child: Container(
-                        decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(14)),
+                        decoration: Premium.card(context),
                         padding: const EdgeInsets.all(14),
                         child: Row(
                           children: [
                             Container(
                               width: 32,
                               height: 32,
-                              decoration: BoxDecoration(
-                                color: isDark ? palette.signal.withValues(alpha: 0.12) : palette.signal,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
+                              decoration: isDark ? BoxDecoration(color: palette.signal.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)) : Premium.goldRaised(radius: 8),
                               child: Icon(r.icon, size: 16, color: isDark ? palette.signal : palette.onSignal),
                             ),
                             const SizedBox(width: 10),
@@ -264,28 +267,27 @@ class _AccountScreenState extends State<AccountScreen> {
                       ),
                     ),
                   ),
-                );
+                ));
               }).toList(),
             ),
           ),
-          const Divider(height: 1),
-          const _ThemeSection(),
-          if (auth.isLoggedIn) const _AppLockSection(),
+          slide('appearance', const PremiumBox(margin: EdgeInsets.fromLTRB(16, 0, 16, 6), child: _ThemeSection())),
+          if (auth.isLoggedIn) slide('app-lock', const _AppLockSection()),
           if (auth.isLoggedIn)
-            ListTile(
+            slide('log-out', PremiumBox(child: ListTile(
               leading: Icon(Icons.logout, color: LeapPalette.of(context).muted),
               title: Text(tr(context, 'log_out')),
               onTap: () => context.read<AuthState>().logout(),
-            ),
+            ))),
           if (auth.isLoggedIn)
-            ListTile(
+            slide('delete', PremiumBox(child: ListTile(
               leading: const Icon(Icons.delete_forever_outlined, color: Colors.red),
               title: Text(tr(context, 'delete_account_label'), style: const TextStyle(color: Colors.red)),
               onTap: () => _confirmDeleteAccount(context),
-            ),
-          const SiteFooterSection(),      // the website footer: Help, Useful links, social media, copyright (admin Settings)
+            ))),
+          slide('footer', const SiteFooterSection()),      // the website footer: Help, Useful links, social media, copyright (admin Settings)
         ],
-      ),
+      )),
     );
   }
 
@@ -350,6 +352,16 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 }
 
+/// One row of the account list: it slides in with the rest of the screen (see SlideIn in widgets/slide_in.dart).
+class _SlideInRow extends StatelessWidget {
+  final int index;
+  final Widget child;
+  const _SlideInRow({required this.index, required this.child});
+
+  @override
+  Widget build(BuildContext context) => SlideIn(index: index, child: PressDown(child: child));
+}
+
 class _ProfileStat extends StatefulWidget {
   final int value;
   final String label;
@@ -412,7 +424,7 @@ class _ProfileStatState extends State<_ProfileStat> {
     final palette = LeapPalette.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 14),
-      decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(12), border: Border.all(color: palette.line)),
+      decoration: Premium.card(context, radius: 12),
       child: Column(
         children: [
           Text('$_displayValue', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: palette.signal)),
@@ -465,7 +477,9 @@ class _LoggedInHeaderState extends State<_LoggedInHeader> {
       // proper named dark color (LeapColorsDark.background), not
       // palette.ink, which is semantically a text color being misused
       // as a background would be a real mistake.
-      color: LeapColorsDark.background,
+      // the tab bar's navy, raised: a light edge, a soft shine across the top and a deep shadow
+      decoration: Premium.navyRaised(radius: 18),
+      foregroundDecoration: Premium.gloss(radius: 18),
       padding: const EdgeInsets.all(20),
       child: Row(
         children: [
@@ -491,7 +505,7 @@ class _LoggedInHeaderState extends State<_LoggedInHeader> {
                   bottom: 0,
                   child: Container(
                     padding: const EdgeInsets.all(3),
-                    decoration: BoxDecoration(color: palette.signal, shape: BoxShape.circle, border: Border.all(color: LeapColorsDark.background, width: 1.5)),
+                    decoration: BoxDecoration(color: palette.signal, shape: BoxShape.circle, border: Border.all(color: const Color(0xFF0B3146), width: 1.5)),
                     child: _isUploading
                         ? SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5, color: palette.onSignal))
                         : Icon(Icons.camera_alt, size: 10, color: palette.onSignal),
@@ -622,7 +636,7 @@ class _AppLockSection extends StatelessWidget {
     final lockState = context.watch<AppLockState>();
     if (!lockState.isReady || !lockState.isSupported) return const SizedBox.shrink();
 
-    return Padding(
+    return PremiumBox(child: Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       child: Row(
         children: [
@@ -642,6 +656,6 @@ class _AppLockSection extends StatelessWidget {
           ),
         ],
       ),
-    );
+    ));
   }
 }

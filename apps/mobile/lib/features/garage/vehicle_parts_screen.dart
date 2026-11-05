@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../widgets/premium.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
@@ -54,7 +55,7 @@ class _VehiclePartsScreenState extends State<VehiclePartsScreen> {
           Container(
             margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
-            decoration: BoxDecoration(color: palette.card, border: Border.all(color: palette.line), borderRadius: BorderRadius.circular(12)),
+            decoration: Premium.cardFor(palette, radius: 12),
             child: Row(
               children: [
                 Expanded(

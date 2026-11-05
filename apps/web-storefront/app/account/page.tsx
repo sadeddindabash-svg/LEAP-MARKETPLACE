@@ -13,7 +13,7 @@ import { deleteAccount, fetchMyGarage, fetchMyOrders, fetchUnreadNotificationCou
 const outline = "inline-flex min-h-11 items-center justify-center rounded-[10px] border-[1.5px] border-navy px-4 text-sm font-bold text-navy hover:bg-chalk disabled:opacity-50";
 
 function Stat({ value, label }: { value: number | null; label: string }) {
-  return <li className="rounded-[14px] border border-line bg-white p-4 text-center"><p className="text-3xl font-extrabold tabular-nums text-navy">{value === null ? "–" : <CountUp value={value} />}</p><p className="text-sm font-semibold text-muted">{label}</p></li>;
+  return <li className="rounded-[14px] border border-line bg-white p-4 text-center max-md:rounded-[12px] max-md:px-1 max-md:py-2"><p className="text-3xl font-extrabold tabular-nums text-navy max-md:text-xl max-md:leading-tight">{value === null ? "–" : <CountUp value={value} />}</p><p className="text-sm font-semibold text-muted max-md:text-[11.5px]">{label}</p></li>;
 }
 
 // The account hub, like the app's account screen: the buyer, their photo, their numbers (vehicles, orders, wishlist), their loyalty card, the way to sign out, and deleting
@@ -73,29 +73,29 @@ export default function AccountPage() {
     <div className="grid gap-6">
       {/* the profile (design B): the photo with its camera badge (click either to change it), "Welcome back", the name and email, and a bell with the
           unread count. The name is not an <h1> tag: the menu's title box hides the pages' own h1 titles, and this one must stay. */}
-      <section className="flex flex-wrap items-center gap-5 rounded-[14px] border border-line bg-white p-5 sm:p-6" aria-labelledby="acc-h">
-        <label className={`relative block size-[84px] flex-none ${photoBusy ? "cursor-wait opacity-70" : "cursor-pointer"}`}>
-          <span className="relative grid size-[84px] place-items-center overflow-hidden rounded-full bg-navy text-[34px] font-extrabold text-white">
+      <section className="flex flex-wrap items-center gap-5 rounded-[14px] border border-line bg-white p-5 max-md:flex-nowrap max-md:gap-3 max-md:p-3 sm:p-6" aria-labelledby="acc-h">
+        <label className={`relative block size-[84px] flex-none max-md:size-14 ${photoBusy ? "cursor-wait opacity-70" : "cursor-pointer"}`}>
+          <span className="relative grid size-[84px] place-items-center overflow-hidden rounded-full bg-navy text-[34px] font-extrabold text-white max-md:size-14 max-md:text-[22px]">
             {user.avatarUrl ? <SafeImage src={resolveImageUrl(user.avatarUrl)} alt="" fill sizes="84px" className="object-cover" unoptimized /> : <span aria-hidden="true">{(user.name || user.email).charAt(0).toUpperCase()}</span>}
           </span>
-          <span aria-hidden="true" className="absolute -bottom-0.5 -end-0.5 grid size-8 place-items-center rounded-full border-[3px] border-white bg-signal text-navy">
+          <span aria-hidden="true" className="absolute -bottom-0.5 -end-0.5 grid size-8 place-items-center rounded-full border-[3px] border-white bg-signal text-navy max-md:size-6 max-md:border-2 [&>svg]:max-md:size-3">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>
           </span>
           <input ref={photoInput} type="file" accept="image/*" className="sr-only" aria-label={t("change_photo")} disabled={photoBusy} onChange={(e) => { changePhoto(e.target.files?.[0]); e.target.value = ""; }} />
         </label>
         <div className="min-w-0 flex-1">
-          <p className="text-sm text-muted">{t("welcome_back")}</p>
+          <p className="text-sm text-muted max-md:text-[12px] max-md:leading-tight">{t("welcome_back")}</p>
           <p id="acc-h" role="heading" aria-level={1} className="text-[17px] font-extrabold leading-tight text-navy [overflow-wrap:anywhere] sm:truncate sm:text-2xl"><bdi>{user.name || user.email}</bdi></p>
-          {user.name && <p className="truncate text-muted" dir="ltr">{user.email}</p>}
-          <button type="button" disabled={photoBusy} onClick={() => photoInput.current?.click()} className="mt-1 text-sm font-bold text-navy underline underline-offset-4 disabled:opacity-50">{photoBusy ? t("saving") : t("change_photo")}</button>
+          {user.name && <p className="truncate text-muted max-md:text-[13px] max-md:leading-tight"><bdi dir="ltr">{user.email}</bdi></p>}
+          <button type="button" disabled={photoBusy} onClick={() => photoInput.current?.click()} className="mt-1 text-sm font-bold text-navy underline underline-offset-4 disabled:opacity-50 max-md:mt-0.5 max-md:text-[12.5px]">{photoBusy ? t("saving") : t("change_photo")}</button>
         </div>
-        <Link href="/notifications" aria-label={`${t("notifications")}${counts && counts.unread > 0 ? ` (${counts.unread})` : ""}`} className="relative grid size-12 flex-none place-items-center rounded-xl border-[1.5px] border-line text-navy transition-colors hover:border-navy">
+        <Link href="/notifications" aria-label={`${t("notifications")}${counts && counts.unread > 0 ? ` (${counts.unread})` : ""}`} className="relative grid size-12 flex-none place-items-center rounded-xl border-[1.5px] border-line text-navy transition-colors hover:border-navy max-md:size-10">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z" /><path d="M10 20a2 2 0 0 0 4 0" /></svg>
           {counts && counts.unread > 0 && <span aria-hidden="true" className="absolute -top-2 -end-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#d93025] px-1.5 text-[11px] font-extrabold text-white">{counts.unread > 99 ? "99+" : counts.unread}</span>}
         </Link>
       </section>
 
-      <ul className="grid gap-4 sm:grid-cols-3" aria-label={t("account_settings_header")}>
+      <ul className="grid grid-cols-3 gap-4 max-md:!gap-2" aria-label={t("account_settings_header")}>
         <Stat value={counts?.vehicles ?? null} label={t("vehicles_stat")} /><Stat value={counts?.orders ?? null} label={t("orders_stat")} /><Stat value={counts?.wishlist ?? null} label={t("wishlist_stat")} />
       </ul>
 

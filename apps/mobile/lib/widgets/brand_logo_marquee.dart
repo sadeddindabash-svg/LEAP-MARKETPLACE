@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../core/theme.dart';
+import 'premium.dart';
 import '../services/api_client.dart';
 
 /// Real, new -- a continuously auto-scrolling strip of vehicle brand
@@ -131,10 +132,14 @@ class _BrandLogoMarqueeState extends State<BrandLogoMarquee> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-      height: _circleSize,
+        Container(
+      decoration: Premium.card(context, radius: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: SizedBox(
+      height: _circleSize + 20,
       child: SingleChildScrollView(
         controller: _scrollController,
+        padding: const EdgeInsets.symmetric(vertical: 10),      // room for the logos' shadows
         scrollDirection: Axis.horizontal,
         // Real, deliberate -- this is a purely automatic ticker, not
         // something the person drags themselves; disabling manual
@@ -149,7 +154,7 @@ class _BrandLogoMarqueeState extends State<BrandLogoMarquee> {
                 child: Container(
                   width: _circleSize,
                   height: _circleSize,
-                  decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: palette.line)),
+                  decoration: Premium.round(context),
                   child: ClipOval(
                     child: Container(
                       width: _circleSize,
@@ -175,7 +180,7 @@ class _BrandLogoMarqueeState extends State<BrandLogoMarquee> {
           ],
         ),
       ),
-        ),
+        )),
         const SizedBox(height: 12),
       ],
     );

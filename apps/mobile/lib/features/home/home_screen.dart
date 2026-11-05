@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
+import '../../widgets/premium.dart';
 import '../../core/app_strings.dart';
 import '../../core/auth_state.dart';
 import '../../core/language_state.dart';
@@ -288,6 +289,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 final visibleCategories = categories.take(7).toList();
                 final showMoreTile = categories.length > 7;
                 return GridView.count(
+                  clipBehavior: Clip.none,      // the icons' shadows show at the edges
                   crossAxisCount: 4,
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
@@ -296,17 +298,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     ...visibleCategories.map((c) {
                       final label = c.displayName(isAr);
-                      return GestureDetector(
+                      return PressDown(child: GestureDetector(
                         onTap: () => context.push('/category-browse/${c.id}'),
                         child: Column(
                           children: [
                             Container(
                               width: 52,
                               height: 52,
-                              decoration: BoxDecoration(
-                                color: palette.chalk,
-                                shape: BoxShape.circle,
-                              ),
+                              decoration: Premium.round(context),
                               clipBehavior: Clip.antiAlias,
                               // Real category photo (new) -- closes a
                               // real gap: the backend's own real,
@@ -315,14 +314,14 @@ class _HomeScreenState extends State<HomeScreen> {
                               // it. Falls back to the existing icon when
                               // a real category genuinely has none yet.
                               child: c.photoUrl != null
-                                  ? CachedNetworkImage(imageUrl: ApiClient.resolveMediaUrl(c.photoUrl!), fit: BoxFit.cover, fadeInDuration: const Duration(milliseconds: 300), errorWidget: (context, url, error) => Icon(_iconForCategory(c.id), color: palette.signal, size: 31))
+                                  ? ClipOval(child: CachedNetworkImage(imageUrl: ApiClient.resolveMediaUrl(c.photoUrl!), fit: BoxFit.cover, fadeInDuration: const Duration(milliseconds: 300), errorWidget: (context, url, error) => Icon(_iconForCategory(c.id), color: palette.signal, size: 31)))
                                   : Icon(_iconForCategory(c.id), color: palette.signal, size: 31),
                             ),
                             const SizedBox(height: 6),
                             Text(label, style: const TextStyle(fontSize: 10), textAlign: TextAlign.center),
                           ],
                         ),
-                      );
+                      ));
                     }),
                     if (showMoreTile)
                       GestureDetector(
@@ -332,11 +331,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             Container(
                               width: 52,
                               height: 52,
-                              decoration: const BoxDecoration(
-                                color: Colors.white,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(Icons.grid_view, color: palette.signal, size: 28),
+                              // All sections: a raised gold button with a navy arrow (light and dark mode)
+                              decoration: Premium.goldRaised(radius: 26),
+                              child: const Icon(Icons.arrow_forward_rounded, color: Color(0xFF0B3146), size: 26),
                             ),
                             const SizedBox(height: 6),
                             Text(isAr ? 'الكل' : 'All', style: const TextStyle(fontSize: 10), textAlign: TextAlign.center),
@@ -364,14 +361,16 @@ class _HomeScreenState extends State<HomeScreen> {
                       Text(isAr ? 'شوهدت مؤخرًا' : 'Recently viewed', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                       const SizedBox(height: 12),
                       SizedBox(
-                        height: productCardHeightFor(140),
+                        height: productCardHeightFor(140) + 16,
                         child: ListView.separated(
+                          clipBehavior: Clip.none,      // the cards' shadows show
+                          padding: const EdgeInsets.only(bottom: 16),
                           scrollDirection: Axis.horizontal,
                           itemCount: products.length,
                           separatorBuilder: (context, i) => const SizedBox(width: 10),
                           itemBuilder: (context, i) {
                             final p = products[i];
-                            return SizedBox(width: 140, child: ProductCard(product: p, onTap: () => context.push('/product/${p.id}')));
+                            return PressDown(child: SizedBox(width: 140, child: ProductCard(product: p, onTap: () => context.push('/product/${p.id}'))));
                           },
                         ),
                       ),
@@ -596,8 +595,7 @@ class _ShoppingForCard extends StatelessWidget {
                             child: Container(
                               width: 75,
                               height: 75,
-                              padding: const EdgeInsets.all(5),
-                              decoration: BoxDecoration(color: palette.card, borderRadius: BorderRadius.circular(8)),
+                              padding: const EdgeInsets.all(5),      // the car PNG sits straight on the card (it has its own shadow)
                               child: displayPhotoUrl != null
                                   ? CachedNetworkImage(
                                       imageUrl: ApiClient.resolveMediaUrl(displayPhotoUrl),
@@ -682,16 +680,13 @@ class _FilterChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = LeapPalette.of(context);
-    return InkWell(
+    // raised: the chosen one raised gold; it sinks while pressed
+    return PressDown(child: InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-        decoration: BoxDecoration(
-          color: selected ? palette.signal : palette.card,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: selected ? palette.signal : palette.line),
-        ),
+        decoration: selected ? Premium.goldRaised(radius: 20) : Premium.pill(context),
         child: Text(
           label,
           // REAL BUG FOUND AND FIXED HERE while migrating this widget
@@ -699,9 +694,9 @@ class _FilterChip extends StatelessWidget {
           // the same real white-on-gold contrast issue already found
           // and fixed elsewhere earlier this session -- gold is too
           // light for white text to read well against.
-          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: selected ? palette.onSignal : palette.ink),
+          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: selected ? const Color(0xFF0B3146) : palette.ink),
         ),
       ),
-    );
+    ));
   }
 }

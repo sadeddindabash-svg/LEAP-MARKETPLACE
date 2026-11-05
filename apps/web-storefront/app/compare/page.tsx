@@ -50,7 +50,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-8">
       <h1 className="mb-6 text-3xl font-bold tracking-tight text-navy">{t(lang, "compare_title")}</h1>
-      <div className="mb-3"><WishlistTabs active="compare" compareCount={found.length} /></div>
+      <div className="mb-3 flex flex-wrap items-center gap-2"><WishlistTabs active="compare" compareCount={found.length} /><div id="compare-tab-actions" className="contents" /></div>
       {found.length < 2 ? (
         <p className="text-lg text-muted">{t(lang, "compare_need_two")} <Link href="/wishlist" className="font-bold text-navy underline underline-offset-4">{t(lang, "wishlist")}</Link></p>
       ) : (
